@@ -7,7 +7,7 @@ export function conversationRefFromAgent(agent: Agent): BackendConversationRef |
   if (agent.backendSession?.kind === 'claude') {
     return {
       backend: 'claude',
-      folder: agent.folder,
+      folder: agent.backendSession.transcriptFolder ?? agent.folder,
       sessionId: agent.backendSession.transcriptSessionId ?? agent.backendSession.sessionId,
     };
   }

@@ -204,6 +204,9 @@ describe('AppBackendServer code review workflow', () => {
       };
     });
     const disposeCodeReview = vi.fn().mockResolvedValue(undefined);
+    snapshot.general.worktreeDelegationStartingContext = 'conversation';
+    snapshot.general.worktreeDelegationInstructions = 'Saved delegation directions must not enter an independent review.';
+    const forkWorktreeConversation = vi.fn();
     // The first archive (between rounds) fails: housekeeping errors must not block the review.
     const archiveAgentConversation = vi.fn().mockRejectedValueOnce(new Error('thread not found')).mockResolvedValue(undefined);
     const saveCodeReviewReport = vi.fn().mockResolvedValue('/reports/review.md');
@@ -214,6 +217,7 @@ describe('AppBackendServer code review workflow', () => {
       getRuntimeStatus: () => ({ backend, status: 'running' }),
       getCapabilities: () => defaultBackendCapabilities(backend),
       runCodeReview,
+      forkWorktreeConversation,
       disposeCodeReview,
       ...(backend === 'codex' ? { archiveAgentConversation } : {}),
       releaseConversation,
@@ -247,6 +251,10 @@ describe('AppBackendServer code review workflow', () => {
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
     const session = reviewer.codeReview!;
+    expect(forkWorktreeConversation).not.toHaveBeenCalled();
+    expect(reviewer.delegationContext).toBeUndefined();
+    expect(runCodeReview.mock.calls[0]?.[1].reviewerSession).toBeUndefined();
+    expect(runCodeReview.mock.calls[0]?.[1].prompt).not.toContain(snapshot.general.worktreeDelegationInstructions);
     expect(started.activeAgentId).toBe(reviewer.id);
     expect(session).toMatchObject({ targetAgentId: owner.id, reviewerAgentId: reviewer.id, threadMode: 'independent' });
     expect(reviewer).toMatchObject({

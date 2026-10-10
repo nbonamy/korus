@@ -232,6 +232,17 @@ clears or changes it, Korus never re-detects.
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+- Worktree delegation preferences belong to app settings. A delegation can
+  override its starting context and add task instructions; task instructions
+  take precedence over saved instructions within the user's authorized scope.
+  Assignment instructions are frozen before durable startup and never grant
+  publication or merge authority.
+- Same-provider worktree delegation uses an optional driver-owned native fork,
+  rebound to the worker's identity, folder and provider configuration. A busy
+  source uses a completed native boundary when supported. Cross-provider,
+  unsupported or refused forks start a fresh handoff with persisted, visible
+  context metadata. Korus never replays a transcript to imitate a fork.
+  Independent code reviewers always start fresh.
 - Korus-created pull requests are tracked on their agent; a runtime scheduler
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree

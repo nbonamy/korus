@@ -12,6 +12,7 @@ const agentFieldPolicy = {
   handoff: 'persisted',
   teamId: 'derived',
   delegatedByAgentId: 'persisted',
+  delegationContext: 'persisted',
   pullRequest: 'persisted',
   sessionKind: 'persisted',
   name: 'persisted',

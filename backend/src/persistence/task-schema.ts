@@ -14,7 +14,7 @@ const session = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('codex'), threadId: text }),
   z.strictObject({
     kind: z.literal('claude'), sessionId: text, transport: z.enum(['stdio', 'websocket']),
-    transcriptSessionId: text.optional(), serverUrl: text.optional(), model: text.optional(),
+    transcriptSessionId: text.optional(), transcriptFolder: text.optional(), serverUrl: text.optional(), model: text.optional(),
     reasoningEffort: text.optional(),
   }),
 ]);

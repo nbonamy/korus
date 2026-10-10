@@ -353,6 +353,7 @@ export type Agent = {
   id: string;
   teamId?: string;
   delegatedByAgentId?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
   name: string | null;
@@ -498,6 +499,8 @@ export type AppGeneralSettings = {
   modelFavorites: ModelFavorite[];
   savedPromptDrafts: SavedPromptDraft[];
   worktreeInitializationMode: WorktreeInitializationMode;
+  worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
+  worktreeDelegationInstructions?: string;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;
@@ -671,6 +674,7 @@ export type AgentCreationProgress = {
   hasPrompt: boolean;
   phase?: 'creatingProject' | 'creatingWorktree' | 'initializingWorktree' | 'creatingAgent' | 'startingPrompt';
   initializationDetail?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
   agentId?: string;
   agentName?: string;
   error?: string;

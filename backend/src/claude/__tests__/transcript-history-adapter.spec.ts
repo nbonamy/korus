@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { mkdir, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -255,6 +255,23 @@ describe('claudeTranscriptSettings', () => {
 });
 
 describe('loadClaudeTranscriptHistory', () => {
+  it('restores a native worktree fork from its stored project without changing its execution folder', async () => {
+    const projectsRoot = await mkdtemp(path.join(tmpdir(), 'claude-fork-store-'));
+    try {
+      const transcriptFolder = '/source/project';
+      const projectDirectory = path.join(projectsRoot, transcriptFolder.replace(/[^a-zA-Z0-9]/g, '-'));
+      await mkdir(projectDirectory);
+      await writeFile(path.join(projectDirectory, 'native-child.jsonl'), [
+        { type: 'user', uuid: 'assignment', message: { content: 'Task directions' } },
+        { type: 'assistant', uuid: 'answer', message: { content: 'Inherited design decision' } },
+      ].map(row => JSON.stringify(row)).join('\n'));
+      const worker: Agent = { id: 'worker', name: 'Worker', folder: '/worker/worktree', backend: 'claude', backendSession: { kind: 'claude', sessionId: 'native-child', transport: 'stdio', transcriptFolder }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const history = await loadClaudeTranscriptHistory(worker, { projectsRoot });
+      expect(history?.messages).toContainEqual(expect.objectContaining({ agentId: 'worker', role: 'assistant', parts: [{ type: 'text', text: 'Inherited design decision' }] }));
+      expect(history?.backendSession).toMatchObject({ transcriptFolder });
+      expect(worker.folder).toBe('/worker/worktree');
+    } finally { await rm(projectsRoot, { recursive: true, force: true }); }
+  });
   it.each(['/Users/nbonamy/src/id8', '/workspace/project.with_underscore', null])('loads a persisted Claude session with folder %s', async (folder) => {
     const projectsRoot = path.join(tmpdir(), `agent-workspace-claude-history-${Date.now()}-${folder ? 'project' : 'chat'}`);
     const projectDirectory = path.join(projectsRoot, (folder ?? homedir()).replace(/[^a-zA-Z0-9]/g, '-'));

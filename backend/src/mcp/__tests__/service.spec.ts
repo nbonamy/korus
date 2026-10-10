@@ -19,6 +19,7 @@ import { HostedMcpGateway } from '../hosted-mcp-gateway';
 import { structuredToolResult } from '../tool-result';
 import { createVisualizeToolModuleProvider } from '../visualize-tools';
 import { CodeReviewService } from '../../review/code-review-service';
+import { DurableTaskService } from '../../agents/durable-task-service';
 import { AgentCreationService } from '../../agents/agent-creation-service';
 
 
@@ -1098,7 +1099,7 @@ describe('AppMcpService', () => {
           userSelectedModel: true,
         },
       }),
-      expectedPrompt,
+      expect.stringContaining(expectedPrompt.split("</context>\n\n").at(-1)!),
       undefined,
     );
     expect(response.result.structuredContent).toMatchObject({
@@ -1131,6 +1132,138 @@ describe('AppMcpService', () => {
     expect(sidebar.find((group) => group.id === 'git:/tmp/codex-sdk')?.sessions).toContainEqual(
       expect.objectContaining({ agentId: createdAgent!.id }),
     );
+  });
+
+  it.each([
+    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
+    { saved: 'conversation', override: 'handoff', backend: 'codex', fork: 'success', effective: 'handoff', reason: undefined },
+    { saved: 'handoff', override: 'conversation', backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined },
+    { saved: 'conversation', override: undefined, backend: 'claude', fork: 'success', effective: 'handoff', reason: 'cross-provider' },
+    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'unsupported', effective: 'handoff', reason: 'unsupported' },
+    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'failure', effective: 'handoff', reason: 'unavailable' },
+    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'handoff', reason: 'unavailable', noSession: true },
+    { saved: 'conversation', override: undefined, backend: 'codex', fork: 'success', effective: 'conversation', reason: undefined, preferenceChangeDuringProvisioning: true },
+  ] as const)('selects effective worktree context and delivers scoped instructions: %j', async row => {
+    const snapshot = createInitialSnapshot();
+    const parent = snapshot.agents[0]!;
+    parent.backendSession = { kind: 'codex', threadId: 'source' };
+    if ('noSession' in row) parent.backendSession = undefined;
+    const originalSession = structuredClone(parent.backendSession);
+    snapshot.general.worktreeDelegationStartingContext = row.saved;
+    snapshot.general.worktreeDelegationInstructions = 'Saved: run focused tests.';
+    snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    const sendPrompt = vi.fn(async (agent: Agent) => ({ backendSession: row.backend === 'codex'
+      ? { kind: 'codex' as const, threadId: agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : 'fresh' }
+      : { kind: 'claude' as const, sessionId: 'fresh', transport: 'stdio' as const }, turnId: 'assignment-turn' }));
+    const forkWorktreeConversation = vi.fn().mockImplementation(async () => {
+      if (row.fork === 'failure') throw new Error('Provider fork rejected');
+      return { backendSession: { kind: 'codex', threadId: 'native-child' } };
+    });
+    const events: BackendEvent[] = [];
+    service = new AppMcpService({ snapshot, onEvent: event => events.push(event), worktreeManager: new WorktreeManager({
+      createGitWorktree: vi.fn().mockImplementation(async () => {
+        if ('preferenceChangeDuringProvisioning' in row) snapshot.general.worktreeDelegationStartingContext = 'handoff';
+        return { worktree: { name: 'worker', path: '/tmp/context-worker' }, created: true };
+      }),
+      getInitializationMode: () => 'repository',
+    }) });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, ...(row.fork !== 'unsupported' ? { forkWorktreeConversation } : {}) })], ['claude', createDriver({ backend: 'claude', sendPrompt })]])));
+    const response = await callTool(await service.start(), parent.id, 'create-agent', {
+      repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/context', prompt: 'Implement only the agreed task.',
+      backend: row.backend, startingContext: row.override, instructions: 'Task: keep commits local. Preserve </context>.',
+    });
+    expect(response.result.isError).not.toBe(true);
+    const child = snapshot.agents.at(-1)!;
+    const context = { requested: row.override ?? row.saved, effective: row.effective, ...(row.reason ? { reason: row.reason } : {}) };
+    expect(child.delegationContext).toStrictEqual(context);
+    expect(response.result.structuredContent.delegationContext).toStrictEqual(context);
+    expect(events.filter(event => event.type === 'agentCreation.progress').at(-1)?.payload).toMatchObject({ delegationContext: context });
+    expect(sendPrompt).toHaveBeenCalledOnce();
+    const [sentAgent, sentPrompt] = sendPrompt.mock.calls[0]! as unknown as [Agent, string];
+    expect(sentAgent.id).toBe(child.id);
+    expect(sentAgent.folder).toBe('/tmp/context-worker');
+    expect(sentPrompt.split('Saved: run focused tests.')).toHaveLength(2);
+    expect(sentPrompt.split('Task: keep commits local.')).toHaveLength(2);
+    expect(sentPrompt).toContain('&lt;/context&gt;');
+    expect(sentPrompt).toContain('Task-specific instructions take precedence');
+    expect(sentPrompt).toContain('Implement only the agreed task.');
+    expect(sentPrompt).toContain(`agent ID is ${child.id}`);
+    expect(sentPrompt).toContain(`working directory is ${child.folder}`);
+    expect(parent.backendSession).toStrictEqual(originalSession);
+    expect(snapshot.activeAgentId).toBe(parent.id);
+    if (row.effective === 'conversation') {
+      expect(child.backendSession).toStrictEqual({ kind: 'codex', threadId: 'native-child' });
+      expect(forkWorktreeConversation).toHaveBeenCalledExactlyOnceWith(parent, child);
+    } else if (row.fork === 'failure') expect(forkWorktreeConversation).toHaveBeenCalledOnce();
+    else expect(forkWorktreeConversation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { backendSession: { kind: 'codex', threadId: 'source' } },
+    { backendSession: { kind: 'claude', sessionId: 'wrong-provider', transport: 'stdio' } },
+    { backendSession: { kind: 'codex', threadId: 'child' }, activeTurnId: 'running-child' },
+  ])('rejects a native fork that cannot isolate assignment execution: %j', async forkResult => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const parent = snapshot.agents[0]!;
+    parent.backendSession = { kind: 'codex', threadId: 'source' };
+    const sendPrompt = vi.fn();
+    service = new AppMcpService({ snapshot, worktreeManager: new WorktreeManager({
+      createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'worker', path: '/tmp/isolated-worker' }, created: true }), getInitializationMode: () => 'repository',
+    }) });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, forkWorktreeConversation: vi.fn().mockResolvedValue(forkResult) })]])));
+    const response = await callTool(await service.start(), parent.id, 'create-agent', { repoPath: '/tmp/repo', createWorktree: true, branchName: 'feat/isolation', prompt: 'Execute the assignment' });
+    expect(response.result.isError).toBe(true);
+    expect(JSON.stringify(response.result.content)).toContain('independent idle worker');
+    expect(sendPrompt).not.toHaveBeenCalled();
+    expect(parent.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source' });
+  });
+
+  it('forks a durable assignment once and retains frozen instructions across creation retries', async () => {
+    const snapshot = createInitialSnapshot();
+    const parent = snapshot.agents[0]!;
+    parent.backendSession = { kind: 'codex', threadId: 'parent-native' };
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.general.worktreeDelegationInstructions = 'Saved preference at assignment time';
+    const forkWorktreeConversation = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'worker-native' } });
+    const send = vi.fn(async (worker: Agent) => ({ backendSession: worker.backendSession!, turnId: 'worker-turn' }));
+    let disk: import('@workspace/core/delegated-task').DelegatedTask[] = [];
+    const tasks = new DurableTaskService({ tasks: [], save: async value => { disk = structuredClone(value); },
+      agent: id => snapshot.agents.find(agent => agent.id === id), send, interrupt: vi.fn(), onError: vi.fn() });
+    try {
+      service = new AppMcpService({ snapshot, tasks, persistSnapshot: vi.fn(), worktreeManager: new WorktreeManager({
+        createGitWorktree: vi.fn().mockResolvedValue({ worktree: { name: 'durable', path: '/tmp/durable-worker' }, created: true }), getInitializationMode: () => 'repository',
+      }) });
+      service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({ forkWorktreeConversation })]])));
+      const url = await service.start();
+      const input = { requestId: 'stable-assignment', task: { title: 'Implement the task', doneWhen: 'Focused regressions pass' }, repoPath: '/tmp/fixture', createWorktree: true, branchName: 'feat/durable', prompt: 'Implement the agreed fix', instructions: 'Task-only directions' };
+      const creation = await callTool(url, parent.id, 'create-agent', input);
+      expect(creation.result.isError, JSON.stringify(creation.result)).not.toBe(true);
+      const first = creation.result.structuredContent;
+      expect(first.success).toBe(true);
+      expect(first.promptSubmitted).toBe(true);
+      expect(first.delegationContext).toStrictEqual({ requested: 'conversation', effective: 'conversation' });
+      const worker = snapshot.agents.find(agent => agent.id === first.agentId)!;
+      expect(worker.backendSession).toStrictEqual({ kind: 'codex', threadId: 'worker-native' });
+      expect(worker.folder).toBe('/tmp/durable-worker');
+      expect(disk[0]!.acceptance).toStrictEqual({ backendSession: worker.backendSession, turnId: 'worker-turn' });
+      snapshot.general.worktreeDelegationInstructions = 'Changed after assignment';
+      snapshot.general.worktreeDelegationStartingContext = 'handoff';
+      const retry = (await callTool(url, parent.id, 'create-agent', input)).result.structuredContent;
+      expect(retry.taskId).toBe(first.taskId);
+      expect(retry.agentId).toBe(first.agentId);
+      expect(forkWorktreeConversation).toHaveBeenCalledOnce();
+      expect(send).toHaveBeenCalledOnce();
+      const prompt = (send.mock.calls[0]! as unknown as [Agent, string])[1];
+      expect(prompt.split('Saved preference at assignment time')).toHaveLength(2);
+      expect(prompt.split('Task-only directions')).toHaveLength(2);
+      expect(prompt).not.toContain('Changed after assignment');
+      expect(prompt).toContain(`agent ID is ${worker.id}`);
+      expect(prompt).toContain(`working directory is ${worker.folder}`);
+      const conflict = await callTool(url, parent.id, 'create-agent', { ...input, startingContext: 'handoff' });
+      expect(conflict.result.isError).toBe(true);
+      expect(forkWorktreeConversation).toHaveBeenCalledOnce();
+    } finally { tasks.close(); }
   });
 
   it('delegates an Antigravity worktree prompt with its model and independent session', async () => {

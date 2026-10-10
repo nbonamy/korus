@@ -1,3 +1,4 @@
+import { delegatedAssignmentPrompt } from './worktree-delegation';
 import { product } from '@workspace/core/product';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
@@ -100,7 +101,7 @@ export class DurableTaskService {
         return true;
       });
       if (!ready) return this.list(parent.id, [task.id])[0]!;
-      const receipt = await this.ports.send(worker, `[${product.name} task ${task.id}; attempt ${task.attemptId}]\n${prompt}`);
+      const receipt = await this.ports.send(worker, `[${product.name} task ${task.id}; attempt ${task.attemptId}]\n${delegatedAssignmentPrompt(worker, prompt)}`);
       await this.change(tasks => {
         const current = tasks.find(item => item.id === task.id)!;
         current.acceptance = receipt;

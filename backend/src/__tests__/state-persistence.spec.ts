@@ -25,6 +25,22 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it('retains delegation preferences and the worker effective context after reload', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
+    snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
+    snapshot.agents[1]!.backend = 'claude';
+    snapshot.agents[1]!.backendDefaults = { kind: 'claude' };
+    snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.worktreeDelegationStartingContext).toBe('handoff');
+    expect(restored.general.worktreeDelegationInstructions).toBe('Keep commits local.\nRun focused tests.');
+    expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
+    expect(restored.agents[1]!.backendSession).toStrictEqual(snapshot.agents[1]!.backendSession);
+    expect(isAppSnapshot(restored)).toBe(true);
+  });
   it('roundtrips Antigravity session identity and isolated provider preferences through disk', async () => {
     const home = await tempHome();
     const store = new AppStateStore(home);
@@ -1317,6 +1333,8 @@ describe('state persistence', () => {
       providerHomes: { codex: { isolated: true, shareSkills: false, homePath: "/app/codex-home" } },
       sessionCompressionWarningEnabled: false,
       worktreeInitializationMode: 'repository',
+      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationInstructions: '',
       repositoryIcons: { '/src/agent-workspace': '🦞' },
       appshots: {
         hotkey: 'option',

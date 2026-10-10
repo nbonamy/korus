@@ -152,6 +152,7 @@ const requestTimeoutByMethod = {
   [backendMethods.driverConversationMessagesGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationSummaryGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationFork]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverWorktreeConversationFork]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationArchive]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationDelete]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationResume]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

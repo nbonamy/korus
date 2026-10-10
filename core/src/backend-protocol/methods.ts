@@ -137,6 +137,7 @@ export const backendMethods = {
   driverConversationMessagesGet: 'driver/conversation/messages/get',
   driverConversationSummaryGet: 'driver/conversation/summary/get',
   driverConversationFork: 'driver/conversation/fork',
+  driverWorktreeConversationFork: 'driver/conversation/worktreeFork',
   driverConversationArchive: 'driver/conversation/archive',
   driverConversationDelete: 'driver/conversation/delete',
   driverConversationResume: 'driver/conversation/resume',

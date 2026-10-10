@@ -20,6 +20,15 @@ const task = (): DelegatedTask => ({
 });
 
 describe('tasks.json persistence', () => {
+  it('retains a Claude worker native store reference in acceptance and result after restart', async () => {
+    const value = task();
+    value.backend = 'claude';
+    const backendSession = { kind: 'claude' as const, sessionId: 'native-child', transport: 'stdio' as const, transcriptFolder: '/parent-provider-store' };
+    value.acceptance!.backendSession = backendSession;
+    value.submission!.backendSession = backendSession;
+    await new AppStateStore(home).saveTasks([value]);
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
   it('adds tasks to an older layout without putting them in the roster or discarding them on roster save', async () => {
     const store = new AppStateStore(home);
     await store.save(createEmptySnapshot());

@@ -78,6 +78,11 @@ threads, routed by `threadId` and `agentId`.
   `forkTurn()`; raw fork types stay out of product contracts. It requires an idle
   agent with an existing conversation and creates a new selected agent below the
   source.
+- Worktree delegation forks through the same SDK handle with the worker's cwd,
+  model, effort, service tier, permissions and extension context. A running
+  source forks at its last completed turn; without a completed boundary it
+  falls back to a fresh handoff. Worker instructions explicitly bind the current
+  identity and folder so inherited parent assignments cannot redirect execution.
 - **Compress Session is session rollover, not Codex compaction.** For an idle agent:
   ask the SDK conversation for a bounded handoff with a temporary fast model/effort
   override, wait for that exact turn, create a replacement conversation in the same

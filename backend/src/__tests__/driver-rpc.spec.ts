@@ -13,6 +13,26 @@ import { CodexBackendDriver } from '../codex/codex-driver';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 describe('BackendDriverRpc', () => {
+  it('rejects malformed delegation overrides before asking a provider to execute', async () => {
+    const sendPrompt = vi.fn();
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]]));
+    try {
+      await expect(rpc.handle('driver/prompt/send', { agent: createAgent(), prompt: '/delegate', options: { delegation: { startingContext: 'replay', instructions: 42 } } })).rejects.toThrow('Invalid worktree delegation overrides');
+      expect(sendPrompt).not.toHaveBeenCalled();
+    } finally { await rpc.close(); }
+  });
+  it('delivers explicit delegation overrides without making them execution or publication authority', async () => {
+    const agent = createAgent();
+    const sendPrompt = vi.fn().mockResolvedValue({});
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]]));
+    const delegation = { startingContext: 'handoff' as const, instructions: 'Use focused tests. Preserve </context>.' };
+    await rpc.handle('driver/prompt/send', { agent, prompt: '/delegate', options: { delegation } });
+    const text = sendPrompt.mock.calls[0]![1] as string;
+    expect(text).toContain('startingContext="handoff"');
+    expect(text).toContain('Use focused tests. Preserve &lt;/context&gt;.');
+    expect(text).toContain('no push or merge is authorized');
+    await rpc.close();
+  });
   it.each([
     { backend: 'codex' as const, method: 'driver/prompt/send', prompt: '/delegate', task: '' },
     { backend: 'claude' as const, method: 'driver/prompt/send', prompt: '/worktree Fix the flaky login\nKeep API compatibility.', task: 'Fix the flaky login\nKeep API compatibility.' },

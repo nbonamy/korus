@@ -1,3 +1,5 @@
+import { delegatedAssignmentPrompt } from '../agents/worktree-delegation';
+import type { DelegationContext } from '@workspace/core/delegation-context';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -7,7 +9,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
-import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
+import type { AgentBackendDriver, BackendConversationForkResult, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type {
   Agent,
@@ -291,6 +293,7 @@ export class AppMcpService {
           ...(options ? { options } : {}),
         }) as Promise<BackendSendResult>
       ),
+      forkWorktreeConversation: (currentAgent, targetAgent) => this.requireDriverRpc().handle(backendMethods.driverWorktreeConversationFork, { agent: currentAgent, targetAgent }) as Promise<BackendConversationForkResult | null>,
       interrupt: (currentAgent) => this.requireDriverRpc().handle(backendMethods.driverInterrupt, { agent: currentAgent }) as Promise<BackendSendResult>,
       respondToAgentRequest: async (response) => {
         await this.requireDriverRpc().handle(backendMethods.driverAgentRequestRespond, {
@@ -421,14 +424,22 @@ export class AppMcpService {
     caller: Agent,
     input: McpCreateAgentInput & { teamId?: string },
     intendedId?: string,
+    assignmentPrompt?: string,
   ): Promise<McpCreateAgentResponse> {
     const prompt = input.prompt?.trim() ?? '';
     const instructions = input.instructions?.trim();
+    const startingContext = input.startingContext ?? this.snapshot.general.worktreeDelegationStartingContext ?? 'conversation';
     if (instructions && !prompt) {
       return { success: false, message: 'prompt is required when instructions are provided' };
     }
-    const fullPrompt = instructions
-      ? `<context>\n${instructions.replace(/<\/context>/giu, '&lt;/context&gt;')}\n</context>\n\n${prompt}`
+    const savedInstructions = input.createWorktree ? this.snapshot.general.worktreeDelegationInstructions?.trim() : undefined;
+    const scopedInstructions = input.createWorktree && prompt ? [
+      'Delegation preferences grant no additional work, Git publication or merge authority. Task-specific instructions take precedence over saved delegation instructions within the user’s authorized scope.',
+      ...(savedInstructions ? [`Saved delegation instructions:\n${savedInstructions}`] : []),
+      ...(instructions ? [`Task-specific instructions:\n${instructions}`] : []),
+    ].join('\n\n') : instructions;
+    const fullPrompt = scopedInstructions
+      ? `<context>\n${scopedInstructions.replace(/<\/context>/giu, '&lt;/context&gt;')}\n</context>\n\n${prompt}`
       : prompt;
     if (input.task) {
       if (!this.tasks) throw new Error('Durable tasks are unavailable.');
@@ -441,12 +452,13 @@ export class AppMcpService {
           ...(input.destinationPath ? { destinationPath: input.destinationPath } : {}),
         },
       }, async task => {
-        const response = await this.createAgentFromMcp(caller, { ...input, task: undefined, prompt: undefined, instructions: undefined }, task.workerAgentId);
+        const response = await this.createAgentFromMcp(caller, { ...input, startingContext, task: undefined, prompt: undefined, instructions: undefined }, task.workerAgentId, fullPrompt);
         if (!response.success) throw new Error(response.message);
         await this.persistSnapshot?.();
         return this.snapshot.agents.find(agent => agent.id === task.workerAgentId)!;
       });
-      return { success: true, taskId: task.id, task, agentId: task.workerAgentId, folder: task.folder, promptSubmitted: Boolean(task.acceptance), message: `Task ${task.id}: ${task.state}. Use wait-tasks to inspect the durable outcome.` };
+      const worker = this.snapshot.agents.find(agent => agent.id === task.workerAgentId);
+      return { success: true, taskId: task.id, task, agentId: task.workerAgentId, folder: task.folder, promptSubmitted: Boolean(task.acceptance), ...(worker?.delegationContext ? { delegationContext: worker.delegationContext } : {}), message: `Task ${task.id}: ${task.state}. Use wait-tasks to inspect the durable outcome.` };
     }
     const repoPath = input.repoPath.trim();
     if (!repoPath) {
@@ -464,7 +476,7 @@ export class AppMcpService {
       repositoryName: fileBasename(repoPath),
       createWorktree: input.createWorktree === true,
       ...(branchName ? { branchName } : {}),
-      hasPrompt: Boolean(prompt),
+      hasPrompt: Boolean(prompt || assignmentPrompt),
     };
     this.emit({
       agentId: caller.id,
@@ -513,6 +525,10 @@ export class AppMcpService {
         updateAgentWorkspace(this.snapshot, createdAgent.id, workspace, workspace.updatedAt);
       }
 
+      if (input.createWorktree && (prompt || assignmentPrompt)) {
+        createdAgent.delegationContext = await this.prepareDelegationContext(caller, createdAgent, { ...input, startingContext });
+        Object.assign(progress, { delegationContext: createdAgent.delegationContext });
+      }
       this.emitSnapshotUpdated(createdAgent.id);
       if (prompt) {
         this.emit({
@@ -520,7 +536,7 @@ export class AppMcpService {
           type: 'agentCreation.progress',
           payload: { ...progress, state: 'running', phase: 'startingPrompt' },
         });
-        await this.startAgentWithPrompt(createdAgent, fullPrompt);
+        await this.startAgentWithPrompt(createdAgent, delegatedAssignmentPrompt(createdAgent, fullPrompt));
       }
 
       const createdAgentName = agentDisplayName(createdAgent);
@@ -541,6 +557,7 @@ export class AppMcpService {
         folder,
         ...(branchName ? { branchName } : {}),
         promptSubmitted: Boolean(prompt),
+        ...(createdAgent.delegationContext ? { delegationContext: createdAgent.delegationContext } : {}),
         message: prompt
           ? `Created agent ${createdAgentName} and started its initial prompt.`
           : `Created agent ${createdAgentName}.`,
@@ -554,6 +571,31 @@ export class AppMcpService {
       });
       throw error;
     }
+  }
+
+  private async prepareDelegationContext(caller: Agent, worker: Agent, input: McpCreateAgentInput): Promise<DelegationContext> {
+    const requested = input.startingContext ?? this.snapshot.general.worktreeDelegationStartingContext ?? 'conversation';
+    if (requested === 'handoff') return { requested, effective: 'handoff' };
+    if (caller.backend !== worker.backend) return { requested, effective: 'handoff', reason: 'cross-provider' };
+    const driver = this.backendDriverForAgent(worker);
+    if (!driver.forkWorktreeConversation) return { requested, effective: 'handoff', reason: 'unsupported' };
+    if (!caller.backendSession) return { requested, effective: 'handoff', reason: 'unavailable' };
+    let result;
+    try {
+      result = await driver.forkWorktreeConversation(caller, worker);
+    } catch {
+      // No assignment was submitted. A native fork refusal is a fresh handoff,
+      // never a transcript replay or an automatic retry of task execution.
+      return { requested, effective: 'handoff', reason: 'unavailable' };
+    }
+    if (!result) return { requested, effective: 'handoff', reason: 'unsupported' };
+    const source = caller.backendSession;
+    const session = result.backendSession;
+    const sameConversation = session.kind === 'codex' && source.kind === 'codex' ? session.threadId === source.threadId
+      : session.kind !== 'codex' && source.kind !== 'codex' && session.sessionId === source.sessionId;
+    if (session.kind !== worker.backend || sameConversation || result.activeTurnId) throw new Error('Native delegation did not create an independent idle worker conversation.');
+    worker.backendSession = session;
+    return { requested, effective: 'conversation' };
   }
 
   private emitAgentCreationInitializationProgress(

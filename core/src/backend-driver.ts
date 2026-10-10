@@ -129,7 +129,7 @@ export type AgentBackendDriver = {
   resumeConversation?(agent: Agent, target: ConversationResumeTarget): Promise<BackendConversationResumeResult>;
   replaceConversationWithSummary?(agent: Agent): Promise<BackendConversationReplacementResult>;
   /** Native continuation for an isolated worker; providers opt in only when rebinding is supported. */
-  forkWorktreeConversation?(agent: Agent, targetAgent: Agent): Promise<BackendConversationForkResult>;
+  forkWorktreeConversation?(agent: Agent, targetAgent: Agent): Promise<BackendConversationForkResult | null>;
   forkConversation?(agent: Agent, targetAgent: Agent, turnId?: string): Promise<BackendConversationForkResult>;
   readConversationMessages?(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]>;
   readConversationSummary?(agent: Agent, ref: BackendConversationRef): Promise<ConversationSummary | null>;
