@@ -304,6 +304,11 @@ export class CodexBackendDriver implements AgentBackendDriver {
     await this.sessionManager.reconcileConversations(agents);
   }
 
+  async forkWorktreeConversation(agent: Agent, targetAgent: Agent): Promise<BackendConversationForkResult> {
+    const result = await this.sessionManager.forkWorktreeConversation(agent, targetAgent);
+    return { backendSession: codexBackendSession(result.threadId), ...(result.activeTurnId ? { activeTurnId: result.activeTurnId } : {}) };
+  }
+
   async forkConversation(agent: Agent, targetAgent: Agent, turnId?: string): Promise<BackendConversationForkResult> {
     const result = turnId === undefined
       ? await this.sessionManager.forkConversation(agent, targetAgent)

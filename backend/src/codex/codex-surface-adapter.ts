@@ -631,14 +631,36 @@ export class CodexSurfaceAgentAdapter {
     }
   }
 
+  async forkWorktreeConversation(agent: Agent, targetAgent: Agent) {
+    const source = await this.ensureSession(agent);
+    const snapshot = source.handle.getSnapshot();
+    if (snapshot.busy || snapshot.activeTurnId) {
+      // The delegating turn contains an unfinished tool call. Fork only a
+      // completed native boundary; never interrupt or replay the parent.
+      const boundary = [...snapshot.turns].reverse().find(turn => turn.status === 'completed' && turn.id !== snapshot.activeTurnId);
+      if (!boundary) throw new Error('No completed conversation turn is available to continue from.');
+      return this.forkConversation(agent, targetAgent, boundary.id);
+    }
+    return this.forkConversation(agent, targetAgent);
+  }
+
   async forkConversation(agent: Agent, targetAgent: Agent, turnId?: string) {
     const source = await this.ensureSession(agent);
+    const defaults = targetAgent.backendDefaults?.kind === 'codex' ? targetAgent.backendDefaults : undefined;
+    const preset = effectiveApprovalPreset(codexApprovalPresetFromDefaults(defaults), this.surface.getSnapshot().approvalPresets);
+    const options = {
+      ...agentCwd(targetAgent),
+      ...(preset ? { approvalPreset: preset } : {}),
+      ...(defaults?.model ? { model: defaults.model } : {}),
+      ...(defaults?.reasoningEffort ? { reasoningEffort: defaults.reasoningEffort } : {}),
+      ...(defaults?.serviceTier !== undefined ? { serviceTier: defaults.serviceTier } : {}),
+    };
     const result = await (turnId === undefined ? source.handle.fork(
-      agentCwd(agent),
+      options,
       { extensionContext: targetAgent },
     ) : source.handle.forkTurn(
       turnId,
-      agentCwd(agent),
+      options,
       { extensionContext: targetAgent },
     ));
     this.bindRuntime(targetAgent, result.conversationId, false);
