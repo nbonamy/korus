@@ -427,14 +427,32 @@ export class CodeReviewService {
     void this.executeFixes(agent, session, round);
   }
 
-  async handleTurnInterrupted(agent: Agent): Promise<boolean> {
+  activeInspectionRoundId(agent: Agent): string | undefined {
+    const roundId = agent.codeReview?.activeRoundId;
+    return roundId && this.activeInspections.has(roundId) ? roundId : undefined;
+  }
+
+  async handleTurnInterrupted(agent: Agent, inspectionRoundId?: string): Promise<boolean> {
     const session = agent.codeReview;
     if (!session) return false;
+    const round = activeCodeReviewRound(session);
+    if (inspectionRoundId && round.id !== inspectionRoundId) return false;
     if (session.automation?.state === 'running') {
       await this.pauseAutomatic(agent, session, 'Automatic review was stopped. Inspect the current changes before continuing manually.');
       return true;
     }
-    const round = activeCodeReviewRound(session);
+    if (inspectionRoundId) {
+      // A fully confirmed inspection may finish before the interrupt response arrives.
+      if (session.status === 'ready' && round.inspectionCompletion) return false;
+      const interruptedAt = this.timestamp();
+      round.status = 'failed';
+      round.error = 'Review stopped. Retry to complete the inspection.';
+      round.completedAt = interruptedAt;
+      session.status = 'failed';
+      session.updatedAt = interruptedAt;
+      await this.options.changed();
+      return true;
+    }
     const interruptedRemediation = session.status === 'fixing'
       || (
         session.status === 'failed'
@@ -478,7 +496,7 @@ export class CodeReviewService {
         if ((session.automation.state !== 'running' && session.automation.enabled) || agent.codeReview !== session) return;
       }
       const result = await this.options.runReview(agent, reviewPrompt(session), context.url, initialReviewerSession);
-      if (agent.codeReview !== session) {
+      if (agent.codeReview !== session || round.status !== 'reviewing') {
         return;
       }
       agent.backendSession = result.reviewerSession;
@@ -496,7 +514,7 @@ export class CodeReviewService {
       session.status = 'ready';
       session.updatedAt = completedAt;
     } catch (error) {
-      if (agent.codeReview !== session) return;
+      if (agent.codeReview !== session || round.status !== 'reviewing') return;
       round.status = 'failed';
       round.error = error instanceof Error ? error.message : String(error);
       round.completedAt = this.timestamp();

@@ -733,9 +733,16 @@ describe('CodeReviewPanel', () => {
   ] as const)('retries a $state review without changing its mode or commit choice ($autoCommit)', async ({ state, autoCommit }) => {
     const failed = session([], 'failed');
     failed.automation = { enabled: state !== 'manual', maxPriority: 'p1', maxRounds: 4, autoCommit, state, baseRef: 'a'.repeat(40), commits: [], reason: 'Paused.' };
+    if (state === 'manual') failed.rounds[0]!.error = 'Review stopped. Retry to complete the inspection.';
     const { wrapper } = mountPanel(failed);
     const startReview = vi.fn(async () => ({} as AppSnapshot));
     await wrapper.setProps({ startReview });
+
+    if (state === 'manual') {
+      expect(wrapper.get('.code-review-panel__error').text()).toBe('Review stopped. Retry to complete the inspection.');
+      expect(wrapper.get('.code-review-panel__footer button').text()).toBe('Retry review');
+      expect(wrapper.get('.code-review-panel__automation-status button').attributes('disabled')).toBeDefined();
+    }
 
     await wrapper.get('.code-review-panel__footer button').trigger('click');
     await flushPromises();

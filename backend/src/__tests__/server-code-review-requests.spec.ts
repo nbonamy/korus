@@ -313,7 +313,14 @@ describe('AppBackendServer code review workflow', () => {
     await server.close();
   });
 
-  it('returns interrupted remediation to finding selection without an error', async () => {
+  it.each([
+    { phase: 'remediation', completion: 'reject', order: 'before' },
+    { phase: 'inspection', completion: 'resolve', order: 'before' },
+    { phase: 'inspection', completion: 'reject', order: 'before' },
+    { phase: 'inspection', completion: 'resolve', order: 'after' },
+    { phase: 'inspection', completion: 'reject', order: 'after' },
+    { phase: 'inspection', completion: 'confirmed', order: 'before' },
+  ] as const)('handles a $phase stop when the provider $completion happens $order the interrupt response', async ({ phase, completion, order }) => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
@@ -324,9 +331,13 @@ describe('AppBackendServer code review workflow', () => {
     snapshot.teams[0]!.agentIds.push(owner.id);
     let activeHandlers: ReviewToolHandlers | null = null;
     let findingId = '';
-    let rejectFix: ((error: Error) => void) | undefined;
-    const interruptedFix = new Promise<BackendCodeReviewResult>((_resolve, reject) => {
-      rejectFix = reject;
+    let settleTurn!: () => Promise<void>;
+    const interruptedTurn = new Promise<BackendCodeReviewResult>((resolve, reject) => {
+      settleTurn = async () => {
+        if (completion === 'confirmed') await activeHandlers!.finishReviewRound({ findingCount: 1 });
+        if (completion === 'reject') reject(new Error('Provider turn cancelled.'));
+        else resolve({ text: 'Inspection response.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } });
+      };
     });
     const runCodeReview = vi.fn(async (_agent: Agent, input: Parameters<NonNullable<AgentBackendDriver['runCodeReview']>>[1]) => {
       if (!activeHandlers) throw new Error('Missing review tool context.');
@@ -335,16 +346,20 @@ describe('AppBackendServer code review workflow', () => {
           priority: 'p1', title: 'Authorize before writing',
           body: 'The public mutation writes before checking ownership.',
         })).id;
+        if (phase === 'inspection') return interruptedTurn;
         await activeHandlers.finishReviewRound({ findingCount: 1 });
         return {
           text: '',
           reviewerSession: { kind: 'codex' as const, threadId: 'review-thread' },
         };
       }
-      return interruptedFix;
+      return interruptedTurn;
     });
     const interrupt = vi.fn(async (agent: Agent) => {
-      rejectFix?.(new Error('Turn interrupted.'));
+      if (order === 'before') {
+        await settleTurn();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
       return {
         backendSession: agent.backendSession ?? { kind: 'codex' as const, threadId: 'review-thread' },
       };
@@ -378,21 +393,36 @@ describe('AppBackendServer code review workflow', () => {
       input: { scope: { type: 'uncommitted' }, threadMode: 'independent' },
     });
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
-    await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
+    await vi.waitFor(() => expect(reviewer.codeReview?.rounds[0]?.findings).toHaveLength(1));
     const session = reviewer.codeReview!;
     const round = session.rounds[0]!;
-    await request(server, backendMethods.agentCodeReviewRoundSubmit, {
-      agentId: reviewer.id,
-      sessionId: session.id,
-    });
-    await vi.waitFor(() => expect(round.findings[0]?.remediation.state).toBe('fixing'));
+    if (phase === 'remediation') {
+      await vi.waitFor(() => expect(session.status).toBe('ready'));
+      await request(server, backendMethods.agentCodeReviewRoundSubmit, {
+        agentId: reviewer.id,
+        sessionId: session.id,
+      });
+      await vi.waitFor(() => expect(round.findings[0]?.remediation.state).toBe('fixing'));
+    }
+    const findingsBeforeStop = structuredClone(round.findings);
 
     await request(server, backendMethods.agentInterrupt, { agentId: reviewer.id });
-    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    if (order === 'after') await settleTurn();
+    await new Promise<void>(resolve => setImmediate(resolve));
 
     expect(interrupt).toHaveBeenCalledWith(reviewer);
-    expect(round).toMatchObject({ status: 'ready' });
-    expect(round).not.toHaveProperty('error');
+    expect(reviewer.codeReview).toBe(session);
+    if (phase === 'inspection' && completion !== 'confirmed') {
+      expect(session.status).toBe('failed');
+      expect(round).toMatchObject({ status: 'failed', error: 'Review stopped. Retry to complete the inspection.' });
+      expect(round.findings).toStrictEqual(findingsBeforeStop);
+      expect(round.completedAt).toBeDefined();
+    } else {
+      expect(session.status).toBe('ready');
+      expect(round).toMatchObject({ status: 'ready' });
+      expect(round).not.toHaveProperty('error');
+      if (completion === 'confirmed') expect(round.findings).toStrictEqual(findingsBeforeStop);
+    }
     expect(round.findings[0]?.decision.state).toBe('selected');
     expect(round.findings[0]?.remediation).toStrictEqual({ state: 'notStarted' });
     await server.close();

@@ -1881,10 +1881,12 @@ export class AppBackendServer {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
           await this.tasks?.blockParent(agentId);
+          // The inspection can settle before the provider acknowledges interruption.
+          const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
           try {
             const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
             agent.backendSession = result.backendSession;
-            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent) ?? false;
+            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
             if (!reviewChanged) await this.persistSnapshotOnly();
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
