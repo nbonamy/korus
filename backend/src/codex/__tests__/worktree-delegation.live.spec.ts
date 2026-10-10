@@ -1,4 +1,5 @@
 import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
@@ -54,7 +55,7 @@ it.skipIf(process.env.KORUS_DELEGATION_LIVE !== '1')('delegates from a running n
       const agent = snapshot.agents.find(agent => agent.id === event.agentId);
       if (agent && providerConversationEventView(event as BackendPublishedEvent).type === 'turn.completed') agent.status = { type: 'idle' };
     });
-    const marker = `marker-${path.basename(root)}`;
+    const marker = `context-${randomUUID()}`;
     const first = await driver.sendPrompt(parent, `Remember this design decision for our next assignment: the context marker is ${marker}. Reply with the marker only. Do not call tools.`);
     parent.backendSession = first.backendSession;
     await expect.poll(() => events.some(event => event.agentId === parent.id && providerConversationEventView(event).type === 'turn.completed' && providerConversationEventView(event).turnId === first.turnId), { timeout: 60000 }).toBe(true);

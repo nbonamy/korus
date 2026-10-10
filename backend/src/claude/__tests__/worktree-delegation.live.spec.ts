@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -44,7 +45,7 @@ it.skipIf(process.env.KORUS_DELEGATION_LIVE !== '1')('delegates from a running C
       const owner = snapshot.agents.find(agent => agent.id === event.agentId);
       if (owner && providerConversationEventView(published).type === 'turn.completed') owner.status = { type: 'idle' };
     });
-    const marker = `marker-${path.basename(root)}`;
+    const marker = `context-${randomUUID()}`;
     const seed = await driver.sendPrompt(parent, `Remember the design marker ${marker}. Reply ACK only. No tools.`);
     parent.backendSession = seed.backendSession;
     await expect.poll(() => events.some(event => event.agentId === parent.id && providerConversationEventView(event).type === 'turn.completed' && providerConversationEventView(event).turnId === seed.turnId), { timeout: 60000 }).toBe(true);
