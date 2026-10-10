@@ -559,6 +559,30 @@ describe('AppShell navigation and teams', () => {
     expect(wrapper.findComponent({ name: 'CockpitWorkInbox' }).props()).toMatchObject({ page: 1, pageSize: 25, totalItems: 12 });
   });
 
+  it('persists backlog favorites through settings without loading work until the favorite is selected', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }];
+    snapshot.general.backlogRepositoryFavorites = { linear: ['team-id'] };
+    const repository: WorkSource = { provider: 'github', id: 'org/repo', owner: 'org', name: 'repo', fullName: 'org/repo', url: 'https://github.com/org/repo', isPrivate: false };
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const configureWorkBacklog = vi.fn().mockResolvedValue(undefined);
+    const loadWorkItems = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, updateSettings, configureWorkBacklog, loadWorkItems, workRepositoriesByProvider: { github: [repository] } });
+    await wrapper.get('[aria-label="Backlog"]').trigger('click');
+    await flushPromises();
+    loadWorkItems.mockClear();
+    configureWorkBacklog.mockClear();
+    await wrapper.get('[aria-label="Add repo to favorites"]').trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { backlogRepositoryFavorites: { linear: ['team-id'], github: ['org/repo'] } } });
+    expect(loadWorkItems).not.toHaveBeenCalled();
+    expect(configureWorkBacklog).not.toHaveBeenCalled();
+    await wrapper.get('.cockpit-view__repositories button[title="repo"]').trigger('click');
+    await flushPromises();
+    expect(configureWorkBacklog).toHaveBeenCalledWith({ provider: 'github', configuration: { sourceId: 'org/repo', assigneeLogin: null, tagName: null } });
+    expect(loadWorkItems).toHaveBeenCalled();
+  });
+
   it('remembers the explicit load-everything confirmation', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'nbonamy' }];

@@ -464,6 +464,13 @@ export const messages = {
       sendPromptPlaceholder: 'Send prompt…',
       workingPlaceholder: 'Working…',
     },
+    backlogFavorites: {
+      heading: 'Favorites',
+      add: 'Add {repository} to favorites',
+      remove: 'Remove {repository} from favorites',
+      reorder: 'Reorder {repository}',
+      dragHint: 'Drag to reorder, or use the up and down arrow keys',
+    },
     startWork: {
       addProject: 'Add project',
       addProjectFrom: 'Add project from',

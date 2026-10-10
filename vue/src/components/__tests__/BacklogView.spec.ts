@@ -43,6 +43,43 @@ describe('BacklogView', () => {
     expect(wrapper.text()).toContain('ENG-24');
     window.localStorage.clear();
   });
+  it('moves favorites between sections without selecting them, and selects a favorite through the existing event', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')], undefined, 'nbonamy/a');
+    expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
+    await wrapper.get('[aria-label="Add b to favorites"]').trigger('click');
+    expect(wrapper.get('.cockpit-view__favorites-heading').text()).toBe('Favorites');
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a']);
+    expect(wrapper.emitted('update-repository-favorites')).toStrictEqual([[['nbonamy/b']]]);
+    expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+    expect(wrapper.get('[title="a"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[title="b"]').trigger('click');
+    expect(wrapper.emitted('select-work-repository')).toStrictEqual([['nbonamy/b']]);
+    await wrapper.get('[aria-label="Remove b from favorites"]').trigger('click');
+    expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b']);
+    expect(wrapper.emitted('select-work-repository')).toHaveLength(1);
+  });
+
+  it('filters both sections without saving or losing favorite order and adopts persisted preferences on remount', async () => {
+    const repositories = [repository('a', ''), repository('b', ''), repository('c', '')];
+    const wrapper = mountView(createInitialSnapshot(), [], repositories);
+    await wrapper.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable'] });
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('/a');
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a']);
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('/c');
+    expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Add c to favorites"]').exists()).toBe(true);
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a', 'c']);
+    expect(wrapper.emitted('update-repository-favorites')).toBeUndefined();
+    await wrapper.get('[aria-label="Add c to favorites"]').trigger('click');
+    expect(wrapper.emitted('update-repository-favorites')).toStrictEqual([[['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c']]]);
+    wrapper.unmount();
+    const restored = mountView(createInitialSnapshot(), [], repositories);
+    await restored.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c'] });
+    expect(restored.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a', 'c']);
+  });
+
   it('presents Backlog as an operator inbox and keeps search inside it', async () => {
     const snapshot = createInitialSnapshot();
     const wrapper = mountView(snapshot, []);
@@ -104,7 +141,7 @@ describe('BacklogView', () => {
     });
 
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['nbonamy/recent']]);
-    expect(wrapper.findAll('.cockpit-view__repositories > div')[1]!.findAll('button')).toHaveLength(1);
+    expect(wrapper.findAll('.cockpit-view__repositories > div')[1]!.findAll('button')).toHaveLength(2);
 
     const allRepositories = Array.from({ length: 12 }, (_, index) => (
       repository(`repository-${index + 1}`, `2026-08-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`)
