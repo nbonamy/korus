@@ -80,6 +80,44 @@ describe('BacklogView', () => {
     expect(restored.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a', 'c']);
   });
 
+  it('reorders favorites by drag and keyboard without selecting a repository or losing hidden favorites', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', ''), repository('c', '')], undefined, 'nbonamy/c');
+    await wrapper.setProps({ repositoryFavorites: ['nbonamy/a', 'unavailable', 'nbonamy/b', 'nbonamy/c'] });
+    const transfer = { effectAllowed: '', dropEffect: '', setData: vi.fn() };
+    await wrapper.get('[aria-label="Reorder b"]').trigger('dragstart', { dataTransfer: transfer });
+    const first = wrapper.get('[data-repository-id="nbonamy/a"]');
+    vi.spyOn(first.element, 'getBoundingClientRect').mockReturnValue({ top: 10, height: 36 } as DOMRect);
+    await first.trigger('dragover', { clientY: 11, dataTransfer: transfer });
+    expect(first.classes()).toContain('list-reorder-drag--drop-before');
+    await first.trigger('drop', { clientY: 11, dataTransfer: transfer });
+    expect(wrapper.emitted('update-repository-favorites')?.[0]).toStrictEqual([['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c']]);
+    expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+    expect(wrapper.get('[title="c"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('/a');
+    await wrapper.get('[aria-label="Reorder a"]').trigger('keydown', { key: 'ArrowUp' });
+    await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
+    expect(wrapper.emitted('update-repository-favorites')?.[1]).toStrictEqual([['nbonamy/a', 'nbonamy/b', 'unavailable', 'nbonamy/c']]);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b', 'c']);
+    // A delayed snapshot from the earlier drag must not undo the more recent keyboard move.
+    await wrapper.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c'] });
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b', 'c']);
+    expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+  });
+
+  it('cancels a drag without saving and keeps regular repositories out of the reorder targets', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', ''), repository('c', '')]);
+    await wrapper.setProps({ repositoryFavorites: ['nbonamy/a', 'nbonamy/b'] });
+    const transfer = { effectAllowed: '', dropEffect: '', setData: vi.fn() };
+    await wrapper.get('[aria-label="Reorder a"]').trigger('dragstart', { dataTransfer: transfer });
+    await wrapper.get('[data-repository-id="nbonamy/c"]').trigger('drop', { dataTransfer: transfer });
+    await wrapper.get('[aria-label="Reorder a"]').trigger('dragend');
+    expect(wrapper.emitted('update-repository-favorites')).toBeUndefined();
+    expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+    await wrapper.get('[aria-label="Remove b from favorites"]').trigger('click');
+    expect(wrapper.get('[aria-label="Reorder a"]').attributes('draggable')).toBe('false');
+    expect(wrapper.find('[aria-label="Reorder b"]').exists()).toBe(false);
+  });
+
   it('presents Backlog as an operator inbox and keeps search inside it', async () => {
     const snapshot = createInitialSnapshot();
     const wrapper = mountView(snapshot, []);

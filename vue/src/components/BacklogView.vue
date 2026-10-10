@@ -43,39 +43,61 @@
           <p v-if="filteredRepositories.length === 0" class="cockpit-view__repositories-empty"> {{ $t('surface.cockpitView.noRepositoriesFound') }} </p>
           <h2 v-if="favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('backlogFavorites.heading') }}</h2>
           <template v-for="(repository, index) in displayedRepositories" :key="repository.id">
-          <h2 v-if="favoriteRepositories.length && index === favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('surface.cockpitView.repositories') }}</h2>
-          <div :data-repository-id="repository.id">
-            <button
-              type="button"
-              :title="repository.name"
-              :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
-              @click="selectRepository(repository.id)"
+            <h2 v-if="favoriteRepositories.length && index === favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('surface.cockpitView.repositories') }}</h2>
+            <div
+              :data-repository-id="repository.id"
+              :class="isFavorite(repository.id) ? favoriteReorder.dropTargetClass(repository.id) : {}"
+              @dragover="isFavorite(repository.id) && favoriteReorder.onDragOver(repository.id, $event)"
+              @dragleave="favoriteReorder.onDragLeave(repository.id, $event)"
+              @drop.stop="isFavorite(repository.id) ? favoriteReorder.onDrop(repository.id, $event) : favoriteReorder.onDragEnd()"
             >
-              <IconFolder aria-hidden="true" />
-              <span>{{ repository.name }}</span>
-            </button>
-            <button
-              v-if="workProviderDefinition(workProvider ?? 'github').repositoryBacked"
-              class="cockpit-view__repository-favorite"
-              type="button"
-              :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
-              :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
-              @click.stop="toggleFavorite(repository.id)"
-            >
-              <component :is="isFavorite(repository.id) ? IconStarFilled : IconStar" aria-hidden="true" />
-            </button>
-            <a
-              class="cockpit-view__repository-link"
-              :href="repository.url"
-              target="_blank"
-              rel="noreferrer"
-              :aria-label="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
-              :title="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
-              @click.stop
-            >
-              <ExternalLinkIcon aria-hidden="true" />
-            </a>
-          </div>
+              <button
+                type="button"
+                :title="repository.name"
+                :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
+                @click="selectRepository(repository.id)"
+              >
+                <IconFolder aria-hidden="true" />
+                <span>{{ repository.name }}</span>
+              </button>
+              <button
+                v-if="isFavorite(repository.id) && workProviderDefinition(workProvider ?? 'github').repositoryBacked"
+                class="cockpit-view__repository-reorder"
+                type="button"
+                v-bind="favoriteReorder.dragItemAttributes(repository.id)"
+                :aria-label="$t('backlogFavorites.reorder', { repository: repository.name })"
+                :title="$t('backlogFavorites.dragHint')"
+                @click.stop
+                @dragstart.stop="favoriteReorder.onDragStart(repository.id, $event)"
+                @dragend.stop="favoriteReorder.onDragEnd"
+                @keydown.up.prevent.stop="moveFavorite(repository.id, -1)"
+                @keydown.down.prevent.stop="moveFavorite(repository.id, 1)"
+              >
+                <ArrowsVerticalIcon aria-hidden="true" />
+              </button>
+              <span v-else-if="workProviderDefinition(workProvider ?? 'github').repositoryBacked" class="cockpit-view__repository-reorder-space" aria-hidden="true" />
+              <button
+                v-if="workProviderDefinition(workProvider ?? 'github').repositoryBacked"
+                class="cockpit-view__repository-favorite"
+                type="button"
+                :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
+                :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
+                @click.stop="toggleFavorite(repository.id)"
+              >
+                <component :is="isFavorite(repository.id) ? IconStarFilled : IconStar" aria-hidden="true" />
+              </button>
+              <a
+                class="cockpit-view__repository-link"
+                :href="repository.url"
+                target="_blank"
+                rel="noreferrer"
+                :aria-label="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
+                :title="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
+                @click.stop
+              >
+                <ExternalLinkIcon aria-hidden="true" />
+              </a>
+            </div>
           </template>
         </div>
 
@@ -152,7 +174,8 @@ import { computed, ref, watch } from 'vue';
 import { IconChevronDown, IconFolder, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
-import { ExternalLinkIcon } from '../shared/icons/app-icons';
+import { useListReorderDrag } from '../shared/use-list-reorder-drag';
+import { ArrowsVerticalIcon, ExternalLinkIcon } from '../shared/icons/app-icons';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -220,7 +243,7 @@ const favoriteIds = computed(() => pendingFavorites.value ?? props.repositoryFav
 watch(() => props.repositoryFavorites, (ids) => {
   if (JSON.stringify(ids ?? []) === JSON.stringify(pendingFavorites.value)) pendingFavorites.value = null;
 }, { deep: true });
-watch(() => props.workProvider, () => { pendingFavorites.value = null; });
+watch(() => props.workProvider, () => { pendingFavorites.value = null; favoriteReorder.onDragEnd(); });
 const activeWorkView = ref<InboxView>('focus');
 const activeSummaryFilter = ref<SummaryFilter | null>(null);
 watch(() => `${props.workProvider}:${props.workBacklog?.selectedRepositoryId}`, () => {
@@ -254,9 +277,35 @@ const regularRepositories = computed(() => filteredRepositories.value.filter(rep
 const displayedRepositories = computed(() => [...favoriteRepositories.value, ...regularRepositories.value]);
 
 function isFavorite(id: string): boolean { return favoriteIds.value.includes(id); }
+const favoriteReorder = useListReorderDrag({
+  itemIds: () => favoriteIds.value,
+  onDrop: ({ draggedId, beforeId }) => reorderFavorite(draggedId, beforeId),
+});
+
+function commitFavorites(ids: string[]): void {
+  pendingFavorites.value = ids;
+  emit('update-repository-favorites', [...ids]);
+}
+
 function toggleFavorite(id: string): void {
-  pendingFavorites.value = isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id];
-  emit('update-repository-favorites', [...pendingFavorites.value]);
+  commitFavorites(isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id]);
+}
+
+function reorderFavorite(id: string, beforeId: string | null): void {
+  const next = favoriteIds.value.filter(candidate => candidate !== id);
+  const index = beforeId === null ? next.length : next.indexOf(beforeId);
+  next.splice(index < 0 ? next.length : index, 0, id);
+  commitFavorites(next);
+}
+
+function moveFavorite(id: string, offset: -1 | 1): void {
+  const next = [...favoriteIds.value];
+  const index = next.indexOf(id);
+  const target = index + offset;
+  if (index < 0 || target < 0 || target >= next.length) return;
+  next.splice(index, 1);
+  next.splice(target, 0, id);
+  commitFavorites(next);
 }
 
 const visibleAssignments = computed(() => (props.workBacklog?.items ?? [])
@@ -328,6 +377,7 @@ function selectWorkView(view: InboxView): void {
 }
 
 .cockpit-view__navigation {
+  user-select: none;
   width: 320px;
   min-height: 0;
   flex: 0 0 320px;
@@ -449,6 +499,7 @@ function selectWorkView(view: InboxView): void {
 }
 
 .cockpit-view__repositories > div {
+  position: relative;
   min-width: 0;
   min-height: 36px;
   display: flex;
@@ -518,6 +569,8 @@ function selectWorkView(view: InboxView): void {
   line-height: var(--line-height-20);
 }
 
+.cockpit-view__repository-reorder,
+.cockpit-view__repository-reorder-space,
 .cockpit-view__repository-favorite,
 .cockpit-view__repository-link {
   width: 26px;
@@ -531,6 +584,7 @@ function selectWorkView(view: InboxView): void {
   opacity: 0;
 }
 
+.cockpit-view__repository-reorder,
 .cockpit-view__repository-favorite {
   padding: 0;
   border: 0;
@@ -538,6 +592,11 @@ function selectWorkView(view: InboxView): void {
   cursor: pointer;
 }
 
+.cockpit-view__repository-reorder { cursor: grab; }
+.cockpit-view__repository-reorder:active { cursor: grabbing; }
+
+.cockpit-view__repositories > div:hover .cockpit-view__repository-reorder,
+.cockpit-view__repositories > div:focus-within .cockpit-view__repository-reorder,
 .cockpit-view__repositories > div:hover .cockpit-view__repository-favorite,
 .cockpit-view__repositories > div:focus-within .cockpit-view__repository-favorite,
 .cockpit-view__repositories > div:hover .cockpit-view__repository-link,
@@ -545,17 +604,40 @@ function selectWorkView(view: InboxView): void {
   opacity: 1;
 }
 
+.cockpit-view__repository-reorder:hover,
 .cockpit-view__repository-favorite:hover,
 .cockpit-view__repository-link:hover {
   color: var(--color-primary);
   background: var(--color-primary-container);
 }
 
+.cockpit-view__repositories > div button:focus-visible,
+.cockpit-view__repository-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.cockpit-view__repository-reorder svg,
 .cockpit-view__repository-favorite svg,
 .cockpit-view__repository-link svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
+
+.cockpit-view__repositories > div.list-reorder-drag--dragging { opacity: 0.45; }
+
+.cockpit-view__repositories > div.list-reorder-drag--drop-before::before,
+.cockpit-view__repositories > div.list-reorder-drag--drop-after::after {
+  position: absolute;
+  right: var(--space-6);
+  left: var(--space-6);
+  height: 2px;
+  background: var(--color-primary);
+  content: '';
+}
+
+.cockpit-view__repositories > div.list-reorder-drag--drop-before::before { top: -2px; }
+.cockpit-view__repositories > div.list-reorder-drag--drop-after::after { bottom: -2px; }
 
 .cockpit-view__workspace {
   min-width: 0;
