@@ -466,6 +466,7 @@ export const messages = {
     },
     backlogFavorites: {
       heading: 'Favorites',
+      saveFailed: 'Could not save favorites. Please try again.',
       add: 'Add {repository} to favorites',
       remove: 'Remove {repository} from favorites',
       reorder: 'Reorder {repository}',

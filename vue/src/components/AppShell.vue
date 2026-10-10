@@ -243,7 +243,7 @@
         :teams="snapshot.teams"
         :work-backlog="cockpitWorkBacklog"
         :repository-favorites="snapshot.general.backlogRepositoryFavorites[cockpitBacklogState.provider.value] ?? []"
-        @update-repository-favorites="updateBacklogRepositoryFavorites"
+        :save-repository-favorites="updateBacklogRepositoryFavorites"
         @assign-work-item-to-new-agent="openNewAgentForWorkItem"
         @assign-work-item="assignExistingAgentWorkItem"
         @refresh-work-items="refreshWorkItems"

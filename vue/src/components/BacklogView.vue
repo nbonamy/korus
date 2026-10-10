@@ -39,6 +39,7 @@
             :aria-label="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.filterSources' : 'surface.cockpitView.filterRepositories')"
           />
         </label>
+        <p v-if="favoritesSaveFailed" class="cockpit-view__favorites-error" role="alert">{{ $t('backlogFavorites.saveFailed') }}</p>
         <div v-if="workBacklog" class="cockpit-view__repositories">
           <p v-if="filteredRepositories.length === 0" class="cockpit-view__repositories-empty"> {{ $t('surface.cockpitView.noRepositoriesFound') }} </p>
           <h2 v-if="favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('backlogFavorites.heading') }}</h2>
@@ -70,8 +71,8 @@
                 @click.stop
                 @dragstart.stop="favoriteReorder.onDragStart(repository.id, $event)"
                 @dragend.stop="favoriteReorder.onDragEnd"
-                @keydown.up.prevent.stop="moveFavorite(repository.id, -1)"
-                @keydown.down.prevent.stop="moveFavorite(repository.id, 1)"
+                @keydown.up.prevent.stop="moveFavorite(repository.id, -1, $event)"
+                @keydown.down.prevent.stop="moveFavorite(repository.id, 1, $event)"
               >
                 <ArrowsVerticalIcon aria-hidden="true" />
               </button>
@@ -82,7 +83,7 @@
                 type="button"
                 :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
                 :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
-                @click.stop="toggleFavorite(repository.id)"
+                @click.stop="toggleFavorite(repository.id, $event)"
               >
                 <component :is="isFavorite(repository.id) ? IconStarFilled : IconStar" aria-hidden="true" />
               </button>
@@ -170,7 +171,7 @@
 <script setup lang="ts">
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { IconChevronDown, IconFolder, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -210,6 +211,7 @@ const props = defineProps<{
   agents: Agent[];
   repositoryIcons?: Record<string, string>;
   repositoryFavorites?: readonly string[];
+  saveRepositoryFavorites: (repositoryIds: string[]) => Promise<void>;
   teams: Team[];
   defaultTeamId?: string | null;
   listSourceRepositories?: (remoteConnectionId?: string) => Promise<import('@workspace/core/contracts').SourceRepository[]>;
@@ -222,7 +224,6 @@ const repositoryIcons = computed(() => props.repositoryIcons ?? {});
 const startWorkItemsAction = props.startWorkItemsAction;
 
 const emit = defineEmits<{
-  'update-repository-favorites': [repositoryIds: string[]];
   'select-work-provider': [provider: import('@workspace/core/contracts').WorkProviderKind];
   'assign-work-item-to-new-agent': [intent: WorkItemAssignmentIntent];
   'assign-work-item': [payload: { agentId: string; item: WorkItem }];
@@ -239,11 +240,15 @@ const agentsById = computed(() => new Map(props.agents.map((agent) => [agent.id,
 const searchQuery = ref('');
 const repositoryFilter = ref('');
 const pendingFavorites = ref<string[] | null>(null);
+const favoritesSaveFailed = ref(false);
+let favoritesSaveRevision = 0;
 const favoriteIds = computed(() => pendingFavorites.value ?? props.repositoryFavorites ?? []);
-watch(() => props.repositoryFavorites, (ids) => {
-  if (JSON.stringify(ids ?? []) === JSON.stringify(pendingFavorites.value)) pendingFavorites.value = null;
-}, { deep: true });
-watch(() => props.workProvider, () => { pendingFavorites.value = null; favoriteReorder.onDragEnd(); });
+watch(() => props.workProvider, () => {
+  favoritesSaveRevision++;
+  pendingFavorites.value = null;
+  favoritesSaveFailed.value = false;
+  favoriteReorder.onDragEnd();
+});
 const activeWorkView = ref<InboxView>('focus');
 const activeSummaryFilter = ref<SummaryFilter | null>(null);
 watch(() => `${props.workProvider}:${props.workBacklog?.selectedRepositoryId}`, () => {
@@ -282,13 +287,34 @@ const favoriteReorder = useListReorderDrag({
   onDrop: ({ draggedId, beforeId }) => reorderFavorite(draggedId, beforeId),
 });
 
-function commitFavorites(ids: string[]): void {
+async function commitFavorites(ids: string[], control?: EventTarget | null): Promise<void> {
+  const revision = ++favoritesSaveRevision;
+  const hadFocus = control === document.activeElement;
+  const restoreFocus = () => {
+    if (revision === favoritesSaveRevision && hadFocus && control instanceof HTMLElement && control.isConnected
+      && (document.activeElement === document.body || document.activeElement === control)) {
+      control.focus({ preventScroll: true });
+    }
+  };
   pendingFavorites.value = ids;
-  emit('update-repository-favorites', [...ids]);
+  favoritesSaveFailed.value = false;
+  void nextTick().then(restoreFocus);
+  try {
+    await props.saveRepositoryFavorites([...ids]);
+  } catch {
+    if (revision === favoritesSaveRevision) favoritesSaveFailed.value = true;
+  } finally {
+    await nextTick();
+    if (revision === favoritesSaveRevision) {
+      pendingFavorites.value = null;
+      await nextTick();
+      restoreFocus();
+    }
+  }
 }
 
-function toggleFavorite(id: string): void {
-  commitFavorites(isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id]);
+function toggleFavorite(id: string, event: MouseEvent): void {
+  void commitFavorites(isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id], event.currentTarget);
 }
 
 function reorderFavorite(id: string, beforeId: string | null): void {
@@ -298,14 +324,14 @@ function reorderFavorite(id: string, beforeId: string | null): void {
   commitFavorites(next);
 }
 
-function moveFavorite(id: string, offset: -1 | 1): void {
+function moveFavorite(id: string, offset: -1 | 1, event: KeyboardEvent): void {
   const next = [...favoriteIds.value];
   const index = next.indexOf(id);
   const target = index + offset;
   if (index < 0 || target < 0 || target >= next.length) return;
   next.splice(index, 1);
   next.splice(target, 0, id);
-  commitFavorites(next);
+  void commitFavorites(next, event.currentTarget);
 }
 
 const visibleAssignments = computed(() => (props.workBacklog?.items ?? [])
@@ -495,6 +521,12 @@ function selectWorkView(view: InboxView): void {
 .cockpit-view__repositories-empty {
   margin: var(--space-8) var(--space-6);
   color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+}
+
+.cockpit-view__favorites-error {
+  margin: var(--space-4) var(--space-8);
+  color: var(--color-error);
   font-size: var(--font-size-12);
 }
 
