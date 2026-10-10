@@ -496,6 +496,7 @@ export type AppGeneralSettings = {
   cockpitAgentViewMode: CockpitAgentViewMode;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
+  backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
   worktreeInitializationMode: WorktreeInitializationMode;
   sessionCompressionWarningEnabled: boolean;

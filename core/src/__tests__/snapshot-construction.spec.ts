@@ -178,6 +178,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       cockpitAgentViewMode: 'teams',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
