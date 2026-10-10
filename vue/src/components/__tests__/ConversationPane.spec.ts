@@ -61,6 +61,11 @@ const executionPlan: ThreadPlan = {
 };
 
 describe('ConversationPane', () => {
+  it('keeps a restored cross-provider handoff fallback visible above the native conversation', () => {
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, delegationContext: { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' } } });
+    expect(wrapper.get('.delegation-context-notice[role="status"]').text()).toContain('Started with a fresh handoff');
+    expect(wrapper.get('.delegation-context-notice').text()).toContain('different provider');
+  });
   it('allows the real conversation and composer to shrink within the workspace chat allocation', () => {
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
     const pane = wrapper.get('.conversation-pane');

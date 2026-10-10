@@ -1,5 +1,6 @@
 <template>
   <div class="conversation-pane" :data-conversation-agent-id="agent?.id" @keydown.capture="handleDraftShortcut" @focusin.capture="handleDraftFocusIn">
+    <DelegationContextNotice :context="agent?.delegationContext" />
     <div v-if="agent?.handoff?.phase === 'failed'" class="conversation-pane__handoff" role="status">
       <p>{{ agent.handoff.error }}</p>
       <details v-if="agent.handoff.note">
@@ -157,6 +158,7 @@ import type {
 import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
+import DelegationContextNotice from './DelegationContextNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
 import AgentMention from './AgentMention.vue';
 import ComposerContextCards, { type ComposerContextCard } from './ComposerContextCards.vue';

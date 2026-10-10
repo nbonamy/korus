@@ -495,6 +495,13 @@
       :read-messages="readConversationMessages"
       @close="handoffAgentId = null"
     />
+    <WorktreeDelegationDialog
+      v-if="delegationAgentId"
+      :key="delegationAgentId"
+      :starting-context="props.snapshot.general.worktreeDelegationStartingContext ?? 'conversation'"
+      :delegate="delegateFromDialog"
+      @close="delegationAgentId = null"
+    />
     <ModelFavoritesDialog
       :favorites="managedModelFavorites"
       :models="backendModels"
@@ -641,6 +648,8 @@ import WhatsNewDialog from './WhatsNewDialog.vue';
 import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
+import WorktreeDelegationDialog from './WorktreeDelegationDialog.vue';
+import type { DelegationOverrides } from '@workspace/core/delegation-context';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
@@ -2247,17 +2256,24 @@ const conversationPaneActions: CodexConversationPaneActions = {
   },
 };
 
+const delegationAgentId = ref<string | null>(null);
+async function delegateFromDialog(delegation: DelegationOverrides): Promise<void> {
+  const agentId = delegationAgentId.value;
+  if (!agentId || !props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
+  await backendSwitch.settled();
+  if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate', { delegation });
+  else if (currentAgent.value?.id === agentId) {
+    requireConnectedConversation();
+    if (props.sendPromptAction) await props.sendPromptAction('/delegate', { delegation });
+    else emit('sendPrompt', '/delegate', { delegation });
+  } else throw new Error(t('delegation.agentUnavailable'));
+}
+
 async function runConversationMenuCommand(agentId: string, command: ConversationMenuCommand): Promise<void> {
   try {
     if (command === 'review') return await openCodeReviewForAgent(agentId);
     if (command === 'visualize') return await startVisualizeForAgent(agentId);
-    await backendSwitch.settled();
-    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate');
-    else if (currentAgent.value?.id === agentId) {
-      requireConnectedConversation();
-      if (props.sendPromptAction) await props.sendPromptAction('/delegate');
-      else emit('sendPrompt', '/delegate');
-    }
+    delegationAgentId.value = agentId;
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -2883,6 +2899,10 @@ async function respondToPlanReview(resolution: 'accept' | 'revise' | 'cancel', f
 
 const threadFlagBusy = ref(false);
 async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
+  if (response.id === 'delegate_to_worktree' && response.action === 'execute' && currentAgent.value) {
+    delegationAgentId.value = currentAgent.value.id;
+    return;
+  }
   if (!props.respondToThreadFlagAction || threadFlagBusy.value) return;
   threadFlagBusy.value = true;
   try {

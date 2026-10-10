@@ -30,6 +30,10 @@
         </el-menu-item>
       </el-menu-item-group>
       <el-menu-item-group :title="$t('surface.settingsSidebar.groupAgents')">
+        <el-menu-item index="delegation">
+          <GitBranchIcon aria-hidden="true" />
+          <span>{{ $t('delegation.title') }}</span>
+        </el-menu-item>
         <el-menu-item index="codex">
           <BackendIcon backend="codex" monochrome />
           <span>{{ $t('surface.settingsSidebar.codex') }}</span>
@@ -82,7 +86,7 @@ const emit = defineEmits<{
 }>();
 
 function selectTab(tab: string): void {
-  if (tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
+  if (tab === 'delegation' || tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
     emit('select', tab);
   }
 }

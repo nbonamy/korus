@@ -23,6 +23,7 @@
       :steps="steps"
       @complete="close"
     />
+    <DelegationContextNotice :context="progress?.delegationContext" />
     <template v-if="operationState === 'error'" #footer>
       <div class="app-dialog__footer">
         <button class="app-button app-button--tertiary" type="button" @click="close">
@@ -38,6 +39,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AgentCreationProgress } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
+import DelegationContextNotice from './DelegationContextNotice.vue';
 import StagedOperationProgress, { type StagedOperationStep } from './StagedOperationProgress.vue';
 import { missionRepositoryName } from './mission-implementation-model';
 import { backendDisplayName } from '@workspace/core/backend-driver';

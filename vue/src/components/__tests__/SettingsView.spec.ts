@@ -58,6 +58,7 @@ describe('SettingsView', () => {
       'Voice',
       'Personalization',
       'Screenshots',
+      'Worktree delegation',
       'Codex',
       'Claude Code',
       'Plugins',

@@ -123,20 +123,26 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
 
-    api.respondToThreadFlag.mockRejectedValueOnce(new Error('backend unavailable'));
     await wrapper.get('.thread-flag-affordance__action').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenCalledExactlyOnceWith(agent.id, {
-      id: 'delegate_to_worktree', action: 'execute',
-    });
+    expect(api.respondToThreadFlag).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="dialog"]').text()).toContain('Starting context');
+    expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
+    api.sendPrompt.mockRejectedValueOnce(new Error('backend unavailable'));
+    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain('backend unavailable');
     expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
 
     const cleared = structuredClone(snapshot);
     delete cleared.agents[0]!.threadFlags;
-    api.respondToThreadFlag.mockResolvedValueOnce(cleared);
-    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    api.sendPrompt.mockResolvedValueOnce(cleared);
+    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenCalledTimes(2);
+    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate', { delegation: { startingContext: 'conversation' } });
+    emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
+    await flushPromises();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     expect(wrapper.find('.thread-flag-affordance').exists()).toBe(false);
 
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { delegate_to_worktree: true } } });
@@ -144,17 +150,17 @@ describe('Unified backend → mounted application', () => {
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
     await wrapper.get('.thread-flag-affordance__dismiss').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(3, agent.id, {
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(1, agent.id, {
       id: 'delegate_to_worktree', action: 'dismiss',
     });
-    expect(api.sendPrompt).not.toHaveBeenCalled();
+    expect(api.sendPrompt).toHaveBeenCalledTimes(2);
 
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: { ready_for_review: true } } });
     await flushPromises();
     api.respondToThreadFlag.mockResolvedValueOnce(cleared);
     await wrapper.get('[aria-label="Open code review"]').trigger('click');
     await flushPromises();
-    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(4, agent.id, {
+    expect(api.respondToThreadFlag).toHaveBeenNthCalledWith(2, agent.id, {
       id: 'ready_for_review', action: 'execute',
     });
     expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
