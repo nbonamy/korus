@@ -734,7 +734,7 @@ describe('CodeReviewService', () => {
     const initialPrompt = test.turns[0]!.prompt;
     const contextEnd = initialPrompt.indexOf('</context>');
     expect(initialPrompt.slice(0, contextEnd)).toContain('the current branch against origin/main');
-    expect(initialPrompt.slice(0, contextEnd)).toContain('end the turn with a natural summary of one or two short sentences');
+    expect(initialPrompt.slice(0, contextEnd)).toContain('korus-reviewer');
     expect(initialPrompt.slice(contextEnd + '</context>'.length).trim()).toBe(
       'Review the current branch against origin/main.',
     );
@@ -1063,12 +1063,7 @@ describe('CodeReviewService', () => {
     expect(test.turns[1]?.prompt).toContain('Fix the 2 following findings.');
     expect(test.turns[1]?.prompt).toContain(`${ids[0]}: First`);
     expect(test.turns[1]?.prompt).toContain(`${ids[1]}: Second`);
-    expect(test.turns[1]?.prompt).toContain(
-      'Immediately after each individual finding is fixed and verified, call update_finding',
-    );
-    expect(test.turns[1]?.prompt).toContain(
-      'Do not wait until all findings are fixed to update their statuses.',
-    );
+    expect(test.turns[1]?.prompt).toContain('korus-reviewer');
     releaseFirst?.();
     await vi.waitFor(() => expect(round.findings.map((finding) => finding.remediation.state)).toEqual(['fixed', 'fixed']));
     expect(session.status).toBe('readyToFinish');

@@ -48,9 +48,12 @@ by mutating user-global tool config.
 - App-owned procedures are bundled Markdown skills, loaded on demand through
   `read-skill`. Injected instructions contain their catalog and essential policy,
   not full skill bodies or filesystem paths. The reader serves only registered
-  names and rechecks feature enablement and the caller's active Mission stage;
-  it cannot read personal skills or arbitrary files. Loading a skill grants no
-  permission to perform its actions. The daemon bundle carries the same content
+  names and rechecks tool-module availability, feature enablement, active review
+  context and the caller's Mission stage. It cannot read personal skills or
+  arbitrary files. Workflow skills named by
+  tools need not add entries to every agent's baseline catalog. Loading a skill
+  grants no permission to perform its actions. The daemon bundle carries the same
+  content
   on desktop and remote hosts, independent of provider filesystem permissions.
 - Codex approval of an MCP tool call arrives as `mcpServer/elicitation/request`.
   Korus never auto-accepts it: it becomes a `confirm_tool` request, resolved by the
@@ -98,7 +101,8 @@ by mutating user-global tool config.
 - `create-agent` creates a Korus co-agent in the caller's team without selecting it,
   optionally with an isolated worktree, and stays pending until the new agent
   accepts its initial prompt. `prompt` is the concise visible request;
-  `instructions` is the full handoff, prepended inside an escaped `<context>`
+  `instructions` supplements canonical task references with missing context,
+  decisions and delivery constraints, prepended inside an escaped `<context>`
   block (presentation separation, not secret storage: both stay in the transcript).
   Model and effort inherit from the caller only for the same backend; another
   backend uses its own defaults. Target-provider saved approval settings apply

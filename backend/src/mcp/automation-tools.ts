@@ -20,13 +20,13 @@ export function createAutomationToolModuleProvider(options: {
       return {
         id: 'automations',
         register: server => server.registerTool('create-automation', {
-          description: 'Create a recurring prompt in Korus ONLY when the user explicitly asks to schedule recurring work. Use this tool, not another scheduler, for Korus automations. For calendar times use an RRULE and explicit IANA timezone, never approximate with an interval. Ask for timezone or destination if unclear. Daily 8 AM Chicago: schedule={rrule:"FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYSECOND=0",timeZone:"America/Chicago"}. Calendar schedules first run at the next matching occurrence and preserve local time across DST. Missed occurrences coalesce to one run when the daemon returns. Defaults to a new Quick Chat each run in your team using your backend and its saved model defaults. Existing conversations retain their backend/model/effort/approvals. Runs locally while the owning daemon is running. Returns a saved schedule, not a completed run. Never create recurring work from a suggested next step alone.',
+          description: 'Schedule a recurring Korus prompt only on explicit user request. Read korus-automations first. Calendar times require RRULE and IANA timezone. Runs on the owning daemon; returns a saved schedule and next occurrence, not a completed run.',
           inputSchema: z.strictObject({
             requestId: z.string().trim().min(1).max(200).describe('Unique ID for this creation request. Reuse it with the same settings on retries to avoid duplicate schedules.'),
             name: z.string().trim().min(1).max(200),
             prompt: z.string().trim().min(1).max(100_000),
             schedule: z.union([
-              z.strictObject({ rrule: z.string().trim().min(1).max(1000).describe('One RRULE, without DTSTART. Supports MINUTELY through YEARLY; no sub-minute schedules. Use BYHOUR/BYMINUTE/BYSECOND=0 for an exact local time.'), timeZone: z.string().trim().min(1).max(100).describe('IANA timezone, e.g. America/Chicago. Required for calendar schedules.') }),
+              z.strictObject({ rrule: z.string().trim().min(1).max(1000).describe('One RRULE without DTSTART; MINUTELY through YEARLY.'), timeZone: z.string().trim().min(1).max(100).describe('IANA timezone for this calendar schedule.') }),
               z.strictObject({ intervalMinutes: z.number().int().min(1).max(525_600) }),
             ]),
             enabled: z.boolean().optional().describe('Defaults to true. False saves a disabled automation for later activation in the UI.'),

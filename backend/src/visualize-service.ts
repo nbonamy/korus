@@ -67,7 +67,7 @@ export class VisualizeService {
   }
 
   developerInstructions(): string {
-    return 'Visualize tools work only while the pane is open. Before using them, call read-skill with name="korus-visualize". If the pane is closed, handle the conversation normally. In Visualize, use conversation context only unless the user explicitly requests outside research.';
+    return 'Visualize requires an open pane; load korus-visualize through read-skill before using its tools.';
   }
 
   async enter(agentId: string): Promise<{ created: boolean; visualize: VisualizeSession }> {

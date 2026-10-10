@@ -68,7 +68,7 @@ function registerCollaborationTools(
   }, () => coordinator.broadcastMessage(callerAgentId, content)));
 
   server.registerTool('set-status', {
-    description: 'MANDATORY: Set your status so other agents know what you are doing. At the start of a user task, include one short spoken acknowledgment in announcement. Call again only when changing direction and omit announcement. Keep status short and specific; finish_turn owns completion effects.',
+    description: 'Set short activity status as the first action of a user task, with a start acknowledgment. Later direction changes omit announcement; finish_turn owns completion.',
     inputSchema: {
       status: z.string().describe('Short status text describing what you are currently doing. finish_turn or the provider turn lifecycle clears it.'),
       announcement: z.object({
@@ -85,9 +85,9 @@ function registerCollaborationTools(
     } : {}),
   }, () => coordinator.setStatus(callerAgentId, status, announcement)));
 
-  const finishTurnDescription = 'MANDATORY final tool action for a substantive user turn. Call exactly once immediately before the final response. It clears the current status and can atomically request one finish announcement, one celebration, one proposed-action flag, and a suggested next prompt for the composer placeholder. Omitting flag preserves the existing proposal; omitting suggestedPrompt clears the previous hint. Select delegate_to_worktree only when work should be delegated instead of continued here, or ready_for_review only for a complete validated uncommitted diff.';
+  const finishTurnDescription = 'Required once as the last tool action before the final response. Clears status and requests optional completion effects. Propose delegation instead of implementing here, or review for complete validated uncommitted work; proposals do not authorize actions.';
   const finishTurnEffectsSchema = {
-    suggestedPrompt: z.string().trim().min(1).max(240).optional().describe('Expected by default: one concrete, useful next prompt specific to this conversation, written in the user’s voice and ready to send. Omit only when no useful follow-up remains or the user asked to stop. Respect declined directions; avoid generic busywork. Placeholder only, never inserted or sent. Omission clears the previous hint.'),
+    suggestedPrompt: z.string().trim().min(1).max(240).optional().describe('Useful next request in the user’s voice; placeholder only, never submitted. Omission clears the previous hint.'),
     announcement: z.object({
       text: z.string().trim().min(1).max(160).describe('One brief natural completion phrase, at most 160 characters.'),
     }).optional().describe('Optional spoken completion acknowledgment. The finish phase is implied.'),
@@ -161,10 +161,10 @@ function registerCollaborationTools(
   }, () => coordinator.createSourceWorktree(callerAgentId, { repoPath, branchName, destinationPath })));
 
   server.registerTool('create-agent', {
-    description: `Create a new ${product.name} co-agent in your team, optionally in an isolated worktree. Model and reasoning effort inherit from the caller when the backend matches unless explicitly overridden. Provide an initial prompt to start the co-agent immediately. Use list-repos to find another configured repository before delegating cross-repository work.`,
+    description: `Create a ${product.name} co-agent in your team, optionally in an isolated worktree. Read korus-delegation before delegating. With a prompt, returns after startup acceptance, not task completion.`,
     inputSchema: {
       requestId: z.string().trim().min(1).max(200).optional().describe('Required in task mode. Reuse the same stable ID when retrying this creation call.'),
-      task: taskContractSchema.optional().describe('Durable assignment contract. Requires prompt and requestId. Returns taskId after startup acceptance, not task completion; inspect or wait with wait-tasks.'),
+      task: taskContractSchema.optional().describe('Saved assignment contract. Requires prompt and requestId; returns taskId for wait-tasks.'),
       name: z.string().optional().describe('Optional custom name. When omitted, the agent displays its branch or folder name.'),
       backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Coding backend. Defaults to the caller’s backend.'),
       model: z.string().optional().describe('Optional model override. Inherits the caller model when the backend matches.'),
@@ -173,8 +173,8 @@ function registerCollaborationTools(
       createWorktree: z.boolean().optional().describe('If true, create a new worktree from repoPath before creating the agent.'),
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
       destinationPath: z.string().optional().describe('Optional destination path for the new worktree.'),
-      prompt: z.string().optional().describe('Optional initial request shown to the user. Keep it concise and put detailed handoff instructions in instructions. Starts the agent and waits until the handoff is accepted.'),
-      instructions: z.string().optional().describe(`Optional full handoff: context, decisions, constraints, and acceptance criteria. Requires prompt. ${product.name} wraps this in <context> for the agent, hidden from the displayed request; do not include secrets.`),
+      prompt: z.string().optional().describe('Concise visible request. Starts the agent and waits for acceptance.'),
+      instructions: z.string().optional().describe('Task-specific context supplement; requires prompt. Wrapped in <context>, hidden in the UI but retained in the transcript. No secrets.'),
     },
   }, ({ name, backend, model, reasoningEffort, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,

@@ -202,7 +202,7 @@ describe('BackendDriverRpc', () => {
     expect(pluginSettings).toHaveBeenCalledOnce();
   });
 
-  it('uses the live celebration setting while keeping unified presence instructions stable', async () => {
+  it('uses the live celebration setting when configuring a provider conversation', async () => {
     const celebrationsEnabled = vi.fn().mockReturnValue(false);
     const options = appSurfaceOptions({
       appMcpServerUrl: 'http://127.0.0.1:4321/mcp',
@@ -212,9 +212,7 @@ describe('BackendDriverRpc', () => {
     const extension = await configureConversation?.({ extensionContext: createAgent() } as never);
 
     expect(celebrationsEnabled).toHaveBeenCalledOnce();
-    expect(extension?.developerInstructions).toContain('call set-status exactly once as your very first action');
-    expect(extension?.developerInstructions).toContain('announcement containing phase start');
-    expect(extension?.developerInstructions).not.toContain('call celebrate');
+    expect(extension?.developerInstructions).not.toContain('celebration: true');
   });
 
   it('routes model requests to the agent backend driver', async () => {

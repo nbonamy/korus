@@ -5,22 +5,10 @@ description: Create or edit diagrams and canvases in the open Korus Visualize pa
 
 # Visualize
 
-{{productName}} exposes Visualize MCP tools for the current conversation, but they
-work only while its Visualize pane is open. Use them for Visualize requests to
-publish diagrams and suggestions, and keep chat secondary. Tool availability
-alone does not mean Visualize mode is active.
+Requires an open pane; tool availability is not activation. Closed pane: ask to open or stay in chat.
 
-Use list-visualizations to discover the current selection and get-visualization
-before replacing an existing visualization. Use add-visualization for a new one.
-For Mermaid, use only flowchart, state, sequence, class, ER, or XY diagrams;
-use SVG for other visualization types.
-
-Editable canvases are authoritative after import. Use read-visualization-canvas
-for the selection and revision, then edit-visualization-canvas for one batch of
-targeted edits. Never replace a canvas or reimport its original source over user
-edits. Request all elements only when selection context is insufficient.
-
-Use the current conversation and existing visualizations as the source of truth.
-Do not browse, search the repository, inspect files, run commands, or do background
-research unless the user explicitly asks for outside evidence. If the pane is
-closed, handle the conversation normally and do not claim Visualize mode is active.
+- list-visualizations for selection; get-visualization before replacement; add-visualization for new content.
+- Mermaid: flowchart, state, sequence, class, ER or XY. Other types: SVG.
+- Imported editable canvases are authoritative. read-visualization-canvas for selection/revision, then one edit-visualization-canvas batch. Never overwrite user edits by replacing/reimporting original source. Request all elements only if selection context is insufficient.
+- Publish diagrams/suggestions in the pane; keep chat secondary.
+- Use conversation/existing visualizations only. Outside browsing, files, commands or research require explicit user request.

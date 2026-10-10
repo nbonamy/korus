@@ -8,8 +8,14 @@ import requirements from './mission-shape-requirements/SKILL.md?raw';
 import tickets from './mission-to-tickets/SKILL.md?raw';
 import implementation from './mission-implement-ticket/SKILL.md?raw';
 import review from './mission-review/SKILL.md?raw';
+import delegation from './korus-delegation/SKILL.md?raw';
+import reviewLaunch from './korus-review-launch/SKILL.md?raw';
+import reviewer from './korus-reviewer/SKILL.md?raw';
+import automations from './korus-automations/SKILL.md?raw';
+import browser from './korus-browser/SKILL.md?raw';
+import simulator from './korus-simulator/SKILL.md?raw';
 
-type SkillContext = { computerUseEnabled?: boolean; missionStage?: MissionStage };
+type SkillContext = { computerUseEnabled?: boolean; missionStage?: MissionStage; toolModules?: readonly string[] };
 type Skill = { name: string; description: string; markdown: string };
 
 // Bundled, authored frontmatter uses single-line unquoted name/description fields.
@@ -22,8 +28,15 @@ function skill(source: string): Skill {
   return { name, description, markdown };
 }
 
-const generalSkills = [skill(html), skill(visualize)];
+const generalSkills = [skill(html), skill(visualize), skill(delegation)];
 const computerUseSkill = skill(computerUse);
+const moduleSkills = [
+  ['in-app-browser', skill(browser)],
+  ['mobile-simulator', skill(simulator)],
+  ['automatic-review', skill(reviewLaunch)],
+  ['review', skill(reviewer)],
+  ['automations', skill(automations)],
+] as const;
 const missionSkills: Partial<Record<MissionStage, Skill>> = {
   requirements: skill(requirements), tickets: skill(tickets),
   implementation: skill(implementation), review: skill(review),
@@ -31,7 +44,12 @@ const missionSkills: Partial<Record<MissionStage, Skill>> = {
 
 function availableSkills(context: SkillContext): Skill[] {
   const mission = context.missionStage && missionSkills[context.missionStage];
-  return [...generalSkills, ...(context.computerUseEnabled ? [computerUseSkill] : []), ...(mission ? [mission] : [])];
+  return [
+    ...generalSkills,
+    ...(context.computerUseEnabled || context.toolModules?.includes('computer-use') ? [computerUseSkill] : []),
+    ...moduleSkills.filter(([module]) => context.toolModules?.includes(module)).map(([, definition]) => definition),
+    ...(mission ? [mission] : []),
+  ];
 }
 
 export function readBundledSkill(name: string, context: SkillContext): Skill {
@@ -42,7 +60,7 @@ export function readBundledSkill(name: string, context: SkillContext): Skill {
 
 export function bundledSkillInstructions(context: SkillContext): string {
   return [
-    `Bundled ${product.name} skills: before using a matching capability, call read-skill with its name and follow the returned instructions. These are loaded through MCP, not filesystem paths or the provider's native skill loader.`,
+    `Bundled ${product.name} skills: load matching procedures with read-skill before acting, not through filesystem paths or native skill loaders. Tools and assigned workflows name additional context-specific skills. Loading instructions grants no authorization.`,
     ...availableSkills(context).map(({ name, description }) => `- ${name}: ${description}`),
   ].join('\n');
 }

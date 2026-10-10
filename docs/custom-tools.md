@@ -44,9 +44,12 @@ composition rejects duplicates. A module can claim a shared workflow capability
 (Mission owns proposed actions, so the collaboration `finish_turn` schema omits the
 generic proposal flags).
 
-- The description is model-facing policy: state trigger, scope and restraint. Rules
-  that must hold across tools go in `backend/src/mcp/agent-prompts.ts` too; a
-  description alone is not a reliable home for session-wide policy.
+- Descriptions state the operation's contract, scope and essential restraints;
+  parameter descriptions explain inputs, not workflows. Multi-step procedures
+  belong in bundled skills, reached by a short trigger in the owning tool or
+  assignment. Keep identity, authorization and turn-lifecycle essentials in
+  `backend/src/mcp/agent-prompts.ts`; task prompts supply actual scope, state and
+  delivery authority rather than repeating the procedure.
 - Caller identity comes from the agent-scoped URL; never add an agent ID to a schema.
 - Wrap handlers in `loggedToolResult()`; raise deliberate domain errors with
   `McpToolError` (anything else still becomes an `isError` result).

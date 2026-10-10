@@ -3,16 +3,12 @@ name: mission-to-tickets
 description: Turn approved Mission requirements into repository-scoped tracer-bullet tickets.
 ---
 
-# Turn a Mission into tickets
+# Mission tickets
 
-Convert the accepted requirements into a small, ordered backlog that Mission agents can execute.
+1. Tell the user requirements are approved. Injected accepted context is authoritative; read-mission-artifact adds Markdown detail. Inspect represented repos or delegate focused research as needed.
+2. Draft independently verifiable vertical slices: one agent-sized task, exactly one represented repository, acceptance criteria and checks. Record only real blocking dependencies.
+3. upsert-mission-ticket for each coherent draft/revision; use returned stable IDs for dependencies.
+4. Verify dependencies/repository assignments. Preserve configured tracker labels, but do not publish. Without a tracker, Mission tickets remain canonical; no setup needed.
+5. submit-mission-result: complete artifacts, change only Tickets. Workspace owns the full backlog and manual user review; do not request chat confirmation. Questions/decisions/blockers stay in conversation.
 
-1. Read the accepted requirements and shared Mission artifacts. Inspect represented repositories or delegate focused repository research when code context affects the breakdown.
-2. Draft tracer-bullet vertical slices. Each ticket must deliver independently verifiable behavior, fit one agent context, name exactly one represented repository, and include acceptance criteria plus meaningful verification.
-3. Record real blocking edges only. Use an expand-migrate-contract sequence for a wide mechanical refactor that cannot land as independent vertical slices.
-4. Upsert each draft through `{{mcpServerName}}.upsert-mission-ticket` as soon as it is coherent, then revise it through the same tool as the breakdown improves. Use the stable Mission ticket IDs returned by the tool for dependencies.
-5. Review dependencies and repository assignment yourself before submission. Implementation results flow automatically into the explicit Review stage. User review happens manually in the Mission workspace after submission; do not ask the user to confirm the breakdown in chat.
-6. When an existing tracker and its repository instructions are already configured, preserve its labels but do not publish tickets during this stage. Otherwise keep Mission tickets as the canonical backlog and continue without tracker setup.
-7. Submit the complete proposal with `{{mcpServerName}}.submit-mission-result`.
-
-The ticket stage is done when every ticket has one represented repository, the dependency frontier is valid, and the proposal is waiting for manual user review.
+Implementation evidence flows into explicit Review.

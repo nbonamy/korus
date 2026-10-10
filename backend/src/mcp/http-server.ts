@@ -19,7 +19,7 @@ import {
   createComputerUseToolModuleProvider,
   createReviewToolModuleProvider,
 } from './adapter-tool-modules';
-import type { AppMcpToolModuleProvider } from './tool-modules';
+import { resolveAppMcpToolModules, type AppMcpToolModuleProvider } from './tool-modules';
 
 const maxBodyBytes = 1024 * 1024;
 
@@ -48,15 +48,19 @@ export class AppMcpHttpServer {
     this.coordinator = options.coordinator;
     this.hostedMcpGateway = options.hostedMcpGateway;
     const computerUseEnabled = options.computerUseEnabled ?? (() => true);
-    this.toolModuleProviders = [
+    const providers = [
       createCollaborationToolModuleProvider(this.coordinator),
       createMissionToolModuleProvider(this.coordinator),
-      createSkillToolModuleProvider(this.coordinator, () => Boolean(options.computerUse) && computerUseEnabled()),
       createMissionReviewToolModuleProvider(this.coordinator),
       createComputerUseToolModuleProvider(options.computerUse, computerUseEnabled),
       createBrowserToolModuleProvider(options.browser),
       createReviewToolModuleProvider(options.reviewTools),
       ...(options.toolModuleProviders ?? []),
+    ];
+    this.toolModuleProviders = [
+      ...providers,
+      createSkillToolModuleProvider(this.coordinator, request =>
+        resolveAppMcpToolModules(providers, request).map(module => module.id)),
     ];
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 0;

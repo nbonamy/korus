@@ -972,18 +972,14 @@ function reviewPrompt(session: CodeReviewSession): string {
     ? `the current branch against ${session.scope.baseRef}`
     : 'the current uncommitted changes';
   return `<context>
-This structured review ledger is cumulative across every previous round in this review session. The exclusions array contains all findings the user skipped, not only findings from the immediately preceding round. Do not raise an excluded finding again unless materially new evidence changes the conclusion. Regression checks must be verified against the latest code. Prior discussion records decisions that changed expected behavior.
+Load korus-reviewer through read-skill before inspection. Cumulative review ledger:
 
 ${JSON.stringify(ledger, null, 2)}
 
-Review ${detailedScope} independently. Do not report findings outside this scope. Use the ordinary repository tools already supplied by the harness to inspect code and tests.
+Review ${detailedScope} independently. Do not report findings outside this scope.
 ${session.automation ? 'This is an automatic review inspection: do not modify files, commit, push, or merge. Report every actionable finding, including lower-priority findings; the review workflow owns priority selection and completion.' : ''}
 
-Structured findings are the source of truth for this review. You can add, edit, or delete findings while this reviewer thread remains open, including after an inspection turn ends. For every actionable defect, call mcp__${mcpServerName}__report_finding with its P0–P3 priority, an imperative title of at most 80 characters, and one concise Markdown paragraph explaining why it matters. Native tools such as ReportFindings do not register findings in Korus. Use update_finding to correct a reported finding, and delete_finding to retract one that is no longer actionable. Check prior fixed findings for regressions; only report one again when it is currently actionable, using its prior finding ID.
-
-Before ending this inspection turn, you MUST call mcp__${mcpServerName}__finish_review_round({ findingCount }) with the total findings you identified in this round across ALL priorities, excluding previous rounds. Count all identified findings, not merely those already registered. A clean inspection requires findingCount: 0 and means you found no actionable defects. If the tool rejects the count, register every missing finding with mcp__${mcpServerName}__report_finding, reconcile the ledger, and call finish_review_round again; do not lower the count to hide unregistered findings. Any finding changes after acceptance require a new finish_review_round call. Do not end the turn until it succeeds. This confirms only the inspection: Korus owns remediation, later rounds, and closing the review.
-
-After accepted inspection completion, end the turn with a natural summary of one or two short sentences. If there are no actionable findings, say so plainly; otherwise state how many findings you registered. Do not list or repeat the findings in chat, imply that the review is an approval to ship, or use a generic "Review complete" response.
+Register all actionable findings with mcp__${mcpServerName}__report_finding and obtain accepted mcp__${mcpServerName}__finish_review_round({ findingCount }) before ending, including zero for a clean inspection. The skill supplies the reporting procedure; confirmation is not approval to ship.
 </context>
 
 Review ${visibleScope}.${session.instructions ? `\n\nAdditional instructions from the user:\n${session.instructions}` : ''}`;
@@ -1006,7 +1002,7 @@ Round: ${round.number}
 
 ${findingContext}
 
-Keep the changes focused and add or update behavior-level tests when appropriate. Immediately after each individual finding is fixed and verified, call update_finding with its id and status "fixed" before moving to the next finding. Do not wait until all findings are fixed to update their statuses. Include concise verification evidence when useful.
+Load korus-reviewer through read-skill for the remediation procedure. Fix only these selected findings and record each verified fix with update_finding.
 ${session.automation ? `Automatic remediation: run the relevant tests and checks. Every fixed finding MUST include evidence naming the commands and results (or a specific reason a check does not apply). If validation fails or a fix needs a product decision, leave the finding unresolved and explain the blocker. Do not commit, stage, push, merge, change branches, or discard changes. ${session.automation.autoCommit === true ? 'Auto-commit is enabled: the review workflow owns the local commit after validation.' : 'Auto-commit is disabled. Leave all fixes uncommitted; the review workflow will not stage or commit them.'} Preserve unrelated files; no background work may remain when this turn ends.` : ''}
 </context>`;
 }
@@ -1038,7 +1034,7 @@ Review: ${session.id}
 Round: ${round.id}
 Finding: ${JSON.stringify(findingContext, null, 2)}
 
-Answer the user's question about this specific finding. If the clarification materially changes the finding, call update_finding before answering.
+Load korus-reviewer through read-skill for finding discussion, then answer this specific question.
 </context>
 
 ${question}`;

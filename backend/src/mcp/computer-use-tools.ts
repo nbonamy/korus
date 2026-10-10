@@ -34,7 +34,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   if (!observationRecovery.has(computerUse)) observationRecovery.set(computerUse, { generation: 0, scopes: new Map() });
 
   server.registerTool('computer-use-status', {
-    description: 'Check whether the bundled local Computer Use helper is available and trusted by macOS Accessibility and Screen Recording.',
+    description: 'Read korus-computer-use before GUI actions. Check local helper availability and macOS Accessibility/Screen Recording permissions.',
     inputSchema: {},
   }, () => computerUseResult(() => computerUse.status()));
 
@@ -49,7 +49,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, () => execute(computerUse, 'request_screen_capture', {}));
 
   server.registerTool('computer-use-stop', {
-    description: 'End the live local Computer Use session and hide its virtual cursor immediately. Otherwise the session closes 30 seconds after the last Computer Use call; every call, including screenshots, resets that timeout.',
+    description: 'End the local Computer Use session and hide its virtual cursor immediately.',
     inputSchema: {},
   }, () => computerUseResult(() => computerUse.stop()));
 
@@ -77,12 +77,12 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => execute(computerUse, 'launch_app', arguments_));
 
   server.registerTool('computer-use-focus-app', {
-    description: 'Explicitly bring a window to the foreground only when the task needs it. AX reads/clicks do not require this; physical actions handle their own activation.',
+    description: 'Explicitly bring the selected window to the foreground.',
     inputSchema: z.strictObject(windowTargetSchema),
   }, (arguments_) => executeWindowTargeted(computerUse, 'focus_app', arguments_));
 
   server.registerTool('computer-use-get-app-state', {
-    description: 'Read a selected background window: compact full/diff AX text, optional screenshot and waitForText condition. Use stable options for diff reuse. Read-only menu-bar inspection needs no window ID.',
+    description: 'Read selected-window AX state (full/diff), optional screenshot and waitForText. Read-only menu-bar inspection needs no window ID.',
     inputSchema: appStateInputSchema,
   }, (arguments_) => arguments_.accessibilityScope === 'menu_bar'
     ? observeAppState(computerUse, arguments_)
@@ -96,12 +96,12 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
     : computerUseWindowScreenshotResult(computerUse, arguments_));
 
   server.registerTool('computer-use-click', {
-    description: 'Click a control using AX in the background, without focusing the app. Use observe={} to receive the resulting state in this call. Physical clicks explicitly require foreground input.',
+    description: 'Click by background AX or foreground physical input; observe optionally returns resulting UI state.',
     inputSchema: z.strictObject({
       ...actionTargetSchema,
       click_count: z.number().int().min(1).max(3).optional(),
       mouse_button: z.enum(['left', 'right', 'middle']).optional(),
-      physical: z.boolean().optional().describe('Send a real foreground mouse click instead of AXPress. Use for visible Electron/web controls or after verifying AXPress did not change the UI.'),
+      physical: z.boolean().optional().describe('Send a foreground mouse click instead of AXPress.'),
     }),
   }, (arguments_) => executeWindowTargeted(computerUse, 'click', arguments_));
 
@@ -119,7 +119,7 @@ export function registerComputerUseTools(server: McpServer, computerUse: Compute
   }, (arguments_) => executeWindowTargeted(computerUse, 'press_key', arguments_));
 
   server.registerTool('computer-use-type-text', {
-    description: 'Type into an indexed editable control with internal focus verification; replace=true replaces its contents and submit=true presses Return. No app activation or preliminary focus call needed. Use observe to verify the result.',
+    description: 'Type into an indexed editable control with internal focus verification. replace=true replaces contents; submit=true presses Return.',
     inputSchema: z.strictObject({
       ...windowTargetSchema,
       element_index: z.number().int().nonnegative().optional(),
