@@ -8,6 +8,7 @@
       </div>
       <form v-if="!annotationMode && !visualization" class="browser-panel__address" @submit.prevent="navigate">
         <input ref="addressInput" v-model="address" :aria-label="$t('surface.browserPanel.browserAddress')" spellcheck="false" :title="state.title || address" />
+        <BrowserBookmarks :active="visible" :bookmarks="bookmarks" :url="state.url" :title="state.title" :save="saveBookmarks" @open="openBookmark" />
         <button
           v-if="externalUrl"
           class="browser-panel__external-open"
@@ -100,6 +101,19 @@ import AnnotationSendButton from './AnnotationSendButton.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { externalBrowserUrl, openInExternalBrowser } from './browser-external';
+import BrowserBookmarks from './BrowserBookmarks.vue';
+import { normalizeBrowserBookmarks, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
+import { useAppState } from '../app-state';
+
+const appState = useAppState();
+const bookmarks = computed(() => normalizeBrowserBookmarks(appState.snapshot.value.general.browserBookmarks));
+async function saveBookmarks(bookmarks: BrowserBookmark[]): Promise<void> {
+  await appState.updateSettings({ general: { browserBookmarks: bookmarks } });
+}
+async function openBookmark(url: string): Promise<void> {
+  address.value = url;
+  await navigate();
+}
 
 const props = withDefaults(defineProps<{
   agentId: string;

@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { serialize } from 'node:v8';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage } from 'element-plus';
@@ -7,6 +7,7 @@ import { setElectronTestClient } from '../../test/client';
 import type { AppCommand, MainToRendererEvent } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import GitDiffControl from '../GitDiffControl.vue';
+import { useAppState } from '../../app-state';
 
 class ResizeObserverStub {
   static latest: ResizeObserverStub | null = null;
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 function mountPanel(
-  props: { initialUrl?: string; openRequestId?: number; visualization?: { path: string; title: string } } = {},
+  props: { agentId?: string; browserId?: string; initialUrl?: string; openRequestId?: number; visualization?: { path: string; title: string } } = {},
   options: { deferDomReady?: boolean; attachTo?: Element } = {},
 ) {
   let listener: ((event: MainToRendererEvent) => void) | null = null;
@@ -40,6 +41,7 @@ function mountPanel(
     canGoForward: true,
   });
   const api = {
+    updateSettings: vi.fn().mockResolvedValue(createInitialSnapshot()),
     browserOpen,
     browserOpenVisualization: vi.fn().mockResolvedValue({
       url: '',
@@ -83,6 +85,35 @@ function mountPanel(
 }
 
 describe('BrowserPanel', () => {
+  it('saves only bookmark preferences and opens a bookmark in the owning agent and browser pane', async () => {
+    const appState = useAppState();
+    appState.snapshot.value = createInitialSnapshot();
+    const { wrapper, api } = mountPanel({ agentId: 'agent-2', browserId: 'second-tab' });
+    await flushPromises();
+    await wrapper.get('input[aria-label="Browser address"]').setValue('https://example.com/');
+    await wrapper.get('form.browser-panel__address').trigger('submit');
+    await flushPromises();
+    const updated = createInitialSnapshot();
+    updated.general.browserBookmarks = [{ title: 'Example preview', url: 'https://example.com/' }];
+    api.updateSettings.mockResolvedValue(updated);
+    await wrapper.get('button[aria-label="Bookmark this page"]').trigger('click');
+    await flushPromises();
+    const page = new DOMWrapper(document.body);
+    await page.get('input[aria-label="Bookmark name"]').setValue('Example preview');
+    await page.get('form[id^="bookmark-"]').trigger('submit');
+    await flushPromises();
+    expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { browserBookmarks: updated.general.browserBookmarks } });
+    expect(wrapper.get('button[aria-label="Edit bookmark"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[aria-label="Bookmarks"]').trigger('click');
+    await flushPromises();
+    await page.get('.browser-bookmarks__open').trigger('click');
+    await flushPromises();
+    expect(api.browserNavigate).toHaveBeenLastCalledWith('agent-2', 'second-tab', 'https://example.com/');
+    await wrapper.setProps({ visualization: { path: '/repo/chart.html', title: 'Chart' } });
+    expect(wrapper.find('[aria-label="Bookmarks"]').exists()).toBe(false);
+    wrapper.unmount();
+    appState.snapshot.value = createInitialSnapshot();
+  });
   it.each([false, true])('recovers model navigation after initial failure (manual recovery: %s)', async (manualRecovery) => {
     const { api, emitDomReady, wrapper } = mountPanel({ initialUrl: 'http://127.0.0.1:57540' }, { deferDomReady: true });
     api.browserOpen.mockRejectedValueOnce(new Error('ERR_CONNECTION_REFUSED'));
