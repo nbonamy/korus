@@ -9,6 +9,7 @@ import { isThreadFlags } from './thread-flags';
 import { isAppTextDescriptor } from './app-text';
 import { isApprovalPreset, isApprovalsReviewer } from './approval-presets';
 import { spokenAnnouncementVoices } from './contracts';
+import { isInteractivePlan } from './interactive-plan';
 import { isPlanReview } from './plan-review';
 import { isVisualization, isVisualizeSession } from './visualize';
 import { isCodeReviewSession, isCodeReviewPreferences } from './code-review';
@@ -124,6 +125,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'gitDiffTarget', isAgentGitDiffTarget) &&
     optional(value, 'contextUsage', isAgentContextUsage) &&
     optional(value, 'plan', isThreadPlan) &&
+    optional(value, 'interactivePlan', isInteractivePlan) &&
     optional(value, 'planReview', isPlanReview) &&
     optional(value, 'codeReview', isCodeReviewSession) &&
     optional(value, 'threadFlags', isThreadFlags) &&

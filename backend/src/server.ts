@@ -65,6 +65,8 @@ import { AgentHandoffService } from './agents/agent-handoff-service';
 import { requestHandoffNote } from './agents/handoff-note';
 import { handoffInProgress, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
+import { InteractivePlanService } from './agents/interactive-plan-service';
+import { isInteractivePlanResponse, type PublishInteractivePlan } from '@workspace/core/interactive-plan';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
@@ -181,6 +183,18 @@ export class AppBackendServer {
   private readonly clientPreferences: ClientPreferencesService;
   private readonly agentPrompts: AgentPromptManager;
   private readonly planReviews: AgentPlanReviewService;
+  private readonly interactivePlans: InteractivePlanService;
+
+  publishInteractivePlan(agentId: string, input: PublishInteractivePlan) {
+    const agent = this.snapshot.agents.find(a => a.id === agentId);
+    if (!agent) throw new Error('Unknown agent.');
+    return this.interactivePlans.publish(agent, input);
+  }
+  readInteractivePlan(agentId: string) {
+    const agent = this.snapshot.agents.find(a => a.id === agentId);
+    if (!agent) throw new Error('Unknown agent.');
+    return this.interactivePlans.read(agent);
+  }
   private readonly threadFlags: AgentThreadFlagService;
   private readonly agentConversations: AgentConversationService;
   private readonly delegatedWorkReports: DelegatedWorkReportPort;
@@ -341,6 +355,11 @@ export class AppBackendServer {
         await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt);
       },
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
+    });
+    this.interactivePlans = new InteractivePlanService({
+      persist: () => this.persistSnapshotOnly(),
+      publish: () => this.emitEvent({ type: 'snapshot.updated', payload: this.snapshot }),
+      submit: (agent, prompt) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode: true }),
     });
     this.planReviews = new AgentPlanReviewService({
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
@@ -1755,6 +1774,16 @@ export class AppBackendServer {
             ...this.snapshot.general.providerApprovalDefaults, [agent.backend]: mode,
           };
           return this.persistAndEmitSnapshot();
+        });
+      }
+      case backendMethods.agentInteractivePlanRespond: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        if (!isInteractivePlanResponse(params.response)) throw new Error('Invalid plan response.');
+        const response = params.response;
+        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async agent => {
+          await this.interactivePlans.respond(agent, response);
+          return this.snapshot;
         });
       }
       case backendMethods.agentPlanReviewRespond: {

@@ -425,6 +425,26 @@ The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
 
+## Interactive planning
+
+Interactive plans are app-owned artifacts bound to an agent, provider conversation,
+plan ID and revision. Structured claims, text exhibits and decision options generate
+an HTML page using an app-owned runtime; agent-authored HTML never executes. The
+upstream [html-plan](https://github.com/anthropics/claude-plugins-community/tree/main/html-plan)
+reference is Apache-2.0 licensed and uses localStorage plus copied Markdown feedback.
+Korus implements its own runtime to keep persistence and feedback on the owning host.
+
+Answers use optimistic versions, persist independently of submission and never carry
+forward to a revised document. Revision history retains earlier answers. Feedback is
+an explicit Plan-mode prompt, distinct from native plan review acceptance, Mission
+progression and implementation authorization. Persisted submission intent prevents
+an uncertain delivery from being retried automatically after a crash.
+
+The HTML frame has an opaque sandbox origin with scripts enabled only for the trusted
+runtime. CSP denies network, nested frames, forms and external assets. Its sole bridge
+message contains validated answers; the host checks the exact frame, nonce, agent,
+plan and revision. Submission and exports belong to host controls, never frame messages.
+
 ## Theming
 
 Components never import fixed colors. Themes are semantic tokens written as CSS

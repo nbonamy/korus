@@ -370,6 +370,7 @@ export type Agent = {
   contextUsage?: AgentContextUsage;
   plan?: ThreadPlan;
   planReview?: import('./plan-review').PlanReview;
+  interactivePlan?: import('./interactive-plan').InteractivePlan;
   /** Durable only while a review workflow is active; removed when the user finishes it. */
   codeReview?: import('./code-review').CodeReviewSession;
   threadFlags?: import('./thread-flags').ThreadFlags;
@@ -823,6 +824,7 @@ export type AppApi = {
   discardCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   reviewCodeAgain(agentId: string, sessionId: string): Promise<AppSnapshot>;
   respondToThreadFlag(agentId: string, response: import('./thread-flags').ThreadFlagResponse): Promise<AppSnapshot>;
+  respondToInteractivePlan(agentId: string, response: import('./interactive-plan').InteractivePlanResponse): Promise<AppSnapshot>;
   respondToPlanReview(agentId: string, response: import('./plan-review').PlanReviewResponse): Promise<AppSnapshot>;
   getSnapshot(): Promise<AppSnapshot>;
   getSnapshotState(): Promise<RendererSnapshotState>;

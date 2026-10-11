@@ -74,6 +74,7 @@ export const backendMethods = {
   agentPermissionModeUpdate: 'agent/permissionMode/update',
   agentPromptSend: 'agent/prompt/send',
   agentPlanReviewRespond: 'agent/planReview/respond',
+  agentInteractivePlanRespond: 'agent/interactivePlan/respond',
   agentThreadFlagRespond: 'agent/threadFlag/respond',
   agentPromptSteer: 'agent/prompt/steer',
   agentQueuedPromptDelete: 'agent/queuedPrompt/delete',

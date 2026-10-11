@@ -29,6 +29,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   discardCodeReview: [backendMethods.agentCodeReviewDiscard, named('agentId', 'sessionId')],
   reviewCodeAgain: [backendMethods.agentCodeReviewAgain, named('agentId', 'sessionId')],
   respondToThreadFlag: [backendMethods.agentThreadFlagRespond, named('agentId', 'response')],
+  respondToInteractivePlan: [backendMethods.agentInteractivePlanRespond, named('agentId', 'response')],
   respondToPlanReview: [backendMethods.agentPlanReviewRespond, named('agentId', 'response')],
   listSshHosts: [backendMethods.connectionsSshHostsList],
   addSshConnection: [backendMethods.connectionsSshCreate, named('input')],

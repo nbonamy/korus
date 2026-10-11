@@ -105,6 +105,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string; response: import('../thread-flags').ThreadFlagResponse };
     result: AppSnapshot;
   };
+  [backendMethods.agentInteractivePlanRespond]: {
+    params: { agentId: string; response: import('../interactive-plan').InteractivePlanResponse };
+    result: AppSnapshot;
+  };
   [backendMethods.agentPlanReviewRespond]: {
     params: { agentId: string; response: import('../plan-review').PlanReviewResponse };
     result: AppSnapshot;
