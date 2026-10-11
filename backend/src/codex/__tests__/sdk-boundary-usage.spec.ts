@@ -113,3 +113,38 @@ it("reads account-wide usage only on explicit request, keeps decimal strings exa
     await driver.close();
   }
 });
+
+it("treats the SDK non-retrying error as terminal without counting retriable errors as new executions", async () => {
+  const { driver, conversation } = codexSdkFixture();
+  const observations: ExecutionObservation[] = [];
+  driver.onUsage((e) => observations.push(e));
+  try {
+    await driver.loadConversation(sdkAgent());
+    const c = conversation("conversation-a");
+    c.emit({
+      ...metadata,
+      type: "turn.started",
+      payload: { startedAt: metadata.occurredAt },
+    } as CodexConversationEvent);
+    const error = {
+      message: "CANARY_private_error",
+      codexErrorInfo: null,
+      additionalDetails: null,
+    };
+    c.emit({
+      ...metadata,
+      type: "turn.error",
+      payload: { error, willRetry: true },
+    } as CodexConversationEvent);
+    expect(observations).toHaveLength(1);
+    c.emit({
+      ...metadata,
+      type: "turn.error",
+      payload: { error, willRetry: false },
+    } as CodexConversationEvent);
+    expect(observations.map((e) => e.phase)).toEqual(["started", "failed"]);
+    expect(JSON.stringify(observations)).not.toContain("CANARY");
+  } finally {
+    await driver.close();
+  }
+});

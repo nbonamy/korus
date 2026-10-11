@@ -2857,11 +2857,14 @@ function selectAgentFromCockpit(payload: { agentId: string; teamId: string }): v
 }
 
 function selectAgentFromPalette(payload: { agentId: string; teamId: string }): void {
+  // Only the built-in selection action is observed; agent IDs and the search query stay local.
+  const operation=appApi?.beginUsageFeature('palette.action').catch(()=>null);
   activeSurface.value = 'agent';
   pendingComposerFocusAgentId.value = payload.agentId;
   if (payload.teamId === activeTeam.value?.id) split.select(payload.agentId);
   if (payload.teamId !== activeTeam.value?.id) emit('select-team', payload.teamId);
   emit('select-agent', payload.agentId);
+  void operation?.then(id=>id?appApi?.finishUsageFeature(id,'succeeded'):undefined).catch(()=>undefined);
 }
 
 function openResumeSession(agentId: string): void {

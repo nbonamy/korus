@@ -14,8 +14,10 @@
 
     <main class="settings-view__content">
       <div class="settings-view__panel">
+        <TelemetryPrivacyPanel v-if="activeTab === 'privacy'" />
+        <UsagePanel v-else-if="activeTab === 'usage'" />
         <SettingsGeneralPanel
-          v-if="activeTab === 'general'"
+          v-else-if="activeTab === 'general'"
           :choose-source-folder="chooseSourceFolder"
           :daemon-status="daemonStatus"
           :daemon-status-error="daemonStatusError"
@@ -144,6 +146,8 @@
 import { computed } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
+import TelemetryPrivacyPanel from './TelemetryPrivacyPanel.vue';
+import UsagePanel from './UsagePanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';

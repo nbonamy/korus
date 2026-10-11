@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, it, expect, vi } from "vitest";
@@ -334,4 +334,37 @@ it("replaces late local consumption and invalidates it without adding turns or u
   ).toBe(false);
   await restored.close();
   await reporter.close();
+});
+
+it("fails closed on invalid configuration, oversized storage and persistence failure without preventing app startup or shutdown", async () => {
+  for (const endpoint of [
+    "bad endpoint",
+    "https://secret:password@invalid.test/reports",
+    "http://invalid.test/reports",
+  ]) {
+    const reporter = new TelemetryReporter(await file("queue"), {
+      ...config,
+      endpoint,
+    });
+    await reporter.load();
+    await reporter.choose("desktop", { enabled: true, disclosure: 1 });
+    expect(reporter.allowed("desktop")).toBe(false);
+    await reporter.close();
+  }
+  const oversized = await file("oversized");
+  await writeFile(oversized, " ".repeat(1024 * 1024 + 1));
+  const bounded = new TelemetryReporter(oversized, config);
+  await bounded.load();
+  expect(bounded.privacy("desktop")).toMatchObject({
+    choice: null,
+    active: false,
+    pending: [],
+  });
+  await bounded.close();
+  const parent = await file("not-directory");
+  await writeFile(parent, "blocked");
+  const failing = new TelemetryReporter(path.join(parent, "queue"), config);
+  await expect(failing.load()).resolves.toBeUndefined();
+  expect(failing.allowed("desktop")).toBe(false);
+  await expect(failing.close()).resolves.toBeUndefined();
 });

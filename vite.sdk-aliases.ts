@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const sdkSourceRoot = fileURLToPath(new URL('../codex-app-sdk', import.meta.url));
+export const sdkSourceRoot = process.env.CODEX_APP_SDK_SOURCE_ROOT
+  ? path.resolve(process.env.CODEX_APP_SDK_SOURCE_ROOT)
+  : fileURLToPath(new URL('../codex-app-sdk', import.meta.url));
 
 export const sdkSourceAliases = {
   '@codex-app-sdk/backend/protocol': path.join(sdkSourceRoot, 'packages/backend/src/codex/index.ts'),

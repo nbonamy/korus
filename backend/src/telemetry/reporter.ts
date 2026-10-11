@@ -59,22 +59,26 @@ export class TelemetryReporter {
     private readonly deliver: typeof fetch = fetch,
     private readonly random: () => number = Math.random,
   ) {
-    this.store = new JsonStore(file);
-    if (config.endpoint) {
-      const url = new URL(config.endpoint);
-      if (
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !(
-          url.protocol === "https:" ||
-          (config.synthetic &&
-            url.protocol === "http:" &&
-            ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
+    this.store = new JsonStore(file, telemetryLimits.queueBytes);
+    try {
+      if (config.endpoint) {
+        const url = new URL(config.endpoint);
+        if (
+          url.username ||
+          url.password ||
+          url.search ||
+          url.hash ||
+          !(
+            url.protocol === "https:" ||
+            (config.synthetic &&
+              url.protocol === "http:" &&
+              ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
+          )
         )
-      )
-        throw new Error("Invalid telemetry endpoint.");
+          this.closed = true;
+      }
+    } catch {
+      this.closed = true;
     }
   }
   async load(): Promise<void> {
@@ -112,7 +116,12 @@ export class TelemetryReporter {
         )
         .slice(-10000);
     this.prune();
-    await this.save();
+    try {
+      await this.save();
+    } catch {
+      this.closed = true;
+      this.state.queue = [];
+    }
   }
   start(): void {
     if (!this.timer && this.baseAllowed()) {
@@ -468,7 +477,7 @@ export class TelemetryReporter {
     this.generation++;
     if (this.timer) clearInterval(this.timer);
     this.controller?.abort();
-    await this.flight;
-    await this.store.close();
+    await this.flight?.catch(() => undefined);
+    await this.store.close().catch(() => undefined);
   }
 }

@@ -3,6 +3,17 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    telemetry: {privacy:'Privacy',usage:'Usage',reporting:'Share aggregate product usage',active:'Aggregate reporting is active.',inactive:'Uploads are disabled on this host.',
+      disclosure:`${product.name} uses coarse daily feature counts, provider and public-model categories, turn outcomes, and supported token totals to improve the product. Reporting is enabled by default after this disclosure when the reviewed rollout is active. You can turn it off in Settings > Privacy.`,
+      delivery:'Reports contain no prompts, responses, file paths, repository names, credentials, or persistent user/device identifiers. Delivery infrastructure sees network metadata such as your IP address transiently.',
+      optOut:'Turning reporting off stops collection and purges unsent reports. Sent aggregates cannot be located or deleted individually without tracking you. Pending reports expire after 7 days; daily aggregates are retained for 90 days and monthly aggregates for 12 months. Local usage statistics continue to work.',
+      continue:'Continue',pending:'Inspect pending reports',error:'Could not load or save usage settings. Try again.',local:'Local statistics stay on this host and work with product telemetry disabled.',
+      from:'From',to:'To',group:'Group by',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',all:'All',refresh:'Refresh',coverage:'Recorded history since {since}, limited to 90 days or 10,000 turns. Earlier history is unavailable.',
+      semantics:'Tokens: total / input / output / cache read / cache write / reasoning. Input includes cache reads; Claude input also includes cache creation. Do not add cache categories to input. Reasoning is included in output. Claude consumption covers the main agent loop; auxiliary calls are excluded. Unavailable consumption is never treated as zero.',
+      turns:'Started turns',outcomes:'Completed / failed / interrupted / active',tokens:'Tokens',measured:'Measured / started',unknown:'Unavailable',empty:'No recorded turns match these filters.',
+      account:'Account usage',accountScope:'Account-wide provider history, separate from local agent totals and filters. Select a provider above, then load explicitly. This data is never uploaded. Daily history shows up to 90 days.',loadAccount:'Load account usage',accountUnknown:'Account usage is unavailable for this provider or runtime.',accountDays:'Account daily history',value:'Value',date:'Date',lifetimeTokens:'Lifetime tokens',peakDailyTokens:'Peak daily tokens',longestRunningTurnSec:'Longest turn (seconds)',currentStreakDays:'Current streak (days)',longestStreakDays:'Longest streak (days)',
+      separate:'Context occupancy and account limits are shown separately in the conversation and provider settings. They are not consumed-token totals.',
+    },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',

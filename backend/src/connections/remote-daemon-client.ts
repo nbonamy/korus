@@ -176,7 +176,7 @@ class RemoteDaemonClient {
 
     const requestTimeoutMs = backendRequestTimeoutMs(method);
     const id = this.nextRequestId++;
-    const message = createAppRpcRequest(id, method, params);
+    const message = createAppRpcRequest(id, method, { ...(params as Record<string,unknown> ?? {}), _clientId:'remote-unsynchronized' });
     const result = new Promise<Result>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);

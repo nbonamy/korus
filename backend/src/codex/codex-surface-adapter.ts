@@ -1098,6 +1098,9 @@ export class CodexSurfaceAgentAdapter {
       const turnId=(event as unknown as {turnId?:string}).turnId;
       if(typeof turnId==='string') this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId,provider:'codex',phase:'usage',at:Date.parse(event.occurredAt),model:null,...consumption});
     }
+    if (event.type === 'turn.error' && !event.payload.willRetry) {
+      this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:'failed',at:Date.parse(event.occurredAt),model:null});
+    }
     if (event.type === 'turn.started' || event.type === 'turn.completed') {
       const observation:ExecutionObservation = {agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:event.type==='turn.started'?'started':event.payload.status==='inProgress'?'started':event.payload.status,at:Date.parse(event.occurredAt),model:null,...consumption,...(event.type==='turn.completed' && event.payload.durationMs!==null ? {durationMs:event.payload.durationMs}:{})};
       this.emitUsage(observation);

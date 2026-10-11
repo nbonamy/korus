@@ -1,3 +1,5 @@
+import { appApi } from '../../platform-api';
+import { setElectronTestClient } from '../../test/client';
 import { product } from '@workspace/core/product';
 import { flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
@@ -533,6 +535,9 @@ describe('AppShell dialogs and commands', () => {
   });
 
   it('opens the agent palette with Command-K and switches teams for the selected unread agent', async () => {
+    const beginUsageFeature=vi.fn().mockResolvedValue('local-operation');
+    const finishUsageFeature=vi.fn().mockResolvedValue(undefined);
+    setElectronTestClient({beginUsageFeature,finishUsageFeature});
     const snapshot = createInitialSnapshot();
     snapshot.teams.push({
       id: 'team-skwad',
@@ -564,11 +569,14 @@ describe('AppShell dialogs and commands', () => {
     const palette = wrapper.getComponent({ name: 'AgentQuickOpen' });
     expect(palette.get('.agent-quick-open__copy strong').text()).toBe('Other Agent');
     await palette.get('input').setValue('skwad');
+    expect(beginUsageFeature).not.toHaveBeenCalled();
     await palette.get('input').trigger('keydown.enter');
     await nextTick();
 
     expect(wrapper.emitted('select-team')).toStrictEqual([['team-skwad']]);
     expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-other']]);
+    expect(appApi!.beginUsageFeature).toHaveBeenCalledWith('palette.action');
+    await flushPromises();expect(finishUsageFeature).toHaveBeenCalledExactlyOnceWith('local-operation','succeeded');
     expect(wrapper.findComponent({ name: 'AgentQuickOpen' }).exists()).toBe(false);
   });
 

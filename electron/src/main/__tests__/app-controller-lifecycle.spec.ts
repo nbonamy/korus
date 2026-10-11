@@ -8,6 +8,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 
 const native = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
+  nativeOptions: undefined as unknown,
   exposed: new Map<string, unknown>(),
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn(), showMessageBoxSync: vi.fn(), showErrorBox: vi.fn() },
   shell: { openExternal: vi.fn(), openPath: vi.fn(), beep: vi.fn() },
@@ -15,6 +16,12 @@ const native = vi.hoisted(() => ({
   factory: vi.fn(), createWindow: vi.fn(), maintenance: vi.fn(), capture: vi.fn(),
   keyStart: vi.fn((_hotkey: string, _capture: () => void) => true), keyStop: vi.fn(), ready: false,
 }));
+vi.mock('@codex-app-sdk/electron', async importOriginal => {
+  const sdk = await importOriginal<typeof import('@codex-app-sdk/electron')>();
+  return { ...sdk, registerCodexNativeIpc: (...args: Parameters<typeof sdk.registerCodexNativeIpc>) => {
+    native.nativeOptions = args[1]; return sdk.registerCodexNativeIpc(...args);
+  } };
+});
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   return {
@@ -160,6 +167,43 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('keeps stale privacy reads and disabled native completion from restoring dictation observation permission', async () => {
+    const { backend } = setup();
+    let resolve!: (value: unknown) => void;
+    const pending = new Promise(resolveRead => { resolve = resolveRead; });
+    let stale = true;
+    backend.request.mockImplementation(async method => {
+      if(method === 'telemetry/privacy/get') return stale ? pending : { active: true };
+      if(method === 'telemetry/privacy/set') return { active: false };
+      if(method === 'telemetry/feature/begin') return 'ephemeral';
+      if(method === 'telemetry/feature/finish') return null;
+      throw Error('Unexpected request');
+    });
+    const observe=(native.nativeOptions as { onSpeechOperation: import('../usage-feature').SpeechOperationObserver }).onSpeechOperation;
+    const read=invoke(ipcChannels.getTelemetryPrivacy);
+    await invoke(ipcChannels.setTelemetryPrivacy, { enabled: false, disclosure: 1 });
+    resolve({ active: true }); await read;
+    expect(observe('start')).toBeUndefined();
+    stale = false; await invoke(ipcChannels.getTelemetryPrivacy);
+    const finish=observe('start')!;
+    await invoke(ipcChannels.setTelemetryPrivacy, { enabled: false, disclosure: 1 });
+    finish('succeeded'); await Promise.resolve(); await Promise.resolve();
+    expect(backend.request).not.toHaveBeenCalledWith('telemetry/feature/finish', expect.anything());
+  });
+
+  it('counts simulator control completion once without device/content metadata or passive status observation', async () => {
+    const { backend, state } = setup();
+    backend.request.mockImplementation(async method => method === 'telemetry/feature/begin' ? 'local-only' : null);
+    const agentId=state.snapshot.agents[0]!.id;
+    await invoke(ipcChannels.mobileSimulator, agentId, { action: 'list' });
+    expect(backend.request).not.toHaveBeenCalled();
+    await invoke(ipcChannels.mobileSimulator, agentId, { action: 'attach', deviceId: 'phone' });
+    expect(backend.request.mock.calls).toEqual([
+      ['telemetry/feature/begin', { feature: 'simulator.execute' }],
+      ['telemetry/feature/finish', { operationId: 'local-only', outcome: 'succeeded' }],
+    ]);
+  });
+
   it('limits the simulator to local agents through IPC and revokes control on disconnect', async () => {
     const { controller, state, window, disconnect } = setup();
     const agentId = state.snapshot.agents[0]!.id;

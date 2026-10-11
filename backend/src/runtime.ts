@@ -1,3 +1,6 @@
+import { UsageService } from './telemetry/usage-service';
+import { UsageLedger } from './telemetry/usage-ledger';
+import { TelemetryReporter } from './telemetry/reporter';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -256,7 +259,17 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     runOnStart: true,
     run: () => pullRequestMonitor.check(),
   });
+  const localUsage=new UsageLedger(path.join(backendHomeDir(),'usage.json'));
+  const telemetry=new TelemetryReporter(path.join(backendHomeDir(),'telemetry.json'),{
+    rollout:process.env.APP_TELEMETRY_REVIEWED_ROLLOUT==='1', forceOff:process.env.APP_TELEMETRY_FORCE_OFF==='1',
+    environment:process.env.APP_TELEMETRY_DESKTOP==='1' && !process.env.CI && process.env.NODE_ENV!=='test' && process.env.NODE_ENV!=='development',
+    endpoint:process.env.APP_TELEMETRY_ENDPOINT??null,version:options.version,channel:'stable',
+    platform:process.platform==='darwin'?'macos':process.platform==='win32'?'windows':'linux',client:'daemon',
+  });
+  await localUsage.load();await telemetry.load();telemetry.start();
+  const usage=new UsageService(localUsage,telemetry,id=>snapshot.agents.find(a=>a.id===id));
   server = new AppBackendServer({
+    usage,
     documents,
     tasks,
     providerSetup,

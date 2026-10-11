@@ -12,6 +12,8 @@
           <SettingsIcon aria-hidden="true" />
           <span>{{ $t('surface.settingsSidebar.general') }}</span>
         </el-menu-item>
+        <el-menu-item index="privacy"><SettingsIcon aria-hidden="true" /><span>{{ $t('telemetry.privacy') }}</span></el-menu-item>
+        <el-menu-item index="usage"><SettingsIcon aria-hidden="true" /><span>{{ $t('telemetry.usage') }}</span></el-menu-item>
         <el-menu-item index="appearance">
           <PaletteIcon aria-hidden="true" />
           <span>{{ $t('surface.settingsSidebar.appearance') }}</span>
@@ -82,7 +84,7 @@ const emit = defineEmits<{
 }>();
 
 function selectTab(tab: string): void {
-  if (tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
+  if (tab === 'privacy' || tab === 'usage' || tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
     emit('select', tab);
   }
 }
