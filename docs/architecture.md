@@ -70,8 +70,11 @@ The mobile companion has an explicit local demo connector behind a narrow
 workspace/read/send port. It composes the shared conversation pane from authoritative
 provider snapshots, without a transcript reducer. Native keyboard dictation supplies
 text through the existing composer; the host adapter owns native lifecycle events.
-Drafts are scoped to laptop and agent for the mounted session. Reconnect reads state
-and never replays prompts; uncertain delivery blocks resubmission. Demo pairing and
+Drafts and delivery uncertainty are scoped to laptop and agent and persisted through
+the native vault: iOS Keychain entries are device-only and accessible while unlocked;
+Android records are encrypted with an Android Keystore AES-GCM key and excluded from
+backup. Prompt intent is saved before dispatch; unavailable storage prevents sending.
+Reconnect reads state and never replays prompts; uncertain delivery blocks resubmission. Demo pairing and
 revocation are local lifecycle behavior, not network authentication.
 
 Network pairing requires a separate authenticated, revocable TLS gateway, a laptop

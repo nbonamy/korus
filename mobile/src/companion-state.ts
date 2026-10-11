@@ -1,8 +1,9 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
 import type { CodexComposerState } from '@codex-app-sdk/vue';
 import type { CompanionConnector, CompanionConversation, CompanionSession, CompanionWorkspace } from './companion-port';
+import { restoreDraftRecord, type DraftStore } from './protected-storage';
 
-export function createCompanionState(connector: CompanionConnector) {
+export function createCompanionState(connector: CompanionConnector, store?: DraftStore) {
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
   const laptopId = ref('');
@@ -14,6 +15,23 @@ export function createCompanionState(connector: CompanionConnector) {
   const drafts = reactive<Record<string, CodexComposerState>>({});
   const uncertain = reactive<Record<string, boolean>>({});
   const sending = reactive<Record<string, boolean>>({});
+  const storageReady = ref(!store);
+  let storageFailed = false;
+  let writes = Promise.resolve();
+  const ready = store ? store.read().then((record) => {
+    const restored = restoreDraftRecord(record);
+    Object.assign(drafts, restored.drafts);
+    Object.assign(uncertain, restored.uncertain);
+    storageReady.value = true;
+  }).catch(() => { storageFailed = true; error.value = 'mobile.errors.storage'; }) : Promise.resolve();
+  function persist() {
+    if (!store) return Promise.resolve();
+    const record = JSON.parse(JSON.stringify({ drafts, uncertain }));
+    const pending = writes.then(() => store.write(record));
+    // Each write keeps its rejection for callers; the queue remains usable after a transient lock.
+    writes = pending.catch(() => { storageFailed = true; error.value = 'mobile.errors.storage'; });
+    return pending.then(() => { storageFailed = false; });
+  }
   let session: CompanionSession | null = null;
   let unsubscribe = () => {};
   let connectionEpoch = 0;
@@ -24,7 +42,7 @@ export function createCompanionState(connector: CompanionConnector) {
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && Boolean(agent.value && conversation.value)
-    && !loading.value && !sending[key()] && !deliveryUnknown.value);
+    && storageReady.value && !loading.value && !sending[key()] && !deliveryUnknown.value);
 
   function closeSession() {
     ++connectionEpoch;
@@ -43,6 +61,9 @@ export function createCompanionState(connector: CompanionConnector) {
     laptopId.value = id;
     status.value = reconnecting ? 'reconnecting' : 'connecting';
     error.value = '';
+    if (store) await ready;
+    if (epoch !== connectionEpoch) return;
+    if (!storageReady.value) { status.value = 'error'; error.value = 'mobile.errors.storage'; return; }
     let opened: CompanionSession | null = null;
     try {
       opened = await connector.connect(id);
@@ -86,7 +107,10 @@ export function createCompanionState(connector: CompanionConnector) {
     }
   }
   function updateDraft(next: CodexComposerState) {
-    if (agentId.value) drafts[key()] = { ...next };
+    if (agentId.value && storageReady.value) {
+      drafts[key()] = { ...next };
+      void persist().catch(() => {});
+    }
   }
   async function submit(prompt: string) {
     if (!canSend.value || !prompt.trim() || !session) return;
@@ -99,13 +123,20 @@ export function createCompanionState(connector: CompanionConnector) {
     if (!drafts[draftKey]?.text) drafts[draftKey] = sentDraft;
     sending[draftKey] = true;
     error.value = '';
+    // Persist the intent before dispatch. A killed process cannot silently replay an unknown send.
+    uncertain[draftKey] = true;
+    try { await persist(); }
+    catch { uncertain[draftKey] = false; sending[draftKey] = false; return; }
     try {
       await capturedSession.sendPrompt(target, prompt);
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
+      uncertain[draftKey] = false;
+      await persist();
       if (epoch === selectionEpoch) await selectAgent(target);
     } catch {
       uncertain[draftKey] = true;
-      if (epoch === selectionEpoch) error.value = 'mobile.errors.deliveryUnknown';
+      if (epoch === selectionEpoch) error.value = storageFailed ? 'mobile.errors.storage' : 'mobile.errors.deliveryUnknown';
+      await persist().catch(() => {});
     } finally {
       sending[draftKey] = false;
     }

@@ -3,6 +3,47 @@ import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
 
 describe('companion state', () => {
+  it('restores drafts and uncertain delivery after process restart without resending', async () => {
+    let saved: unknown = null;
+    const store = { read: vi.fn(async () => saved), write: vi.fn(async (value: unknown) => { saved = structuredClone(value); }) };
+    const connector = createDemoConnector();
+    const connect = connector.connect;
+    const send = vi.fn().mockRejectedValue(new Error('lost acknowledgement'));
+    connector.connect = async (id) => ({ ...await connect(id), sendPrompt: send });
+    const first = createCompanionState(connector, store);
+    await first.connect('demo-laptop');
+    await first.selectTeam('demo-team');
+    await first.selectAgent('demo-agent');
+    first.updateDraft({ text: 'Remember this', selectionStart: 12, selectionEnd: 12 });
+    await first.submit('Remember this');
+    first.dispose();
+    const restored = createCompanionState(connector, store);
+    await restored.connect('demo-laptop');
+    await restored.selectTeam('demo-team');
+    await restored.selectAgent('demo-agent');
+    expect(restored.draft.value.text).toBe('Remember this');
+    expect(restored.deliveryUnknown.value).toBe(true);
+    await restored.submit('Remember this');
+    expect(send).toHaveBeenCalledTimes(1);
+    restored.dispose();
+  });
+
+  it('does not dispatch when protected storage fails before admission', async () => {
+    const connector = createDemoConnector();
+    const connect = connector.connect;
+    const send = vi.fn();
+    connector.connect = async (id) => ({ ...await connect(id), sendPrompt: send });
+    const state = createCompanionState(connector, { read: async () => null, write: async () => { throw new Error('locked'); } });
+    await state.connect('demo-laptop');
+    await state.selectTeam('demo-team');
+    await state.selectAgent('demo-agent');
+    state.updateDraft({ text: 'Keep locally', selectionStart: 12, selectionEnd: 12 });
+    await state.submit('Keep locally');
+    expect(send).not.toHaveBeenCalled();
+    expect(state.draft.value.text).toBe('Keep locally');
+    expect(state.error.value).toBe('mobile.errors.storage');
+    state.dispose();
+  });
   it('requires explicit demo pairing, scopes selection and drafts by laptop and agent, and revokes access', async () => {
     const connector = createDemoConnector();
     const state = createCompanionState(connector);

@@ -65,10 +65,11 @@ import { agentStatusText } from '@workspace/vue/shared/agent-display';
 import { createCompanionState } from './companion-state';
 import type { CompanionConnector } from './companion-port';
 import type { MobileHost } from './mobile-host';
+import type { DraftStore } from './protected-storage';
 
-const props = defineProps<{ connector: CompanionConnector; host: MobileHost }>();
+const props = defineProps<{ connector: CompanionConnector; host: MobileHost; draftStore?: DraftStore }>();
 const { t } = useI18n();
-const state = createCompanionState(props.connector);
+const state = createCompanionState(props.connector, props.draftStore);
 provide(backendChoicesKey, computed(() => [...new Set(state.workspace.value.agents.map((a) => a.backend))]));
 const selectedLaptop = ref(props.connector.laptops[0]?.id ?? '');
 const hasPairing = computed(() => !['unpaired', 'revoked'].includes(state.status.value) && state.workspace.value.teams.length > 0);

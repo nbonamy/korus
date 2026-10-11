@@ -11,11 +11,14 @@ import MobileShell from './MobileShell.vue';
 import { createDemoConnector } from './demo-connector';
 import { createMobileHost } from './mobile-host';
 import { companionMessages } from './messages';
+import { Capacitor } from '@capacitor/core';
+import { createNativeDraftStore } from './protected-storage';
 
 document.documentElement.dataset.platform = 'other';
 i18n.global.mergeLocaleMessage('en', companionMessages);
 applyAppTheme({ id: 'app-light', mode: 'system', uiFontSize: 15, chatFontSize: 16, codeFontSize: 13 });
 const removeAppearance = subscribeToSystemAppearance();
-const app = createApp(MobileShell, { connector: createDemoConnector(), host: createMobileHost() }).use(ElementPlus).use(i18n);
+const app = createApp(MobileShell, { connector: createDemoConnector(), host: createMobileHost(),
+  draftStore: Capacitor.isNativePlatform() ? createNativeDraftStore() : undefined }).use(ElementPlus).use(i18n);
 app.mount('#app');
 window.addEventListener('pagehide', () => { app.unmount(); removeAppearance(); }, { once: true });
