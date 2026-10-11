@@ -11,6 +11,7 @@ type CommandRunner = {
 
 export type GitWorktreeCreateInput = CreateSourceWorktreeInput & {
   startPoint?: string;
+  requireNewBranch?: boolean;
 };
 
 type GitWorktreeCreateResult = {
@@ -58,6 +59,7 @@ export async function createGitWorktree(
 
   const worktreePath = input.destinationPath?.trim() || suggestedSourceWorktreePath(repoPath, branchName);
   const localBranch = await branchExists(runner, repoPath, `refs/heads/${branchName}`);
+  if (localBranch && input.requireNewBranch) throw new Error('That branch already exists.');
   if (localBranch) {
     await runner.run('git', ['worktree', 'add', worktreePath, branchName], { cwd: repoPath });
     if (input.startPoint) {
