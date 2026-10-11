@@ -696,6 +696,9 @@ export const surfaceMessages = {
     "unknown": "Unknown"
   },
   "markdownPanel": {
+    "outline": "Outline",
+    "documentOutline": "Document outline",
+    "headingLevel": "{title} (heading level {level})",
     "loadingMarkdown": "Loading markdown...",
     "noMarkdownContent": "No markdown content.",
     "unableToLoadMarkdown": "Unable to load markdown."
