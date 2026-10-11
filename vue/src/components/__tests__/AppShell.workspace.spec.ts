@@ -1303,6 +1303,24 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.text()).toContain('Generated');
   });
 
+  it('opens the owning interactive plan and keeps native approval accessible as a separate review', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'planning' };
+    agent.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'html-plan', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Interactive proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
+    const respondToPlanReview = vi.fn();
+    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, respondToPlanReview,
+      sidePanelRequest: { kind: 'markdown', purpose: 'plan', title: 'Plan', content: '# Native proposal' } } });
+    try {
+      expect(wrapper.find('iframe[title="Interactive proposal"]').exists()).toBe(true);
+      expect(respondToPlanReview).not.toHaveBeenCalled();
+      await wrapper.findAll('button').find(b => b.text() === 'Native plan review')!.trigger('click');
+      expect(wrapper.text()).toContain('Native proposal');
+      expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
+      expect(respondToPlanReview).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
   it.each(['codex', 'antigravity'] as const)('confirms a %s plan through the owning review action and closes its preview', async backend => {
     const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
     const snapshot = createInitialSnapshot();

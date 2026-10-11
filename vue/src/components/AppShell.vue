@@ -298,6 +298,7 @@
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
         :confirm-plan="confirmPlan"
+        :respond-to-interactive-plan="props.respondToInteractivePlan"
         :respond-to-plan-review="respondToPlanReview"
         :respond-to-thread-flag="respondToThreadFlag"
         :thread-flag-busy="threadFlagBusy"
@@ -838,6 +839,7 @@ const props = withDefaults(defineProps<{
   agentConversationFor?: (agentId: string) => AgentConversationView | null;
   agentConversationActions?: AgentConversationActions;
   sendPromptAction?: (prompt: string, options?: RendererSendPromptOptions) => Promise<void>;
+  respondToInteractivePlan?: (agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => Promise<import('@workspace/core/interactive-plan').InteractivePlan>;
   respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
   respondToThreadFlagAction?: (response: ThreadFlagResponse) => Promise<void>;
   deleteTurnAction?: (turnId: string) => Promise<void>;
@@ -3202,9 +3204,15 @@ watch(() => props.sidePanelRequest, (request) => {
   openSidePanelRequest(request);
 }, { immediate: true, flush: 'sync' });
 
+watch(() => props.snapshot.agents.map(agent => [agent.id, agent.interactivePlan?.id, agent.interactivePlan?.revision] as const), (plans, previous) => {
+  for (const [agentId, id, revision] of plans) {
+    if (id && !previous?.some(p => p[0] === agentId && p[1] === id && p[2] === revision)) openRightWorkspaceTab('plan', agentId);
+  }
+}, { immediate: true });
+
 watch(() => props.snapshot.agents.map((agent) => [agent.id, agent.planReview?.status] as const), (reviews) => {
   for (const [agentId, status] of reviews) {
-    if (status && status !== 'pending') closeRightWorkspaceTab(agentId, 'plan');
+    if (status && status !== 'pending' && !props.snapshot.agents.find(a => a.id === agentId)?.interactivePlan) closeRightWorkspaceTab(agentId, 'plan');
   }
 }, { immediate: true });
 

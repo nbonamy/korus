@@ -246,3 +246,10 @@ describe(`${product.name} web operations`, () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+it('preserves plan ownership, revision and explicit feedback action at the web bridge', async () => {
+  const request = vi.fn().mockResolvedValue({ agents: [] });
+  const response = { planId: 'plan', revision: 2, answerVersion: 3, action: 'save', answers: { choices: { section: 'manual' }, comments: { section: 'Add cancellation.' } } };
+  await expect(invokeAppWebOperation({ request }, 'respondToInteractivePlan', ['owner', response])).resolves.toStrictEqual({ agents: [] });
+  expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentInteractivePlanRespond, { agentId: 'owner', response });
+});

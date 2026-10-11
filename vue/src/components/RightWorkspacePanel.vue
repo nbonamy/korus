@@ -263,9 +263,19 @@
           <span>{{ $t('surface.rightWorkspacePanel.selectAFileFromTheExplorer') }}</span>
         </div>
 
+    <div v-if="activeTab === 'plan' && currentInteractivePlan && planPanel" class="interactive-plan-switch">
+      <button class="app-button" type="button" @click="nativePlanVisible = !nativePlanVisible">{{ $t(nativePlanVisible ? 'htmlPlan.interactive' : 'htmlPlan.native') }}</button>
+    </div>
+    <InteractivePlanPanel
+      v-if="tabs.includes('plan') && currentInteractivePlan"
+      v-show="activeTab === 'plan' && !nativePlanVisible"
+      :key="`${agent.id}:${currentInteractivePlan.id}:${currentInteractivePlan.revision}`"
+      :plan="currentInteractivePlan"
+      :respond="interactivePlanResponder"
+    />
     <PlanReviewPanel
       v-if="tabs.includes('plan') && planPanel"
-      v-show="activeTab === 'plan'"
+      v-show="activeTab === 'plan' && (!currentInteractivePlan || nativePlanVisible)"
       :panel="planPanel"
       :plan-updating="planUpdating"
       @cancel-plan="emit('cancelPlan')"
@@ -394,6 +404,8 @@ import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
 import ImagePreviewPanel from './ImagePreviewPanel.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
+import InteractivePlanPanel from './InteractivePlanPanel.vue';
+import { agentConversationId } from '@workspace/core/plan-review';
 import PlanReviewPanel from './PlanReviewPanel.vue';
 import RepositoryBacklogPanel from './RepositoryBacklogPanel.vue';
 import SourcePreviewPanel from './SourcePreviewPanel.vue';
@@ -436,6 +448,8 @@ const props = withDefaults(defineProps<{
   gitStatus?: AgentGitStatus | null;
   planPanel?: SidePanelMarkdownState | null;
   planUpdating?: boolean;
+  respondToInteractivePlan?: (agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => Promise<import('@workspace/core/interactive-plan').InteractivePlan>;
+
   diffPanels?: Partial<Record<RightWorkspaceDiffTab, RightWorkspaceDiffPanel>>;
   filePanels?: Partial<Record<RightWorkspaceFileTab, RightWorkspaceFilePanel>>;
   imagePanels?: Partial<Record<RightWorkspaceImageTab, RightWorkspaceImagePanel>>;
@@ -483,6 +497,18 @@ const props = withDefaults(defineProps<{
   deleteVisualization: async () => { throw new Error('Visualize is not available.'); },
   readVisualizationAsset: async () => { throw new Error('Visualize is not available.'); },
 });
+
+const interactivePlanResponder = computed(() => {
+  const agentId = props.agent.id;
+  const respond = props.respondToInteractivePlan;
+  return respond ? (response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => respond(agentId, response) : undefined;
+});
+const nativePlanVisible = ref(false);
+const currentInteractivePlan = computed(() => {
+  const plan = props.agent.interactivePlan;
+  return plan?.agentId === props.agent.id && plan.conversationId === agentConversationId(props.agent) ? plan : null;
+});
+watch(() => [props.agent.id, currentInteractivePlan.value?.id, currentInteractivePlan.value?.revision], () => { nativePlanVisible.value = false; });
 
 const codeReviewInstructions = defineModel<string>('codeReviewInstructions', { default: '' });
 const emit = defineEmits<{

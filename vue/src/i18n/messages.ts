@@ -3,6 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    htmlPlan: { deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', revision: 'Revision {revision}', interactive: 'Interactive plan', readable: 'Readable plan', native: 'Native plan review', copy: 'Copy plan', submit: 'Submit feedback', submitted: 'Feedback submitted · awaiting revision', submitting: 'Submitting…', saving: 'Saving…', saved: 'Answers saved', feedbackOnly: 'Feedback requests a revision. Implementation requires separate approval.', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',

@@ -119,8 +119,11 @@ describe("interactive planning lifecycle", () => {
   it("rejects wrong owners, conversations, unknown choices, malformed responses and conflicting windows", async () => {
     const f = fixture();
     await f.service.publish(f.agent, { document });
+    const foreign = f.snapshot.agents[1]!;
+    foreign.backendSession = { kind: "codex", threadId: "planning-conversation" };
+    foreign.interactivePlan = structuredClone(f.agent.interactivePlan);
     await expect(
-      f.service.respond(f.snapshot.agents[1]!, f.response()),
+      f.service.respond(foreign, f.response()),
     ).rejects.toThrow("belong");
     f.agent.backendSession = { kind: "codex", threadId: "other" };
     expect(() => f.service.read(f.agent)).toThrow("belong");

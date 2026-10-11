@@ -54,6 +54,7 @@
       :git-panel="effectiveGitReviewPanelFor(agent)"
       :git-status="snapshot.agentGitStatuses[agent.id] ?? null"
       :plan-panel="rightWorkspaceFor(agent.id).planPanel"
+      :respond-to-interactive-plan="props.respondToInteractivePlan"
       :plan-updating="isPlanPreviewUpdatingFor(agent.id)"
       :file-panels="rightWorkspaceFor(agent.id).filePanels"
       :image-panels="rightWorkspaceFor(agent.id).imagePanels"
@@ -200,6 +201,7 @@ const props = defineProps<{
   saveDocumentAs?: (agentId: string, tabId: string) => Promise<void>;
   closeRightWorkspaceTab: (agentId: string, tab: RightWorkspaceTab) => void;
   confirmPlan: () => void;
+  respondToInteractivePlan?: (agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => Promise<import('@workspace/core/interactive-plan').InteractivePlan>;
   respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
   respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
   threadFlagBusy: boolean;

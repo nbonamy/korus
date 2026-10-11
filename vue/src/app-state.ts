@@ -227,6 +227,15 @@ export function useAppState() {
     if (agent?.planReview?.status === 'pending') showPlanReview(agent.planReview.markdown);
   }, { immediate: true, flush: 'sync' });
 
+  async function respondToInteractivePlan(agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse): Promise<import('@workspace/core/interactive-plan').InteractivePlan> {
+    if (!appApi) throw new Error('App is unavailable.');
+    const next = await appApi.respondToInteractivePlan(agentId, response);
+    adoptBackgroundSnapshot(next);
+    const plan = next.agents.find(agent => agent.id === agentId)?.interactivePlan;
+    if (!plan) throw new Error('Plan is unavailable.');
+    return plan;
+  }
+
   async function respondToPlanReview(resolution: PlanReviewResolution, feedback?: string): Promise<void> {
     const agentId = snapshot.value.activeAgentId;
     if (agentId) await respondToPlanReviewForAgent(agentId, resolution, feedback);
@@ -615,6 +624,13 @@ export function useAppState() {
     const parsedGoalCommand = parseGoalSlashCommand(prompt);
     if (parsedGoalCommand) {
       await handleGoalSlashCommand(agentId, parsedGoalCommand);
+      return;
+    }
+
+    const htmlPlan = /^\/html-plan(?:\s+(.*))?$/s.exec(prompt.trim());
+    if (htmlPlan) {
+      setPlanModeForAgent(agentId, true);
+      await sendPromptForAgent(agentId, `${htmlPlan[1]?.trim() || 'Plan the change we discussed.'}\n\nCreate an interactive HTML plan. Load korus-html-plan with read-skill and publish it using publish-html-plan. Stop after planning; do not implement.`, submissionOptions);
       return;
     }
 
@@ -1722,6 +1738,7 @@ export function useAppState() {
     createSourceWorktree,
     previewAgentFile,
     getAgentGitDiff,
+    respondToInteractivePlan,
     respondToPlanReview,
     respondToPlanReviewForAgent,
     respondToThreadFlag,
