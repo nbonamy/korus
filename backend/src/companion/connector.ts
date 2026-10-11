@@ -15,6 +15,7 @@ const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method:
 export class CompanionOutboundConnector {
   private node: Libp2p | null = null;
   private stopped = true;
+  private reserving = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private attempts = 0;
   private relay = '';
@@ -42,7 +43,7 @@ export class CompanionOutboundConnector {
     }, { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
     this.node.addEventListener('connection:close', () => {
       if (!this.node?.getConnections().some((connection) => connection.remotePeer.toString() === relayPeerId)) {
-        this.connected = false; this.schedule(address.toString());
+        this.connected = false; if (!this.reserving) this.schedule(address.toString());
       }
     });
     await this.reserve(address.toString());
@@ -72,12 +73,16 @@ export class CompanionOutboundConnector {
     this.active.clear(); await node?.stop();
   }
   private async reserve(address: string) {
-    if (!this.node || this.stopped) return;
+    if (!this.node || this.stopped || this.reserving) return;
+    const node = this.node;
+    this.reserving = true;
     try {
-      if (this.node.status !== 'stopped') await this.node.stop();
-      await this.node.start();
+      if (node.status !== 'stopped') await node.stop();
+      await node.start();
+      if (this.stopped || this.node !== node) { await node.stop(); return; }
       this.connected = true; this.attempts = 0; await this.advertise();
     } catch { this.connected = false; this.schedule(address); }
+    finally { this.reserving = false; }
   }
   private schedule(address: string) {
     if (this.timer || this.stopped) return;

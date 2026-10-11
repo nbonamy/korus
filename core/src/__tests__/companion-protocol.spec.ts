@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CompanionFrameDecoder, companionFrameLimit, encodeCompanionFrame } from '../companion-protocol';
+import { CompanionFrameDecoder, companionFrameLimit, companionTarget, encodeCompanionFrame } from '../companion-protocol';
+import type { Agent } from '../contracts';
 
 describe('companion wire framing', () => {
+  it('keeps a session target stable when private provider connection metadata changes', () => {
+    const agent: Agent = { id: 'agent', teamId: 'team', name: 'Agent', backend: 'claude', folder: null,
+      status: { type: 'idle' }, createdAt: '', updatedAt: '', backendSession: { kind: 'claude', sessionId: 'session', transport: 'websocket', serverUrl: 'https://private.example' } };
+    const team = { id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'owner' };
+    const first = companionTarget('laptop', team, agent);
+    const changed = companionTarget('laptop', team, { ...agent, backendSession: { ...agent.backendSession!, kind: 'claude', sessionId: 'session', transport: 'stdio', serverUrl: 'https://other-private.example' } });
+    expect(changed).toEqual(first);
+    expect(first.locationId).toBe('owner'); expect(first.sessionId).not.toContain('private.example');
+  });
   it('decodes fragmented and coalesced UTF-8 frames without changing provider payloads', () => {
     const value = { id: 'one', payload: { text: 'été', revision: 3 } };
     const first = encodeCompanionFrame(value);

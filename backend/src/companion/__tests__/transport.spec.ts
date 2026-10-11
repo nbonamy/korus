@@ -19,7 +19,8 @@ afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.
 describe('encrypted companion circuit', () => {
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
-    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    const relayKey = await generateKeyPair('Ed25519');
+    const relay = await createCompanionRelay({ key: relayKey, listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
     stops.push(() => relay.stop());
     const address = relay.getMultiaddrs()[0]!.toString();
     const port = address.match(/\/tcp\/(\d+)/)![1];
@@ -43,6 +44,14 @@ describe('encrypted companion circuit', () => {
     expect(pairing.result.pendingId).toBeTruthy();
     expect(gateway.pendingRequests[0]?.peerId).toBe(phone.peerId.toString());
     await gateway.decide(pairing.result.pendingId, true, ['team'], true); await connector.advertise();
+    expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { teams: [{ name: 'Actual gateway team' }] } });
+    // Restarting the operator relay retains its pinned identity; the laptop makes
+    // a new outbound reservation and advertises its persisted device grant.
+    await relay.stop();
+    await expect.poll(() => connector.connected, { timeout: 3000 }).toBe(false);
+    const restarted = await createCompanionRelay({ key: relayKey, listen: `/ip4/127.0.0.1/tcp/${port}/ws`, hostIds: [hostId] });
+    stops.push(() => restarted.stop());
+    await expect.poll(() => connector.connected, { timeout: 12_000 }).toBe(true);
     expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { teams: [{ name: 'Actual gateway team' }] } });
     const wrong = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
     await expect(rpc(phone, `${address}/p2p-circuit/p2p/${wrong}`, 'snapshot.get', {})).rejects.toThrow();
