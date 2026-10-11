@@ -61,9 +61,24 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
+| `mobile` | bundled Capacitor iOS/Android companion entry and native host adapters | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
+
+The mobile companion has an explicit local demo connector behind a narrow
+workspace/read/send port. It composes the shared conversation pane from authoritative
+provider snapshots, without a transcript reducer. Native keyboard dictation supplies
+text through the existing composer; the host adapter owns native lifecycle events.
+Drafts are scoped to laptop and agent for the mounted session. Reconnect reads state
+and never replays prompts; uncertain delivery blocks resubmission. Demo pairing and
+revocation are local lifecycle behavior, not network authentication.
+
+Network pairing requires a separate authenticated, revocable TLS gateway, a laptop
+trust/bootstrap decision, protected iOS Keychain/Android Keystore credential storage,
+and prompt admission receipts. A private-network route provides reachability, not
+authorization. The loopback web host and daemon remain inaccessible to this client;
+arbitrary internet access requires an approved network or relay design.
 
 ## Conversation Ownership
 

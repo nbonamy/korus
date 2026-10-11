@@ -23,7 +23,7 @@ Every code change adds or updates tests for the behavior it changes; no small-ch
 exemption. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All five workspaces (`core`, `backend`, `vue`, `electron`, `web`) gate on exactly
+All six workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of
 exercised behavior, not a reason to invent a test. Leave no broad untested areas

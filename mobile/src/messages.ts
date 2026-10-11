@@ -1,0 +1,20 @@
+export const companionMessages = {
+  mobile: {
+    demo: 'Companion demo', title: 'Your agents, on your phone',
+    demoDescription: 'Explore teams and conversations in a local demo. Prompts stay on this device.',
+    laptop: 'Laptop', team: 'Team', agent: 'Agent', navigation: 'Conversation selection',
+    chooseTeam: 'Choose a team', chooseAgent: 'Choose an agent', openDemo: 'Open demo laptop',
+    disconnect: 'Disconnect', reconnect: 'Reconnect', forget: 'Forget laptop',
+    prompt: 'Send a prompt…', chooseConversation: 'Choose a team and agent to open a conversation.',
+    keyboardHint: 'Type or use dictation on your device keyboard.',
+    deliveryUnknown: 'This prompt will not be retried automatically. Verify delivery on the laptop.',
+    hostUnavailable: 'Native resume is unavailable. Reconnect manually after returning to the app.',
+    errors: { openLaptop: 'Could not open the demo laptop.',
+      loadConversation: 'Could not load this conversation. Try selecting the agent again.',
+      deliveryUnknown: 'Delivery is unknown. Check the laptop before sending this prompt again.',
+      revoke: 'Could not revoke the laptop pairing. Access on this device is closed.' },
+    connection: { unpaired: 'Choose a laptop', connecting: 'Connecting…', connected: 'Connected to demo laptop',
+      disconnected: 'Disconnected · draft preserved', reconnecting: 'Reconnecting · draft preserved',
+      revoked: 'Laptop forgotten', error: 'Connection failed' },
+  },
+};
