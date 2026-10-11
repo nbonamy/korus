@@ -273,3 +273,54 @@ manage MCP tools: treat it as a privileged control plane.
 - Keep the Korus MCP server loopback-only.
 - Standalone `daemon` must not import Electron; secret storage sits behind an
   abstract token-store port.
+
+## Local usage and product telemetry
+
+The owning daemon observes live provider execution through driver/SDK numeric
+seams. Its bounded local ledger is independent of product telemetry permission;
+history hydration, inherited forks and context occupancy never become consumed
+tokens. Claude consumption covers the SDK's per-turn main loop, excluding
+auxiliary calls. Output includes reasoning. Input includes cache reads and Claude cache creation;
+cache categories must not be added to input. Codex cache-write inclusion is
+unspecified. Codex consumption can be replaced or invalidated after completion
+and remains local-only. Unsupported consumption and execution models
+remain unknown. Account summaries and quotas are account-scoped local views.
+
+Product reports contain only finite daily numeric categories. Client disclosure,
+source permission, host permission, administrator policy and reviewed rollout
+configuration all gate collection and delivery. A permission transition aborts
+uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH actions
+use an unsynchronized source and cannot be exported. Later clients must add explicit
+permission synchronization rather than treating connection as consent. Reports
+carry random immutable batch IDs; local dedupe identities stay in local storage.
+
+The telemetry service has its own TLS origin, database and operator secret. It has
+no provider credentials, relay identity or execution authority. SQLite transactions
+couple batch dedupe and predefined aggregate increments. Daily buckets expire after
+90 days, monthly marginals after 12 months, batch IDs after 7 days. Backups must use
+the same retention ceiling and deletion policy. Operators read only completed-day,
+minimum-volume, coarse-bin independent marginals; filters cannot join dimensions or
+release suppressed cells. A rare category suppresses complementary marginals for
+the same day and metric, preventing subtraction across breakdowns. Report volume is not people. Public writers can poison
+aggregates; an embedded client secret would not establish authenticity.
+
+Build the isolated service with `npm run build:telemetry -w @workspace/backend`.
+Run its `start:telemetry` script with a private database location, an operator-token
+file containing at least 32 characters, and TLS key/certificate files configured
+through the `TELEMETRY_*` environment. Synthetic loopback testing can use
+`TELEMETRY_SYNTHETIC=1`; it cannot bypass TLS on a public interface. The operator
+page uses TLS-protected HTTP authentication and read APIs require the same secret.
+The application emits no request, payload, IP, User-Agent or referrer logs. Bound
+in-memory abuse counters expire after one minute. Delivery infrastructure still
+sees IPs transiently; proxy/CDN/APM logs must be disabled or explicitly minimized
+and disclosed. Rotate the operator secret by restarting the service. Monitor the
+health route without logging request metadata; cap disk, ingress and spending
+outside the process.
+
+Production activation requires approval of the default-on consent basis, privacy
+and store disclosures, endpoint ownership, all logging layers, retention/backups
+and operational budget. The daemon requires explicit reviewed-rollout, desktop
+runtime and endpoint configuration; headless/dev/test/CI and unconfigured remotes
+remain off. Administrator force-off overrides user choices. Rollback removes the
+rollout configuration or enables force-off, then restarts the daemon to purge its
+outbox. No telemetry upload credential or relay key belongs in application clients.

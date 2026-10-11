@@ -12,7 +12,9 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "build:telemetry": "vite build --config vite.telemetry.config.ts",
+    "start:telemetry": "node dist-telemetry/service.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.226",

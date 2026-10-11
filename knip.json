@@ -27,6 +27,9 @@
     },
     "web": {
       "entry": ["src/server/index.ts"]
+    },
+    "backend": {
+      "entry": ["vite.*.config.ts", "src/daemon.ts", "src/telemetry/service-entry.ts"]
     }
   }
 }
