@@ -210,6 +210,16 @@ backend locations.
 
 ## Source Repositories And Worktrees
 
+Branch transfers capture whole selected file paths against a source HEAD. The
+backend saves a private recovery journal under the repository's common Git
+directory and protects the captured tree with a private ref until delivery.
+Worktree setup and environment copying are disabled for transfers. Source cleanup
+requires both a destination commit and a persisted agent/task acceptance; newer
+source edits remain in place. Path cleanup holds the source index lock and retains
+source file inodes as private recovery copies, protecting edits through already-open
+file descriptors. Retry identity belongs to the transfer and durable
+task, so an uncertain provider start is inspected rather than replayed.
+
 The source folder is a backend-location convenience setting, not team membership
 and not an agent setting. It is auto-detected once on a fresh state; after the user
 clears or changes it, Korus never re-detects.

@@ -30,6 +30,8 @@ describe('agent Git IPC', () => {
   });
 
   it.each([
+    [ipcChannels.previewBranchCurrentWork, backendMethods.agentGitBranchWorkPreview, [], { folder: '/repo', head: 'head', snapshotId: 'snapshot', files: [] }],
+    [ipcChannels.branchCurrentWork, backendMethods.agentGitBranchWork, [{ confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature', paths: ['file.ts'], message: 'feat: work', prompt: 'Finish' }], { state: 'recovery', branchName: 'feature', folder: '/worktree', retainedPaths: ['file.ts'] }],
     [ipcChannels.getAgentGitWorkflow, backendMethods.agentGitWorkflowGet, [], { repository: 'repo' }],
     [ipcChannels.getAgentGitPrune, backendMethods.agentGitPruneGet, [], { repository: 'repo', baseBranch: 'main', groups: [], unavailableRemotes: [] }],
     [ipcChannels.pruneAgentGit, backendMethods.agentGitPrune, [{ targets: [{ id: 'refs/heads/feat/web', revision: 'checked' }], confirmed: true }], { deleted: ['refs/heads/feat/web'], failed: [] }],

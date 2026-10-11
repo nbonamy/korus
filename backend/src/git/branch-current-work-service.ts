@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, open, lstat, mkdir, readFile, readdir, readlink, realpath, rename, symlink, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { Agent } from '@workspace/core/contracts';
@@ -13,7 +14,7 @@ const exec = promisify(execFile);
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 type Capture = BranchWorkPreview & { fingerprints: Record<string, string> };
 type Journal = {
-  specification: string; source: string; head: string; tree: string;
+  schemaVersion: 1; input: BranchWorkInput; owner: string; specification: string; source: string; head: string; tree: string;
   fingerprints: Record<string, string>; cleaned: string[];
   result: BranchWorkResult;
 };
@@ -27,8 +28,16 @@ export class BranchCurrentWorkService {
   private readonly active = new Map<string, Promise<BranchWorkResult>>();
   constructor(private readonly options: Options) {}
 
-  async preview(folder: string): Promise<BranchWorkPreview> {
+  async preview(folder: string, agentId?: string): Promise<BranchWorkPreview> {
     const { fingerprints: _fingerprints, ...preview } = await this.capture(folder);
+    if (agentId) {
+      const common = await git(preview.folder, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+      const root = path.join(common, 'korus', 'branch-transfers');
+      const entries = await readdir(root).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+      const records = await Promise.all(entries.filter(file => file.endsWith('.json')).map(file => readJournal(path.join(root, file))));
+      const recoveries = records.filter(record => record?.owner === agentId && record.source === preview.folder && record.result.state === 'recovery').map(record => ({ input: record!.input, result: record!.result }));
+      if (recoveries.length) preview.recoveries = recoveries;
+    }
     return preview;
   }
 
@@ -44,7 +53,7 @@ export class BranchCurrentWorkService {
   }
 
   private async transfer(agent: Agent, input: BranchWorkInput, key: string): Promise<BranchWorkResult> {
-    if (input.confirmed !== true || !input.requestId?.trim() || input.requestId.length > 200 || !input.message?.trim() || !input.prompt?.trim()) throw new Error('Confirm a branch name, commit message and task before transferring.');
+    if (input.confirmed !== true || typeof input.requestId !== 'string' || !input.requestId.trim() || input.requestId !== input.requestId.trim() || input.requestId.length > 180 || typeof input.message !== 'string' || !input.message.trim() || input.message.length > 10000 || typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 50000) throw new Error('Confirm a branch name, commit message and task before transferring.');
     if (!Array.isArray(input.paths) || !input.paths.length || input.paths.some(value => typeof value !== 'string') || new Set(input.paths).size !== input.paths.length) throw new Error('Select distinct changed paths.');
     if (!agent.folder) throw new Error('Choose a repository first.');
     const source = await this.root(agent.folder);
@@ -58,7 +67,7 @@ export class BranchCurrentWorkService {
     if (!journal) {
       const captured = await this.capture(source);
       if (input.snapshotId !== captured.snapshotId) throw new Error('The checkout changed. Refresh the file selection before branching.');
-      if (!input.branchName?.trim() || input.branchName !== input.branchName.trim() || input.branchName.startsWith('-')) throw new Error('Enter a valid branch name.');
+      if (typeof input.branchName !== 'string' || !input.branchName.trim() || input.branchName.length > 200 || input.branchName !== input.branchName.trim() || input.branchName.startsWith('-')) throw new Error('Enter a valid branch name.');
       await git(source, ['check-ref-format', '--branch', input.branchName]);
       const refs = await git(source, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
       if (refs.split('\n').some(ref => ref === `refs/heads/${input.branchName}` || ref.endsWith(`/${input.branchName}`))) throw new Error('That branch already exists.');
@@ -78,7 +87,8 @@ export class BranchCurrentWorkService {
         if (input.paths.some(selected => !changed.includes(selected))) throw new Error('A selected path has no final changes relative to HEAD. Deselect it; its staging state will be preserved.');
         if ((await this.capture(source)).snapshotId !== captured.snapshotId) throw new Error('The checkout changed while capturing. Refresh the selection.');
       } finally { await rm(index, { force: true }); }
-      journal = { specification, source, head: captured.head, tree, fingerprints: Object.fromEntries(input.paths.map(selected => [selected, captured.fingerprints[selected]!])), cleaned: [], result: { state: 'recovery', branchName: input.branchName, folder, retainedPaths: [...input.paths] } };
+      journal = { schemaVersion: 1, input: structuredClone(input), owner: agent.id, specification, source, head: captured.head, tree, fingerprints: Object.fromEntries(input.paths.map(selected => [selected, captured.fingerprints[selected]!])), cleaned: [], result: { state: 'recovery', branchName: input.branchName, folder, retainedPaths: [...input.paths] } };
+      await git(source, ['update-ref', `refs/korus/branch-transfers/${hash(key)}`, tree]);
       await saveJournal(journalPath, journal);
     }
     const record = journal;
@@ -87,8 +97,12 @@ export class BranchCurrentWorkService {
       if (!await exists(folder)) {
         // No setup scripts or automatic environment copying in a transfer.
         await new WorktreeManager().create({ repoPath: source, branchName: input.branchName, destinationPath: folder, startPoint: record.head, requireNewBranch: true }, { skipInitialization: true });
+        const marker = await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', 'korus-branch-transfer']);
+        await writeFile(marker, `${hash(key)}:${specification}`, { flag: 'wx', mode: 0o600 });
       }
       if (await this.root(folder) !== await realpath(folder) || await git(folder, ['symbolic-ref', '--short', 'HEAD']) !== input.branchName) throw new Error('The recovery destination is no longer the expected worktree.');
+      const marker = await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', 'korus-branch-transfer']);
+      if (await readFile(marker, 'utf8').catch(() => '') !== `${hash(key)}:${specification}`) throw new Error('Worktree ownership is unconfirmed. Inspect the retained destination; source changes were preserved.');
       if (!record.result.commit) {
         const head = await git(folder, ['rev-parse', 'HEAD']);
         // A successful commit may precede the journal write. Recover it without a second commit.
@@ -115,12 +129,9 @@ export class BranchCurrentWorkService {
         if (record.cleaned.includes(selected)) continue;
         await this.safePath(source, selected);
         if (await this.fingerprint(source, selected) !== record.fingerprints[selected]) continue;
-        const inHead = await git(source, ['ls-tree', '-z', record.head, '--', selected]);
-        if (inHead) await git(source, ['restore', '--source', record.head, '--staged', '--worktree', '--', selected]);
-        else {
-          await git(source, ['rm', '--cached', '--ignore-unmatch', '--', selected]);
-          await rm(path.join(source, selected), { force: true });
-        }
+        record.result.sourceBackupFolder ??= `${journalPath}.source-backups`;
+        await saveJournal(journalPath, record);
+        if (!await this.cleanPath(record, selected)) continue;
         record.cleaned.push(selected);
         await saveJournal(journalPath, record);
       }
@@ -128,6 +139,7 @@ export class BranchCurrentWorkService {
       record.result.state = 'completed';
       delete record.result.detail;
       await saveJournal(journalPath, record);
+      await git(source, ['update-ref', '-d', `refs/korus/branch-transfers/${hash(key)}`]).catch(() => undefined);
     } catch (error) {
       record.result.state = 'recovery';
       record.result.retainedPaths = input.paths.filter(selected => !record.cleaned.includes(selected));
@@ -135,6 +147,55 @@ export class BranchCurrentWorkService {
       await saveJournal(journalPath, record);
     }
     return structuredClone(record.result);
+  }
+
+  private async cleanPath(record: Journal, selected: string): Promise<boolean> {
+    const source = record.source;
+    const indexPath = await git(source, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
+    const lock = `${indexPath}.lock`;
+    const handle = await open(lock, 'wx', 0o600);
+    const temporary = `${lock}.${randomUUID()}`;
+    const restoreRoot = `${temporary}.files`;
+    const original = path.join(source, selected);
+    const backup = path.join(record.result.sourceBackupFolder!, selected);
+    try {
+      // Hold the real index lock while preparing a path-only update in an alternate index.
+      if (await this.fingerprint(source, selected) !== record.fingerprints[selected]) return false;
+      await mkdir(record.result.sourceBackupFolder!, { recursive: true, mode: 0o700 });
+      await copyFile(indexPath, temporary);
+      const inHead = await git(source, ['ls-tree', '-z', record.head, '--', selected]);
+      if (inHead) await git(source, ['restore', '--source', record.head, '--staged', '--', selected], temporary);
+      else await git(source, ['update-index', '--force-remove', '--', selected], temporary);
+      if (inHead) {
+        await mkdir(restoreRoot, { recursive: true, mode: 0o700 });
+        await git(source, ['checkout-index', `--prefix=${restoreRoot}/`, '--', selected], temporary);
+      }
+      if (await exists(original)) {
+        await mkdir(path.dirname(backup), { recursive: true, mode: 0o700 });
+        if (await exists(backup)) throw new Error('A source backup already exists. Inspect the recovery folder before retrying cleanup.');
+        await rename(original, backup);
+        // An editor can write between validation and rename. Retain its inode,
+        // including later writes through an already-open descriptor, in the backup.
+        if (await this.fingerprint(source, selected, backup) !== record.fingerprints[selected]) {
+          try { await copyEntry(backup, original); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+          return false;
+        }
+      }
+      if (await exists(original)) return false;
+      if (inHead) {
+        await mkdir(path.dirname(original), { recursive: true });
+        try { await copyEntry(path.join(restoreRoot, selected), original); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false; throw error; }
+      }
+      await rename(temporary, indexPath);
+      return true;
+    } finally {
+      await handle.close();
+      await rm(lock, { force: true });
+      await rm(temporary, { force: true });
+      await rm(restoreRoot, { recursive: true, force: true });
+    }
   }
 
   private async root(folder: string): Promise<string> {
@@ -170,14 +231,14 @@ export class BranchCurrentWorkService {
       if (stat && !stat.isDirectory()) throw new Error('Transfer paths must not pass through symlinks or files.');
     }
     const stat = await lstat(path.join(root, selected.split('/').at(-1)!)).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
-    if (stat && !stat.isFile()) throw new Error('Only regular files can be transferred.');
+    if (stat && !stat.isFile() && !stat.isSymbolicLink()) throw new Error('Directories and submodule changes cannot be transferred. Select file changes in a regular checkout.');
   }
-  private async fingerprint(folder: string, selected: string): Promise<string> {
+  private async fingerprint(folder: string, selected: string, contentPath?: string): Promise<string> {
     const index = await git(folder, ['ls-files', '--stage', '-z', '--', selected]);
-    const file = path.join(folder, selected);
+    const file = contentPath ?? path.join(folder, selected);
     const stat = await lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
-    const contents = stat ? hash(await readFile(file)) : 'deleted';
-    return hash(JSON.stringify({ index, contents, executable: stat ? Boolean(stat.mode & 0o111) : false }));
+    const contents = stat?.isSymbolicLink() ? hash(await readlink(file)) : stat ? hash(await readFile(file)) : 'deleted';
+    return hash(JSON.stringify({ index, contents, symlink: stat?.isSymbolicLink() ?? false, executable: stat ? Boolean(stat.mode & 0o111) : false }));
   }
 }
 
@@ -188,11 +249,19 @@ async function git(folder: string, args: string[], index?: string): Promise<stri
   const { stdout } = await exec('git', ['--literal-pathspecs', ...args], { cwd: folder, env: { ...process.env, ...(index ? { GIT_INDEX_FILE: index } : {}) }, maxBuffer: 20 * 1024 * 1024 });
   return stdout.replace(/\n$/, '');
 }
+async function copyEntry(source: string, destination: string): Promise<void> {
+  if ((await lstat(source)).isSymbolicLink()) await symlink(await readlink(source), destination);
+  else await copyFile(source, destination, constants.COPYFILE_EXCL);
+}
 async function exists(file: string): Promise<boolean> {
   try { await lstat(file); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
 }
 async function readJournal(file: string): Promise<Journal | undefined> {
-  try { return JSON.parse(await readFile(file, 'utf8')) as Journal; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  try {
+    const record = JSON.parse(await readFile(file, 'utf8')) as Journal;
+    if (record.schemaVersion !== 1) throw new Error('Unsupported branch transfer recovery record. Inspect the retained worktree.');
+    return record;
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
 }
 async function saveJournal(file: string, journal: Journal): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });

@@ -59,6 +59,8 @@ export const ipcChannels = {
   previewAgentFile: 'agent:file:preview',
   readAgentFileChunk: 'agent:file:chunk:read',
   getAgentGitDiff: 'agent:git-diff:get',
+  previewBranchCurrentWork: 'agent:git-branch-work:preview',
+  branchCurrentWork: 'agent:git-branch-work',
   getAgentGitWorkflow: 'agent:git-workflow:get',
   generateAgentGitMessage: 'agent:git-workflow:message:generate',
   stageAgentGitFiles: 'agent:git-workflow:stage',

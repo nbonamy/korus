@@ -858,6 +858,8 @@ export type AppApi = {
   previewAgentFile(agentId: string, filePath: string): Promise<AgentFilePreviewResult>;
   readAgentFileChunk(agentId: string, filePath: string, offset: number): Promise<import('./contracts/workspace').AgentFileChunk>;
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
+  previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
+  branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;

@@ -34,6 +34,17 @@ describe(`${product.name} web operations`, () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
+  it('preserves branch transfer selection and recovery result through the web transport', async () => {
+    const result = { state: 'recovery', folder: '/repo-work', branchName: 'feature', commit: 'commit', retainedPaths: ['file'] };
+    const request = vi.fn().mockResolvedValue(result);
+    const input = { confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature', paths: ['file'], message: 'feat: work', prompt: 'Finish work' };
+    await invokeAppWebOperation({ request }, 'previewBranchCurrentWork', ['agent']);
+    await expect(invokeAppWebOperation({ request }, 'branchCurrentWork', ['agent', input])).resolves.toStrictEqual(result);
+    expect(request.mock.calls).toStrictEqual([
+      [backendMethods.agentGitBranchWorkPreview, { agentId: 'agent' }],
+      [backendMethods.agentGitBranchWork, { agentId: 'agent', input }],
+    ]);
+  });
   it('routes prune inventory and confirmed selections to the owning agent', async () => {
     const request = vi.fn().mockResolvedValue({ deleted: [], failed: [] });
     const input = { confirmed: true, targets: [{ id: 'refs/heads/feature', revision: 'checked' }] };

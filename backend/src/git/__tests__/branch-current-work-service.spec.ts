@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -40,7 +40,7 @@ describe('BranchCurrentWorkService', () => {
     expect(f.preview.files.find(file => file.path === '.env')?.sensitive).toBe(true);
     expect(f.preview.files.some(file => file.path === 'ignored')).toBe(false);
     const result = await f.service.execute(f.agent, f.input);
-    expect(result.state).toBe('completed');
+    expect(result.state, result.detail).toBe('completed');
     const destinationGit = async (...args: string[]) => (await exec('git', args, { cwd: result.folder })).stdout.trim();
     expect(await destinationGit('rev-parse', 'HEAD^')).toBe(f.head);
     expect(await destinationGit('show', 'HEAD:mixed')).toBe('final');
@@ -51,6 +51,7 @@ describe('BranchCurrentWorkService', () => {
     expect(await f.git('rev-parse', 'HEAD')).toBe(f.head);
     expect(await f.git('status', '--porcelain')).toBe('M other\n?? .env');
     expect(await readFile(join(f.source, 'ignored'), 'utf8')).toBe('ignored\n');
+    expect(await readFile(join(result.sourceBackupFolder!, 'mixed'), 'utf8')).toBe('final\n');
     await expect(readFile(join(result.folder!, '.env'))).rejects.toThrow();
     const retry = await new BranchCurrentWorkService({ git: new AgentGitService(), provision: f.provision }).execute(f.agent, f.input);
     expect(retry).toStrictEqual(result); expect(f.provision).toHaveBeenCalledOnce();
@@ -94,6 +95,8 @@ describe('transfer safety and recovery', () => {
     const failed = await f.service.execute(f.agent, f.input);
     expect(failed.state).toBe('recovery'); expect(failed.commit).toBeTruthy();
     expect(await f.git('status', '--porcelain')).toBe(before);
+    const restored = new BranchCurrentWorkService({ git: new AgentGitService(), provision: f.provision });
+    expect((await restored.preview(f.source, f.agent.id)).recoveries).toStrictEqual([{ input: f.input, result: failed }]);
     const results = await Promise.all([f.service.execute(f.agent, f.input), f.service.execute(f.agent, f.input)]);
     expect(results[0]).toStrictEqual(results[1]); expect(results[0]?.commit).toBe(failed.commit);
     expect(f.provision).toHaveBeenCalledTimes(2);
@@ -108,7 +111,7 @@ describe('transfer safety and recovery', () => {
       return { taskId: 'task', agentId: 'worker', accepted: true };
     });
     const result = await f.service.execute(f.agent, f.input);
-    expect(result.state).toBe('completed'); expect(result.retainedPaths).toStrictEqual(['mixed']);
+    expect(result.state, result.detail).toBe('completed'); expect(result.retainedPaths).toStrictEqual(['mixed']);
     expect(await readFile(join(f.source, 'mixed'), 'utf8')).toBe('newer\n');
     expect(await f.git('diff', '--cached', '--name-only')).toBe('mixed');
   });
@@ -119,5 +122,102 @@ describe('transfer safety and recovery', () => {
     const result = await f.service.execute(f.agent, f.input);
     expect(result.state).toBe('recovery'); expect(result.agentId).toBe('worker');
     expect(await f.git('status', '--porcelain')).toBe(before);
+  });
+});
+
+describe('file and checkout boundaries', () => {
+  it('transfers staged additions/deletions, renames, binary content, and literal pathspecs', async () => {
+    const f = await fixture();
+    await f.git('mv', 'other', 'renamed');
+    await writeFile(join(f.source, 'addition'), 'added\n'); await f.git('add', 'addition');
+    await f.git('rm', 'deleted');
+    const binary = Buffer.from([0, 1, 2, 255]);
+    await writeFile(join(f.source, ':(glob)*'), binary);
+    const preview = await f.service.preview(f.source);
+    expect(preview.files.map(file => file.path)).toContain('other');
+    const result = await f.service.execute(f.agent, { ...f.input, snapshotId: preview.snapshotId, paths: ['other', 'renamed', 'addition', 'deleted', ':(glob)*'] });
+    expect(result.state, result.detail).toBe('completed');
+    expect(await readFile(join(result.folder, ':(glob)*'))).toStrictEqual(binary);
+    expect(await readFile(join(result.folder, 'renamed'), 'utf8')).toBe('unrelated\n');
+    expect(await f.git('diff', '--cached', '--name-only')).toBe('mixed\nstaged');
+    expect(await readFile(join(f.source, 'other'), 'utf8')).toBe('original\n');
+  });
+
+  it('never clears source work if HEAD changes while the new agent starts', async () => {
+    const f = await fixture();
+    f.provision.mockImplementationOnce(async () => {
+      await f.git('commit', '--allow-empty', '-m', 'concurrent commit');
+      return { taskId: 'task', agentId: 'worker', accepted: true };
+    });
+    const result = await f.service.execute(f.agent, f.input);
+    expect(result.state).toBe('recovery'); expect(result.detail).toContain('Source HEAD changed');
+    expect(await readFile(join(f.source, 'mixed'), 'utf8')).toBe('final\n');
+  });
+
+  it('preserves net-zero staging state rather than claiming it was transferred', async () => {
+    const f = await fixture(); await writeFile(join(f.source, 'staged'), 'original\n');
+    const preview = await f.service.preview(f.source);
+    await expect(f.service.execute(f.agent, { ...f.input, snapshotId: preview.snapshotId, paths: ['staged'] })).rejects.toThrow('no final changes');
+    expect(await f.git('diff', '--cached', '--name-only')).toBe('mixed\nstaged');
+    expect(f.provision).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('source cleanup races', () => {
+  it('retains edits through an open file descriptor in the reported recovery copies', async () => {
+    const f = await fixture();
+    const descriptor = await open(join(f.source, 'mixed'), 'r+');
+    try {
+      const result = await f.service.execute(f.agent, { ...f.input, paths: ['mixed'] });
+      expect(result.state, result.detail).toBe('completed');
+      await descriptor.writeFile('late editor write\n');
+      expect(await readFile(join(f.source, 'mixed'), 'utf8')).toBe('original\n');
+      expect(await readFile(join(result.sourceBackupFolder!, 'mixed'), 'utf8')).toBe('late editor write\n');
+    } finally { await descriptor.close(); }
+  });
+});
+
+
+describe('worktree identity', () => {
+  it('branches from a linked checkout HEAD without changing the primary checkout', async () => {
+    const f = await fixture(); const linked = join(f.root, 'linked');
+    await f.git('worktree', 'add', '-b', 'source-feature', linked);
+    await exec('git', ['commit', '--allow-empty', '-m', 'source tip'], { cwd: linked });
+    const sourceHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd: linked })).stdout.trim();
+    await writeFile(join(linked, 'mixed'), 'linked feature\n');
+    const before = await f.git('status', '--porcelain');
+    const preview = await f.service.preview(linked);
+    const result = await f.service.execute({ ...f.agent, folder: linked }, { ...f.input, snapshotId: preview.snapshotId, paths: ['mixed'] });
+    expect(result.state, result.detail).toBe('completed');
+    expect((await exec('git', ['rev-parse', 'HEAD^'], { cwd: result.folder })).stdout.trim()).toBe(sourceHead);
+    expect(await f.git('status', '--porcelain')).toBe(before);
+    expect(await f.git('branch', '--show-current')).toBe('main');
+  });
+
+  it('retains work and refuses to mutate a destination whose transfer ownership is unconfirmed', async () => {
+    const f = await fixture(); const hook = join(f.source, '.git', 'hooks', 'pre-commit');
+    await writeFile(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const failed = await f.service.execute(f.agent, f.input);
+    const marker = (await exec('git', ['rev-parse', '--path-format=absolute', '--git-path', 'korus-branch-transfer'], { cwd: failed.folder })).stdout.trim();
+    await rm(marker); await rm(hook);
+    const before = await f.git('status', '--porcelain');
+    const retry = await f.service.execute(f.agent, f.input);
+    expect(retry.state).toBe('recovery'); expect(retry.detail).toContain('ownership is unconfirmed');
+    expect(await f.git('status', '--porcelain')).toBe(before);
+    expect((await exec('git', ['rev-parse', 'HEAD'], { cwd: failed.folder })).stdout.trim()).toBe(f.head);
+    expect(f.provision).not.toHaveBeenCalled();
+  });
+
+  it('transfers symlink values without copying or altering their external targets', async () => {
+    const f = await fixture(); const external = join(f.root, 'external');
+    await writeFile(external, 'private target\n');
+    await symlink(external, join(f.source, 'link'));
+    const preview = await f.service.preview(f.source);
+    const result = await f.service.execute(f.agent, { ...f.input, snapshotId: preview.snapshotId, paths: ['link'] });
+    expect(result.state, result.detail).toBe('completed');
+    expect(await readlink(join(result.folder, 'link'))).toBe(external);
+    expect(await readFile(external, 'utf8')).toBe('private target\n');
+    await expect(readlink(join(f.source, 'link'))).rejects.toThrow();
   });
 });
