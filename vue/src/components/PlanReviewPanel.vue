@@ -6,6 +6,7 @@
   >
     <div class="plan-review-panel__markdown-frame">
       <MarkdownPanel
+        outline-enabled
         :content="panel.content"
         :error="panel.error"
         :state="panel.state"
