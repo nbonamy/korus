@@ -183,6 +183,41 @@ workflow.
 See [GitHub desktop releases](docs/backend-architecture.md#github-desktop-releases)
 for the target matrix, launch/monitor commands, signing setup, and publication.
 
+### Native companion development
+
+The native companion connects to the owning laptop daemon through an explicitly
+configured WSS relay. Configure the relay and device grants in desktop Settings →
+Connections → Mobile access. A phone invitation requires desktop approval and a
+team scope; device dictation uses the native keyboard.
+
+```bash
+npm run build:ios:simulator -w @workspace/mobile
+npm run build:android:debug -w @workspace/mobile
+npm run build:android:release -w @workspace/mobile
+```
+
+The iOS command requires macOS/Xcode and produces an ad hoc signed simulator app.
+Android commands require SDK 36 and Java 21; the release APK requires your Android
+signing configuration before device distribution. Open the checked-in Xcode project
+for a device archive with your Apple development team. Build outputs stay under
+`mobile/.native-build/` and the Android project's ignored build directories.
+
+For a local native acceptance run, build the backend, then run
+`npm run test:native-harness -w @workspace/mobile`. This opt-in fixture uses an
+isolated daemon/home and existing Korus Codex authentication, creates a test TLS CA,
+and saves a short-lived invitation in ignored evidence. Trust that CA only in an
+isolated simulator. Stopping the fixture removes its copied authentication and
+private invitation. It establishes local native behavior; cellular acceptance uses
+the operator's public relay and a physical phone.
+
+Relay operators build the standalone artifact with
+`npm run build:relay -w @workspace/backend`. Container packaging lives in
+`backend/companion-relay/`: supply a reviewed Node image pinned by digest, a valid
+public TLS certificate, a persistent identity volume and admitted laptop PeerIds.
+The compose configuration maps outbound-facing WSS port 443 to the container's
+8443 listener. Health checks remain inside the container. Relay deployment and
+native signing are separate from building these artifacts.
+
 ## Architecture
 
 Korus separates the desktop shell from the long-running agent backend:

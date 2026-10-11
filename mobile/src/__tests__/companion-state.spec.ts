@@ -3,6 +3,41 @@ import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
 
 describe('companion state', () => {
+  it('retries transport loss with receipt reconciliation and stops retrying on manual disconnect', async () => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost!: () => void;
+    const send = vi.fn().mockRejectedValue(new Error('Receipt lost'));
+    const commandStatus = vi.fn(async () => 'accepted' as const);
+    const connect = vi.fn(async (id: string) => ({ ...await original(id), sendPrompt: send, commandStatus,
+      onDisconnect(listener: () => void) { lost = listener; return () => {}; } }));
+    connector.connect = connect;
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      state.updateDraft({ text: 'Send once', selectionStart: 9, selectionEnd: 9 }); await state.submit('Send once');
+      lost(); expect(state.canSend.value).toBe(false);
+      connect.mockRejectedValueOnce(new Error('Relay restarting'));
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(state.status.value).toBe('error');
+      await vi.advanceTimersByTimeAsync(2400);
+      expect(state.status.value).toBe('connected'); expect(commandStatus).toHaveBeenCalledOnce();
+      expect(state.deliveryUnknown.value).toBe(false); expect(state.draft.value.text).toBe(''); expect(send).toHaveBeenCalledOnce();
+      lost(); state.disconnect(); const count = connect.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60_000); expect(connect).toHaveBeenCalledTimes(count);
+    } finally { state.dispose(); vi.useRealTimers(); }
+  });
+  it('reconciles durable command receipts after restart and preserves a newer draft', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async (id) => ({ ...await connect(id), commandStatus: async () => 'accepted' });
+    const key = '["demo-laptop","demo-agent"]';
+    const store = { read: async () => ({ drafts: { [key]: { text: 'Newer draft', selectionStart: 11, selectionEnd: 11 } },
+      uncertain: { [key]: true }, commandIds: { [key]: crypto.randomUUID() }, submittedTexts: { [key]: 'Already accepted' } }), write: vi.fn(async () => {}) };
+    const state = createCompanionState(connector, store);
+    await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+    expect(state.deliveryUnknown.value).toBe(false); expect(state.draft.value.text).toBe('Newer draft');
+    expect(store.write).toHaveBeenCalled(); state.dispose();
+  });
   it('restores drafts and uncertain delivery after process restart without resending', async () => {
     let saved: unknown = null;
     const store = { read: vi.fn(async () => saved), write: vi.fn(async (value: unknown) => { saved = structuredClone(value); }) };
@@ -114,6 +149,7 @@ describe('companion state', () => {
       const session = await connect(id);
       return { ...session, loadConversation: async (agentId) => {
         const frame = await session.loadConversation(agentId);
+        if (!frame) throw new Error("Fixture conversation is required.");
         if (agentId === 'demo-agent') await new Promise<void>((resolve) => { finishLoad = resolve; });
         return mismatch ? { ...frame, agentId: 'foreign-agent' } : frame;
       } };

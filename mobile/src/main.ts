@@ -8,17 +8,17 @@ import '@workspace/vue/styles/base.css';
 import { i18n } from '@workspace/vue/i18n';
 import { applyAppTheme, subscribeToSystemAppearance } from '@workspace/vue/theme/apply-theme';
 import MobileShell from './MobileShell.vue';
-import { createDemoConnector } from './demo-connector';
+import { createRelayConnector } from './relay-connector';
 import { createMobileHost } from './mobile-host';
 import { companionMessages } from './messages';
 import { Capacitor } from '@capacitor/core';
-import { createNativeDraftStore } from './protected-storage';
+import { createNativeDraftStore, protectedVault } from './protected-storage';
 
 document.documentElement.dataset.platform = 'other';
 i18n.global.mergeLocaleMessage('en', companionMessages);
 applyAppTheme({ id: 'app-light', mode: 'system', uiFontSize: 15, chatFontSize: 16, codeFontSize: 13 });
 const removeAppearance = subscribeToSystemAppearance();
-const app = createApp(MobileShell, { connector: createDemoConnector(), host: createMobileHost(),
+const app = createApp(MobileShell, { connector: createRelayConnector(protectedVault), host: createMobileHost(),
   draftStore: Capacitor.isNativePlatform() ? createNativeDraftStore() : undefined }).use(ElementPlus).use(i18n);
 app.mount('#app');
 window.addEventListener('pagehide', () => { app.unmount(); removeAppearance(); }, { once: true });

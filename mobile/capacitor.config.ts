@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   appId: `${product.appId}.companion`,
   appName: `${product.name} Companion`,
   webDir: 'dist',
+  loggingBehavior: 'none',
   plugins: { Keyboard: { resize: KeyboardResize.Native, resizeOnFullScreen: true } },
 };
 export default config;

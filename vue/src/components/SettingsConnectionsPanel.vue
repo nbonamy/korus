@@ -115,6 +115,8 @@
       </article>
     </FormSection>
 
+    <SettingsMobileSection v-if="companionControl" :control="companionControl" :teams="teams" />
+
     <SettingsDevicePairingSection
       :settings="settings"
       :update-settings="updateSettings"
@@ -242,6 +244,7 @@ import FormField from '../shared/form/FormField.vue';
 import RemoteFolderPickerDialog from './RemoteFolderPickerDialog.vue';
 import RemoteEngineConnections from './RemoteEngineConnections.vue';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
+import SettingsMobileSection from './SettingsMobileSection.vue';
 import SettingsDevicePairingSection from './SettingsDevicePairingSection.vue';
 import SettingsIntro from './SettingsIntro.vue';
 import FormSection from '../shared/form/FormSection.vue';
@@ -258,6 +261,7 @@ const props = withDefaults(defineProps<{
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   settings?: { preventSleepWhenRemoteAccessEnabled: boolean };
   updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
+  companionControl?: import('@workspace/core/contracts').AppApi['companionControl'];
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;

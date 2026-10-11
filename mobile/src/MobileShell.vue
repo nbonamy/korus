@@ -2,7 +2,7 @@
   <main class="mobile-shell">
     <header class="mobile-shell__header">
       <strong>{{ product.name }}</strong>
-      <span>{{ t('mobile.demo') }}</span>
+      <span>{{ t('mobile.companion') }}</span>
     </header>
     <div class="mobile-shell__connection" role="status" aria-live="polite">
       {{ t(`mobile.connection.${state.status.value}`) }}
@@ -12,12 +12,29 @@
     </div>
     <section v-if="!hasPairing" class="mobile-shell__welcome">
       <h1>{{ t('mobile.title') }}</h1>
-      <p>{{ t('mobile.demoDescription') }}</p>
+      <p>{{ t('mobile.pairingHint') }}</p>
+      <template v-if="laptops.length">
       <label for="laptop">{{ t('mobile.laptop') }}</label>
       <select id="laptop" v-model="selectedLaptop">
-        <option v-for="laptop in connector.laptops" :key="laptop.id" :value="laptop.id">{{ laptop.name }}</option>
+        <option v-for="laptop in laptops" :key="laptop.id" :value="laptop.id">{{ laptop.name }}</option>
       </select>
-      <button class="app-button app-button--primary" :disabled="!selectedLaptop || busy" @click="state.connect(selectedLaptop)">{{ t('mobile.openDemo') }}</button>
+      <button class="app-button app-button--primary" :disabled="!selectedLaptop || busy" @click="state.connect(selectedLaptop)">{{ t('mobile.openLaptop') }}</button>
+      </template>
+      <template v-if="connector.pair">
+        <button class="app-button app-button--secondary" :disabled="pairing" @click="scan">{{ t('mobile.scan') }}</button>
+        <details><summary>{{ t('mobile.pasteInvitation') }}</summary>
+          <textarea v-model="invitationText" autocomplete="off" spellcheck="false" :aria-label="t('mobile.invitation')" />
+        </details>
+        <label>{{ t('mobile.deviceName') }}<input v-model="deviceName" maxlength="80" autocomplete="off"></label>
+        <template v-if="invitationText">
+          <p>{{ t('mobile.relay') }}: {{ invitationPreview.relayOrigin }}</p>
+          <code>{{ invitationPreview.hostId }}</code>
+          <label><input v-model="trustRelay" type="checkbox"> {{ t('mobile.trustRelay') }}</label>
+          <button class="app-button app-button--primary" :disabled="pairing || !trustRelay || !deviceName.trim()" @click="pair">{{ t('mobile.requestPairing') }}</button>
+        </template>
+        <div v-if="pendingIdentity" role="status"><p>{{ t('mobile.approveOnLaptop') }}</p><code>{{ pendingIdentity }}</code></div>
+        <p v-if="pairError" role="alert">{{ t('mobile.errors.pairing') }}</p>
+      </template>
     </section>
     <nav v-else class="mobile-shell__selection" :aria-label="t('mobile.navigation')">
       <label>{{ t('mobile.team') }}
@@ -36,6 +53,7 @@
     <p v-if="state.error.value" class="mobile-shell__notice" role="alert">{{ t(state.error.value) }}</p>
     <p v-if="hostUnavailable" class="mobile-shell__notice" role="alert">{{ t('mobile.hostUnavailable') }}</p>
     <p v-if="state.deliveryUnknown.value" class="mobile-shell__notice" role="status">{{ t('mobile.deliveryUnknown') }}</p>
+    <p v-if="state.readOnly.value" class="mobile-shell__notice" role="status">{{ t('mobile.readOnly') }}</p>
     <template v-if="state.agent.value">
       <div class="mobile-shell__agent-status" role="status">{{ agentStatusText(state.agent.value, t) }}</div>
       <ConversationPane
@@ -55,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, provide, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { createCodexConversationPaneController, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import { product } from '@workspace/core/product';
@@ -71,7 +89,25 @@ const props = defineProps<{ connector: CompanionConnector; host: MobileHost; dra
 const { t } = useI18n();
 const state = createCompanionState(props.connector, props.draftStore);
 provide(backendChoicesKey, computed(() => [...new Set(state.workspace.value.agents.map((a) => a.backend))]));
-const selectedLaptop = ref(props.connector.laptops[0]?.id ?? '');
+const laptops = ref(props.connector.laptops);
+const selectedLaptop = ref(laptops.value[0]?.id ?? '');
+const invitationText = ref(''); const deviceName = ref('My phone'); const trustRelay = ref(false);
+watch(invitationText, () => { trustRelay.value = false; });
+const pairing = ref(false); const pendingIdentity = ref(''); const pairError = ref(false);
+const invitationPreview = computed(() => { try { const payload = JSON.parse(invitationText.value); return { relayOrigin: String(payload.relayOrigin ?? ''), hostId: String(payload.hostId ?? '') }; } catch { return { relayOrigin: '', hostId: '' }; } });
+async function scan() { try { invitationText.value = await props.host.scanInvitation?.() ?? ''; trustRelay.value = false; } catch { pairError.value = true; } }
+async function pair() {
+  if (!props.connector.pair || pairing.value || !trustRelay.value) return;
+  pairing.value = true; pairError.value = false;
+  try {
+    const id = await props.connector.pair(invitationText.value, deviceName.value, (identity) => { pendingIdentity.value = identity; });
+    if (disposed) return;
+    invitationText.value = ''; pendingIdentity.value = ''; laptops.value = props.connector.laptops; selectedLaptop.value = id;
+    await state.connect(id);
+  } catch { if (!disposed) pairError.value = true; }
+  finally { pairing.value = false; }
+}
+
 const hasPairing = computed(() => !['unpaired', 'revoked'].includes(state.status.value) && state.workspace.value.teams.length > 0);
 const busy = computed(() => ['connecting', 'reconnecting'].includes(state.status.value));
 const controller = createCodexConversationPaneController({
@@ -98,11 +134,21 @@ const controller = createCodexConversationPaneController({
 let disposed = false;
 const hostUnavailable = ref(false);
 let removeResume = () => {};
-void props.host.onResume(() => void state.reconnect()).then((remove) => {
+let activity = Promise.resolve();
+const lifecycle = props.host.onActivity
+  ? props.host.onActivity((isActive) => {
+    activity = activity.then(async () => { if (disposed) return; if (isActive) { await props.connector.resume?.(); await state.reconnect(); } else { state.disconnect(); await props.connector.suspend?.(); } }).catch(() => { hostUnavailable.value = true; });
+  })
+  : props.host.onResume(() => void state.reconnect());
+void lifecycle.then((remove) => {
   if (disposed) remove();
   else removeResume = remove;
 }).catch(() => { if (!disposed) hostUnavailable.value = true; });
-onBeforeUnmount(() => { disposed = true; removeResume(); state.dispose(); });
+onMounted(async () => {
+  try { await props.connector.initialize?.(); if (!disposed) { laptops.value = props.connector.laptops; selectedLaptop.value = laptops.value[0]?.id ?? ''; } }
+  catch { if (!disposed) hostUnavailable.value = true; }
+});
+onBeforeUnmount(() => { disposed = true; removeResume(); state.dispose(); void props.connector.dispose?.(); invitationText.value = ''; });
 function valueOf(event: Event): string { return (event.target as HTMLSelectElement).value; }
 </script>
 
@@ -142,7 +188,11 @@ function valueOf(event: Event): string { return (event.target as HTMLSelectEleme
 .mobile-shell__welcome p { margin: 0; }
 .mobile-shell__selection { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
 .mobile-shell__selection label { display: grid; gap: var(--space-1); min-width: 0; font-size: var(--font-size-12); }
-.mobile-shell select { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); background: var(--color-surface-low); font-size: 16px; }
+.mobile-shell select,
+.mobile-shell__welcome input:not([type="checkbox"]),
+.mobile-shell__welcome textarea { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); background: var(--color-surface-low); font-size: 16px; }
+.mobile-shell__welcome code { overflow-wrap: anywhere; }
+.mobile-shell__welcome textarea { min-height: 100px; }
 .mobile-shell__notice { padding: var(--space-2) var(--space-4); margin: 0; color: var(--color-text); background: var(--color-surface-high); }
 .mobile-shell__agent-status { padding: 0 var(--space-4) var(--space-2); font-size: var(--font-size-12); color: var(--color-text-muted); }
 .mobile-shell__empty { flex: 1; padding: var(--space-4); }

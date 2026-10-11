@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { CodexComposerState } from '@codex-app-sdk/vue';
 
-export type DraftRecord = { drafts: Record<string, CodexComposerState>; uncertain: Record<string, boolean> };
+export type DraftRecord = { drafts: Record<string, CodexComposerState>; uncertain: Record<string, boolean>; commandIds?: Record<string, string>; submittedTexts?: Record<string, string> };
 export type DraftStore = { read(): Promise<unknown>; write(record: DraftRecord): Promise<void> };
 export type ProtectedVault = {
   read(options: { key: string }): Promise<{ value: string | null }>;
@@ -38,6 +38,20 @@ export function restoreDraftRecord(value: unknown): DraftRecord {
   for (const [key, uncertain] of Object.entries(record.uncertain)) {
     if (!Object.hasOwn(restored.drafts, key) || typeof uncertain !== 'boolean') throw new Error('Invalid delivery state.');
     restored.uncertain[key] = uncertain;
+  }
+  if (record.commandIds) {
+    restored.commandIds = {};
+    for (const [key, id] of Object.entries(record.commandIds)) {
+      if (!Object.hasOwn(restored.drafts, key) || typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)) throw new Error('Invalid command identity.');
+      restored.commandIds[key] = id;
+    }
+  }
+  if (record.submittedTexts) {
+    restored.submittedTexts = {};
+    for (const [key, text] of Object.entries(record.submittedTexts)) {
+      if (!Object.hasOwn(restored.drafts, key) || typeof text !== 'string') throw new Error('Invalid submitted draft.');
+      restored.submittedTexts[key] = text;
+    }
   }
   return restored;
 }

@@ -66,22 +66,26 @@ desktop preference cannot enable a tool the host does not provide.
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
-The mobile companion has an explicit local demo connector behind a narrow
-workspace/read/send port. It composes the shared conversation pane from authoritative
-provider snapshots, without a transcript reducer. Native keyboard dictation supplies
-text through the existing composer; the host adapter owns native lifecycle events.
+The mobile companion is a bundled Capacitor entry with a narrow workspace/read/send
+port. It composes the shared conversation pane from authoritative provider snapshots,
+without a transcript reducer. Native keyboard dictation supplies text through the
+existing composer; the host adapter owns QR scanning and foreground/background events.
 Drafts and delivery uncertainty are scoped to laptop and agent and persisted through
 the native vault: iOS Keychain entries are device-only and accessible while unlocked;
 Android records are encrypted with an Android Keystore AES-GCM key and excluded from
-backup. Prompt intent is saved before dispatch; unavailable storage prevents sending.
-Reconnect reads state and never replays prompts; uncertain delivery blocks resubmission. Demo pairing and
-revocation are local lifecycle behavior, not network authentication.
+backup. Prompt intent and a durable command identity are saved before dispatch;
+unavailable storage prevents sending. Reconnect reconciles receipts and rehydrates
+provider-owned state without replaying a prompt.
 
-Network pairing requires a separate authenticated, revocable TLS gateway, a laptop
-trust/bootstrap decision, protected iOS Keychain/Android Keystore credential storage,
-and prompt admission receipts. A private-network route provides reachability, not
-authorization. The loopback web host and daemon remain inaccessible to this client;
-arbitrary internet access requires an approved network or relay design.
+Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
+protocol runs through an outbound WebSocket circuit relay, with Noise authenticating
+and encrypting the laptop-to-device channel. Invitations pin both endpoint and relay
+identities, expire after five minutes and require explicit desktop approval with a
+team/read/send grant. The relay carries ciphertext and connection metadata; its
+operator host allowlist, temporary pairing windows and traffic bounds constrain
+routing. Endpoint authorization constrains app methods and location/team/agent/session
+targets. Local revocation persists before closing device connections. The local web,
+MCP and daemon socket transports retain their existing exposure boundaries.
 
 ## Conversation Ownership
 

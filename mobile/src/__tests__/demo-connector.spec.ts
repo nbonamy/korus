@@ -31,8 +31,8 @@ describe('local demo pairing boundary', () => {
     const next = await connector.connect('demo-laptop');
     const builder = await next.loadConversation('demo-agent');
     const reviewer = await next.loadConversation('demo-reviewer');
-    expect(builder.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(1);
-    expect(reviewer.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(0);
+    expect(builder!.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(1);
+    expect(reviewer!.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(0);
     next.close();
   });
 });
