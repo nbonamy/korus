@@ -45,6 +45,18 @@ describe('repository run profiles', () => {
     expect((await service.get(agent, repo)).profiles).toStrictEqual([]);
   });
 
+  it('restores definitions after a real run without executing them on restart', async () => {
+    const catalog = await service.save(agent, repo, { ...profile, command: `node -e "require('node:fs').appendFileSync('marker','run\\n')"` });
+    const p = catalog.profiles[0];
+    await service.start(agent, repo, { profileId: p.id, command: p.command, cwd: repo });
+    await waitFor(async () => (await service.get(agent, repo)).runs[0].state === 'completed');
+    await service.close();
+    service = new RunProfileService(path.join(root, 'home', 'run-profiles.json'));
+    expect((await service.get(agent, repo)).runs).toStrictEqual([]);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(await readFile(path.join(repo, 'marker'), 'utf8')).toBe('run\n');
+  });
+
   it('rejects traversal, absolute paths, symlink escapes and secret environment configuration', async () => {
     await symlink(root, path.join(repo, 'outside'));
     for (const directory of ['../', root, 'outside']) {
@@ -93,6 +105,20 @@ describe('repository run profiles', () => {
     expect((await service.get(agent, repo)).runs).toStrictEqual([]);
   });
 
+  it('keeps admission closed until an uncooperative process has actually stopped', async () => {
+    const catalog = await service.save(agent, repo, { ...profile, command: `node -e "process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)"` });
+    const p = catalog.profiles[0];
+    const input = { profileId: p.id, command: p.command, cwd: repo };
+    const run = await service.start(agent, repo, input);
+    await waitFor(async () => (await service.get(agent, repo)).runs[0].output.includes('ready'));
+    const stopping = service.stop(agent, run.id);
+    try { await expect(service.start(agent, repo, input)).rejects.toThrow(/already running/); }
+    finally { await stopping; }
+    expect(await service.stop(agent, run.id)).toMatchObject({ state: 'stopped' });
+    const restarted = await service.start(agent, repo, input);
+    await service.stop(agent, restarted.id);
+  });
+
   it('redacts inherited credentials even when output arrives in separate chunks', async () => {
     process.env.KORUS_PROFILE_TEST_TOKEN = 'fixture-private-secret';
     try {
@@ -115,7 +141,7 @@ describe('repository run profiles', () => {
       expect(result.output.length).toBeLessThanOrEqual(65536);
       expect(result.output).not.toContain('fixture-private-secret');
       expect(await readFile(path.join(root, 'home', 'run-profiles.json'), 'utf8')).not.toContain('fixture-private-secret');
-      await service.stopAgent(agent);
+      await service.retainAgents(new Set());
       expect((await service.get(agent, repo)).runs[0]).toMatchObject({ id: run.id, state: 'stopped' });
       await service.close();
       await expect(service.start(agent, repo, { profileId: p.id, command: p.command, cwd: repo })).rejects.toThrow(/closed/);

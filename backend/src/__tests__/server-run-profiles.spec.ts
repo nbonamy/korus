@@ -48,13 +48,15 @@ describe('run profile app-owned boundary', () => {
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
     const response = { repository: '/remote/repo', worktree: '/remote/worktree', profiles: [], targets: {}, runs: [] };
     const remoteClients = { request: vi.fn(async (_connection, method: string) => method === 'snapshot/get' ? { snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : response), close: vi.fn() };
-    const runProfiles = { get: vi.fn(), start: vi.fn(), stop: vi.fn(), close: vi.fn() };
+    const runProfiles = { get: vi.fn(), start: vi.fn(), stop: vi.fn(), retainAgents: vi.fn(), close: vi.fn() };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never, runProfiles: runProfiles as never });
     resources.push({ server });
     for (const [method, extra] of [['agent/runProfiles/get', {}], ['agent/runProfile/start', { input: { profileId: 'profile', command: 'npm run dev', cwd: '/remote/worktree' } }], ['agent/profileRun/stop', { runId: 'run' }]] as const) {
       expect(await request(server, method, { agentId: 'agent-remote', ...extra })).toMatchObject({ result: response });
       expect(remoteClients.request).toHaveBeenLastCalledWith(connection, method, { agentId: 'agent-remote', ...extra, _clientId: 'remote-controller' }, expect.any(Function));
     }
+    await request(server, 'team/disconnect', { teamId: 'pointer' });
+    expect(remoteClients.request).toHaveBeenCalledWith(connection, 'agent/profileRuns/stop', { agentId: 'agent-remote', _clientId: 'remote-controller' }, expect.any(Function));
     expect(runProfiles.get).not.toHaveBeenCalled(); expect(runProfiles.start).not.toHaveBeenCalled(); expect(runProfiles.stop).not.toHaveBeenCalled();
   });
 });

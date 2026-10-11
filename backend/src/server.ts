@@ -408,7 +408,7 @@ export class AppBackendServer {
       onForwardedEvent: (connectionId, event) => this.forwardRemoteBackendEvent(connectionId, event),
       onProjectedSnapshotChanged: () => { void this.emitProjectedSnapshot(); },
     });
-    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"));
+    this.runProfiles = options.runProfiles ?? new RunProfileService(path.join(backendHomeDir(), "run-profiles.json"), this.agentGitService, (id, folder) => this.snapshot.agents.some(agent => agent.id === id && agent.folder === folder));
     this.documents = options.documents ?? new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
     this.clientPreferences = new ClientPreferencesService({
       snapshot: () => this.remoteTeams.clientSnapshot(),
@@ -2912,6 +2912,7 @@ export class AppBackendServer {
   }
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set(this.snapshot.agents.map(agent => agent.id)));
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -2919,6 +2920,7 @@ export class AppBackendServer {
   }
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
+    if (this.runProfiles.hasRuns) await this.runProfiles.retainAgents(new Set(this.snapshot.agents.map(agent => agent.id)));
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }

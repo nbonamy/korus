@@ -13,7 +13,7 @@ const text = z.string().trim().min(1).max(4096).refine(value => !/[\x00-\x1f\x7f
 const inputSchema = z.strictObject({ id: z.string().uuid().optional(), name: text.max(100), command: text, directory: text.default('.'), previewUrl: text.optional() });
 const storeSchema = z.strictObject({ repositories: z.record(z.string(), z.array(inputSchema.extend({ id: z.string().uuid() })).max(100)) });
 type Store = z.infer<typeof storeSchema>;
-type OwnedRun = { run: ProfileRun; child: ChildProcess; done: Promise<void>; stop?: Promise<void>; secrets: string[]; pendingOutput: string; root: string };
+type OwnedRun = { run: ProfileRun; child: ChildProcess; done: Promise<void>; stop?: Promise<void>; stopRequested?: boolean; secrets: string[]; pendingOutput: string; root: string };
 const MAX_OUTPUT = 65536;
 const exec = promisify(execFile);
 
@@ -23,7 +23,7 @@ export class RunProfileService {
   private readonly runs = new Map<string, OwnedRun>();
   private closed = false;
   private readonly releasedAgents = new Set<string>();
-  constructor(private readonly filename: string, private readonly git = new AgentGitService()) {}
+  constructor(private readonly filename: string, private readonly git = new AgentGitService(), private readonly ownerAvailable: (agentId: string, folder: string) => boolean = () => true) {}
 
   private transaction<T>(action: (store: Store) => Promise<T> | T): Promise<T> {
     const next = this.pending.catch(() => undefined).then(async () => {
@@ -94,7 +94,7 @@ export class RunProfileService {
     const target = await this.target(folder);
     return this.transaction(async store => {
       if (this.closed) throw new Error('Run profile service is closed. Reconnect to the owning host.');
-      if (this.releasedAgents.has(agentId)) throw new Error('This agent has been removed. Select an open agent.');
+      if (this.releasedAgents.has(agentId) || !this.ownerAvailable(agentId, folder)) throw new Error('This agent has been removed. Select an open agent.');
       const profile = store.repositories[target.repository]?.find(profile => profile.id === input.profileId);
       if (!profile) throw new Error('Run profile not found. Refresh the list.');
       this.validateCommand(profile.command);
@@ -117,7 +117,7 @@ export class RunProfileService {
       child.once('error', () => { run.error = 'Could not start the command. Check the working directory and shell installation on this host.'; });
       child.once('close', (code) => {
         this.flushOutput(owned, true);
-        if (run.state === 'running') run.state = !run.error && code === 0 ? 'completed' : 'failed';
+        if (run.state === 'running') run.state = owned.stopRequested ? 'stopped' : !run.error && code === 0 ? 'completed' : 'failed';
         if (code !== null) run.exitCode = code;
         if (run.state === 'failed' && !run.error) run.error = `Command exited${code === null ? ' after a signal' : ` with code ${code}`}. Check output and the command on this host.`;
         run.finishedAt = new Date().toISOString();
@@ -135,7 +135,8 @@ export class RunProfileService {
     if (!owned || owned.run.agentId !== agentId) throw new Error('Profile run not found for this agent.');
     if (owned.run.state === 'running') {
       owned.stop ??= this.stopOwned(owned);
-      await owned.stop;
+      try { await owned.stop; }
+      catch (error) { owned.stop = undefined; owned.stopRequested = false; throw error; }
     }
     return this.snapshot(owned);
   }
@@ -144,6 +145,13 @@ export class RunProfileService {
     // Await an in-flight admission before releasing this owner.
     await this.pending.catch(() => undefined);
     await Promise.all([...this.runs.values()].filter(owned => owned.run.agentId === agentId).map(owned => this.stop(agentId, owned.run.id)));
+  }
+
+  get hasRuns(): boolean { return this.runs.size > 0; }
+
+  async retainAgents(agentIds: Set<string>): Promise<void> {
+    await this.pending.catch(() => undefined);
+    await Promise.all([...new Set([...this.runs.values()].map(owned => owned.run.agentId))].filter(id => !agentIds.has(id)).map(id => this.releaseAgent(id)));
   }
 
   async releaseAgent(agentId: string): Promise<void> {
@@ -158,13 +166,13 @@ export class RunProfileService {
   }
 
   private async stopOwned(owned: OwnedRun): Promise<void> {
+    // Keep admission closed until the process and its inherited streams have closed.
+    owned.stopRequested = true;
     if (process.platform === 'win32') {
-      if (owned.child.pid) await exec('taskkill', ['/pid', String(owned.child.pid), '/T', '/F'], { windowsHide: true }).catch(() => { throw new Error('Could not stop the owned process tree. Retry Stop on its owning host.'); });
-      owned.run.state = 'stopped';
+      if (owned.child.pid) await exec('taskkill', ['/pid', String(owned.child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000 }).catch(() => { if (owned.run.state === 'running') throw new Error('Could not stop the owned process tree. Retry Stop on its owning host.'); });
       await owned.done;
       return;
     }
-    owned.run.state = 'stopped';
     this.signal(owned, 'SIGTERM');
     const kill = setTimeout(() => this.signal(owned, 'SIGKILL'), 1500);
     try { await owned.done; } finally { clearTimeout(kill); this.signal(owned, 'SIGKILL'); }
