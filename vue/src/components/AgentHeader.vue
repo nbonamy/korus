@@ -50,6 +50,7 @@
     </div>
 
     <div class="agent-header__activity">
+      <RunProfilesControl v-if="agent?.folder" :agent="agent" :host-label="runHostLabel ?? $t('runProfiles.localHost')" :preview-available="runPreviewAvailable ?? false" @preview="emit('run-preview', $event)" @visibility="emit('run-profiles-visible', $event)" />
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -138,9 +139,12 @@ import OpenInControl from '../shared/OpenInControl.vue';
 import SubagentControl from './SubagentControl.vue';
 import GitWorkflowControl from './GitWorkflowControl.vue';
 import GitDiffControl from './GitDiffControl.vue';
+import RunProfilesControl from './RunProfilesControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
 
 const props = withDefaults(defineProps<{
+  runHostLabel?: string;
+  runPreviewAvailable?: boolean;
   agent: Agent | null;
   repositoryIcon?: string;
   gitStatus?: AgentGitStatus | null;
@@ -171,6 +175,8 @@ const props = withDefaults(defineProps<{
 }>(), { workspaceToggleAvailable: true, workspaceToggleDisabled: undefined });
 
 const emit = defineEmits<{
+  'run-preview': [url: string];
+  'run-profiles-visible': [visible: boolean];
   'expand-sidebar': [];
   'toggle-workspace': [];
   'toggle-execution-plan': [];

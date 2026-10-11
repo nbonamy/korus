@@ -623,6 +623,7 @@ describe('AgentHeader', () => {
 
     const activity = wrapper.get('.agent-header__activity');
     expect([...activity.element.children].map((child) => child.className)).toStrictEqual([
+      'app-button app-button--secondary',
       'git-diff-control agent-header__git-status',
       'git-workflow-control agent-header__git-actions',
       'open-in-control agent-header__open-in',

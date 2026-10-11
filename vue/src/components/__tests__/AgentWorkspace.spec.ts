@@ -122,6 +122,26 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
 }
 
 describe('AgentWorkspace', () => {
+  it('opens a profile preview in the selected agent’s existing browser workspace', async () => {
+    const { wrapper, workspace, currentAgent, openRightWorkspaceTab } = mountWorkspace();
+    wrapper.getComponent({ name: 'AgentHeader' }).vm.$emit('run-preview', 'http://127.0.0.1:43210');
+    await wrapper.vm.$nextTick();
+    expect(workspace.browserInitialUrl).toBe('http://127.0.0.1:43210');
+    expect(workspace.browserOpenRequestId).toBe(1);
+    expect(openRightWorkspaceTab).toHaveBeenCalledExactlyOnceWith('browser', currentAgent.id);
+  });
+
+  it('hides hosted browser views while the profile dialog covers the workspace', async () => {
+    const { wrapper } = mountWorkspace();
+    const header = wrapper.getComponent({ name: 'AgentHeader' });
+    header.vm.$emit('run-profiles-visible', true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.getComponent({ name: 'RightWorkspacePanel' }).props('visible')).toBe(false);
+    header.vm.$emit('run-profiles-visible', false);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.getComponent({ name: 'RightWorkspacePanel' }).props('visible')).toBe(true);
+  });
+
   it('reserves chat space when the workspace shrinks and restores the preferred sidebar width when it grows', async () => {
     let onResize: ResizeObserverCallback = () => {};
     const disconnect = vi.fn();
