@@ -850,6 +850,12 @@ export type AppApi = {
   listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]>;
   listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;
+  getRunProfiles(agentId: string): Promise<import('./run-profiles').RunProfileCatalog>;
+  saveRunProfile(agentId: string, input: import('./run-profiles').RunProfileInput): Promise<import('./run-profiles').RunProfileCatalog>;
+  deleteRunProfile(agentId: string, profileId: string): Promise<import('./run-profiles').RunProfileCatalog>;
+  startRunProfile(agentId: string, input: import('./run-profiles').RunProfileStartInput): Promise<import('./run-profiles').ProfileRun>;
+  stopProfileRun(agentId: string, runId: string): Promise<import('./run-profiles').ProfileRun>;
+  stopAgentProfileRuns(agentId: string): Promise<void>;
   getDocumentWorkspaces(): Promise<import('./document-workspace').DocumentWorkspaces>;
   updateDocumentWorkspace(agentId: string, change: import('./document-workspace').DocumentWorkspaceChange): Promise<import('./document-workspace').DocumentWorkspace>;
   readWorkspaceDocument(agentId: string, tabId: string): Promise<import('./document-workspace').DocumentReadResult>;

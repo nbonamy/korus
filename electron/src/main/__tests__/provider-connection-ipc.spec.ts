@@ -25,6 +25,21 @@ vi.mock('electron', () => ({
 }));
 
 describe('provider sign-out IPC', () => {
+  it('carries a reviewed profile target and stop identity through the real preload bridge', async () => {
+    const run = { id: 'run', agentId: 'agent-remote', state: 'running' };
+    const request = vi.fn().mockResolvedValue(run);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    const input = { profileId: 'dev', command: 'npm run dev', cwd: '/remote/worktree' };
+    await expect(api.startRunProfile('agent-remote', input)).resolves.toStrictEqual(run);
+    expect(request).toHaveBeenLastCalledWith('agent/runProfile/start', { agentId: 'agent-remote', input });
+    request.mockRejectedValueOnce(new Error('Owner disconnected. Reconnect before stopping.'));
+    await expect(api.stopProfileRun('agent-remote', 'run')).rejects.toThrow('Owner disconnected');
+    expect(request).toHaveBeenLastCalledWith('agent/profileRun/stop', { agentId: 'agent-remote', runId: 'run' });
+  });
+
   it('routes provider version checks and confirmed upgrades through preload to the owning host', async () => {
     const state = { backend: 'claude', status: 'waiting', method: 'native', canUpgrade: true, busy: true };
     const request = vi.fn().mockResolvedValue(state);

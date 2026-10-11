@@ -13,6 +13,19 @@ it('routes document saves and layout changes through client-scoped operations', 
 });
 
 describe(`${product.name} web operations`, () => {
+  it('preserves the reviewed profile target and output/stop owner at the web boundary', async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const input = { profileId: 'dev', command: 'npm run dev', cwd: '/remote/worktree' };
+    await invokeAppWebOperation({ request }, 'startRunProfile', ['remote-agent', input]);
+    await invokeAppWebOperation({ request }, 'getRunProfiles', ['remote-agent']);
+    await invokeAppWebOperation({ request }, 'stopProfileRun', ['remote-agent', 'run']);
+    expect(request.mock.calls).toStrictEqual([
+      ['agent/runProfile/start', { agentId: 'remote-agent', input }],
+      ['agent/runProfiles/get', { agentId: 'remote-agent' }],
+      ['agent/profileRun/stop', { agentId: 'remote-agent', runId: 'run' }],
+    ]);
+  });
+
   it('preserves history search options and the conversation resume target expected by the daemon', async () => {
     const target = { storageState: 'active', ref: { backend: 'antigravity', folder: '/work', sessionId: 'native-history' } } as const;
     const request = vi.fn().mockResolvedValue({ agents: [] });

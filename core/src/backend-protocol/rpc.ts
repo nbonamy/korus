@@ -73,6 +73,12 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentRunProfilesGet]: { params: { agentId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileSave]: { params: { agentId: string; input: import('../run-profiles').RunProfileInput }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileDelete]: { params: { agentId: string; profileId: string }; result: import('../run-profiles').RunProfileCatalog };
+  [backendMethods.agentRunProfileStart]: { params: { agentId: string; input: import('../run-profiles').RunProfileStartInput }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunStop]: { params: { agentId: string; runId: string }; result: import('../run-profiles').ProfileRun };
+  [backendMethods.agentProfileRunsStop]: { params: { agentId: string }; result: void };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
     result: AppSnapshot;

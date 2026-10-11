@@ -65,6 +65,23 @@ desktop preference cannot enable a tool the host does not provide.
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
+Repository run profiles are user-authored definitions in the owning daemon's private
+`run-profiles.json` store, shared by worktrees through their primary repository
+identity. No repository configuration is discovered or executed. The daemon admits
+only a saved profile whose command and resolved directory match the user's reviewed
+target; directory containment includes real paths and symlinks. Profiles have no
+environment field and never copy environment files. Output and run history are
+bounded and volatile; inherited credential values are redacted from output returned
+to clients. Restart restores definitions, never processes.
+
+The run-profile service owns each command process group through completion, stop,
+agent/team removal, explicit team disconnect, and daemon shutdown. Switching or
+closing a client view retains the daemon owner. Losing transport to a persistent
+remote daemon does not transfer ownership to the client. Remote profile operations
+use the existing agent-location routing; local loopback previews use the existing
+Browser pane. Remote loopback previews require an owning-host browser and are not
+opened against the desktop's localhost.
+
 ## Conversation Ownership
 
 Provider conversations stay provider-owned end to end. Codex messages, turns,
