@@ -754,6 +754,7 @@ function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void
 }
 
 defineExpose({
+  getCommandActions: () => agentHeaders.get(props.currentAgent?.id ?? '')?.getCommandActions() ?? [],
   focusComposer,
   openSavedDraftPicker,
   saveCurrentDraft,

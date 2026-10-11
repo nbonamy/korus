@@ -1,6 +1,6 @@
 <template>
   <div class="quick-open-dialog" role="presentation" @mousedown.self="emit('close')">
-    <section class="quick-open-dialog__panel" role="dialog" aria-modal="true" :aria-label="dialogLabel">
+    <section ref="panel" class="quick-open-dialog__panel" role="dialog" aria-modal="true" :aria-label="dialogLabel" @keydown.escape.stop.prevent="emit('close')" @keydown.tab="trapFocus">
       <div class="quick-open-dialog__search">
         <input
           ref="input"
@@ -8,7 +8,6 @@
           type="search"
           :aria-label="inputAriaLabel"
           :placeholder="placeholder"
-          @keydown.escape.prevent="emit('close')"
           @keydown.enter.prevent="selectCurrent"
           @keydown.up.prevent="move(-1)"
           @keydown.down.prevent="move(1)"
@@ -19,30 +18,33 @@
           v-for="(item, index) in matches"
           :key="item.id"
           type="button"
+          :disabled="item.disabled"
           class="quick-open-dialog__item"
           :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
           @click="select(item.id)"
           @mouseenter="selectedIndex = index"
+          @focus="selectedIndex = index"
         >
           <slot name="item" :item="item">
             <span>{{ item.label }}</span>
             <small v-if="item.detail">{{ item.detail }}</small>
           </slot>
         </button>
-        <p v-if="matches.length === 0">{{ emptyLabel }}</p>
+        <p v-if="matches.length === 0" role="status">{{ query.trim() ? noResultsLabel ?? emptyLabel : emptyLabel }}</p>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 export type QuickOpenItem = {
   id: string;
   label: string;
   detail?: string;
   searchText?: string;
+  disabled?: boolean;
 };
 
 const props = defineProps<{
@@ -51,9 +53,12 @@ const props = defineProps<{
   inputAriaLabel: string;
   items: QuickOpenItem[];
   placeholder: string;
+  noResultsLabel?: string;
 }>();
 const emit = defineEmits<{ close: []; select: [id: string] }>();
 const input = ref<HTMLInputElement | null>(null);
+const panel = ref<HTMLElement | null>(null);
+const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 const results = ref<HTMLElement | null>(null);
 const query = ref('');
 const selectedIndex = ref(0);
@@ -65,7 +70,19 @@ const matches = computed(() => {
   }).slice(0, 100);
 });
 watch(query, () => { selectedIndex.value = 0; });
+watch(matches, () => { selectedIndex.value = Math.min(selectedIndex.value, Math.max(0, matches.value.length - 1)); });
 onMounted(() => void nextTick(() => input.value?.focus()));
+onUnmounted(() => { if (previousFocus?.isConnected) previousFocus.focus(); });
+function trapFocus(event: KeyboardEvent): void {
+  const controls = panel.value?.querySelectorAll<HTMLElement>('input, button:not(:disabled)');
+  if (!controls?.length) return;
+  const first = controls[0]!;
+  const last = controls[controls.length - 1]!;
+  if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+}
 function move(delta: number): void {
   if (!matches.value.length) return;
   selectedIndex.value = (selectedIndex.value + delta + matches.value.length) % matches.value.length;
@@ -75,7 +92,10 @@ function move(delta: number): void {
   });
 }
 function selectCurrent(): void { const item = matches.value[selectedIndex.value]; if (item) select(item.id); }
-function select(id: string): void { emit('select', id); emit('close'); }
+function select(id: string): void {
+  if (!matches.value.some(item => item.id === id && !item.disabled)) return;
+  emit('select', id); emit('close');
+}
 </script>
 
 <style scoped>
@@ -135,6 +155,11 @@ function select(id: string): void { emit('select', id); emit('close'); }
 .quick-open-dialog__item:hover,
 .quick-open-dialog__item--selected {
   background: var(--color-primary-container) !important;
+}
+
+.quick-open-dialog__item:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
 }
 
 .quick-open-dialog__results p {

@@ -1,8 +1,31 @@
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import QuickOpenDialog from '../QuickOpenDialog.vue';
 
 describe('QuickOpenDialog', () => {
+  it('keeps keyboard focus inside and clamps selection when context removes results', async () => {
+    const trigger = document.createElement('button');
+    document.body.append(trigger); trigger.focus();
+    const wrapper = mount(QuickOpenDialog, { attachTo: document.body, props: {
+      dialogLabel: 'Commands', inputAriaLabel: 'Search', placeholder: 'Search', emptyLabel: 'Empty',
+      items: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }, { id: 'disabled', label: 'Unavailable', disabled: true }],
+    } });
+    await nextTick();
+    await wrapper.get('input').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(wrapper.findAll('button')[1]!.element);
+    await wrapper.findAll('button')[1]!.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(wrapper.get('input').element);
+    await wrapper.get('input').trigger('keydown.down');
+    await wrapper.setProps({ items: [{ id: 'one', label: 'One' }] });
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(wrapper.emitted('select')).toStrictEqual([['one']]);
+    await wrapper.get('button').trigger('keydown.escape');
+    expect(wrapper.emitted('close')).toHaveLength(2);
+    wrapper.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
   it('filters items and supports arrow, enter, escape, and backdrop dismissal', async () => {
     const wrapper = mount(QuickOpenDialog, {
       props: {

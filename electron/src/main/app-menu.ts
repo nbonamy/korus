@@ -98,6 +98,12 @@ function buildHelpMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions, pla
     label: mainT('menu.help'),
     submenu: [
       {
+        label: mainT('menu.commandPalette'),
+        accelerator: shortcutAccelerator('commands'),
+        registerAccelerator: false,
+        click: () => callbacks.sendAppCommand({ type: 'open-command-palette' }),
+      },
+      {
         label: mainT('menu.keyboardShortcuts'),
         accelerator: shortcutAccelerator('help'),
         registerAccelerator: false,

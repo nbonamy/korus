@@ -76,6 +76,7 @@ const emit = defineEmits<{
   'open-settings': [];
   'open-whats-new': [];
   'open-keyboard-shortcuts': [];
+  'open-command-palette': [];
   quit: [];
 }>();
 const popoverVisible = ref(false);
@@ -103,6 +104,7 @@ watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify
   onCleanup(() => { cancelled = true; window.clearInterval(timer); });
 });
 const menuItems = computed<AppMenuItem[]>(() => [
+  { id: 'open-command-palette', type: 'action', label: translate('commands.title') },
   {
     id: 'open-settings',
     type: 'action',
@@ -201,6 +203,9 @@ function selectMenuItem(itemId: string): void {
 
   if (itemId === 'open-settings') {
     emit('open-settings');
+  } else if (itemId === 'open-command-palette') {
+    trigger.value?.focus();
+    emit('open-command-palette');
   } else if (itemId === 'open-keyboard-shortcuts') {
     trigger.value?.focus();
     emit('open-keyboard-shortcuts');

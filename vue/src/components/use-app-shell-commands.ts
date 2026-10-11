@@ -72,6 +72,7 @@ type AppShellCommandOptions = {
     openSettings: () => void;
     openWhatsNew: () => void;
     openKeyboardShortcuts: () => void;
+    openCommandPalette: () => void;
     quit: () => void | Promise<void>;
     restartAgent: (agentId: string) => void;
     resumeSession: (agentId: string) => void;
@@ -102,10 +103,12 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
   function handleShellShortcut(event: KeyboardEvent): void {
     const input = { key: event.key, code: event.code, meta: event.metaKey, control: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
-    if (matchesShellShortcut('help', input)) {
-      if (isModalDialogVisible.value || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))) return;
+    if (matchesShellShortcut('help', input) || matchesShellShortcut('commands', input)) {
+      if (event.repeat) return;
+      if (isModalDialogVisible.value || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"][aria-modal="true"]'))) return;
       event.preventDefault();
-      options.actions.openKeyboardShortcuts();
+      if (matchesShellShortcut('commands', input)) options.actions.openCommandPalette();
+      else options.actions.openKeyboardShortcuts();
       return;
     }
     if (matchesShellShortcut('mute', input)) {
@@ -273,6 +276,11 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'open-keyboard-shortcuts') {
       if (!isModalDialogVisible.value) options.actions.openKeyboardShortcuts();
+      return;
+    }
+
+    if (command.type === 'open-command-palette') {
+      if (!isModalDialogVisible.value && !document.activeElement?.closest('[role="dialog"][aria-modal="true"]')) options.actions.openCommandPalette();
       return;
     }
 
@@ -700,5 +708,5 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     unsubscribeAppCommand = null;
   });
 
-  return { quickAgentShortcutsVisible };
+  return { quickAgentShortcutsVisible, executeAppCommand: handleAppCommand };
 }

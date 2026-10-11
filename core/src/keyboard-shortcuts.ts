@@ -23,6 +23,7 @@ const meta = (key: string, shift = false): Binding => ({ key, modifier: 'meta', 
 
 // Menu accelerators and shell matching share the same declarations as the reference.
 export const keyboardShortcuts: readonly KeyboardShortcut[] = [
+  { id: 'commands', group: 'application', accelerator: 'CommandOrControl+Shift+P', command: { type: 'open-command-palette' }, shell: primary('p', true) },
   { id: 'help', group: 'application', accelerator: 'CommandOrControl+Shift+/', command: { type: 'open-keyboard-shortcuts' }, shell: { ...primary('/', true), code: 'Slash' } },
   { id: 'palette', group: 'navigation', accelerator: 'CommandOrControl+K', command: { type: 'open-agent-palette' }, shell: primary('k'), native: true },
   { id: 'files', group: 'navigation', shell: primary('p'), workspace: true, agent: true },
@@ -37,8 +38,8 @@ export const keyboardShortcuts: readonly KeyboardShortcut[] = [
   { id: 'closeAgent', group: 'agents', accelerator: 'CommandOrControl+W', command: { type: 'close-active-agent' }, shell: meta('w'), native: true, workspace: true, agent: true },
   { id: 'edit', group: 'agents', accelerator: 'CommandOrControl+E', command: { type: 'edit-active-agent' }, native: true, workspace: true, agent: true },
   { id: 'compact', group: 'agents', accelerator: 'CommandOrControl+Shift+K', command: { type: 'compact-active-session' }, native: true, workspace: true, agent: true, idleSession: true },
-  { id: 'saveDraft', group: 'agents', accelerator: 'CommandOrControl+Shift+X', command: { type: 'save-active-prompt-draft' }, native: true, agent: true },
-  { id: 'drafts', group: 'agents', accelerator: 'CommandOrControl+Shift+V', command: { type: 'open-saved-prompt-drafts' }, native: true, agent: true },
+  { id: 'saveDraft', group: 'agents', accelerator: 'CommandOrControl+Shift+X', command: { type: 'save-active-prompt-draft' }, shell: meta('x', true), native: true, workspace: true, agent: true },
+  { id: 'drafts', group: 'agents', accelerator: 'CommandOrControl+Shift+V', command: { type: 'open-saved-prompt-drafts' }, shell: meta('v', true), native: true, workspace: true, agent: true },
   { id: 'newTeam', group: 'application', accelerator: 'CommandOrControl+N', command: { type: 'new-team' }, native: true },
   { id: 'closeTeam', group: 'application', accelerator: 'CommandOrControl+Shift+W', command: { type: 'close-active-team' }, native: true, workspace: true, multipleTeams: true },
   { id: 'settings', group: 'application', accelerator: 'CommandOrControl+,', command: { type: 'open-settings' }, native: true, macOnly: true },
@@ -86,7 +87,7 @@ export type ShortcutContext = {
 };
 export function availableShortcuts(context: ShortcutContext): KeyboardShortcut[] {
   return keyboardShortcuts.filter(item => {
-    if (context.onboarding && item.id !== 'help' && item.id !== 'mute') return false;
+    if (context.onboarding && !['commands', 'help', 'mute'].includes(item.id)) return false;
     if (item.macOnly && context.platform !== 'mac') return false;
     if (!item.shell && !context.desktop) return false;
     if (item.workspace && !context.workspace || item.agent && !context.agent || item.browser && !context.browser || item.idleSession && !context.idleSession) return false;

@@ -126,8 +126,11 @@ Search by behavior first.
 App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
 native input routing, shell matching and the shortcut reference share these
 binding declarations. Availability reflects the host and current surface; provider
-composer bindings remain SDK-owned. The reference's opening shortcut is handled in
-the renderer so editable targets and modal dialogs can retain their input.
+composer bindings remain SDK-owned. Reference and command-palette opening bindings
+are handled in the renderer so editable targets and modal dialogs retain their input.
+The command palette uses the canonical quick-open dialog and existing shell handlers.
+Git command availability and dispatch come from the focused agent's workflow control,
+which retains ownership of operation state, confirmations and host routing.
 
 ## Interaction
 

@@ -127,6 +127,7 @@
           @open-settings="emit('open-settings')"
           @open-whats-new="emit('open-whats-new')"
           @open-keyboard-shortcuts="emit('open-keyboard-shortcuts')"
+          @open-command-palette="emit('open-command-palette')"
           @quit="emit('quit')"
         />
       </div>
@@ -189,6 +190,7 @@ const emit = defineEmits<{
   'open-settings': [];
   'open-whats-new': [];
   'open-keyboard-shortcuts': [];
+  'open-command-palette': [];
   quit: [];
   'reorder-teams': [input: ReorderTeamsInput];
   'select-cockpit': [];

@@ -162,7 +162,7 @@ describe('app menu', () => {
       'Resume Session',
       'Restart Agent',
     ]);
-    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['Keyboard Shortcuts…', 'What’s New']);
+    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['Command Palette…', 'Keyboard Shortcuts…', 'What’s New']);
     expect(JSON.stringify(menu)).not.toMatch(/viewMenu|reload|forceReload|toggleDevTools/i);
   });
 
@@ -254,6 +254,9 @@ describe('app menu', () => {
     clickItem(menu, 'Help', 'Keyboard Shortcuts…');
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(12, { type: 'open-keyboard-shortcuts' });
     expect(menuItem(menu, 'Help', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
+    clickItem(menu, 'Help', 'Command Palette…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
+    expect(menuItem(menu, 'Help', 'Command Palette…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+P', registerAccelerator: false });
   });
 
   it('uses the expected file menu accelerators', () => {

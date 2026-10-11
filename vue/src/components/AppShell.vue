@@ -109,6 +109,7 @@
       @open-settings="openSettings"
       @open-whats-new="openWhatsNew"
       @open-keyboard-shortcuts="keyboardShortcutsVisible = true"
+      @open-command-palette="commandPaletteVisible = true"
       @quit="quit"
       @reorder-agents="$emit('reorder-agents', $event)"
       @reorder-repositories="$emit('reorder-repositories', $event)"
@@ -540,6 +541,7 @@
       @close="teamDialogVisible = false"
     />
     <KeyboardShortcutsDialog v-if="keyboardShortcutsVisible" :context="shortcutContext" @close="keyboardShortcutsVisible = false" />
+    <CommandPalette v-if="commandPaletteVisible" :actions="paletteActions" @close="commandPaletteVisible = false" @execute="executePaletteAction" />
     <WhatsNewDialog
       :visible="whatsNewVisible"
       @close="whatsNewVisible = false"
@@ -638,6 +640,8 @@ import AgentQuickOpen from './AgentQuickOpen.vue';
 import AutomationsView from './AutomationsView.vue';
 import TeamDialog from './TeamDialog.vue';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog.vue';
+import CommandPalette from './CommandPalette.vue';
+import { commandPaletteActions, type CommandPaletteAction } from './command-palette-actions';
 import type { ShortcutContext } from '@workspace/core/keyboard-shortcuts';
 import AppShellNavigation from './AppShellNavigation.vue';
 import BackendConnectionBanner from './BackendConnectionBanner.vue';
@@ -1273,6 +1277,7 @@ const debugUserQuestions = ref<{ agentId: string; message: SurfaceMessage; reque
 const debugAgentCreationProgress = ref<AgentCreationProgress | null>(null);
 const debugAgentCreationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const agentWorkspace = ref<{
+  getCommandActions(): CommandPaletteAction[];
   focusComposer(): void;
   openSavedDraftPicker(): void;
   saveCurrentDraft(): void;
@@ -1360,6 +1365,7 @@ const teamDialogVisible = ref(false);
 const teamDialogMode = ref<'create' | 'edit'>('create');
 const whatsNewVisible = ref(false);
 const keyboardShortcutsVisible = ref(false);
+const commandPaletteVisible = ref(false);
 const editingTeamId = ref<string | null>(null);
 let backlogInitialized = false;
 const activeTeam = computed<Team | null>(() => {
@@ -2394,6 +2400,7 @@ const isModalDialogVisible = computed(() => (
   || teamDialogVisible.value
   || whatsNewVisible.value
   || keyboardShortcutsVisible.value
+  || commandPaletteVisible.value
   || imageAnnotationVisible.value
   || missionDeleteTarget.value !== null
   || debugAgentCreationProgress.value !== null
@@ -2412,9 +2419,9 @@ const shortcutContext = computed<ShortcutContext>(() => ({
   agentCount: activeTeamAgents.value.length,
   teamCount: props.snapshot.teams.length,
   browser: appHostCapabilities.embeddedBrowser,
-  idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle'),
+  idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle' && defaultBackendCommands(currentAgent.value.backend).some(command => command.slashName === 'compact')),
 }));
-const { quickAgentShortcutsVisible } = useAppShellCommands({
+const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
     activeTeamAgents: () => activeTeamAgents.value,
@@ -2460,6 +2467,7 @@ const { quickAgentShortcutsVisible } = useAppShellCommands({
     openSettings,
     openWhatsNew,
     openKeyboardShortcuts: () => { keyboardShortcutsVisible.value = true; },
+    openCommandPalette: () => { commandPaletteVisible.value = true; },
     quit,
     restartAgent: (agentId) => emit('restart-agent', agentId),
     resumeSession: openResumeSession,
@@ -2474,6 +2482,38 @@ const { quickAgentShortcutsVisible } = useAppShellCommands({
     updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
   },
 });
+
+const paletteActions = computed(() => {
+  const agent = split.focusedPane.value.agentId ? currentAgent.value : null;
+  const team = activeTeam.value;
+  const remote = team?.remoteConnectionId;
+  return commandPaletteActions({
+    shortcuts: shortcutContext.value, agent, team,
+    connected: props.connectionState.status === 'connected',
+    hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
+    engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),
+    canCreateAgent: Boolean(team && preferredBackendChoices(props.snapshot, team.id).length),
+    capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
+    gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
+    gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
+  }, {
+    command: executeAppCommand,
+    newAgent: () => openNewAgent(team?.id),
+    files: () => { fileQuickOpenVisible.value = true; },
+    filesPane: () => openRightWorkspaceTab('files', agent?.id),
+    codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
+    visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
+    plan: () => openRightWorkspaceTab('plan', agent?.id),
+  });
+});
+async function executePaletteAction(selected: CommandPaletteAction): Promise<void> {
+  commandPaletteVisible.value = false;
+  await nextTick();
+  const action = paletteActions.value.find(candidate => candidate.id === selected.id && candidate.scope === selected.scope);
+  if (!action || action.disabledReason || isModalDialogVisible.value) return;
+  try { await action.run(); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
+}
 
 function showDebugUserQuestions(agentId: string): void {
   const requestId = 'debug-user-questions';

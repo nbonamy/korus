@@ -131,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -266,13 +267,13 @@ function editorElement(): HTMLElement | null {
 }
 
 function handleDraftShortcut(event: KeyboardEvent): void {
-  if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey || !props.agent) return;
-  const key = event.key.toLowerCase();
-  if (key === 'x' && event.target === editorElement()) {
+  if (!props.agent) return;
+  const input = { key: event.key, meta: event.metaKey, shift: event.shiftKey, control: event.ctrlKey, alt: event.altKey };
+  if (matchesShellShortcut('saveDraft', input) && event.target === editorElement()) {
     event.preventDefault();
     event.stopPropagation();
     void saveCurrentDraft();
-  } else if (key === 'v' && event.target === editorElement() && !draftPickerOpen.value) {
+  } else if (matchesShellShortcut('drafts', input) && event.target === editorElement() && !draftPickerOpen.value) {
     event.preventDefault();
     event.stopPropagation();
     openSavedDraftPicker();
