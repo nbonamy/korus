@@ -5,6 +5,7 @@ import type { Mission } from '@workspace/core/missions';
 import { isVisualization } from '@workspace/core/visualize';
 import { StoreFormatError } from './store-format';
 import type { StoredRosterAgent, RosterData, SettingsData, VisualizationData } from './layout';
+import type { BrowserBookmark } from '@workspace/core/browser-bookmarks';
 
 /*
  * Roster schema 2; settings and visualization schema 1. The file structure and supported engine
@@ -60,6 +61,7 @@ export const rosterSchema = z.strictObject({
 
 export const settingsSchema = z.strictObject({
   settings: entity<AppGeneralSettings>('settings'),
+  browserBookmarksByClient: z.record(z.string(), z.array(entity<BrowserBookmark>('browser bookmark'))).optional(),
   theme: entity<AppThemeSettings>('theme'),
   sourceFolder: entity<SourceFolderState>('source folder'),
   remoteConnections: z.array(entity<RemoteConnection>('remote connection')),
