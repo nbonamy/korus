@@ -126,6 +126,7 @@
           :backend-rate-limits="backendRateLimits"
           @open-settings="emit('open-settings')"
           @open-whats-new="emit('open-whats-new')"
+          @open-keyboard-shortcuts="emit('open-keyboard-shortcuts')"
           @quit="emit('quit')"
         />
       </div>
@@ -187,6 +188,7 @@ const emit = defineEmits<{
   'new-team': [];
   'open-settings': [];
   'open-whats-new': [];
+  'open-keyboard-shortcuts': [];
   quit: [];
   'reorder-teams': [input: ReorderTeamsInput];
   'select-cockpit': [];

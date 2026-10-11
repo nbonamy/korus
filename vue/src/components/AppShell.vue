@@ -108,6 +108,7 @@
       @open-in="openAgentIn($event.agentId, $event.application)"
       @open-settings="openSettings"
       @open-whats-new="openWhatsNew"
+      @open-keyboard-shortcuts="keyboardShortcutsVisible = true"
       @quit="quit"
       @reorder-agents="$emit('reorder-agents', $event)"
       @reorder-repositories="$emit('reorder-repositories', $event)"
@@ -538,6 +539,7 @@
       :update-team="updateTeam"
       @close="teamDialogVisible = false"
     />
+    <KeyboardShortcutsDialog v-if="keyboardShortcutsVisible" :context="shortcutContext" @close="keyboardShortcutsVisible = false" />
     <WhatsNewDialog
       :visible="whatsNewVisible"
       @close="whatsNewVisible = false"
@@ -613,7 +615,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
-import { appApi, appHostCapabilities } from '../platform-api';
+import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
 import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
@@ -635,6 +637,8 @@ import FileQuickOpen from './FileQuickOpen.vue';
 import AgentQuickOpen from './AgentQuickOpen.vue';
 import AutomationsView from './AutomationsView.vue';
 import TeamDialog from './TeamDialog.vue';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog.vue';
+import type { ShortcutContext } from '@workspace/core/keyboard-shortcuts';
 import AppShellNavigation from './AppShellNavigation.vue';
 import BackendConnectionBanner from './BackendConnectionBanner.vue';
 import WhatsNewDialog from './WhatsNewDialog.vue';
@@ -1355,6 +1359,7 @@ watch(() => !debugMissingEngines.value && realOnboardingGate.value, (gated) => {
 const teamDialogVisible = ref(false);
 const teamDialogMode = ref<'create' | 'edit'>('create');
 const whatsNewVisible = ref(false);
+const keyboardShortcutsVisible = ref(false);
 const editingTeamId = ref<string | null>(null);
 let backlogInitialized = false;
 const activeTeam = computed<Team | null>(() => {
@@ -2388,6 +2393,7 @@ const isModalDialogVisible = computed(() => (
   || newProjectDialogVisible.value
   || teamDialogVisible.value
   || whatsNewVisible.value
+  || keyboardShortcutsVisible.value
   || imageAnnotationVisible.value
   || missionDeleteTarget.value !== null
   || debugAgentCreationProgress.value !== null
@@ -2397,6 +2403,17 @@ const isModalDialogVisible = computed(() => (
 ));
 // Dialogs take over the screen on phones; the drawer must not linger behind them.
 watch(isModalDialogVisible, (visible) => { if (visible) compactNavOpen.value = false; });
+const shortcutContext = computed<ShortcutContext>(() => ({
+  platform: /Mac/i.test(navigator.platform) ? 'mac' : 'other',
+  desktop: appClientPlatform === 'desktop',
+  onboarding: showOnboardingGate.value,
+  workspace: isAgentWorkspaceVisible.value && !showOnboardingGate.value,
+  agent: Boolean(currentAgent.value),
+  agentCount: activeTeamAgents.value.length,
+  teamCount: props.snapshot.teams.length,
+  browser: appHostCapabilities.embeddedBrowser,
+  idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle'),
+}));
 const { quickAgentShortcutsVisible } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
@@ -2442,6 +2459,7 @@ const { quickAgentShortcutsVisible } = useAppShellCommands({
     closeRightWorkspaceTab: (tab, agentId) => closeRightWorkspaceTabLocal(agentId, tab),
     openSettings,
     openWhatsNew,
+    openKeyboardShortcuts: () => { keyboardShortcutsVisible.value = true; },
     quit,
     restartAgent: (agentId) => emit('restart-agent', agentId),
     resumeSession: openResumeSession,

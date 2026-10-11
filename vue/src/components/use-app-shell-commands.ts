@@ -1,3 +1,4 @@
+import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { product } from '@workspace/core/product';
 import type {
   Agent,
@@ -70,6 +71,7 @@ type AppShellCommandOptions = {
     closeRightWorkspaceTab: (tab: RightWorkspaceTab, agentId: string) => void;
     openSettings: () => void;
     openWhatsNew: () => void;
+    openKeyboardShortcuts: () => void;
     quit: () => void | Promise<void>;
     restartAgent: (agentId: string) => void;
     resumeSession: (agentId: string) => void;
@@ -99,13 +101,14 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
   let unsubscribeAppCommand: (() => void) | null = null;
 
   function handleShellShortcut(event: KeyboardEvent): void {
-    if (
-      event.metaKey &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      event.key.toLowerCase() === 'm'
-    ) {
+    const input = { key: event.key, code: event.code, meta: event.metaKey, control: event.ctrlKey, shift: event.shiftKey, alt: event.altKey };
+    if (matchesShellShortcut('help', input)) {
+      if (isModalDialogVisible.value || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))) return;
+      event.preventDefault();
+      options.actions.openKeyboardShortcuts();
+      return;
+    }
+    if (matchesShellShortcut('mute', input)) {
       event.preventDefault();
       options.actions.toggleSpokenAnnouncementsMuted();
       return;
@@ -118,10 +121,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'k'
+      matchesShellShortcut('palette', input)
     ) {
       event.preventDefault();
       resetQuickAgentShortcuts();
@@ -141,10 +141,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'p' &&
+      matchesShellShortcut('files', input) &&
       currentAgent.value
     ) {
       event.preventDefault();
@@ -152,7 +149,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
+    if (matchesShellShortcut(`agent${event.key}`, input)) {
       const agent = activeTeamAgents.value[Number(event.key) - 1];
       if (agent) {
         event.preventDefault();
@@ -162,11 +159,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'g' &&
+      matchesShellShortcut('review', input) &&
       currentAgent.value
     ) {
       event.preventDefault();
@@ -175,11 +168,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (
-      event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === 'b' &&
+      matchesShellShortcut('browser', input) &&
       currentAgent.value
     ) {
       if (!appHostCapabilities.embeddedBrowser) return;
@@ -188,28 +177,24 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd') {
+    if (matchesShellShortcut('duplicate', input)) {
       duplicateActiveAgent(event);
       return;
     }
 
-    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'r') {
+    if (matchesShellShortcut('restart', input)) {
       event.preventDefault();
       restartActiveAgent();
       return;
     }
 
-    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'w') {
+    if (matchesShellShortcut('closeAgent', input)) {
       closeActiveAgent(event);
       return;
     }
 
     if (
-      event.metaKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.shiftKey &&
-      (event.key === '`' || event.code === 'Backquote')
+      matchesShellShortcut('nextTeam', input)
     ) {
       if (cycleTeams()) {
         event.preventDefault();
@@ -217,7 +202,7 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
       return;
     }
 
-    if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Tab') {
+    if (matchesShellShortcut(event.shiftKey ? 'previousAgent' : 'nextAgent', input)) {
       cycleAgents(event.shiftKey ? -1 : 1, event);
     }
   }
@@ -283,6 +268,11 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
 
     if (command.type === 'open-settings') {
       options.actions.openSettings();
+      return;
+    }
+
+    if (command.type === 'open-keyboard-shortcuts') {
+      if (!isModalDialogVisible.value) options.actions.openKeyboardShortcuts();
       return;
     }
 

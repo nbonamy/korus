@@ -123,6 +123,12 @@ Search by behavior first.
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
 | Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
 
+App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
+native input routing, shell matching and the shortcut reference share these
+binding declarations. Availability reflects the host and current surface; provider
+composer bindings remain SDK-owned. The reference's opening shortcut is handled in
+the renderer so editable targets and modal dialogs can retain their input.
+
 ## Interaction
 
 - **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one
