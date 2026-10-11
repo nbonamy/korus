@@ -16,6 +16,7 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  */
 const requestTimeoutByMethod = {
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,
+  [backendMethods.companionControl]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientWorkspaceGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.clientWorkspaceApply]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.clientDocumentRead]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

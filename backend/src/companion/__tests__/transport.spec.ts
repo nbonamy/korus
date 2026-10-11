@@ -1,0 +1,65 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { generateKeyPair } from '@libp2p/crypto/keys';
+import { peerIdFromPrivateKey } from '@libp2p/peer-id';
+import { createLibp2p } from 'libp2p';
+import { webSockets } from '@libp2p/websockets';
+import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
+import { identify } from '@libp2p/identify';
+import { noise } from '@chainsafe/libp2p-noise';
+import { yamux } from '@chainsafe/libp2p-yamux';
+import { multiaddr } from '@multiformats/multiaddr';
+import { randomUUID } from 'node:crypto';
+import { companionProtocol, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { createCompanionRelay } from '../relay';
+import { CompanionOutboundConnector } from '../connector';
+import { CompanionGateway } from '../gateway';
+import type { Libp2p } from '@libp2p/interface';
+const stops: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
+describe('encrypted companion circuit', () => {
+  it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!.toString();
+    const port = address.match(/\/tcp\/(\d+)/)![1];
+    const connectorRef: { current?: CompanionOutboundConnector } = {};
+    const gateway = new CompanionGateway(hostId, { grants: [], commands: {} }, {
+      workspace: async () => ({ teams: [{ id: 'team', name: 'Actual gateway team', agentIds: [] }], agents: [] }),
+      conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, save: async () => {},
+      revoked: (peer) => connectorRef.current?.revoke(peer),
+    });
+    const connector = new CompanionOutboundConnector(hostKey, gateway); connectorRef.current = connector;
+    stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString(), true);
+    expect(connector.connected).toBe(true);
+    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
+    stops.push(() => phone.stop());
+    const invite = gateway.invite(); await connector.advertise(invite.expiresAt);
+    const circuit = `${address}/p2p-circuit/p2p/${hostId}`;
+    const result = await rpc(phone, circuit, 'snapshot.get', {});
+    expect(result).toHaveProperty('error');
+    const pairing = await rpc(phone, circuit, 'pair.request', { inviteId: invite.inviteId, inviteSecret: invite.inviteSecret, name: 'Phone' }) as { result: { pendingId: string } };
+    expect(pairing.result.pendingId).toBeTruthy();
+    expect(gateway.pendingRequests[0]?.peerId).toBe(phone.peerId.toString());
+    await gateway.decide(pairing.result.pendingId, true, ['team'], true); await connector.advertise();
+    expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { teams: [{ name: 'Actual gateway team' }] } });
+    const wrong = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+    await expect(rpc(phone, `${address}/p2p-circuit/p2p/${wrong}`, 'snapshot.get', {})).rejects.toThrow();
+    await gateway.revoke(phone.peerId.toString());
+    const revoked = await rpc(phone, circuit, 'snapshot.get', {});
+    expect(revoked).toHaveProperty('error');
+  }, 25_000);
+});
+async function rpc(phone: Libp2p, address: string, method: string, args: unknown) {
+  const stream = await phone.dialProtocol(multiaddr(address), companionProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+  const decoder = new CompanionFrameDecoder();
+  try {
+    stream.send(encodeCompanionFrame({ v: 1, id: randomUUID(), method, args })); await stream.close();
+    for await (const chunk of stream) {
+      const frames = decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
+      if (frames.length) return frames[0];
+    }
+    throw new Error('No response');
+  } finally { stream.abort(new Error('Complete')); }
+}

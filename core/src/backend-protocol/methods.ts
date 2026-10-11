@@ -1,4 +1,5 @@
 export const backendMethods = {
+  companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",
   clientWorkspaceApply: "client/workspace/apply",
   clientDocumentRead: "client/document/read",

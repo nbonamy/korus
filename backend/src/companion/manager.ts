@@ -1,0 +1,125 @@
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf, publicKeyToProtobuf } from '@libp2p/crypto/keys';
+import { peerIdFromPrivateKey } from '@libp2p/peer-id';
+import type { PrivateKey } from '@libp2p/interface';
+import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import type { AppSnapshot } from '@workspace/core/contracts';
+import type { CompanionControl, CompanionControlResult, CompanionReset, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { relayAddress } from '@workspace/core/companion-relay';
+import { z } from 'zod';
+import { CompanionGateway, type GatewayState } from './gateway';
+import { CompanionOutboundConnector } from './connector';
+
+type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
+const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
+  z.object({ action: z.literal('enable'), relayOrigin: z.string().max(500), relayPeerId: z.string().min(32).max(128) }).strict(),
+  z.object({ action: z.literal('disable') }).strict(), z.object({ action: z.literal('invite') }).strict(),
+  z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean(), teamIds: z.array(z.string().min(1).max(200)).max(100), canSend: z.boolean() }).strict(),
+  z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
+export type CompanionBackendPort = { request<Result>(method: string, params?: unknown): Promise<Result> };
+
+/** One service inside the owning daemon. No provider process or public local RPC listener. */
+export class CompanionManager {
+  private saved!: Saved;
+  private key!: PrivateKey;
+  private gateway!: CompanionGateway;
+  private connector!: CompanionOutboundConnector;
+  private writes = Promise.resolve();
+  private controls = Promise.resolve();
+  private ready: Promise<void> | null = null;
+  private readonly frames = new Map<string, CompanionReset>();
+  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort) {}
+  event(event: AppBackendEvent) {
+    if (event.type === 'codex.conversationSnapshotChanged' || event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') this.frames.set(event.agentId, event);
+  }
+  async control(input: CompanionControl): Promise<CompanionControlResult> {
+    const action = controlSchema.parse(input);
+    await this.initialize();
+    if (action.action === 'status') return { status: this.status() };
+    const result = this.controls.then(async () => {
+      let invitation;
+      switch (action.action) {
+        case 'enable':
+          relayAddress(action.relayOrigin, action.relayPeerId);
+          await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: action.relayOrigin, relayPeerId: action.relayPeerId }));
+          await this.connector.start(action.relayOrigin, action.relayPeerId);
+          break;
+        case 'disable':
+          await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); break;
+        case 'invite':
+          if (!this.saved.enabled || !this.connector.connected) throw new Error('Relay is not connected.');
+          invitation = { v: 1 as const, relayOrigin: this.saved.relayOrigin, relayPeerId: this.saved.relayPeerId,
+            hostId: this.gateway.hostId, hostPublicKey: Buffer.from(publicKeyToProtobuf(this.key.publicKey)).toString('base64'), ...this.gateway.invite() };
+          await this.connector.advertise(invitation.expiresAt);
+          break;
+        case 'decide': await this.gateway.decide(action.pendingId, action.approve, action.teamIds, action.canSend); await this.connector.advertise(); break;
+        case 'revoke': await this.gateway.revoke(action.peerId); await this.connector.advertise(); break;
+      }
+      return { status: this.status(), ...(invitation ? { invitation } : {}) };
+    });
+    this.controls = result.then(() => {}, () => {});
+    return result;
+  }
+  async stop() { await this.ready?.catch(() => {}); await this.connector?.stop(); }
+  private status() {
+    return { enabled: this.saved.enabled, connected: this.connector.connected, hostId: this.gateway.hostId,
+      relayOrigin: this.saved.relayOrigin, devices: this.gateway.grants, pending: this.gateway.pendingRequests };
+  }
+  private initialize() { return this.ready ??= this.load(); }
+  private async load() {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    let saved: Saved;
+    try {
+      saved = JSON.parse(await readFile(path.join(this.directory, 'state.json'), 'utf8')) as Saved;
+      if (saved.v !== 1 || typeof saved.enabled !== 'boolean' || !Array.isArray(saved.gateway?.grants) || !saved.gateway?.commands) throw new Error('Invalid companion state.');
+      this.key = privateKeyFromProtobuf(Buffer.from(saved.identity, 'base64'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Companion identity cannot be loaded. Restore it or explicitly reset pairing.');
+      this.key = await generateKeyPair('Ed25519');
+      saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), enabled: false, relayOrigin: '', relayPeerId: '', gateway: { grants: [], commands: {} } };
+    }
+    this.saved = saved;
+    this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      workspace: () => this.workspace(),
+      conversation: async (agentId) => {
+        this.frames.delete(agentId);
+        await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });
+        const frame = this.frames.get(agentId);
+        if (!frame) throw new Error('Authoritative conversation is unavailable.');
+        return frame;
+      },
+      submit: async (agentId, prompt, clientId) => { await this.backend.request(backendMethods.agentPromptSend, { agentId, prompt, _clientId: clientId }); },
+      save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
+      revoked: (peerId) => this.connector.revoke(peerId),
+    });
+    this.connector = new CompanionOutboundConnector(this.key, this.gateway);
+    await this.persist();
+    if (saved.enabled) await this.connector.start(saved.relayOrigin, saved.relayPeerId);
+  }
+  private async workspace(): Promise<CompanionWorkspace> {
+    const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
+    return { teams: snapshot.teams, agents: snapshot.agents };
+  }
+  private persist(update: (saved: Saved) => Saved = (saved) => saved) {
+    const write = this.writes.then(async () => {
+      const next = update(this.saved);
+      const content = JSON.stringify(next);
+      const file = path.join(this.directory, 'state.json'); const temporary = `${file}.${randomUUID()}.tmp`;
+      const handle = await open(temporary, 'wx', 0o600);
+      try {
+        try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+        await rename(temporary, file);
+        if (process.platform !== 'win32') {
+          const directory = await open(this.directory, 'r');
+          try { await directory.sync(); } finally { await directory.close(); }
+        }
+        this.saved = next;
+      } finally { await unlink(temporary).catch(() => {}); }
+    });
+    this.writes = write.catch(() => {});
+    return write;
+  }
+}

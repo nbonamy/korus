@@ -103,6 +103,26 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
   client waits forever; Electron adds a grace period so a remote timeout reaches
   the desktop first.
 
+### Companion gateway and relay
+
+`CompanionManager` runs inside the authoritative daemon and delegates reads and
+prompt admission to existing app-owned handlers, including remote-team routing.
+Its protected state owns a stable Noise identity, device grants and a command
+receipt ledger. Serialized atomic writes precede grants and prompt dispatch. An
+interrupted admission stays unresolved; reconnect reads its receipt instead of
+repeating the provider operation. Conversation reads capture provider-native resets
+from the owning handler. The gateway exposes no generic RPC, filesystem or shell
+forwarding.
+
+The separate relay executable uses operator-provided TLS certificates and a
+persistent pinned identity. Only configured laptop peers can reserve circuits or
+update routing admission. Temporary pairing routes remain time/rate bounded;
+paired routes derive from daemon grants. Endpoints enforce companion methods after
+Noise authentication; the relay cannot inspect encrypted application frames. Circuit
+duration and data budgets force an explicit reconnect and authoritative rehydrate.
+Both endpoints initiate outbound WSS connections; deployment requires a reachable
+relay with a trusted certificate and an operator-maintained laptop allowlist.
+
 ### Background daemon (macOS)
 
 Settings can install a per-user LaunchAgent that runs `daemon serve`, so agents and

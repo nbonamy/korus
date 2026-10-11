@@ -220,6 +220,7 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
     ipc.handle(ipcChannels.disableRemoteControl, () => this.disableRemoteControl());

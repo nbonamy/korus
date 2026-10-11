@@ -29,6 +29,7 @@ const api: AppApi = {
   checkRemoteConnection: (connectionId: string, inspectOnly?: boolean) => ipc.invoke(ipcChannels.checkRemoteConnection, connectionId, inspectOnly),
   updateRemoteConnection: (connectionId: string, input: UpdateRemoteConnectionInput) => ipc.invoke(ipcChannels.updateRemoteConnection, connectionId, input),
   removeRemoteConnection: (connectionId: string) => ipc.invoke(ipcChannels.removeRemoteConnection, connectionId),
+  companionControl: (input) => ipc.invoke(ipcChannels.companionControl, input),
   getRemoteControlStatus: () => ipc.invoke(ipcChannels.getRemoteControlStatus),
   enableRemoteControl: () => ipc.invoke(ipcChannels.enableRemoteControl),
   disableRemoteControl: () => ipc.invoke(ipcChannels.disableRemoteControl),

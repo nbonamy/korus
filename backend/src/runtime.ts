@@ -1,4 +1,6 @@
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
+import { CompanionManager } from './companion/manager';
+import { createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
@@ -256,7 +258,15 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     runOnStart: true,
     run: () => pullRequestMonitor.check(),
   });
+  const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+    async request<Result>(method: string, params?: unknown): Promise<Result> {
+      const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
+      if (!response || 'error' in response) throw new Error('Owning daemon operation failed.');
+      return response.result as Result;
+    },
+  });
   server = new AppBackendServer({
+    companionControl: (input) => companion.control(input),
     documents,
     tasks,
     providerSetup,
@@ -267,7 +277,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentCreation,
     visualizeService,
     driverRpc,
-    onEvent: options.emitEvent,
+    onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
     saveSnapshot: (nextSnapshot) => saveBackendSnapshot(nextSnapshot),
     ensureMissionHome: ensureBackendMissionHome,
@@ -311,6 +321,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   await automationRunner.recoverInterruptedRuns();
   await tasks.recover();
   scheduler.start();
+  void companion.control({ action: 'status' }).catch(() => warnMain('companion', 'identity or relay unavailable', {}));
   void server.initialize().catch((error) => warnMain('startup', 'backend initialization failed', {
     message: error instanceof Error ? error.message : String(error),
   }));
@@ -318,6 +329,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      await companion.stop();
       tasks.close();
       scheduler.stop();
       await server.close();

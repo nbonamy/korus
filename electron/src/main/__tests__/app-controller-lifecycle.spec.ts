@@ -1,3 +1,4 @@
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -160,6 +161,15 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
+    const { backend } = setup();
+    const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
+    backend.request.mockResolvedValueOnce(result);
+    const input = { action: 'decide', pendingId: 'pending-device', approve: true, teamIds: ['team-app'], canSend: false };
+    await expect(invoke(ipcChannels.companionControl, input)).resolves.toBe(result);
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
+  });
+
   it('limits the simulator to local agents through IPC and revokes control on disconnect', async () => {
     const { controller, state, window, disconnect } = setup();
     const agentId = state.snapshot.agents[0]!.id;

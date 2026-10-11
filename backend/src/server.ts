@@ -86,6 +86,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
   tasks?: DurableTaskService;
   providerSetup?: import('./provider-setup').ProviderSetup;
@@ -627,6 +628,12 @@ export class AppBackendServer {
 
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
+    if (message.method === backendMethods.companionControl) {
+      try {
+        if (!this.options.companionControl) throw new Error('Mobile access is unavailable.');
+        return createAppRpcResult(message.id, await this.options.companionControl(requireRecord(message.params).input as import('@workspace/core/companion-protocol').CompanionControl));
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Mobile access operation failed. Check the relay configuration or pairing state.'); }
+    }
     if (this.providerSetup?.isChanging() && ![backendMethods.snapshotGet, backendMethods.providerSetupGet].some(method => method === message.method)) {
       return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Engine setup is changing. Try again when it finishes.');
     }

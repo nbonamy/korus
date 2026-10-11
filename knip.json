@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["shasum", "swift", "spctl"],
+  "ignoreBinaries": ["shasum", "swift", "spctl", "openssl"],
   "workspaces": {
     ".": {
       "entry": [
@@ -27,6 +27,9 @@
     },
     "web": {
       "entry": ["src/server/index.ts"]
+    },
+    "backend": {
+      "entry": ["src/daemon.ts", "src/companion/relay-main.ts", "src/companion/__tests__/live-harness.ts"]
     },
     "mobile": {
       "entry": ["scripts/*.mjs"],

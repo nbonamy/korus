@@ -831,6 +831,7 @@ export type AppApi = {
   checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
+  companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
   getRemoteControlStatus(): Promise<DevicePairingStatus>;
   enableRemoteControl(): Promise<DevicePairingStatus>;
   disableRemoteControl(): Promise<DevicePairingStatus>;

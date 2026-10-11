@@ -51,6 +51,7 @@ export function createClientApiMock(
     checkRemoteConnection: unscripted('checkRemoteConnection'),
     updateRemoteConnection: unscripted('updateRemoteConnection'),
     removeRemoteConnection: unscripted('removeRemoteConnection'),
+    companionControl: unscripted('companionControl'),
     getRemoteControlStatus: unscripted('getRemoteControlStatus'),
     enableRemoteControl: unscripted('enableRemoteControl'),
     disableRemoteControl: unscripted('disableRemoteControl'),

@@ -37,6 +37,7 @@ export const ipcChannels = {
   checkRemoteConnection: 'connections:remote:check',
   updateRemoteConnection: 'connections:remote:update',
   removeRemoteConnection: 'connections:remote:remove',
+  companionControl: 'connections:companion:control',
   getRemoteControlStatus: 'connections:device-pairing:status:get',
   enableRemoteControl: 'connections:device-pairing:enable',
   disableRemoteControl: 'connections:device-pairing:disable',

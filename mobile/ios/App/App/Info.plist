@@ -43,6 +43,10 @@
       </array>
     </dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan a pairing invitation from your laptop.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to a relay service you have explicitly selected.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

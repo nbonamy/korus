@@ -34,6 +34,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   addSshConnection: [backendMethods.connectionsSshCreate, named('input')],
   updateRemoteConnection: [backendMethods.connectionsUpdate, named('connectionId', 'input')],
   removeRemoteConnection: [backendMethods.connectionsDelete, named('connectionId')],
+  companionControl: [backendMethods.companionControl, named('input')],
   getRemoteControlStatus: [backendMethods.remoteControlStatusGet],
   enableRemoteControl: [backendMethods.remoteControlEnable],
   disableRemoteControl: [backendMethods.remoteControlDisable],
