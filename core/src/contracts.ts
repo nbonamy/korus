@@ -718,6 +718,7 @@ export type AppCommand =
   | { type: 'open-saved-prompt-drafts' }
   | { type: 'open-settings' }
   | { type: 'open-whats-new' }
+  | { type: 'open-keyboard-shortcuts' }
   | { type: 'quit' }
   | { type: 'restart-active-agent' }
   | { type: 'resume-active-session' }

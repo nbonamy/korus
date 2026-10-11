@@ -162,7 +162,7 @@ describe('app menu', () => {
       'Resume Session',
       'Restart Agent',
     ]);
-    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['What’s New']);
+    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['Keyboard Shortcuts…', 'What’s New']);
     expect(JSON.stringify(menu)).not.toMatch(/viewMenu|reload|forceReload|toggleDevTools/i);
   });
 
@@ -251,6 +251,9 @@ describe('app menu', () => {
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(10, { type: 'cycle-agents', direction: -1 });
     clickItem(menu, 'Help', 'What’s New');
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(11, { type: 'open-whats-new' });
+    clickItem(menu, 'Help', 'Keyboard Shortcuts…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(12, { type: 'open-keyboard-shortcuts' });
+    expect(menuItem(menu, 'Help', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
   });
 
   it('uses the expected file menu accelerators', () => {

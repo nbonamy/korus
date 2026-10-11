@@ -4,6 +4,7 @@ import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts'
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
+import { shortcutAccelerator } from '@workspace/core/keyboard-shortcuts';
 import { cycleTeamsAccelerator } from './app-shortcuts';
 import { detectPngRetinaPixelRatio, readClipboardPngBuffer } from './clipboard-image';
 import { sendAppCommand } from './ipc-events';
@@ -96,6 +97,12 @@ function buildHelpMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions, pla
   return {
     label: mainT('menu.help'),
     submenu: [
+      {
+        label: mainT('menu.keyboardShortcuts'),
+        accelerator: shortcutAccelerator('help'),
+        registerAccelerator: false,
+        click: () => callbacks.sendAppCommand({ type: 'open-keyboard-shortcuts' }),
+      },
       {
         label: mainT('menu.whatsNew'),
         click: () => callbacks.sendAppCommand({ type: 'open-whats-new' }),
@@ -378,7 +385,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       { type: 'separator' },
       {
         label: mainT('menu.settings'),
-        accelerator: 'CommandOrControl+,',
+        accelerator: shortcutAccelerator('settings'),
         click: () => callbacks.sendAppCommand({ type: 'open-settings' }),
       },
       { type: 'separator' },
@@ -390,7 +397,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       { type: 'separator' },
       {
         label: mainT('menu.quitApp'),
-        accelerator: 'CommandOrControl+Q',
+        accelerator: shortcutAccelerator('quit'),
         click: () => callbacks.sendAppCommand({ type: 'quit' }),
       },
     ],
@@ -419,24 +426,24 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
     submenu: [
       {
         label: mainT('menu.newTeam'),
-        accelerator: 'CommandOrControl+N',
+        accelerator: shortcutAccelerator('newTeam'),
         click: () => callbacks.sendAppCommand({ type: 'new-team' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.closeAgent'),
-        accelerator: 'CommandOrControl+W',
+        accelerator: shortcutAccelerator('closeAgent'),
         click: () => callbacks.sendAppCommand({ type: 'close-active-agent' }),
       },
       {
         label: mainT('menu.closeTeam'),
-        accelerator: 'CommandOrControl+Shift+W',
+        accelerator: shortcutAccelerator('closeTeam'),
         click: () => callbacks.sendAppCommand({ type: 'close-active-team' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.quit'),
-        accelerator: 'CommandOrControl+Q',
+        accelerator: shortcutAccelerator('quit'),
         click: () => callbacks.sendAppCommand({ type: 'quit' }),
       },
     ],
@@ -455,12 +462,12 @@ function appendDraftActionsToEditMenu(menu: Menu, callbacks: AppMenuCallbacks): 
     { type: 'separator' as const },
     {
       label: mainT('menu.saveDraft'),
-      accelerator: 'CommandOrControl+Shift+X',
+      accelerator: shortcutAccelerator('saveDraft'),
       click: () => callbacks.sendAppCommand({ type: 'save-active-prompt-draft' }),
     },
     {
       label: mainT('menu.savedDrafts'),
-      accelerator: 'CommandOrControl+Shift+V',
+      accelerator: shortcutAccelerator('drafts'),
       click: () => callbacks.sendAppCommand({ type: 'open-saved-prompt-drafts' }),
     },
   ].forEach((item) => editMenu.append(new MenuItem(item)));
@@ -472,12 +479,12 @@ function buildAgentMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
     submenu: [
       {
         label: mainT('menu.editAgent'),
-        accelerator: 'CommandOrControl+E',
+        accelerator: shortcutAccelerator('edit'),
         click: () => callbacks.sendAppCommand({ type: 'edit-active-agent' }),
       },
       {
         label: mainT('menu.duplicateAgent'),
-        accelerator: 'CommandOrControl+D',
+        accelerator: shortcutAccelerator('duplicate'),
         click: () => callbacks.sendAppCommand({ type: 'duplicate-active-agent' }),
       },
       {
@@ -491,7 +498,7 @@ function buildAgentMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
       { type: 'separator' },
       {
         label: mainT('menu.compactSession'),
-        accelerator: 'CommandOrControl+Shift+K',
+        accelerator: shortcutAccelerator('compact'),
         click: () => callbacks.sendAppCommand({ type: 'compact-active-session' }),
       },
       {
@@ -517,28 +524,28 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
     submenu: [
       {
         label: mainT('menu.changes'),
-        accelerator: 'CommandOrControl+G',
+        accelerator: shortcutAccelerator('review'),
         click: () => callbacks.sendAppCommand({ type: 'open-review' }),
       },
       {
         label: mainT('menu.browser'),
-        accelerator: 'CommandOrControl+B',
+        accelerator: shortcutAccelerator('browser'),
         click: () => callbacks.sendAppCommand({ type: 'open-browser' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.goToAgent'),
-        accelerator: 'CommandOrControl+K',
+        accelerator: shortcutAccelerator('palette'),
         click: () => callbacks.sendAppCommand({ type: 'open-agent-palette' }),
       },
       {
         label: mainT('menu.nextAgent'),
-        accelerator: 'Control+Tab',
+        accelerator: shortcutAccelerator('nextAgent'),
         click: () => callbacks.sendAppCommand({ type: 'cycle-agents', direction: 1 }),
       },
       {
         label: mainT('menu.previousAgent'),
-        accelerator: 'Control+Shift+Tab',
+        accelerator: shortcutAccelerator('previousAgent'),
         click: () => callbacks.sendAppCommand({ type: 'cycle-agents', direction: -1 }),
       },
       { type: 'separator' },
