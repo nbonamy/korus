@@ -497,6 +497,8 @@ export type AppGeneralSettings = {
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
   savedPromptDrafts: SavedPromptDraft[];
+  /** User-wide on the owning client, independent of browser tabs and agents. */
+  browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
   worktreeInitializationMode: WorktreeInitializationMode;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;

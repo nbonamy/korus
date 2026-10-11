@@ -63,6 +63,9 @@ export class ClientPreferencesService {
       if (Object.keys(split.policy).length) throw new Error('Backend policies must be updated through settings/update.');
       updateSettingsInSnapshot(snapshot, split.preferences);
       preferences.general = { ...preferences.general, ...split.preferences.general };
+      if (split.preferences.general?.browserBookmarks !== undefined) {
+        preferences.general.browserBookmarks = snapshot.general.browserBookmarks;
+      }
       preferences.theme = { ...preferences.theme, ...split.preferences.theme };
     }
     preferences.activeAgentId = snapshot.activeAgentId;

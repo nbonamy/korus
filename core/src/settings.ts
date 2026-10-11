@@ -6,6 +6,7 @@ import { isApprovalPreset } from './approval-presets';
 import { claudeBackendCapabilities } from './backend-capabilities';
 import { isCodeReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
+import { normalizeBrowserBookmarks } from './browser-bookmarks';
 
 export const defaultPluginSettings: AppPluginSettings = {
   computerUseEnabled: false,
@@ -152,6 +153,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     collapsedRepositoryKeys: normalizeStringList(value.collapsedRepositoryKeys, 200),
     modelFavorites: normalizeModelFavorites(value.modelFavorites),
     savedPromptDrafts: normalizeSavedPromptDrafts(value.savedPromptDrafts),
+    ...(value.browserBookmarks !== undefined ? { browserBookmarks: normalizeBrowserBookmarks(value.browserBookmarks) } : {}),
     worktreeInitializationMode: normalizeWorktreeInitializationMode(value.worktreeInitializationMode),
     sessionCompressionWarningEnabled: value.sessionCompressionWarningEnabled !== false,
     repositoryIcons: normalizeRepositoryIcons(value.repositoryIcons),
