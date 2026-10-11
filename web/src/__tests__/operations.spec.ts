@@ -110,6 +110,7 @@ describe(`${product.name} web operations`, () => {
     await invokeAppWebOperation({ request }, 'getClaudeAuthentication', ['wall-e']);
     await invokeAppWebOperation({ request }, 'startCodexChatGptDeviceCodeLogin', ['wall-e']);
     await invokeAppWebOperation({ request }, 'cancelCodexChatGptLogin', ['wall-e', 'login-1']);
+    await invokeAppWebOperation({ request }, 'getBankedResets', ['wall-e']);
     await invokeAppWebOperation({ request }, 'getProviderUsage', ['claude']);
     await invokeAppWebOperation({ request }, 'disconnectProvider', ['claude', 'wall-e']);
     await invokeAppWebOperation({ request }, 'disconnectProvider', ['codex']);
@@ -120,6 +121,7 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.claudeAuthenticationGet, { connectionId: 'wall-e' }],
       [backendMethods.codexChatGptDeviceCodeLoginStart, { remoteConnectionId: 'wall-e' }],
       [backendMethods.codexLoginCancel, { remoteConnectionId: 'wall-e', loginId: 'login-1' }],
+      [backendMethods.bankedResetsGet, { remoteConnectionId: 'wall-e' }],
       [backendMethods.providerUsageGet, { backend: 'claude' }],
       [backendMethods.providerDisconnect, { backend: 'claude', remoteConnectionId: 'wall-e' }],
       [backendMethods.providerDisconnect, { backend: 'codex' }],

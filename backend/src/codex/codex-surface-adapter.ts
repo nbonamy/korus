@@ -1,3 +1,4 @@
+import { bankedResetsFromSurface } from './banked-resets';
 import { product } from '@workspace/core/product';
 import os from 'node:os';
 import { approvalAgentRequest, approvalOutcome, requestFromClientRequest, agentResponseFromClientResponse } from '@workspace/core/agent-request';
@@ -40,6 +41,7 @@ import type {
   CodexConversationSummary,
   CodexConversationSnapshot,
   CodexSurfaceEvent,
+  CodexSurfaceRateLimits,
   CodexSurfaceReviewTarget,
   CodexSurfaceSnapshot,
   CodexSurfaceSkill,
@@ -102,16 +104,49 @@ export class CodexSurfaceAgentAdapter {
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
   private readonly unsubscribeSurface: () => void;
   private closed = false;
+  private accountRevision = 0;
+  private accountIdentity = '';
+  private readonly resetReadCancellations = new Set<() => void>();
 
   constructor(
     private readonly surface: CodexSurface,
     private readonly closeSurface: () => Promise<void> = () => surface.close(),
   ) {
+    this.accountIdentity = JSON.stringify(surface.getSnapshot().authentication.account);
     this.unsubscribeSurface = surface.onEvent((event) => this.handleSurfaceEvent(event));
   }
 
   async start(): Promise<void> {
     await this.surface.connect();
+  }
+
+  async getBankedResets(): Promise<import('@workspace/core/contracts/banked-resets').BankedResets> {
+    // Feature-detect the narrow public seam for older published SDKs.
+    const surface = this.surface as CodexSurface & {
+      readRateLimits?: (options: { excludeResetCreditDetails: boolean }) => Promise<CodexSurfaceRateLimits>;
+    };
+    if (!surface.readRateLimits) return { status: 'unsupported' };
+    const account = surface.getSnapshot().authentication.account;
+    if (account?.type !== 'chatgpt') return { status: account ? 'unsupported' : 'signedOut' };
+    const identity = JSON.stringify(account);
+    if (identity !== this.accountIdentity) { this.accountIdentity = identity; ++this.accountRevision; }
+    const expected = this.accountRevision;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancel: (() => void) | undefined;
+    try {
+      const limits = await Promise.race([
+        surface.readRateLimits({ excludeResetCreditDetails: false }),
+        new Promise<never>((_resolve, reject) => {
+          cancel = () => reject(new Error('Banked reset account changed'));
+          this.resetReadCancellations.add(cancel);
+          timer = setTimeout(() => reject(new Error('Banked reset read timed out')), 15_000);
+        }),
+      ]);
+      if (this.closed || expected !== this.accountRevision || JSON.stringify(surface.getSnapshot().authentication.account) !== JSON.stringify(account)) {
+        throw new Error('Banked reset account changed');
+      }
+      return bankedResetsFromSurface(limits);
+    } finally { clearTimeout(timer); if (cancel) this.resetReadCancellations.delete(cancel); }
   }
 
   async getAuthentication(): Promise<CodexAuthentication> {
@@ -731,6 +766,8 @@ export class CodexSurfaceAgentAdapter {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    for (const cancel of this.resetReadCancellations) cancel();
+    this.resetReadCancellations.clear();
     this.unsubscribeSurface();
     for (const session of this.sessionsByAgentId.values()) session.unsubscribe();
     this.sessionsByAgentId.clear();
@@ -990,6 +1027,16 @@ export class CodexSurfaceAgentAdapter {
   }
 
   private handleSurfaceEvent(event: CodexSurfaceEvent): void {
+    if (event.type === 'authentication.changed') {
+      const identity = JSON.stringify(event.payload.authentication.account);
+      if (identity !== this.accountIdentity) {
+        this.accountIdentity = identity; ++this.accountRevision;
+        for (const cancel of this.resetReadCancellations) cancel();
+        const state = authenticationFromSurface(event.payload.authentication);
+        this.emit({ backend: 'codex', type: 'provider.authenticationChanged', payload: { kind: 'codex', connected: Boolean(state.account || !state.requiresOpenaiAuth), state }, occurredAt: event.occurredAt });
+      }
+    }
+
     if (event.type === 'conversation.summaryUpserted') {
       this.conversationSummaries.set(event.conversationId, event.payload.summary);
       const rootAgentId = this.agentIdsByThreadId.get(event.conversationId);

@@ -1,3 +1,4 @@
+import { isBankedResets } from '@workspace/core/contracts/banked-resets';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { saveMarkdownFile } from './document-files';
 import { previewAgentFolderFile } from './agent-files';
@@ -2193,6 +2194,20 @@ export class AppBackendServer {
         this.providerConnections.updateEnabled();
         await this.persistAndEmitSnapshot();
         return createAppRpcResult(message.id, this.providerConnections.list());
+      }
+      case backendMethods.bankedResetsGet: {
+        const connectionId = requireOptionalConnectionId(message.params);
+        if (connectionId) {
+          const result = await this.remoteTeams.request(connectionId, message.method);
+          if (!isBankedResets(result)) throw new Error('Could not read banked resets. Update the remote runtime.');
+          return createAppRpcResult(message.id, result);
+        }
+        const provider = this.snapshot.providerConnections?.find(item => item.backend === 'codex');
+        if (!provider?.installed || provider.enabled === false) return createAppRpcResult(message.id, { status: 'unsupported' });
+        if (!provider.connected) return createAppRpcResult(message.id, { status: 'signedOut' });
+        const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetsGet, {});
+        if (!isBankedResets(result)) throw new Error('Could not read banked resets. Update the backend runtime.');
+        return createAppRpcResult(message.id, result);
       }
       case backendMethods.providerUsageGet: {
         const backend = requireRecord(message.params).backend;

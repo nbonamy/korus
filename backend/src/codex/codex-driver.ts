@@ -32,6 +32,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     private readonly sessionManager: CodexSurfaceAgentAdapter,
   ) {}
 
+  getBankedResets() { return this.sessionManager.getBankedResets(); }
+
   getRuntimeStatus(): BackendRuntimeStatus {
     return this.sessionManager.getRuntimeStatus();
   }

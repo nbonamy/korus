@@ -146,6 +146,11 @@ threads, routed by `threadId` and `agentId`.
   cumulative and can exceed the window; cap displayed numerators).
   `account/rateLimits/updated` is a sparse, account-level update emitted
   opportunistically during streaming, so `daemon` persists the latest value.
+  Banked resets use a dedicated, bounded account read through the optional public
+  SDK rate-limit surface. Their authoritative decimal count and optional bounded
+  details are settings-only responses, never workspace snapshots or telemetry.
+  Opaque credit IDs stay out of app DTOs; account changes invalidate pending reads
+  and settings state. Quota notifications do not trigger banked-reset reads.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.

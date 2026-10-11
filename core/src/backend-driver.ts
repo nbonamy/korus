@@ -102,6 +102,7 @@ export type AgentBackendDriver = {
   readonly backend: AgentBackend;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): BackendRuntimeStatus;
+  getBankedResets?(): Promise<import('./contracts/banked-resets').BankedResets>;
   getAccountRateLimits?(): Promise<import('./contracts').AccountRateLimits | null>;
   getCapabilities(agent: Agent): BackendCapabilities;
   generateText?(agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult>;
