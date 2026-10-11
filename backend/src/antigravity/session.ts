@@ -10,6 +10,7 @@ import { handleAcpFileRequest } from './filesystem';
 import { validateAcpSession } from './catalog';
 import { AcpPromptJournal } from './prompt-journal';
 import type { RendererMessagePart } from '@workspace/core/contracts';
+import type { ExecutionObservation } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
 
 type SessionOptions = {
@@ -21,6 +22,7 @@ type SessionOptions = {
   changed(event: AntigravityConversationEvent): void;
   requestChanged?(event: AntigravityConversationEvent): void;
   closed?(error: Error): void;
+  usage?(event: ExecutionObservation): void;
 };
 type PendingPermission = ReturnType<typeof permissionRequest> & { resolve(value: unknown): void };
 
@@ -89,19 +91,47 @@ export class AcpSession {
     this.planMarkdown = undefined;
     const turnId = this.transcript.start(text, parts);
     const wireText = record(content[0]) && typeof content[0].text === 'string' ? content[0].text : text;
+    let startedAt: number | undefined;
+    let outcome: "completed" | "failed" | "interrupted" = "failed";
+    const observe = (
+      phase: "started" | "completed" | "failed" | "interrupted",
+    ) => {
+      try {
+        this.options.usage?.({
+          provider: "antigravity",
+          agentId: this.options.agentId,
+          sessionId: this.sessionId,
+          turnId,
+          phase,
+          at: Date.now(),
+          model: null,
+          tokens: null,
+          ...(phase !== "started" && startedAt !== undefined
+            ? { durationMs: Math.max(0, Date.now() - startedAt) }
+            : {}),
+        });
+      } catch {
+        /* Numeric observation must not change ACP execution. */
+      }
+    };
     const completion = this.journal.append({ wireText, text, parts }).then(() => {
       if (this.interrupted) return { stopReason: 'cancelled' };
       this.promptSent = true;
+      startedAt = Date.now();
+      observe('started');
       return this.runtime.connection.request('session/prompt', { sessionId: this.sessionId, prompt: content }, 30 * 60_000);
     })
       .then(result => {
         if (!record(result) || typeof result.stopReason !== 'string') throw new Error('Invalid Antigravity turn completion.');
         const status = this.interrupted || result.stopReason === 'cancelled' ? 'interrupted'
           : result.stopReason === 'end_turn' ? 'completed' : 'failed';
+        outcome = status;
         this.transcript.finish(status, status === 'failed' ? `Antigravity stopped: ${result.stopReason}.` : undefined);
       }).catch(error => {
+        outcome = this.interrupted ? 'interrupted' : 'failed';
         this.transcript.finish(this.interrupted ? 'interrupted' : 'failed', this.interrupted ? undefined : safeError(error));
       }).finally(() => {
+        if (startedAt !== undefined) observe(outcome);
         this.cancelPermissions();
         if (this.active === completion) this.active = undefined;
       });

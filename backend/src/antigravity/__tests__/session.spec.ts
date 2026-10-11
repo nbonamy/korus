@@ -135,6 +135,39 @@ async function open(sessionId?: string, options: Partial<Parameters<typeof AcpSe
 }
 
 describe('Antigravity native session', () => {
+  it("observes only admitted live ACP executions, with unknown model and consumption", async () => {
+    const usage = vi.fn();
+    const { session } = await open("stored-session", { usage });
+    expect(usage).not.toHaveBeenCalled();
+    await session.prompt("hello").completion;
+    expect(usage.mock.calls.map(([event]) => event.phase)).toEqual([
+      "started",
+      "completed",
+    ]);
+    expect(usage.mock.calls[1][0]).toMatchObject({
+      provider: "antigravity",
+      agentId: "agent",
+      tokens: null,
+      model: null,
+    });
+    const waiting = session.prompt("wait");
+    await vi.waitFor(() => expect(usage).toHaveBeenCalledTimes(3));
+    expect(() => session.prompt("duplicate")).toThrow("previous turn");
+    await session.interrupt(waiting.turnId);
+    await waiting.completion;
+    expect(usage.mock.calls.map(([event]) => event.phase)).toEqual([
+      "started",
+      "completed",
+      "started",
+      "interrupted",
+    ]);
+    await session.prompt("crash").completion;
+    expect(usage.mock.calls.slice(-2).map(([event]) => event.phase)).toEqual([
+      "started",
+      "failed",
+    ]);
+  });
+
   const mcpPermission = (tool: string) => ({
     toolCall: { toolCallId: 'native-mcp-call', title: `${product.mcpServerName}_${tool}`, kind: 'other', rawInput: { arguments: {} },
       _meta: { is_mcp_tool_call: true, mcp: { server: product.mcpServerName, tool } } },

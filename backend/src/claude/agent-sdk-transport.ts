@@ -1,3 +1,4 @@
+import { validConsumption, type Consumption } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -53,6 +54,7 @@ export type ClaudeQueryFactory = (input: {
 }) => ClaudeQueryRuntime;
 
 type ActiveTransportTurn = {
+  consumption?:Consumption|null;
   done: Promise<void>;
   resolve: () => void;
   reject: (error: Error) => void;
@@ -400,6 +402,19 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         this.rekeySessionFromMessage(session, message);
         const activeTurn = session.activeTurn;
         if (message.type === 'user' && typeof message.uuid === 'string') activeTurn?.pendingInputs.delete(message.uuid);
+        if (message.type === 'result' && activeTurn) {
+          const usage=message.usage as Record<string,unknown>|undefined;
+          const observed=usage && {input: typeof usage.input_tokens==='number' && typeof usage.cache_read_input_tokens==='number' && typeof usage.cache_creation_input_tokens==='number' ? usage.input_tokens+usage.cache_read_input_tokens+usage.cache_creation_input_tokens : undefined,output:usage.output_tokens,cacheRead:usage.cache_read_input_tokens,cacheWrite:usage.cache_creation_input_tokens};
+          if (activeTurn.consumption!==null && validConsumption(observed)) {
+            activeTurn.consumption ??= {input:0,output:0,cacheRead:0,cacheWrite:0};
+            for (const key of ['input','output','cacheRead'] as const) activeTurn.consumption[key]+=observed[key];
+            activeTurn.consumption.cacheWrite=observed.cacheWrite===null || activeTurn.consumption.cacheWrite===null ? null : activeTurn.consumption.cacheWrite+observed.cacheWrite;
+            if (!validConsumption(activeTurn.consumption)) activeTurn.consumption=null;
+            if(activeTurn.consumption)activeTurn.consumption.total=activeTurn.consumption.input+activeTurn.consumption.output;
+            if (message.is_error && observed.input===0 && observed.output===0) activeTurn.consumption=null;
+          } else activeTurn.consumption=null;
+          message.executionConsumption=activeTurn.consumption;
+        }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;
         }

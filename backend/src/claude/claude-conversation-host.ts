@@ -1,3 +1,4 @@
+import { validConsumption, type Consumption, type ExecutionObservation } from '@workspace/core/usage';
 import path from 'node:path';
 import { isAppMcpServerName, product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
@@ -72,6 +73,8 @@ type StreamedClaudeTool = {
 };
 
 type ActiveClaudeTurn = {
+  observedAt?:number;
+  consumption?:Consumption;
   agentId: string;
   cwd: string;
   turnId: string;
@@ -125,6 +128,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   readonly backend = 'claude' as const;
 
   private readonly listeners = new Set<EventListener>();
+  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private accountLimits: AccountRateLimits = {
     limitId: 'claude', limitName: null, primary: null, secondary: null,
     credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
@@ -679,6 +683,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     return this.driverOptions.homeDir ? path.join(this.driverOptions.homeDir, '.claude', 'projects') : undefined;
   }
 
+  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener); return ()=>this.usageListeners.delete(listener); }
+
   onEvent(listener: EventListener): () => void {
     this.listeners.add(listener);
 
@@ -731,6 +737,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       this.resolveTurnStart(activeTurn, sessionId);
     }
 
+    if (activeTurn.sessionId && !activeTurn.observedAt && (message.type === 'assistant' || message.type === 'stream_event' || message.type === 'result' || message.type === 'system' && message.subtype === 'init')) {
+      activeTurn.observedAt = Date.now();
+      // The SDK init model is execution evidence. Requested defaults alone are not.
+      activeTurn.model = message.type === 'system' && typeof message.model === 'string' ? message.model : null;
+      this.emitUsage(activeTurn,'started');
+    }
     if (message.type === 'system') {
       if ((message as Record<string, unknown>).subtype === 'init') {
         void this.catalog.refreshModels().catch(() => undefined);
@@ -764,6 +776,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     if (message.type === 'result') {
+      if (validConsumption(message.executionConsumption)) activeTurn.consumption=message.executionConsumption;
       const errorMessage = claudeResultErrorMessage(message);
       if (errorMessage) {
         this.failTurn(activeTurn, new Error(normalizeClaudeErrorMessage(activeTurn.authenticationFailed ? 'authentication_failed' : errorMessage)));
@@ -1423,12 +1436,19 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     });
   }
 
+  private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
+    if (!turn.observedAt || !turn.sessionId) return;
+    const at=Date.now();
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
+  }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {
     if (activeTurn.completed) {
       return;
     }
 
     activeTurn.completed = true;
+    this.emitUsage(activeTurn,activeTurn.interrupted ? 'interrupted' : activeTurn.error ? 'failed' : 'completed');
     this.resolvePendingRequests(activeTurn);
     this.emitConversation({
       agentId: activeTurn.agentId,

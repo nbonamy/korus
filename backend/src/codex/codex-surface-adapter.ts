@@ -1,3 +1,5 @@
+import type { ExecutionObservation } from '@workspace/core/usage';
+import { codexExecutionConsumption } from './execution-usage';
 import { product } from '@workspace/core/product';
 import os from 'node:os';
 import { approvalAgentRequest, approvalOutcome, requestFromClientRequest, agentResponseFromClientResponse } from '@workspace/core/agent-request';
@@ -89,6 +91,7 @@ type SubagentOwner = {
 
 export class CodexSurfaceAgentAdapter {
   private readonly listeners = new Set<AdapterListener>();
+  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
   private readonly historyHydratedAtByAgentId = new Map<string, number>();
   private readonly agentIdsByThreadId = new Map<string, string>();
@@ -116,6 +119,10 @@ export class CodexSurfaceAgentAdapter {
 
   async getAuthentication(): Promise<CodexAuthentication> {
     return authenticationFromSurface((await this.surface.refreshAccount()).authentication);
+  }
+  async getAccountUsage():Promise<import('@workspace/core/usage').AccountUsage|null> {
+    const surface=this.surface as CodexSurface & {readAccountUsage?:()=>Promise<import('@workspace/core/usage').AccountUsage>};
+    return surface.readAccountUsage ? surface.readAccountUsage() : null;
   }
 
   async startChatGptLogin() {
@@ -723,6 +730,9 @@ export class CodexSurfaceAgentAdapter {
     await this.surface.respondToClientRequest(nativeResponse);
   }
 
+  private emitUsage(observation:ExecutionObservation):void { for(const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } } }
+  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener); return ()=>this.usageListeners.delete(listener); }
+
   onEvent(listener: AdapterListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -1083,6 +1093,15 @@ export class CodexSurfaceAgentAdapter {
     if (session.suppressEvents) return;
     if (isRendererConversationEvent(event)) this.publishConversationEvent(session, event);
     this.historyHydratedAtByAgentId.set(session.agent.id, Date.now());
+    const consumption=codexExecutionConsumption(event);
+    if ((event as {type:string}).type==='conversation.executionUsageChanged' && consumption) {
+      const turnId=(event as unknown as {turnId?:string}).turnId;
+      if(typeof turnId==='string') this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId,provider:'codex',phase:'usage',at:Date.parse(event.occurredAt),model:null,...consumption});
+    }
+    if (event.type === 'turn.started' || event.type === 'turn.completed') {
+      const observation:ExecutionObservation = {agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:event.type==='turn.started'?'started':event.payload.status==='inProgress'?'started':event.payload.status,at:Date.parse(event.occurredAt),model:null,...consumption,...(event.type==='turn.completed' && event.payload.durationMs!==null ? {durationMs:event.payload.durationMs}:{})};
+      this.emitUsage(observation);
+    }
     const metadata = { occurredAt: event.occurredAt };
     switch (event.type) {
       case 'conversation.summaryUpserted':
