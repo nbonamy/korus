@@ -383,6 +383,7 @@
       <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
+  <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
   <GitPruneDialog v-if="pruneDialogOpen && appApi" :key="agent.id" v-model="pruneDialogOpen" :agent-id="agent.id" :load="appApi.getAgentGitPrune" :prune="appApi.pruneAgentGit" @pruned="loadWorkflow({ closeMenu: false })" />
 </template>
 
@@ -399,6 +400,7 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import GitPruneDialog from './GitPruneDialog.vue';
+import BranchCurrentWorkDialog from './BranchCurrentWorkDialog.vue';
 import { Trash2Icon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
@@ -419,6 +421,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'open-git-diff': [];
+  'inspect-agent': [agentId: string];
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
 const root = ref<HTMLElement | null>(null);
@@ -429,6 +432,7 @@ const busy = ref(false);
 const commitDialogOpen = ref(false);
 const revertDialogOpen = ref(false);
 const pruneDialogOpen = ref(false);
+const branchWorkDialogOpen = ref(false);
 const revertIncludeUntracked = ref(false);
 const revertError = ref<string | null>(null);
 const pushDialogOpen = ref(false);
@@ -637,6 +641,7 @@ const firstEnabledAction = computed(() => (commitEnabled.value ? 'commit' : push
 const menuItems = computed<AppMenuItem[]>(() => [
   { id: 'revert', type: 'action', label: translate('surface.gitWorkflowControl.revert'), icon: ArrowBackUpIcon, disabled: !props.revertChanges || !commitEnabled.value },
   { id: 'commit', type: 'action', label: translate('surface.gitWorkflowControl.commit'), icon: GitCommitIcon, disabled: !commitEnabled.value },
+  { id: 'branch-work', type: 'action', label: translate('branchWork.menu'), icon: GitForkIcon, disabled: !workflow.value || !appApi },
   { id: 'separator-sync', type: 'separator' },
   { id: 'pull', type: 'action', label: translate('surface.gitWorkflowControl.pull'), icon: RefreshIcon, disabled: !pullEnabled.value },
   { id: 'push', type: 'action', label: translate('surface.gitWorkflowControl.push'), icon: CloudUploadIcon, disabled: !pushEnabled.value },
@@ -715,6 +720,7 @@ onBeforeUnmount(() => {
 watch([() => props.agent.id, () => props.agent.folder], () => {
   revertDialogOpen.value = false;
   pruneDialogOpen.value = false;
+  branchWorkDialogOpen.value = false;
   void loadWorkflow({ reset: true });
 });
 watch(() => props.gitStatus?.updatedAt, () => {
@@ -786,6 +792,9 @@ async function selectAction(action: string): Promise<void> {
     revertIncludeUntracked.value = false;
     revertError.value = null;
     revertDialogOpen.value = true;
+  }
+  else if (action === 'branch-work' && workflow.value && appApi) {
+    branchWorkDialogOpen.value = true;
   }
   else if (action === 'prune' && workflow.value && appApi) {
     pruneDialogOpen.value = true;

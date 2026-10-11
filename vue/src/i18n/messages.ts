@@ -4,6 +4,15 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
+    branchWork: {
+      menu: 'Branch…', title: 'Branch current work', description: 'Commit selected changes in a new local worktree and start an agent there.',
+      loading: 'Loading changes…', branchName: 'Branch name', message: 'Commit message', task: 'Task for the new agent',
+      selection: 'Changes to transfer', wholePaths: 'Each selected file includes its staged and unstaged changes. Untracked and sensitive files require explicit selection. Ignored files are excluded.',
+      untracked: 'Untracked', status: 'Staged: {staged} · Unstaged: {unstaged}', sensitive: 'Sensitive file', empty: 'No changes to transfer',
+      resume: 'Resume {branch}', submit: 'Branch', working: 'Branching…', retry: 'Retry', refresh: 'Refresh changes', close: 'Close', cancel: 'Cancel',
+      completed: 'Changes committed and agent started.', recovery: 'Transfer needs recovery. Your source work is retained until startup succeeds.',
+      backups: 'Source recovery copies: {folder}', retained: 'Retained in the source checkout:', agent: 'Agent: {id}', commit: 'Commit: {sha}', inspect: 'Inspect agent',
+    },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',

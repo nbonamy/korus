@@ -16,6 +16,31 @@ function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('GitWorkflowControl', () => {
+  it('opens the branch transfer dialog through the Git menu without starting a transfer', async () => {
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot', files: [{ path: 'a.ts', indexStatus: 'M', worktreeStatus: ' ', sensitive: false }] }));
+    const branchCurrentWork = vi.fn();
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+    const wrapper = mountControl(); await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    expect(wrapper.get('[role="dialog"]').text()).toContain('a.ts');
+    expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
+    expect(branchCurrentWork).not.toHaveBeenCalled(); wrapper.unmount();
+  });
+  it('emits agent inspection after a transfer instead of bypassing shell navigation', async () => {
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot', files: [{ path: 'a.ts', indexStatus: 'M', worktreeStatus: ' ', sensitive: false }] }));
+    const branchCurrentWork = vi.fn(async () => ({ state: 'completed' as const, folder: '/worktree', branchName: 'feature', agentId: 'worker', retainedPaths: [] }));
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+    const wrapper = mountControl(); await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    await wrapper.get('input[name="branch"]').setValue('feature');
+    await wrapper.get('input[name="message"]').setValue('feat: work');
+    await wrapper.get('textarea[name="prompt"]').setValue('Finish');
+    await submitButton(wrapper, 'Branch').trigger('click'); await flushPromises();
+    await wrapper.get('.branch-work__result button').trigger('click');
+    expect(wrapper.emitted('inspect-agent')).toStrictEqual([['worker']]); wrapper.unmount();
+  });
   it('opens repository pruning from the final menu section without deleting anything', async () => {
     const getAgentGitPrune = vi.fn(async () => ({ repository: 'repo', baseBranch: 'main', groups: [], unavailableRemotes: [] }));
     const pruneAgentGit = vi.fn();
@@ -293,6 +318,7 @@ describe('GitWorkflowControl', () => {
     )).toStrictEqual([
       'Revert',
       'Commit',
+      'Branch…',
       '---',
       'Pull',
       'Push',
