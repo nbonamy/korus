@@ -1,10 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": [
-    "shasum",
-    "swift",
-    "spctl"
-  ],
+  "ignoreBinaries": ["shasum", "swift", "spctl"],
   "workspaces": {
     ".": {
       "entry": [
@@ -14,15 +10,9 @@
         "website/docs/.vitepress/theme/index.mts",
         "vite.sdk-aliases.ts"
       ],
-      "project": [
-        "scripts/**/*.mjs",
-        "website/**/*.{js,mjs,mts}",
-        "*.ts"
-      ],
+      "project": ["scripts/**/*.mjs", "website/**/*.{js,mjs,mts}", "*.ts"],
       "stylelint": {
-        "config": [
-          ".stylelintrc.json"
-        ]
+        "config": [".stylelintrc.json"]
       }
     },
     "electron": {
@@ -36,15 +26,11 @@
       ]
     },
     "web": {
-      "entry": [
-        "src/server/index.ts"
-      ]
+      "entry": ["src/server/index.ts"]
     },
     "mobile": {
-      "project": [
-        "src/**/*.{ts,vue}",
-        "*.ts"
-      ]
+      "entry": ["scripts/*.mjs"],
+      "project": ["src/**/*.{ts,vue}", "*.ts", "scripts/*.mjs"]
     }
   }
 }

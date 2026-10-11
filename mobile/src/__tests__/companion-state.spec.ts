@@ -63,4 +63,51 @@ describe('companion state', () => {
     expect(state.conversation.value?.payload.snapshot.messages.filter((m) => m.role === 'user')).toHaveLength(1);
     state.dispose();
   });
+
+  it('rejects wrong-agent frames and ignores stale conversation loads after navigation', async () => {
+    const connector = createDemoConnector();
+    const connect = connector.connect;
+    let finishLoad!: () => void;
+    let mismatch = false;
+    connector.connect = async (id) => {
+      const session = await connect(id);
+      return { ...session, loadConversation: async (agentId) => {
+        const frame = await session.loadConversation(agentId);
+        if (agentId === 'demo-agent') await new Promise<void>((resolve) => { finishLoad = resolve; });
+        return mismatch ? { ...frame, agentId: 'foreign-agent' } : frame;
+      } };
+    };
+    const state = createCompanionState(connector);
+    await state.connect('demo-laptop');
+    await state.selectTeam('demo-team');
+    const firstLoad = state.selectAgent('demo-agent');
+    await Promise.resolve();
+    await state.selectAgent('demo-reviewer');
+    finishLoad();
+    await firstLoad;
+    expect(state.conversation.value?.agentId).toBe('demo-reviewer');
+    mismatch = true;
+    await state.selectAgent('demo-reviewer');
+    expect(state.conversation.value).toBeNull();
+    expect(state.canSend.value).toBe(false);
+    expect(state.error.value).toBe('mobile.errors.loadConversation');
+    state.dispose();
+  });
+
+  it('closes an in-flight connection if pairing is revoked before it opens', async () => {
+    const connector = createDemoConnector();
+    const original = await connector.connect('demo-laptop');
+    let resolve!: (session: typeof original) => void;
+    connector.connect = () => new Promise((r) => { resolve = r; });
+    connector.revoke = async () => {};
+    const state = createCompanionState(connector);
+    const connecting = state.connect('demo-laptop');
+    await state.revoke();
+    resolve(original);
+    await connecting;
+    expect(state.status.value).toBe('revoked');
+    expect(state.workspace.value.agents).toStrictEqual([]);
+    await expect(original.sendPrompt('demo-agent', 'hello')).rejects.toThrow();
+    state.dispose();
+  });
 });

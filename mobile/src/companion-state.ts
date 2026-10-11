@@ -128,5 +128,3 @@ export function createCompanionState(connector: CompanionConnector) {
     draft, deliveryUnknown, canSend, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose: closeSession };
 }
-
-export type CompanionState = ReturnType<typeof createCompanionState>;

@@ -107,6 +107,8 @@ function valueOf(event: Event): string { return (event.target as HTMLSelectEleme
 
 <style scoped>
 .mobile-shell {
+  /* The SDK's public token avoids iOS zoom when its native keyboard focuses the editor. */
+  --codex-composer-font-size: 16px;
   display: flex;
   flex-direction: column;
   height: 100%;
