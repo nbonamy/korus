@@ -12,7 +12,7 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
     shortcuts: { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true },
     agent: { ...snapshot.agents[0]!, backendSession: { kind: 'codex', threadId: 'test-thread' } },
     team: snapshot.teams[0]!, connected: true, hostConnected: true, engineConnected: true, canCreateAgent: true,
-    capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], ...overrides,
+    capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, ...overrides,
   });
   const command = vi.fn();
   const actions = { command, newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
@@ -90,6 +90,14 @@ describe('CommandPalette', () => {
     await wrapper.get('input').setValue('');
     expect(wrapper.text()).not.toContain('Open code review');
     expect(wrapper.text()).not.toContain('Fork conversation');
+    expect(wrapper.text()).not.toContain('Open plan');
+    context.planAvailable = true;
+    await wrapper.get('input').setValue('execution');
+    expect(wrapper.get('button').text()).toBe('Open plan');
+    context.planAvailable = false;
+    await nextTick();
+    expect(wrapper.get('[role="status"]').text()).toBe('No matching commands.');
+    await wrapper.get('input').setValue('');
     context.agent!.folder = null;
     await nextTick();
     expect(wrapper.text()).not.toContain('Open files');

@@ -58,6 +58,15 @@ describe('AppShell command palette', () => {
     expect(wrapper.emitted('duplicate-agent')).toStrictEqual([[snapshot.agents[1]!.id]]);
     wrapper.unmount();
   });
+  it('opens the existing file explorer through the workspace menu handler', async () => {
+    const wrapper = mountShell({ agentFiles: [{ path: 'sample.txt', name: 'sample.txt' }] });
+    await openPalette();
+    await wrapper.get('.quick-open-dialog input').setValue('open files');
+    await wrapper.findAll('.quick-open-dialog button').find(button => button.text() === 'Open files')!.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('sample.txt');
+    wrapper.unmount();
+  });
   it('retains owning-host team lookup and the last remote team disconnect confirmation', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.teams[0] = { ...snapshot.teams[0]!, name: 'Remote', remoteConnectionId: 'devbox', remoteTeamId: 'remote-team' };

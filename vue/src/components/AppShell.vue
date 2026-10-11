@@ -1278,6 +1278,7 @@ const debugAgentCreationProgress = ref<AgentCreationProgress | null>(null);
 const debugAgentCreationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const agentWorkspace = ref<{
   getCommandActions(): CommandPaletteAction[];
+  openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void;
   focusComposer(): void;
   openSavedDraftPicker(): void;
   saveCurrentDraft(): void;
@@ -2495,12 +2496,13 @@ const paletteActions = computed(() => {
     canCreateAgent: Boolean(team && preferredBackendChoices(props.snapshot, team.id).length),
     capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
+    planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
     gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
   }, {
     command: executeAppCommand,
     newAgent: () => openNewAgent(team?.id),
     files: () => { fileQuickOpenVisible.value = true; },
-    filesPane: () => openRightWorkspaceTab('files', agent?.id),
+    filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
     codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
     visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
     plan: () => openRightWorkspaceTab('plan', agent?.id),

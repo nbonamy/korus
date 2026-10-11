@@ -23,6 +23,7 @@ type Context = {
   canCreateAgent: boolean;
   capabilities: BackendCapabilities;
   gitAvailable: boolean;
+  planAvailable: boolean;
   gitActions: CommandPaletteAction[];
 };
 type Actions = {
@@ -69,7 +70,7 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   addShortcut('drafts', undefined, agentScope);
   if (context.shortcuts.browser) addShortcut('browser', disconnected, agentScope);
   result.push({ id: 'visualize', label: translate('commands.visualize'), aliases: 'diagram canvas artifact', scope: agentScope, disabledReason: disconnected, run: actions.visualize });
-  result.push({ id: 'plan', label: translate('commands.plan'), aliases: 'artifact execution', scope: agentScope, run: actions.plan });
+  if (context.planAvailable) result.push({ id: 'plan', label: translate('commands.plan'), aliases: 'artifact execution', scope: agentScope, run: actions.plan });
   if (!context.agent.folder) return result;
   addShortcut('files', disconnected, agentScope, actions.files);
   result.push({ id: 'filesPane', label: translate('commands.filesPane'), aliases: 'repository tree artifact', scope: agentScope, disabledReason: disconnected, run: actions.filesPane });
