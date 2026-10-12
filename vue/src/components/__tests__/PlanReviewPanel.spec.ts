@@ -26,6 +26,9 @@ describe('PlanReviewPanel', () => {
     const wrapper = mountPanel();
 
     expect(wrapper.text()).toContain('Ship this carefully.');
+    await nextTick();
+    await wrapper.get('.markdown-panel button[aria-expanded]').trigger('click');
+    expect(wrapper.get('[aria-label="Document outline"] button').text()).toBe('Plan');
     expect(wrapper.findAll('.plan-review-footer__button').map((button) => button.text())).toStrictEqual(['Cancel', 'Confirm']);
 
     await wrapper.findAll('.plan-review-footer__button')[0]?.trigger('click');

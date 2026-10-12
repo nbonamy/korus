@@ -68,6 +68,17 @@ function mountPanel(
 }
 
 describe('RightWorkspacePanel', () => {
+  it('offers a collapsed outline for a full Markdown document tab', async () => {
+    const tab = rightWorkspaceFileTab('readme.md');
+    const wrapper = mountPanel([tab], tab, {
+      [tab]: { kind: 'markdown', title: 'README', content: '# Guide\n\n## Setup', state: 'idle' },
+    });
+    await flushPromises();
+    const toggle = wrapper.get('.markdown-panel button[aria-expanded]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    await toggle.trigger('click');
+    expect(wrapper.findAll('[aria-label="Document outline"] button').map(row => row.text())).toStrictEqual(['Guide', 'Setup']);
+  });
   it('saves an inactive transient tab from its own action without selecting or closing it', async () => {
     const first = 'file:markdown:first'; const second = 'file:markdown:second'; const saved = 'file:saved.md';
     const wrapper = mountPanel([first, second, saved], first, {

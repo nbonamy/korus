@@ -127,6 +127,8 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   getProviderUpdate: [backendMethods.providerUpdateGet, namedOptional('backend', 'remoteConnectionId', 'refresh')],
   setProviderUpdate: [backendMethods.providerUpdateSet, namedOptional('backend', 'input', 'remoteConnectionId')],
   getProviderConnections: [backendMethods.providerConnectionsGet, namedOptional('remoteConnectionId')],
+  getBankedResets: [backendMethods.bankedResetsGet, named('remoteConnectionId')],
+  useBankedReset: [backendMethods.bankedResetUse, named('input', 'remoteConnectionId')],
   getProviderUsage: [backendMethods.providerUsageGet, named('backend')],
   setProviderEnabled: [backendMethods.providerEnabledSet, (args) => ({ backend: args[0], enabled: args[1], ...(args[2] ? { remoteConnectionId: args[2] } : {}) })],
   disconnectProvider: [backendMethods.providerDisconnect, (args) => ({ backend: args[0], ...(args[1] ? { remoteConnectionId: args[1] } : {}) })],
