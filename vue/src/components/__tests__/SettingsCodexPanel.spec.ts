@@ -51,6 +51,17 @@ describe('SettingsCodexPanel', () => {
     expect(launchChatGptApp).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain('ChatGPT is unavailable.');
   });
+
+  it('uses the same section spacing and row padding for resets, credits and ChatGPT', () => {
+    const wrapper = mountPanel();
+    const sections = wrapper.findAll('.form-section');
+    expect(sections.map(section => section.attributes('aria-labelledby'))).toStrictEqual(['settings-banked-resets-title', 'settings-codex-credits-title', 'settings-codex-chatgpt-title']);
+    const credits = getComputedStyle(sections[1]!.element);
+    const chatgpt = getComputedStyle(sections[2]!.element);
+    expect(credits.marginTop).not.toBe(''); expect(credits.marginTop).toBe(chatgpt.marginTop);
+    const padding = sections.map(section => getComputedStyle(section.get('.form-row').element).padding);
+    expect(padding[0]).not.toBe(''); expect(padding).toStrictEqual([padding[0], padding[0], padding[0]]);
+  });
 });
 
 function mountPanel(props: Record<string, unknown> = {}) {

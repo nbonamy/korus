@@ -1,8 +1,5 @@
 <template>
-  <FormSection :title="$t('bankedResets.creditsTitle')" title-id="settings-codex-credits-title" density="compact">
-    <FormRow :title="creditBalance" :description="accountCredits ? $t('bankedResets.currentBalance') : undefined" />
-  </FormSection>
-  <FormSection :title="$t('bankedResets.title')" title-id="settings-banked-resets-title" density="compact">
+  <FormSection :title="$t('bankedResets.title')" title-id="settings-banked-resets-title">
     <template #actions>
       <el-button size="small" :disabled="loading || pendingReset !== null || !eligible || unavailable || !transportConnected" :aria-label="$t('bankedResets.refresh')" @click="refresh">{{ $t('bankedResets.refresh') }}</el-button>
     </template>
@@ -28,6 +25,9 @@
         </template>
       </FormRow>
     </div>
+  </FormSection>
+  <FormSection :title="$t('bankedResets.creditsTitle')" title-id="settings-codex-credits-title">
+    <FormRow :title="creditBalance" :description="accountCredits ? $t('bankedResets.currentBalance') : undefined" />
   </FormSection>
 </template>
 
@@ -56,7 +56,7 @@ let revision = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const summary = computed(() => result.value?.status === 'ready' ? result.value.summary : null);
 const accountCredits = computed(() => result.value?.status === 'ready' ? result.value.accountCredits : null);
-const creditBalance = computed(() => accountCredits.value?.unlimited ? t('bankedResets.unlimitedCredits')
+const creditBalance = computed(() => loading.value ? t('bankedResets.unknown') : accountCredits.value?.unlimited ? t('bankedResets.unlimitedCredits')
   : accountCredits.value?.balance !== null && accountCredits.value?.balance !== undefined
     ? t('bankedResets.creditBalance', { balance: formatBalance(accountCredits.value.balance) }) : t('bankedResets.unknown'));
 const partialDetails = computed(() => summary.value?.credits && BigInt(summary.value.availableCount) > BigInt(summary.value.credits.filter(credit => credit.status === 'available').length));
@@ -70,7 +70,8 @@ function date(seconds: number): string {
 }
 function formatBalance(balance: string): string {
   const match = /^(\d+)(\.\d+)?$/.exec(balance);
-  return match ? match[1]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (match[2] ?? '') : balance;
+  const fraction = (match?.[2] ?? '').replace(/0+$/, '').replace(/\.$/, '');
+  return match ? match[1]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction : balance;
 }
 
 async function refresh() {

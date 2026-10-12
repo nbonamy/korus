@@ -99,6 +99,8 @@ describe('banked resets settings', () => {
 
   it.each([
     [{ hasCredits: true, unlimited: false, balance: '62500' }, '62,500 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '62500.0000000000' }, '62,500 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '62500.2500000000' }, '62,500.25 credits remaining'],
     [{ hasCredits: true, unlimited: false, balance: '9007199254740993.25' }, '9,007,199,254,740,993.25 credits remaining'],
     [{ hasCredits: false, unlimited: false, balance: '0' }, '0 credits remaining'],
     [{ hasCredits: true, unlimited: true, balance: null }, 'Unlimited credits'],
@@ -108,6 +110,19 @@ describe('banked resets settings', () => {
     const wrapper = render(); await flushPromises();
     const section = wrapper.get('[aria-labelledby="settings-codex-credits-title"]');
     expect(section.text()).toContain(text); expect(section.findAll('button')).toHaveLength(0); expect(section.findAll('input')).toHaveLength(0);
+  });
+
+  it('places credits below resets and shows Unknown during initial loading and refresh', async () => {
+    let resolve!: (value: BankedResets) => void;
+    api.getBankedResets.mockImplementation(() => new Promise(r => { resolve = r; }));
+    const wrapper = render();
+    const credits = wrapper.get('[aria-labelledby="settings-codex-credits-title"]');
+    expect(wrapper.findAll('section').map(section => section.attributes('aria-labelledby'))).toStrictEqual(['settings-banked-resets-title', 'settings-codex-credits-title']);
+    expect(credits.get('.form-row__copy strong').text()).toBe('Unknown');
+    const state: BankedResets = { status: 'ready', summary: null, accountCredits: { hasCredits: true, unlimited: false, balance: '62500.0000000000' } };
+    resolve(state); await flushPromises(); expect(credits.text()).toContain('62,500 credits remaining');
+    await refresh(wrapper); expect(credits.text()).toContain('Unknown'); expect(credits.text()).not.toContain('62,500'); expect(credits.text()).not.toContain('Loading');
+    resolve(state); await flushPromises(); expect(credits.text()).toContain('62,500 credits remaining');
   });
 
   it('requires confirmation, retains one key after an uncertain response and re-reads after idempotent success', async () => {
