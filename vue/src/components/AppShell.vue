@@ -2490,16 +2490,22 @@ const paletteActions = computed(() => {
   const remote = team?.remoteConnectionId;
   return commandPaletteActions({
     shortcuts: shortcutContext.value, agent, team,
+    settings: { appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
     connected: props.connectionState.status === 'connected',
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
     engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),
-    canCreateAgent: Boolean(team && preferredBackendChoices(props.snapshot, team.id).length),
+    canCreateAgent: Boolean(preferredBackendChoices(props.snapshot, team?.id).length),
     capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
     gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
   }, {
     command: executeAppCommand,
+    settings: openSettings,
+    cockpit: openCockpit,
+    backlog: openBacklog,
+    automations: openAutomations,
+    quickChat: createQuickChat,
     newAgent: () => openNewAgent(team?.id),
     files: () => { fileQuickOpenVisible.value = true; },
     filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
@@ -2712,7 +2718,8 @@ async function createQuickChat(): Promise<void> {
   try {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
-    await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
+    const created = await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
+    if (created !== null) activeSurface.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -2842,7 +2849,8 @@ function openAutomations(): void {
   activeSurface.value = 'automations';
 }
 
-function openSettings(): void {
+function openSettings(tab?: SettingsTab): void {
+  if (tab) settingsActiveTab.value = tab;
   activeSurface.value = 'settings';
 }
 

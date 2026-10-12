@@ -9,13 +9,14 @@ import { commandPaletteActions, type CommandPaletteAction } from '../command-pal
 function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> = {}) {
   const snapshot = createInitialSnapshot();
   const context = reactive<Parameters<typeof commandPaletteActions>[0]>({
+    settings: { appshots: true, availableBackends: ['codex', 'claude'] },
     shortcuts: { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true },
     agent: { ...snapshot.agents[0]!, backendSession: { kind: 'codex', threadId: 'test-thread' } },
     team: snapshot.teams[0]!, connected: true, hostConnected: true, engineConnected: true, canCreateAgent: true,
     capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, ...overrides,
   });
   const command = vi.fn();
-  const actions = { command, newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
+  const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
   const wrapper = mount(defineComponent({
     components: { CommandPalette },
     setup() {
@@ -30,6 +31,51 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
 afterEach(() => { document.body.innerHTML = ''; });
 
 describe('CommandPalette', () => {
+  it('prioritizes named commands over settings aliases for action searches', async () => {
+    const { wrapper, context, command } = setup();
+    context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];
+    await wrapper.get('input').setValue('git commit');
+    expect(wrapper.findAll('button')[0]!.text()).toBe('Git: Commit');
+    await wrapper.get('input').setValue('mute');
+    expect(wrapper.findAll('button')[0]!.text()).toContain('Mute or unmute');
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'toggle-spoken-announcements-muted' });
+    wrapper.unmount();
+  });
+  it('searches settings categories and intent aliases while respecting host and provider availability', async () => {
+    const { wrapper, context, actions } = setup({ settings: { appshots: false, availableBackends: [] }, connected: false });
+    await wrapper.get('input').setValue('settings');
+    expect(wrapper.findAll('h3').map(group => group.text())).toStrictEqual(['Settings']);
+    expect(wrapper.text()).toContain('Claude Code');
+    expect(wrapper.text()).not.toMatch(/Screenshots|Antigravity/);
+    context.settings.appshots = true;
+    context.settings.availableBackends = ['antigravity'];
+    await nextTick();
+    expect(wrapper.text()).toContain('Screenshots');
+    expect(wrapper.text()).toContain('Antigravity');
+    await wrapper.get('input').setValue('settings font');
+    expect(wrapper.get('button').text()).toBe('Appearance');
+    expect(wrapper.findAll('kbd')).toHaveLength(0);
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.settings).toHaveBeenCalledExactlyOnceWith('appearance');
+    wrapper.unmount();
+  });
+  it('disables Quick Chat without a connected host or engine, then uses its existing handler', async () => {
+    const { wrapper, context, actions } = setup({ hostConnected: false });
+    await wrapper.get('input').setValue('quick chat');
+    expect(wrapper.get('button').attributes('disabled')).toBeDefined();
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.quickChat).not.toHaveBeenCalled();
+    context.hostConnected = true;
+    context.canCreateAgent = false;
+    await nextTick();
+    expect(wrapper.text()).toContain('Connect an engine');
+    context.canCreateAgent = true;
+    await nextTick();
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.quickChat).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
   it('distinguishes an empty action context from a search with no results', async () => {
     const wrapper = mount(CommandPalette, { props: { actions: [] } });
     expect(wrapper.get('[role="status"]').text()).toBe('No commands available in this context.');

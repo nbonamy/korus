@@ -62,6 +62,7 @@ const props = defineProps<{
   placeholder: string;
   noResultsLabel?: string;
   readOnly?: boolean;
+  prioritizeLabelMatches?: boolean;
 }>();
 const emit = defineEmits<{ close: []; select: [id: string] }>();
 const input = ref<HTMLInputElement | null>(null);
@@ -72,12 +73,17 @@ const query = ref('');
 const selectedIndex = ref(0);
 const matches = computed(() => {
   const terms = query.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
-  return props.items.filter((item) => {
+  const filtered = props.items.filter((item) => {
     const keys = item.keys ?? [];
     const aliases = keys.map(key => key === '⌘' ? 'cmd' : key);
-    const haystack = `${item.searchText ?? `${item.label} ${item.detail ?? ''}`} ${keys.join(' ')} ${keys.join('+')} ${aliases.join('+')} ${keys.includes('⌘') ? 'command cmd' : ''}`;
+    const haystack = `${item.searchText ?? `${item.label} ${item.detail ?? ''}`} ${item.group ?? ''} ${keys.join(' ')} ${keys.join('+')} ${aliases.join('+')} ${keys.includes('⌘') ? 'command cmd' : ''}`;
     return terms.every((term) => haystack.toLocaleLowerCase().includes(term));
-  }).slice(0, 100);
+  });
+  if (terms.length && props.prioritizeLabelMatches) {
+    const labelMatch = (item: QuickOpenItem) => Number(terms.every(term => item.label.toLocaleLowerCase().includes(term)));
+    filtered.sort((left, right) => labelMatch(right) - labelMatch(left));
+  }
+  return filtered.slice(0, 100);
 });
 watch(query, () => { selectedIndex.value = 0; });
 watch(matches, () => { selectedIndex.value = Math.min(selectedIndex.value, Math.max(0, matches.value.length - 1)); });

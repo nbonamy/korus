@@ -7,58 +7,11 @@
       :default-active="activeTab"
       @select="selectTab"
     >
-      <el-menu-item-group :title="$t('surface.settingsSidebar.groupApp')">
-        <el-menu-item index="general">
-          <SettingsIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.general') }}</span>
-        </el-menu-item>
-        <el-menu-item index="appearance">
-          <PaletteIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.appearance') }}</span>
-        </el-menu-item>
-        <el-menu-item index="voice">
-          <MicrophoneIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.voice') }}</span>
-        </el-menu-item>
-        <el-menu-item index="personalization">
-          <UserIcon aria-hidden="true" />
-          <span>{{ $t('surface.instructionSettings.personalization') }}</span>
-        </el-menu-item>
-        <el-menu-item v-if="appHostCapabilities.appshots" index="appshots">
-          <ScreenshotIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.appshots') }}</span>
-        </el-menu-item>
-      </el-menu-item-group>
-      <el-menu-item-group :title="$t('surface.settingsSidebar.groupAgents')">
-        <el-menu-item index="codex">
-          <BackendIcon backend="codex" monochrome />
-          <span>{{ $t('surface.settingsSidebar.codex') }}</span>
-        </el-menu-item>
-        <el-menu-item index="claude-code">
-          <BackendIcon backend="claude" monochrome />
-          <span>{{ $t('surface.settingsSidebar.claudeCode') }}</span>
-        </el-menu-item>
-        <el-menu-item v-if="availableBackends?.includes('antigravity')" index="antigravity">
-          <BackendIcon backend="antigravity" monochrome />
-          <span>{{ $t('antigravity.name') }}</span>
-        </el-menu-item>
-        <el-menu-item index="plugins">
-          <PuzzleIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.plugins') }}</span>
-        </el-menu-item>
-      </el-menu-item-group>
-      <el-menu-item-group :title="$t('surface.settingsSidebar.groupWorkspace')">
-        <el-menu-item index="git">
-          <GitBranchIcon aria-hidden="true" />
-          <span>{{ $t('surface.instructionSettings.git') }}</span>
-        </el-menu-item>
-        <el-menu-item index="integrations">
-          <AffiliateIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.integrations') }}</span>
-        </el-menu-item>
-        <el-menu-item index="connections">
-          <TerminalIcon aria-hidden="true" />
-          <span>{{ $t('surface.settingsSidebar.connections') }}</span>
+      <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
+        <el-menu-item v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
+          <BackendIcon v-if="destination.backend" :backend="destination.backend" monochrome />
+          <component :is="icons[destination.icon!]" v-else aria-hidden="true" />
+          <span>{{ $t(destination.labelKey) }}</span>
         </el-menu-item>
       </el-menu-item-group>
     </el-menu>
@@ -66,13 +19,14 @@
 </template>
 
 <script setup lang="ts">
-import type { SettingsTab } from './settings-tabs';
+import { computed } from 'vue';
+import { availableSettingsDestinations, type SettingsTab } from './settings-tabs';
 import type { AgentBackend } from '@workspace/core/contracts';
 import { AffiliateIcon, GitBranchIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { appHostCapabilities } from '../platform-api';
 
-defineProps<{
+const props = defineProps<{
   activeTab: SettingsTab;
   availableBackends?: AgentBackend[];
 }>();
@@ -81,10 +35,16 @@ const emit = defineEmits<{
   select: [tab: SettingsTab];
 }>();
 
+const groups = [
+  { id: 'app', labelKey: 'surface.settingsSidebar.groupApp' },
+  { id: 'agents', labelKey: 'surface.settingsSidebar.groupAgents' },
+  { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
+];
+const icons = { settings: SettingsIcon, palette: PaletteIcon, microphone: MicrophoneIcon, user: UserIcon, screenshot: ScreenshotIcon, puzzle: PuzzleIcon, git: GitBranchIcon, affiliate: AffiliateIcon, terminal: TerminalIcon };
+const destinations = computed(() => availableSettingsDestinations({ appshots: appHostCapabilities.appshots, availableBackends: props.availableBackends ?? [] }));
 function selectTab(tab: string): void {
-  if (tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
-    emit('select', tab);
-  }
+  const destination = destinations.value.find(item => item.id === tab);
+  if (destination) emit('select', destination.id);
 }
 </script>
 

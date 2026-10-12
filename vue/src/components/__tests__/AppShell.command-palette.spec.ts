@@ -13,6 +13,52 @@ function openPalette() {
 afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ''; delete window.app; });
 
 describe('AppShell command palette', () => {
+  it('opens the relevant settings controls from intent searches and retains the selected settings page', async () => {
+    const wrapper = mountShell({ stubAgentWorkspace: true });
+    for (const [query, control] of [['font', '#settings-appearance-title'], ['speech', '#settings-voice-title'], ['ssh', '#settings-connections-title']]) {
+      await openPalette();
+      await wrapper.get('.quick-open-dialog input').setValue(query);
+      await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+      await flushPromises();
+      expect(wrapper.find(control!).exists()).toBe(true);
+    }
+    await wrapper.get('[aria-label="Cockpit"]').trigger('click');
+    await openPalette();
+    await wrapper.get('.quick-open-dialog input').setValue('settings');
+    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+    await flushPromises();
+    expect(wrapper.find('#settings-connections-title').exists()).toBe(true);
+    wrapper.unmount();
+  });
+  it('navigates to existing global surfaces from the palette', async () => {
+    const wrapper = mountShell({ stubAgentWorkspace: true });
+    for (const [query, surface] of [['cockpit', 'CockpitView'], ['backlog', 'BacklogView'], ['automations', 'AutomationsView']]) {
+      await openPalette();
+      await wrapper.get('.quick-open-dialog input').setValue(query);
+      await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+      await flushPromises();
+      expect(wrapper.findComponent({ name: surface! }).exists()).toBe(true);
+    }
+    wrapper.unmount();
+  });
+  it.each([true, false])('creates Quick Chat through the selected team handler and opens it only on success (%s)', async created => {
+    const snapshot = createInitialSnapshot();
+    const createQuickChat = vi.fn().mockResolvedValue(created ? snapshot.agents[0] : null);
+    const wrapper = mountShell({ snapshot, createQuickChat, stubAgentWorkspace: true });
+    await openPalette();
+    await wrapper.get('.quick-open-dialog input').setValue('font');
+    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+    await flushPromises();
+    expect(wrapper.find('#settings-appearance-title').exists()).toBe(true);
+    await openPalette();
+    await wrapper.get('.quick-open-dialog input').setValue('quick chat');
+    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+    await flushPromises();
+    expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ backend: 'codex', teamId: snapshot.activeTeamId });
+    expect(wrapper.find('#settings-appearance-title').exists()).toBe(!created);
+    expect(wrapper.find('.agent-workspace').exists()).toBe(created);
+    wrapper.unmount();
+  });
   it('opens through menus and its own binding, guards typing, and preserves agent/file search', async () => {
     let command: (value: AppCommand) => void = () => {};
     window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;

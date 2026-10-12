@@ -131,6 +131,8 @@ are handled in the renderer so editable targets and modal dialogs retain their i
 The command palette and shortcut reference share the canonical quick-open dialog's
 search, rows and key hints. The reference groups read-only rows; the palette invokes
 existing shell handlers.
+Settings destinations share their labels and host/provider availability in
+`components/settings-tabs.ts`, consumed by both the sidebar and command search.
 Git command availability and dispatch come from the focused agent's workflow control,
 which retains ownership of operation state, confirmations and host routing.
 
