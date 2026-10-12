@@ -31,6 +31,20 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
 afterEach(() => { document.body.innerHTML = ''; });
 
 describe('CommandPalette', () => {
+  it('keeps contextual work ahead of the settings catalog while retaining settings search', async () => {
+    const { wrapper, context } = setup();
+    context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];
+    await nextTick();
+    const groups = wrapper.findAll('h3').map(heading => heading.text());
+    expect(groups[0]).toBe('Workspace');
+    for (const group of ['Workspace', 'Agent', 'Git']) {
+      expect(groups).toContain(group);
+      expect(groups.indexOf(group)).toBeLessThan(groups.indexOf('Settings'));
+    }
+    await wrapper.get('input').setValue('settings font');
+    expect(wrapper.get('button').text()).toBe('Appearance');
+    wrapper.unmount();
+  });
   it('prioritizes named commands over settings aliases for action searches', async () => {
     const { wrapper, context, command } = setup();
     context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];

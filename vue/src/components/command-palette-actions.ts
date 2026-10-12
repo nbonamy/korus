@@ -101,7 +101,7 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
 }
 
 function groupedActions(actions: CommandPaletteAction[]): CommandPaletteAction[] {
-  const groups = ['navigation', 'create', 'settings', 'agent', 'workspace', 'git', 'application'] as const;
+  const groups = ['workspace', 'agent', 'git', 'create', 'navigation', 'settings', 'application'] as const;
   const groupFor = (id: string): typeof groups[number] => {
     if (id === 'settings' || id.startsWith('settings:') || id === 'help') return 'settings';
     if (['palette', 'cockpit', 'backlog', 'automations'].includes(id)) return 'navigation';
