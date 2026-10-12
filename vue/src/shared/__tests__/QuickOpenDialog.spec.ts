@@ -4,6 +4,30 @@ import { describe, expect, it, vi } from 'vitest';
 import QuickOpenDialog from '../QuickOpenDialog.vue';
 
 describe('QuickOpenDialog', () => {
+  it('presents a grouped shortcut reference with key search and no command activation', async () => {
+    const wrapper = mount(QuickOpenDialog, { attachTo: document.body, props: {
+      dialogLabel: 'Keyboard shortcuts', inputAriaLabel: 'Search shortcuts', placeholder: 'Search', emptyLabel: 'Empty', readOnly: true,
+      items: [
+        { id: 'files', label: 'Go to file', keys: ['⌘', 'P'], group: 'Navigation' },
+        { id: 'duplicate', label: 'Duplicate agent', keys: ['⌘', 'D'], group: 'Agents' },
+      ],
+    } });
+    await nextTick();
+    expect(wrapper.findAll('button')).toHaveLength(0);
+    expect(wrapper.findAll('h3').map(group => group.text())).toStrictEqual(['Navigation', 'Agents']);
+    await wrapper.get('input').setValue('cmd+d');
+    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
+    expect(wrapper.findAll('kbd').map(key => key.text())).toStrictEqual(['⌘', 'D']);
+    await wrapper.get('input').trigger('keydown.enter');
+    await wrapper.get('[role="listitem"]').trigger('click');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    await wrapper.get('input').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(wrapper.get('[role="list"]').element);
+    await wrapper.get('[role="list"]').trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(wrapper.get('input').element);
+    wrapper.unmount();
+  });
   it('keeps keyboard focus inside and clamps selection when context removes results', async () => {
     const trigger = document.createElement('button');
     document.body.append(trigger); trigger.focus();

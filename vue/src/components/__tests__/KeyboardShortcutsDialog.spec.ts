@@ -1,12 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import ElDialog from 'element-plus/es/components/dialog/index';
 import { describe, expect, it } from 'vitest';
 import type { ShortcutContext } from '@workspace/core/keyboard-shortcuts';
 import KeyboardShortcutsDialog from '../KeyboardShortcutsDialog.vue';
 
 const context: ShortcutContext = { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true };
 function mountDialog(overrides: Partial<ShortcutContext> = {}) {
-  return mount(KeyboardShortcutsDialog, { attachTo: document.body, props: { context: { ...context, ...overrides } }, global: { stubs: { ElDialog, teleport: true } } });
+  return mount(KeyboardShortcutsDialog, { attachTo: document.body, props: { context: { ...context, ...overrides } } });
 }
 describe('KeyboardShortcutsDialog', () => {
   it('searches actions and platform key labels and clears back to grouped results', async () => {
@@ -16,10 +15,12 @@ describe('KeyboardShortcutsDialog', () => {
     expect(document.activeElement).toBe(search.element);
     expect(wrapper.findAll('h3')).toHaveLength(3);
     await search.setValue('duplicate');
-    expect(wrapper.findAll('dt').map(row => row.text())).toStrictEqual(['Duplicate agent']);
+    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
+    expect(wrapper.get('[role="listitem"]').text()).toContain('Duplicate agent');
     expect(wrapper.findAll('kbd').map(key => key.text())).toStrictEqual(['⌘', 'D']);
     await search.setValue('cmd+d');
-    expect(wrapper.findAll('dt').map(row => row.text())).toStrictEqual(['Duplicate agent']);
+    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
+    expect(wrapper.get('[role="listitem"]').text()).toContain('Duplicate agent');
     await search.setValue('cmd shift');
     expect(wrapper.text()).toContain('Compact session');
     expect(wrapper.text()).not.toContain('Duplicate agent');
