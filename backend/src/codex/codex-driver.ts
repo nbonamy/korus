@@ -33,6 +33,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
   ) {}
 
   getBankedResets() { return this.sessionManager.getBankedResets(); }
+  useBankedReset(input: import('@workspace/core/contracts/banked-resets').UseBankedResetInput) { return this.sessionManager.useBankedReset(input); }
 
   getRuntimeStatus(): BackendRuntimeStatus {
     return this.sessionManager.getRuntimeStatus();

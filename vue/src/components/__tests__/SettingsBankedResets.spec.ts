@@ -1,19 +1,20 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ElMessageBox } from 'element-plus';
 import { configureAppClient } from '../../platform-api';
 import { createClientApiMock } from '../../test/client-api-mock';
 import SettingsBankedResets from '../SettingsBankedResets.vue';
-import type { BankedResets } from '@workspace/core/contracts/banked-resets';
+import type { BankedResets, BankedResetDetail } from '@workspace/core/contracts/banked-resets';
 
 const credit = { resetType: 'fiveHour', status: 'available', grantedAt: 100, expiresAt: 1_900_000_000, title: '<b>Bonus</b>', description: '<script>plain text</script>' };
-const ready = (availableCount: string, credits: typeof credit[] | null): BankedResets => ({ status: 'ready', summary: { availableCount, credits, detailCount: credits?.length ?? null } });
+const ready = (availableCount: string, credits: BankedResetDetail[] | null): BankedResets => ({ status: 'ready', summary: { availableCount, credits, detailCount: credits?.length ?? null } });
 const wrappers: ReturnType<typeof mount>[] = [];
 let client: ReturnType<typeof createClientApiMock>;
 let api: ReturnType<typeof createClientApiMock>['api'];
 function render(props = {}) { const wrapper = mount(SettingsBankedResets, { props: { eligible: true, accountKey: 'account-a', ...props } }); wrappers.push(wrapper); return wrapper; }
 function refresh(wrapper: ReturnType<typeof mount>) { return wrapper.get('button').trigger('click'); }
 beforeEach(() => { client = createClientApiMock(); api = client.api; configureAppClient({ api, platform: 'desktop' }); });
-afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount(); vi.useRealTimers(); });
+afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount(); vi.useRealTimers(); vi.restoreAllMocks(); client.dispose(); });
 
 describe('banked resets settings', () => {
   it('loads on opening, preserves authoritative counts and renders bounded details as plain text', async () => {
@@ -25,9 +26,12 @@ describe('banked resets settings', () => {
     resolve(ready('18446744073709551615', [credit])); await flushPromises();
     expect(wrapper.text()).toContain('18446744073709551615');
     expect(wrapper.text()).toContain('<b>Bonus</b>');
+    expect(wrapper.text()).not.toContain('plain text');
+    expect(wrapper.text()).not.toContain('fiveHour');
+    expect(wrapper.text()).not.toContain('Granted');
     expect(wrapper.find('script').exists()).toBe(false);
     expect(wrapper.find('b').exists()).toBe(false);
-    expect(wrapper.findAll('time')[1]!.attributes('datetime')).toBe('2030-03-17T17:46:40.000Z');
+    expect(wrapper.findAll('time')[0]!.attributes('datetime')).toBe('2030-03-17T17:46:40.000Z');
     expect(wrapper.text()).toContain('Only some');
     expect(api.getBankedResets).toHaveBeenCalledExactlyOnceWith(undefined);
     expect(wrapper.findAll('button')).toHaveLength(1);
@@ -91,5 +95,70 @@ describe('banked resets settings', () => {
     await refresh(wrapper); await flushPromises(); resolveOld(ready('99', [credit])); await flushPromises();
     expect(wrapper.text()).toContain('0 available'); wrapper.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    [{ hasCredits: true, unlimited: false, balance: '62500' }, '62,500 credits remaining'],
+    [{ hasCredits: true, unlimited: false, balance: '9007199254740993.25' }, '9,007,199,254,740,993.25 credits remaining'],
+    [{ hasCredits: false, unlimited: false, balance: '0' }, '0 credits remaining'],
+    [{ hasCredits: true, unlimited: true, balance: null }, 'Unlimited credits'],
+    [null, 'Unknown'],
+  ])('displays read-only account credits without converting the balance to a number', async (accountCredits, text) => {
+    api.getBankedResets.mockResolvedValue({ status: 'ready', summary: null, accountCredits });
+    const wrapper = render(); await flushPromises();
+    const section = wrapper.get('[aria-labelledby="settings-codex-credits-title"]');
+    expect(section.text()).toContain(text); expect(section.findAll('button')).toHaveLength(0); expect(section.findAll('input')).toHaveLength(0);
+  });
+
+  it('requires confirmation, retains one key after an uncertain response and re-reads after idempotent success', async () => {
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValue('confirm' as never);
+    api.getBankedResets.mockResolvedValueOnce(ready('3', [{ ...credit, redemptionToken: 'selection' }])).mockResolvedValueOnce(ready('2', []));
+    api.useBankedReset.mockRejectedValueOnce(new Error('private provider details')).mockResolvedValueOnce({ outcome: 'alreadyRedeemed' });
+    const wrapper = render({ remoteConnectionId: 'owner' }); await flushPromises();
+    const use = () => wrapper.findAll('button').find(button => button.text() === 'Use reset')!.trigger('click');
+    await use(); await flushPromises(); expect(api.useBankedReset).not.toHaveBeenCalled();
+    await use(); await flushPromises();
+    expect(wrapper.text()).toContain('Could not confirm'); expect(wrapper.text()).not.toContain('private provider details');
+    expect(api.getBankedResets).toHaveBeenCalledOnce();
+    await use(); await flushPromises();
+    const first = api.useBankedReset.mock.calls[0]!;
+    expect(first).toStrictEqual([{ redemptionToken: 'selection', confirmed: true, idempotencyKey: expect.any(String) }, 'owner']);
+    expect(api.useBankedReset.mock.calls[1]).toStrictEqual(first);
+    expect(confirm).toHaveBeenCalledTimes(3); expect(api.getBankedResets).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('already used'); expect(wrapper.text()).toContain('2 available');
+  });
+
+  it.each([
+    ['reset', 'Reset used.'], ['nothingToReset', 'no eligible usage limits'], ['noCredit', 'No banked resets'],
+  ] as const)('refreshes authoritative state after %s instead of decrementing the count locally', async (outcome, text) => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
+    api.getBankedResets.mockResolvedValueOnce(ready('3', [{ ...credit, redemptionToken: 'selection' }])).mockResolvedValueOnce(ready('7', null));
+    api.useBankedReset.mockResolvedValue({ outcome });
+    const wrapper = render(); await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === 'Use reset')!.trigger('click'); await flushPromises();
+    expect(wrapper.text()).toContain(text); expect(wrapper.text()).toContain('7 available'); expect(api.useBankedReset).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a confirmation from a previous account or host before sending any redemption', async () => {
+    let confirm!: (value: never) => void;
+    vi.spyOn(ElMessageBox, 'confirm').mockImplementationOnce(() => new Promise(resolve => { confirm = resolve; }));
+    api.getBankedResets.mockResolvedValueOnce(ready('1', [{ ...credit, redemptionToken: 'old-selection' }])).mockResolvedValueOnce(ready('2', null));
+    const wrapper = render(); await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === 'Use reset')!.trigger('click'); await flushPromises();
+    await wrapper.setProps({ accountKey: 'account-b', remoteConnectionId: 'new-owner' }); await flushPromises();
+    confirm('confirm' as never); await flushPromises();
+    expect(api.useBankedReset).not.toHaveBeenCalled(); expect(wrapper.text()).toContain('2 available');
+  });
+
+  it('bounds uncertain redemption, blocks concurrent actions, retries the same attempt and cleans up on disposal', async () => {
+    vi.useFakeTimers(); vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never);
+    api.getBankedResets.mockResolvedValue(ready('1', [{ ...credit, redemptionToken: 'selection' }]));
+    api.useBankedReset.mockImplementation(() => new Promise(() => {}));
+    const wrapper = render(); await flushPromises();
+    const use = () => wrapper.findAll('button').find(button => button.text() === 'Use reset')!.trigger('click');
+    await use(); await flushPromises(); expect(wrapper.findAll('button').every(button => button.attributes('disabled') !== undefined)).toBe(true);
+    await vi.advanceTimersByTimeAsync(20_000); expect(wrapper.text()).toContain('Could not confirm');
+    await use(); await flushPromises(); expect(api.useBankedReset.mock.calls[1]).toStrictEqual(api.useBankedReset.mock.calls[0]);
+    wrapper.unmount(); await flushPromises(); expect(vi.getTimerCount()).toBe(0);
   });
 });

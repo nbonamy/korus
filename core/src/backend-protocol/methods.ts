@@ -116,6 +116,8 @@ export const backendMethods = {
   providerSetupGet: 'provider/setup/get',
   providerConnectionsGet: 'provider/connections/get',
   bankedResetsGet: 'provider/codex/bankedResets/get',
+  bankedResetUse: 'provider/codex/bankedResets/use',
+  driverBankedResetUse: 'driver/codex/bankedResets/use',
   driverBankedResetsGet: 'driver/codex/bankedResets/get',
   providerUsageGet: 'provider/usage/get',
   driverAccountRateLimitsGet: 'driver/account/rateLimits/get',

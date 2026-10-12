@@ -148,9 +148,12 @@ threads, routed by `threadId` and `agentId`.
   opportunistically during streaming, so `daemon` persists the latest value.
   Banked resets use a dedicated, bounded account read through the optional public
   SDK rate-limit surface. Their authoritative decimal count and optional bounded
-  details are settings-only responses, never workspace snapshots or telemetry.
-  Opaque credit IDs stay out of app DTOs; account changes invalidate pending reads
-  and settings state. Quota notifications do not trigger banked-reset reads.
+  details and account credit balances are settings-only responses, never workspace
+  snapshots or telemetry. Opaque credit IDs stay in the driver; temporary
+  account-bound references identify confirmed redemption selections. Uncertain
+  attempts retain their idempotency key, including renderer reloads. Account
+  changes invalidate selections and pending operations. Quota notifications do
+  not trigger banked-reset reads; confirmed outcomes trigger a fresh account read.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.

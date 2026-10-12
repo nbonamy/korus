@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
@@ -176,6 +177,13 @@ export class BackendDriverRpc {
       case backendMethods.driverBankedResetsGet: {
         const driver = this.requireCodexDriver();
         return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };
+      }
+      case backendMethods.driverBankedResetUse: {
+        const input = requireRecord(params).input;
+        if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
+        const driver = this.requireCodexDriver();
+        if (!driver.useBankedReset) throw new Error('Reset redemption is unsupported');
+        return driver.useBankedReset(input);
       }
       case backendMethods.driverAccountRateLimitsGet: {
         const driver = this.requireDriver(requireBackend(requireRecord(params).backend));

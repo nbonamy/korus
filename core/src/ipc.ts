@@ -137,6 +137,7 @@ export const ipcChannels = {
   setProviderUpdate: 'provider:update:set',
   getProviderConnections: 'provider:connections:get',
   getBankedResets: 'provider:codex:banked-resets:get',
+  useBankedReset: 'provider:codex:banked-resets:use',
   getProviderUsage: 'provider:usage:get',
   setProviderEnabled: 'provider:enabled:set',
   disconnectProvider: 'provider:disconnect',

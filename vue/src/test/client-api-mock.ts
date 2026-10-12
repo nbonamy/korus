@@ -160,6 +160,7 @@ export function createClientApiMock(
     setProviderUpdate: unscripted('setProviderUpdate'),
     getProviderConnections: unscripted('getProviderConnections'),
     getBankedResets: vi.fn<Api['getBankedResets']>(async () => ({ status: 'unsupported' })),
+    useBankedReset: unscripted('useBankedReset'),
     getProviderUsage: unscripted('getProviderUsage'),
     setProviderEnabled: unscripted('setProviderEnabled'),
     disconnectProvider: unscripted('disconnectProvider'),

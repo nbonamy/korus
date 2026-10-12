@@ -139,6 +139,7 @@ const api: AppApi = {
   setProviderUpdate: (backend, input, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderUpdate, backend, input, remoteConnectionId),
   getProviderConnections: (remoteConnectionId) => ipc.invoke(ipcChannels.getProviderConnections, remoteConnectionId),
   getBankedResets: (remoteConnectionId) => ipc.invoke(ipcChannels.getBankedResets, remoteConnectionId),
+  useBankedReset: (input, remoteConnectionId) => ipc.invoke(ipcChannels.useBankedReset, input, remoteConnectionId),
   getProviderUsage: (backend) => ipc.invoke(ipcChannels.getProviderUsage, backend),
   setProviderEnabled: (backend, enabled, remoteConnectionId) => ipc.invoke(ipcChannels.setProviderEnabled, backend, enabled, remoteConnectionId),
   disconnectProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.disconnectProvider, backend, remoteConnectionId),

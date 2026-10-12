@@ -29,7 +29,11 @@ export const messages = {
       signedOut: 'Sign in with ChatGPT to view banked resets.', unsupported: 'Banked resets are unavailable for this engine or account.',
       unknown: 'Unknown', disconnected: 'Reconnect to view banked resets.', failed: 'Could not refresh banked resets. Try again.', countOnly: 'Details are unavailable.',
       emptyDetails: 'No reset details were returned.', partial: 'Only some reset details are available.',
-      bounded: 'Showing the first {count} reset details.', details: 'Reset details', reset: 'Reset', granted: 'Granted', expires: 'Expires',
+      bounded: 'Showing the first {count} reset details.', details: 'Reset details', reset: 'Reset', expires: 'Expires',
+      useReset: 'Use reset', confirmTitle: 'Use this reset?', confirmMessage: 'This uses one banked reset to restore eligible Codex usage limits.',
+      uncertain: 'Could not confirm whether this reset was used. Retry checks the same attempt.',
+      outcomes: { reset: 'Reset used.', alreadyRedeemed: 'This reset was already used.', nothingToReset: 'There are no eligible usage limits to reset.', noCredit: 'No banked resets are available.' },
+      creditsTitle: 'Credits', creditBalance: '{balance} credits remaining', unlimitedCredits: 'Unlimited credits', currentBalance: 'Current balance',
     },
     providerUpdate: {
       version: 'Version', available: '{version} available', current: 'Up to date',

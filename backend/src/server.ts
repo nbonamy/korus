@@ -1,4 +1,4 @@
-import { isBankedResets } from '@workspace/core/contracts/banked-resets';
+import { isBankedResets, isBankedResetResult, isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { saveMarkdownFile } from './document-files';
 import { previewAgentFolderFile } from './agent-files';
@@ -2207,6 +2207,21 @@ export class AppBackendServer {
         if (!provider.connected) return createAppRpcResult(message.id, { status: 'signedOut' });
         const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetsGet, {});
         if (!isBankedResets(result)) throw new Error('Could not read banked resets. Update the backend runtime.');
+        return createAppRpcResult(message.id, result);
+      }
+      case backendMethods.bankedResetUse: {
+        const input = requireRecord(message.params).input;
+        if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
+        const connectionId = requireOptionalConnectionId(message.params);
+        if (connectionId) {
+          const result = await this.remoteTeams.request(connectionId, message.method, { input });
+          if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
+          return createAppRpcResult(message.id, result);
+        }
+        const provider = this.snapshot.providerConnections?.find(item => item.backend === 'codex');
+        if (!provider?.installed || provider.enabled === false || !provider.connected) throw new Error('Codex account is unavailable');
+        const result = await this.requireDriverRpc().handle(backendMethods.driverBankedResetUse, { input });
+        if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
         return createAppRpcResult(message.id, result);
       }
       case backendMethods.providerUsageGet: {

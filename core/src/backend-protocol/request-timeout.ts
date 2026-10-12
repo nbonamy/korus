@@ -28,6 +28,8 @@ const requestTimeoutByMethod = {
   [backendMethods.providerUpdateGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.providerUpdateSet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.bankedResetsGet]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.bankedResetUse]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverBankedResetUse]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverBankedResetsGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.providerUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverAccountRateLimitsGet]: IO_REQUEST_TIMEOUT_MS,

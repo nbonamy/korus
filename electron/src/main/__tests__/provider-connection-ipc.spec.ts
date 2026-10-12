@@ -37,6 +37,16 @@ describe('provider sign-out IPC', () => {
     request.mockRejectedValueOnce(new Error('Read failed'));
     await expect(api.getBankedResets()).rejects.toThrow('Read failed');
   });
+  it('preserves confirmed reset selections and attempt keys through preload to the owning host', async () => {
+    const request = vi.fn().mockResolvedValue({ outcome: 'alreadyRedeemed' });
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers(); await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    const input = { confirmed: true as const, redemptionToken: 'selection', idempotencyKey: 'attempt' };
+    expect(await api.useBankedReset(input, 'remote')).toStrictEqual({ outcome: 'alreadyRedeemed' });
+    expect(request).toHaveBeenCalledExactlyOnceWith('provider/codex/bankedResets/use', { input, remoteConnectionId: 'remote' });
+    request.mockRejectedValueOnce(new Error('Uncertain response')); await expect(api.useBankedReset(input)).rejects.toThrow('Uncertain response');
+  });
   it('routes provider version checks and confirmed upgrades through preload to the owning host', async () => {
     const state = { backend: 'claude', status: 'waiting', method: 'native', canUpgrade: true, busy: true };
     const request = vi.fn().mockResolvedValue(state);
