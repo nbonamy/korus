@@ -7,6 +7,7 @@
       <ProviderUpdateRow v-if="installed" backend="codex" />
       <SettingsEngineSetupRow :home="settings.providerHomes?.codex" @customize="emit('customize')" />
     </SettingsEngineConnectionRow>
+    <SettingsBankedResets :eligible="Boolean(connected && account?.type === 'chatgpt')" :unavailable="!installed || settings.providerEnabled?.codex === false || Boolean(connected && account && account.type !== 'chatgpt')" :account-key="JSON.stringify([account, settings.providerHomes?.codex?.homePath])" :remote-connection-id="remoteConnectionId" />
     <FormSection
       :title="$t('surface.settingsCodexPanel.chatGPT')"
       title-id="settings-codex-chatgpt-title"
@@ -29,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { AppGeneralSettings } from '@workspace/core/contracts';
 import { appPlatformActions } from '../platform-api';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
@@ -37,6 +38,7 @@ import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import SettingsEngineConnectionRow from './SettingsEngineConnectionRow.vue';
 import SettingsEngineSetupRow from './SettingsEngineSetupRow.vue';
+import SettingsBankedResets from './SettingsBankedResets.vue';
 import ProviderUpdateRow from './ProviderUpdateRow.vue';
 import type { ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
 
@@ -44,6 +46,7 @@ const emit = defineEmits<{ connect: []; disconnect: []; cancel: []; customize: [
 
 const props = withDefaults(defineProps<{
   connected?: boolean;
+  remoteConnectionId?: string;
   installed?: boolean;
   authentication?: ProviderAuthentication;
   setEnabled?: (enabled: boolean) => unknown;
@@ -53,6 +56,8 @@ const props = withDefaults(defineProps<{
   launchChatGptApp?: () => Promise<void>;
   settings: AppGeneralSettings;
 }>(), { installed: true });
+
+const account = computed(() => props.authentication?.kind === 'codex' ? props.authentication.state.account : null);
 
 const launching = ref(false);
 const launchError = ref<string | null>(null);
