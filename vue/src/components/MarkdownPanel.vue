@@ -1,20 +1,25 @@
 <template>
   <article
     class="markdown-panel"
-    :class="{ 'markdown-panel--outline-enabled': outlineEnabled }"
+    :class="{
+      'markdown-panel--outline-enabled': outlineEnabled,
+      'markdown-panel--outline-open': outlineOpen && headings.length > 0,
+    }"
     :aria-busy="state === 'loading'"
   >
-    <div v-if="headings.length" class="markdown-panel__controls">
-      <button
-        type="button"
-        :aria-expanded="outlineOpen"
-        :aria-controls="outlineId"
-        @click="outlineOpen = !outlineOpen"
-      >
-        <ListIcon aria-hidden="true" />
-        {{ $t('surface.markdownPanel.outline') }}
-      </button>
-    </div>
+    <button
+      v-if="headings.length"
+      class="markdown-panel__outline-toggle"
+      type="button"
+      :aria-label="$t('surface.markdownPanel.outline')"
+      :title="$t('surface.markdownPanel.outline')"
+      :aria-expanded="outlineOpen"
+      :aria-controls="outlineId"
+      @click="outlineOpen = !outlineOpen"
+    >
+      <ListIcon aria-hidden="true" />
+      {{ $t('surface.markdownPanel.outline') }}
+    </button>
     <nav
       v-if="outlineOpen && headings.length"
       :id="outlineId"
@@ -26,6 +31,11 @@
           <button
             type="button"
             :aria-label="$t('surface.markdownPanel.headingLevel', { title: heading.text, level: heading.level })"
+            :title="heading.text"
+            :class="{
+              'markdown-panel__heading--top': heading.depth === 0,
+              'markdown-panel__heading--section': heading.depth === 1,
+            }"
             :aria-current="activeHeading === heading.id ? 'location' : undefined"
             :style="{ '--outline-depth': heading.depth }"
             @click="navigateToHeading(heading)"
@@ -145,27 +155,33 @@ onBeforeUnmount(() => {
 }
 
 .markdown-panel--outline-enabled {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   padding: 0;
 }
 
+.markdown-panel--outline-open {
+  grid-template-columns: minmax(0, min(40%, 220px)) minmax(0, 1fr);
+}
+
 .markdown-panel--outline-enabled .markdown-panel__document {
-  flex: 1 1 auto;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: var(--space-8);
   scrollbar-width: thin;
 }
 
-.markdown-panel__controls {
-  flex: none;
-  padding: var(--space-2) var(--space-8);
-  border-bottom: 1px solid var(--color-border);
+.markdown-panel--outline-open .markdown-panel__document {
+  grid-column: 2;
 }
 
-.markdown-panel__controls button,
+.markdown-panel__outline-toggle,
 .markdown-panel__outline button {
   border: 0;
   border-radius: var(--radius-sm);
@@ -178,25 +194,35 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-.markdown-panel__controls button {
+.markdown-panel__outline-toggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  background: var(--color-shell-main);
+  box-shadow: var(--shadow-sm);
 }
 
-.markdown-panel__controls svg {
+.markdown-panel__outline-toggle svg {
   width: 14px;
   height: 14px;
 }
 
 .markdown-panel__outline {
-  flex: 0 0 auto;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
   min-height: 0;
-  max-height: min(35%, 12rem);
   overflow: auto;
-  padding: var(--space-4) var(--space-8);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-2);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-shell-main);
   scrollbar-width: thin;
 }
 
@@ -210,12 +236,24 @@ onBeforeUnmount(() => {
   --outline-depth: 0;
   display: block;
   width: 100%;
+  min-height: 30px;
   padding: var(--space-3) var(--space-4);
-  padding-left: calc(var(--space-4) + var(--outline-depth) * var(--space-12));
-  overflow-wrap: anywhere;
+  padding-left: min(40%, calc(var(--space-4) + var(--outline-depth) * var(--space-8)));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-regular);
 }
 
-.markdown-panel__controls button:hover,
+.markdown-panel__outline .markdown-panel__heading--top {
+  font-weight: var(--font-weight-bold);
+}
+
+.markdown-panel__outline .markdown-panel__heading--section {
+  font-weight: var(--font-weight-semibold);
+}
+
+.markdown-panel__outline-toggle:hover,
 .markdown-panel__outline button:hover {
   background: var(--color-surface-high);
   color: var(--color-text);
@@ -226,7 +264,11 @@ onBeforeUnmount(() => {
   color: var(--color-on-primary-container);
 }
 
-.markdown-panel__controls button:focus-visible,
+.markdown-panel__outline button[aria-current]:not(.markdown-panel__heading--top) {
+  font-weight: var(--font-weight-semibold);
+}
+
+.markdown-panel__outline-toggle:focus-visible,
 .markdown-panel__outline button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;

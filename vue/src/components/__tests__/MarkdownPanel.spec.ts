@@ -5,8 +5,8 @@ import MarkdownPanel from '../MarkdownPanel.vue';
 
 afterEach(() => vi.restoreAllMocks());
 
-async function mountDocument(content: string) {
-  const wrapper = mount(MarkdownPanel, { props: { content, outlineEnabled: true } });
+async function mountDocument(content: string, attachTo?: HTMLElement) {
+  const wrapper = mount(MarkdownPanel, { attachTo, props: { content, outlineEnabled: true } });
   await nextTick();
   return wrapper;
 }
@@ -59,6 +59,50 @@ describe('MarkdownPanel', () => {
     await toggle.trigger('click');
     expect(wrapper.find('nav').exists()).toBe(false);
     expect(wrapper.get('h1 strong').text()).toBe('Notes');
+  });
+
+  it('keeps the full label available when a long outline row is truncated', async () => {
+    const wrapper = await mountDocument('# Guide\n\n## A long section title');
+    await wrapper.get('button[aria-expanded]').trigger('click');
+    const row = wrapper.findAll('nav button')[1];
+    expect(row.attributes('title')).toBe('A long section title');
+    expect(row.attributes('aria-label')).toBe('A long section title (heading level 2)');
+    expect(getComputedStyle(row.element).textOverflow).toBe('ellipsis');
+    expect(getComputedStyle(row.element).whiteSpace).toBe('nowrap');
+  });
+
+  it('uses quieter weights for deeper headings and emphasizes the active section', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    try {
+      const wrapper = await mountDocument('# Guide\n\n## Setup\n\n### Details', host);
+      await wrapper.get('button[aria-expanded]').trigger('click');
+      const rows = wrapper.findAll('nav button');
+      Object.defineProperty(wrapper.get('.markdown-panel__document').element, 'scrollTo', { configurable: true, value: vi.fn() });
+      await rows[0].trigger('click');
+      expect(getComputedStyle(rows[0].element).fontWeight).toBe('var(--font-weight-bold)');
+      expect(getComputedStyle(rows[1].element).fontWeight).toBe('var(--font-weight-semibold)');
+      expect(getComputedStyle(rows[2].element).fontWeight).toBe('var(--font-weight-regular)');
+      await rows[1].trigger('click');
+      expect(rows[1].attributes('aria-current')).toBe('location');
+      expect(getComputedStyle(rows[1].element).fontWeight).toBe('var(--font-weight-semibold)');
+      expect(getComputedStyle(rows[0].element).fontWeight).toBe('var(--font-weight-bold)');
+      expect(getComputedStyle(rows[2].element).fontWeight).toBe('var(--font-weight-regular)');
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('offers the outline through a compact floating icon control', async () => {
+    const wrapper = await mountDocument('# Guide');
+    const toggle = wrapper.get('button[aria-expanded]');
+    expect(toggle.attributes('aria-label')).toBe('Outline');
+    expect(toggle.attributes('title')).toBe('Outline');
+    expect(toggle.text()).toBe('Outline');
+    expect(toggle.find('svg').exists()).toBe(true);
+    expect(getComputedStyle(toggle.element).position).toBe('absolute');
+    await toggle.trigger('click');
+    expect(wrapper.find('nav').exists()).toBe(true);
   });
 
   it('navigates duplicate headings within its own scroll pane and tracks manual scrolling', async () => {
