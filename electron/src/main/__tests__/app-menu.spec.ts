@@ -142,7 +142,12 @@ describe('app menu', () => {
       'Quit',
     ]);
     expect(menu.find((item) => item.role === 'editMenu')).toBeDefined();
+    expect(submenu(menu, 'View').slice(0, 3).map(item => item.type ?? item.label)).toStrictEqual([
+      'Command Palette…', 'Keyboard Shortcuts…', 'separator',
+    ]);
     expect(menuLabels(submenu(menu, 'View'))).toStrictEqual([
+      'Command Palette…',
+      'Keyboard Shortcuts…',
       'Changes',
       'Browser',
       'Go to Agent...',
@@ -257,6 +262,12 @@ describe('app menu', () => {
     clickItem(menu, 'Help', 'Command Palette…');
     expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
     expect(menuItem(menu, 'Help', 'Command Palette…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+P', registerAccelerator: false });
+    clickItem(menu, 'View', 'Command Palette…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
+    clickItem(menu, 'View', 'Keyboard Shortcuts…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-keyboard-shortcuts' });
+    expect(menuItem(menu, 'View', 'Command Palette…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+P', registerAccelerator: false });
+    expect(menuItem(menu, 'View', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
   });
 
   it('uses the expected file menu accelerators', () => {
@@ -401,6 +412,8 @@ describe('app menu', () => {
     const releaseMenu = buildAppMenuTemplate(callbacks(), { debugMode: false }, 'darwin');
 
     expect(menuLabels(submenu(debugMenu, 'View'))).toStrictEqual([
+      'Command Palette…',
+      'Keyboard Shortcuts…',
       'Changes',
       'Browser',
       'Go to Agent...',

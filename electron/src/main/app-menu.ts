@@ -93,22 +93,28 @@ export function buildAppMenuTemplate(
   ];
 }
 
+function buildCommandDiscoveryItems(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: mainT('menu.commandPalette'),
+      accelerator: shortcutAccelerator('commands'),
+      registerAccelerator: false,
+      click: () => callbacks.sendAppCommand({ type: 'open-command-palette' }),
+    },
+    {
+      label: mainT('menu.keyboardShortcuts'),
+      accelerator: shortcutAccelerator('help'),
+      registerAccelerator: false,
+      click: () => callbacks.sendAppCommand({ type: 'open-keyboard-shortcuts' }),
+    },
+  ];
+}
+
 function buildHelpMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions, platform: NodeJS.Platform): MenuItemConstructorOptions {
   return {
     label: mainT('menu.help'),
     submenu: [
-      {
-        label: mainT('menu.commandPalette'),
-        accelerator: shortcutAccelerator('commands'),
-        registerAccelerator: false,
-        click: () => callbacks.sendAppCommand({ type: 'open-command-palette' }),
-      },
-      {
-        label: mainT('menu.keyboardShortcuts'),
-        accelerator: shortcutAccelerator('help'),
-        registerAccelerator: false,
-        click: () => callbacks.sendAppCommand({ type: 'open-keyboard-shortcuts' }),
-      },
+      ...buildCommandDiscoveryItems(callbacks),
       {
         label: mainT('menu.whatsNew'),
         click: () => callbacks.sendAppCommand({ type: 'open-whats-new' }),
@@ -528,6 +534,8 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
   return {
     label: mainT('menu.view'),
     submenu: [
+      ...buildCommandDiscoveryItems(callbacks),
+      { type: 'separator' },
       {
         label: mainT('menu.changes'),
         accelerator: shortcutAccelerator('review'),
