@@ -13,6 +13,13 @@ it('routes document saves and layout changes through client-scoped operations', 
 });
 
 describe(`${product.name} web operations`, () => {
+  it('routes manual review handoff without discarding or interrupting the review', async () => {
+    const snapshot = { agents: [{ id: 'reviewer', codeReview: { id: 'review', automation: { state: 'manual' } } }] };
+    const request = vi.fn().mockResolvedValue(snapshot);
+    await expect(invokeAppWebOperation({ request }, 'switchCodeReviewToManual', ['reviewer', 'review'])).resolves.toStrictEqual(snapshot);
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentCodeReviewManual, { agentId: 'reviewer', sessionId: 'review' });
+  });
+
   it('preserves history search options and the conversation resume target expected by the daemon', async () => {
     const target = { storageState: 'active', ref: { backend: 'antigravity', folder: '/work', sessionId: 'native-history' } } as const;
     const request = vi.fn().mockResolvedValue({ agents: [] });
@@ -34,6 +41,17 @@ describe(`${product.name} web operations`, () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
+  it('preserves the branch name and recovery result through the web transport', async () => {
+    const result = { state: 'recovery', folder: '/repo-work', branchName: 'feature', retainedPaths: ['file'] };
+    const request = vi.fn().mockResolvedValue(result);
+    const input = { confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature' };
+    await invokeAppWebOperation({ request }, 'previewBranchCurrentWork', ['agent']);
+    await expect(invokeAppWebOperation({ request }, 'branchCurrentWork', ['agent', input])).resolves.toStrictEqual(result);
+    expect(request.mock.calls).toStrictEqual([
+      [backendMethods.agentGitBranchWorkPreview, { agentId: 'agent' }],
+      [backendMethods.agentGitBranchWork, { agentId: 'agent', input }],
+    ]);
+  });
   it('routes prune inventory and confirmed selections to the owning agent', async () => {
     const request = vi.fn().mockResolvedValue({ deleted: [], failed: [] });
     const input = { confirmed: true, targets: [{ id: 'refs/heads/feature', revision: 'checked' }] };

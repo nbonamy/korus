@@ -16,6 +16,16 @@ export const messages = {
       actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Edit agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
     },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
+    branchWork: {
+      menu: 'Branch…', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
+      loading: 'Loading…', branchName: 'Branch name', branchPlaceholder: 'Branch name…',
+      resume: 'Resume {branch}', submit: 'Branch', working: 'Branching…', retry: 'Retry', refresh: 'Refresh', close: 'Close', cancel: 'Cancel',
+      progressEyebrow: 'Branch current work', progressTitle: 'Preparing your new worktree', progressReady: '{branch} is ready', progressFailed: 'Worktree setup needs attention',
+      progressWorktree: 'Create the worktree', progressChanges: 'Move your changes', progressChangesDetail: 'Keep staged and unstaged changes uncommitted.',
+      progressAgent: 'Prepare the new agent', progressAgentDetail: 'Ready to continue in the new worktree.', progressSource: 'Reset the current branch', progressSourceDetail: 'Restore the files that were moved.',
+      completed: 'Changes moved. Open the new agent to continue.', recovery: 'The move needs recovery. Your work is preserved.',
+      backups: 'Source recovery copies: {folder}', retained: 'Retained in the source checkout:', inspect: 'Open agent',
+    },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',
@@ -86,9 +96,9 @@ export const messages = {
       currentModel: 'Current model', currentEffort: 'Current effort', defaultModel: 'Default model', defaultEffort: 'Default effort',
       independent: 'Automatic mode uses an independent reviewer for each round.',
       currentThreadUnavailable: 'Not available for automatic reviews',
-      stop: 'Stop automatic review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
+      switchToManual: 'Switch to manual', stopReview: 'Stop review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
       modelError: 'Could not load models. You can use the default model or retry.', retry: 'Retry models',
-      manual: 'Continue manually',
+      manual: 'Manual review',
     },
     workAuthorization: {
       copyCode: 'Copy {provider} device code {code}', step2: 'Step 2: Open {provider}',

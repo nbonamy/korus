@@ -75,6 +75,7 @@
         :pull-branch="pullGitBranch"
         :revert-changes="revertGitChanges"
         :report-back-agent-name="reportBackAgentName"
+        @inspect-agent="emit('select-agent', $event)"
       />
       <OpenInControl
         class="agent-header__open-in"
@@ -172,6 +173,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'expand-sidebar': [];
+  'select-agent': [agentId: string];
   'toggle-workspace': [];
   'toggle-execution-plan': [];
   'open-git-diff': [target: AgentGitDiffTarget];

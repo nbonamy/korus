@@ -6,6 +6,20 @@ import WorkspaceProvisioningProgressDialog from '../WorkspaceProvisioningProgres
 describe('WorkspaceProvisioningProgressDialog', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('shows branch-move stages without setup scripts or a task handoff', async () => {
+    const progress = { id: 'move', agentId: 'parent', branchName: 'feature/work', state: 'running' as const, phase: 'movingChanges' as const };
+    const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'branchMove', progress } } });
+    expect(wrapper.findAll('.staged-operation-progress li')).toHaveLength(4);
+    expect(wrapper.findAll('.staged-operation-progress li')[1]!.classes()).toContain('is-active');
+    expect(wrapper.text()).toContain('uncommitted');
+    await wrapper.setProps({ operation: { mode: 'branchMove', progress: { ...progress, phase: 'resettingSource', state: 'error', error: 'Source work preserved' } } });
+    expect(wrapper.findAll('.staged-operation-progress li')[3]!.classes()).toContain('is-error');
+    expect(wrapper.text()).toContain('Source work preserved');
+    await wrapper.findAll('button').find(button => button.text() === 'Close')!.trigger('click');
+    expect(wrapper.emitted('close')).toStrictEqual([['move']]);
+    wrapper.unmount();
+  });
+
   it.each(['codex', 'antigravity'] as const)('shows %s project creation stages and retains handoff failures', async backend => {
     const progress = {
       id: 'project-1', state: 'running' as const, backend,

@@ -18,6 +18,8 @@ export function registerAgentGitIpcHandlers(
   ipc.handle(ipcChannels.getAgentGitDiff, async (_event, agentId, target) => {
     return requestAppBackend(getBackendClient(), backendMethods.agentGitDiffGet, { agentId, target });
   });
+  ipc.handle(ipcChannels.previewBranchCurrentWork, (_event, agentId) => requestAppBackend(getBackendClient(), backendMethods.agentGitBranchWorkPreview, { agentId }));
+  ipc.handle(ipcChannels.branchCurrentWork, (_event, agentId, input) => requestAppBackend(getBackendClient(), backendMethods.agentGitBranchWork, { agentId, input }));
   ipc.handle(ipcChannels.getAgentGitWorkflow, (_event, agentId) => (
     requestAppBackend(getBackendClient(), backendMethods.agentGitWorkflowGet, { agentId })
   ));

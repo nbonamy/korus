@@ -49,6 +49,8 @@ export type WorktreeManagerOptions = {
 };
 
 export type WorktreeCreateOptions = {
+  /** Transfers must never copy environment files or run repository setup implicitly. */
+  skipInitialization?: boolean;
   onInitializationProgress?: (progress: WorktreeInitializationProgress) => void;
 };
 
@@ -92,7 +94,7 @@ export class WorktreeManager {
 
   async create(input: GitWorktreeCreateInput, options: WorktreeCreateOptions = {}): Promise<PreparedWorktree> {
     const created = await this.createGitWorktree(input);
-    if (!created.created) {
+    if (!created.created || options.skipInitialization) {
       return {
         ...created,
         initialization: { source: 'none', commands: [], copiedFiles: [] },
