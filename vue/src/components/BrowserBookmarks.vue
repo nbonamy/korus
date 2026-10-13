@@ -1,16 +1,11 @@
 <template>
-  <span class="browser-bookmarks">
-    <button
-      type="button"
-      :aria-label="currentBookmark ? $t('surface.browserPanel.editBookmark') : $t('surface.browserPanel.bookmarkPage')"
-      :title="currentUrl ? (currentBookmark ? $t('surface.browserPanel.editBookmark') : $t('surface.browserPanel.bookmarkPage')) : $t('surface.browserPanel.bookmarkSupportedUrls')"
-      :aria-pressed="Boolean(currentBookmark)"
-      :disabled="!currentUrl || saving"
-      @click="editCurrent"
-    ><IconStar :class="{ 'browser-bookmarks__star--saved': currentBookmark }" /></button>
+  <div class="browser-bookmarks">
     <button ref="pickerTrigger" type="button" :aria-label="$t('surface.browserPanel.bookmarks')" :title="$t('surface.browserPanel.bookmarks')" @click="showPicker">
       <IconBookmarks />
     </button>
+    <slot name="address" :action="bookmarkButton">
+      <button type="button" v-bind="bookmarkButton"><IconStar :class="{ 'browser-bookmarks__star--saved': currentBookmark }" /></button>
+    </slot>
 
     <Teleport to="body">
       <QuickOpenDialog
@@ -52,15 +47,17 @@
         <button type="submit" :form="formId" class="app-button app-button--primary" :disabled="saving || !name.trim()">{{ $t('surface.browserPanel.saveBookmark') }}</button>
       </template>
     </FormDialog>
-  </span>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
+import { ElMessage } from 'element-plus';
 import { IconBookmarks, IconPencil, IconStar, IconTrash } from '@tabler/icons-vue';
 import { bookmarkUrl, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import QuickOpenDialog from '../shared/QuickOpenDialog.vue';
+import { translate } from '../i18n';
 
 const props = withDefaults(defineProps<{
   active?: boolean;
@@ -83,13 +80,30 @@ const saveError = ref(false);
 const returnToPicker = ref(false);
 const editingExisting = computed(() => props.bookmarks.some(bookmark => bookmark.url === editing.value?.url));
 const pickerItems = computed(() => props.bookmarks.map(bookmark => ({ id: bookmark.url, label: bookmark.title, detail: bookmark.url, disabled: saving.value })));
+const bookmarkButton = computed(() => {
+  const label = currentBookmark.value
+    ? translate('surface.browserPanel.removeNamedBookmark', { title: currentBookmark.value.title })
+    : translate('surface.browserPanel.bookmarkPage');
+  return {
+    'aria-label': label,
+    'aria-pressed': Boolean(currentBookmark.value),
+    title: currentUrl.value ? label : translate('surface.browserPanel.bookmarkSupportedUrls'),
+    disabled: !currentUrl.value || saving.value,
+    onClick: toggleCurrent,
+  };
+});
 watch(() => props.active, active => {
   if (!active) { pickerOpen.value = false; editing.value = null; }
 });
 
 function showPicker(): void { saveError.value = false; pickerOpen.value = true; }
-function editCurrent(): void {
-  if (currentUrl.value) edit(currentBookmark.value ?? { title: props.title.trim() || new URL(currentUrl.value).host, url: currentUrl.value });
+async function toggleCurrent(): Promise<void> {
+  if (!currentUrl.value || saving.value) return;
+  if (currentBookmark.value) {
+    if (!await removeBookmark(currentBookmark.value.url)) ElMessage.error(translate('surface.browserPanel.bookmarkSaveFailed'));
+  } else {
+    edit({ title: props.title.trim() || new URL(currentUrl.value).host, url: currentUrl.value });
+  }
 }
 function edit(bookmark: BrowserBookmark): void {
   returnToPicker.value = pickerOpen.value;
@@ -134,8 +148,8 @@ async function saveName(): Promise<void> {
 async function remove(): Promise<void> {
   if (editing.value && await persist(props.bookmarks.filter(bookmark => bookmark.url !== editing.value?.url))) finishEditing();
 }
-async function removeBookmark(url: string): Promise<void> {
-  await persist(props.bookmarks.filter(bookmark => bookmark.url !== url));
+async function removeBookmark(url: string): Promise<boolean> {
+  return persist(props.bookmarks.filter(bookmark => bookmark.url !== url));
 }
 </script>
 
@@ -170,7 +184,7 @@ async function removeBookmark(url: string): Promise<void> {
 
 .browser-bookmarks__star--saved {
   fill: currentColor;
-  color: var(--color-primary);
+  color: var(--color-bookmark-saved);
 }
 
 .browser-bookmarks button:hover,

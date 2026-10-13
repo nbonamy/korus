@@ -1,11 +1,11 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
-import { ElDialog, ElInput } from 'element-plus';
+import { ElDialog, ElInput, ElMessage } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserBookmark } from '@workspace/core/browser-bookmarks';
 import BrowserBookmarks from '../BrowserBookmarks.vue';
 
 const page = new DOMWrapper(document.body);
-afterEach(() => { document.body.innerHTML = ''; });
+afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
 function mountBookmarks(bookmarks: BrowserBookmark[] = [], save = vi.fn().mockResolvedValue(undefined)) {
   return mount(BrowserBookmarks, {
@@ -29,7 +29,7 @@ describe('BrowserBookmarks', () => {
     expect((page.get('input[aria-label="Bookmark name"]').element.closest('.el-overlay') as HTMLElement).style.display).toBe('none');
     wrapper.unmount();
   });
-  it('adds the current page with an editable name and opens its editor for normalized duplicates', async () => {
+  it('adds a named page and deletes a normalized existing bookmark directly from its star', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountBookmarks([], save);
     await openEditor();
@@ -39,12 +39,32 @@ describe('BrowserBookmarks', () => {
     await flushPromises();
     expect(save).toHaveBeenLastCalledWith([{ title: 'Preview', url: 'https://example.com/' }]);
     await wrapper.setProps({ bookmarks: [{ title: 'Preview', url: 'https://example.com/' }], url: 'https://EXAMPLE.com:443' });
-    await page.get('button[aria-label="Edit bookmark"]').trigger('click');
+    await page.get('button[aria-label="Delete Preview"]').trigger('click');
     await flushPromises();
-    await page.get('input[aria-label="Bookmark name"]').setValue('Renamed');
-    await page.get('form').trigger('submit');
+    expect(save).toHaveBeenLastCalledWith([]);
+    expect(page.findAll('.el-overlay').every(overlay => (overlay.element as HTMLElement).style.display === 'none')).toBe(true);
+    await wrapper.setProps({ bookmarks: [] });
+    expect(page.get('button[aria-label="Bookmark this page"]').attributes('aria-pressed')).toBe('false');
+    wrapper.unmount();
+  });
+
+  it('disables the star during deletion and reports failure without losing the bookmark', async () => {
+    let reject!: (error: Error) => void;
+    const save = vi.fn(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const bookmark = { title: 'Example', url: 'https://example.com/' };
+    const wrapper = mountBookmarks([bookmark], save);
+    const star = page.get<HTMLButtonElement>('button[aria-label="Delete Example"]');
+    await star.trigger('click');
+    expect(star.element.disabled).toBe(true);
+    await star.trigger('click');
+    expect(save).toHaveBeenCalledExactlyOnceWith([]);
+    reject(new Error('Storage unavailable'));
     await flushPromises();
-    expect(save).toHaveBeenLastCalledWith([{ title: 'Renamed', url: 'https://example.com/' }]);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Could not save bookmarks'));
+    expect(star.attributes('aria-pressed')).toBe('true');
+    expect(star.element.disabled).toBe(false);
+    expect(page.findAll('.el-overlay').every(overlay => (overlay.element as HTMLElement).style.display === 'none')).toBe(true);
     wrapper.unmount();
   });
 

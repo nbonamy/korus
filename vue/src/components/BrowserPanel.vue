@@ -6,18 +6,22 @@
         <button type="button" :aria-label="$t('surface.browserPanel.goForward')" :title="$t('surface.browserPanel.goForward')" :disabled="!state.canGoForward || loading" @click="goForward"><IconArrowRight /></button>
         <button type="button" :aria-label="$t('surface.browserPanel.reloadPage')" :title="$t('surface.browserPanel.reload')" :disabled="loading" @click="reload"><IconRefresh /></button>
       </div>
-      <form v-if="!annotationMode && !visualization" class="browser-panel__address" @submit.prevent="navigate">
-        <input ref="addressInput" v-model="address" :aria-label="$t('surface.browserPanel.browserAddress')" spellcheck="false" :title="state.title || address" />
-        <BrowserBookmarks :active="visible" :bookmarks="bookmarks" :url="state.url" :title="state.title" :save="saveBookmarks" @open="openBookmark" />
-        <button
-          v-if="externalUrl"
-          class="browser-panel__external-open"
-          type="button"
-          :aria-label="$t('surface.browserPanel.openInExternalBrowser')"
-          :title="$t('surface.browserPanel.openInExternalBrowser')"
-          @click="openExternal"
-        ><ArrowUpRightIcon aria-hidden="true" /></button>
-      </form>
+      <BrowserBookmarks v-if="!annotationMode && !visualization" class="browser-panel__address-row" :active="visible" :bookmarks="bookmarks" :url="state.url" :title="state.title" :save="saveBookmarks" @open="openBookmark">
+        <template #address="{ action }">
+          <form class="browser-panel__address" @submit.prevent="navigate">
+            <input ref="addressInput" v-model="address" :aria-label="$t('surface.browserPanel.browserAddress')" spellcheck="false" :title="state.title || address" />
+            <button type="button" class="browser-panel__bookmark-page" v-bind="action"><IconStar :class="{ 'browser-panel__star--saved': action['aria-pressed'] }" /></button>
+            <button
+              v-if="externalUrl"
+              class="browser-panel__external-open"
+              type="button"
+              :aria-label="$t('surface.browserPanel.openInExternalBrowser')"
+              :title="$t('surface.browserPanel.openInExternalBrowser')"
+              @click="openExternal"
+            ><ArrowUpRightIcon aria-hidden="true" /></button>
+          </form>
+        </template>
+      </BrowserBookmarks>
       <div v-else-if="visualization" class="browser-panel__visualization-title">{{ visualization.title }}</div>
       <div v-else class="browser-panel__annotation-title"><strong>{{ $t('surface.browserPanel.annotating') }}</strong><span>•</span><span>{{ displayHost }}</span></div>
       <div class="browser-panel__actions">
@@ -91,7 +95,7 @@
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconX, IconZoom } from '@tabler/icons-vue';
+import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconX, IconZoom } from '@tabler/icons-vue';
 import { PRIMARY_BROWSER_ID, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type MainToRendererEvent } from '@workspace/core/contracts';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { browserDevicePresets, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
@@ -644,6 +648,7 @@ function messageFor(reason: unknown): string {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
   align-items: center;
   height: 34px;
   min-height: 34px;
@@ -665,13 +670,13 @@ function messageFor(reason: unknown): string {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text-muted);
 }
 
 .browser-panel button:hover:not(:disabled),
-.browser-panel button[aria-pressed="true"] {
+.browser-panel button[aria-pressed="true"]:not(.browser-panel__bookmark-page) {
   background: var(--color-surface-high);
   color: var(--color-text);
 }
@@ -699,6 +704,11 @@ function messageFor(reason: unknown): string {
   min-width: 0;
 }
 
+.browser-panel__address-row {
+  min-width: 0;
+  gap: var(--space-3);
+}
+
 .browser-panel__visualization-title {
   overflow: hidden;
   padding: 0 var(--space-4);
@@ -710,11 +720,12 @@ function messageFor(reason: unknown): string {
 
 .browser-panel__address {
   display: flex;
-  align-items: stretch;
+  flex: 1;
+  align-items: center;
   box-sizing: border-box;
   width: auto;
   height: 28px;
-  margin: 0 var(--space-8);
+  margin: 0;
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -738,26 +749,43 @@ function messageFor(reason: unknown): string {
 }
 
 .browser-panel__address:hover,
-.browser-panel__address:focus-within {
+.browser-panel__address:has(:focus-visible) {
   border-color: var(--color-border);
   background: var(--color-surface-lowest);
 }
 
+.browser-panel .browser-panel__bookmark-page,
 .browser-panel .browser-panel__external-open {
   flex: 0 0 28px;
   width: 28px;
-  height: 100%;
-  border-radius: 0;
+  height: 24px;
+  background: transparent;
   opacity: 0;
   pointer-events: none;
 }
 
+.browser-panel .browser-panel__address > button:is(:hover, :focus-visible) {
+  background: var(--color-surface-high);
+}
+
+.browser-panel__address:hover .browser-panel__bookmark-page,
+.browser-panel__address:has(:focus-visible) .browser-panel__bookmark-page,
 .browser-panel__address:hover .browser-panel__external-open,
-.browser-panel__address:focus-within .browser-panel__external-open {
-  background: var(--color-surface-low);
+.browser-panel__address:has(:focus-visible) .browser-panel__external-open {
   color: var(--color-text);
   opacity: 1;
   pointer-events: auto;
+}
+
+.browser-panel__star--saved {
+  fill: currentColor;
+  color: var(--color-bookmark-saved);
+}
+
+.browser-panel__bookmark-page:focus-visible,
+.browser-panel__external-open:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .browser-panel__annotation-title {

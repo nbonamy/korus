@@ -103,7 +103,7 @@ describe('BrowserPanel', () => {
     await page.get('form[id^="bookmark-"]').trigger('submit');
     await flushPromises();
     expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { browserBookmarks: updated.general.browserBookmarks } });
-    expect(wrapper.get('button[aria-label="Edit bookmark"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('button[aria-label="Delete Example preview"]').attributes('aria-pressed')).toBe('true');
     await wrapper.get('[aria-label="Bookmarks"]').trigger('click');
     await flushPromises();
     await page.get('.quick-open-dialog__item').trigger('click');
@@ -295,6 +295,30 @@ describe('BrowserPanel', () => {
 
     expect(api.browserNavigate).toHaveBeenCalledWith('agent-1', 'primary', 'https://example.com');
     expect((wrapper.get('[aria-label="Browser address"]').element as HTMLInputElement).value).toBe('https://example.com/');
+  });
+
+  it('hides idle address actions while keeping their keyboard targets in the bar', async () => {
+    const { api, emitDomReady, wrapper } = mountPanel({}, { deferDomReady: true, attachTo: document.body });
+    api.browserOpen.mockResolvedValueOnce({ url: 'https://example.com/', title: 'Example', canGoBack: false, canGoForward: false });
+    emitDomReady();
+    await flushPromises();
+    const bookmarkPage = wrapper.get<HTMLElement>('[aria-label="Bookmark this page"]').element;
+    const external = wrapper.get<HTMLElement>('[aria-label="Open in external browser"]').element;
+    const picker = wrapper.get<HTMLButtonElement>('[aria-label="Bookmarks"]').element;
+    expect(picker.closest('form')).toBeNull();
+    expect(bookmarkPage.closest('form')).toBe(wrapper.get('form.browser-panel__address').element);
+    for (const control of [bookmarkPage, external]) {
+      expect(getComputedStyle(control).opacity).toBe('0');
+      expect(getComputedStyle(control).pointerEvents).toBe('none');
+    }
+    const address = wrapper.get<HTMLInputElement>('input[aria-label="Browser address"]').element;
+    address.focus();
+    expect(document.activeElement).toBe(address);
+    picker.focus();
+    expect(document.activeElement).toBe(picker);
+    picker.blur();
+    expect(getComputedStyle(bookmarkPage).opacity).toBe('0');
+    wrapper.unmount();
   });
 
   it('opens the loaded page in the system browser and follows navigation inside the page', async () => {
