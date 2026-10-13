@@ -4,7 +4,7 @@ import { App } from '@capacitor/app';
 
 export type MobileHost = {
   platform: string;
-  scanInvitation?(): Promise<string>;
+  scanPairingCode?(): Promise<string>;
   onActivity?(listener: (isActive: boolean) => void): Promise<() => void>;
   onResume(listener: () => void): Promise<() => void>;
 };
@@ -14,7 +14,7 @@ export function createMobileHost(): MobileHost {
   const platform = Capacitor.getPlatform();
   return {
     platform,
-    async scanInvitation() {
+    async scanPairingCode() {
       if (platform === 'web') throw new Error('Pairing camera requires a native host.');
       const result = await CapacitorBarcodeScanner.scanBarcode({ hint: CapacitorBarcodeScannerTypeHint.QR_CODE, scanInstructions: 'Scan the pairing code on your laptop.', cancelButtonAccessibilityLabel: 'Cancel scan' });
       return result.ScanResult;

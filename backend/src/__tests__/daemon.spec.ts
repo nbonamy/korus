@@ -64,7 +64,7 @@ describe('daemon entrypoint', () => {
     await main([]);
 
     expect(process.exitCode).toBe(1);
-    expect(writes.join('')).toContain(`Usage: ${product.daemonName} --stdio | serve | connect | --version`);
+    expect(writes.join('')).toContain(`Usage: ${product.daemonName} --stdio | serve | connect | companion-relay <config-file> | --version`);
   });
 
   it('bridges daemon connect stdio to a running daemon socket', async () => {

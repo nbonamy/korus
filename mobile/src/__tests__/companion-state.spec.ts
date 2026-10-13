@@ -187,4 +187,19 @@ describe('companion state', () => {
     await expect(original.sendPrompt('demo-agent', 'hello')).rejects.toThrow();
     state.dispose();
   });
+  it('lists a team\'s agents in the desktop order, not the order the laptop stores them', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    connector.connect = async (id) => {
+      const session = await original(id);
+      return { ...session, async getWorkspace() {
+        const { teams, agents } = await session.getWorkspace();
+        return { teams: [{ ...teams[0]!, agentIds: ['demo-reviewer', 'unknown', 'demo-agent'] }], agents };
+      } };
+    };
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team');
+      expect(state.agents.value.map((agent) => agent.id)).toStrictEqual(['demo-reviewer', 'demo-agent']);
+    } finally { state.dispose(); }
+  });
 });

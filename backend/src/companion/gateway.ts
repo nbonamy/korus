@@ -1,7 +1,9 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId } from '@workspace/core/companion-protocol';
+import { projectCompanionWorkspace } from '@workspace/core/companion-projection';
+import { createPairingExchange, generatePairingCode, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -17,34 +19,36 @@ export type GatewayPort = {
 
 /** Peer identity is supplied exclusively by the authenticated Noise connection. */
 export class CompanionGateway {
-  private readonly invitations = new Map<string, { digest: Buffer; expiresAt: number; pendingId?: string }>();
-  private readonly pending = new Map<string, CompanionPending & { inviteId: string }>();
+  /** Keyed by the public rendezvous channel (first half of the code); the whole code is the PAKE password. */
+  private readonly invitations = new Map<string, { code: string; expiresAt: number; attempts: number; sessions: Map<string, { confirm: Uint8Array; name: string }>; pendingId?: string }>();
+  private readonly pending = new Map<string, CompanionPending & { channel: string }>();
   private mutations = Promise.resolve();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
-  get grants() { return this.state.grants.map((grant) => ({ ...grant, teamIds: [...grant.teamIds] })); }
-  get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ inviteId: _invite, ...pending }) => pending); }
+  get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
+  get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ channel: _channel, ...pending }) => pending); }
+  /** Channels of live invitations, advertised to the relay so a phone can find this laptop from its code. */
+  pairChannels() { this.expire(); return [...this.invitations.keys()]; }
   invite() {
     this.expire();
     if (this.invitations.size >= 5) throw new Error('Too many active invitations.');
-    const inviteId = randomUUID(); const inviteSecret = randomBytes(32).toString('base64url'); const expiresAt = this.now() + 300_000;
-    this.invitations.set(inviteId, { digest: digest(inviteSecret), expiresAt });
-    return { inviteId, inviteSecret, expiresAt };
+    let code = generatePairingCode();
+    while (this.invitations.has(pairingChannel(normalizePairingCode(code)!))) code = generatePairingCode();
+    const expiresAt = this.now() + 300_000;
+    this.invitations.set(pairingChannel(normalizePairingCode(code)!), { code: normalizePairingCode(code)!, expiresAt, attempts: 0, sessions: new Map() });
+    return { code, expiresAt };
   }
-  async decide(id: string, approve: boolean, teamIds: string[], canSend: boolean) {
+  /** Approval grants everything: every team, reading and sending. The desktop decides per device, not per scope. */
+  async decide(id: string, approve: boolean) {
     return this.mutate(async () => {
       this.expire();
       const pending = this.pending.get(id);
       if (!pending) throw new Error('Pairing request expired or consumed.');
-      const workspace = await this.port.workspace();
-      this.expire();
-      if (this.pending.get(id) !== pending) throw new Error('Pairing request expired or consumed.');
       if (approve && this.state.grants.length >= 20 && !this.state.grants.some((grant) => grant.peerId === pending.peerId)) throw new Error('Too many paired devices.');
-      if (approve && (!teamIds.length || teamIds.some((id) => !workspace.teams.some((team) => team.id === id)))) throw new Error('Invalid team scope.');
       const next = { ...this.state, grants: this.state.grants.filter((grant) => grant.peerId !== pending.peerId) };
-      if (approve) next.grants.push({ peerId: pending.peerId, name: pending.name, teamIds: [...new Set(teamIds)], canSend, createdAt: this.now() });
+      if (approve) next.grants.push({ peerId: pending.peerId, name: pending.name, createdAt: this.now() });
       await this.port.save(next);
       this.state = next;
-      this.pending.delete(id); this.invitations.delete(pending.inviteId);
+      this.pending.delete(id); this.invitations.delete(pending.channel);
     });
   }
   async revoke(peerId: string) {
@@ -56,14 +60,30 @@ export class CompanionGateway {
   }
   async request(peerId: string, method: string, args: unknown): Promise<unknown> {
     this.expire();
-    if (method === 'pair.request') {
-      const request = z.object({ inviteId: z.string().uuid(), inviteSecret: z.string().min(40).max(100), name: z.string().trim().min(1).max(80) }).strict().parse(args);
-      const invitation = this.invitations.get(request.inviteId);
-      if (!invitation || !timingSafeEqual(invitation.digest, digest(request.inviteSecret))) throw new Error('Invalid or expired invitation.');
+    if (method === 'pair.start') {
+      const request = z.object({ channel: z.string().length(4), message: z.string().min(40).max(48), name: z.string().trim().min(1).max(80) }).strict().parse(args);
+      const invitation = this.invitations.get(request.channel);
+      if (!invitation) throw new Error('Invalid or expired invitation.');
+      // Online guessing is the only way to test a code, so each start is an attempt and three burn the invitation.
+      if (++invitation.attempts > 3) { this.invitations.delete(request.channel); throw new Error('Invalid or expired invitation.'); }
+      const exchange = createPairingExchange({ role: 'responder', code: invitation.code, initiatorId: peerId, responderId: this.hostId });
+      const confirmations = exchange.finish(new Uint8Array(Buffer.from(request.message, 'base64')));
+      invitation.sessions.set(peerId, { confirm: confirmations.initiatorConfirm, name: request.name });
+      return { message: Buffer.from(exchange.message).toString('base64'), confirm: Buffer.from(confirmations.responderConfirm).toString('base64') };
+    }
+    if (method === 'pair.confirm') {
+      const request = z.object({ channel: z.string().length(4), confirm: z.string().min(40).max(48) }).strict().parse(args);
+      const invitation = this.invitations.get(request.channel);
+      const session = invitation?.sessions.get(peerId);
+      if (!invitation || !session) throw new Error('Invalid or expired invitation.');
+      if (!pairingConfirmationsMatch(session.confirm, new Uint8Array(Buffer.from(request.confirm, 'base64')))) {
+        this.invitations.delete(request.channel);
+        throw new Error('Invalid or expired invitation.');
+      }
       if (this.state.grants.some((grant) => grant.peerId === peerId)) {
         // An already approved device can recover a lost local pairing record without
         // leaving a second approval request or changing its existing scope.
-        this.invitations.delete(request.inviteId);
+        this.invitations.delete(request.channel);
         return { pendingId: randomUUID(), state: 'approved' };
       }
       if (invitation.pendingId) {
@@ -72,7 +92,7 @@ export class CompanionGateway {
         throw new Error('Invitation already claimed.');
       }
       const id = randomUUID();
-      this.pending.set(id, { id, peerId, name: request.name, inviteId: request.inviteId, expiresAt: invitation.expiresAt });
+      this.pending.set(id, { id, peerId, name: session.name, channel: request.channel, expiresAt: invitation.expiresAt });
       invitation.pendingId = id;
       return { pendingId: id, state: 'awaitingApproval' };
     }
@@ -87,18 +107,19 @@ export class CompanionGateway {
     const grant = this.state.grants.find((grant) => grant.peerId === peerId);
     if (!grant) throw new Error('Device is not authorized.');
     if (method === 'snapshot.get') {
-      z.object({}).strict().parse(args);
+      const { iconsVersion } = z.object({ iconsVersion: z.string().max(64).optional() }).strict().parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peerId, grant);
-      const teams = workspace.teams.filter((team) => grant.teamIds.includes(team.id)).map(({ id, name, avatar, agentIds, remoteConnectionId }) => ({ id, name, avatar, agentIds, remoteConnectionId }));
-      const agents = workspace.agents.filter((agent) => teams.some((team) => team.id === agent.teamId)).map(({ id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt }) => ({ id, teamId, name, avatar, backend, backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession, status, statusText, createdAt, updatedAt, folder: null }));
-      return { teams, agents };
+      const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);
+      // Icons are large and rarely change: send them only when the phone's copy is out of date.
+      const version = createHash('sha256').update(JSON.stringify(Object.entries(repositoryIcons).sort())).digest('hex').slice(0, 16);
+      return { ...projected, iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
     }
     if (method === 'conversation.subscribe') {
       const target = targetSchema.parse(args);
-      await this.validateTarget(grant, target);
+      await this.validateTarget(target);
       const frame = await this.port.conversation(target.agentId);
-      const current = await this.validateTarget(grant, target);
+      const current = await this.validateTarget(target);
       this.requireGrant(peerId, grant);
       const session = current.backendSession;
       if (frame.backend !== current.backend || (session?.kind === 'codex' && (frame.type !== 'codex.conversationSnapshotChanged' || frame.threadId !== session.threadId))
@@ -109,7 +130,6 @@ export class CompanionGateway {
     }
     if (method === 'prompt.submit') {
       const command = commandSchema.parse(args);
-      if (!grant.canSend) throw new Error('This device has read-only access.');
       const ledgerKey = `${peerId}:${command.clientCommandId}`;
       const fingerprint = createHash('sha256').update(JSON.stringify(command)).digest('hex');
       const existing = this.state.commands[ledgerKey];
@@ -119,11 +139,10 @@ export class CompanionGateway {
       }
       return this.mutate(async () => {
         // Recheck inside the serialized admission boundary, including revocation and concurrent retries.
-        const currentGrant = this.state.grants.find((item) => item.peerId === peerId);
-        if (!currentGrant?.canSend) throw new Error('Device is not authorized to send.');
+        if (!this.state.grants.some((item) => item.peerId === peerId)) throw new Error('Device is not authorized.');
         const duplicate = this.state.commands[ledgerKey];
         if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return receipt(duplicate); }
-        await this.validateTarget(currentGrant, command.target);
+        await this.validateTarget(command.target);
         if (Object.keys(this.state.commands).length >= 10_000) throw new Error('Command receipt storage is full.');
         const pending = { clientCommandId: command.clientCommandId, state: 'pending' as const, target: command.target, fingerprint };
         const next = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: pending } };
@@ -147,12 +166,12 @@ export class CompanionGateway {
   private requireGrant(peerId: string, grant: CompanionGrant) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
   }
-  private async validateTarget(grant: CompanionGrant, target: CompanionTarget) {
+  private async validateTarget(target: CompanionTarget) {
     const workspace = await this.port.workspace();
     const team = workspace.teams.find((team) => team.id === target.teamId);
     const agent = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
-    if (target.hostId !== this.hostId || !grant.teamIds.includes(target.teamId) || !team || !agent
-      || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale or outside the device scope.');
+    if (target.hostId !== this.hostId || !team || !agent
+      || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return agent;
   }
   private mutate<Result>(action: () => Promise<Result>): Promise<Result> {
@@ -167,7 +186,6 @@ export class CompanionGateway {
     }
   }
 }
-function digest(value: string) { return createHash('sha256').update(value).digest(); }
 function receipt({ fingerprint: _fingerprint, ...receipt }: GatewayState['commands'][string]): CompanionCommandReceipt {
   // Persisted pending entries can mean a killed process after provider admission.
   return { ...receipt, state: receipt.state === 'pending' ? 'unresolved' : receipt.state };

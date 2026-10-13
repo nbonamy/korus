@@ -5,12 +5,20 @@ import { createCompanionRelay } from './relay';
 import { z } from 'zod';
 import { startRelayHealth } from './relay-health';
 
-const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/tls\/ws$/),
-  hostIds: z.array(z.string().regex(/^[a-zA-Z0-9]{32,128}$/)).min(1).max(100),
-  stateDirectory: z.string().min(1), certificateFile: z.string().min(1), privateKeyFile: z.string().min(1), healthPort: z.number().int().min(1024).max(65535).optional() }).strict();
+const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
+const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
+  hostIds: z.array(peerId).min(1).max(100),
+  stateDirectory: z.string().min(1), certificateFile: z.string().min(1).optional(), privateKeyFile: z.string().min(1).optional(), healthPort: z.number().int().min(1024).max(65535).optional() }).strict()
+  .superRefine((config, context) => {
+    const secure = config.listen.endsWith('/tls/ws');
+    // Plaintext listening exists for local development only; anything reachable needs TLS.
+    if (secure && (!config.certificateFile || !config.privateKeyFile)) context.addIssue({ code: 'custom', message: 'A TLS listener needs certificateFile and privateKeyFile.' });
+    if (!secure && !/^\/ip(4\/127\.0\.0\.1|6\/::1)\//.test(config.listen)) context.addIssue({ code: 'custom', message: 'A plaintext listener must be bound to loopback.' });
+  });
+export function parseRelayConfig(source: string) { return configSchema.parse(JSON.parse(source)); }
 export async function runCompanionRelay(configFile: string) {
   if (!configFile) throw new Error('Provide the relay operator configuration file.');
-  const config = configSchema.parse(JSON.parse(await readFile(configFile, 'utf8')));
+  const config = parseRelayConfig(await readFile(configFile, 'utf8'));
   await mkdir(config.stateDirectory, { recursive: true, mode: 0o700 });
   const identityFile = path.join(config.stateDirectory, 'identity.key');
   let identity;
@@ -21,7 +29,7 @@ export async function runCompanionRelay(configFile: string) {
     await writeFile(identityFile, privateKeyToProtobuf(identity), { flag: 'wx', mode: 0o600 });
   }
   const relay = await createCompanionRelay({ key: identity, listen: config.listen, hostIds: config.hostIds,
-    tls: { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } });
+    tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }
   catch (error) { await relay.stop(); throw error; }

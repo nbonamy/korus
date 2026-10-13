@@ -10,6 +10,8 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomUUID } from 'node:crypto';
 import { companionProtocol, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
+import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 import { createCompanionRelay } from '../relay';
 import { CompanionOutboundConnector } from '../connector';
 import { CompanionGateway } from '../gateway';
@@ -32,7 +34,7 @@ describe('encrypted companion circuit', () => {
     });
     const connector = new CompanionOutboundConnector(hostKey, gateway); connectorRef.current = connector;
     stops.push(() => connector.stop());
-    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString(), true);
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
     expect(connector.connected).toBe(true);
     const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
     stops.push(() => phone.stop());
@@ -40,10 +42,18 @@ describe('encrypted companion circuit', () => {
     const circuit = `${address}/p2p-circuit/p2p/${hostId}`;
     const result = await rpc(phone, circuit, 'snapshot.get', {});
     expect(result).toHaveProperty('error');
-    const pairing = await rpc(phone, circuit, 'pair.request', { inviteId: invite.inviteId, inviteSecret: invite.inviteSecret, name: 'Phone' }) as { result: { pendingId: string } };
+    // The phone knows only the relay and the code: it finds the laptop through the rendezvous channel.
+    const code = normalizePairingCode(invite.code)!;
+    expect(await resolveChannel(phone, address, 'ZZZZ')).toBeNull();
+    expect(await resolveChannel(phone, address, pairingChannel(code))).toBe(hostId);
+    const exchange = createPairingExchange({ role: 'initiator', code, initiatorId: phone.peerId.toString(), responderId: hostId });
+    const started = await rpc(phone, circuit, 'pair.start', { channel: pairingChannel(code), message: Buffer.from(exchange.message).toString('base64'), name: 'Phone' }) as { result: { message: string; confirm: string } };
+    const confirmations = exchange.finish(new Uint8Array(Buffer.from(started.result.message, 'base64')));
+    expect(pairingConfirmationsMatch(confirmations.responderConfirm, new Uint8Array(Buffer.from(started.result.confirm, 'base64')))).toBe(true);
+    const pairing = await rpc(phone, circuit, 'pair.confirm', { channel: pairingChannel(code), confirm: Buffer.from(confirmations.initiatorConfirm).toString('base64') }) as { result: { pendingId: string } };
     expect(pairing.result.pendingId).toBeTruthy();
     expect(gateway.pendingRequests[0]?.peerId).toBe(phone.peerId.toString());
-    await gateway.decide(pairing.result.pendingId, true, ['team'], true); await connector.advertise();
+    await gateway.decide(pairing.result.pendingId, true); await connector.advertise();
     expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { teams: [{ name: 'Actual gateway team' }] } });
     // Restarting the operator relay retains its pinned identity; the laptop makes
     // a new outbound reservation and advertises its persisted device grant.
@@ -71,4 +81,18 @@ async function rpc(phone: Libp2p, address: string, method: string, args: unknown
     }
     throw new Error('No response');
   } finally { stream.abort(new Error('Complete')); }
+}
+async function resolveChannel(phone: Libp2p, relayAddress: string, channel: string): Promise<string | null> {
+  try {
+    const stream = await phone.dialProtocol(multiaddr(relayAddress), companionRendezvousProtocol, { signal: AbortSignal.timeout(5000) });
+    const decoder = new CompanionFrameDecoder();
+    try {
+      stream.send(encodeCompanionFrame({ channel })); await stream.close();
+      for await (const chunk of stream) {
+        const frames = decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
+        if (frames.length) return (frames[0] as { hostId: string }).hostId;
+      }
+      return null;
+    } finally { stream.abort(new Error('Complete')); }
+  } catch { return null; }
 }

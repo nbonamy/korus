@@ -11,14 +11,14 @@ describe('mobile host lifecycle', () => {
   it('uses the native QR camera and forwards background/foreground without starting a speech service', async () => {
     native.platform = 'android'; scanner.mockResolvedValue({ ScanResult: 'invitation' });
     const host = createMobileHost();
-    expect(await host.scanInvitation!()).toBe('invitation');
+    expect(await host.scanPairingCode!()).toBe('invitation');
     expect(scanner).toHaveBeenCalledWith(expect.objectContaining({ hint: 0 }));
     const remove = vi.fn(); let activity!: (state: { isActive: boolean }) => void;
     native.addListener.mockImplementation(async (_event, listener) => { activity = listener; return { remove }; });
     const changed = vi.fn(); const stop = await host.onActivity!(changed);
     activity({ isActive: false }); activity({ isActive: true }); stop();
     expect(changed.mock.calls).toEqual([[false], [true]]); expect(remove).toHaveBeenCalledOnce();
-    native.platform = 'web'; await expect(createMobileHost().scanInvitation!()).rejects.toThrow('native');
+    native.platform = 'web'; await expect(createMobileHost().scanPairingCode!()).rejects.toThrow('native');
     expect(typeof await createMobileHost().onActivity!(changed)).toBe('function');
   });
   it('does not invoke native plugins in the browser preview', async () => {

@@ -17,7 +17,7 @@ const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); vi.clearAllMocks(); });
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
-  const manager = new CompanionManager(directory, { request: vi.fn() });
+  const manager = new CompanionManager(directory, { request: vi.fn() }, {});
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
@@ -25,11 +25,11 @@ describe('daemon companion persistence', () => {
     const { directory, manager } = await fixture(); const first = await manager.control({ action: 'status' });
     expect((await stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600);
     await manager.stop();
-    const restored = new CompanionManager(directory, { request: vi.fn() });
+    const restored = new CompanionManager(directory, { request: vi.fn() }, {});
     expect((await restored.control({ action: 'status' })).status.hostId).toBe(first.status.hostId);
     await restored.stop();
     await writeFile(path.join(directory, 'state.json'), '{broken');
-    await expect(new CompanionManager(directory, { request: vi.fn() }).control({ action: 'status' })).rejects.toThrow('identity cannot be loaded');
+    await expect(new CompanionManager(directory, { request: vi.fn() }, {}).control({ action: 'status' })).rejects.toThrow('identity cannot be loaded');
     expect(await readFile(path.join(directory, 'state.json'), 'utf8')).toBe('{broken');
   });
   it('does not enable access or mutate saved settings when the durable write fails', async () => {
@@ -41,5 +41,48 @@ describe('daemon companion persistence', () => {
     expect(transport.start).not.toHaveBeenCalled();
     await expect((await import('node:fs/promises')).readdir(directory)).resolves.toEqual(['state.json']);
     await manager.stop();
+  });
+
+  describe('environment relay', () => {
+    async function configured(env: NodeJS.ProcessEnv = {}) {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
+      const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+      const manager = new CompanionManager(directory, { request: vi.fn() }, { APP_COMPANION_RELAY_URL: 'wss://relay.example', APP_COMPANION_RELAY_PEER_ID: relayPeerId, ...env });
+      return { directory, manager, relayPeerId };
+    }
+    it('reports an unconfigured laptop and refuses to invite', async () => {
+      const { manager } = await fixture();
+      expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: false, enabled: false, relayOrigin: '' });
+      await expect(manager.control({ action: 'invite' })).rejects.toThrow('not configured');
+      expect(transport.start).not.toHaveBeenCalled();
+    });
+    it('turns mobile access on when the first invitation is requested', async () => {
+      const { manager, relayPeerId } = await configured();
+      expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: true, enabled: false, relayOrigin: 'wss://relay.example' });
+      const { status, invitation } = await manager.control({ action: 'invite' });
+      expect(transport.start).toHaveBeenCalledWith('wss://relay.example', relayPeerId);
+      expect(status).toMatchObject({ configured: true, enabled: true, connected: true });
+      expect(invitation).toStrictEqual({ code: expect.stringMatching(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/), expiresAt: expect.any(Number) });
+      await manager.stop();
+    });
+    it('resumes on restart with the environment relay and ignores a stale saved one', async () => {
+      const { directory, manager, relayPeerId } = await configured();
+      await manager.control({ action: 'invite' }); await manager.stop(); transport.start.mockClear();
+      const restarted = new CompanionManager(directory, { request: vi.fn() }, { APP_COMPANION_RELAY_URL: 'wss://other.example', APP_COMPANION_RELAY_PEER_ID: relayPeerId });
+      await restarted.control({ action: 'status' });
+      expect(transport.start).toHaveBeenCalledWith('wss://other.example', relayPeerId);
+      await restarted.stop();
+    });
+    it('rejects manual relay changes while the environment owns the relay', async () => {
+      const { manager, relayPeerId } = await configured();
+      await expect(manager.control({ action: 'enable', relayOrigin: 'wss://elsewhere.example', relayPeerId })).rejects.toThrow('environment');
+      expect(transport.start).not.toHaveBeenCalled();
+    });
+    it('reports an invalid environment relay instead of connecting', async () => {
+      const { manager } = await configured({ APP_COMPANION_RELAY_URL: 'ws://plain.example' });
+      expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: false, error: expect.stringContaining('APP_COMPANION_RELAY') });
+      await expect(manager.control({ action: 'invite' })).rejects.toThrow();
+      expect(transport.start).not.toHaveBeenCalled();
+    });
   });
 });

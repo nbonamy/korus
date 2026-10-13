@@ -128,6 +128,25 @@ duration and data budgets force an explicit reconnect and authoritative rehydrat
 Both endpoints initiate outbound WSS connections; deployment requires a reachable
 relay with a trusted certificate and an operator-maintained laptop allowlist.
 
+The relay is deployment configuration, not a user setting: `APP_COMPANION_RELAY_URL`
+and `APP_COMPANION_RELAY_PEER_ID` in the daemon's environment select and pin it, and
+override a relay saved by an explicit `enable` call. The phone build reads the same
+variables at build time, so a phone needs nothing but a pairing code. The first
+invitation turns mobile access on. An invalid or partial pair is reported through
+status and never connects.
+
+Pairing uses a short code (`XXXX-XXXX`, 40 bits) instead of a credential-bearing
+invitation. Its first half is a public rendezvous channel: the laptop advertises the
+channels of its live invitations to the relay, and a phone resolves one to the
+laptop's identity through a separate relay protocol (rate-limited per source; the
+first laptop to hold a channel keeps it, and a collision fails safe at the proof
+below). The whole code is the password of a CPace-style PAKE run over the
+Noise-authenticated circuit with both peer identities in the transcript, so neither
+the relay nor a relayed exchange can complete it, and the code cannot be tested
+offline. The laptop counts every start as an attempt and burns the invitation after
+three or on a wrong confirmation; the phone checks the laptop's confirmation before
+revealing its own. Desktop approval gates every new device and grants it everything; revoking removes it.
+
 ### Background daemon (macOS)
 
 Settings can install a per-user LaunchAgent that runs `daemon serve`, so agents and

@@ -165,7 +165,7 @@ describe('controller desktop lifecycle', () => {
     const { backend } = setup();
     const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
     backend.request.mockResolvedValueOnce(result);
-    const input = { action: 'decide', pendingId: 'pending-device', approve: true, teamIds: ['team-app'], canSend: false };
+    const input = { action: 'decide', pendingId: 'pending-device', approve: true };
     await expect(invoke(ipcChannels.companionControl, input)).resolves.toBe(result);
     expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
   });

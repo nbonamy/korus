@@ -4,31 +4,24 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { webSockets } from '@libp2p/websockets';
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
-import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf, publicKeyFromProtobuf } from '@libp2p/crypto/keys';
-import { peerIdFromPrivateKey, peerIdFromPublicKey, peerIdFromString } from '@libp2p/peer-id';
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
+import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
 import { CompanionFrameDecoder, companionProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
-import type { CompanionCommandReceipt, CompanionInvitation, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { relayAddress } from '@workspace/core/companion-relay';
-import type { CompanionConnector, CompanionConversation, CompanionSession } from './companion-port';
+import type { CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
+import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
+import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionSession } from './companion-port';
 import type { ProtectedVault } from './protected-storage';
 
-type PairedLaptop = Omit<CompanionInvitation, 'inviteSecret' | 'inviteId' | 'expiresAt'> & { name: string; canSend: boolean };
+/** Both ends of a pairing are pinned by identity; the code that introduced them is never stored. */
+type PairedLaptop = { v: 1; relayOrigin: string; relayPeerId: string; hostId: string; name: string };
+type RelayConfig = { origin: string; peerId: string };
 function bytes(value: string) { return Uint8Array.from(atob(value), (character) => character.charCodeAt(0)); }
 function base64(value: Uint8Array) { return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join('')); }
-export function parseInvitation(text: string): CompanionInvitation {
-  if (text.length > 4000) throw new Error('Invalid pairing invitation.');
-  const invite = JSON.parse(text) as CompanionInvitation;
-  if (invite.v !== 1 || !Number.isFinite(invite.expiresAt) || invite.expiresAt <= Date.now() || invite.expiresAt > Date.now() + 300_000
-    || typeof invite.inviteId !== 'string' || !/^[a-f0-9-]{36}$/.test(invite.inviteId)
-    || typeof invite.inviteSecret !== 'string' || !/^[a-zA-Z0-9_-]{43}$/.test(invite.inviteSecret)
-    || typeof invite.hostPublicKey !== 'string' || invite.hostPublicKey.length > 200) throw new Error('Invalid or expired pairing invitation.');
-  relayAddress(invite.relayOrigin, invite.relayPeerId);
-  if (peerIdFromPublicKey(publicKeyFromProtobuf(bytes(invite.hostPublicKey))).toString() !== invite.hostId) throw new Error('Laptop identity does not match its public key.');
-  return invite;
-}
-export function createRelayConnector(vault: ProtectedVault): CompanionConnector {
+/** The relay is deployment configuration baked into the build; the phone only needs a pairing code. */
+export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig | null): CompanionConnector {
   let records: PairedLaptop[] = [];
   let initialized: Promise<void> | null = null;
   let node: Libp2p | null = null;
@@ -45,7 +38,7 @@ export function createRelayConnector(vault: ProtectedVault): CompanionConnector 
         if (!Array.isArray(records) || records.length > 20) throw new Error('Invalid paired devices.');
         for (const record of records) {
           relayAddress(record.relayOrigin, record.relayPeerId);
-          if (peerIdFromPublicKey(publicKeyFromProtobuf(bytes(record.hostPublicKey))).toString() !== record.hostId) throw new Error('Saved laptop identity is invalid.');
+          try { peerIdFromString(record.hostId); } catch { throw new Error('Saved laptop identity is invalid.'); }
         }
       }
     })();
@@ -67,7 +60,7 @@ export function createRelayConnector(vault: ProtectedVault): CompanionConnector 
       return node;
     })().finally(() => { opening = null; });
   }
-  async function request<Result>(host: Pick<CompanionInvitation, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
+  async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
     const networkNode = await network();
     const address = `${relayAddress(host.relayOrigin, host.relayPeerId)}/p2p-circuit/p2p/${host.hostId}`;
     // libp2p's dial queue excludes limited circuits from automatic reuse. Reuse the
@@ -91,28 +84,55 @@ export function createRelayConnector(vault: ProtectedVault): CompanionConnector 
       throw new Error('Connection closed without a receipt.');
     } finally { stream.abort(new Error('Request complete.')); }
   }
+  /** Asks the relay which laptop is advertising this channel; trust comes from the end-to-end proof, not the relay's answer. */
+  async function resolve(networkNode: Libp2p, config: RelayConfig, channel: string): Promise<string> {
+    const stream: Stream = await networkNode.dialProtocol(multiaddr(relayAddress(config.origin, config.peerId)), companionRendezvousProtocol, { signal: AbortSignal.timeout(15_000) });
+    stream.maxReadBufferLength = 4096; stream.maxWriteBufferLength = 4096; stream.inactivityTimeout = 15_000;
+    const decoder = new CompanionFrameDecoder();
+    try {
+      stream.send(encodeCompanionFrame({ channel }));
+      await stream.close({ signal: AbortSignal.timeout(5000) });
+      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+        const hostId = value && typeof value === 'object' && 'hostId' in value ? String(value.hostId) : '';
+        try { peerIdFromString(hostId); return hostId; } catch { break; }
+      }
+    } catch { /* The relay aborts unknown channels. */ } finally { stream.abort(new Error('Lookup complete.')); }
+    throw new PairingError('mobile.errors.noLaptop');
+  }
   return {
     get laptops() { return records.map((record) => ({ id: record.hostId, name: record.name })); },
     initialize,
-    async pair(text, name, pending) {
+    relayConfigured: Boolean(relay),
+    async pair(input, name, pending) {
       await initialize();
-      const invite = parseInvitation(text);
-      await network();
-      const result = await request<{ pendingId: string }>(invite, 'pair.request', { inviteId: invite.inviteId, inviteSecret: invite.inviteSecret, name });
-      pending(identity);
-      while (Date.now() < invite.expiresAt) {
+      if (!relay) throw new PairingError('mobile.errors.noRelay');
+      const code = normalizePairingCode(input);
+      if (!code) throw new PairingError('mobile.errors.codeFormat');
+      const channel = pairingChannel(code);
+      const networkNode = await network();
+      const hostId = await resolve(networkNode, relay, channel);
+      const laptop = { relayOrigin: relay.origin, relayPeerId: relay.peerId, hostId };
+      const exchange = createPairingExchange({ role: 'initiator', code, initiatorId: identity, responderId: hostId });
+      const started = await request<{ message: string; confirm: string }>(laptop, 'pair.start', { channel, message: base64(exchange.message), name });
+      const confirmations = exchange.finish(bytes(started.message));
+      // The laptop must prove it knows the code before this phone reveals anything further.
+      if (!pairingConfirmationsMatch(confirmations.responderConfirm, bytes(started.confirm))) throw new PairingError('mobile.errors.codeMismatch');
+      const result = await request<{ pendingId: string }>(laptop, 'pair.confirm', { channel, confirm: base64(confirmations.initiatorConfirm) });
+      pending();
+      const deadline = Date.now() + 300_000;
+      while (Date.now() < deadline) {
         if (disposed) throw new Error('Pairing cancelled.');
-        const state = await request<{ state: string; grant?: { canSend: boolean } }>(invite, 'pair.status', { pendingId: result.pendingId });
+        const state = await request<{ state: string; grant?: unknown }>(laptop, 'pair.status', { pendingId: result.pendingId });
         if (state.state === 'approved' && state.grant) {
           if (disposed) throw new Error('Pairing cancelled.');
-          const record: PairedLaptop = { v: 1, relayOrigin: invite.relayOrigin, relayPeerId: invite.relayPeerId, hostId: invite.hostId, hostPublicKey: invite.hostPublicKey, name: 'Paired laptop', canSend: state.grant.canSend };
-          const updated = [...records.filter((host) => host.hostId !== invite.hostId), record];
+          const record: PairedLaptop = { v: 1, ...laptop, name: 'Paired laptop' };
+          const updated = [...records.filter((host) => host.hostId !== hostId), record];
           await vault.write({ key: 'paired-hosts', value: JSON.stringify(updated) }); records = updated;
-          return invite.hostId;
+          return hostId;
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       }
-      throw new Error('Pairing expired.');
+      throw new PairingError('mobile.errors.pairingExpired');
     },
     async connect(laptopId) {
       await initialize();
@@ -122,7 +142,13 @@ export function createRelayConnector(vault: ProtectedVault): CompanionConnector 
       const listeners = new Set<() => void>();
       const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const read = async () => { workspace = await request(host, 'snapshot.get', {}); return workspace; };
+      let icons: { version: string; value: Record<string, string> } = { version: '', value: {} };
+      const read = async () => {
+        const { iconsVersion, repositoryIcons, ...rest } = await request<CompanionWorkspace & { iconsVersion?: string }>(host, 'snapshot.get', { iconsVersion: icons.version });
+        if (repositoryIcons) icons = { version: iconsVersion ?? '', value: repositoryIcons };
+        workspace = { ...rest, repositoryIcons: icons.value };
+        return workspace;
+      };
       const target = (agentId: string) => {
         const agent = workspace.agents.find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
         if (!agent || !team) throw new Error('Agent is outside the paired scope.');
@@ -147,7 +173,6 @@ export function createRelayConnector(vault: ProtectedVault): CompanionConnector 
       const close = () => { closed = true; clearTimeout(timer); sessions.delete(handle); };
       const handle = { laptopId, close }; sessions.add(handle);
       const session: CompanionSession = {
-        canSend: host.canSend,
         getWorkspace: read,
         async loadConversation(agentId) { selected = agentId; return conversation(agentId); },
         async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID()) {

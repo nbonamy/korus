@@ -1,13 +1,14 @@
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf, publicKeyToProtobuf } from '@libp2p/crypto/keys';
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionReset, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
@@ -17,9 +18,20 @@ type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; re
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
   z.object({ action: z.literal('enable'), relayOrigin: z.string().max(500), relayPeerId: z.string().min(32).max(128) }).strict(),
   z.object({ action: z.literal('disable') }).strict(), z.object({ action: z.literal('invite') }).strict(),
-  z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean(), teamIds: z.array(z.string().min(1).max(200)).max(100), canSend: z.boolean() }).strict(),
+  z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = { request<Result>(method: string, params?: unknown): Promise<Result> };
+type Relay = { origin: string; peerId: string };
+
+/** The relay is deployment configuration: the operator sets it once and users only pair phones. */
+function relayFromEnvironment(env: NodeJS.ProcessEnv): { relay: Relay | null; error?: string } {
+  const origin = env.APP_COMPANION_RELAY_URL?.trim() ?? ''; const peerId = env.APP_COMPANION_RELAY_PEER_ID?.trim() ?? '';
+  if (!origin && !peerId) return { relay: null };
+  try {
+    relayAddress(origin, peerId);
+    return { relay: { origin, peerId } };
+  } catch { return { relay: null, error: 'APP_COMPANION_RELAY_URL must be a wss:// origin and APP_COMPANION_RELAY_PEER_ID the relay identity.' }; }
+}
 
 /** One service inside the owning daemon. No provider process or public local RPC listener. */
 export class CompanionManager {
@@ -31,7 +43,15 @@ export class CompanionManager {
   private controls = Promise.resolve();
   private ready: Promise<void> | null = null;
   private readonly frames = new Map<string, CompanionReset>();
-  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort) {}
+  private readonly environment: ReturnType<typeof relayFromEnvironment>;
+  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, env: NodeJS.ProcessEnv = process.env) {
+    this.environment = relayFromEnvironment(env);
+  }
+  /** The environment owns the relay when set; otherwise a relay saved by an explicit enable applies. */
+  private get relay(): Relay | null {
+    if (this.environment.relay) return this.environment.relay;
+    return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : null;
+  }
   event(event: AppBackendEvent) {
     if (event.type === 'codex.conversationSnapshotChanged' || event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') this.frames.set(event.agentId, event);
   }
@@ -43,6 +63,7 @@ export class CompanionManager {
       let invitation;
       switch (action.action) {
         case 'enable':
+          if (this.environment.relay) throw new Error('The relay is configured by the environment.');
           relayAddress(action.relayOrigin, action.relayPeerId);
           await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: action.relayOrigin, relayPeerId: action.relayPeerId }));
           await this.connector.start(action.relayOrigin, action.relayPeerId);
@@ -50,12 +71,17 @@ export class CompanionManager {
         case 'disable':
           await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); break;
         case 'invite':
-          if (!this.saved.enabled || !this.connector.connected) throw new Error('Relay is not connected.');
-          invitation = { v: 1 as const, relayOrigin: this.saved.relayOrigin, relayPeerId: this.saved.relayPeerId,
-            hostId: this.gateway.hostId, hostPublicKey: Buffer.from(publicKeyToProtobuf(this.key.publicKey)).toString('base64'), ...this.gateway.invite() };
+          if (!this.relay) throw new Error('Mobile access is not configured.');
+          if (!this.saved.enabled) {
+            const { origin, peerId } = this.relay;
+            await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: origin, relayPeerId: peerId }));
+            await this.connector.start(origin, peerId);
+          }
+          if (!this.connector.connected) throw new Error('Relay is not connected.');
+          invitation = this.gateway.invite();
           await this.connector.advertise(invitation.expiresAt);
           break;
-        case 'decide': await this.gateway.decide(action.pendingId, action.approve, action.teamIds, action.canSend); await this.connector.advertise(); break;
+        case 'decide': await this.gateway.decide(action.pendingId, action.approve); await this.connector.advertise(); break;
         case 'revoke': await this.gateway.revoke(action.peerId); await this.connector.advertise(); break;
       }
       return { status: this.status(), ...(invitation ? { invitation } : {}) };
@@ -65,8 +91,9 @@ export class CompanionManager {
   }
   async stop() { await this.ready?.catch(() => {}); await this.connector?.stop(); }
   private status() {
-    return { enabled: this.saved.enabled, connected: this.connector.connected, hostId: this.gateway.hostId,
-      relayOrigin: this.saved.relayOrigin, devices: this.gateway.grants, pending: this.gateway.pendingRequests };
+    return { configured: Boolean(this.relay), enabled: this.saved.enabled, connected: this.connector.connected, hostId: this.gateway.hostId,
+      relayOrigin: this.relay?.origin ?? '', devices: this.gateway.grants, pending: this.gateway.pendingRequests,
+      ...(this.environment.error ? { error: this.environment.error } : {}) };
   }
   private initialize() { return this.ready ??= this.load(); }
   private async load() {
@@ -97,11 +124,12 @@ export class CompanionManager {
     });
     this.connector = new CompanionOutboundConnector(this.key, this.gateway);
     await this.persist();
-    if (saved.enabled) await this.connector.start(saved.relayOrigin, saved.relayPeerId);
+    const relay = this.relay;
+    if (saved.enabled && relay) await this.connector.start(relay.origin, relay.peerId);
   }
   private async workspace(): Promise<CompanionWorkspace> {
     const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
-    return { teams: snapshot.teams, agents: snapshot.agents };
+    return companionWorkspaceOf(snapshot);
   }
   private persist(update: (saved: Saved) => Saved = (saved) => saved) {
     const write = this.writes.then(async () => {

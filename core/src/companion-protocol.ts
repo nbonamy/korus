@@ -4,18 +4,20 @@ export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionFrameLimit = 4 * 1024 * 1024;
 export type CompanionTarget = { hostId: string; locationId: string; teamId: string; agentId: string; sessionId: string | null };
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[] };
-export type CompanionInvitation = { v: 1; relayOrigin: string; relayPeerId: string; hostId: string; hostPublicKey: string; inviteId: string; inviteSecret: string; expiresAt: number };
-export type CompanionGrant = { peerId: string; name: string; teamIds: string[]; canSend: boolean; createdAt: number };
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string> };
+/** Shown on the laptop: the phone already knows the relay, so the code is all it needs. */
+export type CompanionInvitation = { code: string; expiresAt: number };
+/** A paired phone. Approval grants everything: every team, reading and sending. */
+export type CompanionGrant = { peerId: string; name: string; createdAt: number };
 export type CompanionPending = { id: string; peerId: string; name: string; expiresAt: number };
 export type CompanionCommandReceipt = { clientCommandId: string; state: 'pending' | 'accepted' | 'unresolved'; target: CompanionTarget };
-export type CompanionStatus = { enabled: boolean; connected: boolean; hostId: string; relayOrigin: string; devices: CompanionGrant[]; pending: CompanionPending[]; error?: string };
+export type CompanionStatus = { configured: boolean; enabled: boolean; connected: boolean; hostId: string; relayOrigin: string; devices: CompanionGrant[]; pending: CompanionPending[]; error?: string };
 export type CompanionControl =
   | { action: 'status' }
   | { action: 'enable'; relayOrigin: string; relayPeerId: string }
   | { action: 'disable' }
   | { action: 'invite' }
-  | { action: 'decide'; pendingId: string; approve: boolean; teamIds: string[]; canSend: boolean }
+  | { action: 'decide'; pendingId: string; approve: boolean }
   | { action: 'revoke'; peerId: string };
 export type CompanionControlResult = { status: CompanionStatus; invitation?: CompanionInvitation };
 export type CompanionRequest = { v: 1; id: string; method: string; args: unknown };

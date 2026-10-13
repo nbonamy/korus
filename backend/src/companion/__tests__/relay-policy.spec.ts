@@ -19,4 +19,33 @@ describe('opaque companion relay admission', () => {
     policy.register(host, [], 0); expect(policy.route(phone, host)).toBe(false);
     expect(() => new CompanionRelayPolicy(new Set())).toThrow();
   });
+  describe('pairing rendezvous', () => {
+    const other = '12D3KooW'.padEnd(52, 'o');
+    it('resolves a live pairing channel to its laptop and stops once the window closes', () => {
+      let now = 1; const policy = new CompanionRelayPolicy(new Set([host]), () => now);
+      expect(policy.resolve(phone, 'K7QD')).toBeNull();
+      policy.register(host, [], now + 1000, ['K7QD', 'M2XP']);
+      expect(policy.resolve(phone, 'K7QD')).toBe(host); expect(policy.resolve(phone, 'M2XP')).toBe(host); expect(policy.resolve(phone, 'ZZZZ')).toBeNull();
+      now += 1001; expect(policy.resolve(phone, 'K7QD')).toBeNull();
+    });
+    it('replaces a laptop\'s own channels on each advertisement and drops the ones it no longer lists', () => {
+      const policy = new CompanionRelayPolicy(new Set([host]), () => 1);
+      policy.register(host, [], 1000, ['K7QD']); policy.register(host, [], 1000, ['M2XP']);
+      expect(policy.resolve(phone, 'K7QD')).toBeNull(); expect(policy.resolve(phone, 'M2XP')).toBe(host);
+    });
+    it('keeps the first laptop to claim a live channel so another laptop cannot take it over', () => {
+      const policy = new CompanionRelayPolicy(new Set([host, other]), () => 1);
+      policy.register(host, [], 1000, ['K7QD']); policy.register(other, [], 1000, ['K7QD']);
+      expect(policy.resolve(phone, 'K7QD')).toBe(host);
+    });
+    it('bounds how many channels one source can try and rejects malformed channels', () => {
+      const policy = new CompanionRelayPolicy(new Set([host]), () => 1);
+      policy.register(host, [], 1000, ['K7QD']);
+      const results = Array.from({ length: 12 }, () => policy.resolve(phone, 'K7QD'));
+      expect(results.filter(Boolean)).toHaveLength(10);
+      expect(policy.resolve(other, 'K7QD')).toBe(host);
+      expect(() => policy.register(host, [], 1000, ['k7qd'])).toThrow();
+      expect(() => policy.register(host, [], 1000, ['AAAA', 'BBBB', 'CCCC', 'DDDD', 'EEEE', 'FFFF'])).toThrow();
+    });
+  });
 });

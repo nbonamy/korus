@@ -115,7 +115,7 @@
       </article>
     </FormSection>
 
-    <SettingsMobileSection v-if="companionControl" :control="companionControl" :teams="teams" />
+    <SettingsMobileSection v-if="companionControl" :control="companionControl" />
 
     <SettingsDevicePairingSection
       :settings="settings"
@@ -261,7 +261,7 @@ const props = withDefaults(defineProps<{
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
   settings?: { preventSleepWhenRemoteAccessEnabled: boolean };
   updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
-  companionControl?: import('@workspace/core/contracts').AppApi['companionControl'];
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;

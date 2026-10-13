@@ -51,6 +51,19 @@ describe('SettingsConnectionsPanel', () => {
     });
   });
 
+  it('accepts the host companion control function without a prop type warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const companionControl = vi.fn(async () => ({ status: { enabled: false } }) as never);
+    const wrapper = mount(SettingsConnectionsPanel, {
+      props: { getRemoteControlStatus: async () => ({ status: 'connected' }), companionControl },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Mobile access');
+    expect(companionControl).toHaveBeenCalledWith({ action: 'status' });
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('companionControl');
+  });
+
   it('hides the remote-access keep-awake setting while device connections are disabled', async () => {
     const wrapper = mount(SettingsConnectionsPanel, {
       props: {

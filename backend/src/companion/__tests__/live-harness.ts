@@ -78,7 +78,7 @@ const admin = createServer((request, response) => {
     } else if (request.url === '/approve' && request.method === 'POST') {
       const pending = (await control({ action: 'status' })).status.pending[0];
       if (!pending) throw new Error('No pending phone');
-      await control({ action: 'decide', pendingId: pending.id, approve: true, teamIds: ['team-native-check'], canSend: true });
+      await control({ action: 'decide', pendingId: pending.id, approve: true });
       response.end(JSON.stringify({ approved: true }));
     } else if (request.url === '/invite' && request.method === 'POST') {
       const result = await control({ action: 'invite' });

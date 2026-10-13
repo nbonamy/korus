@@ -18,7 +18,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const sending = reactive<Record<string, boolean>>({});
   const commandIds = reactive<Record<string, string>>({});
   const submittedTexts = reactive<Record<string, string>>({});
-  const permittedSend = ref(true);
   const storageReady = ref(!store);
   let storageFailed = false;
   let writes = Promise.resolve();
@@ -47,12 +46,16 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
-  const agents = computed(() => workspace.value.agents.filter((a) => a.teamId === teamId.value));
+  // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
+  const agents = computed(() => {
+    const order = workspace.value.teams.find((team) => team.id === teamId.value)?.agentIds ?? [];
+    const rank = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
+    return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
+  });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
-  const readOnly = computed(() => status.value === 'connected' && !permittedSend.value);
-  const canSend = computed(() => status.value === 'connected' && permittedSend.value && conversationReady.value && Boolean(agent.value)
+  const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
     && storageReady.value && !loading.value && !sending[key()] && !deliveryUnknown.value);
 
   function closeSession() {
@@ -95,7 +98,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const nextWorkspace = await opened.getWorkspace();
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
-      permittedSend.value = session.canSend !== false;
       workspace.value = nextWorkspace;
       const removeDisconnect = session.onDisconnect(() => {
         if (epoch !== connectionEpoch) return;
@@ -209,6 +211,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { status, error, laptopId, teamId, agentId, workspace, conversation, loading, agents, agent,
-    draft, deliveryUnknown, readOnly, canSend, connect, selectTeam, selectAgent, updateDraft, submit,
+    draft, deliveryUnknown, canSend, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

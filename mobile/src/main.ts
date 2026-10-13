@@ -18,7 +18,7 @@ document.documentElement.dataset.platform = 'other';
 i18n.global.mergeLocaleMessage('en', companionMessages);
 applyAppTheme({ id: 'app-light', mode: 'system', uiFontSize: 15, chatFontSize: 16, codeFontSize: 13 });
 const removeAppearance = subscribeToSystemAppearance();
-const app = createApp(MobileShell, { connector: createRelayConnector(protectedVault), host: createMobileHost(),
+const app = createApp(MobileShell, { connector: createRelayConnector(protectedVault, __COMPANION_RELAY__), host: createMobileHost(),
   draftStore: Capacitor.isNativePlatform() ? createNativeDraftStore() : undefined }).use(ElementPlus).use(i18n);
 app.mount('#app');
 window.addEventListener('pagehide', () => { app.unmount(); removeAppearance(); }, { once: true });

@@ -1,62 +1,42 @@
 <template>
-  <main class="mobile-shell">
-    <header class="mobile-shell__header">
-      <strong>{{ product.name }}</strong>
-      <span>{{ t('mobile.companion') }}</span>
-    </header>
-    <div class="mobile-shell__connection" role="status" aria-live="polite">
-      {{ t(`mobile.connection.${state.status.value}`) }}
-      <button v-if="state.status.value === 'connected'" class="app-button app-button--tertiary" @click="state.disconnect">{{ t('mobile.disconnect') }}</button>
-      <button v-if="['disconnected', 'error'].includes(state.status.value)" class="app-button app-button--secondary" @click="state.reconnect">{{ t('mobile.reconnect') }}</button>
-      <button v-if="hasPairing" class="app-button app-button--tertiary" @click="state.revoke">{{ t('mobile.forget') }}</button>
-    </div>
-    <section v-if="!hasPairing" class="mobile-shell__welcome">
-      <h1>{{ t('mobile.title') }}</h1>
-      <p>{{ t('mobile.pairingHint') }}</p>
-      <template v-if="laptops.length">
-      <label for="laptop">{{ t('mobile.laptop') }}</label>
-      <select id="laptop" v-model="selectedLaptop">
-        <option v-for="laptop in laptops" :key="laptop.id" :value="laptop.id">{{ laptop.name }}</option>
-      </select>
-      <button class="app-button app-button--primary" :disabled="!selectedLaptop || busy" @click="state.connect(selectedLaptop)">{{ t('mobile.openLaptop') }}</button>
-      </template>
-      <template v-if="connector.pair">
-        <button class="app-button app-button--secondary" :disabled="pairing" @click="scan">{{ t('mobile.scan') }}</button>
-        <details><summary>{{ t('mobile.pasteInvitation') }}</summary>
-          <textarea v-model="invitationText" autocomplete="off" spellcheck="false" :aria-label="t('mobile.invitation')" />
-        </details>
-        <label>{{ t('mobile.deviceName') }}<input v-model="deviceName" maxlength="80" autocomplete="off"></label>
-        <template v-if="invitationText">
-          <p>{{ t('mobile.relay') }}: {{ invitationPreview.relayOrigin }}</p>
-          <code>{{ invitationPreview.hostId }}</code>
-          <label><input v-model="trustRelay" type="checkbox"> {{ t('mobile.trustRelay') }}</label>
-          <button class="app-button app-button--primary" :disabled="pairing || !trustRelay || !deviceName.trim()" @click="pair">{{ t('mobile.requestPairing') }}</button>
-        </template>
-        <div v-if="pendingIdentity" role="status"><p>{{ t('mobile.approveOnLaptop') }}</p><code>{{ pendingIdentity }}</code></div>
-        <p v-if="pairError" role="alert">{{ t('mobile.errors.pairing') }}</p>
-      </template>
-    </section>
-    <nav v-else class="mobile-shell__selection" :aria-label="t('mobile.navigation')">
-      <label>{{ t('mobile.team') }}
-        <select :value="state.teamId.value" :disabled="busy" @change="state.selectTeam(valueOf($event))">
-          <option value="">{{ t('mobile.chooseTeam') }}</option>
-          <option v-for="team in state.workspace.value.teams" :key="team.id" :value="team.id">{{ team.name }}</option>
-        </select>
-      </label>
-      <label>{{ t('mobile.agent') }}
-        <select :value="state.agentId.value" :disabled="busy || !state.teamId.value" @change="state.selectAgent(valueOf($event))">
-          <option value="">{{ t('mobile.chooseAgent') }}</option>
-          <option v-for="agent in state.agents.value" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
-        </select>
-      </label>
-    </nav>
-    <p v-if="state.error.value" class="mobile-shell__notice" role="alert">{{ t(state.error.value) }}</p>
-    <p v-if="hostUnavailable" class="mobile-shell__notice" role="alert">{{ t('mobile.hostUnavailable') }}</p>
-    <p v-if="state.deliveryUnknown.value" class="mobile-shell__notice" role="status">{{ t('mobile.deliveryUnknown') }}</p>
-    <p v-if="state.readOnly.value" class="mobile-shell__notice" role="status">{{ t('mobile.readOnly') }}</p>
-    <template v-if="state.agent.value">
-      <div class="mobile-shell__agent-status" role="status">{{ agentStatusText(state.agent.value, t) }}</div>
+  <main class="mobile-shell" @touchstart.passive="onEdgeTouchStart" @touchend.passive="onEdgeTouchEnd">
+    <MobilePairing
+      v-if="!showWorkspace"
+      :connector="connector"
+      :host="host"
+      :laptops="laptops"
+      :status="state.status.value"
+      :error="state.error.value"
+      @open="state.connect"
+      @paired="onPaired"
+      @forget="forget"
+    />
+    <template v-else>
+      <header class="mobile-shell__header">
+        <button class="mobile-shell__menu" type="button" :aria-label="t('mobile.agents')" :aria-expanded="drawerOpen" @click="drawerOpen = true">
+          <MenuIcon aria-hidden="true" />
+        </button>
+        <div v-if="current" class="mobile-shell__identity">
+          <AgentAvatar v-if="current.group.icon" :avatar="current.group.icon" :name="current.group.label" size="md" />
+          <div class="mobile-shell__title">
+            <strong>{{ current.session.displayTitle }}</strong>
+            <span role="status">
+              <i class="mobile-shell__dot" :data-status="current.session.status.type" aria-hidden="true" />
+              {{ subtitle }}
+            </span>
+          </div>
+        </div>
+        <strong v-else class="mobile-shell__product">{{ product.name }}</strong>
+      </header>
+      <div v-if="connectionNotice" class="mobile-shell__banner" role="status" aria-live="polite">
+        <span>{{ t(`mobile.connection.${state.status.value}`) }}</span>
+        <button v-if="canReconnect" class="app-button app-button--secondary" type="button" @click="state.reconnect">{{ t('mobile.reconnect') }}</button>
+      </div>
+      <p v-if="state.error.value" class="mobile-shell__banner mobile-shell__banner--error" role="alert">{{ t(state.error.value) }}</p>
+      <p v-if="state.deliveryUnknown.value" class="mobile-shell__banner" role="status">{{ t('mobile.deliveryUnknown') }}</p>
       <ConversationPane
+        v-if="state.agent.value"
+        class="mobile-shell__conversation"
         :controller="controller"
         :agent="state.agent.value"
         :agents="state.agents.value"
@@ -64,11 +44,28 @@
         :plan-visible="false"
         :history-loading="state.loading.value"
         :has-visible-messages="Boolean(state.conversation.value?.payload.snapshot.messages.length)"
-        :empty-subhead="t('mobile.keyboardHint')"
+      />
+      <button v-else class="mobile-shell__empty" type="button" @click="drawerOpen = true">
+        <ProductMarkIcon aria-hidden="true" />
+        <span>{{ t('mobile.agents') }}</span>
+      </button>
+      <MobileDrawer
+        :open="drawerOpen"
+        :teams="state.workspace.value.teams"
+        :agents="state.agents.value"
+        :repository-icons="state.workspace.value.repositoryIcons"
+        :team-id="state.teamId.value"
+        :agent-id="state.agentId.value"
+        :status="state.status.value"
+        @close="drawerOpen = false"
+        @select-team="selectTeam"
+        @select-agent="selectAgent"
+        @disconnect="state.disconnect"
+        @reconnect="state.reconnect"
+        @forget="forget"
       />
     </template>
-    <p v-else-if="hasPairing" class="mobile-shell__empty">{{ t('mobile.chooseConversation') }}</p>
-    <footer class="mobile-shell__footer">{{ t('mobile.keyboardHint') }}</footer>
+    <p v-if="hostUnavailable" class="mobile-shell__banner mobile-shell__banner--error" role="alert">{{ t('mobile.hostUnavailable') }}</p>
   </main>
 </template>
 
@@ -77,12 +74,17 @@ import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { createCodexConversationPaneController, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import { product } from '@workspace/core/product';
+import AgentAvatar from '@workspace/vue/components/AgentAvatar.vue';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
 import { agentStatusText } from '@workspace/vue/shared/agent-display';
+import { MenuIcon, ProductMarkIcon } from '@workspace/vue/shared/icons/app-icons';
 import { createCompanionState } from './companion-state';
 import type { CompanionConnector } from './companion-port';
 import type { MobileHost } from './mobile-host';
+import MobileDrawer from './MobileDrawer.vue';
+import MobilePairing from './MobilePairing.vue';
+import { activeSession, projectMobileGroups } from './workspace-groups';
 import type { DraftStore } from './protected-storage';
 
 const props = defineProps<{ connector: CompanionConnector; host: MobileHost; draftStore?: DraftStore }>();
@@ -90,26 +92,58 @@ const { t } = useI18n();
 const state = createCompanionState(props.connector, props.draftStore);
 provide(backendChoicesKey, computed(() => [...new Set(state.workspace.value.agents.map((a) => a.backend))]));
 const laptops = ref(props.connector.laptops);
-const selectedLaptop = ref(laptops.value[0]?.id ?? '');
-const invitationText = ref(''); const deviceName = ref('My phone'); const trustRelay = ref(false);
-watch(invitationText, () => { trustRelay.value = false; });
-const pairing = ref(false); const pendingIdentity = ref(''); const pairError = ref(false);
-const invitationPreview = computed(() => { try { const payload = JSON.parse(invitationText.value); return { relayOrigin: String(payload.relayOrigin ?? ''), hostId: String(payload.hostId ?? '') }; } catch { return { relayOrigin: '', hostId: '' }; } });
-async function scan() { try { invitationText.value = await props.host.scanInvitation?.() ?? ''; trustRelay.value = false; } catch { pairError.value = true; } }
-async function pair() {
-  if (!props.connector.pair || pairing.value || !trustRelay.value) return;
-  pairing.value = true; pairError.value = false;
-  try {
-    const id = await props.connector.pair(invitationText.value, deviceName.value, (identity) => { pendingIdentity.value = identity; });
-    if (disposed) return;
-    invitationText.value = ''; pendingIdentity.value = ''; laptops.value = props.connector.laptops; selectedLaptop.value = id;
-    await state.connect(id);
-  } catch { if (!disposed) pairError.value = true; }
-  finally { pairing.value = false; }
+const drawerOpen = ref(false);
+const hostUnavailable = ref(false);
+
+const showWorkspace = computed(() => !['unpaired', 'revoked'].includes(state.status.value) && state.workspace.value.teams.length > 0);
+const connectionNotice = computed(() => state.status.value !== 'connected');
+const canReconnect = computed(() => ['disconnected', 'error'].includes(state.status.value));
+const current = computed(() => activeSession(projectMobileGroups(
+  state.agents.value, state.agentId.value || null, t('mobile.chats'), state.workspace.value.repositoryIcons)));
+const subtitle = computed(() => {
+  if (!current.value || !state.agent.value) return '';
+  const status = agentStatusText(state.agent.value, t);
+  return current.value.group.kind === 'repository' ? `${current.value.group.label} · ${status}` : status;
+});
+
+async function onPaired(id: string) {
+  laptops.value = props.connector.laptops;
+  await state.connect(id);
+}
+async function forget() {
+  drawerOpen.value = false;
+  await state.revoke();
+  laptops.value = props.connector.laptops;
+}
+async function selectTeam(id: string) {
+  await state.selectTeam(id);
+  const team = state.workspace.value.teams.find((candidate) => candidate.id === id);
+  const first = state.agents.value.find((agent) => agent.id === team?.activeAgentId) ?? state.agents.value[0];
+  if (first && !state.agentId.value) await state.selectAgent(first.id);
+}
+async function selectAgent(id: string) {
+  drawerOpen.value = false;
+  await state.selectAgent(id);
+}
+// Land in a conversation, not an empty picker: first team, its active (or first) agent.
+watch([state.status, state.workspace], async () => {
+  if (state.status.value !== 'connected' || state.teamId.value) return;
+  const team = state.workspace.value.teams.find((candidate) => state.workspace.value.agents.some((agent) => agent.teamId === candidate.id));
+  if (team) await selectTeam(team.id);
+  else drawerOpen.value = true;
+});
+
+let edgeStart: { x: number; y: number } | null = null;
+function onEdgeTouchStart(event: TouchEvent) {
+  const touch = event.touches[0];
+  edgeStart = touch && touch.clientX < 24 ? { x: touch.clientX, y: touch.clientY } : null;
+}
+function onEdgeTouchEnd(event: TouchEvent) {
+  const touch = event.changedTouches[0];
+  if (showWorkspace.value && edgeStart && touch && touch.clientX - edgeStart.x > 60 && Math.abs(touch.clientY - edgeStart.y) < 40) drawerOpen.value = true;
+  edgeStart = null;
 }
 
-const hasPairing = computed(() => !['unpaired', 'revoked'].includes(state.status.value) && state.workspace.value.teams.length > 0);
-const busy = computed(() => ['connecting', 'reconnecting'].includes(state.status.value));
 const controller = createCodexConversationPaneController({
   state: computed<CodexConversationPaneState>(() => {
     const snapshot = state.conversation.value?.payload.snapshot;
@@ -132,7 +166,6 @@ const controller = createCodexConversationPaneController({
   actions: { updateComposerState: state.updateDraft, submit: state.submit },
 });
 let disposed = false;
-const hostUnavailable = ref(false);
 let removeResume = () => {};
 let activity = Promise.resolve();
 const lifecycle = props.host.onActivity
@@ -145,12 +178,18 @@ void lifecycle.then((remove) => {
   else removeResume = remove;
 }).catch(() => { if (!disposed) hostUnavailable.value = true; });
 onMounted(async () => {
-  try { await props.connector.initialize?.(); if (!disposed) { laptops.value = props.connector.laptops; selectedLaptop.value = laptops.value[0]?.id ?? ''; } }
+  try {
+    await props.connector.initialize?.();
+    if (disposed) return;
+    laptops.value = props.connector.laptops;
+    // A saved pairing is the way in: open it rather than asking again. With several, the person chooses.
+    if (laptops.value.length === 1 && state.status.value === 'unpaired') await state.connect(laptops.value[0]!.id);
+  }
   catch { if (!disposed) hostUnavailable.value = true; }
 });
-onBeforeUnmount(() => { disposed = true; removeResume(); state.dispose(); void props.connector.dispose?.(); invitationText.value = ''; });
-function valueOf(event: Event): string { return (event.target as HTMLSelectElement).value; }
+onBeforeUnmount(() => { disposed = true; removeResume(); state.dispose(); void props.connector.dispose?.(); });
 </script>
+
 
 <style scoped>
 .mobile-shell {
@@ -168,38 +207,97 @@ function valueOf(event: Event): string { return (event.target as HTMLSelectEleme
   overflow: hidden;
 }
 
-.mobile-shell__header,
-.mobile-shell__connection {
+.mobile-shell__header {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  flex: 0 0 auto;
+  min-height: 56px;
+  padding: 0 var(--space-8) 0 var(--space-2);
   border-bottom: 1px solid var(--color-border);
 }
 
-.mobile-shell__header { justify-content: space-between; }
-.mobile-shell__header span { color: var(--color-text-muted); }
-.mobile-shell__connection { font-size: var(--font-size-12); }
-.mobile-shell__connection button { min-height: 44px; }
-.mobile-shell__welcome { display: grid; gap: var(--space-4); padding: var(--space-6); overflow: auto; }
-.mobile-shell__welcome h1 { font-size: var(--font-size-24); margin: 0; }
-.mobile-shell__welcome p { margin: 0; }
-.mobile-shell__selection { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
-.mobile-shell__selection label { display: grid; gap: var(--space-1); min-width: 0; font-size: var(--font-size-12); }
-.mobile-shell select,
-.mobile-shell__welcome input:not([type="checkbox"]),
-.mobile-shell__welcome textarea { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); background: var(--color-surface-low); font-size: 16px; }
-.mobile-shell__welcome code { overflow-wrap: anywhere; }
-.mobile-shell__welcome textarea { min-height: 100px; }
-.mobile-shell__notice { padding: var(--space-2) var(--space-4); margin: 0; color: var(--color-text); background: var(--color-surface-high); }
-.mobile-shell__agent-status { padding: 0 var(--space-4) var(--space-2); font-size: var(--font-size-12); color: var(--color-text-muted); }
-.mobile-shell__empty { flex: 1; padding: var(--space-4); }
-.mobile-shell__footer { flex: 0 0 auto; padding: var(--space-2) var(--space-4); color: var(--color-text-muted); font-size: var(--font-size-12); }
-
-@media (max-height: 500px) {
-  .mobile-shell__header,
-  .mobile-shell__footer { display: none; }
+.mobile-shell__menu {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  background: transparent;
 }
+
+.mobile-shell__menu svg { width: var(--icon-xl); height: var(--icon-xl); }
+
+.mobile-shell__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.mobile-shell__title {
+  display: grid;
+  min-width: 0;
+  line-height: var(--line-height-20);
+}
+
+.mobile-shell__title strong,
+.mobile-shell__title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-shell__title strong { font-size: var(--font-size-16); font-weight: var(--font-weight-semibold); }
+.mobile-shell__title span { display: flex; align-items: center; gap: var(--space-3); color: var(--color-text-muted); font-size: var(--font-size-13); }
+.mobile-shell__product { font-size: var(--font-size-18); font-weight: var(--font-weight-bold); }
+
+.mobile-shell__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-success);
+}
+
+.mobile-shell__dot[data-status="idle"] { background: var(--color-outline); }
+.mobile-shell__dot[data-status="working"],
+.mobile-shell__dot[data-status="awaitingInput"] { background: var(--color-warning); }
+.mobile-shell__dot[data-status="error"] { background: var(--color-error); }
+
+.mobile-shell__banner {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin: 0;
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-on-warning-container);
+  background: var(--color-warning-container);
+  font-size: var(--font-size-14);
+}
+
+.mobile-shell__banner .app-button { min-height: 36px; }
+.mobile-shell__banner--error { color: var(--color-on-error-container); background: var(--color-error-container); }
+
+.mobile-shell__conversation { flex: 1; min-height: 0; }
+
+.mobile-shell__empty {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-6);
+  border: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: var(--font-size-15);
+}
+
+.mobile-shell__empty svg { width: 44px; height: 40px; color: var(--color-primary); }
 </style>

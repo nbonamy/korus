@@ -24,9 +24,9 @@ export class CompanionOutboundConnector {
   private readonly active = new Map<string, Set<Stream>>();
   connected = false;
   constructor(private readonly key: PrivateKey, private readonly gateway: CompanionGateway) {}
-  async start(origin: string, relayPeerId: string, allowLoopbackDevelopment = false) {
+  async start(origin: string, relayPeerId: string) {
     await this.stop();
-    const address = multiaddr(relayAddress(origin, relayPeerId, allowLoopbackDevelopment));
+    const address = multiaddr(relayAddress(origin, relayPeerId));
     this.stopped = false; this.relay = address.toString();
     this.node = await createLibp2p({ start: false, privateKey: this.key, addresses: { listen: [`${address}/p2p-circuit`] }, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1, maxInboundStopStreams: 8 })],
       connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
@@ -55,7 +55,7 @@ export class CompanionOutboundConnector {
     if (!this.node || !this.connected) return;
     try {
       const stream = await this.node.dialProtocol(multiaddr(this.relay), companionAdmissionProtocol, { signal: AbortSignal.timeout(10_000) });
-      stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), pairUntil: Math.max(0, this.pairUntil) }));
+      stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), pairUntil: Math.max(0, this.pairUntil), channels: this.gateway.pairChannels() }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
       for await (const _chunk of stream) { /* Relay confirms admission without carrying app data. */ }
     } catch { /* Endpoint grants remain authoritative during relay outages. */ }

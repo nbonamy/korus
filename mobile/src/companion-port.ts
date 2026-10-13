@@ -4,9 +4,8 @@ import type { Agent, ProviderConversationFrame, Team } from '@workspace/core/con
 export type CompanionConversation = Extract<ProviderConversationFrame, {
   type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged';
 }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[] };
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string> };
 export type CompanionSession = {
-  canSend?: boolean;
   getWorkspace(): Promise<CompanionWorkspace>;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string): Promise<void>;
@@ -21,8 +20,12 @@ export type CompanionConnector = {
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
   initialize?(): Promise<void>;
-  pair?(invitation: string, deviceName: string, pending: (peerId: string) => void): Promise<string>;
+  /** False when the build carries no relay: pairing is unavailable rather than misdirected. */
+  relayConfigured?: boolean;
+  pair?(code: string, deviceName: string, pending: () => void): Promise<string>;
   dispose?(): Promise<void>;
   suspend?(): Promise<void>;
   resume?(): Promise<void>;
 };
+/** A failure the person can act on; `message` is a `mobile.errors.*` catalog key. */
+export class PairingError extends Error {}

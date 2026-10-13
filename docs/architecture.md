@@ -69,7 +69,7 @@ runtime-thin so every client shares one contract without inheriting file authori
 The mobile companion is a bundled Capacitor entry with a narrow workspace/read/send
 port. It composes the shared conversation pane from authoritative provider snapshots,
 without a transcript reducer. Native keyboard dictation supplies text through the
-existing composer; the host adapter owns QR scanning and foreground/background events.
+existing composer; the host adapter owns code scanning and foreground/background events.
 Drafts and delivery uncertainty are scoped to laptop and agent and persisted through
 the native vault: iOS Keychain entries are device-only and accessible while unlocked;
 Android records are encrypted with an Android Keystore AES-GCM key and excluded from
@@ -79,9 +79,10 @@ provider-owned state without replaying a prompt.
 
 Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
 protocol runs through an outbound WebSocket circuit relay, with Noise authenticating
-and encrypting the laptop-to-device channel. Invitations pin both endpoint and relay
-identities, expire after five minutes and require explicit desktop approval with a
-team/read/send grant. The relay carries ciphertext and connection metadata; its
+and encrypting the laptop-to-device channel. A phone pairs with a short code that
+expires after five minutes, is proven end to end with a password-authenticated key
+exchange, pins the laptop and relay identities, and still requires explicit desktop
+approval; an approved phone can read every team and send prompts. The relay carries ciphertext and connection metadata; its
 operator host allowlist, temporary pairing windows and traffic bounds constrain
 routing. Endpoint authorization constrains app methods and location/team/agent/session
 targets. Local revocation persists before closing device connections. The local web,
