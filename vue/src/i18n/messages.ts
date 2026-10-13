@@ -3,6 +3,18 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    commands: {
+      title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
+      disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
+      groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
+      cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
+      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', gitAction: 'Git: {action}',
+    },
+    shortcuts: {
+      title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
+      groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
+      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Edit agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
+    },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
     branchWork: {
       menu: 'Branch…', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',

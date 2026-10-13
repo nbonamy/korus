@@ -1299,7 +1299,26 @@ function clearDebugOperationTimers(): void {
   debugOperationTimers.splice(0).forEach((timer) => clearTimeout(timer));
 }
 
-defineExpose({ showDebugOperationProgress });
+function getCommandActions(): import('./command-palette-actions').CommandPaletteAction[] {
+  const agentId = props.agent.id;
+  const supported: Record<string, boolean> = {
+    revert: Boolean(props.revertChanges), commit: Boolean(props.commitChanges), push: Boolean(props.pushBranch),
+    'create-pr': Boolean(props.createPullRequest), merge: Boolean(props.mergeBranch),
+    pull: Boolean(props.pullBranch), 'update-from-base': Boolean(props.updateFromBase), prune: Boolean(appApi),
+  };
+  return menuItems.value.filter(item => item.type === 'action').map(item => ({
+    id: `git:${item.id}`,
+    icon: item.icon,
+    label: translate('commands.gitAction', { action: item.label }),
+    aliases: item.id === 'create-pr' ? 'pull request github' : item.id === 'revert' ? 'discard changes' : item.id,
+    disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || workflowError.value ? translate('commands.gitUnavailable') : undefined,
+    run: () => {
+      const current = menuItems.value.find(candidate => candidate.id === item.id);
+      if (props.agent.id === agentId && supported[item.id] && current?.type === 'action' && !current.disabled) return selectAction(item.id);
+    },
+  }));
+}
+defineExpose({ showDebugOperationProgress, getCommandActions });
 
 let unsubscribeMainEvents: (() => void) | null = null;
 

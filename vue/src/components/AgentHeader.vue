@@ -183,15 +183,14 @@ const emit = defineEmits<{
   'select-subagent': [conversationId: string];
 }>();
 
-const gitWorkflowControl = ref<{
-  showDebugOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void>;
-} | null>(null);
+const gitWorkflowControl = ref<InstanceType<typeof GitWorkflowControl> | null>(null);
 
 function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void> {
   return gitWorkflowControl.value?.showDebugOperationProgress(operation);
 }
 
-defineExpose({ showDebugGitOperationProgress });
+function getCommandActions() { return gitWorkflowControl.value?.getCommandActions() ?? []; }
+defineExpose({ showDebugGitOperationProgress, getCommandActions });
 
 const displayName = computed(() => props.agent ? agentDisplayName(props.agent) : '');
 

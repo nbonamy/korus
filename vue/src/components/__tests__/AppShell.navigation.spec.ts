@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import type { AgentConversationView } from '../../app-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import type { Agent, WorkSource } from '@workspace/core/contracts';
+import type { AppApi, AppCommand, Agent, WorkSource } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 
@@ -45,6 +45,29 @@ afterEach(() => {
 });
 
 describe('AppShell navigation and teams', () => {
+  it('opens the shortcut reference through the keyboard and native Help command, leaving typing alone', async () => {
+    let command: (value: AppCommand) => void = () => {};
+    window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;
+    const wrapper = mountShell();
+    const editor = document.createElement('textarea');
+    document.body.append(editor);
+    const typing = new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, bubbles: true, cancelable: true });
+    editor.dispatchEvent(typing);
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(false);
+    expect(typing.defaultPrevented).toBe(false);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, cancelable: true }));
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(true);
+    await wrapper.get('input[type="search"]').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(false);
+    command({ type: 'open-keyboard-shortcuts' });
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(true);
+    wrapper.unmount();
+    editor.remove();
+  });
+
   it('forwards interrupts from the composer stop button', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].status = { type: 'working' };
