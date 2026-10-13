@@ -1,3 +1,5 @@
+import { watch } from 'vue';
+import { agentConversationId } from '@workspace/core/plan-review';
 import type {
   Agent,
   AgentFileActivity,
@@ -12,6 +14,7 @@ import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 import type { SidePanelGitDiffState } from './side-panel';
 import {
+  isRightWorkspaceFileTab,
   rightWorkspaceDiffTab,
   rightWorkspaceFileTab,
   rightWorkspaceImageTab,
@@ -35,6 +38,27 @@ export type WorkspacePreviewOptions = {
 
 /** Owns preview request races and projection into per-agent workspace tabs. */
 export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
+  // A displayed copy of a native proposal has one review surface. Match content,
+  // never titles; leave source/saved files and other agents' documents alone.
+  watch(() => options.getSnapshot().agents.flatMap(agent => {
+    const review = agent.planReview;
+    if (!review || !['pending', 'revise'].includes(review.status)
+      || review.conversationId !== agentConversationId(agent) || !review.markdown.trim()) return [];
+    const workspace = options.workspaceFor(agent.id);
+    return workspace.tabs.flatMap(tab => {
+      const panel = isRightWorkspaceFileTab(tab) ? workspace.filePanels[tab] : undefined;
+      return panel?.kind === 'markdown' && panel.state === 'idle' && !panel.path && !panel.savedPath
+        && panel.content.trim().replace(/\r\n/gu, '\n') === review.markdown.trim().replace(/\r\n/gu, '\n')
+        ? [{ agentId: agent.id, tab }] : [];
+    });
+  }), duplicates => {
+    for (const { agentId, tab } of duplicates) {
+      options.openTab('plan', agentId);
+      options.closeTab(agentId, tab);
+    }
+  // Let document persistence observe a newly opened tab before closing its copy.
+  }, { immediate: true, flush: 'post' });
+
   let filePreviewRequestId = 0;
   const gitDiffRequestIds = new Map<string, number>();
 

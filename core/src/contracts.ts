@@ -504,6 +504,8 @@ export type AppGeneralSettings = {
   savedPromptDrafts: SavedPromptDraft[];
   /** User-wide on the owning client, independent of browser tabs and agents. */
   browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
+  /** Adds optional Markdown choices to native plan review; defaults on. */
+  useInteractivePlans?: boolean;
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;

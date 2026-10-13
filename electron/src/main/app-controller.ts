@@ -1739,7 +1739,7 @@ export class AppController {
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
       hasDebugExecutionPlan: () => this.hasDebugExecutionPlan(),
-      injectDebugPlanReview: () => this.injectDebugPlanReview(),
+      injectDebugPlanReview: format => this.injectDebugPlanReview(format),
       populateDebugVisualize: (scenario) => this.populateDebugVisualize(scenario),
       getDebugMissionStage: () => this.debugMission()?.stage,
       getDebugMissionReviewState: () => this.debugMissionReviewState(),
@@ -1830,13 +1830,13 @@ export class AppController {
       }));
   }
 
-  private injectDebugPlanReview(): void {
+  private injectDebugPlanReview(format: 'text' | 'choices'): void {
     const agentId = this.snapshot?.activeAgentId;
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
 
-    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId })
+    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId, format })
       .then((snapshot) => this.adoptBackendSnapshot(snapshot))
       .catch((error) => warnMain('debug', 'failed to inject plan review fixture', {
         agentId,

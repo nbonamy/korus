@@ -198,7 +198,7 @@ function registerCollaborationTools(
   })));
 
   server.registerTool('display-markdown', {
-    description: `Display Markdown in the ${product.name} side panel. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
+    description: `Display Markdown in the ${product.name} side panel. Plan-mode proposals open automatically through native plan output; do not display a second copy here. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
     inputSchema: {
       path: z.string().optional().describe('Markdown file path relative to your agent folder, or an absolute path inside it.'),
       markdown: z.string().optional().describe('Inline Markdown content to display.'),

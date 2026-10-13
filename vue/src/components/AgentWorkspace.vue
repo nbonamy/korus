@@ -54,6 +54,8 @@
       :git-panel="effectiveGitReviewPanelFor(agent)"
       :git-status="snapshot.agentGitStatuses[agent.id] ?? null"
       :plan-panel="rightWorkspaceFor(agent.id).planPanel"
+      :interactive-plans-enabled="snapshot.general.useInteractivePlans !== false"
+      :update-plan-review="props.updatePlanReview"
       :plan-updating="isPlanPreviewUpdatingFor(agent.id)"
       :file-panels="rightWorkspaceFor(agent.id).filePanels"
       :image-panels="rightWorkspaceFor(agent.id).imagePanels"
@@ -92,9 +94,6 @@
       :save-document="saveDocumentAs ? tab => saveDocumentAs!(agent.id, tab) : undefined"
       @close-tab="closeWorkspaceTab(agent, $event)"
       @browser-url-change="(tab, url) => updateBrowserUrl(agent.id, tab, url)"
-      @cancel-plan="cancelPlanReview(agent.id)"
-      @comment-plan="commentOnPlan"
-      @confirm-plan="confirmPlan"
       @open-tab="openRightWorkspaceTabFromMenu(agent.id, $event)"
       @open-in="openAgentIn(agent.id, $event.application, $event.filePath)"
       @preview-file="openFilePreviewForAgent(agent.id, $event)"
@@ -176,7 +175,7 @@ import RightWorkspacePanel from './RightWorkspacePanel.vue';
 import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { useWorkspaceLinkDrag } from './use-workspace-link-drag';
 import { constrainedRightWorkspaceWidth, type AgentRightWorkspaceState } from './use-right-workspace-state';
-import type { PlanReviewComment, SidePanelGitDiffState } from './side-panel';
+import type { SidePanelGitDiffState } from './side-panel';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation, VisualizationAnnotationInput } from './use-visualization-annotations';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
@@ -199,8 +198,7 @@ const props = defineProps<{
   agentSidebarCollapsed: boolean;
   saveDocumentAs?: (agentId: string, tabId: string) => Promise<void>;
   closeRightWorkspaceTab: (agentId: string, tab: RightWorkspaceTab) => void;
-  confirmPlan: () => void;
-  respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
   threadFlagBusy: boolean;
   conversationPaneController: CodexConversationPaneController;
@@ -304,7 +302,6 @@ const {
   agentFiles,
   saveDocumentAs,
   closeRightWorkspaceTab,
-  confirmPlan,
   conversationPaneController,
   currentAgent,
   forwardPrompt,
@@ -428,26 +425,6 @@ function closeExecutionPlan(): void {
   }
 
   executionPlanStates[agentId] = { turnId: plan.turnId, open: false };
-}
-
-function cancelPlanReview(agentId: string): void {
-  if (agentId === currentAgent.value?.id) void props.respondToPlanReview?.('cancel');
-}
-
-function commentOnPlan(comments: PlanReviewComment[]): void {
-  if (comments.length === 0) {
-    return;
-  }
-
-  void props.respondToPlanReview?.('revise', formatPlanCommentPrompt(comments));
-}
-
-function formatPlanCommentPrompt(comments: PlanReviewComment[]): string {
-  const formattedComments = comments
-    .map((comment, index) => [`${index + 1}. On: "${comment.quote}"`, `   Comment: ${comment.body}`].join('\n'))
-    .join('\n\n');
-
-  return ['Refine the plan using these comments:', '', formattedComments].join('\n');
 }
 
 function rightWorkspaceFor(agentId: string): AgentRightWorkspaceState {

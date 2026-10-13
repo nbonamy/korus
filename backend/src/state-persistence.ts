@@ -4,7 +4,7 @@ import { isAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
 import { isThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
-import { isPlanReview } from '@workspace/core/plan-review';
+import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
 import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
@@ -363,6 +363,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const backendSession = sanitizeBackendSession(value.backendSession, backend);
   const backendDefaults = sanitizeBackendDefaults(value.backendDefaults, backend);
   const plan = sanitizeThreadPlan(value.plan);
+  const planReview = restorePlanReview(value, backendSession?.kind === 'codex' ? backendSession.threadId : backendSession?.sessionId ?? null);
   const goal = sanitizeThreadGoal(value.goal);
   const openInApplication = sanitizeOpenInApplication(value.openInApplication);
   const gitDiffTarget = isAgentGitDiffTarget(value.gitDiffTarget) ? { ...value.gitDiffTarget } : undefined;
@@ -399,7 +400,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
-    ...(isPlanReview(value.planReview) ? { planReview: { ...value.planReview } } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)
       ? { codeReview: cloneCodeReviewSession(value.codeReview) }
       : {}),

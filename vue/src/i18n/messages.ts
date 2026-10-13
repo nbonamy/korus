@@ -3,6 +3,8 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with choices and section comments before approving implementation.' },
+    planFeedback: { confirmAnswer: 'Confirm answer: {question}', confirmed: 'Confirmed', unconfirmedTitle: 'Unconfirmed choices', unconfirmedRevise: 'Some answers are unconfirmed. Only confirmed answers will be applied; the other questions will stay open.', unconfirmedApprove: 'Some answers are unconfirmed. Approve the plan and start implementation anyway?', goBack: 'Go back', reviseAnyway: 'Revise anyway', approveAnyway: 'Approve anyway', deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
@@ -1256,6 +1258,16 @@ export const messages = {
               completed: 'Loaded skill {target}',
               failed: 'Could not load skill {target}',
               running: 'Loading skill {target}',
+            },
+            publishHtmlPlan: {
+              completed: 'Published interactive plan',
+              failed: 'Could not publish interactive plan',
+              running: 'Publishing interactive plan',
+            },
+            readHtmlPlan: {
+              completed: 'Read interactive plan',
+              failed: 'Could not read interactive plan',
+              running: 'Reading interactive plan',
             },
             computerUseLaunchApp: {
               completed: 'Launched {target}',

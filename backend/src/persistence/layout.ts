@@ -190,9 +190,9 @@ function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
   return {
     ...kept,
     engine: engineFrom(agent),
-    // Finished work is not actionable; keep only what can still change.
+    // Keep the latest review decision and feedback across restarts.
     ...(plan && plan.status !== 'completed' ? { plan } : {}),
-    ...(planReview?.status === 'pending' ? { planReview } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(goal && goal.status !== 'complete' ? { goal } : {}),
   };
 }

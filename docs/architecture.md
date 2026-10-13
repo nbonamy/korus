@@ -472,6 +472,35 @@ The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
 
+## Interactive planning
+
+Provider-native Markdown proposals own plan review identity and approval. Korus adds
+section and selected-text comments and decorates flat Markdown checkbox lists as
+multiple choices and `( )` / `(x)` lists as single choices. Code examples, nested
+lists and mixed lists retain normal Markdown rendering. Authored HTML remains
+escaped by the shared Markdown renderer. Model-selected defaults are proposals;
+only explicitly confirmed groups become feedback. Confirmation survives answer
+edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
+drafts remain saved without ratifying defaults.
+
+The owning host's Workflows setting enables interactive plans by default. Enabled
+Plan-mode turns receive hidden Markdown choice guidance; disabling it leaves
+ordinary Markdown and native review actions without choice controls.
+
+Draft feedback belongs to the agent, conversation and native review ID. The owning
+host persists it with optimistic versions through the existing review response
+contract. Saving does not start a turn. Revise explicitly sends feedback in a
+Plan-mode turn, with confirmed answers and comments inside hidden context; Approve
+uses the native implementation authorization path. Persisted delivery intent
+prevents automatic retry after an uncertain delivery. New proposals start unanswered and retain prior
+feedback in bounded review history.
+
+The Vue editor is keyed by owner and review identity. Its draft and serial saves
+survive snapshot updates without replacing document or footer elements. Stale
+responses cannot target another review. Saved structured plans migrate to Markdown
+and retain their feedback; migration grants approval authority only when the saved
+plan matches an existing native review.
+
 ## Theming
 
 Components never import fixed colors. Themes are semantic tokens written as CSS
