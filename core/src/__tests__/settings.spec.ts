@@ -16,6 +16,12 @@ describe('settings contracts', () => {
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
+  it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
+    expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
+    expect(normalizeGeneralSettings({ backlogRepositoryFavorites: {
+      github: ['org/b', 'org/a', 'org/b', '', 42], linear: ['team-id'], unknown: ['org/c'],
+    } }).backlogRepositoryFavorites).toStrictEqual({ github: ['org/b', 'org/a'], linear: ['team-id'] });
+  });
   it('updates one global Git preference without replacing the other', () => {
     const snapshot = createEmptySnapshot();
     snapshot.general.git = { pull: 'rebase', update: 'merge' };
@@ -61,6 +67,7 @@ describe('settings contracts', () => {
       spokenAnnouncementVoice: 'bf_emma',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
@@ -165,6 +172,7 @@ describe('settings contracts', () => {
       spokenAnnouncementVoice: 'af_heart',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,

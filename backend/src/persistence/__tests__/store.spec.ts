@@ -35,6 +35,45 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it.each(['codex', 'claude', 'antigravity'] as const)('loads additive store fields without blocking existing %s agents', async backend => {
+    const snapshot = snapshotWithVisualizations();
+    const agent = snapshot.agents[0]!;
+    agent.backend = backend;
+    agent.backendSession = backend === 'codex' ? { kind: backend, threadId: 'thread' }
+      : backend === 'claude' ? { kind: backend, sessionId: 'session', transport: 'stdio' }
+        : { kind: backend, sessionId: 'session' };
+    delete agent.backendDefaults;
+    snapshot.subagentTrees[agent.id] = { rootConversationId: 'root', nodes: {}, operations: {}, activities: {} };
+    await new AppStateStore(home).save(snapshot);
+    const expected = await new AppStateStore(home).load();
+    const roster = await readJson('roster.json');
+    roster.data.futureRosterField = { enabled: true };
+    const engine = (roster.data.agents as Array<{ engine: Record<string, unknown> }>)[0]!.engine;
+    engine.futureEngineField = true;
+    (engine.session as Record<string, unknown>).futureSessionField = 'extra';
+    (roster.data.subagents as Record<string, Record<string, unknown>>)[agent.id]!.futureTreeField = true;
+    await writeFile(file('roster.json'), JSON.stringify(roster));
+    const settings = await readJson('settings.json');
+    settings.data.futureSettingsField = true;
+    (settings.data.workIntegrations as Record<string, unknown>).futureIntegrationField = true;
+    await writeFile(file('settings.json'), JSON.stringify(settings));
+    const [directory] = await readdir(file('visualizations'));
+    for (const name of await readdir(file('visualizations', directory!))) {
+      const document = await readJson('visualizations', directory!, name);
+      document.data.futureDocumentField = true;
+      await writeFile(file('visualizations', directory!, name), JSON.stringify(document));
+    }
+
+    const store = new AppStateStore(home);
+    const restored = await store.load();
+    expect(restored).toStrictEqual(expected);
+    restored.agents[0]!.name = 'Still usable';
+    await store.save(restored);
+    const restarted = await new AppStateStore(home).load();
+    expect(restarted.agents[0]!.name).toBe('Still usable');
+    expect(restarted.repositoryVisualizations).toStrictEqual(expected.repositoryVisualizations);
+  });
+
   it.each([1, 2])('loads supported agents and preserves unknown providers across schema-%i saves and restarts', async (schemaVersion) => {
     const snapshot = createInitialSnapshot();
     await new AppStateStore(home).save(snapshot);

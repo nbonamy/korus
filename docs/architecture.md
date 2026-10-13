@@ -130,6 +130,9 @@ Rules:
 - Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
   rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- Within a supported schema version, additive fields do not block loading agents,
+  settings, tasks, document workspaces or visualizations. Known field types and task
+  lifecycle invariants remain validated; command inputs retain their own strict validation.
 - Agents with an unknown engine kind are excluded from runtime state and logged.
   The store preserves their opaque records, team membership, work assignments and
   subagent data across ordinary saves; it never converts them to another provider.
@@ -209,6 +212,19 @@ backend locations.
   active team.
 
 ## Source Repositories And Worktrees
+
+Branch moves capture all tracked and untracked changes against a source HEAD,
+preserving staging and working-file contents separately. Ignored files stay in the
+source checkout. The backend saves a private recovery journal under the repository's
+common Git directory and protects both captured trees with private refs until delivery.
+Moves create an idle agent without committing or starting a task; worktree setup and
+environment copying are disabled. Source cleanup requires a complete destination
+snapshot and persisted agent. Newer source edits remain in place. Path cleanup holds
+the source index lock and retains source file inodes as private recovery copies,
+protecting edits through already-open file descriptors. Retries reuse the reserved
+agent identity and never overwrite changed destination files. Move progress is
+backend-authored and correlated by request and source agent; it remains renderer-only
+state and does not start an agent conversation.
 
 The source folder is a backend-location convenience setting, not team membership
 and not an agent setting. It is auto-detected once on a fresh state; after the user
@@ -368,6 +384,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
   through subsequent rounds and reloads.
 - Finishing saves a report first, then removes the ledger and the review-owned
   agent. Discarding removes the ledger from any state. Reopening starts from zero.
+- Switching an automatic review to manual is a durable ledger transition. It keeps
+  the active provider turn and review context intact; async completion can finish
+  that operation but cannot schedule automatic remediation, commits or fresh rounds.
+  Provider interruption remains a separate operation.
 - Findings and the `finish_review_round` acknowledgment are model tools
   ([mcp.md](mcp.md)); user decisions and workflow transitions are backend
   commands.

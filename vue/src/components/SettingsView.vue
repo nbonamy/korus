@@ -40,6 +40,7 @@
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
           :connected="codexConnected"
+          :remote-connection-id="remoteConnectionId"
           :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
           @refresh="refreshProvider?.('codex')"
           :authentication="providerConnections?.find(engine => engine.backend === 'codex')?.authentication"
@@ -169,6 +170,7 @@ const appVersion = appPackage.version;
 
 const props = withDefaults(defineProps<{
   codexConnected?: boolean;
+  remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;

@@ -120,6 +120,7 @@ function expectEventContext(event: EventRecord): void {
     case 'plan.reviewResolved':
     case 'client.celebrationRequested':
     case 'agentCreation.progress':
+    case 'git.branchWorkProgress':
     case 'git.operationProgress':
     case 'agent.updated':
     case 'agent.statusChanged':

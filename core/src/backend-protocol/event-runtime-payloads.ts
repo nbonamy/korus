@@ -462,6 +462,13 @@ export const runtimePayloadValidators = {
   },
   'agentCreation.progress': expectAgentCreationProgress,
   'mission.implementationStartProgress': expectMissionImplementationStartProgress,
+  'git.branchWorkProgress': (value, path) => {
+    expectRecord(value, path);
+    for (const key of ['id', 'agentId', 'branchName']) expectString(value[key], `${path}.${key}`);
+    expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
+    expectLiteral(value.phase, ['creatingWorktree', 'movingChanges', 'creatingAgent', 'resettingSource'], `${path}.phase`);
+    expectOptional(value, 'error', path, expectString);
+  },
   'git.operationProgress': (value, path) => {
     expectRecord(value, path);
     expectLiteral(

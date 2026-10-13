@@ -242,6 +242,8 @@
         :list-source-repositories="listSourceRepositories"
         :teams="snapshot.teams"
         :work-backlog="cockpitWorkBacklog"
+        :repository-favorites="snapshot.general.backlogRepositoryFavorites[cockpitBacklogState.provider.value] ?? []"
+        :save-repository-favorites="updateBacklogRepositoryFavorites"
         @assign-work-item-to-new-agent="openNewAgentForWorkItem"
         @assign-work-item="assignExistingAgentWorkItem"
         @refresh-work-items="refreshWorkItems"
@@ -545,6 +547,8 @@
       :update-team="updateTeam"
       @close="teamDialogVisible = false"
     />
+    <KeyboardShortcutsDialog v-if="keyboardShortcutsVisible" :context="shortcutContext" @close="keyboardShortcutsVisible = false" />
+    <CommandPalette v-if="commandPaletteVisible" :actions="paletteActions" @close="commandPaletteVisible = false" @execute="executePaletteAction" />
     <WhatsNewDialog
       :visible="whatsNewVisible"
       @close="whatsNewVisible = false"
@@ -620,7 +624,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
-import { appApi, appHostCapabilities } from '../platform-api';
+import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
 import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
@@ -642,6 +646,10 @@ import FileQuickOpen from './FileQuickOpen.vue';
 import AgentQuickOpen from './AgentQuickOpen.vue';
 import AutomationsView from './AutomationsView.vue';
 import TeamDialog from './TeamDialog.vue';
+import KeyboardShortcutsDialog from './KeyboardShortcutsDialog.vue';
+import CommandPalette from './CommandPalette.vue';
+import { commandPaletteActions, type CommandPaletteAction } from './command-palette-actions';
+import type { ShortcutContext } from '@workspace/core/keyboard-shortcuts';
 import AppShellNavigation from './AppShellNavigation.vue';
 import BackendConnectionBanner from './BackendConnectionBanner.vue';
 import WhatsNewDialog from './WhatsNewDialog.vue';
@@ -1278,6 +1286,8 @@ const debugUserQuestions = ref<{ agentId: string; message: SurfaceMessage; reque
 const debugAgentCreationProgress = ref<AgentCreationProgress | null>(null);
 const debugAgentCreationTimers: Array<ReturnType<typeof setTimeout>> = [];
 const agentWorkspace = ref<{
+  getCommandActions(): CommandPaletteAction[];
+  openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void;
   focusComposer(): void;
   openSavedDraftPicker(): void;
   saveCurrentDraft(): void;
@@ -1364,6 +1374,8 @@ watch(() => !debugMissingEngines.value && realOnboardingGate.value, (gated) => {
 const teamDialogVisible = ref(false);
 const teamDialogMode = ref<'create' | 'edit'>('create');
 const whatsNewVisible = ref(false);
+const keyboardShortcutsVisible = ref(false);
+const commandPaletteVisible = ref(false);
 const editingTeamId = ref<string | null>(null);
 let backlogInitialized = false;
 const activeTeam = computed<Team | null>(() => {
@@ -2404,6 +2416,8 @@ const isModalDialogVisible = computed(() => (
   || newProjectDialogVisible.value
   || teamDialogVisible.value
   || whatsNewVisible.value
+  || keyboardShortcutsVisible.value
+  || commandPaletteVisible.value
   || imageAnnotationVisible.value
   || missionDeleteTarget.value !== null
   || debugAgentCreationProgress.value !== null
@@ -2413,7 +2427,18 @@ const isModalDialogVisible = computed(() => (
 ));
 // Dialogs take over the screen on phones; the drawer must not linger behind them.
 watch(isModalDialogVisible, (visible) => { if (visible) compactNavOpen.value = false; });
-const { quickAgentShortcutsVisible } = useAppShellCommands({
+const shortcutContext = computed<ShortcutContext>(() => ({
+  platform: /Mac/i.test(navigator.platform) ? 'mac' : 'other',
+  desktop: appClientPlatform === 'desktop',
+  onboarding: showOnboardingGate.value,
+  workspace: isAgentWorkspaceVisible.value && !showOnboardingGate.value,
+  agent: Boolean(currentAgent.value),
+  agentCount: activeTeamAgents.value.length,
+  teamCount: props.snapshot.teams.length,
+  browser: appHostCapabilities.embeddedBrowser,
+  idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle' && defaultBackendCommands(currentAgent.value.backend).some(command => command.slashName === 'compact')),
+}));
+const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
     activeTeamAgents: () => activeTeamAgents.value,
@@ -2458,6 +2483,8 @@ const { quickAgentShortcutsVisible } = useAppShellCommands({
     closeRightWorkspaceTab: (tab, agentId) => closeRightWorkspaceTabLocal(agentId, tab),
     openSettings,
     openWhatsNew,
+    openKeyboardShortcuts: () => { keyboardShortcutsVisible.value = true; },
+    openCommandPalette: () => { commandPaletteVisible.value = true; },
     quit,
     restartAgent: (agentId) => emit('restart-agent', agentId),
     resumeSession: openResumeSession,
@@ -2472,6 +2499,45 @@ const { quickAgentShortcutsVisible } = useAppShellCommands({
     updateComposerState: (agentId, state) => emit('update:composerState', { agentId, state }),
   },
 });
+
+const paletteActions = computed(() => {
+  const agent = split.focusedPane.value.agentId ? currentAgent.value : null;
+  const team = activeTeam.value;
+  const remote = team?.remoteConnectionId;
+  return commandPaletteActions({
+    shortcuts: shortcutContext.value, agent, team,
+    settings: { appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
+    connected: props.connectionState.status === 'connected',
+    hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
+    engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),
+    canCreateAgent: Boolean(preferredBackendChoices(props.snapshot, team?.id).length),
+    capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
+    gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
+    planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
+    gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
+  }, {
+    command: executeAppCommand,
+    settings: openSettings,
+    cockpit: openCockpit,
+    backlog: openBacklog,
+    automations: openAutomations,
+    quickChat: createQuickChat,
+    newAgent: () => openNewAgent(team?.id),
+    files: () => { fileQuickOpenVisible.value = true; },
+    filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
+    codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
+    visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
+    plan: () => openRightWorkspaceTab('plan', agent?.id),
+  });
+});
+async function executePaletteAction(selected: CommandPaletteAction): Promise<void> {
+  commandPaletteVisible.value = false;
+  await nextTick();
+  const action = paletteActions.value.find(candidate => candidate.id === selected.id && candidate.scope === selected.scope);
+  if (!action || action.disabledReason || isModalDialogVisible.value) return;
+  try { await action.run(); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error)); }
+}
 
 function showDebugUserQuestions(agentId: string): void {
   const requestId = 'debug-user-questions';
@@ -2668,7 +2734,8 @@ async function createQuickChat(): Promise<void> {
   try {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
-    await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
+    const created = await props.createQuickChat({ backend, ...(teamId ? { teamId } : {}) });
+    if (created !== null) activeSurface.value = 'agent';
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -2798,7 +2865,8 @@ function openAutomations(): void {
   activeSurface.value = 'automations';
 }
 
-function openSettings(): void {
+function openSettings(tab?: SettingsTab): void {
+  if (tab) settingsActiveTab.value = tab;
   activeSurface.value = 'settings';
 }
 
@@ -3142,6 +3210,14 @@ async function updateRepositoryIcon(payload: {
 
 async function updateCollapsedRepositories(collapsedRepositoryKeys: string[]): Promise<void> {
   await updateSettings({ general: { collapsedRepositoryKeys } });
+}
+
+async function updateBacklogRepositoryFavorites(repositoryIds: string[]): Promise<void> {
+  const backlogRepositoryFavorites = Object.fromEntries(
+    Object.entries(props.snapshot.general.backlogRepositoryFavorites).map(([provider, ids]) => [provider, [...(ids ?? [])]]),
+  );
+  backlogRepositoryFavorites[cockpitBacklogState.provider.value] = [...repositoryIds];
+  await updateSettings({ general: { backlogRepositoryFavorites } });
 }
 
 function updateCockpitAgentViewMode(cockpitAgentViewMode: CockpitAgentViewMode): void {

@@ -160,6 +160,18 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('hands a review to manual through the preload and IPC without an interruption request', async () => {
+    const { backend, state } = setup();
+    backend.request.mockImplementation(async method => method === 'agent/codeReview/manual' ? state.snapshot : state.clientState);
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    await expect(api.switchCodeReviewToManual('reviewer', 'review')).resolves.toStrictEqual(state.snapshot);
+    expect(backend.request.mock.calls).toStrictEqual([
+      ['agent/codeReview/manual', { agentId: 'reviewer', sessionId: 'review' }],
+      ['client/state/get'],
+    ]);
+  });
+
   it('limits the simulator to local agents through IPC and revokes control on disconnect', async () => {
     const { controller, state, window, disconnect } = setup();
     const agentId = state.snapshot.agents[0]!.id;
