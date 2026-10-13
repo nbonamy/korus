@@ -12,6 +12,7 @@
       :setup-error="setupError"
       @customize="customizeProvider"
       @refresh-provider="refreshProvider"
+      @install-provider="installProvider"
       @close-setup="customizingProvider = null"
       @save-setup="saveProviderSetup"
       v-model:claude-dialog-visible="claudeDialogVisible"
@@ -139,6 +140,7 @@
         :codex-connected="!debugMissingEngines && codexConnected"
         :provider-connections="displayProviderConnections"
         :refresh-provider="refreshProvider"
+        :install-provider="installProvider"
         :provider-setup-error="setupError"
         :updating-provider="updatingProvider"
         :customize-provider="customizeProvider"
@@ -1332,7 +1334,7 @@ const firstRunOnboarding = useFirstRunOnboarding({
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
   antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
-  providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, refreshProvider: refreshRealProvider,
+  providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, installProvider: installRealProvider, refreshProvider: refreshRealProvider,
   codexConnected, continuing, connectClaude, disconnectProvider, refreshClaude, continueWithProviders,
   authentication,
   authenticationCancelling,
@@ -1362,6 +1364,9 @@ const displayProviderSetup = computed(() => debugMissingEngines.value
 const displayProviderConnections = computed(() => debugMissingEngines.value
   ? props.snapshot.providerConnections?.map(engine => ({ ...engine, installed: false, connected: false, checking: false, authentication: undefined, error: undefined }))
   : props.snapshot.providerConnections);
+async function installProvider(backend: AgentBackend): Promise<void> {
+  if (!debugMissingEngines.value) await installRealProvider(backend);
+}
 async function refreshProvider(backend: AgentBackend): Promise<void> {
   if (!debugMissingEngines.value) await refreshRealProvider(backend);
 }

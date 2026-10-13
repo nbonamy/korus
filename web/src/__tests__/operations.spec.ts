@@ -153,6 +153,9 @@ describe(`${product.name} web operations`, () => {
   it('maps allowlisted product operations to daemon methods', async () => {
     const request = vi.fn().mockResolvedValue({ ok: true });
 
+    await invokeAppWebOperation({ request }, 'installProvider', ['antigravity', 'remote-host']);
+    expect(request).toHaveBeenLastCalledWith(backendMethods.providerInstall, { backend: 'antigravity', remoteConnectionId: 'remote-host' });
+
     await expect(invokeAppWebOperation({ request }, 'createAgent', [{ name: 'Dina' }]))
       .resolves.toEqual({ ok: true });
     expect(request).toHaveBeenCalledWith(backendMethods.agentCreate, {

@@ -682,6 +682,42 @@ describe('AppShell authentication and conversation', () => {
     reloaded.unmount();
   });
 
+  it('keeps Antigravity Connect disabled during installation, recovers from failure, and enables it after a retry', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents = [];
+    const setup = { backend: 'antigravity' as const, installed: false, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
+    let succeed!: (value: typeof setup) => void;
+    let fail!: (error: Error) => void;
+    const installProvider = vi.fn(() => new Promise<typeof setup>((resolve, reject) => { succeed = resolve; fail = reject; }));
+    const authenticateProvider = vi.fn().mockResolvedValue({ kind: 'antigravity', connected: false, state: { loggedIn: false, homePath: setup.homePath } });
+    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), installProvider, authenticateProvider } as Partial<AppApi> as AppApi;
+    const wrapper = mountShell({ snapshot });
+    await flushPromises();
+    const connect = () => wrapper.findAll('.codex-login__provider button').find(button => button.text() === 'Connect Antigravity')!;
+    expect(connect().attributes('disabled')).toBeDefined();
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    await flushPromises();
+    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('aria-busy')).toBe('true');
+    await connect().trigger('click');
+    expect(authenticateProvider).not.toHaveBeenCalled();
+    fail(new Error('Download failed'));
+    await flushPromises();
+    expect(wrapper.get('.codex-login__error').text()).toContain('Download failed');
+    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('disabled')).toBeUndefined();
+    expect(connect().attributes('disabled')).toBeDefined();
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    succeed({ ...setup, installed: true });
+    await flushPromises();
+    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
+    expect(wrapper.find('.codex-login__error').exists()).toBe(false);
+    expect(connect().attributes('disabled')).toBeUndefined();
+    expect(authenticateProvider).not.toHaveBeenCalled();
+    await connect().trigger('click');
+    await flushPromises();
+    expect(authenticateProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'login');
+  });
+
   it.each([false, true])('redetects an externally installed provider without configuring its home (%s)', async (locked) => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
