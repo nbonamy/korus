@@ -1,10 +1,10 @@
-import type { Agent, ProviderConversationFrame, Team } from './contracts';
+import type { Agent, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionFrameLimit = 4 * 1024 * 1024;
 export type CompanionTarget = { hostId: string; locationId: string; teamId: string; agentId: string; sessionId: string | null };
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string> };
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[] };
 /** Shown on the laptop: the phone already knows the relay, so the code is all it needs. */
 export type CompanionInvitation = { code: string; expiresAt: number };
 /** A paired phone. Approval grants everything: every team, reading and sending. */

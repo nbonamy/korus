@@ -1,8 +1,0 @@
-{
-  "extends": ["../.stylelintrc.json"],
-  "rules": {
-    "lyliya/value-no-unknown-custom-properties": [true, {
-      "importFrom": ["../vue/src/styles/variables.css", "../vue/src/styles/theme.css"]
-    }]
-  }
-}

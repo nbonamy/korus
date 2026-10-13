@@ -9,6 +9,7 @@ import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
 import { CompanionFrameDecoder, companionProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import type { BackendModelOption } from '@workspace/core/contracts';
 import type { CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
@@ -175,11 +176,17 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const session: CompanionSession = {
         getWorkspace: read,
         async loadConversation(agentId) { selected = agentId; return conversation(agentId); },
-        async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID()) {
+        async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
-          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId });
+          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
           if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
         },
+        async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', { agentId })).models; },
+        async selectModel(agentId, selection) { await request(host, 'agent.model.select', { agentId, ...selection }); },
+        async interrupt(agentId) { await request(host, 'agent.interrupt', { agentId }); },
+        async startReview(agentId, input) { await request(host, 'agent.review.start', { agentId, input }); },
+        async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },
+        async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },
         async commandStatus(clientCommandId) { return (await request<{ state: 'accepted' | 'unresolved' | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
         onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         onUpdate(listener) { updates.add(listener); if (!timer) timer = setTimeout(() => void poll(), 1200); return () => updates.delete(listener); },

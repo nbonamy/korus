@@ -61,19 +61,17 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
-| `mobile` | bundled Capacitor iOS/Android companion entry and native host adapters | `core`, `vue`; no Electron, provider process or backend filesystem authority |
+| `mobile` | iOS companion engine: relay transport, pairing, workspace and conversation reads, prompt sending | `core`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
-The mobile companion is a bundled Capacitor entry with a narrow workspace/read/send
-port. It composes the shared conversation pane from authoritative provider snapshots,
-without a transcript reducer. Native keyboard dictation supplies text through the
-existing composer; the host adapter owns code scanning and foreground/background events.
+The mobile companion engine is a narrow workspace/read/send port over the companion
+protocol. It hands authoritative provider snapshots to its host without a transcript
+reducer; the host app owns every native affordance (storage, camera, dictation, files,
+foreground/background events).
 Drafts and delivery uncertainty are scoped to laptop and agent and persisted through
-the native vault: iOS Keychain entries are device-only and accessible while unlocked;
-Android records are encrypted with an Android Keystore AES-GCM key and excluded from
-backup. Prompt intent and a durable command identity are saved before dispatch;
+the device keychain (entries are device-only and accessible while unlocked). Prompt intent and a durable command identity are saved before dispatch;
 unavailable storage prevents sending. Reconnect reconciles receipts and rehydrates
 provider-owned state without replaying a prompt.
 

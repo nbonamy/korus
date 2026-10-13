@@ -1,9 +1,11 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
-import type { CodexComposerState } from '@codex-app-sdk/vue';
-import type { CompanionConnector, CompanionConversation, CompanionSession, CompanionWorkspace } from './companion-port';
-import { restoreDraftRecord, type DraftStore } from './protected-storage';
+import type { BackendModelOption } from '@workspace/core/contracts';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import type { CompanionConnector, CompanionConversation, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
+import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
+import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 
-export function createCompanionState(connector: CompanionConnector, store?: DraftStore) {
+export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
   const laptopId = ref('');
@@ -13,7 +15,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversation = shallowRef<CompanionConversation | null>(null);
   const conversationReady = ref(false);
   const loading = ref(false);
-  const drafts = reactive<Record<string, CodexComposerState>>({});
+  const drafts = reactive<Record<string, DraftState>>({});
   const uncertain = reactive<Record<string, boolean>>({});
   const sending = reactive<Record<string, boolean>>({});
   const commandIds = reactive<Record<string, string>>({});
@@ -46,6 +48,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
+  const modelCatalog = shallowRef<Record<string, BackendModelOption[]>>({});
+  const composerChoices = reactive<Record<string, ComposerChoice>>({});
+  const permissionChoices = reactive<Record<string, { approvalPreset?: string; permissionMode?: string }>>({});
   // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
   const agents = computed(() => {
     const order = workspace.value.teams.find((team) => team.id === teamId.value)?.agentIds ?? [];
@@ -53,6 +58,16 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  const models = computed(() => modelCatalog.value[agentId.value] ?? []);
+  const composerSettings = computed(() => agent.value ? resolveComposerSettings(agent.value, models.value, composerChoices[agentId.value]) : null);
+  /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
+  const permissions = computed(() => {
+    const current = agent.value; if (!current) return null;
+    const choice = permissionChoices[current.id] ?? {}; const saved = current.backendDefaults;
+    return { approvalPreset: choice.approvalPreset ?? (saved?.kind === 'codex' ? saved.approvalPreset : undefined) ?? null,
+      permissionMode: choice.permissionMode ?? (saved && saved.kind !== 'codex' ? saved.permissionMode : undefined) ?? null };
+  });
+  const modelFavorites = computed(() => workspace.value.modelFavorites ?? []);
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
@@ -85,7 +100,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     closeSession();
     const epoch = connectionEpoch;
     const sameLaptop = laptopId.value === id;
-    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; }
+    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; modelCatalog.value = {}; }
     laptopId.value = id;
     status.value = reconnecting ? 'reconnecting' : 'connecting';
     error.value = '';
@@ -135,6 +150,43 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     teamId.value = workspace.value.teams.some((team) => team.id === id) ? id : '';
     await selectAgent('');
   }
+  async function loadModels(id: string, capturedSession: CompanionSession) {
+    if (!capturedSession.listModels || modelCatalog.value[id]) return;
+    try {
+      const list = await capturedSession.listModels(id);
+      if (session === capturedSession) modelCatalog.value = { ...modelCatalog.value, [id]: list };
+    } catch { /* Without a catalog the model menu simply stays hidden. */ }
+  }
+  /** One change from the model menu: remembered here, and saved on the laptop like the desktop does. */
+  function updateComposerSettings(change: ComposerChange) {
+    const id = agentId.value; const active = session;
+    if (!id || !active || !agent.value) return;
+    const { choice, save } = applyComposerChoice(models.value, composerChoices[id] ?? currentChoice(), change);
+    composerChoices[id] = choice;
+    if (save && active.selectModel) void active.selectModel(id, save).catch(() => {});
+  }
+  function currentChoice(): ComposerChoice {
+    const settings = composerSettings.value;
+    return settings ? { model: settings.model?.model ?? null, reasoningEffort: settings.reasoningEffort, serviceTier: settings.serviceTier, planMode: settings.planMode } : {};
+  }
+  /** Remembers the choice at once and asks the laptop; the previous value returns if the laptop refuses. */
+  function changePermissions(change: { approvalPreset?: string; permissionMode?: string }, send: (active: CompanionSession, id: string) => Promise<void> | undefined) {
+    const id = agentId.value; const active = session;
+    if (!id || !active) return;
+    const previous = permissionChoices[id];
+    permissionChoices[id] = { ...previous, ...change };
+    void send(active, id)?.catch(() => { if (previous) permissionChoices[id] = previous; else delete permissionChoices[id]; });
+  }
+  const setApprovalPreset = (preset: string) => changePermissions({ approvalPreset: preset }, (active, id) => active.setApprovalPreset?.(id, preset));
+  const setPermissionMode = (mode: string) => changePermissions({ permissionMode: mode }, (active, id) => active.setPermissionMode?.(id, mode));
+  /** A laptop-side command that is not the person's draft: sent once, the draft untouched. */
+  async function runCommand(command: () => Promise<void> | undefined) {
+    error.value = '';
+    try { await command(); } catch { error.value = 'mobile.errors.commandFailed'; }
+  }
+  const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
+  const startReview = (input: CompanionReviewInput) => runCommand(() => agentId.value ? session?.startReview?.(agentId.value, input) : undefined);
+  function interrupt() { const id = agentId.value; if (id) void session?.interrupt?.(id)?.catch(() => {}); }
   async function selectAgent(id: string) {
     const epoch = ++selectionEpoch;
     agentId.value = agents.value.some((a) => a.id === id) ? id : '';
@@ -144,27 +196,30 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     loading.value = false;
     if (!agentId.value || !session || status.value !== 'connected') return;
     loading.value = true;
+    const active = session;
     try {
-      const frame = await session.loadConversation(id);
+      const frame = await active.loadConversation(id);
       if (epoch !== selectionEpoch) return;
       if (frame && (frame.agentId !== id || frame.backend !== agent.value?.backend)) throw new Error('Conversation identity mismatch.');
       if (!frame && agent.value?.backendSession) throw new Error('Conversation is unavailable.');
       conversation.value = frame;
       conversationReady.value = true;
+      void loadModels(id, active);
     } catch {
       if (epoch === selectionEpoch) error.value = 'mobile.errors.loadConversation';
     } finally {
       if (epoch === selectionEpoch) loading.value = false;
     }
   }
-  function updateDraft(next: CodexComposerState) {
+  function updateDraft(next: DraftState) {
     if (agentId.value && storageReady.value) {
       drafts[key()] = { ...next };
       void persist().catch(() => {});
     }
   }
-  async function submit(prompt: string) {
-    if (!canSend.value || !prompt.trim() || !session) return;
+  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[] }) {
+    const uploads = resolveUploads?.(sendOptions?.attachments) ?? [];
+    if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session) return;
     const target = agentId.value;
     const draftKey = key();
     const capturedSession = session;
@@ -182,7 +237,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await persist(); }
     catch { uncertain[draftKey] = false; sending[draftKey] = false; return; }
     try {
-      await capturedSession.sendPrompt(target, prompt, clientCommandId);
+      const settings = composerSettings.value;
+      const options = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
+      await (uploads.length ? capturedSession.sendPrompt(target, prompt, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, prompt, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
       uncertain[draftKey] = false;
       await persist();
@@ -211,6 +268,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { status, error, laptopId, teamId, agentId, workspace, conversation, loading, agents, agent,
-    draft, deliveryUnknown, canSend, connect, selectTeam, selectAgent, updateDraft, submit,
+    draft, deliveryUnknown, canSend, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

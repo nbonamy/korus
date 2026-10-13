@@ -3,16 +3,36 @@ import { z } from 'zod';
 import type { CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { projectCompanionWorkspace } from '@workspace/core/companion-projection';
+import type { CompanionUpload } from './uploads';
 import { createPairingExchange, generatePairingCode, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
-const commandSchema = z.object({ target: targetSchema, text: z.string().min(1).max(100_000), clientCommandId: z.string().uuid() }).strict();
+/** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
+const promptOptionsSchema = z.object({
+  model: z.string().min(1).max(200).nullable().optional(), reasoningEffort: z.string().min(1).max(40).nullable().optional(),
+  serviceTier: z.string().min(1).max(80).nullable().optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
+  delegation: z.object({ startingContext: z.enum(['conversation', 'handoff']), instructions: z.string().max(100_000).optional() }).strict().optional(),
+}).strict();
+const reviewSchema = z.object({ agentId: identity, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
+  threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional() }).strict() }).strict();
+type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
+const maxUploadBytes = 2_500_000;
+const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string().min(1).max(200), mimeType: z.string().max(120), data: z.string().max(Math.ceil(maxUploadBytes * 4 / 3) + 4).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict();
+const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(5).optional() }).strict()
+  .refine((command) => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, 'A prompt needs text or an attachment.');
+const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
 export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
 export type GatewayPort = {
   workspace(): Promise<CompanionWorkspace>;
   conversation(agentId: string): Promise<CompanionReset>;
-  submit(agentId: string, text: string, clientId: string): Promise<void>;
+  submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
+  models(agentId: string): Promise<unknown[]>;
+  interrupt(agentId: string): Promise<void>;
+  setApprovalPreset(agentId: string, preset: string): Promise<void>;
+  setPermissionMode(agentId: string, mode: string): Promise<void>;
+  startReview(agentId: string, input: z.infer<typeof reviewSchema>['input']): Promise<void>;
+  selectModel(agentId: string, selection: { model: string; reasoningEffort: string | null; serviceTier: string | null }): Promise<void>;
   save(state: GatewayState): Promise<void>;
   revoked(peerId: string): void;
 };
@@ -143,17 +163,57 @@ export class CompanionGateway {
         const duplicate = this.state.commands[ledgerKey];
         if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return receipt(duplicate); }
         await this.validateTarget(command.target);
+        const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
+        if (uploads?.some((upload) => upload.data.byteLength > maxUploadBytes)) throw new Error('Attachment too large.');
         if (Object.keys(this.state.commands).length >= 10_000) throw new Error('Command receipt storage is full.');
         const pending = { clientCommandId: command.clientCommandId, state: 'pending' as const, target: command.target, fingerprint };
         const next = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: pending } };
         await this.port.save(next); this.state = next;
         let state: 'accepted' | 'unresolved' = 'unresolved';
-        try { await this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
+        try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
         const completed = { ...pending, state };
         const saved = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: completed } };
         await this.port.save(saved); this.state = saved;
         return receipt(completed);
       });
+    }
+    if (method === 'models.list') {
+      const { agentId } = z.object({ agentId: identity }).strict().parse(args);
+      await this.requireAgent(agentId);
+      const models = await this.port.models(agentId);
+      this.requireGrant(peerId, grant);
+      return { models };
+    }
+    if (method === 'agent.model.select') {
+      const { agentId, ...selection } = modelSelectionSchema.parse(args);
+      await this.requireAgent(agentId);
+      this.requireGrant(peerId, grant);
+      await this.port.selectModel(agentId, selection);
+      return {};
+    }
+    if (method === 'agent.interrupt') {
+      const { agentId } = z.object({ agentId: identity }).strict().parse(args);
+      await this.requireAgent(agentId); this.requireGrant(peerId, grant);
+      await this.port.interrupt(agentId);
+      return {};
+    }
+    if (method === 'agent.approvalPreset.set') {
+      const { agentId, preset } = z.object({ agentId: identity, preset: z.string().min(1).max(40) }).strict().parse(args);
+      await this.requireAgent(agentId); this.requireGrant(peerId, grant);
+      await this.port.setApprovalPreset(agentId, preset);
+      return {};
+    }
+    if (method === 'agent.permissionMode.set') {
+      const { agentId, mode } = z.object({ agentId: identity, mode: z.string().min(1).max(80) }).strict().parse(args);
+      await this.requireAgent(agentId); this.requireGrant(peerId, grant);
+      await this.port.setPermissionMode(agentId, mode);
+      return {};
+    }
+    if (method === 'agent.review.start') {
+      const { agentId, input } = reviewSchema.parse(args);
+      await this.requireAgent(agentId); this.requireGrant(peerId, grant);
+      await this.port.startReview(agentId, input);
+      return {};
     }
     if (method === 'command.status') {
       const { clientCommandId } = z.object({ clientCommandId: z.string().uuid() }).strict().parse(args);
@@ -165,6 +225,9 @@ export class CompanionGateway {
   }
   private requireGrant(peerId: string, grant: CompanionGrant) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
+  }
+  private async requireAgent(agentId: string) {
+    if (!(await this.port.workspace()).agents.some((agent) => agent.id === agentId)) throw new Error('Target is stale.');
   }
   private async validateTarget(target: CompanionTarget) {
     const workspace = await this.port.workspace();

@@ -1,6 +1,6 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import type { Agent, AgentWorkspaceIdentity, AppSnapshot, Team } from './contracts';
+import type { Agent, AgentWorkspaceIdentity, AppSnapshot, BackendDefaults, Team } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
 import { repositoryIconForAgent } from './workspace-sidebar';
 
@@ -9,6 +9,17 @@ const encoder = new TextEncoder();
 function opaquePath(value: string): string {
   const name = value.replace(/\\/gu, '/').split('/').filter(Boolean).at(-1) ?? '';
   return `/${bytesToHex(sha256(encoder.encode(value))).slice(0, 16)}/${name}`;
+}
+
+/** The composer's last model and permission choice; never sandbox paths or approval policies. */
+function projectDefaults(defaults: BackendDefaults): BackendDefaults {
+  const { kind, model, reasoningEffort } = defaults;
+  const serviceTier = defaults.kind === 'codex' ? defaults.serviceTier : undefined;
+  const approvalPreset = defaults.kind === 'codex' ? defaults.approvalPreset : undefined;
+  const permissionMode = defaults.kind === 'codex' ? undefined : defaults.permissionMode;
+  return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(serviceTier === undefined ? {} : { serviceTier }), ...(approvalPreset === undefined ? {} : { approvalPreset }),
+    ...(permissionMode === undefined ? {} : { permissionMode }) } as BackendDefaults;
 }
 
 function projectWorkspace(workspace: AgentWorkspaceIdentity): AgentWorkspaceIdentity {
@@ -29,16 +40,17 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
     const workspace = agent.workspace ? projectWorkspace(agent.workspace) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
-    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle } = agent;
+    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, backendDefaults } = agent;
     return { id, teamId, name, avatar, backend,
       backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
-      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, workspace, folder: agent.folder ? opaquePath(agent.folder) : null };
+      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
+      ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   });
-  return { teams, agents, repositoryIcons };
+  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [] };
 }
 
 /** The laptop's workspace as the desktop sidebar lists it: mission-owned workers stay out of the agent list. */
 export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & { missions?: AppSnapshot['missions'] }): CompanionWorkspace {
   const workerIds = new Set((snapshot.missions ?? []).flatMap((mission) => mission.execution?.runs.flatMap((run) => run.workerId ? [run.workerId] : []) ?? []));
-  return { teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons };
+  return { teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites };
 }

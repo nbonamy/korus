@@ -202,4 +202,71 @@ describe('companion state', () => {
       expect(state.agents.value.map((agent) => agent.id)).toStrictEqual(['demo-reviewer', 'demo-agent']);
     } finally { state.dispose(); }
   });
+  it('loads the agent\'s models, saves a model choice on the laptop and sends the choices with the prompt', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const models = [{ id: 'fast', model: 'fast', displayName: 'Fast', isDefault: true, defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'medium', description: '' }, { reasoningEffort: 'low', description: '' }] },
+      { id: 'deep', model: 'deep-1', displayName: 'Deep', defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }] }];
+    const selectModel = vi.fn(async () => {}); const sendPrompt = vi.fn(async () => {});
+    connector.connect = async (id) => ({ ...await original(id), listModels: async () => models, selectModel, sendPrompt });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await vi.waitFor(() => expect(state.models.value).toHaveLength(2));
+      expect(state.composerSettings.value).toMatchObject({ model: { id: 'fast' }, reasoningEffort: 'medium', planMode: false });
+      state.updateComposerSettings({ modelId: 'deep' });
+      expect(selectModel).toHaveBeenCalledExactlyOnceWith('demo-agent', { model: 'deep-1', reasoningEffort: 'high', serviceTier: null });
+      state.updateComposerSettings({ planMode: true });
+      expect(selectModel).toHaveBeenCalledTimes(1);
+      await state.submit('Do it');
+      expect(sendPrompt).toHaveBeenCalledWith('demo-agent', 'Do it', expect.any(String), { model: 'deep-1', planMode: true, reasoningEffort: 'high' });
+    } finally { state.dispose(); }
+  });
+  it('sends attachments with a prompt, even without text, and nothing when there is neither', async () => {
+    const connector = createDemoConnector(); const original = connector.connect; const sendPrompt = vi.fn(async () => {});
+    connector.connect = async (id) => ({ ...await original(id), sendPrompt });
+    const upload = { type: 'image' as const, name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' };
+    const state = createCompanionState(connector, undefined, (references) => references?.length ? [upload] : []);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await state.submit('   ');
+      expect(sendPrompt).not.toHaveBeenCalled();
+      await state.submit('', { attachments: [{ type: 'image', reference: 'phone-attachment:1' }] });
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '', expect.any(String), { planMode: false }, [upload]);
+    } finally { state.dispose(); }
+  });
+  it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const setApprovalPreset = vi.fn(async () => {}); const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
+    connector.connect = async (id) => ({ ...await original(id), setApprovalPreset, setPermissionMode, interrupt });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      expect(state.permissions.value).toStrictEqual({ approvalPreset: null, permissionMode: null });
+      state.setApprovalPreset('full-access');
+      expect(state.permissions.value!.approvalPreset).toBe('full-access');
+      expect(setApprovalPreset).toHaveBeenCalledExactlyOnceWith('demo-agent', 'full-access');
+      state.setPermissionMode('acceptEdits');
+      expect(state.permissions.value!.permissionMode).toBe('acceptEdits');
+      await vi.waitFor(() => expect(state.permissions.value!.permissionMode).toBeNull());
+      expect(state.permissions.value!.approvalPreset).toBe('full-access');
+      state.interrupt();
+      expect(interrupt).toHaveBeenCalledExactlyOnceWith('demo-agent');
+    } finally { state.dispose(); }
+  });
+  it('runs Delegate and Review without touching the draft, and reports a refused command', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const sendPrompt = vi.fn(async () => {}); const startReview = vi.fn(async () => { throw new Error('refused'); });
+    connector.connect = async (id) => ({ ...await original(id), sendPrompt, startReview });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      state.updateDraft({ text: 'half-written thought', selectionStart: 0, selectionEnd: 0 });
+      await state.delegate({ startingContext: 'handoff', instructions: 'Run tests' });
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '/delegate', expect.any(String), { delegation: { startingContext: 'handoff', instructions: 'Run tests' } });
+      expect(state.draft.value.text).toBe('half-written thought'); expect(state.error.value).toBe('');
+      await state.startReview({ scope: { type: 'uncommitted' }, threadMode: 'independent' });
+      expect(startReview).toHaveBeenCalledWith('demo-agent', { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+      expect(state.error.value).toBe('mobile.errors.commandFailed');
+    } finally { state.dispose(); }
+  });
 });

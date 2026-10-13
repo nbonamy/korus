@@ -13,6 +13,7 @@ import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
 import { CompanionOutboundConnector } from './connector';
+import { storePromptUploads } from './uploads';
 
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
@@ -118,7 +119,17 @@ export class CompanionManager {
         if (!frame) throw new Error('Authoritative conversation is unavailable.');
         return frame;
       },
-      submit: async (agentId, prompt, clientId) => { await this.backend.request(backendMethods.agentPromptSend, { agentId, prompt, _clientId: clientId }); },
+      submit: async (agentId, prompt, clientId, options, uploads) => {
+        const attachments = uploads ? await storePromptUploads(this.directory, uploads) : undefined;
+        const promptOptions = options || attachments ? { ...options, ...(attachments ? { attachments } : {}) } : undefined;
+        await this.backend.request(backendMethods.agentPromptSend, { agentId, prompt, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
+      },
+      models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
+      interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
+      setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
+      setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
+      startReview: async (agentId, input) => { await this.backend.request(backendMethods.agentCodeReviewStart, { agentId, input, _clientId: 'companion-write' }); },
+      selectModel: async (agentId, modelSelection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, modelSelection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),
     });

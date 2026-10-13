@@ -1,14 +1,27 @@
-import type { Agent, ProviderConversationFrame, Team } from '@workspace/core/contracts';
+import type { Agent, AgentModelSelection, BackendModelOption, ModelFavorite, ProviderConversationFrame, Team } from '@workspace/core/contracts';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
   type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged';
 }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string> };
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[] };
+/** The composer choices that travel with a prompt, as the desktop sends them. */
+export type CompanionPromptOptions = { model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
+  delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
+/** Where and how a review of an agent's changes starts. */
+export type CompanionReviewInput = { scope: { type: 'uncommitted' } | { type: 'branch'; baseRef: string }; threadMode: 'current' | 'independent'; instructions?: string };
+/** A file travelling with a prompt, already reduced to fit one relay frame. */
+export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: string; data: string };
 export type CompanionSession = {
   getWorkspace(): Promise<CompanionWorkspace>;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
-  sendPrompt(agentId: string, prompt: string, clientCommandId?: string): Promise<void>;
+  sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
+  listModels?(agentId: string): Promise<BackendModelOption[]>;
+  selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
+  interrupt?(agentId: string): Promise<void>;
+  startReview?(agentId: string, input: CompanionReviewInput): Promise<void>;
+  setApprovalPreset?(agentId: string, preset: string): Promise<void>;
+  setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'accepted' | 'unresolved' | 'notReceived'>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
   onDisconnect(listener: () => void): () => void;

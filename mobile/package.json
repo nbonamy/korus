@@ -4,32 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "sync": "npm run build && cap sync",
-    "ios": "cap open ios",
-    "android": "cap open android",
-    "typecheck": "vue-tsc --noEmit",
-    "lint": "npm run typecheck && stylelint 'src/**/*.{css,vue}'",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:browser": "npm run build && node scripts/browser-smoke.mjs",
-    "test:coverage": "vitest run --coverage",
-    "test:native-harness": "node scripts/native-harness.mjs",
-    "build:ios:simulator": "node scripts/build-native.mjs ios-simulator",
-    "build:android:debug": "node scripts/build-native.mjs android-debug",
-    "build:android:release": "node scripts/build-native.mjs android-release"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@capacitor/android": "8.5.3",
-    "@capacitor/app": "8.0.1",
-    "@capacitor/barcode-scanner": "3.1.3",
-    "@capacitor/core": "8.5.3",
-    "@capacitor/ios": "8.5.3",
-    "@capacitor/keyboard": "8.0.6",
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
     "@codex-app-sdk/core": "0.15.1",
-    "@codex-app-sdk/vue": "0.15.1",
     "@libp2p/circuit-relay-v2": "4.2.14",
     "@libp2p/crypto": "5.1.24",
     "@libp2p/identify": "4.1.15",
@@ -38,22 +21,12 @@
     "@libp2p/websockets": "10.1.22",
     "@multiformats/multiaddr": "13.0.3",
     "@workspace/core": "0.33.0",
-    "@workspace/vue": "0.33.0",
-    "element-plus": "^2.13.6",
     "libp2p": "3.3.12",
-    "vue": "^3.5.35",
-    "vue-i18n": "^11.4.5"
+    "vue": "^3.5.35"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.3",
-    "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/coverage-v8": "4.1.8",
-    "@vue/test-utils": "2.4.6",
-    "jsdom": "29.0.1",
-    "playwright": "1.63.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8",
-    "vue-tsc": "^3.3.3"
+    "vitest": "^4.1.8"
   }
 }

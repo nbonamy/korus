@@ -96,6 +96,22 @@ describe('native relay host adapter', () => {
     expect(transport.requests.filter((request) => request.method === 'snapshot.get').map((request) => request.args)).toStrictEqual([{ iconsVersion: '' }, { iconsVersion: 'v1' }]);
     session.close(); await connector.dispose!();
   });
+  it('lists models, saves a model choice and sends composer options with a prompt', async () => {
+    const connector = connect(); await pairWith(connector);
+    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : method === 'models.list' ? { models: [{ id: 'm', model: 'm', displayName: 'M' }] } : { state: 'accepted' };
+    const session = await connector.connect(host.hostId); await session.getWorkspace();
+    expect(await session.listModels!('agent')).toStrictEqual([{ id: 'm', model: 'm', displayName: 'M' }]);
+    await session.selectModel!('agent', { model: 'm', reasoningEffort: 'high', serviceTier: null });
+    await session.sendPrompt('agent', 'Go', randomUUID(), { model: 'm', planMode: true }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
+    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ agentId: 'agent', model: 'm', reasoningEffort: 'high', serviceTier: null });
+    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ text: 'Go', options: { model: 'm', planMode: true }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
+    await session.startReview!('agent', { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { agentId: 'agent', input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
+    await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
+    expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
+      .toStrictEqual([['agent.interrupt', { agentId: 'agent' }], ['agent.approvalPreset.set', { agentId: 'agent', preset: 'full-access' }], ['agent.permissionMode.set', { agentId: 'agent', mode: 'acceptEdits' }]]);
+    session.close(); await connector.dispose!();
+  });
   it('holds native networking closed in background and reconnects only after foreground resume', async () => {
     const connector = connect();
     await pairWith(connector);

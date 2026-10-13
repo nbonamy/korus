@@ -98,10 +98,7 @@
     "typecheck:electron": "npm run typecheck -w @workspace/electron",
     "typecheck:web": "npm run typecheck -w @workspace/web",
     "verify:github-mcp-token": "node scripts/verify-github-mcp-token.mjs",
-    "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs",
-    "build:mobile": "npm run build -w @workspace/mobile",
-    "dev:mobile": "npm run dev -w @workspace/mobile",
-    "sync:mobile": "npm run sync -w @workspace/mobile"
+    "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs"
   },
   "allowScripts": {
     "electron-winstaller@5.4.4": true

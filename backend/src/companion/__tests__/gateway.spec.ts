@@ -24,6 +24,8 @@ function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { workspace: vi.fn(async () => workspace), conversation: vi.fn(), submit: vi.fn(async () => {}),
+    models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
@@ -133,6 +135,67 @@ describe('companion authorization gateway', () => {
     const changed = await f.gateway.request('phone', 'snapshot.get', { iconsVersion: first.iconsVersion }) as typeof first;
     expect(changed.repositoryIcons).toEqual({}); expect(changed.iconsVersion).not.toBe(first.iconsVersion);
   });
+  it('lists models and saves a model choice only for agents the laptop shows', async () => {
+    const f = fixture(); await f.pair();
+    expect(await f.gateway.request('phone', 'models.list', { agentId: 'agent' })).toStrictEqual({ models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] });
+    expect(f.port.models).toHaveBeenCalledExactlyOnceWith('agent');
+    await f.gateway.request('phone', 'agent.model.select', { agentId: 'agent', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    await expect(f.gateway.request('phone', 'models.list', { agentId: 'unknown' })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { agentId: 'unknown', model: 'gpt', reasoningEffort: null, serviceTier: null })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { agentId: 'agent', model: 'gpt', reasoningEffort: null, serviceTier: null, extra: 1 })).rejects.toThrow();
+    await expect(f.gateway.request('stranger', 'models.list', { agentId: 'agent' })).rejects.toThrow('authorized');
+  });
+  it('lets the phone stop an agent and change its permissions, only for agents the laptop shows', async () => {
+    const f = fixture(); await f.pair();
+    await f.gateway.request('phone', 'agent.interrupt', { agentId: 'agent' });
+    await f.gateway.request('phone', 'agent.approvalPreset.set', { agentId: 'agent', preset: 'full-access' });
+    await f.gateway.request('phone', 'agent.permissionMode.set', { agentId: 'remote-agent', mode: 'acceptEdits' });
+    expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('agent');
+    expect(f.port.setApprovalPreset).toHaveBeenCalledExactlyOnceWith('agent', 'full-access');
+    expect(f.port.setPermissionMode).toHaveBeenCalledExactlyOnceWith('remote-agent', 'acceptEdits');
+    for (const [method, args] of [['agent.interrupt', {}], ['agent.approvalPreset.set', { preset: 'x' }], ['agent.permissionMode.set', { mode: 'x' }]] as const) {
+      await expect(f.gateway.request('phone', method, { agentId: 'unknown', ...args })).rejects.toThrow('stale');
+      await expect(f.gateway.request('stranger', method, { agentId: 'agent', ...args })).rejects.toThrow('authorized');
+    }
+    await expect(f.gateway.request('phone', 'agent.permissionMode.set', { agentId: 'agent', mode: 'x', extra: 1 })).rejects.toThrow();
+  });
+  it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
+    const f = fixture(); await f.pair();
+    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security' };
+    await f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input });
+    expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
+    await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'unknown', input })).rejects.toThrow('stale');
+    await expect(f.gateway.request('stranger', 'agent.review.start', { agentId: 'agent', input })).rejects.toThrow('authorized');
+    for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'claude' }]) {
+      await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input: bad })).rejects.toThrow();
+    }
+    const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };
+    await f.gateway.request('phone', 'prompt.submit', { target, text: '/delegate', clientCommandId: randomUUID(), options: { delegation } });
+    expect(f.port.submit).toHaveBeenLastCalledWith('agent', '/delegate', 'mobile:phone', { delegation });
+    await expect(f.gateway.request('phone', 'prompt.submit', { target, text: '/delegate', clientCommandId: randomUUID(), options: { delegation: { startingContext: 'copy' } } })).rejects.toThrow();
+  });
+  it('forwards composer options with a prompt and treats different options as a different command', async () => {
+    const f = fixture(); await f.pair();
+    const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { model: 'gpt', reasoningEffort: 'high', serviceTier: null, planMode: true } };
+    await f.gateway.request('phone', 'prompt.submit', command);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', 'Plan it', 'mobile:phone', command.options);
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, planMode: false } })).rejects.toThrow('reused');
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), options: { cwd: '/etc' } })).rejects.toThrow();
+  });
+  it('hands phone attachments to the laptop with the prompt and rejects oversized or malformed ones', async () => {
+    const f = fixture(); await f.pair();
+    const photo = { type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: Buffer.from('jpeg').toString('base64') };
+    const command = { target, text: '', clientCommandId: randomUUID(), attachments: [photo] };
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', '', 'mobile:phone', undefined, [{ ...photo, data: Buffer.from('jpeg') }]);
+    // The ledger keeps a fingerprint, never the bytes.
+    expect(JSON.stringify(f.saved())).not.toContain(photo.data);
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), text: '', attachments: [] })).rejects.toThrow('text or an attachment');
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: 'not base64!' }] })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: Buffer.alloc(2_600_000).toString('base64') }] })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: Array(6).fill(photo) })).rejects.toThrow();
+  });
   it('rejects a provider reset for another live session, even if it has the selected agent ID', async () => {
     const f = fixture(); await f.pair();
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: 'current-thread' } }] });
@@ -144,7 +207,7 @@ describe('companion authorization gateway', () => {
     const command = { target, text: 'Reply once', clientCommandId: randomUUID() };
     const results = await Promise.all([f.gateway.request('phone', 'prompt.submit', command), f.gateway.request('phone', 'prompt.submit', command)]);
     expect(results).toEqual([expect.objectContaining({ state: 'accepted' }), expect.objectContaining({ state: 'accepted' })]);
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', 'Reply once', 'mobile:phone');
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', 'Reply once', 'mobile:phone', undefined);
     const restored = new CompanionGateway('host', f.saved(), f.port);
     expect(await restored.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'accepted' });
     await restored.request('phone', 'prompt.submit', command);
@@ -175,6 +238,6 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
     await f.gateway.request('phone', 'prompt.submit', { target: remote, text: 'Remote prompt', clientCommandId: randomUUID() });
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('remote-agent', 'Remote prompt', 'mobile:phone');
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('remote-agent', 'Remote prompt', 'mobile:phone', undefined);
   });
 });

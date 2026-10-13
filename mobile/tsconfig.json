@@ -2,9 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@workspace/core/*": ["../core/src/*"],
-      "@workspace/vue/*": ["../vue/src/*"]
+      "@workspace/core/*": ["../core/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "*.ts"]
+  "include": ["src/**/*.ts"]
 }

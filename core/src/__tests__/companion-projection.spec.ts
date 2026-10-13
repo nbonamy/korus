@@ -47,16 +47,25 @@ describe('companion workspace projection', () => {
     expect(wire).toContain('"label":"notes"');
     expect(projectCompanionWorkspace({ teams, agents, repositoryIcons: icons })).toStrictEqual(projected);
   });
+  it('shares model favorites with the workspace', () => {
+    const favorites = [{ backend: 'codex' as const, modelId: 'gpt', reasoningEffort: 'high', serviceTier: null }];
+    expect(projectCompanionWorkspace({ teams, agents: [], modelFavorites: favorites }).modelFavorites).toStrictEqual(favorites);
+    expect(projectCompanionWorkspace({ teams, agents: [] }).modelFavorites).toStrictEqual([]);
+  });
+  it('shares the last model and permission choice but no sandbox or approval policy', () => {
+    const [first] = projectCompanionWorkspace({ teams, repositoryIcons: {}, agents: [agent('a', { backendDefaults: { kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access', approvalPolicy: 'never', sandboxMode: 'danger-full-access' } })] }).agents;
+    expect(first!.backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access' });
+  });
   it('keeps only presentation fields', () => {
     const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
     expect(first).not.toHaveProperty('mcpSessionId');
-    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder'];
+    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults'];
     expect(Object.keys(first!).every((key) => allowed.includes(key))).toBe(true);
   });
 
   it('leaves mission-owned workers out of the list, like the desktop sidebar', () => {
     const missions = [{ execution: { runs: [{ workerId: 'worker' }, {}] } }] as unknown as AppSnapshot['missions'];
-    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})], general: { repositoryIcons: { a: 'b' } } as unknown as AppSnapshot['general'], missions });
+    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})], general: { repositoryIcons: { a: 'b' }, modelFavorites: [] } as unknown as AppSnapshot['general'], missions });
     expect(workspace.agents.map((candidate) => candidate.id)).toStrictEqual(['keep']);
     expect(workspace.repositoryIcons).toStrictEqual({ a: 'b' });
     expect(companionWorkspaceOf({ teams, agents: [agent('keep', {})], general: { repositoryIcons: {} } as unknown as AppSnapshot['general'] }).agents).toHaveLength(1);

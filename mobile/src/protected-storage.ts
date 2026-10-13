@@ -1,26 +1,13 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import type { CodexComposerState } from '@codex-app-sdk/vue';
+/** A prompt draft as the composer holds it. */
+export type DraftState = { text: string; selectionStart: number; selectionEnd: number };
 
-export type DraftRecord = { drafts: Record<string, CodexComposerState>; uncertain: Record<string, boolean>; commandIds?: Record<string, string>; submittedTexts?: Record<string, string> };
+export type DraftRecord = { drafts: Record<string, DraftState>; uncertain: Record<string, boolean>; commandIds?: Record<string, string>; submittedTexts?: Record<string, string> };
 export type DraftStore = { read(): Promise<unknown>; write(record: DraftRecord): Promise<void> };
 export type ProtectedVault = {
   read(options: { key: string }): Promise<{ value: string | null }>;
   write(options: { key: string; value: string }): Promise<void>;
   remove(options: { key: string }): Promise<void>;
 };
-export const protectedVault = registerPlugin<ProtectedVault>('CompanionVault');
-
-/** Production storage exists only on native hosts; credentials never fall back to browser storage. */
-export function createNativeDraftStore(vault = protectedVault): DraftStore {
-  if (!Capacitor.isNativePlatform()) throw new Error('Protected storage requires a native host.');
-  return {
-    async read() {
-      const { value } = await vault.read({ key: 'drafts' });
-      return value === null ? null : JSON.parse(value);
-    },
-    async write(record) { await vault.write({ key: 'drafts', value: JSON.stringify(record) }); },
-  };
-}
 
 export function restoreDraftRecord(value: unknown): DraftRecord {
   const restored: DraftRecord = { drafts: {}, uncertain: {} };

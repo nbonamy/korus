@@ -197,7 +197,7 @@ only on loopback and no certificate is involved. On start it prints its identity
 `APP_COMPANION_RELAY_PEER_ID`. Start the desktop app once beforehand so the laptop has an
 identity. It rebuilds the relay bundle on every start.
 
-The native companion connects to the owning laptop daemon through a WSS relay. The relay
+The iOS companion connects to the owning laptop daemon through a WSS relay. The relay
 is deployment configuration shared by the laptop and the phone build:
 
 ```bash
@@ -205,33 +205,11 @@ APP_COMPANION_RELAY_URL=wss://relay.example
 APP_COMPANION_RELAY_PEER_ID=<relay identity printed by the relay at startup>
 ```
 
-The daemon reads them at runtime (desktop app environment or `.env`). The phone build
-bakes the same two values in when Vite builds `mobile/`, from the CI environment or the
-repository `.env`: set them as GitHub variables for the production pipeline, and rebuild
-the phone app whenever they change. With a relay configured, Settings → Connections →
+The daemon reads them at runtime (desktop app environment or `.env`); set them as GitHub
+variables for the production pipeline. With a relay configured, Settings → Connections →
 Mobile access offers Pair phone, which shows a short code like `K7QD-M2XP` (and a QR code
-of it). Enter or scan it in the companion app; a new phone then needs your approval
-on the desktop, which grants it every team and prompt sending. Device dictation uses the native keyboard.
-
-```bash
-npm run build:ios:simulator -w @workspace/mobile
-npm run build:android:debug -w @workspace/mobile
-npm run build:android:release -w @workspace/mobile
-```
-
-The iOS command requires macOS/Xcode and produces an ad hoc signed simulator app.
-Android commands require SDK 36 and Java 21; the release APK requires your Android
-signing configuration before device distribution. Open the checked-in Xcode project
-for a device archive with your Apple development team. Build outputs stay under
-`mobile/.native-build/` and the Android project's ignored build directories.
-
-For a local native acceptance run, build the backend, then run
-`npm run test:native-harness -w @workspace/mobile`. This opt-in fixture uses an
-isolated daemon/home and existing Korus Codex authentication, creates a test TLS CA,
-and saves a short-lived pairing code in ignored evidence. Trust that CA only in an
-isolated simulator. Stopping the fixture removes its copied authentication and
-private pairing code. It establishes local native behavior; cellular acceptance uses
-the operator's public relay and a physical phone.
+of it). Entering it in the companion app pairs the phone; a new phone then needs your
+approval on the desktop, which grants it every team and prompt sending.
 
 Relay operators build the standalone artifact with
 `npm run build:relay -w @workspace/backend`. Container packaging lives in
