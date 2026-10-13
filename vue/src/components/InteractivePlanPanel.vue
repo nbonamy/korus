@@ -1,19 +1,6 @@
 <template>
   <section class="interactive-plan-panel" :aria-label="t('htmlPlan.review')">
-    <div class="interactive-plan-panel__toolbar">
-      <span>{{ t('htmlPlan.revision', { revision: plan.revision }) }}</span>
-      <button class="app-button" type="button" @click="fallback = !fallback">
-        {{ t(fallback ? 'htmlPlan.interactive' : 'htmlPlan.readable') }}
-      </button>
-      <button class="app-button" type="button" @click="copyPlan">
-        {{ t('htmlPlan.copy') }}
-      </button>
-    </div>
-    <pre v-if="fallback" class="interactive-plan-panel__fallback">{{
-      readable
-    }}</pre>
     <iframe
-      v-else
       ref="frame"
       :key="identity"
       :title="plan.document.title"
@@ -21,38 +8,51 @@
       referrerpolicy="no-referrer"
       :srcdoc="srcdoc"
     />
-    <footer>
-      <span role="status">{{ status }}</span>
-      <span v-if="error" role="alert">{{ error }}</span>
-      <button
-        v-if="save.error.value"
-        class="app-button"
-        type="button"
-        @click="retrySave"
-      >
-        {{ t('htmlPlan.retry') }}
-      </button>
-      <button
-        class="app-button app-button--primary"
-        type="button"
-        :disabled="locked || submitting || !respond"
-        @click="submit"
-      >
-        {{ t('htmlPlan.submit') }}
-      </button>
-    </footer>
+    <PlanReviewFooter
+      :comments="[]"
+      :disabled="locked || submitting || save.saving.value || Boolean(error) || nativeApprovalDisabled"
+      :show-comment-help="false"
+      :show-approval-actions="nativeApprovalAvailable === true"
+      :confirm-label="t('htmlPlan.implement')"
+      @confirm="emit('confirmPlan')"
+      @cancel="emit('cancelPlan')"
+    >
+      <template #status>
+        <span v-if="status" role="status">{{ status }}</span>
+        <span v-if="error" role="alert">{{ error }}</span>
+        <button
+          v-if="save.error.value"
+          class="app-button"
+          type="button"
+          @click="retrySave"
+        >
+          {{ t('htmlPlan.retry') }}
+        </button>
+      </template>
+      <template #secondary-actions>
+        <button
+          class="app-button"
+          :class="nativeApprovalAvailable ? 'app-button--secondary' : 'app-button--primary'"
+          type="button"
+          :disabled="locked || submitting || !respond"
+          @click="submit"
+        >
+          {{ t('htmlPlan.submit') }}
+        </button>
+      </template>
+    </PlanReviewFooter>
   </section>
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
-  interactivePlanMarkdown,
   type InteractivePlan,
   type InteractivePlanResponse,
   type PlanAnswers,
 } from '@workspace/core/interactive-plan';
 import { useDebouncedSave } from '../shared/use-debounced-save';
+import PlanReviewFooter from './PlanReviewFooter.vue';
 import {
   interactivePlanFrame,
   planFrameAnswers,
@@ -60,11 +60,13 @@ import {
 } from './interactive-plan-frame';
 const props = defineProps<{
   plan: InteractivePlan;
+  nativeApprovalAvailable?: boolean;
+  nativeApprovalDisabled?: boolean;
   respond?: (response: InteractivePlanResponse) => Promise<InteractivePlan>;
 }>();
+const emit = defineEmits<{ confirmPlan: []; cancelPlan: [] }>();
 const { t } = useI18n();
 const frame = ref<HTMLIFrameElement>();
-const fallback = ref(false);
 const submitting = ref(false);
 const submitError = ref('');
 const identity = computed(
@@ -84,9 +86,6 @@ const theme = ref<PlanFrameTheme>({
   primary: 'initial',
 });
 const srcdoc = ref('');
-const readable = computed(() =>
-  interactivePlanMarkdown({ ...props.plan, answers: answers.value }),
-);
 const error = computed(() => submitError.value || save.error.value);
 const save = useDebouncedSave(
   async (edit: {
@@ -113,11 +112,7 @@ const status = computed(() =>
       ? t('htmlPlan.deliveryPending')
       : locked.value
         ? t('htmlPlan.submitted')
-        : save.saving.value
-          ? t('htmlPlan.saving')
-          : save.saved.value
-            ? t('htmlPlan.saved')
-            : t('htmlPlan.feedbackOnly'),
+        : '',
 );
 function render() {
   srcdoc.value = interactivePlanFrame(
@@ -206,24 +201,19 @@ async function submit() {
     submitting.value = false;
   }
 }
-async function copyPlan() {
-  try {
-    await navigator.clipboard.writeText(readable.value);
-  } catch {
-    fallback.value = true;
-  }
-}
 let observer: MutationObserver | undefined;
 onMounted(() => {
   window.addEventListener('message', receive);
   const updateTheme = () => {
     const css = getComputedStyle(document.documentElement);
-    theme.value = {
+    const nextTheme: PlanFrameTheme = {
       background: css.getPropertyValue('--color-surface-lowest').trim(),
       foreground: css.getPropertyValue('--color-text').trim(),
       border: css.getPropertyValue('--color-border').trim(),
       primary: css.getPropertyValue('--color-primary').trim(),
     };
+    if (Object.keys(nextTheme).every(key => nextTheme[key as keyof PlanFrameTheme] === theme.value[key as keyof PlanFrameTheme])) return;
+    theme.value = nextTheme;
     render();
   };
   updateTheme();
@@ -248,32 +238,13 @@ onBeforeUnmount(() => {
   color: var(--color-text);
   background: var(--color-surface-lowest);
 }
-.interactive-plan-panel__toolbar,
-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-6);
-  font-size: var(--font-size-12);
-}
 iframe {
   flex: 1;
   min-height: 0;
   width: 100%;
   border: 0;
 }
-.interactive-plan-panel__fallback {
-  flex: 1;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  padding: var(--space-6);
-}
-footer {
-  border-top: 1px solid var(--color-border);
-}
-footer [role='alert'] {
+[role='alert'] {
   color: var(--color-error);
 }
 </style>

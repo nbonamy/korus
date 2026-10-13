@@ -27,6 +27,14 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it.each([true, false])('retains interactive Plan-mode preference after a host restart: %s', async useInteractivePlans => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans } });
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.useInteractivePlans).toBe(useInteractivePlans);
+  });
   it.each([false, true])('retains delegation preferences and worker context after reload (execution bound: %s)', async bound => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
@@ -1371,7 +1379,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

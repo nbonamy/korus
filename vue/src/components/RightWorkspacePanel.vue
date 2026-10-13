@@ -263,19 +263,20 @@
           <span>{{ $t('surface.rightWorkspacePanel.selectAFileFromTheExplorer') }}</span>
         </div>
 
-    <div v-if="activeTab === 'plan' && currentInteractivePlan && planPanel" class="interactive-plan-switch">
-      <button class="app-button" type="button" @click="nativePlanVisible = !nativePlanVisible">{{ $t(nativePlanVisible ? 'htmlPlan.interactive' : 'htmlPlan.native') }}</button>
-    </div>
     <InteractivePlanPanel
       v-if="tabs.includes('plan') && currentInteractivePlan"
-      v-show="activeTab === 'plan' && !nativePlanVisible"
+      v-show="activeTab === 'plan'"
       :key="`${agent.id}:${currentInteractivePlan.id}:${currentInteractivePlan.revision}`"
       :plan="currentInteractivePlan"
       :respond="interactivePlanResponder"
+      :native-approval-available="Boolean(currentNativeReview && planPanel?.state === 'idle')"
+      :native-approval-disabled="planUpdating"
+      @confirm-plan="emit('confirmPlan')"
+      @cancel-plan="emit('cancelPlan')"
     />
     <PlanReviewPanel
-      v-if="tabs.includes('plan') && planPanel"
-      v-show="activeTab === 'plan' && (!currentInteractivePlan || nativePlanVisible)"
+      v-if="tabs.includes('plan') && planPanel && !currentInteractivePlan"
+      v-show="activeTab === 'plan'"
       :panel="planPanel"
       :plan-updating="planUpdating"
       @cancel-plan="emit('cancelPlan')"
@@ -449,6 +450,7 @@ const props = withDefaults(defineProps<{
   gitStatus?: AgentGitStatus | null;
   planPanel?: SidePanelMarkdownState | null;
   planUpdating?: boolean;
+  interactivePlansEnabled?: boolean;
   respondToInteractivePlan?: (agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => Promise<import('@workspace/core/interactive-plan').InteractivePlan>;
 
   diffPanels?: Partial<Record<RightWorkspaceDiffTab, RightWorkspaceDiffPanel>>;
@@ -504,12 +506,15 @@ const interactivePlanResponder = computed(() => {
   const respond = props.respondToInteractivePlan;
   return respond ? (response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => respond(agentId, response) : undefined;
 });
-const nativePlanVisible = ref(false);
 const currentInteractivePlan = computed(() => {
+  if (props.interactivePlansEnabled === false) return null;
   const plan = props.agent.interactivePlan;
   return plan?.agentId === props.agent.id && plan.conversationId === agentConversationId(props.agent) ? plan : null;
 });
-watch(() => [props.agent.id, currentInteractivePlan.value?.id, currentInteractivePlan.value?.revision], () => { nativePlanVisible.value = false; });
+const currentNativeReview = computed(() => {
+  const review = props.agent.planReview;
+  return review?.status === 'pending' && review.conversationId === agentConversationId(props.agent) ? review : null;
+});
 
 const codeReviewInstructions = defineModel<string>('codeReviewInstructions', { default: '' });
 const emit = defineEmits<{

@@ -561,6 +561,7 @@ function isGeneralSettings(value: unknown): boolean {
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
+    optional(value, 'useInteractivePlans', isBoolean) &&
     optional(value, 'worktreeDelegationStartingContext', candidate => includes(['conversation', 'handoff'], candidate)) &&
     optional(value, 'worktreeDelegationInstructions', isString) &&
     isRecordMapOf(value.repositoryIcons, isString) &&

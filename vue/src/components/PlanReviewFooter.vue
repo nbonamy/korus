@@ -1,13 +1,15 @@
 <template>
   <footer class="plan-review-footer">
     <div class="plan-review-footer__status">
-      <p
-        v-if="comments.length === 0"
-        class="plan-review-footer__help"
-      >
-        <IconCirclePlus aria-hidden="true" />
-        <span>{{ t('chat.planReview.commentHelp') }}</span>
-      </p>
+      <slot name="status">
+        <p
+          v-if="showCommentHelp && comments.length === 0"
+          class="plan-review-footer__help"
+        >
+          <IconCirclePlus aria-hidden="true" />
+          <span>{{ t('chat.planReview.commentHelp') }}</span>
+        </p>
+      </slot>
     </div>
 
     <div
@@ -50,6 +52,7 @@
 
     <div class="plan-review-footer__actions">
       <button
+        v-if="showApprovalActions"
         class="app-button app-button--tertiary plan-review-footer__button plan-review-footer__button--cancel"
         type="button"
         :disabled="disabled"
@@ -57,6 +60,7 @@
       >
         {{ t('chat.planReview.cancel') }}
       </button>
+      <slot name="secondary-actions" />
       <button
         v-if="comments.length"
         class="app-button app-button--secondary plan-review-footer__button"
@@ -67,13 +71,13 @@
         {{ t('chat.planReview.clear') }}
       </button>
       <button
-        v-else
+        v-else-if="showApprovalActions"
         class="app-button app-button--primary plan-review-footer__button plan-review-footer__button--primary"
         type="button"
         :disabled="disabled"
         @click="emit('confirm')"
       >
-        {{ t('chat.planReview.confirm') }}
+        {{ confirmLabel || t('chat.planReview.confirm') }}
       </button>
       <AnnotationSendButton
         v-if="comments.length"
@@ -96,8 +100,13 @@ import type { PlanReviewComment } from './side-panel';
 withDefaults(defineProps<{
   comments: PlanReviewComment[];
   disabled?: boolean;
+  showCommentHelp?: boolean;
+  showApprovalActions?: boolean;
+  confirmLabel?: string;
 }>(), {
   disabled: false,
+  showCommentHelp: true,
+  showApprovalActions: true,
 });
 
 const emit = defineEmits<{
@@ -249,8 +258,14 @@ function commentTitle(comment: PlanReviewComment): string {
 .plan-review-footer__actions {
   --annotation-send-button-height: var(--space-16);
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-3);
+}
+
+.plan-review-footer__actions :deep(.app-button) {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .plan-review-footer__button {

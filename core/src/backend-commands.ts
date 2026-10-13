@@ -50,7 +50,6 @@ export const codexBackendCommands: BackendCommandSummary[] = [
       placeholder: 'Describe the goal',
     },
   },
-  htmlPlanCommand('codex'),
   ...worktreeDelegationCommands('codex'),
 ];
 
@@ -91,14 +90,8 @@ export const claudeBackendCommands: BackendCommandSummary[] = [
     slashName: 'plan',
     submitOnSelect: true,
   },
-  htmlPlanCommand('claude'),
   ...worktreeDelegationCommands('claude'),
 ];
-
-function htmlPlanCommand(backend: AgentBackend): BackendCommandSummary {
-  return { id: 'app.html-plan', backend, name: 'html-plan', displayName: 'Interactive plan',
-    description: 'Create an interactive plan with decisions and section feedback.', slashName: 'html-plan', submitOnSelect: true };
-}
 
 function worktreeDelegationCommands(backend: AgentBackend): BackendCommandSummary[] {
   return ['delegate', 'worktree'].map((name) => ({

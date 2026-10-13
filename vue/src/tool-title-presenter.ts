@@ -14,6 +14,8 @@ const SIMULATOR_ACTIONS = new Set([
 const TOOL_KEYS: Record<string, string> = {
   simulator: 'simulator',
   'read-skill': 'readSkill',
+  'publish-html-plan': 'publishHtmlPlan',
+  'read-html-plan': 'readHtmlPlan',
   'wait-tasks': 'waitTasks',
   'complete-task': 'completeTask',
   'cancel-task': 'cancelTask',

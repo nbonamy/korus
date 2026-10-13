@@ -68,7 +68,7 @@ import { requestHandoffNote } from './agents/handoff-note';
 import { handoffInProgress, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import { InteractivePlanService } from './agents/interactive-plan-service';
-import { isInteractivePlanResponse, type PublishInteractivePlan } from '@workspace/core/interactive-plan';
+import { interactivePlanMarkdown, isInteractivePlanResponse, type PublishInteractivePlan } from '@workspace/core/interactive-plan';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
@@ -842,14 +842,74 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.debugPlanReadyForReviewInject: {
-        const agentId = requireAgentId(message.params);
+        const params = requireRecord(message.params);
+        const format = params.format ?? 'text';
+        if (format !== 'text' && format !== 'html') throw new Error('Plan fixture format must be text or html.');
+        const agentId = requireAgentId(params);
         const agent = this.snapshot.agents.find((candidate) => candidate.id === agentId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
 
+        if (format === 'html') {
+          const plan = await this.interactivePlans.publish(agent, {
+            document: {
+              title: 'Rename product to Korus',
+              sections: [
+                {
+                  id: 'identity', claim: 'Users see one product identity',
+                  exhibit: {
+                    title: 'Product name and app chrome',
+                    text: 'Before: codex-claw. After: Korus. The app navigation and workflows stay familiar.',
+                    screens: [
+                      { label: 'Before', title: 'codex-claw', navigation: ['Home', 'Files', 'Run', 'Settings'] },
+                      { label: 'After', title: 'Korus', navigation: ['Home', 'Files', 'Run', 'Settings'], activeItem: 'Home' },
+                    ],
+                  },
+                  children: [{ id: 'commands', claim: 'Commands and packages use korus', exhibit: { title: 'Naming', text: 'codex-claw → korus' } }],
+                },
+                {
+                  id: 'compatibility', claim: 'Existing workflows keep working',
+                  detail: 'Keep legacy aliases and read existing settings.',
+                  decision: {
+                    question: 'How should legacy names behave?',
+                    options: [{ id: 'keep', label: 'Keep aliases and migrate settings' }, { id: 'clean', label: 'Use new names only' }],
+                    proposed: 'keep',
+                  },
+                },
+                {
+                  id: 'data', claim: 'Existing user data stays intact',
+                  detail: 'Read existing settings. Copy them only when the Korus settings folder does not exist; preserve the original files.',
+                  exhibit: {
+                    title: 'Migration settings', text: 'Choose the existing settings folder and review the copy before importing.',
+                    screens: [{ label: 'Import settings', title: 'Move to Korus', content: ['Your original files stay untouched.'], fields: [{ label: 'Existing settings', value: '~/.codex-claw' }, { label: 'Destination', value: '~/.korus' }], actions: ['Review import', 'Skip'] }],
+                  },
+                },
+                {
+                  id: 'review', claim: 'Users can review what will change',
+                  exhibit: {
+                    title: 'Import preview', text: 'Review the settings, shortcuts and history that will be copied.',
+                    screens: [{ label: 'Review before importing', title: 'Ready to import', items: [{ title: 'Preferences', detail: 'Theme, editor and workflow settings' }, { title: 'Command aliases', detail: 'Existing commands keep working' }, { title: 'Conversation history', detail: 'Keep all saved conversations' }], actions: ['Import settings', 'Back'] }],
+                  },
+                },
+                {
+                  id: 'verification', claim: 'The renamed product passes its checks',
+                  exhibit: { title: 'Verification', text: 'npm run typecheck\nnpm test -- --maxWorkers=2\nkorus --version' },
+                  children: [{ id: 'fresh', claim: 'Fresh installs use the Korus name', detail: 'Launch with an empty settings folder and verify the app title and command.' }, { id: 'existing', claim: 'Existing installs retain their settings', detail: 'Launch with legacy settings and verify the imported values without modifying the original files.' }],
+                },
+              ],
+            },
+          });
+          this.applyAndEmitBackendEvent({
+            agentId, backend: agent.backend, type: 'plan.readyForReview',
+            turnId: `debug-html-plan-review-${Date.now()}`,
+            payload: { markdown: interactivePlanMarkdown(plan) },
+          });
+          return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+        }
+        delete agent.interactivePlan;
         const markdown = [
-          '# Debug plan review',
+          '# Debug text plan review',
           '',
           '## Summary',
           '',

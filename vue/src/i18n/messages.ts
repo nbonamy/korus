@@ -3,7 +3,8 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
-    htmlPlan: { deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', revision: 'Revision {revision}', interactive: 'Interactive plan', readable: 'Readable plan', native: 'Native plan review', copy: 'Copy plan', submit: 'Submit feedback', submitted: 'Feedback submitted · awaiting revision', submitting: 'Submitting…', saving: 'Saving…', saved: 'Answers saved', feedbackOnly: 'Feedback requests a revision. Implementation requires separate approval.', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
+    planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with decisions and section comments before approving implementation.' },
+    htmlPlan: { deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', submitted: 'Feedback submitted · awaiting revision', submitting: 'Submitting…', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
@@ -1257,6 +1258,16 @@ export const messages = {
               completed: 'Loaded skill {target}',
               failed: 'Could not load skill {target}',
               running: 'Loading skill {target}',
+            },
+            publishHtmlPlan: {
+              completed: 'Published interactive plan',
+              failed: 'Could not publish interactive plan',
+              running: 'Publishing interactive plan',
+            },
+            readHtmlPlan: {
+              completed: 'Read interactive plan',
+              failed: 'Could not read interactive plan',
+              running: 'Reading interactive plan',
             },
             computerUseLaunchApp: {
               completed: 'Launched {target}',

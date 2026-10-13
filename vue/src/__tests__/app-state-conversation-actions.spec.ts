@@ -824,20 +824,6 @@ describe('useAppState', () => {
     expect(state.activeQueuedPrompts.value).toStrictEqual([]);
   });
 
-  it('starts interactive planning through the owning native Plan-mode prompt', async () => {
-    const snapshot = createInitialSnapshot();
-    const sendPrompt = vi.fn().mockResolvedValue(snapshot);
-    stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(snapshot), sendPrompt, onEvent: vi.fn() } satisfies Partial<AppApi> });
-    const state = useAppState();
-    await state.loadSnapshot();
-    state.backendModels.value = [];
-    state.selectedModelId.value = null;
-    state.selectedReasoningEffort.value = null;
-    await state.sendPrompt('/html-plan schedule messages');
-    expect(state.planMode.value).toBe(true);
-    expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('agent-dina', expect.stringContaining('schedule messages\n\nCreate an interactive HTML plan'), { planMode: true });
-  });
-
   it('strips slash plan arguments and submits the prompt in plan mode', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const updatedSnapshot = createInitialSnapshot();

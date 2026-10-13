@@ -627,13 +627,6 @@ export function useAppState() {
       return;
     }
 
-    const htmlPlan = /^\/html-plan(?:\s+(.*))?$/s.exec(prompt.trim());
-    if (htmlPlan) {
-      setPlanModeForAgent(agentId, true);
-      await sendPromptForAgent(agentId, `${htmlPlan[1]?.trim() || 'Plan the change we discussed.'}\n\nCreate an interactive HTML plan. Load korus-html-plan with read-skill and publish it using publish-html-plan. Stop after planning; do not implement.`, submissionOptions);
-      return;
-    }
-
     const parsedPlanCommand = parsePlanSlashCommand(prompt);
     if (parsedPlanCommand) {
       setPlanModeForAgent(agentId, true);

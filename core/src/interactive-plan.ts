@@ -1,9 +1,19 @@
 /** Planning data only: presentation never contains executable agent-authored HTML. */
+export type PlanMockupScreen = {
+  label: string;
+  title: string;
+  navigation?: string[];
+  activeItem?: string;
+  content?: string[];
+  actions?: string[];
+  fields?: { label: string; value: string }[];
+  items?: { title: string; detail?: string }[];
+};
 export type PlanSection = {
   id: string;
   claim: string;
   detail?: string;
-  exhibit?: { title: string; text: string };
+  exhibit?: { title: string; text: string; screens?: PlanMockupScreen[] };
   decision?: {
     question: string;
     options: { id: string; label: string }[];
@@ -59,6 +69,77 @@ const key = (v: unknown): v is string =>
 const integer = (v: unknown, min = 0): v is number =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= min;
 
+function isMockupScreen(value: unknown): value is PlanMockupScreen {
+  if (
+    !record(value) ||
+    Object.keys(value).some(
+      (key) =>
+        ![
+          "label",
+          "title",
+          "navigation",
+          "activeItem",
+          "content",
+          "actions",
+          "fields",
+          "items",
+        ].includes(key),
+    ) ||
+    !text(value.label, 80) ||
+    !text(value.title, 120)
+  )
+    return false;
+  for (const [field, maxItems, maxLength] of [
+    ["navigation", 8, 80],
+    ["content", 8, 300],
+    ["actions", 3, 80],
+  ] as const) {
+    const items = value[field];
+    if (
+      items !== undefined &&
+      (!Array.isArray(items) ||
+        items.length < 1 ||
+        items.length > maxItems ||
+        !items.every((item) => text(item, maxLength)))
+    )
+      return false;
+  }
+  if (
+    value.fields !== undefined &&
+    (!Array.isArray(value.fields) ||
+      value.fields.length < 1 ||
+      value.fields.length > 8 ||
+      !value.fields.every(
+        (field) =>
+          record(field) &&
+          Object.keys(field).every((key) => ["label", "value"].includes(key)) &&
+          text(field.label, 120) &&
+          text(field.value, 300),
+      ))
+  )
+    return false;
+  if (
+    value.items !== undefined &&
+    (!Array.isArray(value.items) ||
+      value.items.length < 1 ||
+      value.items.length > 8 ||
+      !value.items.every(
+        (item) =>
+          record(item) &&
+          Object.keys(item).every((key) => ["title", "detail"].includes(key)) &&
+          text(item.title, 120) &&
+          (item.detail === undefined || text(item.detail, 300)),
+      ))
+  )
+    return false;
+  return (
+    value.activeItem === undefined ||
+    (text(value.activeItem, 80) &&
+      Array.isArray(value.navigation) &&
+      value.navigation.includes(value.activeItem))
+  );
+}
+
 export function planSections(document: InteractivePlanDocument): PlanSection[] {
   const flatten = (sections: PlanSection[]): PlanSection[] =>
     sections.flatMap((section) => [
@@ -95,7 +176,12 @@ export function isInteractivePlanDocument(
           s.exhibit !== undefined &&
           (!record(s.exhibit) ||
             !text(s.exhibit.title, 200) ||
-            !text(s.exhibit.text, 20000))
+            !text(s.exhibit.text, 20000) ||
+            (s.exhibit.screens !== undefined &&
+              (!Array.isArray(s.exhibit.screens) ||
+                s.exhibit.screens.length < 1 ||
+                s.exhibit.screens.length > 3 ||
+                !s.exhibit.screens.every(isMockupScreen))))
         )
           return false;
         if (s.decision !== undefined) {
@@ -260,4 +346,15 @@ export function interactivePlanMarkdown(plan: InteractivePlan): string {
       )
       .join("\n");
   return `# ${plan.document.title}\n\nPlan ${plan.id} · revision ${plan.revision}\n\n${render(plan.document.sections, 2)}`;
+}
+
+/** App-owned presentation policy, carried as hidden context through provider adapters. */
+export function planningWorkflowPrompt(
+  prompt: string,
+  useInteractivePlans: boolean,
+): string {
+  const guidance = useInteractivePlans
+    ? "Use an interactive plan for this planning turn. Load korus-html-plan with read-skill and publish the plan using publish-html-plan. If this conversation already has a plan, read-html-plan and revise it using its planId and expectedRevision. Keep the provider's native Plan mode and approval semantics. Stop after proposing the plan; publishing or feedback never approves implementation."
+    : "Use the provider's normal text plan and approval workflow for this turn. Do not publish or revise an interactive plan. Stop after proposing the plan; do not implement it.";
+  return `${prompt}\n\n<context>\n${guidance}\n</context>`;
 }

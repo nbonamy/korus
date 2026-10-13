@@ -54,6 +54,7 @@
       :git-panel="effectiveGitReviewPanelFor(agent)"
       :git-status="snapshot.agentGitStatuses[agent.id] ?? null"
       :plan-panel="rightWorkspaceFor(agent.id).planPanel"
+      :interactive-plans-enabled="snapshot.general.useInteractivePlans !== false"
       :respond-to-interactive-plan="props.respondToInteractivePlan"
       :plan-updating="isPlanPreviewUpdatingFor(agent.id)"
       :file-panels="rightWorkspaceFor(agent.id).filePanels"

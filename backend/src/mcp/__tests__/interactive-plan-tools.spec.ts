@@ -92,6 +92,7 @@ describe("interactive planning owning protocol boundaries", () => {
             {
               id: "delivery",
               claim: "Users choose delivery.",
+              exhibit: { title: "Composer", text: "Choose when to send.", screens: [{ label: "Compose", title: "New message", content: ["Review the release notes"], actions: ["Schedule", "Send now"] }] },
               decision: {
                 question: "How?",
                 options: [
@@ -110,6 +111,7 @@ describe("interactive planning owning protocol boundaries", () => {
           (await call(url, snapshot.agents[1]!.id, "read-html-plan")).isError,
         ).toBe(true);
         const plan = agent.interactivePlan!;
+        expect(plan.document).toStrictEqual(document);
         const response = {
           planId: plan.id,
           revision: 1,

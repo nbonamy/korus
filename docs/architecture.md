@@ -475,11 +475,16 @@ so browser tools keep working without changing the user's selection.
 ## Interactive planning
 
 Interactive plans are app-owned artifacts bound to an agent, provider conversation,
-plan ID and revision. Structured claims, text exhibits and decision options generate
+plan ID and revision. Structured claims, text exhibits, bounded static UI mockups and decision options generate
 an HTML page using an app-owned runtime; agent-authored HTML never executes. The
 upstream [html-plan](https://github.com/anthropics/claude-plugins-community/tree/main/html-plan)
 reference is Apache-2.0 licensed and uses localStorage plus copied Markdown feedback.
 Korus implements its own runtime to keep persistence and feedback on the owning host.
+
+The owning host’s Workflows setting chooses interactive planning by default.
+Prompt admission adds authoring guidance to ordinary Plan-mode turns as hidden
+context while retaining the native Plan-mode options and approval path. Turning
+the setting off selects native text-plan guidance for subsequent planning turns.
 
 Answers use optimistic versions, persist independently of submission and never carry
 forward to a revised document. Revision history retains earlier answers. Feedback is

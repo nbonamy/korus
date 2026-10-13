@@ -89,6 +89,55 @@ describe("interactive plan input boundaries", () => {
       ),
     ).toBe(false);
   });
+  it("accepts bounded visual mockups and rejects malformed persisted screens", () => {
+    const screen = {
+      label: "After",
+      title: "Korus",
+      navigation: ["Home", "Files"],
+      activeItem: "Home",
+      content: ["Welcome"],
+      actions: ["Open"],
+      fields: [{ label: "Destination", value: "~/.korus" }],
+      items: [{ title: "Preferences", detail: "Keep settings" }],
+    };
+    const document = {
+      title: "Rename product",
+      sections: [
+        {
+          id: "identity",
+          claim: "One identity",
+          exhibit: {
+            title: "App chrome",
+            text: "The app title becomes Korus.",
+            screens: [screen],
+          },
+        },
+      ],
+    };
+    expect(isInteractivePlanDocument(document)).toBe(true);
+    for (const screens of [
+      [],
+      Array(4).fill(screen),
+      [{ ...screen, title: 12 }],
+      [{ ...screen, navigation: Array(9).fill("Home") }],
+      [{ ...screen, activeItem: "Missing" }],
+      [{ ...screen, fields: [{ label: "Path", value: 12 }] }],
+      [{ ...screen, items: [{ title: "Entry", detail: {} }] }],
+      [{ ...screen, html: "<script>run()</script>" }],
+    ]) {
+      expect(
+        isInteractivePlanDocument({
+          ...document,
+          sections: [
+            {
+              ...document.sections[0],
+              exhibit: { ...document.sections[0]!.exhibit, screens },
+            },
+          ],
+        }),
+      ).toBe(false);
+    }
+  });
   it("distinguishes unanswered proposals and exports a readable plan with attached feedback", () => {
     expect(interactivePlanFeedback(plan, plan.answers)).toContain(
       '"answered": false',

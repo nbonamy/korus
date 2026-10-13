@@ -1303,21 +1303,65 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.text()).toContain('Generated');
   });
 
-  it('opens the owning interactive plan and keeps native approval accessible as a separate review', async () => {
+  it('opens a published interactive plan without a native preview and reopens it for a revision', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'planning' };
+    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
+    try {
+      expect(wrapper.find('iframe[title="Published proposal"]').exists()).toBe(false);
+      const published = structuredClone(snapshot);
+      published.agents[0]!.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'published', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Published proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
+      await wrapper.setProps({ snapshot: published, activeAgent: published.agents[0]! });
+      expect(wrapper.get('iframe[title="Published proposal"]').isVisible()).toBe(true);
+      expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
+      await wrapper.get('[aria-label="Close Plan tab"]').trigger('click');
+      expect(wrapper.find('iframe[title="Published proposal"]').exists()).toBe(false);
+      const revised = structuredClone(published);
+      revised.agents[0]!.interactivePlan!.revision = 2;
+      revised.agents[0]!.interactivePlan!.document.title = 'Revised proposal';
+      await wrapper.setProps({ snapshot: revised, activeAgent: revised.agents[0]! });
+      expect(wrapper.get('iframe[title="Revised proposal"]').isVisible()).toBe(true);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens the interactive plan without extra controls and retains native approval', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.backendSession = { kind: 'codex', threadId: 'planning' };
     agent.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'html-plan', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Interactive proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
-    const respondToPlanReview = vi.fn();
+    agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
+    const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, respondToPlanReview,
       sidePanelRequest: { kind: 'markdown', purpose: 'plan', title: 'Plan', content: '# Native proposal' } } });
     try {
       expect(wrapper.find('iframe[title="Interactive proposal"]').exists()).toBe(true);
       expect(respondToPlanReview).not.toHaveBeenCalled();
-      await wrapper.findAll('button').find(b => b.text() === 'Native plan review')!.trigger('click');
-      expect(wrapper.text()).toContain('Native proposal');
-      expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
-      expect(respondToPlanReview).not.toHaveBeenCalled();
+      expect(wrapper.find('[aria-label="Plan options"]').exists()).toBe(false);
+      expect(wrapper.findAll('.plan-review-footer')).toHaveLength(1);
+      expect(wrapper.get('.plan-review-footer__actions').findAll('button').map(button => [button.text(), button.classes().find(name => ['app-button--tertiary', 'app-button--secondary', 'app-button--primary'].includes(name))])).toStrictEqual([
+        ['Cancel', 'app-button--tertiary'],
+        ['Revise', 'app-button--secondary'],
+        ['Approve', 'app-button--primary'],
+      ]);
+      expect(wrapper.get('.plan-review-footer__button--primary').text()).toBe('Approve');
+      expect(wrapper.text()).not.toContain('Native proposal');
+      const awaitingRevision = structuredClone(snapshot);
+      awaitingRevision.agents[0]!.interactivePlan!.submitted = true;
+      await wrapper.setProps({ snapshot: awaitingRevision, activeAgent: awaitingRevision.agents[0]! });
+      expect(wrapper.get('.plan-review-footer__button--primary').attributes('disabled')).toBeDefined();
+      const foreignReview = structuredClone(snapshot);
+      foreignReview.agents[0]!.planReview!.conversationId = 'other-conversation';
+      await wrapper.setProps({ snapshot: foreignReview, activeAgent: foreignReview.agents[0]! });
+      expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
+      await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, useInteractivePlans: false } } });
+      expect(wrapper.find('iframe[title="Interactive proposal"]').exists()).toBe(false);
+      expect(wrapper.find('.plan-review-footer').isVisible()).toBe(true);
+      await wrapper.setProps({ snapshot });
+      await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+      await flushPromises();
+      expect(respondToPlanReview).toHaveBeenCalledExactlyOnceWith('accept', undefined);
+      expect(wrapper.emitted('sendPrompt')).toBeUndefined();
     } finally { wrapper.unmount(); }
   });
 

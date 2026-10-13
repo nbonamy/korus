@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import type { InteractivePlan } from '@workspace/core/interactive-plan';
+import { applyAppTheme } from '../../theme/apply-theme';
+import { defaultThemeSettings } from '@workspace/core/settings';
 import InteractivePlanPanel from '../InteractivePlanPanel.vue';
 
 function plan(): InteractivePlan {
@@ -81,6 +83,8 @@ describe('InteractivePlanPanel', () => {
     });
     try {
       expect(wrapper.get('iframe').attributes('sandbox')).toBe('allow-scripts');
+      expect(wrapper.findAll('button').map(button => button.text())).toStrictEqual(['Revise']);
+      expect(wrapper.find('[aria-haspopup="menu"]').exists()).toBe(false);
       expect(respond).not.toHaveBeenCalled();
       message(wrapper);
       await finishSave();
@@ -96,7 +100,7 @@ describe('InteractivePlanPanel', () => {
       });
       await wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Submit feedback')!
+        .find((b) => b.text() === 'Revise')!
         .trigger('click');
       await flushPromises();
       expect(respond).toHaveBeenLastCalledWith({
@@ -113,11 +117,41 @@ describe('InteractivePlanPanel', () => {
       expect(
         wrapper
           .findAll('button')
-          .find((b) => b.text() === 'Submit feedback')!
+          .find((b) => b.text() === 'Revise')!
           .attributes('disabled'),
       ).toBeDefined();
     } finally {
       wrapper.unmount();
+    }
+  });
+  it('keeps the frame document stable when a saved snapshot reapplies the same theme', async () => {
+    const current = plan();
+    const respond = vi.fn(async response => ({ ...current, answers: response.answers, answerVersion: 1 }));
+    const rootAttributes = [...document.documentElement.attributes].map(attribute => [attribute.name, attribute.value]);
+    applyAppTheme(defaultThemeSettings);
+    const wrapper = mount(InteractivePlanPanel, { props: { plan: current, respond }, attachTo: document.body });
+    try {
+      await flushPromises();
+      const frame = wrapper.get('iframe').element as HTMLIFrameElement;
+      const originalDocument = frame.srcdoc;
+      message(wrapper);
+      await finishSave();
+      await wrapper.setProps({ plan: await respond.mock.results[0]!.value });
+      expect(frame.srcdoc).toBe(originalDocument);
+      // App.vue reapplies the root theme when a new snapshot arrives.
+      applyAppTheme({ ...defaultThemeSettings });
+      await flushPromises();
+      expect(frame.srcdoc).toBe(originalDocument);
+      expect(wrapper.find('[role="status"]').exists()).toBe(false);
+      applyAppTheme({ ...defaultThemeSettings, mode: 'dark', id: 'app-dark' });
+      await flushPromises();
+      expect(frame.srcdoc).not.toBe(originalDocument);
+      await wrapper.setProps({ plan: { ...current, revision: 2 } });
+      expect(wrapper.get('iframe').element).not.toBe(frame);
+    } finally {
+      wrapper.unmount();
+      for (const attribute of [...document.documentElement.attributes]) document.documentElement.removeAttribute(attribute.name);
+      for (const [name, value] of rootAttributes) document.documentElement.setAttribute(name!, value!);
     }
   });
   it('rejects foreign frames, wrong ownership, stale revisions, arbitrary commands and invalid choices', async () => {
@@ -140,12 +174,9 @@ describe('InteractivePlanPanel', () => {
         message(wrapper, payload);
       await finishSave();
       expect(respond).not.toHaveBeenCalled();
-      await wrapper
-        .findAll('button')
-        .find((b) => b.text() === 'Readable plan')!
-        .trigger('click');
-      expect(wrapper.get('pre').text()).toContain('Folder (proposed)');
-      expect(wrapper.get('pre').text()).not.toContain('(selected)');
+      await wrapper.get('button').trigger('click');
+      await flushPromises();
+      expect(respond).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ action: 'submit', answers: { choices: {}, comments: {} } }));
     } finally {
       wrapper.unmount();
     }
@@ -170,7 +201,7 @@ describe('InteractivePlanPanel', () => {
       expect(wrapper.get('[role="alert"]').text()).toBe('another window');
       await wrapper
         .findAll('button')
-        .find((b) => b.text() === 'Submit feedback')!
+        .find((b) => b.text() === 'Revise')!
         .trigger('click');
       await flushPromises();
       expect(respond).toHaveBeenCalledTimes(1);

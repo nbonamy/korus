@@ -17,7 +17,60 @@ function sectionSchema(depth: number): z.ZodType<Section> {
     exhibit: z
       .strictObject({
         title: z.string().min(1).max(200),
-        text: z.string().min(1).max(20000),
+        text: z
+          .string()
+          .min(1)
+          .max(20000)
+          .describe("Readable description or code; used in text plan export."),
+        screens: z
+          .array(
+            z.strictObject({
+              label: z.string().min(1).max(80),
+              title: z.string().min(1).max(120),
+              navigation: z
+                .array(z.string().min(1).max(80))
+                .min(1)
+                .max(8)
+                .optional(),
+              activeItem: z.string().min(1).max(80).optional(),
+              content: z
+                .array(z.string().min(1).max(300))
+                .min(1)
+                .max(8)
+                .optional(),
+              fields: z
+                .array(
+                  z.strictObject({
+                    label: z.string().min(1).max(120),
+                    value: z.string().min(1).max(300),
+                  }),
+                )
+                .min(1)
+                .max(8)
+                .optional(),
+              items: z
+                .array(
+                  z.strictObject({
+                    title: z.string().min(1).max(120),
+                    detail: z.string().min(1).max(300).optional(),
+                  }),
+                )
+                .min(1)
+                .max(8)
+                .optional(),
+              actions: z
+                .array(z.string().min(1).max(80))
+                .min(1)
+                .max(3)
+                .optional(),
+            }),
+          )
+          .min(1)
+          .max(3)
+          .describe(
+            "Static UI mockups, for example before/after screens. No executable markup.",
+          )
+          .optional(),
       })
       .optional(),
     decision: z
