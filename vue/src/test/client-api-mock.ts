@@ -70,6 +70,7 @@ export function createClientApiMock(
     listBackendPlugins: unscripted('listBackendPlugins'),
     listBackendSkills: unscripted('listBackendSkills'),
     getRunProfiles: unscripted('getRunProfiles'),
+    getRunProfileActions: unscripted('getRunProfileActions'),
     saveRunProfile: unscripted('saveRunProfile'),
     deleteRunProfile: unscripted('deleteRunProfile'),
     startRunProfile: unscripted('startRunProfile'),

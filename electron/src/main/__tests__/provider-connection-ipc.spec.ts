@@ -33,6 +33,8 @@ describe('provider sign-out IPC', () => {
     await import('../../preload/index');
     const api = bridge.exposed.get('app') as AppApi;
     const input = { profileId: 'dev', command: 'npm run dev', cwd: '/remote/worktree' };
+    await api.getRunProfileActions('agent-remote', 'app');
+    expect(request).toHaveBeenLastCalledWith('agent/runProfileActions/get', { agentId: 'agent-remote', directory: 'app' });
     await expect(api.startRunProfile('agent-remote', input)).resolves.toStrictEqual(run);
     expect(request).toHaveBeenLastCalledWith('agent/runProfile/start', { agentId: 'agent-remote', input });
     request.mockRejectedValueOnce(new Error('Owner disconnected. Reconnect before stopping.'));

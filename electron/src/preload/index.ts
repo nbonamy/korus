@@ -49,6 +49,7 @@ const api: AppApi = {
   listBackendPlugins: (agentId: string) => ipc.invoke(ipcChannels.listBackendPlugins, agentId),
   listBackendSkills: (agentId: string) => ipc.invoke(ipcChannels.listBackendSkills, agentId),
   getRunProfiles: (agentId: string) => ipc.invoke(ipcChannels.getRunProfiles, agentId),
+  getRunProfileActions: (agentId: string, directory: string) => ipc.invoke(ipcChannels.getRunProfileActions, agentId, directory),
   saveRunProfile: (agentId: string, input: import('@workspace/core/run-profiles').RunProfileInput) => ipc.invoke(ipcChannels.saveRunProfile, agentId, input),
   deleteRunProfile: (agentId: string, profileId: string) => ipc.invoke(ipcChannels.deleteRunProfile, agentId, profileId),
   startRunProfile: (agentId: string, input: import('@workspace/core/run-profiles').RunProfileStartInput) => ipc.invoke(ipcChannels.startRunProfile, agentId, input),

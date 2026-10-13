@@ -44,6 +44,7 @@ export const backendMethods = {
   agentFilePreview: 'agent/file/preview',
   agentFileChunkRead: 'agent/file/chunk/read',
   agentRunProfilesGet: 'agent/runProfiles/get',
+  agentRunProfileActionsGet: 'agent/runProfileActions/get',
   agentRunProfileSave: 'agent/runProfile/save',
   agentRunProfileDelete: 'agent/runProfile/delete',
   agentRunProfileStart: 'agent/runProfile/start',

@@ -8,6 +8,9 @@ export type RunProfile = {
 };
 
 export type RunProfileInput = Omit<RunProfile, 'id'> & { id?: string };
+/** Import candidates contain invocation names, never script bodies or environment values. */
+export type RunProfileAction = Omit<RunProfileInput, 'id' | 'previewUrl'> & { source: string };
+export type RunProfileDiscovery = { actions: RunProfileAction[]; warnings: string[] };
 export type ProfileRun = {
   id: string;
   agentId: string;

@@ -851,6 +851,7 @@ export type AppApi = {
   listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;
   getRunProfiles(agentId: string): Promise<import('./run-profiles').RunProfileCatalog>;
+  getRunProfileActions(agentId: string, directory: string): Promise<import('./run-profiles').RunProfileDiscovery>;
   saveRunProfile(agentId: string, input: import('./run-profiles').RunProfileInput): Promise<import('./run-profiles').RunProfileCatalog>;
   deleteRunProfile(agentId: string, profileId: string): Promise<import('./run-profiles').RunProfileCatalog>;
   startRunProfile(agentId: string, input: import('./run-profiles').RunProfileStartInput): Promise<import('./run-profiles').ProfileRun>;

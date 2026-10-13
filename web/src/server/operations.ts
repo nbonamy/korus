@@ -52,6 +52,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   listBackendPlugins: [backendMethods.agentPluginsList, named('agentId')],
   listBackendSkills: [backendMethods.agentSkillsList, named('agentId')],
   getRunProfiles: [backendMethods.agentRunProfilesGet, named('agentId')],
+  getRunProfileActions: [backendMethods.agentRunProfileActionsGet, named('agentId', 'directory')],
   saveRunProfile: [backendMethods.agentRunProfileSave, named('agentId', 'input')],
   deleteRunProfile: [backendMethods.agentRunProfileDelete, named('agentId', 'profileId')],
   startRunProfile: [backendMethods.agentRunProfileStart, named('agentId', 'input')],

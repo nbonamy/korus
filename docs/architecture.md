@@ -67,7 +67,9 @@ runtime-thin so every client shares one contract without inheriting file authori
 
 Repository run profiles are user-authored definitions in the owning daemon's private
 `run-profiles.json` store, shared by worktrees through their primary repository
-identity. No repository configuration is discovered or executed. The daemon admits
+identity. Explicit imports read script and target names from confined package,
+Make and Just files without evaluating recipes or copying their bodies. Discovery
+does not save or execute actions. The daemon admits
 only a saved profile whose command and resolved directory match the user's reviewed
 target; directory containment includes real paths and symlinks. Profiles have no
 environment field and never copy environment files. Output and run history are

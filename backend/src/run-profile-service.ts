@@ -8,6 +8,7 @@ import { withDiscoveredRuntimePath } from '@workspace/core/runtime-discovery';
 import type { ProfileRun, RunProfileCatalog, RunProfileInput, RunProfileStartInput } from '@workspace/core/run-profiles';
 import { AgentGitService } from './git/agent-git-service';
 import { parseStoreFile, serializeStoreFile } from './persistence/store-format';
+import { discoverRunProfileActions } from './run-profile-actions';
 
 const text = z.string().trim().min(1).max(4096).refine(value => !/[\x00-\x1f\x7f]/.test(value), 'Use a single-line command without control characters.');
 const inputSchema = z.strictObject({ id: z.string().uuid().optional(), name: text.max(100), command: text, directory: text.default('.'), previewUrl: text.optional() });
@@ -57,6 +58,17 @@ export class RunProfileService {
       try { return [profile.id, { cwd: await this.directory(target.worktree, profile.directory) }]; }
       catch (error) { return [profile.id, { error: (error as Error).message }]; }
     }))), profiles: store.repositories[target.repository] ?? [], runs: [...this.runs.values()].filter(owned => owned.run.agentId === agentId && owned.root === target.worktree).map(owned => this.snapshot(owned)) }));
+  }
+
+  async discover(folder: string, directory: string) {
+    if (!text.safeParse(directory).success) throw new Error('Enter a repository-relative working directory.');
+    const target = await this.target(folder);
+    const result = await discoverRunProfileActions(target.worktree, await this.directory(target.worktree, directory));
+    result.actions = result.actions.filter(action => {
+      try { this.rejectSecrets(action.name); this.validateCommand(action.command); return true; }
+      catch { return false; }
+    });
+    return result;
   }
 
   async save(agentId: string, folder: string, input: RunProfileInput): Promise<RunProfileCatalog> {

@@ -71,6 +71,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentFilePreview]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentFileChunkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentRunProfilesGet]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentRunProfileActionsGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentRunProfileSave]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentRunProfileDelete]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentRunProfileStart]: IO_REQUEST_TIMEOUT_MS,

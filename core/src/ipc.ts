@@ -56,6 +56,7 @@ export const ipcChannels = {
   listBackendPlugins: 'backend:plugins:list',
   listBackendSkills: 'backend:skills:list',
   getRunProfiles: 'agent:run-profiles:getRunProfiles',
+  getRunProfileActions: 'agent:run-profiles:getRunProfileActions',
   saveRunProfile: 'agent:run-profiles:saveRunProfile',
   deleteRunProfile: 'agent:run-profiles:deleteRunProfile',
   startRunProfile: 'agent:run-profiles:startRunProfile',

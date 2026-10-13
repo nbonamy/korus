@@ -34,6 +34,38 @@ beforeEach(async () => {
 afterEach(async () => { await service.close(); await rm(root, { recursive: true, force: true }); });
 
 describe('repository run profiles', () => {
+  it('imports selected-worktree script and target names without executing or copying their recipes', async () => {
+    await writeFile(path.join(worktree, 'package.json'), JSON.stringify({ scripts: { dev: 'TOKEN=private node server.cjs', test: 'touch package-marker', 'bad;name': 'echo unsafe' } }));
+    await writeFile(path.join(worktree, 'Makefile'), '.PHONY: build check\nbuild check:\n\t@touch make-marker\nVALUE := $(shell touch evaluated-marker)\n%.o: %.c\n');
+    await writeFile(path.join(worktree, 'justfile'), 'lint:\n    touch just-marker\nserve port:\n    echo {{port}}\n');
+    expect(await service.discover(worktree, '.')).toStrictEqual({ actions: [
+      { name: 'dev', command: 'npm run dev', directory: '.', source: 'package.json' },
+      { name: 'test', command: 'npm run test', directory: '.', source: 'package.json' },
+      { name: 'build', command: 'make -f Makefile build', directory: '.', source: 'Makefile' },
+      { name: 'check', command: 'make -f Makefile check', directory: '.', source: 'Makefile' },
+      { name: 'lint', command: 'just --justfile justfile lint', directory: '.', source: 'justfile' },
+    ], warnings: [] });
+    expect((await service.get(agent, worktree)).profiles).toStrictEqual([]);
+    for (const marker of ['package-marker', 'make-marker', 'evaluated-marker', 'just-marker']) await expect(readFile(path.join(worktree, marker))).rejects.toThrow();
+  });
+
+  it('confines imports to the selected worktree and reports malformed or unsafe sources without reading env files', async () => {
+    await mkdir(path.join(worktree, 'app'));
+    await writeFile(path.join(worktree, 'app', 'package.json'), '{ invalid');
+    await writeFile(path.join(root, 'outside-make'), 'escape:\n\techo outside\n');
+    await symlink(path.join(root, 'outside-make'), path.join(worktree, 'app', 'Makefile'));
+    await writeFile(path.join(worktree, 'app', '.env'), 'TOKEN=private');
+    const discovered = await service.discover(worktree, 'app');
+    expect(discovered.actions).toStrictEqual([]);
+    expect(discovered.warnings).toHaveLength(2);
+    expect(discovered.warnings.join(' ')).toMatch(/package.json/);
+    expect(discovered.warnings.join(' ')).toMatch(/Makefile/);
+    expect(JSON.stringify(discovered)).not.toContain('private');
+    await expect(service.discover(worktree, '..')).rejects.toThrow(/inside/);
+    await writeFile(path.join(worktree, 'app', 'package.json'), JSON.stringify({ scripts: { lint: 'echo ok' } }));
+    expect((await service.discover(worktree, 'app')).actions).toStrictEqual([{ name: 'lint', command: 'npm run lint', directory: 'app', source: 'app/package.json' }]);
+  });
+
   it('shares a private user-created catalog across worktrees and survives restart without runs', async () => {
     const saved = await service.save(agent, repo, { ...profile, command: 'node -e "console.log(42)"' });
     const linked = await service.get(agent, worktree);

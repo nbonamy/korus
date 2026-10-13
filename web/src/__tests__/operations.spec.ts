@@ -18,10 +18,12 @@ describe(`${product.name} web operations`, () => {
     const input = { profileId: 'dev', command: 'npm run dev', cwd: '/remote/worktree' };
     await invokeAppWebOperation({ request }, 'startRunProfile', ['remote-agent', input]);
     await invokeAppWebOperation({ request }, 'getRunProfiles', ['remote-agent']);
+    await invokeAppWebOperation({ request }, 'getRunProfileActions', ['remote-agent', 'app']);
     await invokeAppWebOperation({ request }, 'stopProfileRun', ['remote-agent', 'run']);
     expect(request.mock.calls).toStrictEqual([
       ['agent/runProfile/start', { agentId: 'remote-agent', input }],
       ['agent/runProfiles/get', { agentId: 'remote-agent' }],
+      ['agent/runProfileActions/get', { agentId: 'remote-agent', directory: 'app' }],
       ['agent/profileRun/stop', { agentId: 'remote-agent', runId: 'run' }],
     ]);
   });

@@ -1323,6 +1323,7 @@ export class AppBackendServer {
         return this.routeAgentResultRequest(message.id, agentId, message.method, params, agent => saveMarkdownFile(agentFolder(agent), requireString(params.filePath, 'filePath'), requireString(params.content, 'content'), params.overwrite === true, backendHomeDir()));
       }
       case backendMethods.agentRunProfilesGet:
+      case backendMethods.agentRunProfileActionsGet:
       case backendMethods.agentRunProfileSave:
       case backendMethods.agentRunProfileDelete:
       case backendMethods.agentRunProfileStart:
@@ -1333,6 +1334,7 @@ export class AppBackendServer {
         return this.routeAgentResultRequest(message.id, agentId, message.method, params, async agent => {
           const folder = requireAgentFolder(agent);
           if (message.method === backendMethods.agentRunProfilesGet) return this.runProfiles.get(agentId, folder);
+          if (message.method === backendMethods.agentRunProfileActionsGet) return this.runProfiles.discover(folder, requireString(params.directory, 'directory'));
           if (message.method === backendMethods.agentRunProfileSave) return this.runProfiles.save(agentId, folder, requireRecord(params.input) as import('@workspace/core/run-profiles').RunProfileInput);
           if (message.method === backendMethods.agentRunProfileDelete) return this.runProfiles.delete(agentId, folder, requireString(params.profileId, 'profileId'));
           if (message.method === backendMethods.agentProfileRunStop) return this.runProfiles.stop(agentId, requireString(params.runId, 'runId'));

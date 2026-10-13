@@ -274,6 +274,7 @@ export class AppController {
     });
 
     ipc.handle(ipcChannels.getRunProfiles, async (_event, agentId: string) => this.requireBackendClient().request(backendMethods.agentRunProfilesGet, { agentId }));
+    ipc.handle(ipcChannels.getRunProfileActions, async (_event, agentId: string, directory: string) => this.requireBackendClient().request(backendMethods.agentRunProfileActionsGet, { agentId, directory }));
     ipc.handle(ipcChannels.saveRunProfile, async (_event, agentId: string, input: unknown) => this.requireBackendClient().request(backendMethods.agentRunProfileSave, { agentId, input }));
     ipc.handle(ipcChannels.deleteRunProfile, async (_event, agentId: string, profileId: string) => this.requireBackendClient().request(backendMethods.agentRunProfileDelete, { agentId, profileId }));
     ipc.handle(ipcChannels.startRunProfile, async (_event, agentId: string, input: unknown) => this.requireBackendClient().request(backendMethods.agentRunProfileStart, { agentId, input }));

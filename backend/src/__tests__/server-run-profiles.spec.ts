@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AppBackendServer } from '../server';
@@ -31,6 +31,12 @@ async function local() {
 }
 
 describe('run profile app-owned boundary', () => {
+  it('reads import candidates through the owning agent boundary without saving or starting them', async () => {
+    const f = await local();
+    await writeFile(path.join(f.root, 'package.json'), JSON.stringify({ scripts: { test: 'echo test' } }));
+    expect(await request(f.server, 'agent/runProfileActions/get', { agentId: 'one', directory: '.' })).toMatchObject({ result: { actions: [{ name: 'test', command: 'npm run test', directory: '.', source: 'package.json' }], warnings: [] } });
+    expect((await f.runProfiles.get('one', f.root)).runs).toStrictEqual([]);
+  });
   it.each(['agent/delete', 'team/delete', 'team/disconnect', 'shutdown'])('stops owned commands when removing their owner via %s', async method => {
     const f = await local();
     const run = await f.start();
@@ -48,15 +54,16 @@ describe('run profile app-owned boundary', () => {
     const remote = createRemoteTeamSnapshot([createRemoteAgent()]);
     const response = { repository: '/remote/repo', worktree: '/remote/worktree', profiles: [], targets: {}, runs: [] };
     const remoteClients = { request: vi.fn(async (_connection, method: string) => method === 'snapshot/get' ? { snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } } : response), close: vi.fn() };
-    const runProfiles = { get: vi.fn(), start: vi.fn(), stop: vi.fn(), retainAgents: vi.fn(), close: vi.fn() };
+    const runProfiles = { get: vi.fn(), discover: vi.fn(), start: vi.fn(), stop: vi.fn(), retainAgents: vi.fn(), close: vi.fn() };
     const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never, runProfiles: runProfiles as never });
     resources.push({ server });
-    for (const [method, extra] of [['agent/runProfiles/get', {}], ['agent/runProfile/start', { input: { profileId: 'profile', command: 'npm run dev', cwd: '/remote/worktree' } }], ['agent/profileRun/stop', { runId: 'run' }]] as const) {
+    for (const [method, extra] of [['agent/runProfiles/get', {}], ['agent/runProfileActions/get', { directory: 'app' }], ['agent/runProfile/start', { input: { profileId: 'profile', command: 'npm run dev', cwd: '/remote/worktree' } }], ['agent/profileRun/stop', { runId: 'run' }]] as const) {
       expect(await request(server, method, { agentId: 'agent-remote', ...extra })).toMatchObject({ result: response });
       expect(remoteClients.request).toHaveBeenLastCalledWith(connection, method, { agentId: 'agent-remote', ...extra, _clientId: 'remote-controller' }, expect.any(Function));
     }
     await request(server, 'team/disconnect', { teamId: 'pointer' });
     expect(remoteClients.request).toHaveBeenCalledWith(connection, 'agent/profileRuns/stop', { agentId: 'agent-remote', _clientId: 'remote-controller' }, expect.any(Function));
     expect(runProfiles.get).not.toHaveBeenCalled(); expect(runProfiles.start).not.toHaveBeenCalled(); expect(runProfiles.stop).not.toHaveBeenCalled();
+    expect(runProfiles.discover).not.toHaveBeenCalled();
   });
 });
