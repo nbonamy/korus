@@ -25,6 +25,7 @@
           :restart-app="restartApp"
           :update-settings="updateSettings"
         />
+        <SettingsWorkflowsPanel v-else-if="activeTab === 'workflows'" :settings="generalSettings" :update-settings="updateSettings" />
         <SettingsVoicePanel
           v-else-if="activeTab === 'voice'"
           :settings="generalSettings"
@@ -39,6 +40,7 @@
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
           :connected="codexConnected"
+          :remote-connection-id="remoteConnectionId"
           :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
           @refresh="refreshProvider?.('codex')"
           :authentication="providerConnections?.find(engine => engine.backend === 'codex')?.authentication"
@@ -150,6 +152,7 @@ import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';
 import SettingsCodexPanel from './SettingsCodexPanel.vue';
 import SettingsConnectionsPanel from './SettingsConnectionsPanel.vue';
+import SettingsWorkflowsPanel from './SettingsWorkflowsPanel.vue';
 import SettingsGeneralPanel from './SettingsGeneralPanel.vue';
 import SettingsInstructionsPanel from './SettingsInstructionsPanel.vue';
 import SettingsPersonalizationPanel from './SettingsPersonalizationPanel.vue';
@@ -167,6 +170,7 @@ const appVersion = appPackage.version;
 
 const props = withDefaults(defineProps<{
   codexConnected?: boolean;
+  remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;

@@ -21,6 +21,17 @@ describe('WorktreeManager', () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it('skips setup and environment copying when a transfer opts out of initialization', async () => {
+    await writeSetup('setup', 'echo setup');
+    await writeFile(path.join(repositoryPath, '.env'), 'SYNTHETIC=true');
+    const runCommand = vi.fn();
+    const manager = createManager({ runCommand });
+    const result = await manager.create(createInput(), { skipInitialization: true });
+    expect(result.initialization).toStrictEqual({ source: 'none', commands: [], copiedFiles: [] });
+    expect(runCommand).not.toHaveBeenCalled();
+    await expect(access(path.join(worktreePath, '.env'))).rejects.toThrow();
+  });
+
   it('uses the current-platform repository setup instead of the generic setup', async () => {
     await writeSetup('setup', 'npm install');
     await writeSetup('setup-macos.sh', 'make bootstrap');

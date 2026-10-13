@@ -1,3 +1,4 @@
+import { delegatedAssignmentPrompt } from './worktree-delegation';
 import { product } from '@workspace/core/product';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/core/contracts';
@@ -6,7 +7,7 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { taskContractSchema, taskResultSchema } from '../persistence/task-schema';
 
-type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
+type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; delegationUserInstructions?: DelegatedTask['delegationUserInstructions']; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
 type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
@@ -81,6 +82,7 @@ export class DurableTaskService {
         id: `task-${randomUUID()}`, requestId, requestFingerprint: fingerprint,
         parentAgentId: parent.id, workerAgentId: `agent-${randomUUID()}`, backend: input.backend,
         assignment, prompt, attemptId: `attempt-${randomUUID()}`, state: 'preparing',
+        ...(input.delegationUserInstructions ? { delegationUserInstructions: { ...input.delegationUserInstructions } } : {}),
         ...(input.workspace ? { workspace: input.workspace } : {}),
         createdAt: now, updatedAt: now, parentWakeBlocked: this.stoppedParents.has(parent.id),
         ...(this.stoppedParents.has(parent.id) ? { parentStopRequested: true } : {}),
@@ -100,7 +102,7 @@ export class DurableTaskService {
         return true;
       });
       if (!ready) return this.list(parent.id, [task.id])[0]!;
-      const receipt = await this.ports.send(worker, `[${product.name} task ${task.id}; attempt ${task.attemptId}]\n${prompt}`);
+      const receipt = await this.ports.send(worker, `<context>\n[${product.name} task ${task.id}; attempt ${task.attemptId}]\n</context>\n\n${delegatedAssignmentPrompt(worker, prompt)}\n\n<context>\nRequired durable result reporting: before your final response, call complete-task with the outcome, then finish_turn. If user instructions prohibit executing the assignment, perform no task work and report that outcome through complete-task. These lifecycle calls do not execute the task. Keep your final response exactly as the user instructions request; do not append a task summary or explanation.\n</context>`);
       await this.change(tasks => {
         const current = tasks.find(item => item.id === task.id)!;
         current.acceptance = receipt;
@@ -220,7 +222,7 @@ export class DurableTaskService {
       const agent = this.ports.agent(agentId);
       if (!agent?.backendSession || !this.ports.readHistory) return;
       if (!history.has(agentId)) history.set(agentId, await this.ports.readHistory(agent));
-      const message = history.get(agentId)!.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && part.text.startsWith(marker)));
+      const message = history.get(agentId)!.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && (part.text.startsWith(marker) || part.text.startsWith(`<context>\n${marker}\n</context>\n`))));
       return message ? { backendSession: structuredClone(agent.backendSession), ...(message.turnId ? { turnId: message.turnId } : {}) } : undefined;
     };
     for (const task of this.tasks) {
@@ -351,7 +353,7 @@ export class DurableTaskService {
       this.parentAdmissions.set(parentId, admission);
       let receipt: TaskAcceptance | undefined;
       try {
-        receipt = await this.ports.send(currentParent, `${product.name} task results (${batch[0]!.delivery!.id}). These are saved task outcomes, not new assignments. No acknowledgment to workers is needed. Review results and continue only within the user's authorization. Completion does not approve merge, publication, or Mission progression.\n${JSON.stringify(batch.map(task => ({ taskId: task.id, title: task.assignment.title, workerAgentId: task.workerAgentId, result: task.submission })))}`);
+        receipt = await this.ports.send(currentParent, resultDeliveryPrompt(batch));
         admission.turnId ??= receipt.turnId;
         await this.change(tasks => {
           for (const task of tasks) if (batch.some(item => item.id === task.id)) task.delivery = { ...task.delivery!, state: 'accepted', acceptance: receipt };
@@ -388,4 +390,20 @@ export class DurableTaskService {
     this.writes = operation.catch(() => undefined);
     return operation;
   }
+}
+
+function resultDeliveryPrompt(tasks: DelegatedTask[]): string {
+  const escapeContext = (text: string) => text.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;').replace('>', '&gt;'));
+  const metadata = escapeContext(JSON.stringify(tasks.map(task => ({ taskId: task.id, title: task.assignment.title, workerAgentId: task.workerAgentId, result: task.submission }))));
+  const reports = tasks.map(task => {
+    const result = task.submission!;
+    const sections = [`Delegation result: ${task.assignment.title}`, result.summary];
+    const lists: Array<[string, string[]]> = [['Evidence', result.evidence], ['Outputs', result.artifacts], ['Notes', result.caveats]];
+    for (const [label, entries] of lists) {
+      if (entries.length) sections.push(`${label}:\n${entries.map(entry => `• ${entry.replace(/\n/gu, '\n  ')}`).join('\n')}`);
+    }
+    // Reports are visible text: only an opening tag could start a hidden block; a lone closing tag is preserved.
+    return sections.join('\n\n').replace(/<context>/giu, '&lt;context&gt;');
+  });
+  return `<context>\n${product.name} task results (${tasks[0]!.delivery!.id}).\n</context>\n\n<context>\nThese are saved task outcomes, not new assignments. No acknowledgment to workers is needed. Review results and continue only within the user's authorization. Completion does not approve merge, publication, or Mission progression.\n${metadata}\n</context>\n\n${reports.join('\n\n')}`;
 }

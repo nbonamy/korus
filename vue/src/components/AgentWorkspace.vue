@@ -514,6 +514,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
     onOpenIn: (application: OpenInApplication) => agentId && props.openAgentIn(agentId, application),
+    onSelectAgent: props.selectAgentFromShell,
     onSelectSubagent: (conversationId: string) => agentId && openSubagent(agentId, conversationId),
     onInstallUpdate: () => emit('install-update'),
   };
@@ -760,6 +761,8 @@ function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void
 }
 
 defineExpose({
+  openRightWorkspaceTabFromMenu,
+  getCommandActions: () => agentHeaders.get(props.currentAgent?.id ?? '')?.getCommandActions() ?? [],
   focusComposer,
   openSavedDraftPicker,
   saveCurrentDraft,

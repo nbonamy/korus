@@ -20,6 +20,42 @@ const task = (): DelegatedTask => ({
 });
 
 describe('tasks.json persistence', () => {
+  it('retains a Claude worker native store reference in acceptance and result after restart', async () => {
+    const value = task();
+    value.backend = 'claude';
+    const backendSession = { kind: 'claude' as const, sessionId: 'native-child', transport: 'stdio' as const, transcriptFolder: '/parent-provider-store' };
+    value.acceptance!.backendSession = backendSession;
+    value.submission!.backendSession = backendSession;
+    await new AppStateStore(home).saveTasks([value]);
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
+  it('retains frozen user directions across task-store reload and later roster writes', async () => {
+    const value = { ...task(), delegationUserInstructions: { saved: 'Say Hello only', taskSpecific: 'Say Bonjour instead' } };
+    const store = new AppStateStore(home);
+    await store.saveTasks([value]);
+    await store.save(createEmptySnapshot());
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
+  it('loads additive task fields while retaining result and delivery identity across saves', async () => {
+    const value = task();
+    const stored = {
+      ...value, futureTaskField: true,
+      delegationUserInstructions: { saved: 'Saved constraints', taskSpecific: 'User override', futureInstructionsField: true },
+      assignment: { ...value.assignment, futureContractField: true },
+      workspace: { repositoryPath: '/repo', futureWorkspaceField: true },
+      acceptance: { ...value.acceptance!, futureReceiptField: true, backendSession: { ...value.acceptance!.backendSession, futureSessionField: true } },
+      submission: { ...value.submission!, futureResultField: true, backendSession: { ...value.submission!.backendSession, futureSessionField: true } },
+      delivery: { ...value.delivery!, futureDeliveryField: true },
+    };
+    await writeFile(path.join(home, 'tasks.json'), serializeStoreFile({ tasks: [stored], futureStoreField: true }));
+    const store = new AppStateStore(home);
+    const restored = await store.loadTasks();
+    expect(restored).toStrictEqual([stored]);
+    restored[0]!.detail = 'Still usable';
+    await store.saveTasks(restored);
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([{ ...stored, detail: 'Still usable' }]);
+  });
+
   it('adds tasks to an older layout without putting them in the roster or discarding them on roster save', async () => {
     const store = new AppStateStore(home);
     await store.save(createEmptySnapshot());
@@ -42,13 +78,13 @@ describe('tasks.json persistence', () => {
 
   it.each([
     '{broken',
-    serializeStoreFile({ tasks: [{ ...task(), unexpected: true }] }),
+    serializeStoreFile({ tasks: [{ ...task(), delegationUserInstructions: { saved: 42 } }] }),
     serializeStoreFile({ tasks: [{ ...task(), submission: undefined }] }),
     serializeStoreFile({ tasks: [task(), task()] }),
     serializeStoreFile({ tasks: [{ ...task(), state: 'invented' }] }),
     serializeStoreFile({ tasks: [{ ...task(), state: 'running' }] }),
     serializeStoreFile({ tasks: [{ ...task(), delivery: { id: 'delivery-1', state: 'accepted' } }] }),
-    serializeStoreFile({ tasks: [{ ...task(), acceptance: { backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio', unknown: true } } }] }),
+    serializeStoreFile({ tasks: [{ ...task(), acceptance: { backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } } }] }),
     JSON.stringify({ schemaVersion: 999, data: { tasks: [] } }),
   ])('refuses corrupt or unsupported task data instead of treating it as empty', async content => {
     await writeFile(path.join(home, 'tasks.json'), content);

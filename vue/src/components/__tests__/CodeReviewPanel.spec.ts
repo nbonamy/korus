@@ -9,6 +9,8 @@ import CodeReviewPanel from '../CodeReviewPanel.vue';
 import { codeReviewSettingsKey } from '../code-review-settings';
 import { codeReviewUncommittedPreviewKey } from '../code-review-preview';
 import type { CodeReviewPreferences } from '@workspace/core/code-review';
+import { configureAppClient } from '../../platform-api';
+import { createClientApiMock } from '../../test/client-api-mock';
 import '../../styles/base.css';
 
 function finding(overrides: Partial<CodeReviewFinding> = {}): CodeReviewFinding {
@@ -60,6 +62,7 @@ function mountPanel(
     finishReview: vi.fn().mockResolvedValue({} as AppSnapshot),
     commitReview: vi.fn().mockResolvedValue({} as AppSnapshot),
     reviewAgain: vi.fn().mockResolvedValue({} as AppSnapshot),
+    switchToManual: vi.fn().mockResolvedValue({}),
     stop: vi.fn().mockResolvedValue({}),
     listModels: vi.fn(async (_agentId: string, backend: string) => backend === 'codex'
       ? [{ id: 'codex-model', model: 'codex-model', displayName: 'Codex model', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] }]
@@ -80,7 +83,7 @@ function mountPanel(
       global: { components: { ElInputNumber, ElSwitch }, provide: {
         ...extraProvide,
         [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-        [codeReviewSettingsKey as symbol]: { preferences: () => preferences, listModels: actions.listModels, stop: actions.stop },
+        [codeReviewSettingsKey as symbol]: { preferences: () => preferences, listModels: actions.listModels, switchToManual: actions.switchToManual, stop: actions.stop },
       } },
     }),
   };
@@ -202,14 +205,67 @@ describe('CodeReviewPanel', () => {
     expect(currentThread.attributes('disabled')).toBeUndefined();
   });
 
-  it('exposes a stop action without manual remediation controls while automation owns the review', async () => {
+  it.each(['reviewing', 'fixing'] as const)('switches %s to manual without interrupting, then exposes Stop review and manual completion controls', async status => {
+    const review = session([finding({ remediation: status === 'fixing' ? { state: 'fixing', startedAt: 'now' } : { state: 'notStarted' } })], status);
+    review.automation = { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true, state: 'running', commits: [] };
+    const { wrapper: fixture, actions } = mountPanel();
+    const owner = fixture.props('agent');
+    fixture.unmount();
+    const { api } = createClientApiMock();
+    api.switchCodeReviewToManual.mockResolvedValue({} as AppSnapshot);
+    let resolveInterrupt!: (snapshot: AppSnapshot) => void;
+    api.interruptAgent.mockImplementation(() => new Promise(resolve => { resolveInterrupt = resolve; }));
+    api.listBackendModels.mockResolvedValue([]);
+    configureAppClient({ platform: 'web', api });
+    const wrapper = mount(CodeReviewPanel, { props: { ...actions, agent: { ...owner, codeReview: review } } });
+    try {
+      expect(wrapper.text()).toContain('Automatic · round 1 of 3');
+      expect(wrapper.find('.code-review-panel__footer').exists()).toBe(false);
+      await wrapper.get('.code-review-panel__automation-status button').trigger('click');
+      await flushPromises();
+      expect(api.switchCodeReviewToManual).toHaveBeenCalledExactlyOnceWith('owner', 'review-1');
+      expect(api.interruptAgent).not.toHaveBeenCalled();
+      expect(api.discardCodeReview).not.toHaveBeenCalled();
+      expect(wrapper.get('.code-review-panel__automation-status button').text()).toBe('Switch to manual');
+      const manual = { ...review, automation: { ...review.automation, enabled: false, state: 'manual' as const } };
+      await wrapper.setProps({ agent: { ...owner, codeReview: manual } });
+      expect(wrapper.get('.code-review-panel__automation-status').text()).toContain('Manual review');
+      const stop = wrapper.get('.code-review-panel__automation-status button');
+      expect(stop.text()).toBe('Stop review');
+      await stop.trigger('click');
+      expect(api.interruptAgent).toHaveBeenCalledExactlyOnceWith('owner');
+      expect(stop.attributes('disabled')).toBeDefined();
+      expect(api.discardCodeReview).not.toHaveBeenCalled();
+      resolveInterrupt({} as AppSnapshot);
+      await flushPromises();
+      expect(wrapper.find('.code-review-panel__footer').exists()).toBe(false);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      const complete = session(status === 'fixing' ? [] : review.rounds[0]!.findings, status === 'fixing' ? 'readyToFinish' : 'ready');
+      complete.automation = manual.automation;
+      await wrapper.setProps({ agent: { ...owner, codeReview: complete } });
+      expect(stop.attributes('disabled')).toBeDefined();
+      const controls = wrapper.findAll('.code-review-panel__footer button');
+      expect(controls.map(button => button.text())).toStrictEqual(status === 'fixing' ? ['Finish review', 'Review again'] : ['Remediate selected findings']);
+      await controls[status === 'fixing' ? 1 : 0]!.trigger('click');
+      expect(status === 'fixing' ? actions.reviewAgain : actions.submitReviewRound).toHaveBeenCalledWith('owner', 'review-1');
+    } finally { wrapper.unmount(); configureAppClient(); }
+  });
+
+  it('offers Stop review for an originally manual review, including discussion turns, and disables it while idle', async () => {
     const review = session([finding()]);
-    review.automation = { enabled: true, maxPriority: 'p2', maxRounds: 3, state: 'running', commits: [] };
     const { wrapper, actions } = mountPanel(review);
-    expect(wrapper.text()).toContain('Automatic · round 1 of 3');
-    expect(wrapper.text()).not.toContain('Remediate selected findings');
-    await wrapper.findAll('button').find(button => button.text() === 'Stop automatic review')!.trigger('click');
-    expect(actions.stop).toHaveBeenCalledWith('owner', 'review-1');
+    const stop = wrapper.get('.code-review-panel__automation-status button');
+    expect(stop.text()).toBe('Stop review');
+    expect(stop.attributes('disabled')).toBeDefined();
+    const owner = wrapper.props('agent');
+    await wrapper.setProps({ agent: { ...owner, status: { type: 'awaitingInput' } } });
+    expect(stop.attributes('disabled')).toBeUndefined();
+    await stop.trigger('click');
+    await flushPromises();
+    expect(actions.stop).toHaveBeenCalledExactlyOnceWith('owner');
+    await wrapper.setProps({ agent: { ...owner, codeReview: { ...review, status: 'finished' } } });
+    expect(wrapper.find('.code-review-panel__automation-status button').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('keeps the saved model and effort when returning from a reviewer to the original setup', async () => {
@@ -669,19 +725,33 @@ describe('CodeReviewPanel', () => {
     expect(wrapper.get('[role="alert"]').text()).toBe('Reviewer unavailable.');
   });
 
-  it.each([undefined, false, true])('retries a paused automatic review with its commit choice (%s)', async autoCommit => {
-    const failed = session([], 'failed');
-    failed.automation = { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit, state: 'paused', baseRef: 'a'.repeat(40), commits: [], reason: 'Paused.' };
+  it.each([
+    { state: 'paused', autoCommit: undefined },
+    { state: 'paused', autoCommit: false },
+    { state: 'paused', autoCommit: true },
+    { state: 'manual', autoCommit: true },
+  ] as const)('retries a $state review without changing its mode or commit choice ($autoCommit)', async ({ state, autoCommit }) => {
+    const failed = session(state === 'manual' ? [finding()] : [], 'failed');
+    failed.automation = { enabled: state !== 'manual', maxPriority: 'p1', maxRounds: 4, autoCommit, state, baseRef: 'a'.repeat(40), commits: [], reason: 'Paused.' };
+    if (state === 'manual') failed.rounds[0]!.error = 'Review stopped. Retry to complete the inspection.';
     const { wrapper } = mountPanel(failed);
     const startReview = vi.fn(async () => ({} as AppSnapshot));
     await wrapper.setProps({ startReview });
+
+    if (state === 'manual') {
+      expect(wrapper.get('.code-review-panel__error').text()).toBe('Review stopped. Retry to complete the inspection.');
+      expect(wrapper.get('.code-review-panel__findings').text()).toContain('Authorize before writing');
+      expect(wrapper.find('[aria-label="Include finding in remediation"]').exists()).toBe(false);
+      expect(wrapper.get('.code-review-panel__footer button').text()).toBe('Retry review');
+      expect(wrapper.get('.code-review-panel__automation-status button').attributes('disabled')).toBeDefined();
+    }
 
     await wrapper.get('.code-review-panel__footer button').trigger('click');
     await flushPromises();
 
     expect(startReview).toHaveBeenCalledWith('owner', {
       scope: { type: 'branch', baseRef: 'a'.repeat(40) }, threadMode: 'independent',
-      automation: { enabled: true, maxPriority: 'p1', maxRounds: 4, autoCommit: autoCommit ?? false },
+      automation: { enabled: state !== 'manual', maxPriority: 'p1', maxRounds: 4, autoCommit: autoCommit ?? false },
     });
   });
 

@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { AppStateStore } from '../../persistence/store';
 import { describe, expect, it, vi } from 'vitest';
 import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot, BackendSession } from '@workspace/core/contracts';
@@ -16,11 +20,10 @@ function agent(id: string): Agent {
 
 type ReviewScript = (handlers: ReviewToolHandlers) => Promise<{ text: string; findingCount?: number }>;
 
-function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent): Promise<void> => undefined) {
-  const snapshot: AppSnapshot = createEmptySnapshot();
+function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent): Promise<void> => undefined, snapshot: AppSnapshot = createEmptySnapshot(), now?: () => Date) {
   snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
-  const owner = agent('owner');
-  snapshot.agents = [owner];
+  const owner = snapshot.agents.find(candidate => candidate.id === 'owner') ?? agent('owner');
+  if (!snapshot.agents.includes(owner)) snapshot.agents.push(owner);
   let context = 0;
   let activeHandlers: ReviewToolHandlers | null = null;
   const turns: Array<{ prompt: string; reviewerSession?: BackendSession }> = [];
@@ -53,7 +56,7 @@ function harness(scripts: ReviewScript[], deleteReviewer = async (_agent: Agent)
     git,
     createAgent: (input, options) => agentCreation.create(input, options),
     tools,
-    now: () => new Date(`2026-09-19T10:${String(tick++).padStart(2, '0')}:00.000Z`),
+    now: now ?? (() => new Date(`2026-09-19T10:${String(tick++).padStart(2, '0')}:00.000Z`)),
     runReview: async (_agent, prompt, _url, reviewerSession) => {
       turns.push({ prompt, ...(reviewerSession ? { reviewerSession } : {}) });
       const script = scripts.shift();
@@ -82,6 +85,174 @@ function reviewer(test: ReturnType<typeof harness>, session: { reviewerAgentId: 
 }
 
 describe('CodeReviewService', () => {
+  it('preserves the reviewer when switching while automatic finish saves its report in the same millisecond', async () => {
+    let release!: (path: string) => void;
+    const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })], undefined, undefined, () => new Date('2026-09-19T10:00:00.000Z'));
+    test.saveReport.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' } });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const visible = reviewer(test, session);
+    await test.service.switchToManual(visible, session.id);
+    release('/reports/review.md');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(test.deleted).toEqual([]);
+    expect(session.status).toBe('readyToFinish');
+    expect(session.automation).toMatchObject({ enabled: false, state: 'manual' });
+    expect(session.automation?.reason).toBeUndefined();
+    expect(visible.codeReview).toBe(session);
+  });
+
+  it('keeps a clean review available when switching during automatic completion scheduling', async () => {
+    const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
+    let release!: () => void;
+    test.changed.mockImplementation(async () => {
+      if (test.snapshot.agents.some(a => a.codeReview?.automation?.state === 'completed')) {
+        await new Promise<void>(resolve => { release = resolve; });
+      }
+    });
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' } });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await test.service.switchToManual(reviewer(test, session), session.id);
+    release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(session.status).toBe('readyToFinish');
+    expect(session.automation?.state).toBe('manual');
+    expect(test.saveReport).not.toHaveBeenCalled();
+    expect(test.deleted).toEqual([]);
+  });
+
+  it('persists manual mode and its ledger through a store reload, retry, and review again', async () => {
+    let release!: () => void;
+    const test = harness([async tools => {
+      await tools.reportFinding({ priority: 'p1', title: 'Fix access', body: 'Access is unchecked.' });
+      await new Promise<void>(resolve => { release = resolve; });
+      return { text: 'Ready.', findingCount: 1 };
+    }]);
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' }, instructions: 'Check access.', autoCommit: true });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await test.service.switchToManual(reviewer(test, session), session.id);
+    release();
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    const home = await mkdtemp(path.join(os.tmpdir(), 'manual-review-store-'));
+    try {
+      await new AppStateStore(home).save(test.snapshot);
+      const restored = harness([
+        async () => { throw new Error('Provider unavailable.'); },
+        async () => ({ text: 'Manual retry.', findingCount: 0 }),
+        async () => ({ text: 'Manual review again.', findingCount: 0 }),
+      ], undefined, await new AppStateStore(home).load());
+      const visible = reviewer(restored, session);
+      expect(visible.codeReview).toStrictEqual(session);
+      restored.service.submit(visible, session.id);
+      await vi.waitFor(() => expect(visible.codeReview?.status).toBe('failed'));
+      const retry = restored.service.start(visible, {
+        scope: session.scope, threadMode: 'independent', instructions: session.instructions,
+        automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: true },
+      });
+      await vi.waitFor(() => expect(retry.status).toBe('ready'));
+      expect(retry.automation).toStrictEqual(session.automation);
+      expect(retry.instructions).toBe('Check access.');
+      restored.service.submit(visible, retry.id);
+      await restored.service.reviewAgain(visible, retry.id);
+      await vi.waitFor(() => expect(retry.status).toBe('ready'));
+      expect(retry.automation?.state).toBe('manual');
+      expect(restored.git.commit).not.toHaveBeenCalled();
+      expect(restored.deleted).toEqual([]);
+    } finally { await rm(home, { recursive: true, force: true }); }
+  });
+
+  it.each([0, 1])('switches an active inspection with %s findings to manual and waits for its turn', async count => {
+    let release!: () => void;
+    const test = harness([async tools => {
+      if (count) await tools.reportFinding({ priority: 'p1', title: 'Fix access', body: 'Access is unchecked.' });
+      await new Promise<void>(resolve => { release = resolve; });
+      return { text: 'Inspection complete.', findingCount: count };
+    }]);
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' }, autoCommit: true });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const visible = reviewer(test, session);
+    const before = structuredClone(session.rounds);
+    await test.service.switchToManual(visible, session.id);
+    await test.service.switchToManual(visible, session.id);
+    expect(session.status).toBe('reviewing');
+    expect(session.rounds).toStrictEqual(before);
+    expect(session.automation).toMatchObject({ enabled: false, state: 'manual' });
+    release();
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    expect(session.rounds[0]?.summary).toBe('Inspection complete.');
+    expect(test.turns).toHaveLength(1);
+    expect(test.deleted).toEqual([]);
+    expect(test.git.commit).not.toHaveBeenCalled();
+    expect(test.tools.closeReviewToolContext).not.toHaveBeenCalled();
+    expect(visible.codeReview).toBe(session);
+  });
+
+  it('lets active remediation finish in manual mode without committing or reviewing again', async () => {
+    let release!: () => void;
+    let findingId = '';
+    const test = harness([
+      async tools => { findingId = (await tools.reportFinding({ priority: 'p1', title: 'Fix access', body: 'Access is unchecked.' })).id; return { text: '', findingCount: 1 }; },
+      async tools => { await new Promise<void>(resolve => { release = resolve; }); await tools.updateFinding({ findingId, status: 'fixed', evidence: 'Access regression passed.' }); return { text: 'Fixed.' }; },
+      async () => ({ text: 'Manual reinspection.', findingCount: 0 }),
+    ]);
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' }, autoCommit: true });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const visible = reviewer(test, session);
+    const before = structuredClone(session.rounds);
+    await test.service.switchToManual(visible, session.id);
+    expect(session.status).toBe('fixing');
+    expect(session.rounds).toStrictEqual(before);
+    release();
+    await vi.waitFor(() => expect(session.status).toBe('readyToFinish'));
+    expect(session.rounds[0]?.findings[0]?.remediation).toMatchObject({ state: 'fixed', evidence: 'Access regression passed.' });
+    expect(session.rounds).toHaveLength(1);
+    expect(test.git.commit).not.toHaveBeenCalled();
+    await test.service.reviewAgain(visible, session.id);
+    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    expect(session.automation).toMatchObject({ enabled: false, state: 'manual' });
+    expect(test.deleted).toEqual([]);
+    test.service.submit(visible, session.id);
+    await test.service.finish(visible, session.id);
+    expect(test.handoffs.at(-1)?.content.split('</context>')[1]?.trim()).toBe('Manual review completed. 1 finding fixed. No findings remain.');
+  });
+
+  it.each(['queuedFix', 'beforeFixTurn', 'checkpoint', 'commit', 'nextRound'] as const)('handles a switch at the %s async boundary without starting more automation', async boundary => {
+    let release!: () => void;
+    let findingId = '';
+    const test = harness([
+      async tools => { findingId = (await tools.reportFinding({ priority: 'p1', title: 'Fix access', body: 'Access is unchecked.' })).id; return { text: '', findingCount: 1 }; },
+      async tools => { await tools.updateFinding({ findingId, status: 'fixed', evidence: 'Tests passed.' }); return { text: 'Fixed.' }; },
+    ]);
+    const gate = () => new Promise<void>(resolve => { release = resolve; });
+    if (boundary === 'queuedFix' || boundary === 'beforeFixTurn') test.changed.mockImplementation(async () => {
+      const fixing = test.snapshot.agents.find(a => a.codeReview?.status === 'fixing')?.codeReview;
+      if (fixing && test.turns.length === 1 && fixing.rounds[0]?.findings[0]?.remediation.state === (boundary === 'queuedFix' ? 'pending' : 'fixing')) await gate();
+    });
+    if (boundary === 'checkpoint') test.git.inspect.mockImplementation(async () => {
+      if (test.turns.length === 2) await gate();
+      return { head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'initial' };
+    });
+    if (boundary === 'commit') test.git.commit.mockImplementation(async () => {
+      await gate();
+      return { head: 'c'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'committed', commit: 'c'.repeat(40) };
+    });
+    if (boundary === 'nextRound') test.saveReport.mockImplementation(async () => { await gate(); return '/reports/review.md'; });
+    const session = test.service.startAutomatic(test.owner, { scope: { type: 'uncommitted' }, autoCommit: true });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    test.changed.mockImplementation(() => undefined);
+    await test.service.switchToManual(reviewer(test, session), session.id);
+    release();
+    await vi.waitFor(() => expect(session.status).toBe(boundary === 'queuedFix' || boundary === 'beforeFixTurn' ? 'ready' : 'readyToFinish'));
+    expect(test.turns).toHaveLength(boundary === 'queuedFix' || boundary === 'beforeFixTurn' ? 1 : 2);
+    expect(session.rounds).toHaveLength(1);
+    expect(session.automation).toMatchObject({ enabled: false, state: 'manual', commits: boundary === 'commit' || boundary === 'nextRound' ? ['c'.repeat(40)] : [] });
+    expect(test.git.commit).toHaveBeenCalledTimes(boundary === 'commit' || boundary === 'nextRound' ? 1 : 0);
+    expect(session.rounds[0]?.error).toBeUndefined();
+    expect(test.deleted).toEqual([]);
+    if (boundary === 'queuedFix' || boundary === 'beforeFixTurn') expect(session.rounds[0]?.findings[0]?.remediation.state).toBe('notStarted');
+  });
+
+
   it.each(['current', 'independent'] as const)('keeps user instructions across %s review rounds and restoration without saving them as defaults', async threadMode => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
     test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
@@ -1037,7 +1208,7 @@ describe('CodeReviewService', () => {
       async (tools) => {
         for (const title of ['First', 'Second']) {
           ids.push((await tools.reportFinding({
-            priority: 'p2', title, body: `${title} finding body.`,
+            priority: 'p2', title, body: `${title} finding body. Literal <context> and </CONTEXT> tags.`,
           })).id);
         }
         return { text: '', findingCount: 2 };
@@ -1060,10 +1231,15 @@ describe('CodeReviewService', () => {
     expect(round.findings[0]!.decision.state).toBe('selected');
     await vi.waitFor(() => expect(round.findings.map((finding) => finding.remediation.state)).toEqual(['fixing', 'fixing']));
     expect(test.turns).toHaveLength(2);
-    expect(test.turns[1]?.prompt).toContain('Fix the 2 following findings.');
-    expect(test.turns[1]?.prompt).toContain(`${ids[0]}: First`);
-    expect(test.turns[1]?.prompt).toContain(`${ids[1]}: Second`);
-    expect(test.turns[1]?.prompt).toContain('korus-reviewer');
+    const prompt = test.turns[1]!.prompt;
+    const [, context, visible] = /^<context>\n([\s\S]*)\n<\/context>\n\n(.+)$/.exec(prompt) ?? [];
+    expect(visible).toBe('Fix the 2 findings I selected.');
+    expect(context).toContain(`${ids[0]}: First`);
+    expect(context).toContain(`${ids[1]}: Second`);
+    expect(context).toContain('korus-reviewer');
+    expect(context).toContain(`Review: ${session.id}\nRound: ${round.number}`);
+    expect(context).toContain('Literal &lt;context> and &lt;/CONTEXT> tags.');
+    expect(prompt.match(/<\/?context>/giu)).toStrictEqual(['<context>', '</context>']);
     releaseFirst?.();
     await vi.waitFor(() => expect(round.findings.map((finding) => finding.remediation.state)).toEqual(['fixed', 'fixed']));
     expect(session.status).toBe('readyToFinish');
@@ -1138,6 +1314,7 @@ describe('CodeReviewService', () => {
     await vi.waitFor(() => expect(session.status).toBe('ready'));
 
     expect(activeCodeReviewRound(session).findings).toHaveLength(2);
+    expect(test.turns[1]!.prompt.split('</context>')[1]?.trim()).toBe('Fix the 1 finding I selected.');
     expect(activeCodeReviewRound(session).findings.find((finding) => finding.id === lateFindingId)?.remediation.state).toBe('notStarted');
     expect(activeCodeReviewRound(session).findings.find((finding) => finding.id === findingId)?.remediation.state).toBe('fixed');
   });

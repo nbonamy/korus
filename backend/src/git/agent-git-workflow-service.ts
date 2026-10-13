@@ -18,6 +18,8 @@ import type {
   AppSnapshot,
 } from '@workspace/core/contracts';
 import type { DelegatedWorkReportPort } from '../agents/delegated-work-report-service';
+import type { BranchCurrentWorkService } from './branch-current-work-service';
+import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult } from '@workspace/core/branch-current-work';
 import type { AgentGitService } from './agent-git-service';
 
 export type AgentGitRequest = {
@@ -33,6 +35,7 @@ type AgentGitWorkIntegrationsPort = {
 };
 
 export type AgentGitWorkflowServiceOptions = {
+  branchWork?: BranchCurrentWorkService;
   applyEvent: (event: BackendEvent) => void;
   archiveConversation: (agent: Agent) => Promise<void>;
   delegatedWorkReports: DelegatedWorkReportPort;
@@ -51,9 +54,19 @@ export type AgentGitWorkflowServiceOptions = {
 export class AgentGitWorkflowService {
   constructor(private readonly options: AgentGitWorkflowServiceOptions) {}
 
-  async execute(request: AgentGitRequest, agent: Agent): Promise<AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
+  async execute(request: AgentGitRequest, agent: Agent): Promise<BranchWorkPreview | BranchWorkResult | AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
     const { method, agentId, params } = request;
     switch (method) {
+      case backendMethods.agentGitBranchWorkPreview:
+        if (!this.options.branchWork) throw new Error('Branch transfer is unavailable.');
+        return this.options.branchWork.preview(requireAgentFolder(agent), agent.id);
+      case backendMethods.agentGitBranchWork: {
+        if (!this.options.branchWork) throw new Error('Branch transfer is unavailable.');
+        const input = requireConfirmed(params.input, 'Branching current work');
+        const result = await this.options.branchWork.execute(agent, input as BranchWorkInput);
+        await this.options.refreshGitStatus(agent.id);
+        return result;
+      }
       case backendMethods.agentGitPruneGet:
         return this.pruneInventory(agent);
       case backendMethods.agentGitPrune: {

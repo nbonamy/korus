@@ -80,7 +80,7 @@ if (props.activeStep === undefined) {
 }
 
 watch(() => props.activeStep, (activeStep) => {
-  if (activeStep !== undefined && props.state === 'running') {
+  if (activeStep !== undefined && props.state !== 'success') {
     displayStep.value = Math.min(activeStep, props.steps.length);
   }
 });

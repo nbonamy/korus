@@ -142,6 +142,13 @@ describe('AgentWorkspace', () => {
     expect(wrapper.getComponent({ name: 'RightWorkspacePanel' }).props('visible')).toBe(true);
   });
 
+  it('routes inspecting a transferred agent through shell selection', () => {
+    const { wrapper } = mountWorkspace();
+    wrapper.getComponent({ name: 'AgentHeader' }).vm.$emit('select-agent', 'transferred-agent');
+    expect(wrapper.props('selectAgentFromShell')).toHaveBeenCalledExactlyOnceWith('transferred-agent');
+    wrapper.unmount();
+  });
+
   it('reserves chat space when the workspace shrinks and restores the preferred sidebar width when it grows', async () => {
     let onResize: ResizeObserverCallback = () => {};
     const disconnect = vi.fn();

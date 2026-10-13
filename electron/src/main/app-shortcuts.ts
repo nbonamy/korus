@@ -1,6 +1,7 @@
 import type { AppCommand } from '@workspace/core/contracts';
+import { nativeShortcutCommand, shortcutAccelerator } from '@workspace/core/keyboard-shortcuts';
 
-export const cycleTeamsAccelerator = 'Command+`';
+export const cycleTeamsAccelerator = shortcutAccelerator('nextTeam');
 
 export type AppShortcutRegistrar = {
   isRegistered(accelerator: string): boolean;
@@ -23,92 +24,7 @@ export function appCommandFromInput(input: AppShortcutInput): AppCommand | null 
     return null;
   }
 
-  if (
-    input.meta === true &&
-    input.control !== true &&
-    input.alt !== true
-  ) {
-    const key = input.key?.toLowerCase();
-
-    if (input.shift === true && key === 'w') {
-      return { type: 'close-active-team' };
-    }
-
-    if (input.shift === true && key === 'm') {
-      return { type: 'toggle-spoken-announcements-muted' };
-    }
-
-    if (input.shift === true && key === 'k') {
-      return { type: 'compact-active-session' };
-    }
-
-    if (input.shift === true && key === 'x') {
-      return { type: 'save-active-prompt-draft' };
-    }
-
-    if (input.shift === true && key === 'v') {
-      return { type: 'open-saved-prompt-drafts' };
-    }
-
-    if (input.shift !== true) {
-      if (key === 'n') {
-        return { type: 'new-team' };
-      }
-
-      if (key === 'w') {
-        return { type: 'close-active-agent' };
-      }
-
-      if (key === 'q') {
-        return { type: 'quit' };
-      }
-
-      if (key === 'e') {
-        return { type: 'edit-active-agent' };
-      }
-
-      if (key === 'd') {
-        return { type: 'duplicate-active-agent' };
-      }
-
-      if (key === ',') {
-        return { type: 'open-settings' };
-      }
-
-      if (key === 'k') {
-        return { type: 'open-agent-palette' };
-      }
-
-      if (key === 'g') {
-        return { type: 'open-review' };
-      }
-
-      if (key === 'b') {
-        return { type: 'open-browser' };
-      }
-    }
-  }
-
-  if (
-    input.meta === true &&
-    input.control !== true &&
-    input.alt !== true &&
-    input.shift !== true &&
-    (input.key === '`' || input.code === 'Backquote')
-  ) {
-    return { type: 'cycle-teams' };
-  }
-
-  if (
-    input.control === true &&
-    input.meta !== true &&
-    input.alt !== true &&
-    input.key === 'Tab'
-  ) {
-    return { type: 'cycle-agents', direction: input.shift ? -1 : 1 };
-  }
-
-  return null;
+  return nativeShortcutCommand(input);
 }
 
 export function registerCycleTeamsShortcut(

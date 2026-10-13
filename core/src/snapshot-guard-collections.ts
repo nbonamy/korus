@@ -1,3 +1,4 @@
+import { isDelegationOverrides } from './delegation-context';
 import {
   hasOwn,
   includes,
@@ -86,6 +87,7 @@ export function isQueuedPrompt(value: unknown): boolean {
 
 function isSendPromptOptions(value: unknown): boolean {
   return isRecord(value) &&
+    optional(value, 'delegation', isDelegationOverrides) &&
     optional(value, 'attachments', (candidate) => isArrayOf(candidate, isPromptAttachment)) &&
     optional(value, 'model', isNullableString) &&
     optional(value, 'planMode', isBoolean) &&

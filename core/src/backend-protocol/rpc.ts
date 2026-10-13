@@ -144,6 +144,14 @@ export type AppBackendRequestMap = {
     params: { agentId: string; target?: AgentGitDiffTarget };
     result: import('../contracts').AgentGitDiff;
   };
+  [backendMethods.agentGitBranchWorkPreview]: {
+    params: { agentId: string };
+    result: import('../branch-current-work').BranchWorkPreview;
+  };
+  [backendMethods.agentGitBranchWork]: {
+    params: { agentId: string; input: import('../branch-current-work').BranchWorkInput };
+    result: import('../branch-current-work').BranchWorkResult;
+  };
   [backendMethods.agentGitWorkflowGet]: {
     params: { agentId: string };
     result: AgentGitWorkflow;
