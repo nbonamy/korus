@@ -7,6 +7,7 @@ import type { DocumentWorkspaceChange, DocumentSaveInput } from '@workspace/core
 import { isWorkProviderKind } from '@workspace/core/work-providers';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { product } from '@workspace/core/product';
+import { isDelegationOverrides } from '@workspace/core/delegation-context';
 import { normalizeGitSettings } from '@workspace/core/git-preferences';
 import { readWorktreeHead } from './git-worktrees';
 import type { DurableTaskService } from './agents/durable-task-service';
@@ -1840,6 +1841,10 @@ export class AppBackendServer {
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options }, async (agent) => {
           if (!prompt && !options?.attachments?.length) {
             return this.snapshot;
+          }
+          if (options?.delegation !== undefined) {
+            if (!isDelegationOverrides(options.delegation)) throw new Error('Invalid worktree delegation overrides.');
+            agent.userDelegationOverrides = structuredClone(options.delegation);
           }
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options }) as BackendSendResult;
           agent.backendSession = result.backendSession;

@@ -20,10 +20,27 @@ const task = (): DelegatedTask => ({
 });
 
 describe('tasks.json persistence', () => {
+  it('retains a Claude worker native store reference in acceptance and result after restart', async () => {
+    const value = task();
+    value.backend = 'claude';
+    const backendSession = { kind: 'claude' as const, sessionId: 'native-child', transport: 'stdio' as const, transcriptFolder: '/parent-provider-store' };
+    value.acceptance!.backendSession = backendSession;
+    value.submission!.backendSession = backendSession;
+    await new AppStateStore(home).saveTasks([value]);
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
+  it('retains frozen user directions across task-store reload and later roster writes', async () => {
+    const value = { ...task(), delegationUserInstructions: { saved: 'Say Hello only', taskSpecific: 'Say Bonjour instead' } };
+    const store = new AppStateStore(home);
+    await store.saveTasks([value]);
+    await store.save(createEmptySnapshot());
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
   it('loads additive task fields while retaining result and delivery identity across saves', async () => {
     const value = task();
     const stored = {
       ...value, futureTaskField: true,
+      delegationUserInstructions: { saved: 'Saved constraints', taskSpecific: 'User override', futureInstructionsField: true },
       assignment: { ...value.assignment, futureContractField: true },
       workspace: { repositoryPath: '/repo', futureWorkspaceField: true },
       acceptance: { ...value.acceptance!, futureReceiptField: true, backendSession: { ...value.acceptance!.backendSession, futureSessionField: true } },
@@ -61,6 +78,7 @@ describe('tasks.json persistence', () => {
 
   it.each([
     '{broken',
+    serializeStoreFile({ tasks: [{ ...task(), delegationUserInstructions: { saved: 42 } }] }),
     serializeStoreFile({ tasks: [{ ...task(), submission: undefined }] }),
     serializeStoreFile({ tasks: [task(), task()] }),
     serializeStoreFile({ tasks: [{ ...task(), state: 'invented' }] }),

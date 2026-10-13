@@ -145,6 +145,13 @@ null folder reference.
   until the SDK replays its UUID and the work completes, and stopping a steered turn
   closes its query. Fork cutoffs come from persisted native boundaries; goal state
   comes from structured `goal_status` records, with clear distinct from completion.
+- Worktree delegation uses the SDK's native session fork in the source store,
+  then resumes the child query in the worker's folder with its own model,
+  permissions, system appendix and MCP identity. A running source is cut at its
+  last completed live native boundary; without one it starts a fresh handoff.
+  The persisted session keeps its native transcript folder separately from the
+  execution folder; reads, further forks and deletion use that storage reference.
+  Interactive same-folder forks retain their idle-source guard.
 - Rollback, edit, retry and delete-turn stay unsupported; enabling any further
   control needs evidence at the SDK and driver boundaries first.
 - **Code review** defaults to a separate visible reviewer in the same workspace

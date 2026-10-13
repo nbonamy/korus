@@ -1,8 +1,8 @@
 import type { Component } from 'vue';
-import { AffiliateIcon, GitBranchIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
+import { AffiliateIcon, GitBranchIcon, ListDetailsIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
 import type { AgentBackend } from '@workspace/core/contracts';
 
-export type SettingsTab = 'antigravity' | 'appearance' | 'appshots' | 'claude-code' | 'codex' | 'connections' | 'general' | 'integrations' | 'plugins' | 'personalization' | 'git' | 'voice';
+export type SettingsTab = 'workflows' | 'antigravity' | 'appearance' | 'appshots' | 'claude-code' | 'codex' | 'connections' | 'general' | 'integrations' | 'plugins' | 'personalization' | 'git' | 'voice';
 type SettingsDestination = {
   id: SettingsTab;
   labelKey: string;
@@ -24,6 +24,7 @@ const settingsDestinations: readonly SettingsDestination[] = [
   { id: 'antigravity', labelKey: 'antigravity.name', group: 'agents', backend: 'antigravity', aliases: 'google engine provider login authentication' },
   { id: 'plugins', labelKey: 'surface.settingsSidebar.plugins', group: 'agents', icon: PuzzleIcon, aliases: 'skills MCP tools extensions' },
   { id: 'git', labelKey: 'surface.instructionSettings.git', group: 'workspace', icon: GitBranchIcon, aliases: 'version control branches commit repository' },
+  { id: 'workflows', labelKey: 'workflows.title', group: 'workspace', icon: ListDetailsIcon, aliases: 'delegation fork handoff worktree instructions' },
   { id: 'integrations', labelKey: 'surface.settingsSidebar.integrations', group: 'workspace', icon: AffiliateIcon, aliases: 'github work providers issues' },
   { id: 'connections', labelKey: 'surface.settingsSidebar.connections', group: 'workspace', icon: TerminalIcon, aliases: 'ssh remote hosts servers' },
 ];

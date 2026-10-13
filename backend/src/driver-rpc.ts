@@ -296,7 +296,7 @@ export class BackendDriverRpc {
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
         const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
       }
@@ -436,6 +436,13 @@ export class BackendDriverRpc {
         }
         return driver.resumeConversation(agent, record.target as ConversationResumeTarget);
       }
+      case backendMethods.driverWorktreeConversationFork: {
+        const { agent } = requireAgentParams(params);
+        const targetAgent = requireAgent(requireRecord(params).targetAgent, 'targetAgent');
+        if (agent.backend !== targetAgent.backend) throw new Error('Native worktree forks require the same provider.');
+        const driver = this.requireDriver(agent.backend);
+        return driver.forkWorktreeConversation ? driver.forkWorktreeConversation(agent, targetAgent) : null;
+      }
       case backendMethods.driverConversationFork: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
@@ -476,7 +483,7 @@ export class BackendDriverRpc {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
         const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
           ? driver.steerPrompt(agent, prompt, options)

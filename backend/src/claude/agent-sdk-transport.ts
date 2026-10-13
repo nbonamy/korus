@@ -213,12 +213,20 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     await this.deleteStoredSession(sessionId, { dir: cwd });
   }
 
-  async forkSession(sessionId: string, cwd: string, upToMessageId?: string): Promise<string> {
+  async forkSession(sessionId: string, cwd: string, upToMessageId?: string, transcriptFolder?: string): Promise<string> {
+    return this.nativeForkSession(sessionId, cwd, upToMessageId, false, transcriptFolder);
+  }
+
+  async forkWorktreeSession(sessionId: string, sourceCwd: string, upToMessageId?: string, transcriptFolder?: string): Promise<string> {
+    return this.nativeForkSession(sessionId, sourceCwd, upToMessageId, true, transcriptFolder);
+  }
+
+  private async nativeForkSession(sessionId: string, cwd: string, upToMessageId: string | undefined, completedBoundaryAllowed: boolean, transcriptFolder?: string): Promise<string> {
     const session = this.sessions.get(sessionId);
-    if (session?.activeTurn) throw new Error('Claude must be idle before forking.');
+    if (session?.activeTurn && !(completedBoundaryAllowed && upToMessageId)) throw new Error('Claude needs a completed native boundary to fork while running.');
     if (session && session.cwd !== expandHome(cwd)) throw new Error('Claude session workspace does not match the active agent folder.');
     const fork = await (this.options.forkSession ?? forkClaudeSession)(sessionId, {
-      dir: cwd, ...(upToMessageId ? { upToMessageId } : {}),
+      dir: transcriptFolder ?? cwd, ...(upToMessageId ? { upToMessageId } : {}),
     });
     return fork.sessionId;
   }

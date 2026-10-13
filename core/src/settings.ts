@@ -1,3 +1,4 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
 import { spokenAnnouncementVoices, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
@@ -41,6 +42,8 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   backlogRepositoryFavorites: {},
   savedPromptDrafts: [],
   worktreeInitializationMode: 'automatic',
+  worktreeDelegationStartingContext: 'handoff',
+  worktreeDelegationInstructions: '',
   sessionCompressionWarningEnabled: true,
   repositoryIcons: {},
   appshots: { ...defaultAppshotSettings },
@@ -155,6 +158,8 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     backlogRepositoryFavorites: normalizeBacklogRepositoryFavorites(value.backlogRepositoryFavorites),
     savedPromptDrafts: normalizeSavedPromptDrafts(value.savedPromptDrafts),
     worktreeInitializationMode: normalizeWorktreeInitializationMode(value.worktreeInitializationMode),
+    worktreeDelegationStartingContext: value.worktreeDelegationStartingContext === 'conversation' ? 'conversation' : 'handoff',
+    worktreeDelegationInstructions: normalizeString(value.worktreeDelegationInstructions)?.slice(0, MAX_DELEGATION_INSTRUCTIONS_LENGTH).trim() ?? '',
     sessionCompressionWarningEnabled: value.sessionCompressionWarningEnabled !== false,
     repositoryIcons: normalizeRepositoryIcons(value.repositoryIcons),
     appshots: normalizeAppshotSettings(value.appshots),

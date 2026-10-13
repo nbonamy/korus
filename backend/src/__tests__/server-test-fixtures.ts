@@ -55,6 +55,8 @@ export function createTestSnapshot(): AppSnapshot {
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: {
         hotkey: 'command',

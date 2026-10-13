@@ -15,7 +15,7 @@ afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ''; delete win
 describe('AppShell command palette', () => {
   it('opens the relevant settings controls from intent searches and retains the selected settings page', async () => {
     const wrapper = mountShell({ stubAgentWorkspace: true });
-    for (const [query, control] of [['font', '#settings-appearance-title'], ['speech', '#settings-voice-title'], ['ssh', '#settings-connections-title']]) {
+    for (const [query, control] of [['font', '#settings-appearance-title'], ['speech', '#settings-voice-title'], ['settings delegation', '#settings-workflows-title'], ['ssh', '#settings-connections-title']]) {
       await openPalette();
       await wrapper.get('.quick-open-dialog input').setValue(query);
       await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');

@@ -12,7 +12,9 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     const agent = { ...sdkAgent(), backendSession: undefined };
     surface.createConversation.mockResolvedValue(sdkSnapshot());
     conversation('conversation-a').handle.sendMessage.mockResolvedValue(sdkSnapshot('conversation-a', { turnIds: ['accepted'], activeTurnId: 'accepted' }));
-    const options = driver.preparePromptOptions(agent, { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true });
+    const delegation = { startingContext: 'handoff' as const, instructions: 'Task-specific direction' };
+    const options = driver.preparePromptOptions(agent, { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true, delegation });
+    expect(options?.delegation).toStrictEqual(delegation);
     await expect(driver.sendPrompt(agent, 'Implement', options)).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'conversation-a' }, turnId: 'accepted' });
     expect(surface.createConversation).toHaveBeenCalledWith({ cwd: '/repo', threadSource: 'user' }, { extensionContext: agent });
     expect(conversation('conversation-a').handle.sendMessage).toHaveBeenCalledWith('Implement', { model: 'model', reasoningEffort: 'high', serviceTier: 'fast', planMode: true });

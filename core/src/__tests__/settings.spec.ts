@@ -1,8 +1,21 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '../delegation-context';
 import { describe, expect, it } from 'vitest';
 import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
 
 describe('settings contracts', () => {
+  it('defaults delegation to handoff, preserves a saved fork choice and normalizes instructions', () => {
+    expect(normalizeGeneralSettings({}).worktreeDelegationStartingContext).toBe('handoff');
+    expect(defaultGeneralSettings.worktreeDelegationStartingContext).toBe('handoff');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'conversation' }).worktreeDelegationStartingContext).toBe('conversation');
+    const snapshot = createEmptySnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: '  Keep local.\nTest.  ' } });
+    expect(snapshot.general.worktreeDelegationStartingContext).toBe('handoff');
+    expect(snapshot.general.worktreeDelegationInstructions).toBe('Keep local.\nTest.');
+    expect(normalizeGeneralSettings({ worktreeDelegationInstructions: 'x'.repeat(MAX_DELEGATION_INSTRUCTIONS_LENGTH + 5) }).worktreeDelegationInstructions).toHaveLength(MAX_DELEGATION_INSTRUCTIONS_LENGTH);
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
+  });
   it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
     expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
     expect(normalizeGeneralSettings({ backlogRepositoryFavorites: {
@@ -61,6 +74,8 @@ describe('settings contracts', () => {
       agentListCompact: true,
       cockpitAgentViewMode: 'recent',
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
       appshots: defaultAppshotSettings,
@@ -165,6 +180,8 @@ describe('settings contracts', () => {
       cockpitAgentViewMode: 'teams',
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,

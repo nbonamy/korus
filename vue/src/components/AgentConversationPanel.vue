@@ -24,7 +24,7 @@
     :plan-visible="planVisible"
     @close-plan="emit('close-plan')"
     @retry-history="prepare"
-    @thread-flag="conversation.respondToThreadFlag"
+    @thread-flag="respondToThreadFlag"
     @annotate-attachment="conversation.imageAnnotation.openAttachment"
     @add-text-annotation="
       conversation.chatTextAnnotation.add($event.selection, $event.comment)
@@ -133,6 +133,11 @@ const conversation = useAgentConversation({
   debugFallbackImageSource: '',
   notifyError: (message) => ElMessage.error(message),
 });
+function respondToThreadFlag(response: import('@workspace/core/thread-flags').ThreadFlagResponse): void {
+  if (response.id === 'delegate_to_worktree' && response.action === 'execute') emit('composer-command', props.view.agent.id, 'delegate');
+  else void conversation.respondToThreadFlag(response);
+}
+
 async function prepare(): Promise<void> {
   try {
     await props.actions.prepare(props.view.agent.id);

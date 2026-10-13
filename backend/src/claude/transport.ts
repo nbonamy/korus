@@ -84,6 +84,7 @@ export type ClaudeTurnTransport = {
   readContextUsage?(params: ClaudeContextUsageParams): Promise<ClaudeContextUsage | null>;
   closeSession?(sessionId: string): void | Promise<void>;
   deleteSession?(sessionId: string, cwd: string): Promise<void>;
-  forkSession?(sessionId: string, cwd: string, upToMessageId?: string): Promise<string>;
+  forkSession?(sessionId: string, cwd: string, upToMessageId?: string, transcriptFolder?: string): Promise<string>;
+  forkWorktreeSession?(sessionId: string, sourceCwd: string, upToMessageId?: string, transcriptFolder?: string): Promise<string>;
   close(): Promise<void>;
 };

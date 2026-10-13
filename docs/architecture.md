@@ -248,6 +248,23 @@ clears or changes it, Korus never re-detects.
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+- Worktree delegation preferences belong to app settings. A delegation can
+  override its starting context and add task instructions. App-submitted user
+  overrides retain their provenance through prompt admission and persistence.
+  Explicit per-task user directions override saved user preferences; both outrank
+  agent-generated assignment guidance within the user's authorized scope.
+  User directions are frozen in the durable task and worker metadata, and supplied
+  once in the worker request's hidden context. The visible prompt contains only
+  the task. Agent-generated assignment guidance is
+  contextual task data and cannot present itself as a direct user override.
+  Assignment instructions are frozen before durable startup and never grant
+  publication or merge authority.
+- Same-provider worktree delegation uses an optional driver-owned native fork,
+  rebound to the worker's identity, folder and provider configuration. A busy
+  source uses a completed native boundary when supported. Cross-provider,
+  unsupported or refused forks start a fresh handoff with persisted
+  context metadata. Korus never replays a transcript to imitate a fork.
+  Independent code reviewers always start fresh.
 - Korus-created pull requests are tracked on their agent; a runtime scheduler
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree
@@ -296,6 +313,8 @@ separate from worker agents and provider conversations. They are stored in
   progression.
 - Result delivery batches are persisted before parent prompt acceptance and use
   normal prompt admission, waiting while the parent is busy or awaiting input.
+  The prompt presents readable task outcomes; tracking markers, coordination
+  instructions and complete structured results remain in hidden context.
   Explicit interruption, a missing parent, or a restart blocks automatic wakeup.
   Acceptance markers in provider history can reconcile an uncertain delivery;
   missing or truncated history never proves non-execution and never triggers a

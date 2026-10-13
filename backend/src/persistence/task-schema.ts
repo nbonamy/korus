@@ -1,3 +1,4 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '@workspace/core/delegation-context';
 import * as z from 'zod/v4';
 import type { DelegatedTask, TaskContract, TaskResultInput } from '@workspace/core/delegated-task';
 
@@ -14,7 +15,7 @@ const session = z.discriminatedUnion('kind', [
   z.looseObject({ kind: z.literal('codex'), threadId: text }),
   z.looseObject({
     kind: z.literal('claude'), sessionId: text, transport: z.enum(['stdio', 'websocket']),
-    transcriptSessionId: text.optional(), serverUrl: text.optional(), model: text.optional(),
+    transcriptSessionId: text.optional(), transcriptFolder: text.optional(), serverUrl: text.optional(), model: text.optional(),
     reasoningEffort: text.optional(),
   }),
 ]);
@@ -24,6 +25,7 @@ const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
   parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity']),
   assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
+  delegationUserInstructions: z.looseObject({ saved: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH), taskSpecific: z.string().max(MAX_DELEGATION_INSTRUCTIONS_LENGTH).optional() }).optional(),
   workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),
   createdAt: text, updatedAt: text, folder: text.optional(), acceptance: acceptance.optional(), executionTurnId: text.optional(),

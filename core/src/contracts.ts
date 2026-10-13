@@ -353,6 +353,10 @@ export type Agent = {
   id: string;
   teamId?: string;
   delegatedByAgentId?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
+  /** User-entered controls for the current delegation turn; never supplied by create-agent. */
+  userDelegationOverrides?: import('./delegation-context').DelegationOverrides;
+  delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
   name: string | null;
@@ -499,6 +503,8 @@ export type AppGeneralSettings = {
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
   worktreeInitializationMode: WorktreeInitializationMode;
+  worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
+  worktreeDelegationInstructions?: string;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;
@@ -672,6 +678,7 @@ export type AgentCreationProgress = {
   hasPrompt: boolean;
   phase?: 'creatingProject' | 'creatingWorktree' | 'initializingWorktree' | 'creatingAgent' | 'startingPrompt';
   initializationDetail?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
   agentId?: string;
   agentName?: string;
   error?: string;
