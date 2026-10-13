@@ -218,7 +218,6 @@ function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemCons
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('automaticReviewing'),
     },
-    { type: 'separator' },
     {
       label: 'Manual Review in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),

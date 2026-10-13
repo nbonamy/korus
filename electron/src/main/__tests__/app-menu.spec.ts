@@ -450,7 +450,6 @@ describe('app menu', () => {
       'Simulate Uncommitted Changes',
       'separator',
       'Automatic Review in Progress',
-      'separator',
       'Manual Review in Progress',
       'Findings Ready for Selection',
       'Remediation in Progress',
