@@ -60,6 +60,8 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   previewAgentFile: [backendMethods.agentFilePreview, named('agentId', 'filePath')],
   readAgentFileChunk: [backendMethods.agentFileChunkRead, named('agentId', 'filePath', 'offset')],
   getAgentGitDiff: [backendMethods.agentGitDiffGet, namedOptional('agentId', 'target')],
+  previewBranchCurrentWork: [backendMethods.agentGitBranchWorkPreview, named('agentId')],
+  branchCurrentWork: [backendMethods.agentGitBranchWork, named('agentId', 'input')],
   getAgentGitWorkflow: [backendMethods.agentGitWorkflowGet, named('agentId')],
   listAgentTasks: [backendMethods.agentTasksList, named('agentId')],
   cancelAgentTask: [backendMethods.agentTaskCancel, named('agentId', 'taskId')],

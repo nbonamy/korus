@@ -81,6 +81,7 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { isCodeReviewDecisionInput, isCodeReviewDiscussionInput, isCodeReviewStartInput, type CodeReviewFinding, type CodeReviewSession } from '@workspace/core/code-review';
 import { CodeReviewService, type CodeReviewToolPort, type AutomaticReviewStartInput } from './review/code-review-service';
+import { BranchCurrentWorkService } from './git/branch-current-work-service';
 import { AgentCreationService } from './agents/agent-creation-service';
 import { ProjectCreationService, type CreatedProject } from './projects/project-creation-service';
 import { VisualizeService, directVisualizationPrompt, generateVisualizationSuggestionPrompt, initialVisualizePrompt } from './visualize-service';
@@ -415,6 +416,17 @@ export class AppBackendServer {
       },
     });
     this.agentGitWorkflows = new AgentGitWorkflowService({
+      branchWork: new BranchCurrentWorkService({
+        progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
+        provision: async (parent, input, folder, agentId) => {
+          const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
+            ?? this.agentCreation.create({ name: input.branchName, folder, backend: parent.backend, teamId: parent.teamId, delegatedByAgentId: parent.id }, { id: agentId, select: false });
+          if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
+          await this.agentWorkspaces.refreshIdentity(worker.id);
+          await this.agentWorkspaces.refreshGitStatus(worker.id);
+          await this.persistAndEmitSnapshot();
+        },
+      }),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       archiveConversation: async (agent) => {
         if (!agent.backendSession) return;

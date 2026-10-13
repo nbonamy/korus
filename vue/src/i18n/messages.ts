@@ -4,6 +4,16 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
+    branchWork: {
+      menu: 'Branch…', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
+      loading: 'Loading…', branchName: 'Branch name', branchPlaceholder: 'Branch name…',
+      resume: 'Resume {branch}', submit: 'Branch', working: 'Branching…', retry: 'Retry', refresh: 'Refresh', close: 'Close', cancel: 'Cancel',
+      progressEyebrow: 'Branch current work', progressTitle: 'Preparing your new worktree', progressReady: '{branch} is ready', progressFailed: 'Worktree setup needs attention',
+      progressWorktree: 'Create the worktree', progressChanges: 'Move your changes', progressChangesDetail: 'Keep staged and unstaged changes uncommitted.',
+      progressAgent: 'Prepare the new agent', progressAgentDetail: 'Ready to continue in the new worktree.', progressSource: 'Reset the current branch', progressSourceDetail: 'Restore the files that were moved.',
+      completed: 'Changes moved. Open the new agent to continue.', recovery: 'The move needs recovery. Your work is preserved.',
+      backups: 'Source recovery copies: {folder}', retained: 'Retained in the source checkout:', inspect: 'Open agent',
+    },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',

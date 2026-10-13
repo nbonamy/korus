@@ -47,6 +47,8 @@ export const backendMethods = {
   agentFilesList: 'agent/files/list',
   workspaceFolderValidate: 'workspace/folder/validate',
   agentGitDiffGet: 'agent/git/diff/get',
+  agentGitBranchWorkPreview: 'agent/git/branchWork/preview',
+  agentGitBranchWork: 'agent/git/branchWork',
   agentGitWorkflowGet: 'agent/git/workflow/get',
   agentGitMessageGenerate: 'agent/git/message/generate',
   agentGitStage: 'agent/git/stage',
@@ -236,6 +238,8 @@ export const backendMethodValues = Object.values(backendMethods) as BackendMetho
 
 export const agentGitBackendMethods = [
   backendMethods.agentGitDiffGet,
+  backendMethods.agentGitBranchWorkPreview,
+  backendMethods.agentGitBranchWork,
   backendMethods.agentGitWorkflowGet,
   backendMethods.agentGitMessageGenerate,
   backendMethods.agentGitStage,
