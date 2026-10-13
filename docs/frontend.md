@@ -132,6 +132,7 @@ The command palette and shortcut reference share the canonical quick-open dialog
 search, rows and key hints. The reference groups read-only rows; the palette invokes
 existing shell handlers. Their action icons share renderer presentation metadata;
 Git actions retain the icons supplied by their workflow control.
+Palette entries declare their sections explicitly and preserve owning-menu order.
 Settings destinations share their icons, labels and host/provider availability in
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.
 Git command availability and dispatch come from the focused agent's workflow control,

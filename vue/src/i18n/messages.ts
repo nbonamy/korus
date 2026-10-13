@@ -6,7 +6,7 @@ export const messages = {
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
-      groups: { navigation: 'Navigation', create: 'Create', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
+      groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
       cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
       newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', gitAction: 'Git: {action}',
     },

@@ -75,14 +75,16 @@ const results = ref<HTMLElement | null>(null);
 const query = ref('');
 const selectedIndex = ref(0);
 const matches = computed(() => {
-  const terms = query.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
+  const search = query.value.toLocaleLowerCase().trim();
+  const terms = search.split(/\s+/u).filter(Boolean);
   const filtered = props.items.filter((item) => {
     const keys = item.keys ?? [];
     const aliases = keys.map(key => key === '⌘' ? 'cmd' : key);
     const haystack = `${item.searchText ?? `${item.label} ${item.detail ?? ''}`} ${item.group ?? ''} ${keys.join(' ')} ${keys.join('+')} ${aliases.join('+')} ${keys.includes('⌘') ? 'command cmd' : ''}`;
     return terms.every((term) => haystack.toLocaleLowerCase().includes(term));
   });
-  if (terms.length && props.prioritizeLabelMatches) {
+  // Category browsing retains menu order; specific action searches prefer labels.
+  if (terms.length && props.prioritizeLabelMatches && !props.items.some(item => item.group?.toLocaleLowerCase() === search)) {
     const labelMatch = (item: QuickOpenItem) => Number(terms.every(term => item.label.toLocaleLowerCase().includes(term)));
     filtered.sort((left, right) => labelMatch(right) - labelMatch(left));
   }

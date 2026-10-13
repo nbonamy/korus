@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import CommandPalette from '../CommandPalette.vue';
+import AgentContextMenu from '../AgentContextMenu.vue';
 import { commandPaletteActions, type CommandPaletteAction } from '../command-palette-actions';
 
 function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> = {}) {
@@ -30,7 +31,50 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
 }
 afterEach(() => { document.body.innerHTML = ''; });
 
+function sectionRows(wrapper: ReturnType<typeof mount>, title: string): string[] {
+  let row = wrapper.findAll('h3').find(heading => heading.text() === title)?.element.nextElementSibling;
+  const labels: string[] = [];
+  while (row && row.tagName !== 'H3') {
+    const label = row.querySelector('.quick-open-dialog__label');
+    if (label) labels.push(label.textContent!);
+    row = row.nextElementSibling;
+  }
+  return labels;
+}
+
 describe('CommandPalette', () => {
+  it('uses the agent menu order and puts review, drafts and team actions in their own sections', async () => {
+    const { wrapper } = setup();
+    const menu = mount(AgentContextMenu, { props: { x: 0, y: 0 } });
+    try {
+      const menuLabels = Array.from(document.querySelectorAll('.agent-context-menu .app-menu__label')).map(item => item.textContent!.toLocaleLowerCase());
+      expect(menuLabels).toContain('restart agent');
+      expect(menuLabels).toContain('close agent');
+      for (const query of ['', 'agent']) {
+        await wrapper.get('input').setValue(query);
+        const agentLabels = sectionRows(wrapper, 'Agent').map(label => label.toLocaleLowerCase());
+        expect(agentLabels).toContain('restart agent');
+        expect(agentLabels).toContain('close agent');
+        expect(agentLabels.filter(label => menuLabels.includes(label))).toStrictEqual(menuLabels.filter(label => agentLabels.includes(label)));
+        expect(agentLabels.at(-1)).toBe('close agent');
+        expect(agentLabels).toContain('open code review');
+        expect(agentLabels).not.toContain('saved drafts');
+        expect(agentLabels).not.toContain('close team');
+      }
+      await wrapper.get('input').setValue('');
+      expect(sectionRows(wrapper, 'Conversation')).toContain('Save draft for later');
+      expect(sectionRows(wrapper, 'Conversation')).toContain('Saved drafts');
+      expect(sectionRows(wrapper, 'Team')).toContain('Close team');
+    } finally {
+      menu.unmount(); wrapper.unmount();
+    }
+  });
+  it('keeps artifact panes in workspace-menu order and puts file search in navigation', () => {
+    const { wrapper } = setup({ planAvailable: true });
+    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open Visualize', 'Open changes', 'Open browser', 'Open files', 'Open plan']);
+    expect(sectionRows(wrapper, 'Navigation')).toContain('Go to file');
+    wrapper.unmount();
+  });
   it('keeps contextual work ahead of the settings catalog while retaining settings search', async () => {
     const { wrapper, context } = setup();
     context.gitActions = [{ id: 'git:commit', label: 'Git: Commit', run: vi.fn() }];
