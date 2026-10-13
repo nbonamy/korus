@@ -130,6 +130,9 @@ Rules:
 - Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
   rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- Within a supported schema version, additive fields do not block loading agents,
+  settings, tasks, document workspaces or visualizations. Known field types and task
+  lifecycle invariants remain validated; command inputs retain their own strict validation.
 - Agents with an unknown engine kind are excluded from runtime state and logged.
   The store preserves their opaque records, team membership, work assignments and
   subagent data across ordinary saves; it never converts them to another provider.

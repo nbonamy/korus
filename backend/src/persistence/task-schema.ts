@@ -10,24 +10,25 @@ export const taskResultSchema = z.strictObject({
   caveats: z.array(text.max(500)).max(10),
 }) satisfies z.ZodType<TaskResultInput>;
 const session = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('antigravity'), sessionId: text }),
-  z.strictObject({ kind: z.literal('codex'), threadId: text }),
-  z.strictObject({
+  z.looseObject({ kind: z.literal('antigravity'), sessionId: text }),
+  z.looseObject({ kind: z.literal('codex'), threadId: text }),
+  z.looseObject({
     kind: z.literal('claude'), sessionId: text, transport: z.enum(['stdio', 'websocket']),
     transcriptSessionId: text.optional(), serverUrl: text.optional(), model: text.optional(),
     reasoningEffort: text.optional(),
   }),
 ]);
-const acceptance = z.strictObject({ backendSession: session, turnId: text.optional() });
-const taskSchema = z.strictObject({
+const acceptance = z.looseObject({ backendSession: session, turnId: text.optional() });
+// Command inputs stay strict; stored records accept additive fields from newer builds.
+const taskSchema = z.looseObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
   parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity']),
-  assignment: taskContractSchema, prompt: text.max(100000), attemptId: text,
-  workspace: z.strictObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
+  assignment: taskContractSchema.loose(), prompt: text.max(100000), attemptId: text,
+  workspace: z.looseObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),
   createdAt: text, updatedAt: text, folder: text.optional(), acceptance: acceptance.optional(), executionTurnId: text.optional(),
-  submission: taskResultSchema.extend({ id: text, attemptId: text, turnId: text, backendSession: session }).optional(),
-  delivery: z.strictObject({ id: text, state: z.enum(['pending', 'sending', 'accepted', 'uncertain']), acceptance: acceptance.optional() }).optional(),
+  submission: taskResultSchema.loose().extend({ id: text, attemptId: text, turnId: text, backendSession: session }).optional(),
+  delivery: z.looseObject({ id: text, state: z.enum(['pending', 'sending', 'accepted', 'uncertain']), acceptance: acceptance.optional() }).optional(),
   parentWakeBlocked: z.boolean(), parentStopRequested: z.boolean().optional(), detail: z.string().optional(),
 }).superRefine((task, ctx) => {
   if (task.state === 'completed' && (!task.submission || !task.delivery)) ctx.addIssue({ code: 'custom', message: 'completed task requires a result and delivery' });
@@ -36,7 +37,7 @@ const taskSchema = z.strictObject({
   if ((task.acceptance && task.acceptance.backendSession.kind !== task.backend) || (task.submission && task.submission.backendSession.kind !== task.backend)) ctx.addIssue({ code: 'custom', message: 'worker provider mismatch' });
   if (task.submission && task.submission.attemptId !== task.attemptId) ctx.addIssue({ code: 'custom', message: 'result attempt mismatch' });
 });
-export const tasksSchema = z.strictObject({ tasks: z.array(taskSchema) }).superRefine(({ tasks }, ctx) => {
+export const tasksSchema = z.looseObject({ tasks: z.array(taskSchema) }).superRefine(({ tasks }, ctx) => {
   for (const key of [(task: DelegatedTask) => task.id, (task: DelegatedTask) => task.workerAgentId, (task: DelegatedTask) => JSON.stringify([task.parentAgentId, task.requestId])]) {
     if (new Set(tasks.map(key)).size !== tasks.length) ctx.addIssue({ code: 'custom', message: 'duplicate task identity' });
   }
