@@ -27,6 +27,8 @@ const messages = {
     'menu.handoffAgent': 'Hand off…',
     'menu.goToAgent': 'Go to Agent...',
     'menu.help': 'Help',
+    'menu.keyboardShortcuts': 'Keyboard Shortcuts…',
+    'menu.commandPalette': 'Command Palette…',
     'menu.installUpdate': 'Install Update and Relaunch',
     'menu.newTeam': 'New Team',
     'menu.nextAgent': 'Next Agent',

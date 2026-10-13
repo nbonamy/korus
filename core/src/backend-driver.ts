@@ -102,6 +102,8 @@ export type AgentBackendDriver = {
   readonly backend: AgentBackend;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): BackendRuntimeStatus;
+  getBankedResets?(): Promise<import('./contracts/banked-resets').BankedResets>;
+  useBankedReset?(input: import('./contracts/banked-resets').UseBankedResetInput): Promise<import('./contracts/banked-resets').BankedResetResult>;
   getAccountRateLimits?(): Promise<import('./contracts').AccountRateLimits | null>;
   getCapabilities(agent: Agent): BackendCapabilities;
   generateText?(agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult>;
@@ -128,6 +130,8 @@ export type AgentBackendDriver = {
   listConversations?(agent: Agent, input?: ConversationListInput): Promise<ConversationSummary[]>;
   resumeConversation?(agent: Agent, target: ConversationResumeTarget): Promise<BackendConversationResumeResult>;
   replaceConversationWithSummary?(agent: Agent): Promise<BackendConversationReplacementResult>;
+  /** Native continuation for an isolated worker; providers opt in only when rebinding is supported. */
+  forkWorktreeConversation?(agent: Agent, targetAgent: Agent): Promise<BackendConversationForkResult | null>;
   forkConversation?(agent: Agent, targetAgent: Agent, turnId?: string): Promise<BackendConversationForkResult>;
   readConversationMessages?(ref: BackendConversationRef, agentId: string): Promise<RendererMessage[]>;
   readConversationSummary?(agent: Agent, ref: BackendConversationRef): Promise<ConversationSummary | null>;

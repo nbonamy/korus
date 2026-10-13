@@ -253,9 +253,11 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     const assignment = '<context>\nPreserve the contract and literal &lt;/context&gt; text.\n</context>\n\nPerform the assignment';
     expect(task.prompt).toBe(assignment);
     expect((await f.store.loadTasks())[0]!.prompt).toBe(assignment);
-    const sent = `[${product.name} task ${task.id}; attempt ${task.attemptId}]\n${assignment}`;
-    if (backend === 'codex') expect(f.codex.conversation('codex-worker').handle.sendMessage.mock.calls[0]![0]).toBe(sent);
-    else expect(f.claudeSdk.inputs[0]!.message.content).toEqual([{ type: 'text', text: sent }]);
+    const sent = backend === 'codex' ? f.codex.conversation('codex-worker').handle.sendMessage.mock.calls[0]![0]
+      : (f.claudeSdk.inputs[0]!.message.content[0] as { type: 'text'; text: string }).text;
+    expect(sent).toContain(`[${product.name} task ${task.id}; attempt ${task.attemptId}]`);
+    expect(sent).toContain('Preserve the contract and literal &lt;/context&gt; text.');
+    expect(sent.replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim()).toBe('Perform the assignment');
     const worker = f.snapshot.agents.find(agent => agent.id === task.workerAgentId)!;
     await expect(f.rpc.handle(backendMethods.driverInterrupt, { agent: worker, expectedTurnId: 'unrelated-turn' })).rejects.toThrow('no longer active');
     if (backend === 'codex') expect(f.codex.conversation('codex-worker').handle.interrupt).not.toHaveBeenCalled();

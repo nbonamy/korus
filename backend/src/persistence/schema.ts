@@ -7,8 +7,9 @@ import { StoreFormatError } from './store-format';
 import type { StoredRosterAgent, RosterData, SettingsData, VisualizationData } from './layout';
 
 /*
- * Roster schema 2; settings and visualization schema 1. The file structure and supported engine
- * blocks are strict; unknown engines stay opaque. Entities that keep their long-standing shape (agents' inner fields, missions,
+ * Roster schema 2; settings and visualization schema 1. Known fields and supported engine
+ * blocks are validated, but additive fields are tolerated; unknown engines stay opaque.
+ * Entities that keep their long-standing shape (agents' inner fields, missions,
  * automations, settings...) are checked as objects here and repaired by the existing
  * entity sanitizers when the state is joined back together.
  */
@@ -17,17 +18,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(v
 const entity = <T>(label: string) => z.custom<T>(isRecord, `${label} must be an object`);
 
 const engineSchema = z.discriminatedUnion('kind', [
-  z.strictObject({
+  z.looseObject({
     kind: z.literal('antigravity'),
-    session: z.strictObject({ sessionId: z.string() }).optional(),
+    session: z.looseObject({ sessionId: z.string() }).optional(),
     settings: z.looseObject({}).optional(),
   }),
-  z.strictObject({
+  z.looseObject({
     kind: z.literal('codex'),
-    session: z.strictObject({ threadId: z.string() }).optional(),
+    session: z.looseObject({ threadId: z.string() }).optional(),
     settings: z.looseObject({}).optional(),
   }),
-  z.strictObject({
+  z.looseObject({
     kind: z.literal('claude'),
     session: z.looseObject({ sessionId: z.string(), transport: z.enum(['stdio', 'websocket']) }).optional(),
     settings: z.looseObject({}).optional(),
@@ -44,33 +45,33 @@ const agentSchema = z.custom<StoredRosterAgent>(
   'agent must have an id and a valid engine block',
 );
 
-export const rosterSchema = z.strictObject({
+export const rosterSchema = z.looseObject({
   activeTeamId: z.string().nullable(),
   teams: z.array(entity<Team>('team')),
   agents: z.array(agentSchema),
   automations: z.array(entity<Automation>('automation')),
   missions: z.array(entity<Mission>('mission')).optional(),
   workAssignments: z.record(z.string(), entity<WorkBacklogAssignment>('work assignment')),
-  subagents: z.record(z.string(), z.strictObject({
+  subagents: z.record(z.string(), z.looseObject({
     rootConversationId: z.string(),
     nodes: z.record(z.string(), entity<SubagentNode>('subagent node')),
   })),
   accountRateLimits: entity<AccountRateLimits>('account rate limits').optional(),
 }) satisfies z.ZodType<RosterData>;
 
-export const settingsSchema = z.strictObject({
+export const settingsSchema = z.looseObject({
   settings: entity<AppGeneralSettings>('settings'),
   theme: entity<AppThemeSettings>('theme'),
   sourceFolder: entity<SourceFolderState>('source folder'),
   remoteConnections: z.array(entity<RemoteConnection>('remote connection')),
-  workIntegrations: z.strictObject({
+  workIntegrations: z.looseObject({
     connections: z.array(entity<WorkBacklogState['connections'][number]>('work integration connection')),
     providerConfigurations: entity<WorkBacklogState['providerConfigurations']>('provider configurations'),
     providerSettings: entity<WorkBacklogState['providerSettings']>('provider settings'),
   }),
 }) satisfies z.ZodType<SettingsData>;
 
-export const visualizationSchema = z.strictObject({
+export const visualizationSchema = z.looseObject({
   repository: z.string().min(1),
   position: z.number().int().min(0),
   visualization: z.custom<VisualizationData['visualization']>(isVisualization, 'visualization is not valid'),

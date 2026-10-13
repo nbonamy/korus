@@ -305,6 +305,7 @@
     >
       <MarkdownPanel
         v-if="markdownFilePanel(tab)"
+        outline-enabled
         :content="markdownFilePanel(tab)?.content ?? ''"
         :error="markdownFilePanel(tab)?.error"
         :state="markdownFilePanel(tab)?.state"

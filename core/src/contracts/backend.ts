@@ -20,6 +20,8 @@ export type BackendSession =
     sessionId: string;
     transport: 'stdio' | 'websocket';
     transcriptSessionId?: string;
+    /** Native store location; execution still uses the agent's folder. */
+    transcriptFolder?: string;
     serverUrl?: string;
     model?: string;
     reasoningEffort?: ReasoningEffort;

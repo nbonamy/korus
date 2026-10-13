@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
@@ -173,6 +174,17 @@ export class BackendDriverRpc {
         if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && backend === 'antigravity')) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
+      case backendMethods.driverBankedResetsGet: {
+        const driver = this.requireCodexDriver();
+        return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };
+      }
+      case backendMethods.driverBankedResetUse: {
+        const input = requireRecord(params).input;
+        if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
+        const driver = this.requireCodexDriver();
+        if (!driver.useBankedReset) throw new Error('Reset redemption is unsupported');
+        return driver.useBankedReset(input);
+      }
       case backendMethods.driverAccountRateLimitsGet: {
         const driver = this.requireDriver(requireBackend(requireRecord(params).backend));
         return driver.getAccountRateLimits ? { supported: true, rateLimits: await driver.getAccountRateLimits() } : { supported: false };
@@ -284,7 +296,7 @@ export class BackendDriverRpc {
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
         const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
       }
@@ -424,6 +436,13 @@ export class BackendDriverRpc {
         }
         return driver.resumeConversation(agent, record.target as ConversationResumeTarget);
       }
+      case backendMethods.driverWorktreeConversationFork: {
+        const { agent } = requireAgentParams(params);
+        const targetAgent = requireAgent(requireRecord(params).targetAgent, 'targetAgent');
+        if (agent.backend !== targetAgent.backend) throw new Error('Native worktree forks require the same provider.');
+        const driver = this.requireDriver(agent.backend);
+        return driver.forkWorktreeConversation ? driver.forkWorktreeConversation(agent, targetAgent) : null;
+      }
       case backendMethods.driverConversationFork: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
@@ -464,7 +483,7 @@ export class BackendDriverRpc {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
         const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
           ? driver.steerPrompt(agent, prompt, options)

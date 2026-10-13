@@ -76,6 +76,7 @@ type ActiveClaudeTurn = {
   cwd: string;
   turnId: string;
   sessionId: string | null;
+  transcriptFolder?: string;
   model: string | null;
   reasoningEffort: ClaudeTurnParams['effort'];
   handle: ClaudeTurnHandle;
@@ -245,7 +246,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   async disposeCodeReview(agent: Agent, reviewerSession: BackendSession): Promise<void> {
     if (reviewerSession.kind !== 'claude') throw new Error('Claude cannot dispose a non-Claude review conversation.');
     if (this.transport.deleteSession) {
-      await this.transport.deleteSession(reviewerSession.sessionId, claudeWorkingDirectory(agent));
+      await this.transport.deleteSession(reviewerSession.sessionId, reviewerSession.transcriptFolder ?? claudeWorkingDirectory(agent));
     } else {
       await this.transport.closeSession?.(reviewerSession.sessionId);
     }
@@ -255,7 +256,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     const sessionId = claudeSessionId(agent);
     if (!sessionId) return;
     if (this.transport.deleteSession) {
-      await this.transport.deleteSession(sessionId, claudeWorkingDirectory(agent));
+      await this.transport.deleteSession(sessionId, agent.backendSession?.kind === 'claude' ? agent.backendSession.transcriptFolder ?? claudeWorkingDirectory(agent) : claudeWorkingDirectory(agent));
     } else {
       await this.transport.closeSession?.(sessionId);
     }
@@ -306,7 +307,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         payload: { message: createUserMessage(agent.id, prompt, createdAt, `steer-${randomUUID()}`, turn.turnId, options.attachments) },
       });
     }
-    return { backendSession: claudeBackendSession(turn.sessionId, turn.model, turn.reasoningEffort), turnId: turn.turnId };
+    return { backendSession: claudeBackendSession(turn.sessionId, turn.model, turn.reasoningEffort, turn.transcriptFolder), turnId: turn.turnId };
   }
 
   private async sendPromptWithConfiguration(
@@ -369,6 +370,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         cwd: folder,
         turnId,
         sessionId: existingSessionId,
+        ...(agent.backendSession?.kind === 'claude' && agent.backendSession.transcriptFolder ? { transcriptFolder: agent.backendSession.transcriptFolder } : {}),
         model: turnParams.model ?? null,
         reasoningEffort: turnParams.effort ?? null,
         handle,
@@ -463,6 +465,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         activeTurn.sessionId ?? claudeSessionId(agent) ?? agent.id,
         activeTurn.model,
         activeTurn.reasoningEffort,
+        activeTurn.transcriptFolder,
       ),
       turnId: activeTurn.turnId,
     };
@@ -553,11 +556,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (ref.backend !== 'claude') {
       throw new Error('Claude cannot resume non-Claude conversation history.');
     }
-    if (ref.folder !== agent.folder) {
+    const currentTranscriptFolder = agent.backendSession?.kind === 'claude' && agent.backendSession.sessionId === ref.sessionId ? agent.backendSession.transcriptFolder : undefined;
+    if (ref.folder !== agent.folder && ref.folder !== currentTranscriptFolder) {
       throw new Error('Claude conversation folder does not match the agent folder.');
     }
 
-    const backendSession = claudeBackendSession(ref.sessionId);
+    const backendSession = claudeBackendSession(ref.sessionId, undefined, undefined, currentTranscriptFolder);
     const history = await this.loadHistory({
       ...agent,
       backendSession,
@@ -592,11 +596,34 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       const historicalTurnId = liveBoundary ? history?.nativeMessageTurnIds?.[liveBoundary] : turnId;
       const boundary = historicalTurnId ? history?.turnBoundaries?.[historicalTurnId] : undefined;
       if (turnId && !boundary) throw new Error('Native Claude message boundary is unavailable for this turn. Reload the conversation and retry.');
-      const childId = await this.transport.forkSession(sessionId, claudeWorkingDirectory(agent), boundary);
+      const storageFolder = agent.backendSession?.kind === 'claude' ? agent.backendSession.transcriptFolder : undefined;
+      const childId = await this.transport.forkSession(sessionId, claudeWorkingDirectory(agent), boundary, ...(storageFolder ? [storageFolder] : []));
       const backendSession = claudeBackendSession(childId,
         agent.backendSession?.kind === 'claude' ? agent.backendSession.model : undefined,
-        agent.backendSession?.kind === 'claude' ? agent.backendSession.reasoningEffort as ClaudeTurnParams['effort'] : undefined);
+        agent.backendSession?.kind === 'claude' ? agent.backendSession.reasoningEffort as ClaudeTurnParams['effort'] : undefined, storageFolder);
       return { backendSession };
+    } finally { this.forkingAgentIds.delete(agent.id); }
+  }
+
+  async forkWorktreeConversation(agent: Agent, _targetAgent: Agent): Promise<import('@workspace/core/backend-driver').BackendConversationForkResult | null> {
+    if (!this.transport.forkWorktreeSession) return null;
+    const sessionId = claudeSessionId(agent);
+    if (!sessionId) throw new Error('Claude needs an existing conversation to fork.');
+    if (this.forkingAgentIds.has(agent.id)) throw new Error('Claude conversation is being forked.');
+    const snapshot = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
+    let boundary: string | undefined;
+    if (this.activeTurnsByAgentId.has(agent.id) || snapshot?.busy) {
+      const completed = snapshot ? [...snapshot.turns].reverse().find(turn => turn.status === 'completed') : undefined;
+      boundary = completed ? this.turnBoundariesByAgentId.get(agent.id)?.get(completed.id) : undefined;
+      if (!boundary) throw new Error('Claude needs a completed native boundary to delegate while running.');
+    }
+    this.forkingAgentIds.add(agent.id);
+    try {
+      const storageFolder = agent.backendSession?.kind === 'claude' ? agent.backendSession.transcriptFolder : undefined;
+      const childId = await this.transport.forkWorktreeSession(sessionId, claudeWorkingDirectory(agent), boundary, storageFolder);
+      // The destination query resumes the provider-owned fork with the worker's
+      // cwd, permissions, model, system appendix and identity-scoped MCP URL.
+      return { backendSession: claudeBackendSession(childId, undefined, undefined, storageFolder ?? claudeWorkingDirectory(agent)) };
     } finally { this.forkingAgentIds.delete(agent.id); }
   }
 
@@ -645,7 +672,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       for (const delay of [0, 100, 200, 400, 800]) {
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
         if (this.goalRefreshIds.get(agent.id) !== refreshId) return;
-        const history = await this.loadHistory({ ...agent, backendSession: claudeBackendSession(turn.sessionId) });
+        const history = await this.loadHistory({ ...agent, backendSession: claudeBackendSession(turn.sessionId, undefined, undefined, turn.transcriptFolder) });
         if (this.goalRefreshIds.get(agent.id) !== refreshId) return;
         const pending = this.goalsByAgentId.get(agent.id);
         verified = history?.goal !== undefined;
@@ -1352,7 +1379,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (!activeTurn.startResolved) {
       activeTurn.startResolved = true;
       activeTurn.resolveStart({
-        backendSession: claudeBackendSession(sessionId, activeTurn.model, activeTurn.reasoningEffort),
+        backendSession: claudeBackendSession(sessionId, activeTurn.model, activeTurn.reasoningEffort, activeTurn.transcriptFolder),
         turnId: activeTurn.turnId,
       });
     }
@@ -1629,11 +1656,13 @@ function claudeBackendSession(
   sessionId: string,
   model?: string | null,
   reasoningEffort?: string | null,
+  transcriptFolder?: string,
 ): BackendSession {
   return {
     kind: 'claude',
     sessionId,
     transport: 'stdio',
+    ...(transcriptFolder ? { transcriptFolder } : {}),
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
   };

@@ -1,6 +1,6 @@
 <template>
   <div class="quick-open-dialog" role="presentation" @mousedown.self="emit('close')">
-    <section class="quick-open-dialog__panel" role="dialog" aria-modal="true" :aria-label="dialogLabel">
+    <section ref="panel" class="quick-open-dialog__panel" role="dialog" aria-modal="true" :aria-label="dialogLabel" @keydown.escape.stop.prevent="emit('close')" @keydown.tab="trapFocus">
       <div class="quick-open-dialog__search">
         <input
           ref="input"
@@ -8,41 +8,53 @@
           type="search"
           :aria-label="inputAriaLabel"
           :placeholder="placeholder"
-          @keydown.escape.prevent="emit('close')"
           @keydown.enter.prevent="selectCurrent"
           @keydown.up.prevent="move(-1)"
           @keydown.down.prevent="move(1)"
         />
       </div>
-      <div ref="results" class="quick-open-dialog__results">
-        <button
-          v-for="(item, index) in matches"
-          :key="item.id"
-          type="button"
-          class="quick-open-dialog__item"
-          :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
-          @click="select(item.id)"
-          @mouseenter="selectedIndex = index"
-        >
-          <slot name="item" :item="item">
-            <span>{{ item.label }}</span>
-            <small v-if="item.detail">{{ item.detail }}</small>
-          </slot>
-        </button>
-        <p v-if="matches.length === 0">{{ emptyLabel }}</p>
+      <div ref="results" class="quick-open-dialog__results" :role="readOnly ? 'list' : undefined" :tabindex="readOnly ? 0 : undefined" :aria-label="readOnly ? dialogLabel : undefined">
+        <template v-for="(item, index) in matches" :key="item.id">
+          <h3 v-if="item.group && item.group !== matches[index - 1]?.group" class="quick-open-dialog__group">{{ item.group }}</h3>
+          <component
+            :is="readOnly ? 'div' : 'button'"
+            :type="readOnly ? undefined : 'button'"
+            :disabled="readOnly ? undefined : item.disabled"
+            :role="readOnly ? 'listitem' : undefined"
+            class="quick-open-dialog__item"
+            :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
+            @click="select(item.id)"
+            @mouseenter="selectedIndex = index"
+            @focus="selectedIndex = index"
+          >
+            <slot name="item" :item="item">
+              <span class="quick-open-dialog__row">
+                <component :is="toRaw(item.icon)" v-if="item.icon" v-bind="item.iconProps" class="quick-open-dialog__icon" aria-hidden="true" />
+                <span class="quick-open-dialog__copy"><span class="quick-open-dialog__label">{{ item.label }}</span><small v-if="item.detail">{{ item.detail }}</small></span>
+                <span v-if="item.keys?.length" class="quick-open-dialog__keys"><kbd v-for="(key, keyIndex) in item.keys" :key="keyIndex">{{ key }}</kbd></span>
+              </span>
+            </slot>
+          </component>
+        </template>
+        <p v-if="matches.length === 0" role="status">{{ query.trim() ? noResultsLabel ?? emptyLabel : emptyLabel }}</p>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch, type Component } from 'vue';
 
 export type QuickOpenItem = {
   id: string;
   label: string;
   detail?: string;
   searchText?: string;
+  disabled?: boolean;
+  keys?: string[];
+  group?: string;
+  icon?: Component;
+  iconProps?: Record<string, unknown>;
 };
 
 const props = defineProps<{
@@ -51,21 +63,47 @@ const props = defineProps<{
   inputAriaLabel: string;
   items: QuickOpenItem[];
   placeholder: string;
+  noResultsLabel?: string;
+  readOnly?: boolean;
+  prioritizeLabelMatches?: boolean;
 }>();
 const emit = defineEmits<{ close: []; select: [id: string] }>();
 const input = ref<HTMLInputElement | null>(null);
+const panel = ref<HTMLElement | null>(null);
+const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 const results = ref<HTMLElement | null>(null);
 const query = ref('');
 const selectedIndex = ref(0);
 const matches = computed(() => {
-  const terms = query.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
-  return props.items.filter((item) => {
-    const haystack = item.searchText ?? `${item.label} ${item.detail ?? ''}`;
+  const search = query.value.toLocaleLowerCase().trim();
+  const terms = search.split(/\s+/u).filter(Boolean);
+  const filtered = props.items.filter((item) => {
+    const keys = item.keys ?? [];
+    const aliases = keys.map(key => key === '⌘' ? 'cmd' : key);
+    const haystack = `${item.searchText ?? `${item.label} ${item.detail ?? ''}`} ${item.group ?? ''} ${keys.join(' ')} ${keys.join('+')} ${aliases.join('+')} ${keys.includes('⌘') ? 'command cmd' : ''}`;
     return terms.every((term) => haystack.toLocaleLowerCase().includes(term));
-  }).slice(0, 100);
+  });
+  // Category browsing retains menu order; specific action searches prefer labels.
+  if (terms.length && props.prioritizeLabelMatches && !props.items.some(item => item.group?.toLocaleLowerCase() === search)) {
+    const labelMatch = (item: QuickOpenItem) => Number(terms.every(term => item.label.toLocaleLowerCase().includes(term)));
+    filtered.sort((left, right) => labelMatch(right) - labelMatch(left));
+  }
+  return filtered.slice(0, 100);
 });
 watch(query, () => { selectedIndex.value = 0; });
+watch(matches, () => { selectedIndex.value = Math.min(selectedIndex.value, Math.max(0, matches.value.length - 1)); });
 onMounted(() => void nextTick(() => input.value?.focus()));
+onUnmounted(() => { if (previousFocus?.isConnected) previousFocus.focus(); });
+function trapFocus(event: KeyboardEvent): void {
+  const controls = panel.value?.querySelectorAll<HTMLElement>('input, button:not(:disabled), [tabindex="0"]');
+  if (!controls?.length) return;
+  const first = controls[0]!;
+  const last = controls[controls.length - 1]!;
+  if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+}
 function move(delta: number): void {
   if (!matches.value.length) return;
   selectedIndex.value = (selectedIndex.value + delta + matches.value.length) % matches.value.length;
@@ -75,7 +113,11 @@ function move(delta: number): void {
   });
 }
 function selectCurrent(): void { const item = matches.value[selectedIndex.value]; if (item) select(item.id); }
-function select(id: string): void { emit('select', id); emit('close'); }
+function select(id: string): void {
+  if (props.readOnly) return;
+  if (!matches.value.some(item => item.id === id && !item.disabled)) return;
+  emit('select', id); emit('close');
+}
 </script>
 
 <style scoped>
@@ -137,9 +179,62 @@ function select(id: string): void { emit('select', id); emit('close'); }
   background: var(--color-primary-container) !important;
 }
 
+.quick-open-dialog__item:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
 .quick-open-dialog__results p {
   padding: var(--space-12);
   color: var(--color-text-muted);
   text-align: center;
+}
+
+.quick-open-dialog__group {
+  margin: var(--space-4) var(--space-4) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quick-open-dialog__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.quick-open-dialog__icon {
+  flex: 0 0 auto;
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.quick-open-dialog__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-open-dialog__copy small {
+  display: block;
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+.quick-open-dialog__keys {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.quick-open-dialog__keys kbd {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-12);
 }
 </style>

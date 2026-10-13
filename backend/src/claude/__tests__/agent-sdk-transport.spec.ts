@@ -63,6 +63,22 @@ describe('ClaudeAgentSdkTransport', () => {
     await transport.close();
   });
 
+  it('allows only a bounded native worktree fork while the source query is active', async () => {
+    const harness = createQueryHarness();
+    const forkSession = vi.fn().mockResolvedValue({ sessionId: 'child' });
+    const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery, forkSession });
+    try {
+      transport.startTurn({ cwd: '/tmp/source', sessionId: 'source', prompt: 'running' }, () => undefined);
+      await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+      await expect(transport.forkSession('source', '/tmp/source', 'completed-uuid')).rejects.toThrow('completed native boundary');
+      await expect(transport.forkWorktreeSession('source', '/tmp/source')).rejects.toThrow('completed native boundary');
+      await expect(transport.forkWorktreeSession('source', '/different', 'completed-uuid')).rejects.toThrow('workspace');
+      expect(await transport.forkWorktreeSession('source', '/tmp/source', 'completed-uuid')).toBe('child');
+      expect(forkSession).toHaveBeenCalledExactlyOnceWith('source', { dir: '/tmp/source', upToMessageId: 'completed-uuid' });
+      expect(harness.runtimes[0]!.close).not.toHaveBeenCalled();
+    } finally { await transport.close(); }
+  });
+
   it('keeps listening across a result until queued steering is consumed and answered', async () => {
     const harness = createQueryHarness();
     const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });

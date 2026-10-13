@@ -49,8 +49,8 @@ const electronDev = start('npm', ['run', 'start:electron'], {
 
 function sdkAssetsPath() {
   if (process.env.CODEX_APP_SDK_SOURCE === '1') {
-    // Match the sibling checkout used by vite.sdk-aliases.ts.
-    return path.resolve(rootDir, '../codex-app-sdk/packages/backend/assets');
+    // Match the selected checkout used by vite.sdk-aliases.ts.
+    return path.resolve(rootDir, process.env.CODEX_APP_SDK_SOURCE_ROOT || '../codex-app-sdk', 'packages/backend/assets');
   }
   // SDK exports do not expose assets/package.json. Follow the backend
   // workspace's Node search order, supporting both nested and hoisted installs.
