@@ -7,10 +7,11 @@ it('separates native login, cancellation, authentication and engine enablement',
   const setEnabled = vi.fn();
   const wrapper = mount(SettingsAntigravityPanel, { props: { installed: false, connected: false, enabled: false, setEnabled }, global: { components: { ElSwitch } } });
   expect(wrapper.text()).toContain('Antigravity');
-  expect(wrapper.text()).toContain('Download ACP 1.3.0');
-  expect(wrapper.text()).toContain('localharness_external');
   expect(wrapper.text()).toContain('Not detected');
   expect(wrapper.findAll('button').some(button => button.text() === 'Connect')).toBe(false);
+  await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+  expect(wrapper.emitted('install')).toStrictEqual([[]]);
+  expect(wrapper.emitted('refresh')).toBeUndefined();
   await wrapper.get('button[aria-label="Check again"]').trigger('click');
   expect(wrapper.emitted('refresh')).toEqual([[]]);
   expect(wrapper.emitted('connect')).toBeUndefined();

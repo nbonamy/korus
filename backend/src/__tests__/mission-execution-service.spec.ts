@@ -141,7 +141,7 @@ describe('mission execution', () => {
     });
 
     const finding = await h.service.reportReviewFinding(h.originalAgents[0]!.id, {
-      priority: 'p1', title: 'Persist the selected findings', body: 'A reload loses the remediation set.', repositoryPath,
+      priority: 'p1', title: 'Persist the selected findings', body: 'A reload loses the remediation set. Literal </context> must stay hidden.', repositoryPath,
       location: { file: 'src/review.ts', line: 42 },
     });
     expect(h.current().artifacts.review.findings).toStrictEqual([expect.objectContaining({ id: finding.id, selected: true, remediation: { state: 'open' } })]);
@@ -161,6 +161,10 @@ describe('mission execution', () => {
     await h.command({ action: 'fixSelectedReviewFindings' });
     expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('fixing');
     expect(h.ports.startRemediation).toHaveBeenLastCalledWith(implementerId, expect.stringContaining(finding.id));
+    const prompt = h.ports.startRemediation.mock.calls.at(-1)![1];
+    expect(prompt.split('</context>')[1]?.trim()).toBe('Fix the 1 finding I selected.');
+    expect(prompt).toContain('Literal &lt;/context> must stay hidden.');
+    expect(prompt.match(/<\/?context>/giu)).toStrictEqual(['<context>', '</context>']);
     expect(h.service.contextForAgent(implementerId)).toMatchObject({ missionId: h.current().id, stage: 'review' });
     await h.service.updateReviewFinding(implementerId, { findingId: finding.id, status: 'fixed', evidence: 'Focused tests pass.' });
     expect(h.current().artifacts.review.findings![0]!.remediation).toMatchObject({ state: 'fixed', evidence: 'Focused tests pass.' });
@@ -237,6 +241,8 @@ describe('mission execution', () => {
     expect(h.ports.startRemediation).toHaveBeenCalledTimes(2);
     const apiPrompt = h.ports.startRemediation.mock.calls.find(([workerId]) => workerId === apiWorkerId)?.[1];
     const webPrompt = h.ports.startRemediation.mock.calls.find(([workerId]) => workerId === webWorkerId)?.[1];
+    expect(apiPrompt?.split('</context>')[1]?.trim()).toBe('Fix the 2 findings I selected.');
+    expect(webPrompt?.split('</context>')[1]?.trim()).toBe('Fix the 1 finding I selected.');
     expect(apiPrompt).toContain('finding-api-1');
     expect(apiPrompt).toContain('finding-api-2');
     expect(apiPrompt).toContain('Repository: /repo/api\nMission worktree: /mission/api');

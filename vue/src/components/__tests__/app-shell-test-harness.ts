@@ -157,6 +157,8 @@ export function mountShell(overrides: Partial<{
   resumeAgentConversation: (agentId: string, target: import('@workspace/core/contracts').ConversationResumeTarget) => Promise<void>;
   readConversationMessages: (ref: BackendConversationRef, agentId: string) => Promise<RendererMessage[]>;
   getAgentGitDiff: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
+  getAgentGitWorkflow: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
+  revertAgentGitChanges: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   configureWorkBacklog: (input: WorkBacklogConfigurationInput) => Promise<void>;
   loadWorkRepositories: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[] | void>;
   loadAssignedWorkItems: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkItem[] | void>;
@@ -269,6 +271,8 @@ export function mountShell(overrides: Partial<{
       resumeAgentConversation: overrides.resumeAgentConversation ?? vi.fn().mockResolvedValue(undefined),
       readConversationMessages: overrides.readConversationMessages ?? vi.fn().mockResolvedValue([]),
       getAgentGitDiff: overrides.getAgentGitDiff ?? vi.fn().mockResolvedValue(undefined),
+      getAgentGitWorkflow: overrides.getAgentGitWorkflow,
+      revertAgentGitChanges: overrides.revertAgentGitChanges,
       previewAgentFile: overrides.previewAgentFile ?? vi.fn().mockRejectedValue(new Error('Unavailable')),
       configureWorkBacklog: overrides.configureWorkBacklog ?? vi.fn().mockResolvedValue(undefined),
       loadWorkRepositories: overrides.loadWorkRepositories ?? vi.fn().mockResolvedValue(undefined),

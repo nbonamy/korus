@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { serialize } from 'node:v8';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage } from 'element-plus';
@@ -7,6 +7,7 @@ import { setElectronTestClient } from '../../test/client';
 import type { AppCommand, MainToRendererEvent } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import GitDiffControl from '../GitDiffControl.vue';
+import { useAppState } from '../../app-state';
 
 class ResizeObserverStub {
   static latest: ResizeObserverStub | null = null;
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 function mountPanel(
-  props: { initialUrl?: string; openRequestId?: number; visualization?: { path: string; title: string } } = {},
+  props: { agentId?: string; browserId?: string; initialUrl?: string; openRequestId?: number; visualization?: { path: string; title: string } } = {},
   options: { deferDomReady?: boolean; attachTo?: Element } = {},
 ) {
   let listener: ((event: MainToRendererEvent) => void) | null = null;
@@ -40,6 +41,7 @@ function mountPanel(
     canGoForward: true,
   });
   const api = {
+    updateSettings: vi.fn().mockResolvedValue(createInitialSnapshot()),
     browserOpen,
     browserOpenVisualization: vi.fn().mockResolvedValue({
       url: '',
@@ -83,6 +85,35 @@ function mountPanel(
 }
 
 describe('BrowserPanel', () => {
+  it('saves only bookmark preferences and opens a bookmark in the owning agent and browser pane', async () => {
+    const appState = useAppState();
+    appState.snapshot.value = createInitialSnapshot();
+    const { wrapper, api } = mountPanel({ agentId: 'agent-2', browserId: 'second-tab' });
+    await flushPromises();
+    await wrapper.get('input[aria-label="Browser address"]').setValue('https://example.com/');
+    await wrapper.get('form.browser-panel__address').trigger('submit');
+    await flushPromises();
+    const updated = createInitialSnapshot();
+    updated.general.browserBookmarks = [{ title: 'Example preview', url: 'https://example.com/' }];
+    api.updateSettings.mockResolvedValue(updated);
+    await wrapper.get('button[aria-label="Bookmark this page"]').trigger('click');
+    await flushPromises();
+    const page = new DOMWrapper(document.body);
+    await page.get('input[aria-label="Bookmark name"]').setValue('Example preview');
+    await page.get('form[id^="bookmark-"]').trigger('submit');
+    await flushPromises();
+    expect(api.updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { browserBookmarks: updated.general.browserBookmarks } });
+    expect(wrapper.get('button[aria-label="Delete Example preview"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[aria-label="Bookmarks"]').trigger('click');
+    await flushPromises();
+    await page.get('.quick-open-dialog__item').trigger('click');
+    await flushPromises();
+    expect(api.browserNavigate).toHaveBeenLastCalledWith('agent-2', 'second-tab', 'https://example.com/');
+    await wrapper.setProps({ visualization: { path: '/repo/chart.html', title: 'Chart' } });
+    expect(wrapper.find('[aria-label="Bookmarks"]').exists()).toBe(false);
+    wrapper.unmount();
+    appState.snapshot.value = createInitialSnapshot();
+  });
   it.each([false, true])('recovers model navigation after initial failure (manual recovery: %s)', async (manualRecovery) => {
     const { api, emitDomReady, wrapper } = mountPanel({ initialUrl: 'http://127.0.0.1:57540' }, { deferDomReady: true });
     api.browserOpen.mockRejectedValueOnce(new Error('ERR_CONNECTION_REFUSED'));
@@ -264,6 +295,30 @@ describe('BrowserPanel', () => {
 
     expect(api.browserNavigate).toHaveBeenCalledWith('agent-1', 'primary', 'https://example.com');
     expect((wrapper.get('[aria-label="Browser address"]').element as HTMLInputElement).value).toBe('https://example.com/');
+  });
+
+  it('hides idle address actions while keeping their keyboard targets in the bar', async () => {
+    const { api, emitDomReady, wrapper } = mountPanel({}, { deferDomReady: true, attachTo: document.body });
+    api.browserOpen.mockResolvedValueOnce({ url: 'https://example.com/', title: 'Example', canGoBack: false, canGoForward: false });
+    emitDomReady();
+    await flushPromises();
+    const bookmarkPage = wrapper.get<HTMLElement>('[aria-label="Bookmark this page"]').element;
+    const external = wrapper.get<HTMLElement>('[aria-label="Open in external browser"]').element;
+    const picker = wrapper.get<HTMLButtonElement>('[aria-label="Bookmarks"]').element;
+    expect(picker.closest('form')).toBeNull();
+    expect(bookmarkPage.closest('form')).toBe(wrapper.get('form.browser-panel__address').element);
+    for (const control of [bookmarkPage, external]) {
+      expect(getComputedStyle(control).opacity).toBe('0');
+      expect(getComputedStyle(control).pointerEvents).toBe('none');
+    }
+    const address = wrapper.get<HTMLInputElement>('input[aria-label="Browser address"]').element;
+    address.focus();
+    expect(document.activeElement).toBe(address);
+    picker.focus();
+    expect(document.activeElement).toBe(picker);
+    picker.blur();
+    expect(getComputedStyle(bookmarkPage).opacity).toBe('0');
+    wrapper.unmount();
   });
 
   it('opens the loaded page in the system browser and follows navigation inside the page', async () => {

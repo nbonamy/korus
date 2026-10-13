@@ -9,19 +9,34 @@ import { configureAppClient } from '../../platform-api';
 import { setElectronTestClient } from '../../test/client';
 
 describe('SettingsView', () => {
+  it('places Workflows in Workspace and opens its Delegation section with saved preferences', () => {
+    setElectronTestClient({});
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'workflows', settings: defaultThemeSettings,
+      generalSettings: { ...defaultGeneralSettings, worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Run focused tests' },
+    } });
+    const workspace = wrapper.findAll('.el-menu-item-group').find(group => group.get('.el-menu-item-group__title').text() === 'Workspace')!;
+    expect(workspace.text()).toContain('Workflows');
+    expect(wrapper.get('h2').text()).toBe('Workflows');
+    expect(wrapper.findAll('h3').map(heading => heading.text())).toContain('Delegation');
+    expect((wrapper.get('[aria-label="Delegation instructions"]').element as HTMLTextAreaElement).value).toBe('Run focused tests');
+  });
   it('uses daemon availability for gated settings and falls back from a saved unavailable tab', async () => {
     setElectronTestClient({});
     const connectAntigravity = vi.fn();
+    const installProvider = vi.fn().mockResolvedValue(undefined);
     const refreshProvider = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsView, { props: {
       activeTab: 'antigravity', settings: defaultThemeSettings,
       generalSettings: { ...defaultGeneralSettings, providerEnabled: { antigravity: true } },
-      providerConnections: [], connectAntigravity, refreshProvider,
+      providerConnections: [], connectAntigravity, refreshProvider, installProvider,
     } });
     expect(wrapper.text()).not.toContain('Antigravity');
     expect(wrapper.text()).toContain('Accessibility');
     await wrapper.setProps({ providerConnections: [{ backend: 'antigravity', installed: false, connected: false, checking: false }] });
     expect(wrapper.get('.engine-hero__copy strong').text()).toBe('Antigravity');
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
     await wrapper.get('button[aria-label="Check again"]').trigger('click');
     expect(refreshProvider).toHaveBeenCalledWith('antigravity');
     expect(connectAntigravity).not.toHaveBeenCalled();
@@ -62,6 +77,7 @@ describe('SettingsView', () => {
       'Claude Code',
       'Plugins',
       'Git',
+      'Workflows',
       'Integrations',
       'Connections',
     ]);

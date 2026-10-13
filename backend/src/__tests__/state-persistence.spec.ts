@@ -5,6 +5,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import { AppStateStore } from '../persistence/store';
+import { ClientPreferencesService } from '../client-preferences-service';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { isAppSnapshot } from '@workspace/core/snapshot-guards';
 import { closeAgentInSnapshot, updateWorkItemAssignmentInSnapshot } from '@workspace/core/agent-manager';
@@ -25,6 +27,44 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it.each([false, true])('retains delegation preferences and worker context after reload (execution bound: %s)', async bound => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
+    snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
+    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { backend: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
+    snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
+    snapshot.agents[1]!.backend = 'claude';
+    snapshot.agents[1]!.backendDefaults = { kind: 'claude' };
+    snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.worktreeDelegationStartingContext).toBe('handoff');
+    expect(restored.general.worktreeDelegationInstructions).toBe('Keep commits local.\nRun focused tests.');
+    expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
+    expect(restored.agents[0]!.userDelegationOverrides).toStrictEqual(snapshot.agents[0]!.userDelegationOverrides);
+    expect(restored.agents[1]!.delegationUserInstructions).toStrictEqual(snapshot.agents[1]!.delegationUserInstructions);
+    expect(restored.agents[1]!.backendSession).toStrictEqual(snapshot.agents[1]!.backendSession);
+    expect(isAppSnapshot(restored)).toBe(true);
+  });
+  it('restores ordered backlog favorites after client preference updates and a fresh store restart', async () => {
+    const home = await tempHome();
+    const store = new AppStateStore(home);
+    const snapshot = createInitialSnapshot();
+    const service = new ClientPreferencesService({ snapshot: async () => snapshot, save: async (id, preferences) => {
+      snapshot.clientPreferences = { ...snapshot.clientPreferences, [id]: preferences };
+      await store.save(snapshot);
+    } });
+    const linear = ['team-b-uuid', 'team-a-uuid'];
+    for (const github of [['org/a'], ['org/a', 'org/b'], ['org/b', 'org/a']]) {
+      await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github, linear } } } });
+    }
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/b', 'org/a'], linear });
+    expect(restored.workBacklog).toStrictEqual(snapshot.workBacklog);
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: ['org/a'], linear: [...linear].reverse() } } } });
+    expect((await new AppStateStore(home).load()).general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/a'], linear: ['team-a-uuid', 'team-b-uuid'] });
+  });
   it('roundtrips Antigravity session identity and isolated provider preferences through disk', async () => {
     const home = await tempHome();
     const store = new AppStateStore(home);
@@ -1313,10 +1353,13 @@ describe('state persistence', () => {
         reasoningEffort: 'high',
         serviceTier: 'priority',
       }],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       providerHomes: { codex: { isolated: true, shareSkills: false, homePath: "/app/codex-home" } },
       sessionCompressionWarningEnabled: false,
       worktreeInitializationMode: 'repository',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       repositoryIcons: { '/src/agent-workspace': '🦞' },
       appshots: {
         hotkey: 'option',

@@ -25,6 +25,41 @@ vi.mock('electron', () => ({
 }));
 
 describe('provider sign-out IPC', () => {
+  it('carries explicit installation through preload to the selected host and returns failures for retry', async () => {
+    const result = { backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/app/antigravity-home' };
+    const request = vi.fn().mockResolvedValue(result);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    await expect(api.installProvider('antigravity', 'remote')).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith('provider/install', { backend: 'antigravity', remoteConnectionId: 'remote' });
+    request.mockRejectedValueOnce(new Error('Download failed'));
+    await expect(api.installProvider('antigravity')).rejects.toThrow('Download failed');
+    expect(request).toHaveBeenLastCalledWith('provider/install', { backend: 'antigravity', remoteConnectionId: undefined });
+  });
+  it('routes read-only banked reset reads through preload with owning-host identity and errors', async () => {
+    const result = { status: 'ready', summary: { availableCount: '18446744073709551615', credits: null, detailCount: null } };
+    const request = vi.fn().mockResolvedValue(result);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    await expect(api.getBankedResets('remote')).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenLastCalledWith('provider/codex/bankedResets/get', { remoteConnectionId: 'remote' });
+    request.mockRejectedValueOnce(new Error('Read failed'));
+    await expect(api.getBankedResets()).rejects.toThrow('Read failed');
+  });
+  it('preserves confirmed reset selections and attempt keys through preload to the owning host', async () => {
+    const request = vi.fn().mockResolvedValue({ outcome: 'alreadyRedeemed' });
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers(); await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    const input = { confirmed: true as const, redemptionToken: 'selection', idempotencyKey: 'attempt' };
+    expect(await api.useBankedReset(input, 'remote')).toStrictEqual({ outcome: 'alreadyRedeemed' });
+    expect(request).toHaveBeenCalledExactlyOnceWith('provider/codex/bankedResets/use', { input, remoteConnectionId: 'remote' });
+    request.mockRejectedValueOnce(new Error('Uncertain response')); await expect(api.useBankedReset(input)).rejects.toThrow('Uncertain response');
+  });
   it('routes provider version checks and confirmed upgrades through preload to the owning host', async () => {
     const state = { backend: 'claude', status: 'waiting', method: 'native', canUpgrade: true, busy: true };
     const request = vi.fn().mockResolvedValue(state);

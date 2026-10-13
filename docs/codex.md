@@ -78,6 +78,11 @@ threads, routed by `threadId` and `agentId`.
   `forkTurn()`; raw fork types stay out of product contracts. It requires an idle
   agent with an existing conversation and creates a new selected agent below the
   source.
+- Worktree delegation forks through the same SDK handle with the worker's cwd,
+  model, effort, service tier, permissions and extension context. A running
+  source forks at its last completed turn; without a completed boundary it
+  falls back to a fresh handoff. Worker instructions explicitly bind the current
+  identity and folder so inherited parent assignments cannot redirect execution.
 - **Compress Session is session rollover, not Codex compaction.** For an idle agent:
   ask the SDK conversation for a bounded handoff with a temporary fast model/effort
   override, wait for that exact turn, create a replacement conversation in the same
@@ -146,6 +151,14 @@ threads, routed by `threadId` and `agentId`.
   cumulative and can exceed the window; cap displayed numerators).
   `account/rateLimits/updated` is a sparse, account-level update emitted
   opportunistically during streaming, so `daemon` persists the latest value.
+  Banked resets use a dedicated, bounded account read through the optional public
+  SDK rate-limit surface. Their authoritative decimal count and optional bounded
+  details and account credit balances are settings-only responses, never workspace
+  snapshots or telemetry. Opaque credit IDs stay in the driver; temporary
+  account-bound references identify confirmed redemption selections. Uncertain
+  attempts retain their idempotency key, including renderer reloads. Account
+  changes invalidate selections and pending operations. Quota notifications do
+  not trigger banked-reset reads; confirmed outcomes trigger a fresh account read.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.

@@ -6,6 +6,48 @@ import { ClientPreferencesService } from '../client-preferences-service';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 
 describe('client presentation preferences', () => {
+  it('merges overlapping provider favorite patches and persists clearing only the selected provider', async () => {
+    const snapshot = createInitialSnapshot();
+    const service = new ClientPreferencesService({ snapshot: async () => snapshot, save: async (id, preferences) => {
+      await Promise.resolve();
+      snapshot.clientPreferences = { ...snapshot.clientPreferences, [id]: preferences };
+    } });
+    await Promise.all([
+      service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: ['owner/repo'] } } } }),
+      service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { linear: ['team-id', 'team-id'], unknown: ['invalid'] } } } }),
+    ]);
+    expect(projectClientSnapshot(snapshot, 'desktop').general.backlogRepositoryFavorites).toStrictEqual({ github: ['owner/repo'], linear: ['team-id'] });
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: [] } } } });
+    const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
+    expect(projectClientSnapshot(restored, 'desktop').general.backlogRepositoryFavorites).toStrictEqual({ github: [], linear: ['team-id'] });
+    expect(projectClientSnapshot(restored, 'other-client').general.backlogRepositoryFavorites).toStrictEqual({});
+  });
+
+  it('retains bookmarks after restart and agent deletion while preserving unrelated client settings', async () => {
+    const snapshot = createInitialSnapshot();
+    const service = new ClientPreferencesService({ snapshot: async () => snapshot, save: async (id, preferences) => {
+      snapshot.clientPreferences = { ...snapshot.clientPreferences, [id]: preferences };
+    } });
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { theme: { mode: 'dark' }, general: { agentListCompact: true } } });
+    const browserBookmarks = [{ title: 'Preview', url: 'http://localhost:5173/' }];
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { browserBookmarks: [
+      ...browserBookmarks,
+      { title: 'Duplicate', url: 'http://LOCALHOST:5173/' },
+      { title: 'Credentials', url: 'https://user:secret@example.com/' },
+      { title: 'Unsafe', url: 'javascript:alert(1)' },
+    ] } } });
+    expect(snapshot.clientPreferences?.desktop?.general?.browserBookmarks).toStrictEqual(browserBookmarks);
+    snapshot.agents = [];
+    snapshot.teams = [];
+    const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
+    const client = projectClientSnapshot(restored, 'desktop');
+    expect(client.general.browserBookmarks).toStrictEqual(browserBookmarks);
+    expect(client.general.agentListCompact).toBe(true);
+    expect(client.theme.mode).toBe('dark');
+    expect(projectClientSnapshot(restored, 'other-client').general.browserBookmarks ?? []).toStrictEqual([]);
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { browserBookmarks: [] } } });
+    expect(projectClientSnapshot(snapshot, 'desktop').general.browserBookmarks).toStrictEqual([]);
+  });
   it('isolates selection and appearance across clients without mutating runtime state', async () => {
     const snapshot = createInitialSnapshot();
     const original = structuredClone(snapshot);

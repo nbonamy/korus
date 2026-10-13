@@ -115,6 +115,45 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     expect(handle.fork).toHaveBeenCalledWith({ cwd: '/repo' }, { extensionContext: expect.objectContaining({ id: 'whole-fork-agent' }) });
   });
 
+  it('forks a worktree assignment at the last completed native turn with the worker configuration', async () => {
+    const { driver, conversation, surface } = setup();
+    const source = sdkAgent();
+    const original = structuredClone(source);
+    conversation('conversation-a').setSnapshot({ activeTurnId: 'delegating', busy: true,
+      turnIds: ['discussion', 'delegating'],
+      turns: [{ id: 'discussion', status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null }, { id: 'delegating', status: 'inProgress', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null }],
+    });
+    const target = { ...sdkAgent('worker', 'unused'), folder: '/repo-worktree', backendSession: undefined,
+      backendDefaults: { kind: 'codex' as const, model: 'worker-model', reasoningEffort: 'high', serviceTier: null } };
+    const handle = conversation('conversation-a').handle;
+    handle.forkTurn.mockResolvedValue({ conversationId: 'worker-thread', conversation: surface.conversation('worker-thread'), snapshot: sdkSnapshot('worker-thread') });
+    await expect(driver.forkWorktreeConversation(source, target)).resolves.toMatchObject({ backendSession: { kind: 'codex', threadId: 'worker-thread' } });
+    expect(handle.forkTurn).toHaveBeenCalledWith('discussion', expect.objectContaining({ cwd: '/repo-worktree', model: 'worker-model', reasoningEffort: 'high', serviceTier: null }), { extensionContext: target });
+    expect(handle.fork).not.toHaveBeenCalled();
+    expect(source).toStrictEqual(original);
+    await driver.sendPrompt({ ...target, backendSession: { kind: 'codex', threadId: 'worker-thread' } }, 'Implement the agreed task');
+    expect(conversation('worker-thread').handle.sendMessage).toHaveBeenCalled();
+    expect(handle.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a busy delegation without a completed boundary without creating a child', async () => {
+    const { driver, conversation } = setup();
+    conversation('conversation-a').setSnapshot({ activeTurnId: 'first-turn', busy: true });
+    await expect(driver.forkWorktreeConversation(sdkAgent(), { ...sdkAgent('worker'), folder: '/worker' })).rejects.toThrow('No completed');
+    expect(conversation('conversation-a').handle.fork).not.toHaveBeenCalled();
+    expect(conversation('conversation-a').handle.forkTurn).not.toHaveBeenCalled();
+  });
+
+  it('forks an idle worker with its permission policy and directory', async () => {
+    const { driver, conversation, surface } = setup();
+    surface.getSnapshot.mockReturnValue(sdkSnapshot('conversation-a', { approvalPresets: ['ask-for-approval', 'full-access'] }));
+    const target = { ...sdkAgent('worker'), folder: '/worker', backendSession: undefined,
+      backendDefaults: { kind: 'codex' as const, approvalPreset: 'ask-for-approval' as const } };
+    conversation('conversation-a').handle.fork.mockResolvedValue({ conversationId: 'child', conversation: surface.conversation('child'), snapshot: sdkSnapshot('child') });
+    await driver.forkWorktreeConversation(sdkAgent(), target);
+    expect(conversation('conversation-a').handle.fork).toHaveBeenCalledExactlyOnceWith({ cwd: '/worker', approvalPreset: 'ask-for-approval' }, { extensionContext: target });
+  });
+
   it('leaves compact to the app and delegates review slash handling to the SDK', async () => {
     const { driver, conversation } = setup();
     expect(driver.tryHandlePromptCommand(sdkAgent(), '/compact')).toBeNull();

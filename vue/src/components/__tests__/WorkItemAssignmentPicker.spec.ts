@@ -33,7 +33,7 @@ describe('WorkItemAssignmentPicker', () => {
       slots: { default: '<p class="issue-body">Issue body</p>' },
       global: { provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-        [codeReviewSettingsKey as symbol]: { preferences: () => undefined, listModels, stop: vi.fn() },
+        [codeReviewSettingsKey as symbol]: { preferences: () => undefined, listModels, switchToManual: vi.fn(), stop: vi.fn() },
       } },
     });
     await vi.waitFor(() => expect(listModels).toHaveBeenCalledWith('agent-main', 'codex'));

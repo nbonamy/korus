@@ -174,6 +174,11 @@ type AppEvent =
       payload: MissionImplementationStartProgress;
     }>
   | EventWith<{
+      type: 'git.branchWorkProgress';
+      agentId: string;
+      payload: import('../branch-current-work').BranchWorkProgress;
+    }>
+  | EventWith<{
       type: 'git.operationProgress';
       agentId: string;
       payload: AgentGitOperationProgress;

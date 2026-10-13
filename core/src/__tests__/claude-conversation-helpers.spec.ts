@@ -69,6 +69,9 @@ describe('provider conversation boundaries', () => {
     expect(conversationRefFromAgent(agent({ kind: 'claude', sessionId: 'session-live', transport: 'stdio' }))).toStrictEqual({
       backend: 'claude', folder: '/repo', sessionId: 'session-live',
     });
+    expect(conversationRefFromAgent(agent({ kind: 'claude', sessionId: 'native-child', transport: 'stdio', transcriptFolder: '/source-store' }))).toStrictEqual({
+      backend: 'claude', folder: '/source-store', sessionId: 'native-child',
+    });
     expect(conversationRefFromAgent(agent())).toBeNull();
     expect(conversationRefFromAgent(agent({ kind: 'antigravity', sessionId: 'acp-session' }))).toStrictEqual({
       backend: 'antigravity', folder: '/repo', sessionId: 'acp-session',
@@ -120,7 +123,7 @@ describe('provider conversation boundaries', () => {
       type: 'client.markdownDisplayRequested',
       payload: { kind: 'markdown', content: '# Plan' },
     })).toStrictEqual({
-      type: 'client.markdownDisplayRequested', agentId: 'agent-1', turnId: 'turn-1', payload: { kind: 'markdown', content: '# Plan' },
+      type: 'client.markdownDisplayRequested', agentId: 'agent-1', conversationId: 'session-1', turnId: 'turn-1', payload: { kind: 'markdown', content: '# Plan' },
     });
   });
 

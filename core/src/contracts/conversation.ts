@@ -230,6 +230,8 @@ export type RendererPromptAttachment =
   };
 
 export type SendPromptOptions = {
+  /** User-selected options for the /delegate command, consumed by the app adapter. */
+  delegation?: import('../delegation-context').DelegationOverrides;
   attachments?: readonly PromptAttachment[];
   model?: string | null;
   planMode?: boolean;
