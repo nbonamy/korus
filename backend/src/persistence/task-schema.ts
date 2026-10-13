@@ -23,6 +23,7 @@ const taskSchema = z.strictObject({
   id: text, requestId: text.max(200), requestFingerprint: text,
   parentAgentId: text, workerAgentId: text, backend: z.enum(['codex', 'claude', 'antigravity']),
   assignment: taskContractSchema, prompt: text.max(100000), attemptId: text,
+  delegationUserInstructions: z.strictObject({ saved: z.string().max(100000), taskSpecific: z.string().max(100000).optional() }).optional(),
   workspace: z.strictObject({ repositoryPath: text, branchName: text.optional(), destinationPath: text.optional() }).optional(),
   state: z.enum(['preparing', 'running', 'needs-input', 'interrupted', 'failed', 'completed', 'cancelled']),
   createdAt: text, updatedAt: text, folder: text.optional(), acceptance: acceptance.optional(), executionTurnId: text.optional(),

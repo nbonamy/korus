@@ -233,14 +233,20 @@ clears or changes it, Korus never re-detects.
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
 - Worktree delegation preferences belong to app settings. A delegation can
-  override its starting context and add task instructions; task instructions
-  take precedence over saved instructions within the user's authorized scope.
+  override its starting context and add task instructions. App-submitted user
+  overrides retain their provenance through prompt admission and persistence.
+  Explicit per-task user directions override saved user preferences; both outrank
+  agent-generated assignment guidance within the user's authorized scope.
+  User directions are frozen in the durable task and worker metadata, and supplied
+  once in the worker request's hidden context. The visible prompt contains only
+  the task. Agent-generated assignment guidance is
+  contextual task data and cannot present itself as a direct user override.
   Assignment instructions are frozen before durable startup and never grant
   publication or merge authority.
 - Same-provider worktree delegation uses an optional driver-owned native fork,
   rebound to the worker's identity, folder and provider configuration. A busy
   source uses a completed native boundary when supported. Cross-provider,
-  unsupported or refused forks start a fresh handoff with persisted, visible
+  unsupported or refused forks start a fresh handoff with persisted
   context metadata. Korus never replays a transcript to imitate a fork.
   Independent code reviewers always start fresh.
 - Korus-created pull requests are tracked on their agent; a runtime scheduler

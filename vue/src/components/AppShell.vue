@@ -498,7 +498,7 @@
     <WorktreeDelegationDialog
       v-if="delegationAgentId"
       :key="delegationAgentId"
-      :starting-context="props.snapshot.general.worktreeDelegationStartingContext ?? 'conversation'"
+      :starting-context="props.snapshot.general.worktreeDelegationStartingContext ?? 'handoff'"
       :delegate="delegateFromDialog"
       @close="delegationAgentId = null"
     />

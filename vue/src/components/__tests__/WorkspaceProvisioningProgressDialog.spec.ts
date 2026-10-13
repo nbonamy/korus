@@ -44,6 +44,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
       branchName: 'feature/contracts',
       hasPrompt: true,
       phase: 'creatingWorktree' as const,
+      delegationContext: { requested: 'conversation' as const, effective: 'handoff' as const, reason: 'cross-provider' as const },
     };
     const wrapper = mount(WorkspaceProvisioningProgressDialog, {
       props: {
@@ -59,6 +60,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     expect(wrapper.text()).toContain('Creating isolated worktree');
     expect(wrapper.text()).toContain('Initializing worktree');
     expect(wrapper.text()).toContain('Handing over initial instructions');
+    expect(wrapper.text()).not.toContain('Started with a fresh handoff');
 
     await wrapper.setProps({
       operation: {
@@ -81,6 +83,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
           phase: 'initializingWorktree',
           agentId: 'agent-worker',
           agentName: 'feature/contracts',
+          delegationContext: { requested: 'conversation', effective: 'conversation' },
         },
       },
     });
@@ -88,6 +91,7 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     await nextTick();
 
     expect(wrapper.text()).toContain('feature/contracts is ready');
+    expect(wrapper.text()).not.toContain('Continued from the source conversation');
     expect(wrapper.emitted('close')).toStrictEqual([['agent-creation-1']]);
   });
 

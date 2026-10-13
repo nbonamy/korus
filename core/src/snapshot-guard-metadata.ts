@@ -1,4 +1,4 @@
-import { isDelegationContext } from './delegation-context';
+import { isDelegationContext, isDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
 import { normalizeAutomationSchedule } from './automation-schedule';
 import { isWorkProviderKind } from './work-providers';
@@ -111,6 +111,8 @@ function isAgent(value: unknown): boolean {
     optional(value, 'teamId', isString) &&
     optional(value, 'delegatedByAgentId', isString) &&
     optional(value, 'delegationContext', isDelegationContext) &&
+    optional(value, 'userDelegationOverrides', isDelegationOverrides) &&
+    optional(value, 'delegationUserInstructions', isDelegationUserInstructions) &&
     optional(value, 'handoff', isAgentHandoff) &&
     optional(value, 'pullRequest', isAgentPullRequestTracking) &&
     optional(value, 'sessionKind', (candidate) => candidate === 'quickChat') &&

@@ -354,6 +354,9 @@ export type Agent = {
   teamId?: string;
   delegatedByAgentId?: string;
   delegationContext?: import('./delegation-context').DelegationContext;
+  /** User-entered controls for the current delegation turn; never supplied by create-agent. */
+  userDelegationOverrides?: import('./delegation-context').DelegationOverrides;
+  delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
   name: string | null;

@@ -25,7 +25,7 @@
           :restart-app="restartApp"
           :update-settings="updateSettings"
         />
-        <SettingsDelegationPanel v-else-if="activeTab === 'delegation'" :settings="generalSettings" :update-settings="updateSettings" />
+        <SettingsWorkflowsPanel v-else-if="activeTab === 'workflows'" :settings="generalSettings" :update-settings="updateSettings" />
         <SettingsVoicePanel
           v-else-if="activeTab === 'voice'"
           :settings="generalSettings"
@@ -151,7 +151,7 @@ import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';
 import SettingsCodexPanel from './SettingsCodexPanel.vue';
 import SettingsConnectionsPanel from './SettingsConnectionsPanel.vue';
-import SettingsDelegationPanel from './SettingsDelegationPanel.vue';
+import SettingsWorkflowsPanel from './SettingsWorkflowsPanel.vue';
 import SettingsGeneralPanel from './SettingsGeneralPanel.vue';
 import SettingsInstructionsPanel from './SettingsInstructionsPanel.vue';
 import SettingsPersonalizationPanel from './SettingsPersonalizationPanel.vue';

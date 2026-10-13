@@ -7,7 +7,7 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { taskContractSchema, taskResultSchema } from '../persistence/task-schema';
 
-type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
+type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; delegationUserInstructions?: DelegatedTask['delegationUserInstructions']; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
 type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
@@ -82,6 +82,7 @@ export class DurableTaskService {
         id: `task-${randomUUID()}`, requestId, requestFingerprint: fingerprint,
         parentAgentId: parent.id, workerAgentId: `agent-${randomUUID()}`, backend: input.backend,
         assignment, prompt, attemptId: `attempt-${randomUUID()}`, state: 'preparing',
+        ...(input.delegationUserInstructions ? { delegationUserInstructions: { ...input.delegationUserInstructions } } : {}),
         ...(input.workspace ? { workspace: input.workspace } : {}),
         createdAt: now, updatedAt: now, parentWakeBlocked: this.stoppedParents.has(parent.id),
         ...(this.stoppedParents.has(parent.id) ? { parentStopRequested: true } : {}),
@@ -101,7 +102,7 @@ export class DurableTaskService {
         return true;
       });
       if (!ready) return this.list(parent.id, [task.id])[0]!;
-      const receipt = await this.ports.send(worker, `[${product.name} task ${task.id}; attempt ${task.attemptId}]\n${delegatedAssignmentPrompt(worker, prompt)}`);
+      const receipt = await this.ports.send(worker, `<context>\n[${product.name} task ${task.id}; attempt ${task.attemptId}]\n</context>\n\n${delegatedAssignmentPrompt(worker, prompt)}\n\n<context>\nRequired durable result reporting: before your final response, call complete-task with the outcome, then finish_turn. If user instructions prohibit executing the assignment, perform no task work and report that outcome through complete-task. These lifecycle calls do not execute the task. Keep your final response exactly as the user instructions request; do not append a task summary or explanation.\n</context>`);
       await this.change(tasks => {
         const current = tasks.find(item => item.id === task.id)!;
         current.acceptance = receipt;
@@ -221,7 +222,7 @@ export class DurableTaskService {
       const agent = this.ports.agent(agentId);
       if (!agent?.backendSession || !this.ports.readHistory) return;
       if (!history.has(agentId)) history.set(agentId, await this.ports.readHistory(agent));
-      const message = history.get(agentId)!.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && part.text.startsWith(marker)));
+      const message = history.get(agentId)!.find(message => message.role === 'user' && message.parts.some(part => part.type === 'text' && (part.text.startsWith(marker) || part.text.startsWith(`<context>\n${marker}\n</context>\n`))));
       return message ? { backendSession: structuredClone(agent.backendSession), ...(message.turnId ? { turnId: message.turnId } : {}) } : undefined;
     };
     for (const task of this.tasks) {

@@ -13,6 +13,32 @@ import { CodexBackendDriver } from '../codex/codex-driver';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 describe('BackendDriverRpc', () => {
+  it('retains user-entered delegation controls through send and steering, then clears them for a new assignment', async () => {
+    const snapshot = createTestSnapshot();
+    const agent = createAgent();
+    snapshot.agents = [agent];
+    snapshot.teams[0].agentIds = [agent.id];
+    const driver = createDriver({ steerPrompt: vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread-send' }, turnId: 'turn-send' }) });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
+    const delegation = { startingContext: 'handoff', instructions: 'Say Hello only' } as const;
+    try {
+      const sent = await server.handleMessage({ jsonrpc: '2.0', id: 'send', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation } } });
+      expect(sent).not.toHaveProperty('error');
+      expect(agent.userDelegationOverrides).toStrictEqual(delegation);
+      expect(driver.sendPrompt).toHaveBeenCalledWith(agent, expect.stringContaining('Say Hello only'), { delegation });
+      const updated = { startingContext: 'conversation', instructions: 'Say Bonjour only' } as const;
+      const steered = await server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation: updated } } });
+      expect(steered).not.toHaveProperty('error');
+      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'invalid', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate task', options: { delegation: { startingContext: 'replay' } } } })).rejects.toThrow('Invalid worktree delegation overrides');
+      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      await server.handleMessage({ jsonrpc: '2.0', id: 'adjust', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: 'Keep the parent open' } });
+      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      agent.status = { type: 'idle' };
+      await server.handleMessage({ jsonrpc: '2.0', id: 'next', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Another task' } });
+      expect(agent.userDelegationOverrides).toBeUndefined();
+    } finally { await server.close(); }
+  });
   it('rejects malformed delegation overrides before asking a provider to execute', async () => {
     const sendPrompt = vi.fn();
     const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt })]]));

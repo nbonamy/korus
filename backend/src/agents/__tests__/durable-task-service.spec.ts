@@ -15,7 +15,7 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
   const agents: Agent[] = [parent];
   let disk = structuredClone(saved);
   const save = vi.fn(async (tasks: DelegatedTask[]) => { disk = structuredClone(tasks); });
-  const send = vi.fn(async (agent: Agent) => {
+  const send = vi.fn(async (agent: Agent, _prompt: string) => {
     agent.status = { type: 'working' };
     agent.backendSession = { kind: 'codex', threadId: `thread-${agent.id}` };
     const turnId = `turn-${agent.id}`;
@@ -245,6 +245,23 @@ describe('durable assignment lifecycle', () => {
     recovered.parent.backendSession = { kind: 'codex', threadId: 'parent-thread' };
     await recovered.service.recover();
     expect(recovered.disk()[0]!.delivery).toEqual({ id: saved[0]!.delivery!.id, state: 'accepted', acceptance: { backendSession: { kind: 'codex', threadId: 'parent-thread' }, turnId: 'accepted-parent-turn' } });
+    expect(recovered.send).not.toHaveBeenCalled();
+  });
+
+  it.each(['hidden', 'legacy'] as const)('recovers %s worker acceptance without replaying the assignment', async format => {
+    const f = fixture();
+    const task = await f.create();
+    const sentPrompt = f.send.mock.calls[0]![1];
+    expect(sentPrompt.replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim()).toBe('Fix the bug');
+    expect(sentPrompt).toContain(`[${product.name} task ${task.id}; attempt ${task.attemptId}]`);
+    const saved = f.disk();
+    delete saved[0]!.acceptance;
+    const legacyPrompt = `[${product.name} task ${task.id}; attempt ${task.attemptId}]\nFix the bug`;
+    const recovered = fixture(saved, async () => [{ role: 'user', turnId: 'accepted-worker-turn', parts: [{ type: 'text', text: format === 'hidden' ? sentPrompt : legacyPrompt }] }] as RendererMessage[]);
+    recovered.agents.push(f.agents[1]!);
+    await recovered.service.recover();
+    expect(recovered.disk()[0]!.acceptance).toStrictEqual({ backendSession: f.agents[1]!.backendSession, turnId: 'accepted-worker-turn' });
+    expect(recovered.disk()[0]!.state).toBe('interrupted');
     expect(recovered.send).not.toHaveBeenCalled();
   });
 

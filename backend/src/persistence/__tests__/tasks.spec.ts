@@ -29,6 +29,13 @@ describe('tasks.json persistence', () => {
     await new AppStateStore(home).saveTasks([value]);
     expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
   });
+  it('retains frozen user directions across task-store reload and later roster writes', async () => {
+    const value = { ...task(), delegationUserInstructions: { saved: 'Say Hello only', taskSpecific: 'Say Bonjour instead' } };
+    const store = new AppStateStore(home);
+    await store.saveTasks([value]);
+    await store.save(createEmptySnapshot());
+    expect(await new AppStateStore(home).loadTasks()).toStrictEqual([value]);
+  });
   it('adds tasks to an older layout without putting them in the roster or discarding them on roster save', async () => {
     const store = new AppStateStore(home);
     await store.save(createEmptySnapshot());
@@ -52,6 +59,7 @@ describe('tasks.json persistence', () => {
   it.each([
     '{broken',
     serializeStoreFile({ tasks: [{ ...task(), unexpected: true }] }),
+    serializeStoreFile({ tasks: [{ ...task(), delegationUserInstructions: { saved: 42 } }] }),
     serializeStoreFile({ tasks: [{ ...task(), submission: undefined }] }),
     serializeStoreFile({ tasks: [task(), task()] }),
     serializeStoreFile({ tasks: [{ ...task(), state: 'invented' }] }),

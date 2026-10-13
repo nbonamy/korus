@@ -124,6 +124,8 @@ describe('snapshot construction', () => {
     expect(isAppSnapshot(snapshot)).toBe(true);
     expect(isAppSnapshot({ ...snapshot, general: { ...snapshot.general, worktreeDelegationStartingContext: 'replay' } })).toBe(false);
     expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], delegationContext: { requested: 'handoff', effective: 'conversation' } }] })).toBe(false);
+    expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], userDelegationOverrides: { startingContext: 'replay' } }] })).toBe(false);
+    expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], delegationUserInstructions: { saved: 42 } }] })).toBe(false);
   });
 });
 
@@ -189,7 +191,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
-      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: {

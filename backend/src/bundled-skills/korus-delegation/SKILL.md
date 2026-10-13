@@ -13,7 +13,7 @@ Native subagents stay inside this provider session; Korus co-agents are separate
 - Same-provider model/effort inherit; other providers use their defaults. Override only on request.
 - Worktree starting context follows the saved preference: native conversation when supported, or fresh handoff. Pass startingContext only for a requested per-task override. Inspect delegationContext in the result; handoff fallback is visible and never a transcript replay. Keep independent reviewers fresh.
 - prompt: concise visible task. instructions: missing decisions, acceptance criteria, references and delivery constraints. Link accessible canonical issues/specs; supply inaccessible context. Skip copied repository rules/checklists/conversation. No secrets: instructions remain in the transcript.
-- Saved delegation instructions are supplied by Korus. Add task-specific directions in instructions; they take precedence within authorized scope and grant no additional publication or merge authority.
+- Korus supplies saved user delegation instructions and explicit per-task user overrides. User instructions take priority over your assignment brief and guidance; only explicit per-task user directions can override saved defaults. Do not repeat these user directions in instructions. Delegation grants no additional publication or merge authority.
 - Approved implementation: start work, commit coherent local milestones with behavior/tests together, report ready for review. Push/merge need separate approval.
 - Keep the parent open; leave execution to the worker. Delegated workers stay in their folder; further delegation requires explicit user request.
 

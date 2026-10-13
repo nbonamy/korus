@@ -175,7 +175,7 @@ function registerCollaborationTools(
       destinationPath: z.string().optional().describe('Optional destination path for the new worktree.'),
       prompt: z.string().optional().describe('Concise visible request. Starts the agent and waits for acceptance.'),
       startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
-      instructions: z.string().optional().describe('Task-specific directions and missing context; requires prompt. Applied to forks and handoffs, taking precedence over saved delegation instructions within user authorization. No secrets.'),
+      instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
     },
   }, ({ name, backend, model, reasoningEffort, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,

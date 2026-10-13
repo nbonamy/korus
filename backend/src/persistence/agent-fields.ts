@@ -13,6 +13,8 @@ const agentFieldPolicy = {
   teamId: 'derived',
   delegatedByAgentId: 'persisted',
   delegationContext: 'persisted',
+  userDelegationOverrides: 'persisted',
+  delegationUserInstructions: 'persisted',
   pullRequest: 'persisted',
   sessionKind: 'persisted',
   name: 'persisted',

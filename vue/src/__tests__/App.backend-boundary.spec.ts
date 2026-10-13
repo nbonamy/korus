@@ -139,7 +139,7 @@ describe('Unified backend → mounted application', () => {
     api.sendPrompt.mockResolvedValueOnce(cleared);
     await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
     await flushPromises();
-    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate', { delegation: { startingContext: 'conversation' } });
+    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate', { delegation: { startingContext: 'handoff' } });
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);

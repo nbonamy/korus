@@ -1,4 +1,4 @@
-import { isDelegationContext } from '@workspace/core/delegation-context';
+import { isDelegationContext, isDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { isAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
@@ -53,6 +53,8 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   handoff?: Agent['handoff'];
   delegatedByAgentId?: string;
   delegationContext?: Agent['delegationContext'];
+  userDelegationOverrides?: Agent['userDelegationOverrides'];
+  delegationUserInstructions?: Agent['delegationUserInstructions'];
   pullRequest?: Agent['pullRequest'];
   sessionKind?: Agent['sessionKind'];
   conversationTitle?: string;
@@ -126,6 +128,8 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.handoff ? { handoff: structuredClone(agent.handoff) } : {}),
     teamId: agent.teamId,
     ...(agent.delegationContext ? { delegationContext: { ...agent.delegationContext } } : {}),
+    ...(agent.userDelegationOverrides ? { userDelegationOverrides: { ...agent.userDelegationOverrides } } : {}),
+    ...(agent.delegationUserInstructions ? { delegationUserInstructions: { ...agent.delegationUserInstructions } } : {}),
     ...(agent.delegatedByAgentId ? { delegatedByAgentId: agent.delegatedByAgentId } : {}),
     ...(agent.pullRequest ? { pullRequest: { ...agent.pullRequest } } : {}),
     ...(agent.sessionKind ? { sessionKind: agent.sessionKind } : {}),
@@ -371,6 +375,8 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(isAgentHandoff(value.handoff) ? { handoff: structuredClone(value.handoff) } : {}),
     teamId: typeof value.teamId === 'string' ? value.teamId : undefined,
     ...(isDelegationContext(value.delegationContext) ? { delegationContext: { ...value.delegationContext } } : {}),
+    ...(isDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: { ...value.userDelegationOverrides } } : {}),
+    ...(isDelegationUserInstructions(value.delegationUserInstructions) ? { delegationUserInstructions: { ...value.delegationUserInstructions } } : {}),
     ...(typeof value.delegatedByAgentId === 'string' && value.delegatedByAgentId.trim()
       ? { delegatedByAgentId: value.delegatedByAgentId.trim() }
       : {}),

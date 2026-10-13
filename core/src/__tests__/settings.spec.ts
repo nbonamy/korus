@@ -3,14 +3,16 @@ import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
 
 describe('settings contracts', () => {
-  it('defaults delegation to native continuation and normalizes saved instructions', () => {
-    expect(normalizeGeneralSettings({}).worktreeDelegationStartingContext).toBe('conversation');
+  it('defaults delegation to handoff, preserves a saved fork choice and normalizes instructions', () => {
+    expect(normalizeGeneralSettings({}).worktreeDelegationStartingContext).toBe('handoff');
+    expect(defaultGeneralSettings.worktreeDelegationStartingContext).toBe('handoff');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'conversation' }).worktreeDelegationStartingContext).toBe('conversation');
     const snapshot = createEmptySnapshot();
     updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: '  Keep local.\nTest.  ' } });
     expect(snapshot.general.worktreeDelegationStartingContext).toBe('handoff');
     expect(snapshot.general.worktreeDelegationInstructions).toBe('Keep local.\nTest.');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
-    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('conversation');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
   it('updates one global Git preference without replacing the other', () => {
     const snapshot = createEmptySnapshot();
@@ -63,7 +65,7 @@ describe('settings contracts', () => {
       agentListCompact: true,
       cockpitAgentViewMode: 'recent',
       worktreeInitializationMode: 'automatic',
-      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
@@ -168,7 +170,7 @@ describe('settings contracts', () => {
       cockpitAgentViewMode: 'teams',
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
-      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: defaultAppshotSettings,

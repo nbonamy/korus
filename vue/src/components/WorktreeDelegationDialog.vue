@@ -3,10 +3,10 @@
     <form class="app-form-dialog" @submit.prevent="submit">
       <FormField :label="t('delegation.startingContext')">
         <el-select v-model="startingContext" :disabled="busy" :aria-label="t('delegation.startingContext')">
-          <el-option value="conversation" :label="t('delegation.conversation')" />
           <el-option value="handoff" :label="t('delegation.handoff')" />
+          <el-option value="conversation" :label="t('delegation.conversation')" />
         </el-select>
-        <p class="app-form-dialog__help">{{ t('delegation.contextDescription') }}</p>
+        <p class="app-form-dialog__help">{{ t(startingContext === 'conversation' ? 'delegation.forkDescription' : 'delegation.handoffDescription') }}</p>
       </FormField>
       <FormField :label="t('delegation.taskInstructions')" label-for="delegation-task-instructions">
         <el-input id="delegation-task-instructions" v-model="instructions" type="textarea" :rows="4" :disabled="busy" :placeholder="t('delegation.taskInstructionsPlaceholder')" :aria-label="t('delegation.taskInstructions')" />

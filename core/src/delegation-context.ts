@@ -5,6 +5,15 @@ export type DelegationOverrides = {
 
 export type DelegationStartingContext = 'conversation' | 'handoff';
 
+/** Frozen user-authored constraints, separate from agent-generated assignment guidance. */
+export type DelegationUserInstructions = { saved: string; taskSpecific?: string };
+
+export function isDelegationUserInstructions(value: unknown): value is DelegationUserInstructions {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const instructions = value as Record<string, unknown>;
+  return typeof instructions.saved === 'string' && (instructions.taskSpecific === undefined || typeof instructions.taskSpecific === 'string');
+}
+
 export function isDelegationOverrides(value: unknown): value is DelegationOverrides {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const overrides = value as Record<string, unknown>;

@@ -30,6 +30,8 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
     snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
+    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions' };
+    snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
     snapshot.agents[1]!.backend = 'claude';
     snapshot.agents[1]!.backendDefaults = { kind: 'claude' };
     snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
@@ -38,6 +40,8 @@ describe('state persistence', () => {
     expect(restored.general.worktreeDelegationStartingContext).toBe('handoff');
     expect(restored.general.worktreeDelegationInstructions).toBe('Keep commits local.\nRun focused tests.');
     expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
+    expect(restored.agents[0]!.userDelegationOverrides).toStrictEqual(snapshot.agents[0]!.userDelegationOverrides);
+    expect(restored.agents[1]!.delegationUserInstructions).toStrictEqual(snapshot.agents[1]!.delegationUserInstructions);
     expect(restored.agents[1]!.backendSession).toStrictEqual(snapshot.agents[1]!.backendSession);
     expect(isAppSnapshot(restored)).toBe(true);
   });
@@ -1333,7 +1337,7 @@ describe('state persistence', () => {
       providerHomes: { codex: { isolated: true, shareSkills: false, homePath: "/app/codex-home" } },
       sessionCompressionWarningEnabled: false,
       worktreeInitializationMode: 'repository',
-      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: { '/src/agent-workspace': '🦞' },
       appshots: {

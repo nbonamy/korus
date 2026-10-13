@@ -30,10 +30,6 @@
         </el-menu-item>
       </el-menu-item-group>
       <el-menu-item-group :title="$t('surface.settingsSidebar.groupAgents')">
-        <el-menu-item index="delegation">
-          <GitBranchIcon aria-hidden="true" />
-          <span>{{ $t('delegation.title') }}</span>
-        </el-menu-item>
         <el-menu-item index="codex">
           <BackendIcon backend="codex" monochrome />
           <span>{{ $t('surface.settingsSidebar.codex') }}</span>
@@ -56,6 +52,10 @@
           <GitBranchIcon aria-hidden="true" />
           <span>{{ $t('surface.instructionSettings.git') }}</span>
         </el-menu-item>
+        <el-menu-item index="workflows">
+          <ListDetailsIcon aria-hidden="true" />
+          <span>{{ $t('workflows.title') }}</span>
+        </el-menu-item>
         <el-menu-item index="integrations">
           <AffiliateIcon aria-hidden="true" />
           <span>{{ $t('surface.settingsSidebar.integrations') }}</span>
@@ -72,7 +72,7 @@
 <script setup lang="ts">
 import type { SettingsTab } from './settings-tabs';
 import type { AgentBackend } from '@workspace/core/contracts';
-import { AffiliateIcon, GitBranchIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
+import { AffiliateIcon, GitBranchIcon, ListDetailsIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { appHostCapabilities } from '../platform-api';
 
@@ -86,7 +86,7 @@ const emit = defineEmits<{
 }>();
 
 function selectTab(tab: string): void {
-  if (tab === 'delegation' || tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
+  if (tab === 'workflows' || tab === 'antigravity' || tab === 'personalization' || tab === 'voice' || tab === 'git' || tab === 'general' || tab === 'codex' || tab === 'claude-code' || tab === 'appearance' || tab === 'appshots' || tab === 'plugins' || tab === 'integrations' || tab === 'connections') {
     emit('select', tab);
   }
 }
