@@ -9,6 +9,7 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { BackendPublishedEvent } from '@workspace/core/contracts';
+import type { DelegatedTask } from '@workspace/core/delegated-task';
 import { createCodexSurface } from '@codex-app-sdk/backend';
 import { appSurfaceOptions, BackendDriverRpc } from '../../driver-rpc';
 import { CodexSurfaceAgentAdapter } from '../codex-surface-adapter';
@@ -145,3 +146,67 @@ it.skipIf(process.env.KORUS_DELEGATION_LIVE !== '1').each(['native-context', 'sa
     await rm(root, { recursive: true, force: true });
   }
 }, 240000);
+
+it.skipIf(process.env.KORUS_DELEGATION_LIVE !== '1')('delivers a saved result to a native Codex parent with readable output and hidden tracking', async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'korus-result-delivery-live-')));
+  const home = path.join(root, 'codex-home');
+  const snapshot = createInitialSnapshot();
+  const parent = snapshot.agents[0]!;
+  parent.folder = root;
+  parent.backendSession = undefined;
+  parent.backendDefaults = { kind: 'codex', model: process.env.KORUS_DELEGATION_MODEL ?? 'gpt-5.6-luna', reasoningEffort: 'low', approvalPreset: 'ask-for-approval' };
+  snapshot.general.providerHomes = { codex: { isolated: true, shareSkills: false, homePath: home } };
+  const now = new Date().toISOString();
+  // A retained result is the input to delivery; this probe does not claim worker execution.
+  const saved: DelegatedTask = {
+    id: 'task-saved-result', requestId: 'saved-result', requestFingerprint: 'fixture', parentAgentId: parent.id,
+    workerAgentId: 'agent-retained-worker', backend: 'codex', assignment: { title: 'Translate README into French', doneWhen: 'Translation verified' },
+    prompt: 'Translate README into French', attemptId: 'attempt-retained', state: 'completed', createdAt: now, updatedAt: now, parentWakeBlocked: false,
+    submission: { summary: 'Followed saved instructions; no task work was performed.', evidence: ['No files were changed.'], artifacts: [], caveats: ['Translation was not performed.'],
+      id: 'result-retained', attemptId: 'attempt-retained', turnId: 'turn-retained', backendSession: { kind: 'codex', threadId: 'thread-retained' } },
+    delivery: { id: 'delivery-retained', state: 'pending' },
+  };
+  const store = new AppStateStore(path.join(root, 'app-home'));
+  const errors: unknown[] = [];
+  let driver: CodexBackendDriver | undefined;
+  const tasks = new DurableTaskService({ tasks: [saved], save: value => store.saveTasks(value), agent: id => snapshot.agents.find(agent => agent.id === id),
+    send: (agent, prompt) => new Promise((resolve, reject) => { sendAgentPrompt(snapshot, driver!, agent.id, prompt, undefined, () => {}, { onPromptStarted: resolve, onPromptFailed: reject }); }),
+    interrupt: (agent, turnId) => driver!.interrupt(agent, turnId), onError: error => errors.push(error),
+  });
+  const service = new AppMcpService({ snapshot, tasks, toolModuleProviders: [createTaskToolModuleProvider(tasks)] });
+  const originalShared = process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
+  process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON = '0';
+  try {
+    await mkdir(home, { mode: 0o700 });
+    await copyFile(path.join(os.homedir(), '.korus', 'codex-home', 'auth.json'), path.join(home, 'auth.json'));
+    await store.saveTasks([saved]);
+    const surface = createCodexSurface(appSurfaceOptions({ generalSettings: snapshot.general, appMcpServerUrl: await service.start() }));
+    driver = new CodexBackendDriver(new CodexSurfaceAgentAdapter(surface));
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', driver]])));
+    driver.onEvent(event => {
+      const published = event as BackendPublishedEvent;
+      service.handleBackendEvent(published);
+      if (event.agentId === parent.id && providerConversationEventView(published).type === 'turn.completed') parent.status = { type: 'idle' };
+      tasks.handleEvent(published);
+    });
+    parent.status = { type: 'working' };
+    const seed = await driver.sendPrompt(parent, 'Reply READY. Do not call tools or change files.');
+    parent.backendSession = seed.backendSession;
+    await expect.poll(async () => (await store.loadTasks())[0]?.delivery?.state, { timeout: 60000 }).toBe('accepted');
+    const persisted = (await store.loadTasks())[0]!;
+    const delivered = async () => (await driver!.readConversationMessages({ backend: 'codex', threadId: parent.backendSession!.kind === 'codex' ? parent.backendSession!.threadId : '' }, parent.id))
+      .filter(message => message.role === 'user').flatMap(message => message.parts).find(part => part.type === 'text' && part.text.startsWith(`<context>\nKorus task results (${persisted.delivery!.id}).\n</context>`));
+    await expect.poll(delivered, { timeout: 10000 }).toBeDefined();
+    const message = await delivered();
+    const visible = message?.type === 'text' ? message.text.replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim() : '';
+    expect(visible).toBe('Delegation result: Translate README into French\n\nFollowed saved instructions; no task work was performed.\n\nEvidence:\n• No files were changed.\n\nNotes:\n• Translation was not performed.');
+    expect(errors).toStrictEqual([]);
+  } finally {
+    tasks.close();
+    if (driver && parent.backendSession) await driver.interrupt(parent).catch(() => undefined);
+    await driver?.close(); await service.stop();
+    if (originalShared === undefined) delete process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
+    else process.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON = originalShared;
+    await rm(root, { recursive: true, force: true });
+  }
+}, 120000);

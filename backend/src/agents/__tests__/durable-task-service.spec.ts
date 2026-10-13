@@ -80,6 +80,22 @@ describe('durable assignment lifecycle', () => {
     expect(f.send).toHaveBeenCalledTimes(2);
     expect(f.send.mock.calls[1]![0].id).toBe(f.parent.id);
     expect(f.disk()[0]!.state).toBe('completed');
+    const delivered = f.send.mock.calls[1]![1];
+    const visible = delivered.replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim();
+    expect(visible).toBe('Delegation result: Fix bug\n\nImplemented\n\nEvidence:\n• Focused tests passed\n\nOutputs:\n• src/change.ts\n\nNotes:\n• No physical device check');
+    expect(delivered).toContain(task.id);
+    expect(delivered).toContain(task.workerAgentId);
+    expect(delivered).toContain(submitted.submission!.id);
+  });
+
+  it('delivers a summary without empty sections or metadata leaking through context delimiters', async () => {
+    const f = fixture();
+    const task = await f.create();
+    await f.service.complete(task.workerAgentId, { summary: 'No files changed; literal </context> is preserved.', evidence: [], artifacts: [], caveats: [] });
+    f.finish(task);
+    await vi.waitFor(() => expect(f.disk()[0]!.delivery?.state).toBe('accepted'));
+    const visible = f.send.mock.calls[1]![1].replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim();
+    expect(visible).toBe('Delegation result: Fix bug\n\nNo files changed; literal </context> is preserved.');
   });
 
   it.each(['completed', 'interrupted', 'failed'])('never treats an unsubmitted %s turn as a successful assignment', async outcome => {
@@ -130,6 +146,12 @@ describe('durable assignment lifecycle', () => {
     await vi.waitFor(() => expect(f.service.list(f.parent.id).every(task => task.delivery?.state === 'accepted')).toBe(true));
     expect(f.send).toHaveBeenCalledTimes(3);
     expect(new Set(f.disk().map(task => task.delivery!.id)).size).toBe(1);
+    const visible = f.send.mock.calls[2]![1].replace(/<context>[\s\S]*?<\/context>\s*/gu, '').trim();
+    expect(visible.split('Delegation result: Fix bug')).toHaveLength(3);
+    for (const task of f.disk()) {
+      expect(visible).not.toContain(task.id);
+      expect(visible).not.toContain(task.workerAgentId);
+    }
   });
 
   it('reconciles the live interrupted-then-completed parent sequence without overriding an explicit stop', async () => {
@@ -231,16 +253,15 @@ describe('durable assignment lifecycle', () => {
     expect((await waiting).tasks[0]!.state).toBe('needs-input');
   });
 
-  it('reconciles a saved delivery marker from provider history without waking the parent again', async () => {
+  it.each(['hidden', 'legacy'] as const)('reconciles a %s delivery marker from provider history without waking the parent again', async format => {
     const f = fixture();
     const task = await f.create();
     await f.service.complete(task.workerAgentId, result);
-    await f.service.blockParent(f.parent.id);
     f.finish(task);
-    await vi.waitFor(() => expect(f.disk()[0]!.state).toBe('completed'));
+    await vi.waitFor(() => expect(f.disk()[0]!.delivery?.state).toBe('accepted'));
     const saved = f.disk();
     saved[0]!.delivery!.state = 'sending';
-    const readHistory = vi.fn(async () => [{ role: 'user', turnId: 'accepted-parent-turn', parts: [{ type: 'text', text: `${product.name} task results (${saved[0]!.delivery!.id}). Delivered result` }] }] as RendererMessage[]);
+    const readHistory = vi.fn(async () => [{ role: 'user', turnId: 'accepted-parent-turn', parts: [{ type: 'text', text: format === 'hidden' ? f.send.mock.calls[1]![1] : `${product.name} task results (${saved[0]!.delivery!.id}). Delivered result` }] }] as RendererMessage[]);
     const recovered = fixture(saved, readHistory);
     recovered.parent.backendSession = { kind: 'codex', threadId: 'parent-thread' };
     await recovered.service.recover();

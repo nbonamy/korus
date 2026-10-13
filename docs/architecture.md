@@ -297,6 +297,8 @@ separate from worker agents and provider conversations. They are stored in
   progression.
 - Result delivery batches are persisted before parent prompt acceptance and use
   normal prompt admission, waiting while the parent is busy or awaiting input.
+  The prompt presents readable task outcomes; tracking markers, coordination
+  instructions and complete structured results remain in hidden context.
   Explicit interruption, a missing parent, or a restart blocks automatic wakeup.
   Acceptance markers in provider history can reconcile an uncertain delivery;
   missing or truncated history never proves non-execution and never triggers a
