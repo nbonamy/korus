@@ -31,12 +31,13 @@ it('routes a native proposal → saved feedback → revision → explicit approv
   try {
     proposal('initial-turn', '# Storage\n\n- (x) Local\n- ( ) Synced');
     const reviewId = agent.planReview!.id;
-    const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Storage', body: 'Include failure recovery.' }], choices: [{ id: 's0-g0', quote: 'Storage\nLocal\nSynced', selected: ['Synced'] }] };
+    const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Storage', body: 'Include failure recovery.' }], choices: [{ id: 's0-g0', quote: 'Storage\nLocal\nSynced', selected: ['Synced'], confirmed: true }] };
     expect(await respond({ reviewId, resolution: 'save', draftVersion: 0, draft })).not.toHaveProperty('error');
     expect(sendPrompt).not.toHaveBeenCalled();
     expect((await new AppStateStore(home).load()).agents[0]!.planReview?.draft).toStrictEqual(draft);
     expect(await respond({ reviewId, resolution: 'revise', draftVersion: 1 })).not.toHaveProperty('error');
     expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: agent.id }), expect.stringContaining('Include failure recovery.'), { planMode: true });
+    expect(sendPrompt.mock.calls[0]![1]).toContain('Synced');
     proposal('revision-turn', '# Storage\n\nSynced storage with recovery.');
     expect(agent.planReview).toMatchObject({ status: 'pending', markdown: '# Storage\n\nSynced storage with recovery.' });
     expect(agent.planReview?.draft).toBeUndefined();

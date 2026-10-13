@@ -28,7 +28,7 @@ function fixture() {
 describe('agent plan review lifecycle', () => {
   it('saves feedback without a turn, restores it, and sends it only through Revise', async () => {
     const f = fixture();
-    const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Keep </context> literally.' }], choices: [{ id: 's0-g0', quote: 'Platform', selected: ['macOS', 'Linux'] }] };
+    const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Keep </context> literally.' }], choices: [{ id: 's0-g0', quote: 'Platform', selected: ['macOS', 'Linux'], confirmed: true }, { id: 's1-g1', quote: 'Storage', selected: ['Do not adopt this unconfirmed selection'], confirmed: false }] };
     await f.service.respond(f.agent, { reviewId: f.reviewId, resolution: 'save', draftVersion: 0, draft });
     expect(f.submit).not.toHaveBeenCalled();
     expect(snapshotFromPersistedState(persistedStateFromSnapshot(f.snapshot)).agents[0]!.planReview).toMatchObject({ draft, draftVersion: 1 });
@@ -38,6 +38,7 @@ describe('agent plan review lifecycle', () => {
     expect(prompt.replace(/<context>[\s\S]*?<\/context>/gu, '').trim()).toBe('Revise the plan using my feedback.');
     expect(prompt.match(/<\/?context>/gu)).toStrictEqual(['<context>', '</context>']);
     expect(prompt).toContain('macOS');
+    expect(prompt).not.toContain('Do not adopt this unconfirmed selection');
     expect(f.submit.mock.calls[0]![2]).toBe(true);
     applyMainEventToSnapshot(f.snapshot, { ...f.ready, turnId: 'revision-two' });
     expect(f.agent.planReview?.draft).toBeUndefined();

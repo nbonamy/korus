@@ -479,7 +479,9 @@ section and selected-text comments and decorates flat Markdown checkbox lists as
 multiple choices and `( )` / `(x)` lists as single choices. Code examples, nested
 lists and mixed lists retain normal Markdown rendering. Authored HTML remains
 escaped by the shared Markdown renderer. Model-selected defaults are proposals;
-only user-edited groups become feedback.
+only explicitly confirmed groups become feedback. Confirmation survives answer
+edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
+drafts remain saved without ratifying defaults.
 
 The owning host's Workflows setting enables interactive plans by default. Enabled
 Plan-mode turns receive hidden Markdown choice guidance; disabling it leaves
@@ -488,9 +490,9 @@ ordinary Markdown and native review actions without choice controls.
 Draft feedback belongs to the agent, conversation and native review ID. The owning
 host persists it with optimistic versions through the existing review response
 contract. Saving does not start a turn. Revise explicitly sends feedback in a
-Plan-mode turn, with details inside hidden context; Approve uses the native
-implementation authorization path. Persisted delivery intent prevents automatic
-retry after an uncertain delivery. New proposals start unanswered and retain prior
+Plan-mode turn, with confirmed answers and comments inside hidden context; Approve
+uses the native implementation authorization path. Persisted delivery intent
+prevents automatic retry after an uncertain delivery. New proposals start unanswered and retain prior
 feedback in bounded review history.
 
 The Vue editor is keyed by owner and review identity. Its draft and serial saves

@@ -1346,6 +1346,7 @@ describe('AppShell workspace and plans', () => {
       expect(wrapper.findAll('[role="tab"]').filter(tab => tab.isVisible()).map(tab => tab.text())).toEqual(['Plan', 'Dummy plan', 'Source file']);
       await wrapper.get('[role="tab"][aria-label="Plan"]').trigger('click');
       await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
+      await wrapper.get('.app-dialog .app-button--primary').trigger('click');
       await flushPromises();
       expect(updatePlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId: 'native', resolution: 'accept', draftVersion: 0 });
       expect(wrapper.findAll('[role="tab"][aria-label="Other agent"]')).toHaveLength(1);
