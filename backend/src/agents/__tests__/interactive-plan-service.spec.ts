@@ -78,9 +78,9 @@ describe("interactive planning lifecycle", () => {
     await f.service.respond(f.agent, feedback);
     await f.service.respond(f.agent, feedback);
     expect(f.submit).toHaveBeenCalledTimes(1);
-    const payload = JSON.parse(
-      f.submit.mock.calls[0]![1].slice(f.submit.mock.calls[0]![1].indexOf("{")),
-    );
+    const prompt: string = f.submit.mock.calls[0]![1];
+    const context = prompt.match(/<context>\n([\s\S]*?)\n<\/context>/u)![1]!;
+    const payload = JSON.parse(context.slice(context.indexOf("{")));
     expect(payload).toStrictEqual({
       agentId: f.agent.id,
       conversationId: "planning-conversation",

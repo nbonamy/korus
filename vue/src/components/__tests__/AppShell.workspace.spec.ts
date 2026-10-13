@@ -1309,19 +1309,19 @@ describe('AppShell workspace and plans', () => {
     agent.backendSession = { kind: 'codex', threadId: 'planning' };
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
     try {
-      expect(wrapper.find('iframe[title="Published proposal"]').exists()).toBe(false);
+      expect(wrapper.find('article[aria-label="Published proposal"]').exists()).toBe(false);
       const published = structuredClone(snapshot);
       published.agents[0]!.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'published', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Published proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
       await wrapper.setProps({ snapshot: published, activeAgent: published.agents[0]! });
-      expect(wrapper.get('iframe[title="Published proposal"]').isVisible()).toBe(true);
+      expect(wrapper.get('article[aria-label="Published proposal"]').isVisible()).toBe(true);
       expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
       await wrapper.get('[aria-label="Close Plan tab"]').trigger('click');
-      expect(wrapper.find('iframe[title="Published proposal"]').exists()).toBe(false);
+      expect(wrapper.find('article[aria-label="Published proposal"]').exists()).toBe(false);
       const revised = structuredClone(published);
       revised.agents[0]!.interactivePlan!.revision = 2;
       revised.agents[0]!.interactivePlan!.document.title = 'Revised proposal';
       await wrapper.setProps({ snapshot: revised, activeAgent: revised.agents[0]! });
-      expect(wrapper.get('iframe[title="Revised proposal"]').isVisible()).toBe(true);
+      expect(wrapper.get('article[aria-label="Revised proposal"]').isVisible()).toBe(true);
     } finally { wrapper.unmount(); }
   });
 
@@ -1335,7 +1335,7 @@ describe('AppShell workspace and plans', () => {
     const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, respondToPlanReview,
       sidePanelRequest: { kind: 'markdown', purpose: 'plan', title: 'Plan', content: '# Native proposal' } } });
     try {
-      expect(wrapper.find('iframe[title="Interactive proposal"]').exists()).toBe(true);
+      expect(wrapper.find('article[aria-label="Interactive proposal"]').exists()).toBe(true);
       expect(respondToPlanReview).not.toHaveBeenCalled();
       expect(wrapper.find('[aria-label="Plan options"]').exists()).toBe(false);
       expect(wrapper.findAll('.plan-review-footer')).toHaveLength(1);
@@ -1355,7 +1355,7 @@ describe('AppShell workspace and plans', () => {
       await wrapper.setProps({ snapshot: foreignReview, activeAgent: foreignReview.agents[0]! });
       expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
       await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, useInteractivePlans: false } } });
-      expect(wrapper.find('iframe[title="Interactive proposal"]').exists()).toBe(false);
+      expect(wrapper.find('article[aria-label="Interactive proposal"]').exists()).toBe(false);
       expect(wrapper.find('.plan-review-footer').isVisible()).toBe(true);
       await wrapper.setProps({ snapshot });
       await wrapper.get('.plan-review-footer__button--primary').trigger('click');

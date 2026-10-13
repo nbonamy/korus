@@ -475,8 +475,9 @@ so browser tools keep working without changing the user's selection.
 ## Interactive planning
 
 Interactive plans are app-owned artifacts bound to an agent, provider conversation,
-plan ID and revision. Structured claims, text exhibits, bounded static UI mockups and decision options generate
-an HTML page using an app-owned runtime; agent-authored HTML never executes. The
+plan ID and revision. Native Vue components render structured claims, text exhibits,
+bounded static UI mockups and decision options. Agent-authored values are text;
+they never become markup, styles, URLs or executable code. The
 upstream [html-plan](https://github.com/anthropics/claude-plugins-community/tree/main/html-plan)
 reference is Apache-2.0 licensed and uses localStorage plus copied Markdown feedback.
 Korus implements its own runtime to keep persistence and feedback on the owning host.
@@ -492,10 +493,12 @@ an explicit Plan-mode prompt, distinct from native plan review acceptance, Missi
 progression and implementation authorization. Persisted submission intent prevents
 an uncertain delivery from being retried automatically after a crash.
 
-The HTML frame has an opaque sandbox origin with scripts enabled only for the trusted
-runtime. CSP denies network, nested frames, forms and external assets. Its sole bridge
-message contains validated answers; the host checks the exact frame, nonce, agent,
-plan and revision. Submission and exports belong to host controls, never frame messages.
+The review component is keyed by agent, conversation, plan and revision. Each review
+owns its draft, save version and pending operations; late responses cannot mutate a
+different review. Sections retain expansion and editor state across snapshots and
+theme changes. Typed component events carry choices and comments to the existing
+host response contract, whose ownership and revision checks remain authoritative.
+The presentation accepts no agent-authored HTML, scripts, styles or resource URLs.
 
 ## Theming
 

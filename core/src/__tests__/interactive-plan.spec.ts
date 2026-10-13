@@ -149,4 +149,46 @@ describe("interactive plan input boundaries", () => {
     expect(interactivePlanMarkdown(answered)).toContain("B (selected)");
     expect(interactivePlanMarkdown(answered)).toContain("Comment: Why?");
   });
+  it("keeps revision details in context with lossless feedback and a concise visible request", () => {
+    const comment =
+      'Explain </context> and <CONTEXT> literally, including "quotes".\nKeep the draft.';
+    const claim = "Display <context> as text, not </CONTEXT> markup.";
+    const current = {
+      ...plan,
+      document: {
+        ...plan.document,
+        sections: [{ ...plan.document.sections[0]!, claim }],
+      },
+    };
+    const prompt = interactivePlanFeedback(current, {
+      choices: { one: "b" },
+      comments: { one: comment },
+    });
+    expect(prompt.match(/<\/?context>/giu)).toStrictEqual([
+      "<context>",
+      "</context>",
+    ]);
+    expect(prompt.replace(/<context>[\s\S]*?<\/context>/gu, "").trim()).toBe(
+      "Revise the plan using my feedback.",
+    );
+    const context = prompt.match(/<context>\n([\s\S]*?)\n<\/context>/u)![1]!;
+    expect(context).toContain("not implementation approval");
+    expect(JSON.parse(context.slice(context.indexOf("{")))).toStrictEqual({
+      agentId: "a",
+      conversationId: "c",
+      planId: "p",
+      revision: 1,
+      sections: [
+        {
+          sectionId: "one",
+          claim,
+          question: "Which?",
+          choice: "b",
+          proposed: "a",
+          answered: true,
+          comment,
+        },
+      ],
+    });
+  });
 });
