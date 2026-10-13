@@ -9,7 +9,7 @@
         <p class="app-form-dialog__help">{{ t(startingContext === 'conversation' ? 'delegation.forkDescription' : 'delegation.handoffDescription') }}</p>
       </FormField>
       <FormField :label="t('delegation.taskInstructions')" label-for="delegation-task-instructions">
-        <el-input id="delegation-task-instructions" v-model="instructions" type="textarea" :rows="4" :disabled="busy" :placeholder="t('delegation.taskInstructionsPlaceholder')" :aria-label="t('delegation.taskInstructions')" />
+        <el-input id="delegation-task-instructions" v-model="instructions" type="textarea" :rows="4" :maxlength="MAX_DELEGATION_INSTRUCTIONS_LENGTH" :disabled="busy" :placeholder="t('delegation.taskInstructionsPlaceholder')" :aria-label="t('delegation.taskInstructions')" />
         <p class="app-form-dialog__help">{{ t('delegation.taskInstructionsDescription') }}</p>
       </FormField>
       <p v-if="error" role="alert">{{ error }}</p>
@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { DelegationOverrides, DelegationStartingContext } from '@workspace/core/delegation-context';
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH, type DelegationOverrides, type DelegationStartingContext } from '@workspace/core/delegation-context';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 const props = defineProps<{ startingContext: DelegationStartingContext; delegate: (overrides: DelegationOverrides) => Promise<void> }>();

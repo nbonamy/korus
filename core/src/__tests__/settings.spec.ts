@@ -1,3 +1,4 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '../delegation-context';
 import { describe, expect, it } from 'vitest';
 import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
@@ -11,6 +12,7 @@ describe('settings contracts', () => {
     updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: '  Keep local.\nTest.  ' } });
     expect(snapshot.general.worktreeDelegationStartingContext).toBe('handoff');
     expect(snapshot.general.worktreeDelegationInstructions).toBe('Keep local.\nTest.');
+    expect(normalizeGeneralSettings({ worktreeDelegationInstructions: 'x'.repeat(MAX_DELEGATION_INSTRUCTIONS_LENGTH + 5) }).worktreeDelegationInstructions).toHaveLength(MAX_DELEGATION_INSTRUCTIONS_LENGTH);
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });

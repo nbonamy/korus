@@ -1,3 +1,6 @@
+/** Upper bound for user-authored delegation text; durable task persistence enforces the same limit. */
+export const MAX_DELEGATION_INSTRUCTIONS_LENGTH = 100_000;
+
 export type DelegationOverrides = {
   startingContext: DelegationStartingContext;
   instructions?: string;
@@ -11,14 +14,14 @@ export type DelegationUserInstructions = { saved: string; taskSpecific?: string 
 export function isDelegationUserInstructions(value: unknown): value is DelegationUserInstructions {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const instructions = value as Record<string, unknown>;
-  return typeof instructions.saved === 'string' && (instructions.taskSpecific === undefined || typeof instructions.taskSpecific === 'string');
+  return isBoundedString(instructions.saved) && (instructions.taskSpecific === undefined || isBoundedString(instructions.taskSpecific));
 }
 
 export function isDelegationOverrides(value: unknown): value is DelegationOverrides {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const overrides = value as Record<string, unknown>;
   return (overrides.startingContext === 'conversation' || overrides.startingContext === 'handoff')
-    && (overrides.instructions === undefined || typeof overrides.instructions === 'string');
+    && (overrides.instructions === undefined || isBoundedString(overrides.instructions));
 }
 
 /** App-owned description of how a worktree assignment actually started. */
@@ -36,4 +39,8 @@ export function isDelegationContext(value: unknown): value is DelegationContext 
     && (context.requested !== 'handoff' || context.effective === 'handoff')
     && (context.reason === undefined || (context.requested === 'conversation' && context.effective === 'handoff'))
     && (context.reason === undefined || ['cross-provider', 'unsupported', 'unavailable'].includes(context.reason as string));
+}
+
+function isBoundedString(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_DELEGATION_INSTRUCTIONS_LENGTH;
 }

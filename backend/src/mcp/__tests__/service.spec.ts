@@ -231,6 +231,7 @@ describe('AppMcpService', () => {
 
     await callTool(url, 'agent-dina', 'set-status', { status: 'Running verification' });
     expect(snapshot.agents[0]!.statusText).toBe('Running verification');
+    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'conversation', instructions: 'Do not run tests.' };
 
     service.handleBackendEvent({
       seq: 1,
@@ -254,6 +255,7 @@ describe('AppMcpService', () => {
     } as BackendPublishedEvent);
 
     expect(snapshot.agents[0]!.statusText).toBeUndefined();
+    expect(snapshot.agents[0]!.userDelegationOverrides).toBeUndefined();
     expect(events.at(-1)).toEqual(expect.objectContaining({
       agentId: 'agent-dina',
       type: 'agent.updated',
