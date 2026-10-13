@@ -884,7 +884,12 @@ export class AppBackendServer {
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
-        agent.codeReview = createDebugCodeReviewSession(agent, scenario);
+        const session = createDebugCodeReviewSession(agent, scenario);
+        if (scenario === 'automaticReviewing') this.requireCodeReviews().simulateInspection(agent, session);
+        else {
+          this.codeReviews?.closeForAgentRemoval(agent);
+          agent.codeReview = session;
+        }
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.debugVisualizePopulate: {
@@ -1495,6 +1500,14 @@ export class AppBackendServer {
           return this.persistAndEmitSnapshot();
         });
       }
+      case backendMethods.agentCodeReviewManual: {
+        const agentId = requireStringParam(message.params, 'agentId');
+        const sessionId = requireStringParam(message.params, 'sessionId');
+        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, sessionId }, async (agent) => {
+          await this.requireCodeReviews().switchToManual(agent, sessionId);
+          return this.persistAndEmitSnapshot();
+        });
+      }
       case backendMethods.agentCodeReviewDiscard: {
         const agentId = requireStringParam(message.params, 'agentId');
         const sessionId = requireStringParam(message.params, 'sessionId');
@@ -1873,11 +1886,14 @@ export class AppBackendServer {
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
+          if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
           await this.tasks?.blockParent(agentId);
+          // The inspection can settle before the provider acknowledges interruption.
+          const inspectionRoundId = this.codeReviews?.activeInspectionRoundId(agent);
           try {
             const result = await this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }) as BackendSendResult;
             agent.backendSession = result.backendSession;
-            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent) ?? false;
+            const reviewChanged = await this.codeReviews?.handleTurnInterrupted(agent, inspectionRoundId) ?? false;
             if (!reviewChanged) await this.persistSnapshotOnly();
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -3624,10 +3640,10 @@ function locationRemoteConnectionId(params: unknown, label: string): string | nu
   return requireString(locationRecord.remoteConnectionId, 'remoteConnectionId');
 }
 
-type DebugCodeReviewScenario = 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
+type DebugCodeReviewScenario = 'automaticReviewing' | 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
 
 function debugCodeReviewScenario(value: unknown): DebugCodeReviewScenario {
-  if (value === 'reviewing' || value === 'ready' || value === 'fixing' || value === 'readyToFinish') return value;
+  if (value === 'automaticReviewing' || value === 'reviewing' || value === 'ready' || value === 'fixing' || value === 'readyToFinish') return value;
   throw new Error('Invalid code review debug scenario.');
 }
 
@@ -3638,7 +3654,7 @@ function debugThreadFlagId(value: unknown): ThreadFlagId {
 
 function createDebugCodeReviewSession(agent: Agent, scenario: DebugCodeReviewScenario): CodeReviewSession {
   const now = new Date().toISOString();
-  const roundId = 'debug-review-round-1';
+  const roundId = scenario === 'automaticReviewing' ? createEntityId('debug-review-round') : 'debug-review-round-1';
   const findings = debugCodeReviewFindings(roundId, scenario, now);
   return {
     id: 'debug-review',
@@ -3646,12 +3662,15 @@ function createDebugCodeReviewSession(agent: Agent, scenario: DebugCodeReviewSce
     reviewerAgentId: agent.id,
     scope: { type: 'uncommitted' },
     threadMode: 'current',
-    status: scenario,
+    status: scenario === 'automaticReviewing' ? 'reviewing' : scenario,
+    ...(scenario === 'automaticReviewing' ? {
+      automation: { enabled: true, state: 'running' as const, maxPriority: 'p2' as const, maxRounds: 3, autoCommit: false, commits: [] },
+    } : {}),
     activeRoundId: roundId,
     rounds: [{
       id: roundId,
       number: 1,
-      status: scenario === 'reviewing'
+      status: scenario === 'reviewing' || scenario === 'automaticReviewing'
         ? 'reviewing'
         : scenario === 'ready'
           ? 'ready'

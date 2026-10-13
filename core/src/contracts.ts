@@ -820,6 +820,7 @@ export type AppApi = {
   submitCodeReviewRound(agentId: string, sessionId: string): Promise<AppSnapshot>;
   finishCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   commitCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
+  switchCodeReviewToManual(agentId: string, sessionId: string): Promise<AppSnapshot>;
   discardCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   reviewCodeAgain(agentId: string, sessionId: string): Promise<AppSnapshot>;
   respondToThreadFlag(agentId: string, response: import('./thread-flags').ThreadFlagResponse): Promise<AppSnapshot>;

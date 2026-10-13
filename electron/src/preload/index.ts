@@ -19,6 +19,7 @@ const api: AppApi = {
   submitCodeReviewRound: (agentId, sessionId) => ipc.invoke(ipcChannels.submitCodeReviewRound, agentId, sessionId),
   finishCodeReview: (agentId, sessionId) => ipc.invoke(ipcChannels.finishCodeReview, agentId, sessionId),
   commitCodeReview: (agentId, sessionId) => ipc.invoke(ipcChannels.commitCodeReview, agentId, sessionId),
+  switchCodeReviewToManual: (agentId, sessionId) => ipc.invoke(ipcChannels.switchCodeReviewToManual, agentId, sessionId),
   discardCodeReview: (agentId, sessionId) => ipc.invoke(ipcChannels.discardCodeReview, agentId, sessionId),
   reviewCodeAgain: (agentId, sessionId) => ipc.invoke(ipcChannels.reviewCodeAgain, agentId, sessionId),
   respondToThreadFlag: (agentId, response) => ipc.invoke(ipcChannels.respondToThreadFlag, agentId, response),

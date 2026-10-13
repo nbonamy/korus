@@ -349,6 +349,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
   through subsequent rounds and reloads.
 - Finishing saves a report first, then removes the ledger and the review-owned
   agent. Discarding removes the ledger from any state. Reopening starts from zero.
+- Switching an automatic review to manual is a durable ledger transition. It keeps
+  the active provider turn and review context intact; async completion can finish
+  that operation but cannot schedule automatic remediation, commits or fresh rounds.
+  Provider interruption remains a separate operation.
 - Findings and the `finish_review_round` acknowledgment are model tools
   ([mcp.md](mcp.md)); user decisions and workflow transitions are backend
   commands.

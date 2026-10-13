@@ -74,9 +74,9 @@ export const messages = {
       currentModel: 'Current model', currentEffort: 'Current effort', defaultModel: 'Default model', defaultEffort: 'Default effort',
       independent: 'Automatic mode uses an independent reviewer for each round.',
       currentThreadUnavailable: 'Not available for automatic reviews',
-      stop: 'Stop automatic review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
+      switchToManual: 'Switch to manual', stopReview: 'Stop review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
       modelError: 'Could not load models. You can use the default model or retry.', retry: 'Retry models',
-      manual: 'Continue manually',
+      manual: 'Manual review',
     },
     workAuthorization: {
       copyCode: 'Copy {provider} device code {code}', step2: 'Step 2: Open {provider}',

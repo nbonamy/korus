@@ -49,6 +49,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentCodeReviewRoundSubmit]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentCodeReviewFinish]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentCodeReviewCommit]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentCodeReviewManual]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentCodeReviewDiscard]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentCodeReviewAgain]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentVisualizeStart]: LONG_RUNNING_REQUEST_TIMEOUT_MS,

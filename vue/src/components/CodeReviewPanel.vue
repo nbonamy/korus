@@ -137,10 +137,12 @@
           sessionStatus
         }}</span>
       </header>
-      <div v-if="session.automation" class="code-review-panel__automation-status" role="status">
-        <span v-if="session.automation.state === 'running'">{{ t('automaticReview.running', { round: session.rounds.length, max: session.automation.maxRounds }) }}</span>
+      <div v-if="session.automation || session.status !== 'finished'" class="code-review-panel__automation-status" role="status">
+        <span v-if="!session.automation || session.automation.state === 'manual'">{{ t('automaticReview.manual') }}</span>
+        <span v-else-if="session.automation.state === 'running'">{{ t('automaticReview.running', { round: session.rounds.length, max: session.automation.maxRounds }) }}</span>
         <span v-else>{{ session.automation.reason }}</span>
-        <button v-if="session.automation.state === 'running'" class="app-button app-button--secondary" type="button" :disabled="busy" @click="run(() => reviewSettings.stop(agent.id, session!.id))">{{ t('automaticReview.stop') }}</button>
+        <button v-if="session.automation?.state === 'running'" class="app-button app-button--secondary" type="button" :disabled="busy" @click="run(() => reviewSettings.switchToManual(agent.id, session!.id))">{{ t('automaticReview.switchToManual') }}</button>
+        <button v-else-if="session.status !== 'finished'" class="app-button app-button--secondary" type="button" :disabled="busy || !canStopTurn" @click="run(() => reviewSettings.stop(agent.id))">{{ t('automaticReview.stopReview') }}</button>
       </div>
 
       <div
@@ -202,7 +204,7 @@
       </p>
 
       <div
-        v-else-if="selectedRound?.status !== 'reviewing' && findings.length === 0"
+        v-if="selectedRound?.status !== 'reviewing' && selectedRound?.status !== 'failed' && findings.length === 0"
         class="code-review-panel__clear"
       >
         <IconCircleCheck aria-hidden="true" />
@@ -430,6 +432,8 @@ watch(() => props.agent.id, () => {
 });
 const selectedRoundId = ref("");
 const session = computed(() => props.agent.codeReview ?? null);
+const canStopTurn = computed(() => session.value?.status === 'reviewing' || session.value?.status === 'fixing'
+  || props.agent.status.type === 'working' || props.agent.status.type === 'awaitingInput');
 const branchScope = computed(() => props.gitStatus?.diffCatalog?.branch);
 const scopeCatalogReady = computed(() => Boolean(props.gitStatus?.diffCatalog) && props.gitStatus?.state !== "unknown");
 const hasUncommittedChanges = computed(() => {
@@ -661,7 +665,7 @@ function retryReview(): void {
     scope: automation?.baseRef ? { type: 'branch', baseRef: automation.baseRef } : reviewScope,
     threadMode: review.threadMode,
     ...(review.instructions ? { instructions: review.instructions } : {}),
-    ...(automation ? { automation: { enabled: true, maxPriority: automation.maxPriority, maxRounds: automation.maxRounds, autoCommit: automation.autoCommit ?? false } } : {}),
+    ...(automation ? { automation: { enabled: automation.enabled, maxPriority: automation.maxPriority, maxRounds: automation.maxRounds, autoCommit: automation.autoCommit ?? false } } : {}),
   }));
 }
 
