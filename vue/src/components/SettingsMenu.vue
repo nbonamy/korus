@@ -8,7 +8,6 @@
   >
     <template #reference>
       <button
-        ref="trigger"
         class="settings-menu__trigger"
         :class="{ 'settings-menu__trigger--active': active }"
         type="button"
@@ -75,12 +74,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'open-settings': [];
   'open-whats-new': [];
-  'open-keyboard-shortcuts': [];
-  'open-command-palette': [];
   quit: [];
 }>();
 const popoverVisible = ref(false);
-const trigger = ref<HTMLButtonElement | null>(null);
 const nowMs = ref(Date.now());
 const fetchedUsage = ref<Partial<Record<AgentBackend, AccountRateLimits | null>>>({});
 const usageErrors = ref<Partial<Record<AgentBackend, boolean>>>({});
@@ -104,18 +100,12 @@ watch([popoverVisible, () => quotaBackends.value.join(','), () => JSON.stringify
   onCleanup(() => { cancelled = true; window.clearInterval(timer); });
 });
 const menuItems = computed<AppMenuItem[]>(() => [
-  { id: 'open-command-palette', type: 'action', label: translate('commands.title') },
   {
     id: 'open-settings',
     type: 'action',
     label: translate('surface.settingsMenu.settings'),
     icon: SettingsIcon,
     value: '⌘,',
-  },
-  {
-    id: 'open-keyboard-shortcuts',
-    type: 'action',
-    label: translate('shortcuts.title'),
   },
   {
     id: 'open-whats-new',
@@ -203,12 +193,6 @@ function selectMenuItem(itemId: string): void {
 
   if (itemId === 'open-settings') {
     emit('open-settings');
-  } else if (itemId === 'open-command-palette') {
-    trigger.value?.focus();
-    emit('open-command-palette');
-  } else if (itemId === 'open-keyboard-shortcuts') {
-    trigger.value?.focus();
-    emit('open-keyboard-shortcuts');
   } else if (itemId === 'open-whats-new') {
     emit('open-whats-new');
   } else if (itemId === 'quit') {

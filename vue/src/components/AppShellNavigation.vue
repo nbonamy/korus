@@ -25,8 +25,6 @@
     @new-team="openNewTeam"
     @open-settings="openSettings"
     @open-whats-new="openWhatsNew"
-    @open-keyboard-shortcuts="emit('open-keyboard-shortcuts')"
-    @open-command-palette="emit('open-command-palette')"
     @quit="quit"
     @reorder-teams="$emit('reorder-teams', $event)"
     @select-cockpit="openCockpit"
@@ -173,8 +171,6 @@ const emit = defineEmits<{
   'open-in': [payload: { agentId: string; application: OpenInApplication }];
   'open-settings': [];
   'open-whats-new': [];
-  'open-keyboard-shortcuts': [];
-  'open-command-palette': [];
   quit: [];
   'reorder-agents': [input: ReorderAgentsInput];
   'reorder-repositories': [input: ReorderRepositoriesInput];

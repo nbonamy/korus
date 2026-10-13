@@ -59,7 +59,7 @@ describe('AppShell command palette', () => {
     expect(wrapper.find('.agent-workspace').exists()).toBe(created);
     wrapper.unmount();
   });
-  it('opens through menus and its own binding, guards typing, and preserves agent/file search', async () => {
+  it('opens through native commands and its own binding, guards typing, and preserves agent/file search', async () => {
     let command: (value: AppCommand) => void = () => {};
     window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;
     const wrapper = mountShell({ stubAgentWorkspace: true });
@@ -72,9 +72,6 @@ describe('AppShell command palette', () => {
       expect(wrapper.findComponent({ name: 'CommandPalette' }).exists()).toBe(false);
       expect(event.defaultPrevented).toBe(false); editor.remove();
     }
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Command Palette')!.trigger('click');
-    expect(wrapper.findComponent({ name: 'CommandPalette' }).exists()).toBe(true);
-    await wrapper.get('.quick-open-dialog input').trigger('keydown.escape');
     command({ type: 'open-command-palette' }); await nextTick();
     await wrapper.get('.quick-open-dialog input').setValue('settings');
     await wrapper.get('.quick-open-dialog input').trigger('keydown.enter'); await flushPromises();

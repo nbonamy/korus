@@ -108,8 +108,6 @@
       @open-in="openAgentIn($event.agentId, $event.application)"
       @open-settings="openSettings"
       @open-whats-new="openWhatsNew"
-      @open-keyboard-shortcuts="keyboardShortcutsVisible = true"
-      @open-command-palette="commandPaletteVisible = true"
       @quit="quit"
       @reorder-agents="$emit('reorder-agents', $event)"
       @reorder-repositories="$emit('reorder-repositories', $event)"
