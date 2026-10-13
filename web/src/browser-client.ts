@@ -1,4 +1,6 @@
 import { product } from '@workspace/core/product';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { backendRequestTimeoutMs } from '@workspace/core/backend-protocol/request-timeout';
 import { createCodexBrowserWebSocketPort, type CodexWebSocketPort } from '@codex-app-sdk/web/client';
 import type { AppApi, MainToRendererEvent } from '@workspace/core/contracts';
 import {
@@ -62,7 +64,9 @@ class AppBrowserTransport {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`${product.name} web request timed out: ${operation}`));
-      }, this.requestTimeoutMs);
+      }, operation === 'installProvider'
+        ? this.options.requestTimeoutMs ?? backendRequestTimeoutMs(backendMethods.providerInstall)
+        : this.requestTimeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
     });
     socket.send(encodeAppWebMessage({

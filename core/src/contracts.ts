@@ -355,7 +355,7 @@ export type Agent = {
   delegatedByAgentId?: string;
   delegationContext?: import('./delegation-context').DelegationContext;
   /** User-entered controls for the current delegation turn; never supplied by create-agent. */
-  userDelegationOverrides?: import('./delegation-context').DelegationOverrides;
+  userDelegationOverrides?: import('./delegation-context').TurnDelegationOverrides;
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
@@ -503,6 +503,8 @@ export type AppGeneralSettings = {
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
+  /** User-wide on the owning client, independent of browser tabs and agents. */
+  browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;
@@ -961,6 +963,7 @@ export type AppApi = {
   disconnectProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   authenticateProvider(backend: AgentBackend, action: 'login' | 'cancel'): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   configureProviderSetup(backend: AgentBackend, choice: import('./contracts/provider-setup').ProviderSetupChange): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
+  installProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   refreshProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication>;
   startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<CodexChatGptDeviceCodeLogin>;

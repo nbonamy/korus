@@ -22,6 +22,7 @@ export class AcpRuntime {
   }
 
   static async open(options: {
+    runtime?: NonNullable<ReturnType<typeof resolveAcpRuntime>>;
     cwd: string;
     home?: string;
     interactive?: boolean;
@@ -31,7 +32,7 @@ export class AcpRuntime {
     onNotification: ConstructorParameters<typeof AcpConnection>[0]['onNotification'];
     onClose: ConstructorParameters<typeof AcpConnection>[0]['onClose'];
   }): Promise<AcpRuntime> {
-    const runtime = resolveAcpRuntime();
+    const runtime = options.runtime ?? resolveAcpRuntime();
     if (!runtime) throw new Error('Install the Antigravity ACP runtime and matching harness in Settings.');
     const home = options.home ?? antigravityHome();
     await mkdir(home, { recursive: true, mode: 0o700 });

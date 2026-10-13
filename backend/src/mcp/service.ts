@@ -1,5 +1,5 @@
 import { delegatedAssignmentPrompt } from '../agents/worktree-delegation';
-import type { DelegationContext } from '@workspace/core/delegation-context';
+import { completeUserDelegationTurn, type DelegationContext } from '@workspace/core/delegation-context';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -161,11 +161,14 @@ export class AppMcpService {
   }
 
   handleBackendEvent(event: BackendPublishedEvent): void {
-    if (event.agentId && providerConversationEventView(event).type === 'turn.completed') {
+    const view = providerConversationEventView(event);
+    if (event.agentId && view.type === 'turn.completed') {
       this.coordinator.clearStatus(event.agentId);
       // User-entered delegation controls belong to the turn they were submitted for.
       const owner = this.snapshot.agents.find(agent => agent.id === event.agentId);
-      if (owner) delete owner.userDelegationOverrides;
+      if (owner && event.backend && view.conversationId && view.turnId) {
+        completeUserDelegationTurn(owner, { backend: event.backend, conversationId: view.conversationId, turnId: view.turnId });
+      }
     }
     if (event.type === 'agent.promptDequeued') {
       const ids = event.payload.ids;

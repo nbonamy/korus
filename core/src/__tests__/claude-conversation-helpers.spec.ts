@@ -123,7 +123,7 @@ describe('provider conversation boundaries', () => {
       type: 'client.markdownDisplayRequested',
       payload: { kind: 'markdown', content: '# Plan' },
     })).toStrictEqual({
-      type: 'client.markdownDisplayRequested', agentId: 'agent-1', turnId: 'turn-1', payload: { kind: 'markdown', content: '# Plan' },
+      type: 'client.markdownDisplayRequested', agentId: 'agent-1', conversationId: 'session-1', turnId: 'turn-1', payload: { kind: 'markdown', content: '# Plan' },
     });
   });
 

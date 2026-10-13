@@ -29,6 +29,22 @@ describe('agent chat service', () => {
     sendAgentPrompt(snapshot, backendDriver, 'agent-dina', 'Continue with another task', undefined, vi.fn());
     expect(snapshot.agents[0].userDelegationOverrides).toBeUndefined();
   });
+  it('does not let an older rejected prompt clear replacement delegation directions', async () => {
+    const snapshot = createInitialSnapshot();
+    const first = deferred<BackendSendResult>();
+    const second = deferred<BackendSendResult>();
+    const driver = createFakeBackendDriver(first.promise);
+    vi.mocked(driver.sendPrompt).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'First', { delegation: { startingContext: 'handoff', instructions: 'First directions' } }, vi.fn());
+    snapshot.agents[0]!.status = { type: 'idle' };
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'Second', { delegation: { startingContext: 'handoff', instructions: 'Second directions' } }, vi.fn());
+    first.reject(new Error('Late admission failure'));
+    await flushMicrotasks();
+    expect(snapshot.agents[0]!.userDelegationOverrides?.instructions).toBe('Second directions');
+    second.reject(new Error('Current admission failure'));
+    await flushMicrotasks();
+    expect(snapshot.agents[0]!.userDelegationOverrides).toBeUndefined();
+  });
   it('queues a Claude prompt immediately and records the returned session later', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].backend = 'claude';

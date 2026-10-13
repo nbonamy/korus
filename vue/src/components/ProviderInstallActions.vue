@@ -1,10 +1,13 @@
 <template>
   <span class="provider-install-actions">
-    <a :href="url" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(url)">{{ $t('auth.installProvider') }}</a>
-    <button type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
-      <ElIcon :size="12" :class="{ 'is-loading': busy }" aria-hidden="true"><RefreshIcon /></ElIcon>
+    <button v-if="backend === 'antigravity'" type="button" :aria-label="$t('antigravity.install')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('install')">
+      <ElIcon v-if="busy" :size="12" class="is-loading" aria-hidden="true"><RefreshIcon /></ElIcon>
+      {{ $t('auth.installProvider') }}
     </button>
-    <span v-if="backend === 'antigravity'">{{ $t('antigravity.installInstructions') }}</span>
+    <a v-else :href="url" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(url)">{{ $t('auth.installProvider') }}</a>
+    <button v-if="backend !== 'antigravity' || !busy" type="button" :aria-label="$t('auth.checkAgain')" :title="$t('auth.checkAgain')" :disabled="busy || disabled" :aria-busy="busy || undefined" @click="emit('refresh')">
+      <ElIcon :size="12" :class="{ 'is-loading': busy && backend !== 'antigravity' }" aria-hidden="true"><RefreshIcon /></ElIcon>
+    </button>
   </span>
 </template>
 
@@ -16,12 +19,10 @@ import { appPlatformActions } from '../platform-api';
 import { RefreshIcon } from '../shared/icons/app-icons';
 
 const props = defineProps<{ backend: AgentBackend; busy?: boolean; disabled?: boolean }>();
-const emit = defineEmits<{ refresh: [] }>();
+const emit = defineEmits<{ refresh: []; install: [] }>();
 const url = computed(() => props.backend === 'codex'
   ? 'https://learn.chatgpt.com/docs/codex/cli#getting-started'
-  : props.backend === 'claude'
-    ? 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code'
-    : 'https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json');
+  : 'https://code.claude.com/docs/en/quickstart#step-1-install-claude-code');
 </script>
 
 <style scoped>
@@ -38,6 +39,7 @@ const url = computed(() => props.backend === 'codex'
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-4);
   min-height: 0;
   padding: 0;
   border: 0;

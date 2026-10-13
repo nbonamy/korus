@@ -1,4 +1,4 @@
-import { isDelegationContext, isDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
+import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { isAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
@@ -378,7 +378,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(isAgentHandoff(value.handoff) ? { handoff: structuredClone(value.handoff) } : {}),
     teamId: typeof value.teamId === 'string' ? value.teamId : undefined,
     ...(isDelegationContext(value.delegationContext) ? { delegationContext: { ...value.delegationContext } } : {}),
-    ...(isDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: { ...value.userDelegationOverrides } } : {}),
+    ...(isTurnDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: structuredClone(value.userDelegationOverrides) } : {}),
     ...(isDelegationUserInstructions(value.delegationUserInstructions) ? { delegationUserInstructions: { ...value.delegationUserInstructions } } : {}),
     ...(typeof value.delegatedByAgentId === 'string' && value.delegatedByAgentId.trim()
       ? { delegatedByAgentId: value.delegatedByAgentId.trim() }

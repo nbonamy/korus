@@ -24,16 +24,17 @@ describe('BackendDriverRpc', () => {
     try {
       const sent = await server.handleMessage({ jsonrpc: '2.0', id: 'send', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation } } });
       expect(sent).not.toHaveProperty('error');
-      expect(agent.userDelegationOverrides).toStrictEqual(delegation);
+      await vi.waitFor(() => expect(agent.userDelegationOverrides).toStrictEqual({ ...delegation, execution: { backend: 'codex', conversationId: 'thread-send', turnId: 'turn-send' } }));
       expect(driver.sendPrompt).toHaveBeenCalledWith(agent, expect.stringContaining('Say Hello only'), { delegation });
       const updated = { startingContext: 'conversation', instructions: 'Say Bonjour only' } as const;
       const steered = await server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation: updated } } });
       expect(steered).not.toHaveProperty('error');
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      const acceptedControls = { ...updated, execution: { backend: 'codex', conversationId: 'thread-send', turnId: 'turn-send' } };
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 'invalid', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate task', options: { delegation: { startingContext: 'replay' } } } })).rejects.toThrow('Invalid worktree delegation overrides');
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       await server.handleMessage({ jsonrpc: '2.0', id: 'adjust', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: 'Keep the parent open' } });
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       agent.status = { type: 'idle' };
       await server.handleMessage({ jsonrpc: '2.0', id: 'next', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Another task' } });
       expect(agent.userDelegationOverrides).toBeUndefined();

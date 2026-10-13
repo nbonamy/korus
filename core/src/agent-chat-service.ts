@@ -2,7 +2,7 @@ import type { AgentStatus, AppSnapshot, SendPromptOptions } from './contracts';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from './backend-driver';
 import { backendDisplayName } from './backend-driver';
 import { handoffInProgress } from './agent-handoff';
-import { isDelegationOverrides } from './delegation-context';
+import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from './delegation-context';
 
 export type AgentChatEventEmitter = (
   event: BackendEvent,
@@ -38,8 +38,7 @@ export function sendAgentPrompt(
   agent.hasSubmittedPrompt = true;
   // Only app-submitted controls can override saved user preferences. Agent-
   // generated create-agent instructions never populate this field.
-  if (options?.delegation) agent.userDelegationOverrides = structuredClone(options.delegation);
-  else delete agent.userDelegationOverrides;
+  const delegationControls = captureUserDelegationOverrides(agent, options?.delegation);
   const promptResult = backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
   const hadBackendSession = Boolean(agent.backendSession);
 
@@ -68,6 +67,7 @@ export function sendAgentPrompt(
 
   void sendResult
     .then((result) => {
+      bindUserDelegationOverrides(agent, delegationControls, result);
       agent.backend = backendDriver.backend;
       agent.backendSession = result.backendSession;
       void Promise.resolve(hooks?.onBackendSessionUpdated?.(result, !hadBackendSession)).catch(() => undefined);
@@ -83,6 +83,7 @@ export function sendAgentPrompt(
       void Promise.resolve(hooks?.onPromptStarted?.(result)).catch(() => undefined);
     })
     .catch((error) => {
+      if (delegationControls && agent.userDelegationOverrides === delegationControls) delete agent.userDelegationOverrides;
       const normalizedError = error instanceof Error ? error : new Error(String(error));
       const message = normalizedError.message;
       updateAgentStatus(agentId, { type: 'error', message }, emit, snapshot);

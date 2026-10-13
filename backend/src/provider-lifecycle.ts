@@ -11,6 +11,7 @@ import { createAntigravityLifecycle } from './antigravity/provider-lifecycle';
 export type ProviderLifecycle = {
   home(snapshot: AppSnapshot, choice?: ProviderSetupChoice): ProviderHomeSettings;
   installed(snapshot: AppSnapshot): boolean;
+  install?(): Promise<void>;
   prepareHome(home: ProviderHomeSettings, configuring: boolean): Promise<void>;
   applyHome?(home: ProviderHomeSettings): void;
   sharing?: {

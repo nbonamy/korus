@@ -7,7 +7,7 @@ import type { DocumentWorkspaceChange, DocumentSaveInput } from '@workspace/core
 import { isWorkProviderKind } from '@workspace/core/work-providers';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { product } from '@workspace/core/product';
-import { isDelegationOverrides } from '@workspace/core/delegation-context';
+import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from '@workspace/core/delegation-context';
 import { normalizeGitSettings } from '@workspace/core/git-preferences';
 import { readWorktreeHead } from './git-worktrees';
 import type { DurableTaskService } from './agents/durable-task-service';
@@ -1873,9 +1873,17 @@ export class AppBackendServer {
           }
           if (options?.delegation !== undefined) {
             if (!isDelegationOverrides(options.delegation)) throw new Error('Invalid worktree delegation overrides.');
-            agent.userDelegationOverrides = structuredClone(options.delegation);
           }
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options }) as BackendSendResult;
+          const previousControls = agent.userDelegationOverrides;
+          const controls = options?.delegation !== undefined ? captureUserDelegationOverrides(agent, options.delegation) : previousControls;
+          let result: BackendSendResult;
+          try {
+            result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options }) as BackendSendResult;
+            if (options?.delegation !== undefined) bindUserDelegationOverrides(agent, controls, result);
+          } catch (error) {
+            if (options?.delegation !== undefined && agent.userDelegationOverrides === controls) agent.userDelegationOverrides = previousControls;
+            throw error;
+          }
           agent.backendSession = result.backendSession;
           this.clearTurnSuggestionsForNewPrompt(agent);
           await this.persistSnapshotOnly();
@@ -2311,9 +2319,10 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.providerConnections.refreshDisconnected());
       }
       case backendMethods.providerSetupConfigure:
+      case backendMethods.providerInstall:
       case backendMethods.providerRefresh: {
         const connectionId = requireOptionalConnectionId(message.params);
-        if (connectionId && message.method === backendMethods.providerRefresh) {
+        if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
         }
@@ -2323,6 +2332,7 @@ export class AppBackendServer {
         if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
         let result;
         if (message.method === backendMethods.providerRefresh) result = await this.providerSetup.refresh(input.backend);
+        else if (message.method === backendMethods.providerInstall) result = await this.providerSetup.install(input.backend);
         else {
           if (connectionId) throw new Error('Change remote engine setup on its owning host.');
           const choice = requireRecord(input.choice);
