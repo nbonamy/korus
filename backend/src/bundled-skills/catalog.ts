@@ -1,7 +1,6 @@
 import { product } from '@workspace/core/product';
 import type { MissionRun } from '@workspace/core/mission-execution';
 import type { MissionStage } from '@workspace/core/missions';
-import htmlPlan from './korus-html-plan/SKILL.md?raw';
 import html from './korus-inline-html/SKILL.md?raw';
 import computerUse from './korus-computer-use/SKILL.md?raw';
 import visualize from './korus-visualize/SKILL.md?raw';
@@ -32,7 +31,6 @@ function skill(source: string): Skill {
 const generalSkills = [skill(html), skill(visualize), skill(delegation)];
 const computerUseSkill = skill(computerUse);
 const moduleSkills = [
-  ['interactive-plan', skill(htmlPlan)],
   ['in-app-browser', skill(browser)],
   ['mobile-simulator', skill(simulator)],
   ['automatic-review', skill(reviewLaunch)],

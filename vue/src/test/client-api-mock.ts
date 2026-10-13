@@ -44,7 +44,6 @@ export function createClientApiMock(
     discardCodeReview: unscripted('discardCodeReview'),
     reviewCodeAgain: unscripted('reviewCodeAgain'),
     respondToThreadFlag: unscripted('respondToThreadFlag'),
-    respondToInteractivePlan: unscripted('respondToInteractivePlan'),
     respondToPlanReview: unscripted('respondToPlanReview'),
     getSnapshot: unscripted('getSnapshot'),
     getSnapshotState: unscripted('getSnapshotState'),

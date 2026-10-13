@@ -67,8 +67,6 @@ import { AgentHandoffService } from './agents/agent-handoff-service';
 import { requestHandoffNote } from './agents/handoff-note';
 import { handoffInProgress, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
-import { InteractivePlanService } from './agents/interactive-plan-service';
-import { interactivePlanMarkdown, isInteractivePlanResponse, type PublishInteractivePlan } from '@workspace/core/interactive-plan';
 import { AgentPlanReviewService } from './agents/agent-plan-review-service';
 import { AgentThreadFlagService } from './agents/agent-thread-flag-service';
 import type { PlanReviewResponse } from '@workspace/core/plan-review';
@@ -186,18 +184,6 @@ export class AppBackendServer {
   private readonly clientPreferences: ClientPreferencesService;
   private readonly agentPrompts: AgentPromptManager;
   private readonly planReviews: AgentPlanReviewService;
-  private readonly interactivePlans: InteractivePlanService;
-
-  publishInteractivePlan(agentId: string, input: PublishInteractivePlan) {
-    const agent = this.snapshot.agents.find(a => a.id === agentId);
-    if (!agent) throw new Error('Unknown agent.');
-    return this.interactivePlans.publish(agent, input);
-  }
-  readInteractivePlan(agentId: string) {
-    const agent = this.snapshot.agents.find(a => a.id === agentId);
-    if (!agent) throw new Error('Unknown agent.');
-    return this.interactivePlans.read(agent);
-  }
   private readonly threadFlags: AgentThreadFlagService;
   private readonly agentConversations: AgentConversationService;
   private readonly delegatedWorkReports: DelegatedWorkReportPort;
@@ -359,12 +345,8 @@ export class AppBackendServer {
       },
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
     });
-    this.interactivePlans = new InteractivePlanService({
-      persist: () => this.persistSnapshotOnly(),
-      publish: () => this.emitEvent({ type: 'snapshot.updated', payload: this.snapshot }),
-      submit: (agent, prompt) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode: true }),
-    });
     this.planReviews = new AgentPlanReviewService({
+      persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),
     });
@@ -844,72 +826,16 @@ export class AppBackendServer {
       case backendMethods.debugPlanReadyForReviewInject: {
         const params = requireRecord(message.params);
         const format = params.format ?? 'text';
-        if (format !== 'text' && format !== 'html') throw new Error('Plan fixture format must be text or html.');
+        if (format !== 'text' && format !== 'choices') throw new Error('Plan fixture format must be text or choices.');
         const agentId = requireAgentId(params);
         const agent = this.snapshot.agents.find((candidate) => candidate.id === agentId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
 
-        if (format === 'html') {
-          const plan = await this.interactivePlans.publish(agent, {
-            document: {
-              title: 'Rename product to Korus',
-              sections: [
-                {
-                  id: 'identity', claim: 'Users see one product identity',
-                  exhibit: {
-                    title: 'Product name and app chrome',
-                    text: 'Before: codex-claw. After: Korus. The app navigation and workflows stay familiar.',
-                    screens: [
-                      { label: 'Before', title: 'codex-claw', navigation: ['Home', 'Files', 'Run', 'Settings'] },
-                      { label: 'After', title: 'Korus', navigation: ['Home', 'Files', 'Run', 'Settings'], activeItem: 'Home' },
-                    ],
-                  },
-                  children: [{ id: 'commands', claim: 'Commands and packages use korus', exhibit: { title: 'Naming', text: 'codex-claw → korus' } }],
-                },
-                {
-                  id: 'compatibility', claim: 'Existing workflows keep working',
-                  detail: 'Keep legacy aliases and read existing settings.',
-                  decision: {
-                    question: 'How should legacy names behave?',
-                    options: [{ id: 'keep', label: 'Keep aliases and migrate settings' }, { id: 'clean', label: 'Use new names only' }],
-                    proposed: 'keep',
-                  },
-                },
-                {
-                  id: 'data', claim: 'Existing user data stays intact',
-                  detail: 'Read existing settings. Copy them only when the Korus settings folder does not exist; preserve the original files.',
-                  exhibit: {
-                    title: 'Migration settings', text: 'Choose the existing settings folder and review the copy before importing.',
-                    screens: [{ label: 'Import settings', title: 'Move to Korus', content: ['Your original files stay untouched.'], fields: [{ label: 'Existing settings', value: '~/.codex-claw' }, { label: 'Destination', value: '~/.korus' }], actions: ['Review import', 'Skip'] }],
-                  },
-                },
-                {
-                  id: 'review', claim: 'Users can review what will change',
-                  exhibit: {
-                    title: 'Import preview', text: 'Review the settings, shortcuts and history that will be copied.',
-                    screens: [{ label: 'Review before importing', title: 'Ready to import', items: [{ title: 'Preferences', detail: 'Theme, editor and workflow settings' }, { title: 'Command aliases', detail: 'Existing commands keep working' }, { title: 'Conversation history', detail: 'Keep all saved conversations' }], actions: ['Import settings', 'Back'] }],
-                  },
-                },
-                {
-                  id: 'verification', claim: 'The renamed product passes its checks',
-                  exhibit: { title: 'Verification', text: 'npm run typecheck\nnpm test -- --maxWorkers=2\nkorus --version' },
-                  children: [{ id: 'fresh', claim: 'Fresh installs use the Korus name', detail: 'Launch with an empty settings folder and verify the app title and command.' }, { id: 'existing', claim: 'Existing installs retain their settings', detail: 'Launch with legacy settings and verify the imported values without modifying the original files.' }],
-                },
-              ],
-            },
-          });
-          this.applyAndEmitBackendEvent({
-            agentId, backend: agent.backend, type: 'plan.readyForReview',
-            turnId: `debug-html-plan-review-${Date.now()}`,
-            payload: { markdown: interactivePlanMarkdown(plan) },
-          });
-          return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
-        }
-        delete agent.interactivePlan;
         const markdown = [
-          '# Debug text plan review',
+          format === 'choices' ? '# Review the proposed workflow' : '# Debug text plan review',
+          ...(format === 'choices' ? ['','## Which platforms should we support?', '', '- [x] macOS', '- [ ] Windows', '- [ ] Linux', '', '## Where should settings live?', '', '- ( ) In the project', '- (x) In the user home directory', '', '## Compatibility', '', '| Existing data | Proposed behavior |', '| --- | --- |', '| Settings | Preserve originals |', '| History | Retain all conversations |', '', '```text', '- ( ) This example is not an interactive choice', '```', ''] : []),
           '',
           '## Summary',
           '',
@@ -1863,16 +1789,6 @@ export class AppBackendServer {
           return this.persistAndEmitSnapshot();
         });
       }
-      case backendMethods.agentInteractivePlanRespond: {
-        const params = requireRecord(message.params);
-        const agentId = requireString(params.agentId, 'agentId');
-        if (!isInteractivePlanResponse(params.response)) throw new Error('Invalid plan response.');
-        const response = params.response;
-        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async agent => {
-          await this.interactivePlans.respond(agent, response);
-          return this.snapshot;
-        });
-      }
       case backendMethods.agentPlanReviewRespond: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
@@ -1881,6 +1797,8 @@ export class AppBackendServer {
           reviewId: requireString(input.reviewId, 'reviewId'),
           resolution: requireString(input.resolution, 'resolution') as PlanReviewResponse['resolution'],
           ...(input.feedback === undefined ? {} : { feedback: requireString(input.feedback, 'feedback') }),
+          ...(input.draft === undefined ? {} : { draft: input.draft as PlanReviewResponse['draft'] }),
+          ...(input.draftVersion === undefined ? {} : { draftVersion: input.draftVersion as number }),
         };
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async (agent) => {
           await this.planReviews.respond(agent, response);

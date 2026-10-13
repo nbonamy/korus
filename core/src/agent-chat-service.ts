@@ -2,7 +2,7 @@ import type { AgentStatus, AppSnapshot, SendPromptOptions } from './contracts';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from './backend-driver';
 import { backendDisplayName } from './backend-driver';
 import { handoffInProgress } from './agent-handoff';
-import { planningWorkflowPrompt } from './interactive-plan';
+import { interactivePlanPrompt } from './plan-review';
 import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from './delegation-context';
 
 export type AgentChatEventEmitter = (
@@ -61,8 +61,8 @@ export function sendAgentPrompt(
     ? { ...options, recordUserMessage: false }
     : options;
   const preparedOptions = backendDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
-  const deliveredPrompt = options?.planMode === true
-    ? planningWorkflowPrompt(trimmedPrompt, snapshot.general.useInteractivePlans !== false) : trimmedPrompt;
+  const deliveredPrompt = options?.planMode === true && snapshot.general.useInteractivePlans !== false
+    ? interactivePlanPrompt(trimmedPrompt) : trimmedPrompt;
   const sendResult = promptResult
     ?? (hasPromptOptions(preparedOptions)
       ? backendDriver.sendPrompt(agent, deliveredPrompt, preparedOptions)

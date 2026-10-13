@@ -34,7 +34,6 @@ import { PullRequestMonitor } from './git/pull-request-monitor';
 import { WorktreeManager } from './worktrees/worktree-manager';
 import { AgentCreationService } from './agents/agent-creation-service';
 import { VisualizeService } from './visualize-service';
-import { createInteractivePlanToolModuleProvider } from './mcp/interactive-plan-tools';
 import { createVisualizeToolModuleProvider } from './mcp/visualize-tools';
 import { DurableTaskService } from './agents/durable-task-service';
 import { createTaskToolModuleProvider } from './mcp/task-tools';
@@ -156,7 +155,6 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
       createVisualizeToolModuleProvider(visualizeService),
-      createInteractivePlanToolModuleProvider({ publish: (id, input) => server.publishInteractivePlan(id, input), read: id => server.readInteractivePlan(id) }),
       createTaskToolModuleProvider(tasks),
     ],
   });

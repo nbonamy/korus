@@ -16,8 +16,7 @@
     :is-conversation-load-failed="isActiveAgentHistoryFailed"
     :retry-agent-history="retryActiveAgentHistory"
     :send-prompt-action="sendPrompt"
-    :respond-to-interactive-plan="respondToInteractivePlan"
-    :respond-to-plan-review="respondToPlanReview"
+    :update-plan-review="updatePlanReview"
     :respond-to-thread-flag-action="respondToThreadFlag"
     :agent-conversation-for="agentConversationFor"
     :agent-conversation-actions="agentConversationActions"
@@ -437,8 +436,7 @@ const {
   selectTeam,
   sendPrompt,
   sendPromptToAgent,
-  respondToInteractivePlan,
-  respondToPlanReview,
+  updatePlanReview,
   respondToPlanReviewForAgent,
   respondToThreadFlag,
   respondToThreadFlagForAgent,

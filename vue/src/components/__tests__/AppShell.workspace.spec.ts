@@ -1303,98 +1303,125 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.text()).toContain('Generated');
   });
 
-  it('opens a published interactive plan without a native preview and reopens it for a revision', async () => {
+  it.each(['document-first', 'review-first', 'reload'] as const)('keeps one interactive tab for a duplicated plan (%s)', async order => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'planning' };
-    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false } });
+    const markdown = '# Dummy plan\n\n## Storage\n- ( ) Project\n- ( ) Home';
+    const review = { id: 'native', conversationId: null, turnId: 'turn', markdown, status: 'pending' as const };
+    const tabId = 'file:markdown:duplicate';
+    const saved = { tabs: [{ id: tabId, title: 'Dummy document', documentId: 'duplicate' }], activeTab: tabId, open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
+    const update = vi.fn().mockResolvedValue(saved);
+    setElectronTestClient({
+      getDocumentWorkspaces: async () => order === 'reload' ? { [agent.id]: saved } : {},
+      readWorkspaceDocument: async () => ({ content: markdown }),
+      updateDocumentWorkspace: update,
+    });
+    if (order !== 'document-first') agent.planReview = review;
+    const updatePlanReview = vi.fn().mockResolvedValue({ ...review, status: 'accept' });
+    const wrapper = mountShell({ snapshot });
     try {
-      expect(wrapper.find('article[aria-label="Published proposal"]').exists()).toBe(false);
-      const published = structuredClone(snapshot);
-      published.agents[0]!.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'published', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Published proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
-      await wrapper.setProps({ snapshot: published, activeAgent: published.agents[0]! });
-      expect(wrapper.get('article[aria-label="Published proposal"]').isVisible()).toBe(true);
-      expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
-      await wrapper.get('[aria-label="Close Plan tab"]').trigger('click');
-      expect(wrapper.find('article[aria-label="Published proposal"]').exists()).toBe(false);
-      const revised = structuredClone(published);
-      revised.agents[0]!.interactivePlan!.revision = 2;
-      revised.agents[0]!.interactivePlan!.document.title = 'Revised proposal';
-      await wrapper.setProps({ snapshot: revised, activeAgent: revised.agents[0]! });
-      expect(wrapper.get('article[aria-label="Revised proposal"]').isVisible()).toBe(true);
+      await wrapper.setProps({ updatePlanReview });
+      await flushPromises();
+      if (order !== 'reload') {
+        await wrapper.setProps({ sidePanelRequest: { kind: 'markdown', agentId: agent.id, documentId: 'duplicate', title: 'Dummy document', content: markdown } });
+        if (order === 'document-first') {
+          expect(wrapper.get('[role="tab"]').text()).toBe('Dummy document');
+          const next = structuredClone(snapshot);
+          next.agents[0]!.planReview = review;
+          await wrapper.setProps({ snapshot: next, activeAgent: next.agents[0]! });
+        }
+      }
+      await flushPromises();
+      expect(wrapper.findAll('[role="tab"]')).toHaveLength(1);
+      expect(wrapper.get('.plan-review-panel').isVisible()).toBe(true);
+      expect(wrapper.findAll('input[type="radio"]')).toHaveLength(2);
+      await settlePersistence();
+      expect(update.mock.calls.some(([, change]) => change.close.includes(tabId))).toBe(true);
+      // A similarly titled report, a source file, and another agent's document are independent.
+      for (const request of [
+        { agentId: agent.id, documentId: 'report', title: 'Dummy plan', content: '# Different report' },
+        { agentId: agent.id, path: 'plan.md', title: 'Source file', content: markdown },
+        { agentId: snapshot.agents[1]!.id, documentId: 'other', title: 'Other agent', content: markdown },
+      ]) await wrapper.setProps({ sidePanelRequest: { kind: 'markdown', ...request } });
+      expect(wrapper.findAll('[role="tab"]').filter(tab => tab.isVisible()).map(tab => tab.text())).toEqual(['Plan', 'Dummy plan', 'Source file']);
+      await wrapper.get('[role="tab"][aria-label="Plan"]').trigger('click');
+      await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
+      await flushPromises();
+      expect(updatePlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId: 'native', resolution: 'accept', draftVersion: 0 });
+      expect(wrapper.findAll('[role="tab"][aria-label="Other agent"]')).toHaveLength(1);
     } finally { wrapper.unmount(); }
   });
 
-  it('opens the interactive plan without extra controls and retains native approval', async () => {
+  it('opens native Markdown plans, reopens revised proposals, and keeps approval separate from feedback', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.backendSession = { kind: 'codex', threadId: 'planning' };
-    agent.interactivePlan = { agentId: agent.id, conversationId: 'planning', id: 'html-plan', revision: 1, answerVersion: 0, submitted: false, history: [], answers: { choices: {}, comments: {} }, document: { title: 'Interactive proposal', sections: [{ id: 'one', claim: 'Users can schedule messages.' }] } };
     agent.planReview = { id: 'native-review', conversationId: 'planning', turnId: 'native-turn', markdown: '# Native proposal', status: 'pending' };
-    const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, respondToPlanReview,
-      sidePanelRequest: { kind: 'markdown', purpose: 'plan', title: 'Plan', content: '# Native proposal' } } });
+    const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'accept' });
+    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, updatePlanReview } });
     try {
-      expect(wrapper.find('article[aria-label="Interactive proposal"]').exists()).toBe(true);
-      expect(respondToPlanReview).not.toHaveBeenCalled();
-      expect(wrapper.find('[aria-label="Plan options"]').exists()).toBe(false);
-      expect(wrapper.findAll('.plan-review-footer')).toHaveLength(1);
-      expect(wrapper.get('.plan-review-footer__actions').findAll('button').map(button => [button.text(), button.classes().find(name => ['app-button--tertiary', 'app-button--secondary', 'app-button--primary'].includes(name))])).toStrictEqual([
-        ['Cancel', 'app-button--tertiary'],
-        ['Revise', 'app-button--secondary'],
-        ['Approve', 'app-button--primary'],
-      ]);
-      expect(wrapper.get('.plan-review-footer__button--primary').text()).toBe('Approve');
-      expect(wrapper.text()).not.toContain('Native proposal');
-      const awaitingRevision = structuredClone(snapshot);
-      awaitingRevision.agents[0]!.interactivePlan!.submitted = true;
-      await wrapper.setProps({ snapshot: awaitingRevision, activeAgent: awaitingRevision.agents[0]! });
-      expect(wrapper.get('.plan-review-footer__button--primary').attributes('disabled')).toBeDefined();
-      const foreignReview = structuredClone(snapshot);
-      foreignReview.agents[0]!.planReview!.conversationId = 'other-conversation';
-      await wrapper.setProps({ snapshot: foreignReview, activeAgent: foreignReview.agents[0]! });
-      expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(false);
-      await wrapper.setProps({ snapshot: { ...snapshot, general: { ...snapshot.general, useInteractivePlans: false } } });
-      expect(wrapper.find('article[aria-label="Interactive proposal"]').exists()).toBe(false);
-      expect(wrapper.find('.plan-review-footer').isVisible()).toBe(true);
-      await wrapper.setProps({ snapshot });
-      await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+      expect(wrapper.get('article[aria-label="Native proposal"]').isVisible()).toBe(true);
+      expect(wrapper.get('.plan-review-footer__actions').findAll('button').map(button => button.text())).toStrictEqual(['Cancel', 'Revise', 'Approve']);
+      await wrapper.get('[aria-label="Close Plan tab"]').trigger('click');
+      const revised = structuredClone(snapshot);
+      revised.agents[0]!.planReview = { ...agent.planReview, id: 'revision-two', markdown: '# Revised proposal' };
+      await wrapper.setProps({ snapshot: revised, activeAgent: revised.agents[0]! });
+      expect(wrapper.get('article[aria-label="Revised proposal"]').isVisible()).toBe(true);
+      const foreign = structuredClone(revised);
+      foreign.agents[0]!.planReview!.conversationId = 'other';
+      await wrapper.setProps({ snapshot: foreign, activeAgent: foreign.agents[0]! });
+      expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
+      await wrapper.setProps({ snapshot: revised, activeAgent: revised.agents[0]! });
+      await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
       await flushPromises();
-      expect(respondToPlanReview).toHaveBeenCalledExactlyOnceWith('accept', undefined);
+      expect(updatePlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId: 'revision-two', resolution: 'accept', draftVersion: 0 });
       expect(wrapper.emitted('sendPrompt')).toBeUndefined();
     } finally { wrapper.unmount(); }
   });
 
-  it.each(['codex', 'antigravity'] as const)('confirms a %s plan through the owning review action and closes its preview', async backend => {
-    const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
+  it.each(['accept', 'cancel'] as const)('routes %s to the native review and closes the preview after success', async resolution => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0]!.backend = backend;
-    const wrapper = mount(AppShell, {
-      props: {
-        snapshot,
-        activeAgent: snapshot.agents[0],
-        isLoading: false,
-        isSending: false,
-        planMode: true,
-        respondToPlanReview,
-        sidePanelRequest: {
-          kind: 'markdown',
-          purpose: 'plan',
-          title: 'Plan',
-          content: '# Plan\n\n- [ ] Build it',
-        },
-      },
-    });
+    const agent = snapshot.agents[0]!;
+    agent.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Plan', status: 'pending', draftVersion: 1, draft: { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Split the work.' }], choices: [] } };
+    const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: resolution });
+    const wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, planMode: true, updatePlanReview } });
+    try {
+      const label = { accept: 'Approve', cancel: 'Cancel' }[resolution];
+      await wrapper.get('.plan-review-footer').findAll('button').find(b => b.text() === label)!.trigger('click');
+      await flushPromises();
+      expect(updatePlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId: 'native', resolution, draftVersion: 1 });
+      expect(wrapper.emitted('update:planMode')).toStrictEqual([[false]]);
+      expect(wrapper.findAll('[role="tab"]').map(t => t.text())).not.toContain('Plan');
+    } finally { wrapper.unmount(); }
+  });
 
-    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toContain('Plan');
-    await wrapper.get('button.plan-review-footer__button--primary').trigger('click');
-
-    await flushPromises();
-    expect(wrapper.emitted('update:planMode')).toStrictEqual([[false]]);
-    expect(respondToPlanReview).toHaveBeenCalledWith('accept', undefined);
-    expect(wrapper.emitted('sendPrompt')).toBeUndefined();
-    expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
-    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).not.toContain('Plan');
+  it('keeps the submitted plan visible through revision, reload and replacement', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Original plan', status: 'pending', draftVersion: 1, draft: { comments: [{ id: 's0', sectionId: 's0', quote: 'Original plan', body: 'Split the work.' }], choices: [] } };
+    const updatePlanReview = vi.fn().mockResolvedValue({ ...agent.planReview, status: 'revise' });
+    let wrapper = mount(AppShell, { props: { snapshot, activeAgent: agent, isLoading: false, isSending: false, planMode: true, updatePlanReview } });
+    try {
+      await wrapper.get('.plan-review-footer').findAll('button').find(b => b.text() === 'Revise')!.trigger('click');
+      await flushPromises();
+      expect(wrapper.get('article[aria-label="Original plan"]').isVisible()).toBe(true);
+      expect(wrapper.emitted('update:planMode')).toStrictEqual([[true]]);
+      const waiting = structuredClone(snapshot);
+      waiting.agents[0]!.planReview!.status = 'revise';
+      await wrapper.setProps({ snapshot: waiting, activeAgent: waiting.agents[0]! });
+      expect(wrapper.get('article[aria-label="Original plan"]').isVisible()).toBe(true);
+      expect(wrapper.get('.comment-preview').text()).toContain('Split the work.');
+      expect(wrapper.get('.plan-review-footer').findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true);
+      wrapper.unmount();
+      wrapper = mount(AppShell, { props: { snapshot: waiting, activeAgent: waiting.agents[0]!, isLoading: false, isSending: false, updatePlanReview } });
+      expect(wrapper.get('article[aria-label="Original plan"]').isVisible()).toBe(true);
+      const replacement = structuredClone(waiting);
+      replacement.agents[0]!.planReview = { id: 'revised', conversationId: null, turnId: 'next-turn', markdown: '# Revised plan', status: 'pending' };
+      await wrapper.setProps({ snapshot: replacement, activeAgent: replacement.agents[0]! });
+      expect(wrapper.get('article[aria-label="Revised plan"]').isVisible()).toBe(true);
+      expect(wrapper.find('article[aria-label="Original plan"]').exists()).toBe(false);
+      expect(wrapper.get('.app-button--primary').attributes('disabled')).toBeUndefined();
+    } finally { wrapper.unmount(); }
   });
 
   it('dismisses review when another client resolves the persisted proposal', async () => {
@@ -1413,73 +1440,9 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it('cancels a plan by exiting plan mode and closing the preview', async () => {
-    const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
+  it('locks plan review actions while a plan progress tool is running', () => {
     const snapshot = createInitialSnapshot();
-    const wrapper = mount(AppShell, {
-      props: {
-        snapshot,
-        activeAgent: snapshot.agents[0],
-        isLoading: false,
-        isSending: false,
-        planMode: true,
-        respondToPlanReview,
-        sidePanelRequest: {
-          kind: 'markdown',
-          purpose: 'plan',
-          title: 'Plan',
-          content: '# Plan',
-        },
-      },
-    });
-
-    const cancel = wrapper.findAll('.plan-review-footer__button').find((button) => button.text() === 'Cancel');
-    await cancel?.trigger('click');
-
-    await flushPromises();
-    expect(wrapper.emitted('update:planMode')).toStrictEqual([[false]]);
-    expect(wrapper.emitted('sendPrompt')).toBeUndefined();
-    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).not.toContain('Plan');
-  });
-
-  it('sends saved plan comments as a refinement prompt', async () => {
-    const respondToPlanReview = vi.fn().mockResolvedValue(undefined);
-    const snapshot = createInitialSnapshot();
-    const wrapper = mount(AppShell, {
-      props: {
-        snapshot,
-        activeAgent: snapshot.agents[0],
-        isLoading: false,
-        isSending: false,
-        planMode: true,
-        respondToPlanReview,
-        sidePanelRequest: {
-          kind: 'markdown',
-          purpose: 'plan',
-          title: 'Plan',
-          content: '# Plan',
-        },
-      },
-    });
-
-    wrapper.findComponent({ name: 'PlanReviewPanel' }).vm.$emit('commentPlan', [
-      {
-        id: 'comment-1',
-        quote: 'Build it',
-        body: 'Split this into smaller steps.',
-      },
-    ]);
-
-    await flushPromises();
-    expect(respondToPlanReview).toHaveBeenCalledWith('revise',
-      'Refine the plan using these comments:\n\n1. On: "Build it"\n   Comment: Split this into smaller steps.',
-    );
-    await flushPromises();
-    expect(wrapper.emitted('update:planMode')).toStrictEqual([[true]]);
-  });
-
-  it('shows the plan preview updating overlay while a plan progress tool is running', () => {
-    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.planReview = { id: 'native', conversationId: null, turnId: 'turn', markdown: '# Previous Plan', status: 'pending' };
     const planProgressMessage: SurfaceMessage = {
       id: 'assistant-turn-plan',
       role: 'assistant',
@@ -1518,6 +1481,6 @@ describe('AppShell workspace and plans', () => {
       },
     });
 
-    expect(wrapper.get('.plan-review-panel__overlay').text()).toBe('Updating plan...');
+    expect(wrapper.get('.plan-review-footer').findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true);
   });
 });

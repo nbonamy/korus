@@ -29,7 +29,6 @@ export const ipcChannels = {
   reviewCodeAgain: 'agent:code-review:again',
   respondToThreadFlag: 'agent:thread-flag:respond',
   respondToPlanReview: 'agent:plan-review:respond',
-  respondToInteractivePlan: 'agent:interactive-plan:respond',
   readEngineInstructions: 'settings:instructions:read',
   saveEngineInstructions: 'settings:instructions:save',
   getSnapshot: 'app:get-snapshot',

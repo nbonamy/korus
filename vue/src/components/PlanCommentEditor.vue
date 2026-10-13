@@ -1,16 +1,23 @@
 <template>
   <div v-show="open || modelValue" class="comment">
-    <button v-if="!open && modelValue" class="comment-preview" type="button" :disabled="disabled" @click="emit('edit')">
-      <MessageIcon aria-hidden="true" /><span>{{ modelValue }}</span><PencilIcon aria-hidden="true" />
+    <button
+      v-if="!open && modelValue"
+      class="comment-preview"
+      type="button"
+      :disabled="disabled"
+      @click="emit('edit')"
+    >
+      <MessageIcon aria-hidden="true" /><span>{{ modelValue }}</span
+      ><PencilIcon aria-hidden="true" />
     </button>
-    <label :for="id" class="sr-only">{{ t('htmlPlan.comment') }}</label>
+    <label :for="id" class="sr-only">{{ t('planFeedback.comment') }}</label>
     <textarea
       v-show="open"
       :id="id"
       ref="editor"
       :value="modelValue"
       :disabled="disabled"
-      :placeholder="t('htmlPlan.comment')"
+      :placeholder="t('planFeedback.comment')"
       maxlength="4000"
       @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
       @keydown.esc.prevent.stop="emit('close')"
@@ -26,9 +33,16 @@ const props = defineProps<{ id: string; modelValue: string; open: boolean; disab
 const emit = defineEmits<{ 'update:modelValue': [value: string]; edit: []; close: [] }>();
 const { t } = useI18n();
 const editor = ref<HTMLTextAreaElement>();
-watch(() => props.open, async open => {
-  if (open) { await nextTick(); editor.value?.focus(); }
-});
+watch(
+  () => props.open,
+  async (open) => {
+    if (open) {
+      await nextTick();
+      editor.value?.focus();
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
@@ -77,5 +91,9 @@ textarea {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.comment-preview, textarea { font: inherit; color: var(--color-text); }
+.comment-preview,
+textarea {
+  font: inherit;
+  color: var(--color-text);
+}
 </style>

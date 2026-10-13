@@ -575,9 +575,6 @@ export class AppController {
       return this.setAgentPermissionMode(agentId, mode);
     });
 
-    ipc.handle(ipcChannels.respondToInteractivePlan, async (_event, agentId: string, response: import('@workspace/core/interactive-plan').InteractivePlanResponse) => {
-      return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentInteractivePlanRespond, { agentId, response }));
-    });
     ipc.handle(ipcChannels.respondToPlanReview, async (_event, agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => {
       return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentPlanReviewRespond, { agentId, response }));
     });
@@ -1833,7 +1830,7 @@ export class AppController {
       }));
   }
 
-  private injectDebugPlanReview(format: 'text' | 'html'): void {
+  private injectDebugPlanReview(format: 'text' | 'choices'): void {
     const agentId = this.snapshot?.activeAgentId;
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;

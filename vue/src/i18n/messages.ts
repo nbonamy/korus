@@ -3,8 +3,8 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
-    planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with decisions and section comments before approving implementation.' },
-    htmlPlan: { deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', submitted: 'Feedback submitted · awaiting revision', submitting: 'Submitting…', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
+    planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with choices and section comments before approving implementation.' },
+    planFeedback: { deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     commands: {
       title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',

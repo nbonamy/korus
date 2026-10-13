@@ -474,31 +474,30 @@ so browser tools keep working without changing the user's selection.
 
 ## Interactive planning
 
-Interactive plans are app-owned artifacts bound to an agent, provider conversation,
-plan ID and revision. Native Vue components render structured claims, text exhibits,
-bounded static UI mockups and decision options. Agent-authored values are text;
-they never become markup, styles, URLs or executable code. The
-upstream [html-plan](https://github.com/anthropics/claude-plugins-community/tree/main/html-plan)
-reference is Apache-2.0 licensed and uses localStorage plus copied Markdown feedback.
-Korus implements its own runtime to keep persistence and feedback on the owning host.
+Provider-native Markdown proposals own plan review identity and approval. Korus adds
+section and selected-text comments and decorates flat Markdown checkbox lists as
+multiple choices and `( )` / `(x)` lists as single choices. Code examples, nested
+lists and mixed lists retain normal Markdown rendering. Authored HTML remains
+escaped by the shared Markdown renderer. Model-selected defaults are proposals;
+only user-edited groups become feedback.
 
-The owning host’s Workflows setting chooses interactive planning by default.
-Prompt admission adds authoring guidance to ordinary Plan-mode turns as hidden
-context while retaining the native Plan-mode options and approval path. Turning
-the setting off selects native text-plan guidance for subsequent planning turns.
+The owning host's Workflows setting enables interactive plans by default. Enabled
+Plan-mode turns receive hidden Markdown choice guidance; disabling it leaves
+ordinary Markdown and native review actions without choice controls.
 
-Answers use optimistic versions, persist independently of submission and never carry
-forward to a revised document. Revision history retains earlier answers. Feedback is
-an explicit Plan-mode prompt, distinct from native plan review acceptance, Mission
-progression and implementation authorization. Persisted submission intent prevents
-an uncertain delivery from being retried automatically after a crash.
+Draft feedback belongs to the agent, conversation and native review ID. The owning
+host persists it with optimistic versions through the existing review response
+contract. Saving does not start a turn. Revise explicitly sends feedback in a
+Plan-mode turn, with details inside hidden context; Approve uses the native
+implementation authorization path. Persisted delivery intent prevents automatic
+retry after an uncertain delivery. New proposals start unanswered and retain prior
+feedback in bounded review history.
 
-The review component is keyed by agent, conversation, plan and revision. Each review
-owns its draft, save version and pending operations; late responses cannot mutate a
-different review. Sections retain expansion and editor state across snapshots and
-theme changes. Typed component events carry choices and comments to the existing
-host response contract, whose ownership and revision checks remain authoritative.
-The presentation accepts no agent-authored HTML, scripts, styles or resource URLs.
+The Vue editor is keyed by owner and review identity. Its draft and serial saves
+survive snapshot updates without replacing document or footer elements. Stale
+responses cannot target another review. Saved structured plans migrate to Markdown
+and retain their feedback; migration grants approval authority only when the saved
+plan matches an existing native review.
 
 ## Theming
 

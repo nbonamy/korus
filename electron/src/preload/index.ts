@@ -38,7 +38,6 @@ const api: AppApi = {
   listPairedDevices: (environmentId: string) => ipc.invoke(ipcChannels.listPairedDevices, environmentId),
   revokePairedDevice: (environmentId: string, clientId: string) => ipc.invoke(ipcChannels.revokePairedDevice, environmentId, clientId),
   connectWorkProvider: (provider: WorkProviderKind) => ipc.invoke(ipcChannels.connectWorkProvider, provider),
-  respondToInteractivePlan: (agentId, response) => ipc.invoke(ipcChannels.respondToInteractivePlan, agentId, response),
   respondToPlanReview: (agentId, response) => ipc.invoke(ipcChannels.respondToPlanReview, agentId, response),
   pollWorkProviderAuthorization: (provider: WorkProviderKind) => ipc.invoke(ipcChannels.pollWorkProviderAuthorization, provider),
   disconnectWorkProvider: (provider: WorkProviderKind) => ipc.invoke(ipcChannels.disconnectWorkProvider, provider),

@@ -92,22 +92,22 @@ describe('provider sign-out IPC', () => {
   });
 });
 
-describe('interactive plan IPC', () => {
+describe('plan review IPC', () => {
   it('preserves revision-owned feedback through real preload and adopts only successful daemon responses', async () => {
     const snapshot = createInitialSnapshot();
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.statusText = 'Feedback submitted';
-    const response = { planId: 'plan', revision: 2, answerVersion: 3, action: 'submit' as const, answers: { choices: { section: 'manual' }, comments: { section: 'Add cancellation.' } } };
+    const response = { reviewId: 'plan', resolution: 'revise' as const, draftVersion: 3 };
     const request = vi.fn().mockResolvedValue(accepted);
     const controller = new AppController(snapshot, createBackendClient({ request }), fakeAppLifecycle());
     controller.registerIpcHandlers();
     await import('../../preload/index');
     const api = bridge.exposed.get('app') as AppApi;
-    await expect(api.respondToInteractivePlan('remote-owner', response)).resolves.toBe(accepted);
+    await expect(api.respondToPlanReview('remote-owner', response)).resolves.toBe(accepted);
     expect(currentSnapshot(controller)).toBe(accepted);
-    expect(request).toHaveBeenCalledExactlyOnceWith('agent/interactivePlan/respond', { agentId: 'remote-owner', response });
+    expect(request).toHaveBeenCalledExactlyOnceWith('agent/planReview/respond', { agentId: 'remote-owner', response });
     request.mockRejectedValueOnce(new Error('Plan revision changed'));
-    await expect(api.respondToInteractivePlan('remote-owner', response)).rejects.toThrow('Plan revision changed');
+    await expect(api.respondToPlanReview('remote-owner', response)).rejects.toThrow('Plan revision changed');
     expect(currentSnapshot(controller)).toBe(accepted);
   });
 });

@@ -6,27 +6,19 @@ import type { AgentBackendDriver, BackendSendResult } from '../backend-driver';
 import { claudeBackendCapabilities, codexBackendCapabilities } from '../backend-capabilities';
 
 describe('agent chat service', () => {
-  it.each([
-    { enabled: undefined, planMode: true, interactive: true },
-    { enabled: false, planMode: true, interactive: false },
-    { enabled: true, planMode: false, interactive: false },
-    { enabled: true, planMode: undefined, interactive: false },
-  ])('applies the workflow preference only to planning turns: $enabled / $planMode', ({ enabled, planMode, interactive }) => {
+  it.each([{ interactive: true, planMode: true }, { interactive: false, planMode: true }, { interactive: true, planMode: false }, { interactive: true, planMode: undefined }])('adds hidden choice guidance only for interactive Plan-mode turns: %j', ({ interactive, planMode }) => {
     const snapshot = createInitialSnapshot();
-    snapshot.general.useInteractivePlans = enabled;
+    snapshot.general.useInteractivePlans = interactive;
     const driver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'plan-thread' } }));
     const options = planMode === undefined ? undefined : { planMode };
     sendAgentPrompt(snapshot, driver, 'agent-dina', 'Plan the requested change.', options, vi.fn());
-    const [agent, prompt, forwarded] = vi.mocked(driver.sendPrompt).mock.calls[0]!;
-    expect(agent.id).toBe('agent-dina');
-    expect(forwarded).toStrictEqual(options);
-    if (interactive) {
-      expect(prompt).toMatch(/^Plan the requested change\.\n\n<context>/);
-      expect(prompt).toContain('publish-html-plan');
-      expect(prompt).toContain('korus-html-plan');
-    } else if (planMode) {
-      expect(prompt).toContain("provider's normal text plan");
-      expect(prompt).not.toContain('publish-html-plan');
+    const [, prompt, deliveredOptions] = vi.mocked(driver.sendPrompt).mock.calls[0]!;
+    expect(deliveredOptions).toEqual(options);
+    if (interactive && planMode) {
+      expect(prompt).toContain('- [ ] / - [x]');
+      expect(prompt).toContain('- ( ) / - (x)');
+      expect(prompt).toContain('Do not call display-markdown for the proposal.');
+      expect(prompt.replace(/<context>[\s\S]*?<\/context>/gu, '').trim()).toBe('Plan the requested change.');
     } else expect(prompt).toBe('Plan the requested change.');
   });
 

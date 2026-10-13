@@ -23,7 +23,7 @@ export type AppMenuCallbacks = {
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
-  injectDebugPlanReview?: (format: 'text' | 'html') => void;
+  injectDebugPlanReview?: (format: 'text' | 'choices') => void;
   populateDebugVisualize?: (scenario: VisualizeDebugScenario) => void;
   getDebugMissionStage?: () => MissionStage | undefined;
   getDebugMissionReviewState?: () => MissionReviewDebugState | undefined;
@@ -293,9 +293,9 @@ function buildDebugAgentFixtures(callbacks: AppMenuCallbacks): MenuItemConstruct
       click: () => callbacks.injectDebugPlanReview?.('text'),
     },
     {
-      label: 'HTML Plan Review',
+      label: 'Plan Review with Choices',
       enabled: Boolean(callbacks.injectDebugPlanReview),
-      click: () => callbacks.injectDebugPlanReview?.('html'),
+      click: () => callbacks.injectDebugPlanReview?.('choices'),
     },
   ];
 }

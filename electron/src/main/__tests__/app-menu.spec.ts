@@ -443,7 +443,7 @@ describe('app menu', () => {
       'Mark as Unread',
       'Execution Plan',
       'Text Plan Review',
-      'HTML Plan Review',
+      'Plan Review with Choices',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Mission Fixtures')).toStrictEqual([
       'Requirements',
@@ -504,7 +504,7 @@ describe('app menu', () => {
       'Mark as Unread',
       'Execution Plan',
       'Text Plan Review',
-      'HTML Plan Review',
+      'Plan Review with Choices',
     ]);
     expect(nestedSubmenu(debugMenu, 'Debug', 'UI Previews').map(menuEntryLabel)).toStrictEqual([
       'Markdown',
@@ -527,7 +527,7 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Mark as Unread');
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Execution Plan');
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Text Plan Review');
-    clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'HTML Plan Review');
+    clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Plan Review with Choices');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Requirements');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Tickets');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Implementation');
@@ -607,7 +607,7 @@ describe('app menu', () => {
     expect(electronClipboardMocks.image.toDataURL).toHaveBeenCalledWith({ scaleFactor: 2 });
     expect(debugCallbacks.toggleDebugExecutionPlan).toHaveBeenCalledOnce();
     expect(debugCallbacks.injectDebugPlanReview).toHaveBeenNthCalledWith(1, 'text');
-    expect(debugCallbacks.injectDebugPlanReview).toHaveBeenNthCalledWith(2, 'html');
+    expect(debugCallbacks.injectDebugPlanReview).toHaveBeenNthCalledWith(2, 'choices');
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(1, 'requirements', undefined);
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(2, 'tickets', undefined);
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(3, 'implementation', undefined);
