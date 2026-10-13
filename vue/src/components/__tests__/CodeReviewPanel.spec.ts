@@ -731,7 +731,7 @@ describe('CodeReviewPanel', () => {
     { state: 'paused', autoCommit: true },
     { state: 'manual', autoCommit: true },
   ] as const)('retries a $state review without changing its mode or commit choice ($autoCommit)', async ({ state, autoCommit }) => {
-    const failed = session([], 'failed');
+    const failed = session(state === 'manual' ? [finding()] : [], 'failed');
     failed.automation = { enabled: state !== 'manual', maxPriority: 'p1', maxRounds: 4, autoCommit, state, baseRef: 'a'.repeat(40), commits: [], reason: 'Paused.' };
     if (state === 'manual') failed.rounds[0]!.error = 'Review stopped. Retry to complete the inspection.';
     const { wrapper } = mountPanel(failed);
@@ -740,6 +740,8 @@ describe('CodeReviewPanel', () => {
 
     if (state === 'manual') {
       expect(wrapper.get('.code-review-panel__error').text()).toBe('Review stopped. Retry to complete the inspection.');
+      expect(wrapper.get('.code-review-panel__findings').text()).toContain('Authorize before writing');
+      expect(wrapper.find('[aria-label="Include finding in remediation"]').exists()).toBe(false);
       expect(wrapper.get('.code-review-panel__footer button').text()).toBe('Retry review');
       expect(wrapper.get('.code-review-panel__automation-status button').attributes('disabled')).toBeDefined();
     }

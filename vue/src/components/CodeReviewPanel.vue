@@ -204,7 +204,7 @@
       </p>
 
       <div
-        v-else-if="selectedRound?.status !== 'reviewing' && findings.length === 0"
+        v-if="selectedRound?.status !== 'reviewing' && selectedRound?.status !== 'failed' && findings.length === 0"
         class="code-review-panel__clear"
       >
         <IconCircleCheck aria-hidden="true" />
