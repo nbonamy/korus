@@ -27,10 +27,27 @@ describe('unified backend → app state request lifecycle', () => {
     expect(state.sidePanelRequest.value).toMatchObject({ kind: 'markdown', purpose: 'plan', title: 'Background plan', content: 'Review after switching.' });
     const revised = { ...navigated, agents: navigated.agents.map((agent) => agent.id === other.id ? { ...agent, planReview: { ...planReview, status: 'revise' as const } } : agent) };
     api.respondToPlanReview.mockResolvedValue(revised);
-    await state.respondToPlanReview('revise', 'Include failure paths');
+    await state.respondToPlanReviewForAgent(state.activeAgent.value!.id, 'revise', 'Include failure paths');
     expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(other.id, { reviewId: planReview.id, resolution: 'revise', feedback: 'Include failure paths' });
     expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(state.snapshot.value.agents.find((agent) => agent.id === other.id)?.planReview?.status).toBe('revise');
+  });
+
+  it('accepts a revised plan event when the existing feedback is reactive renderer state', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.backendSession = undefined;
+    const draft = { comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Keep my files.' }], choices: [{ id: 's0-g0', quote: 'Storage', selected: ['Local'] }] };
+    agent.planReview = { id: 'previous', conversationId: null, turnId: 'first', markdown: '# First plan', status: 'revise', draft };
+    const { emit } = installBackendFixture(snapshot);
+    const state = useAppState();
+    await state.loadSnapshot();
+    emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'second', payload: { markdown: '# Revised plan' } });
+    const review = state.snapshot.value.agents[0]!.planReview!;
+    expect(review.markdown).toBe('# Revised plan');
+    expect(review.history).toContainEqual({ reviewId: 'previous', status: 'revise', draft });
+    expect(review.draft).toBeUndefined();
+    expect(state.sidePanelRequest.value).toMatchObject({ purpose: 'plan', title: 'Revised plan' });
   });
 
   it('routes background-agent plan, flag, and goal operations without selecting it', async () => {

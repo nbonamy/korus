@@ -18,6 +18,7 @@ describe('FormDialog', () => {
     });
     try {
       await flushPromises();
+      expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Prune repository');
       expect(getComputedStyle(wrapper.get('.el-dialog').element).textAlign).toBe('left');
       expect(getComputedStyle(wrapper.get('.el-dialog__footer').element).textAlign).toBe('right');
       expect(getComputedStyle(wrapper.get('.app-form-dialog__footer-actions').element).marginLeft).toBe('auto');

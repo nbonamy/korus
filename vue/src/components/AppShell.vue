@@ -302,8 +302,7 @@
         :close-right-workspace-tab="closeRightWorkspaceTab"
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
-        :confirm-plan="confirmPlan"
-        :respond-to-plan-review="respondToPlanReview"
+        :update-plan-review="updatePlanReview"
         :respond-to-thread-flag="respondToThreadFlag"
         :thread-flag-busy="threadFlagBusy"
         :conversation-pane-controller="conversationPaneController"
@@ -859,7 +858,7 @@ const props = withDefaults(defineProps<{
   agentConversationFor?: (agentId: string) => AgentConversationView | null;
   agentConversationActions?: AgentConversationActions;
   sendPromptAction?: (prompt: string, options?: RendererSendPromptOptions) => Promise<void>;
-  respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlagAction?: (response: ThreadFlagResponse) => Promise<void>;
   deleteTurnAction?: (turnId: string) => Promise<void>;
   editTurnAction?: (payload: { content: string; turnId: string }) => Promise<void>;
@@ -2959,17 +2958,14 @@ function openResumeSession(agentId: string): void {
   resumeSessionAgentId.value = agentId;
 }
 
-async function respondToPlanReview(resolution: 'accept' | 'revise' | 'cancel', feedback?: string): Promise<void> {
-  const agentId = currentAgent.value?.id;
-  if (!agentId || !props.respondToPlanReview) return;
-  try {
-    await props.respondToPlanReview(resolution, feedback);
-  } catch (error) {
-    ElMessage.error(localizedErrorMessage(error, t));
-    return;
+async function updatePlanReview(agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) {
+  if (!props.updatePlanReview) throw new Error('Plan review is unavailable.');
+  const review = await props.updatePlanReview(agentId, response);
+  if (response.resolution !== 'save') {
+    if (currentAgent.value?.id === agentId) emit('update:planMode', response.resolution === 'revise');
+    if (response.resolution !== 'revise') closeRightWorkspaceTab(agentId, 'plan');
   }
-  if (currentAgent.value?.id === agentId) emit('update:planMode', resolution === 'revise');
-  if (agentId) closeRightWorkspaceTab(agentId, 'plan');
+  return review;
 }
 
 const threadFlagBusy = ref(false);
@@ -2990,10 +2986,6 @@ async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> 
   } finally {
     threadFlagBusy.value = false;
   }
-}
-
-function confirmPlan(): void {
-  void respondToPlanReview('accept');
 }
 
 function forwardApprovalResolution(
@@ -3302,9 +3294,10 @@ watch(() => props.sidePanelRequest, (request) => {
   openSidePanelRequest(request);
 }, { immediate: true, flush: 'sync' });
 
-watch(() => props.snapshot.agents.map((agent) => [agent.id, agent.planReview?.status] as const), (reviews) => {
-  for (const [agentId, status] of reviews) {
-    if (status && status !== 'pending') closeRightWorkspaceTab(agentId, 'plan');
+watch(() => props.snapshot.agents.map(agent => [agent.id, agent.planReview?.id, agent.planReview?.status] as const), (reviews, previous) => {
+  for (const [agentId, id, status] of reviews) {
+    if (id && (status === 'pending' || status === 'revise') && !previous?.some(r => r[0] === agentId && r[1] === id)) openRightWorkspaceTab('plan', agentId);
+    if (status === 'accept' || status === 'cancel') closeRightWorkspaceTab(agentId, 'plan');
   }
 }, { immediate: true });
 

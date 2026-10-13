@@ -347,6 +347,7 @@ export class AppBackendServer {
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
     });
     this.planReviews = new AgentPlanReviewService({
+      persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),
     });
@@ -830,14 +831,18 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.debugPlanReadyForReviewInject: {
-        const agentId = requireAgentId(message.params);
+        const params = requireRecord(message.params);
+        const format = params.format ?? 'text';
+        if (format !== 'text' && format !== 'choices') throw new Error('Plan fixture format must be text or choices.');
+        const agentId = requireAgentId(params);
         const agent = this.snapshot.agents.find((candidate) => candidate.id === agentId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
 
         const markdown = [
-          '# Debug plan review',
+          format === 'choices' ? '# Review the proposed workflow' : '# Debug text plan review',
+          ...(format === 'choices' ? ['','## Which platforms should we support?', '', '- [x] macOS', '- [ ] Windows', '- [ ] Linux', '', '## Where should settings live?', '', '- ( ) In the project', '- (x) In the user home directory', '', '## Compatibility', '', '| Existing data | Proposed behavior |', '| --- | --- |', '| Settings | Preserve originals |', '| History | Retain all conversations |', '', '```text', '- ( ) This example is not an interactive choice', '```', ''] : []),
           '',
           '## Summary',
           '',
@@ -1799,6 +1804,8 @@ export class AppBackendServer {
           reviewId: requireString(input.reviewId, 'reviewId'),
           resolution: requireString(input.resolution, 'resolution') as PlanReviewResponse['resolution'],
           ...(input.feedback === undefined ? {} : { feedback: requireString(input.feedback, 'feedback') }),
+          ...(input.draft === undefined ? {} : { draft: input.draft as PlanReviewResponse['draft'] }),
+          ...(input.draftVersion === undefined ? {} : { draftVersion: input.draftVersion as number }),
         };
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async (agent) => {
           await this.planReviews.respond(agent, response);

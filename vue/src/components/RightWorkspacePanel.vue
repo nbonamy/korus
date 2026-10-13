@@ -264,14 +264,15 @@
         </div>
 
     <PlanReviewPanel
-      v-if="tabs.includes('plan') && planPanel"
+      v-if="tabs.includes('plan') && currentNativeReview"
       v-show="activeTab === 'plan'"
-      :panel="planPanel"
+      :key="`${agent.id}:${currentNativeReview.id}`"
+      :review="currentNativeReview"
+      :interactive="interactivePlansEnabled !== false"
+      :respond="planReviewResponder"
       :plan-updating="planUpdating"
-      @cancel-plan="emit('cancelPlan')"
-      @comment-plan="emit('commentPlan', $event)"
-      @confirm-plan="emit('confirmPlan')"
     />
+    <MarkdownPanel v-else-if="tabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" />
 
     <template v-if="subagentTree && loadSubagentMessages">
       <SubagentPanel
@@ -395,11 +396,12 @@ import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
 import ImagePreviewPanel from './ImagePreviewPanel.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
+import { agentConversationId } from '@workspace/core/plan-review';
 import PlanReviewPanel from './PlanReviewPanel.vue';
 import RepositoryBacklogPanel from './RepositoryBacklogPanel.vue';
 import SourcePreviewPanel from './SourcePreviewPanel.vue';
 import SubagentPanel from './SubagentPanel.vue';
-import type { PlanReviewComment, SidePanelGitDiffState, SidePanelMarkdownState, SidePanelSourceState } from './side-panel';
+import type { SidePanelGitDiffState, SidePanelMarkdownState, SidePanelSourceState } from './side-panel';
 import {
   isRightWorkspaceBrowserTab,
   type RightWorkspaceBrowserPanel,
@@ -437,6 +439,9 @@ const props = withDefaults(defineProps<{
   gitStatus?: AgentGitStatus | null;
   planPanel?: SidePanelMarkdownState | null;
   planUpdating?: boolean;
+  interactivePlansEnabled?: boolean;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
+
   diffPanels?: Partial<Record<RightWorkspaceDiffTab, RightWorkspaceDiffPanel>>;
   filePanels?: Partial<Record<RightWorkspaceFileTab, RightWorkspaceFilePanel>>;
   imagePanels?: Partial<Record<RightWorkspaceImageTab, RightWorkspaceImagePanel>>;
@@ -482,7 +487,18 @@ const props = withDefaults(defineProps<{
   generateVisualizationSuggestion: async () => { throw new Error('Visualize is not available.'); },
   selectVisualization: async () => { throw new Error('Visualize is not available.'); },
   deleteVisualization: async () => { throw new Error('Visualize is not available.'); },
+  interactivePlansEnabled: true,
   readVisualizationAsset: async () => { throw new Error('Visualize is not available.'); },
+});
+
+const planReviewResponder = computed(() => {
+  const agentId = props.agent.id;
+  const respond = props.updatePlanReview;
+  return respond ? (response: import('@workspace/core/plan-review').PlanReviewResponse) => respond(agentId, response) : undefined;
+});
+const currentNativeReview = computed(() => {
+  const review = props.agent.planReview;
+  return (review?.status === 'pending' || review?.status === 'revise') && review.conversationId === agentConversationId(props.agent) ? review : null;
 });
 
 const codeReviewInstructions = defineModel<string>('codeReviewInstructions', { default: '' });
@@ -490,9 +506,6 @@ const emit = defineEmits<{
   annotateVisualization: [annotation: import('./use-visualization-annotations').VisualizationAnnotationInput];
   browserUrlChange: [tab: 'browser' | RightWorkspaceBrowserTab, url: string];
   closeTab: [tab: RightWorkspaceTab];
-  cancelPlan: [];
-  commentPlan: [comments: PlanReviewComment[]];
-  confirmPlan: [];
   openTab: [tab: RightWorkspaceTab];
   openIn: [payload: { application: OpenInApplication; filePath: string }];
   openLink: [link: CodexConversationLink];
