@@ -453,6 +453,7 @@ const mergeStrategy = ref<'merge' | 'squash'>('merge');
 const squashCommitMessage = ref('');
 const deleteBranch = ref(false);
 const deleteWorktree = ref(false);
+const mergeCleanupPreferenceKey = 'app:mergeCleanup';
 const reportBack = ref(true);
 const gitOperationProgress = ref<AgentGitOperationProgress | null>(null);
 const committedMessage = ref('');
@@ -682,10 +683,12 @@ watch(mergeDialogOpen, (open) => {
     resetMergeOperation();
     reportBack.value = true;
     squashCommitMessage.value = '';
-    if (!workflow.value?.isLinkedWorktree) {
-      deleteWorktree.value = false;
-      deleteBranch.value = false;
-    }
+    let saved: { deleteWorktree?: unknown; deleteBranch?: unknown } | null = null;
+    try { saved = JSON.parse(window.localStorage.getItem(mergeCleanupPreferenceKey) ?? 'null'); } catch { /* Optional client preference. */ }
+    deleteWorktree.value = Boolean(workflow.value?.isLinkedWorktree)
+      && (typeof saved?.deleteWorktree === 'boolean' ? saved.deleteWorktree : true);
+    deleteBranch.value = deleteWorktree.value
+      && (typeof saved?.deleteBranch === 'boolean' ? saved.deleteBranch : true);
   } else if (!mergeOperationRunning.value) {
     mergeTargetDirtyWarning.value = false;
     resetMergeOperation();
@@ -698,6 +701,13 @@ watch(updateDialogOpen, (open) => {
 
 watch(deleteWorktree, (enabled) => {
   if (!enabled) deleteBranch.value = false;
+});
+
+watch([deleteWorktree, deleteBranch], ([removeWorktree, removeBranch]) => {
+  if (!mergeDialogOpen.value || !workflow.value?.isLinkedWorktree) return;
+  try {
+    window.localStorage.setItem(mergeCleanupPreferenceKey, JSON.stringify({ deleteWorktree: removeWorktree, deleteBranch: removeBranch }));
+  } catch { /* Storage failures must not block merging. */ }
 });
 
 watch(mergeStrategy, (strategy) => {
