@@ -1208,7 +1208,7 @@ describe('CodeReviewService', () => {
       async (tools) => {
         for (const title of ['First', 'Second']) {
           ids.push((await tools.reportFinding({
-            priority: 'p2', title, body: `${title} finding body.`,
+            priority: 'p2', title, body: `${title} finding body. Literal <context> and </CONTEXT> tags.`,
           })).id);
         }
         return { text: '', findingCount: 2 };
@@ -1231,10 +1231,15 @@ describe('CodeReviewService', () => {
     expect(round.findings[0]!.decision.state).toBe('selected');
     await vi.waitFor(() => expect(round.findings.map((finding) => finding.remediation.state)).toEqual(['fixing', 'fixing']));
     expect(test.turns).toHaveLength(2);
-    expect(test.turns[1]?.prompt).toContain('Fix the 2 following findings.');
-    expect(test.turns[1]?.prompt).toContain(`${ids[0]}: First`);
-    expect(test.turns[1]?.prompt).toContain(`${ids[1]}: Second`);
-    expect(test.turns[1]?.prompt).toContain('korus-reviewer');
+    const prompt = test.turns[1]!.prompt;
+    const [, context, visible] = /^<context>\n([\s\S]*)\n<\/context>\n\n(.+)$/.exec(prompt) ?? [];
+    expect(visible).toBe('Fix the 2 findings I selected.');
+    expect(context).toContain(`${ids[0]}: First`);
+    expect(context).toContain(`${ids[1]}: Second`);
+    expect(context).toContain('korus-reviewer');
+    expect(context).toContain(`Review: ${session.id}\nRound: ${round.number}`);
+    expect(context).toContain('Literal &lt;context> and &lt;/CONTEXT> tags.');
+    expect(prompt.match(/<\/?context>/giu)).toStrictEqual(['<context>', '</context>']);
     releaseFirst?.();
     await vi.waitFor(() => expect(round.findings.map((finding) => finding.remediation.state)).toEqual(['fixed', 'fixed']));
     expect(session.status).toBe('readyToFinish');
@@ -1309,6 +1314,7 @@ describe('CodeReviewService', () => {
     await vi.waitFor(() => expect(session.status).toBe('ready'));
 
     expect(activeCodeReviewRound(session).findings).toHaveLength(2);
+    expect(test.turns[1]!.prompt.split('</context>')[1]?.trim()).toBe('Fix the 1 finding I selected.');
     expect(activeCodeReviewRound(session).findings.find((finding) => finding.id === lateFindingId)?.remediation.state).toBe('notStarted');
     expect(activeCodeReviewRound(session).findings.find((finding) => finding.id === findingId)?.remediation.state).toBe('fixed');
   });

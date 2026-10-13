@@ -1089,17 +1089,14 @@ function fixPrompt(session: CodeReviewSession, round: CodeReviewRound, findings:
     ...(finding.location ? [`  location: ${JSON.stringify(finding.location)}`] : []),
     ...(finding.discussion.length > 0 ? [`  discussion: ${JSON.stringify(finding.discussion)}`] : []),
   ].join('\n')).join('\n\n');
-  return `Fix the ${findings.length} following ${noun}.
-
-<context>
-Review: ${session.id}
+  const context = `Review: ${session.id}
 Round: ${round.number}
 
 ${findingContext}
 
 Load korus-reviewer through read-skill for the remediation procedure. Fix only these selected findings and record each verified fix with update_finding.
-${session.automation ? `Automatic remediation: run the relevant tests and checks. Every fixed finding MUST include evidence naming the commands and results (or a specific reason a check does not apply). If validation fails or a fix needs a product decision, leave the finding unresolved and explain the blocker. Do not commit, stage, push, merge, change branches, or discard changes. ${session.automation.autoCommit === true ? 'Auto-commit is enabled: the review workflow owns the local commit after validation.' : 'Auto-commit is disabled. Leave all fixes uncommitted; the review workflow will not stage or commit them.'} Preserve unrelated files; no background work may remain when this turn ends.` : ''}
-</context>`;
+${session.automation ? `Automatic remediation: run the relevant tests and checks. Every fixed finding MUST include evidence naming the commands and results (or a specific reason a check does not apply). If validation fails or a fix needs a product decision, leave the finding unresolved and explain the blocker. Do not commit, stage, push, merge, change branches, or discard changes. ${session.automation.autoCommit === true ? 'Auto-commit is enabled: the review workflow owns the local commit after validation.' : 'Auto-commit is disabled. Leave all fixes uncommitted; the review workflow will not stage or commit them.'} Preserve unrelated files; no background work may remain when this turn ends.` : ''}`;
+  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} ${noun} I selected.`;
 }
 
 function commitPrompt(): string {
