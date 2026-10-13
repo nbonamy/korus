@@ -81,6 +81,8 @@ describe('snapshot guards', () => {
       { name: 'queued prompt', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.attempts = 'once' as never; } },
       { name: 'prompt attachment', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.attachments![0]!.type = 'audio' as never; } },
       { name: 'prompt backend options', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.backendOptions = { kind: 'codex', serviceTier: 42 as never }; } },
+      { name: 'delegation override context', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'replay' as never }; } },
+      { name: 'delegation override instructions', mutate: (snapshot) => { snapshot.queuedPrompts![0]!.options!.delegation = { startingContext: 'handoff', instructions: 42 as never }; } },
       { name: 'agent git status', mutate: (snapshot) => { snapshot.agentGitStatuses.agent!.branch = null as never; } },
       { name: 'turn git diff', mutate: (snapshot) => { snapshot.turnGitDiffs.turn!.addedLines = 'one' as never; } },
       { name: 'account rate limits', mutate: (snapshot) => { snapshot.accountRateLimits!.primary!.usedPercent = 'half' as never; } },
@@ -272,6 +274,7 @@ function completeSnapshot(): AppSnapshot {
     retryAt: '2026-09-04T00:01:00.000Z',
     submitted: true,
     options: {
+      delegation: { startingContext: 'conversation', instructions: 'Task instructions' },
       attachments: [
         { type: 'image', path: '/tmp/image.png', detail: 'high', name: 'image.png', mimeType: 'image/png', previewUrl: 'data:image/png;base64,AA==' },
         { type: 'file', path: '/tmp/plan.md', name: 'plan.md', mimeType: 'text/markdown' },

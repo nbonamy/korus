@@ -1,4 +1,5 @@
 import { isAgentGitStatus } from '../snapshot-guard-collections';
+import { isDelegationOverrides } from '../delegation-context';
 import {
   expectArray,
   expectBoolean,
@@ -40,6 +41,9 @@ function expectPromptSkill(value: unknown, path: string): void {
 
 function expectSendPromptOptions(value: unknown, path: string): void {
   expectRecord(value, path);
+  expectOptional(value, 'delegation', path, (candidate, candidatePath) => {
+    if (!isDelegationOverrides(candidate)) throw new Error(`${candidatePath}: invalid delegation options`);
+  });
   expectOptional(value, 'attachments', path, (candidate, candidatePath) =>
     expectArray(candidate, candidatePath, expectPromptAttachment),
   );

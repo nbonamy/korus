@@ -50,7 +50,7 @@ export async function loadClaudeTranscriptHistory(
   }
 
   const projectsRoot = options.projectsRoot ?? path.join(claudeConfigDirectory(), 'projects');
-  const transcriptPath = await findClaudeTranscriptPath(projectsRoot, claudeWorkingDirectory(agent), sessionId);
+  const transcriptPath = await findClaudeTranscriptPath(projectsRoot, agent.backendSession.transcriptFolder ?? claudeWorkingDirectory(agent), sessionId);
   if (!transcriptPath) {
     return {
       backendSession: agent.backendSession,

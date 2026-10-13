@@ -3,7 +3,7 @@ import { normalizeGeneralSettings,normalizeThemeSettings } from './settings';
 
 export const clientGeneralSettingKeys = [
   'agentListCompact', 'cockpitAgentViewMode', 'collapsedRepositoryKeys', 'modelFavorites',
-  'repositoryIcons', 'sessionCompressionWarningEnabled', 'spokenAnnouncementsMuted',
+  'backlogRepositoryFavorites', 'repositoryIcons', 'sessionCompressionWarningEnabled', 'spokenAnnouncementsMuted',
   'savedPromptDrafts', 'followUpBehavior', 'browserBookmarks',
   'spokenAnnouncementsOnlyWhenFocused', 'spokenAnnouncementScope', 'spokenAnnouncementVoice',
 ] as const satisfies readonly (keyof AppGeneralSettings)[];

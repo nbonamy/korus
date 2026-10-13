@@ -350,8 +350,5 @@ function setNewConversationTitle(agent: Agent, driver: AgentBackendDriver, wasNe
 }
 
 function conversationRefFromSendResult(agent: Agent, result: BackendSendResult): BackendConversationRef {
-  if (result.backendSession.kind === 'antigravity') return { backend: 'antigravity', folder: agent.folder, sessionId: result.backendSession.sessionId };
-  return result.backendSession.kind === 'codex'
-    ? { backend: 'codex', threadId: result.backendSession.threadId }
-    : { backend: 'claude', folder: agent.folder, sessionId: result.backendSession.transcriptSessionId ?? result.backendSession.sessionId };
+  return conversationRefFromAgent({ ...agent, backendSession: result.backendSession })!;
 }

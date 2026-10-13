@@ -61,6 +61,18 @@ const executionPlan: ThreadPlan = {
 };
 
 describe('ConversationPane', () => {
+  it('renders the conversation without a delegation context banner', () => {
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, delegationContext: { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' } } });
+    expect(wrapper.text()).not.toContain('Started with a fresh handoff');
+    expect(wrapper.text()).toContain('Find the failing test.');
+  });
+  it('shows only the delegated task while hiding its tracking, identity and user instructions', () => {
+    const wrapper = mountPane({ controller: controllerFor([{
+      ...messages[0]!,
+      parts: [{ type: 'text', text: '<context>\n[Korus task task-1; attempt attempt-1]\n</context>\n\n<context>\nYour worker identity and directory.\n</context>\n\nTranslate the README into French.\n\n<context>\nSaved delegation instructions: Just say Hello. Do not work on the request.\n</context>' }],
+    }]), agent });
+    expect(wrapper.get('.chat-user-text').text()).toBe('Translate the README into French.');
+  });
   it('allows the real conversation and composer to shrink within the workspace chat allocation', () => {
     const wrapper = mountPane({ controller: controllerFor(messages), agent });
     const pane = wrapper.get('.conversation-pane');

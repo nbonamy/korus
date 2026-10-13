@@ -518,6 +518,8 @@ export class AppController {
     ipc.handle(ipcChannels.getProviderUpdate, (_event, backend, remoteConnectionId, refresh) => this.requireBackendClient().request(backendMethods.providerUpdateGet, { backend, remoteConnectionId, refresh }));
     ipc.handle(ipcChannels.setProviderUpdate, (_event, backend, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerUpdateSet, { backend, input, remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderConnections, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerConnectionsGet, { remoteConnectionId }));
+    ipc.handle(ipcChannels.getBankedResets, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetsGet, { remoteConnectionId }));
+    ipc.handle(ipcChannels.useBankedReset, (_event, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetUse, { input, remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderUsage, (_event, backend) => this.requireBackendClient().request(backendMethods.providerUsageGet, { backend }));
     ipc.handle(ipcChannels.setProviderEnabled, (_event, backend, enabled, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerEnabledSet, { backend, enabled, remoteConnectionId }));
     ipc.handle(ipcChannels.disconnectProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { backend, remoteConnectionId }));
@@ -613,6 +615,9 @@ export class AppController {
     ));
     ipc.handle(ipcChannels.commitCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewCommit, { agentId, sessionId }))
+    ));
+    ipc.handle(ipcChannels.switchCodeReviewToManual, async (_event, agentId: string, sessionId: string) => (
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewManual, { agentId, sessionId }))
     ));
     ipc.handle(ipcChannels.discardCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewDiscard, { agentId, sessionId }))

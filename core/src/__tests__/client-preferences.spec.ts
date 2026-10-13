@@ -3,6 +3,17 @@ import { projectClientSnapshot, sanitizeClientPreferences, splitSettingsInput } 
 import { createInitialSnapshot } from '../snapshot';
 
 describe('client preference projection', () => {
+  it('routes backlog favorites to client preferences and projects them without changing shared policy', () => {
+    const favorites = { github: ['org/b', 'org/a'] };
+    expect(splitSettingsInput({ general: { backlogRepositoryFavorites: favorites } })).toStrictEqual({
+      policy: {}, preferences: { general: { backlogRepositoryFavorites: favorites } },
+    });
+    const snapshot = createInitialSnapshot();
+    snapshot.clientPreferences = sanitizeClientPreferences({ desktop: { general: { backlogRepositoryFavorites: favorites } } });
+    expect(projectClientSnapshot(snapshot, 'desktop').general.backlogRepositoryFavorites).toStrictEqual(favorites);
+    expect(projectClientSnapshot(snapshot, 'phone').general.backlogRepositoryFavorites).toStrictEqual({});
+    expect(snapshot.general.backlogRepositoryFavorites).toStrictEqual({});
+  });
   it('splits backend policy and presentation without inventing changes', () => {
     expect(splitSettingsInput({})).toStrictEqual({ policy: {}, preferences: {} });
     const input = { general: { agentListCompact: true, preventSleepWhenAgentsRun: false }, theme: { mode: 'dark' as const }, sourceFolder: { path: '/src' }, workProviders: { github: { oauthClientId: 'client-id' } } };

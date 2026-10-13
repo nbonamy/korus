@@ -353,6 +353,10 @@ export type Agent = {
   id: string;
   teamId?: string;
   delegatedByAgentId?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
+  /** User-entered controls for the current delegation turn; never supplied by create-agent. */
+  userDelegationOverrides?: import('./delegation-context').DelegationOverrides;
+  delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
   name: string | null;
@@ -496,10 +500,13 @@ export type AppGeneralSettings = {
   cockpitAgentViewMode: CockpitAgentViewMode;
   collapsedRepositoryKeys: string[];
   modelFavorites: ModelFavorite[];
+  backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
   /** User-wide on the owning client, independent of browser tabs and agents. */
   browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
   worktreeInitializationMode: WorktreeInitializationMode;
+  worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
+  worktreeDelegationInstructions?: string;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;
@@ -673,6 +680,7 @@ export type AgentCreationProgress = {
   hasPrompt: boolean;
   phase?: 'creatingProject' | 'creatingWorktree' | 'initializingWorktree' | 'creatingAgent' | 'startingPrompt';
   initializationDetail?: string;
+  delegationContext?: import('./delegation-context').DelegationContext;
   agentId?: string;
   agentName?: string;
   error?: string;
@@ -720,6 +728,8 @@ export type AppCommand =
   | { type: 'open-saved-prompt-drafts' }
   | { type: 'open-settings' }
   | { type: 'open-whats-new' }
+  | { type: 'open-keyboard-shortcuts' }
+  | { type: 'open-command-palette' }
   | { type: 'quit' }
   | { type: 'restart-active-agent' }
   | { type: 'resume-active-session' }
@@ -822,6 +832,7 @@ export type AppApi = {
   submitCodeReviewRound(agentId: string, sessionId: string): Promise<AppSnapshot>;
   finishCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   commitCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
+  switchCodeReviewToManual(agentId: string, sessionId: string): Promise<AppSnapshot>;
   discardCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   reviewCodeAgain(agentId: string, sessionId: string): Promise<AppSnapshot>;
   respondToThreadFlag(agentId: string, response: import('./thread-flags').ThreadFlagResponse): Promise<AppSnapshot>;
@@ -860,6 +871,8 @@ export type AppApi = {
   previewAgentFile(agentId: string, filePath: string): Promise<AgentFilePreviewResult>;
   readAgentFileChunk(agentId: string, filePath: string, offset: number): Promise<import('./contracts/workspace').AgentFileChunk>;
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
+  previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
+  branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;
@@ -942,6 +955,8 @@ export type AppApi = {
   setProviderUpdate(backend: AgentBackend, input: import('./contracts/provider-updates').ProviderUpdateInput, remoteConnectionId?: string): Promise<import('./contracts/provider-updates').ProviderUpdateStatus>;
   getProviderConnections(remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
   getProviderUsage(backend: AgentBackend): Promise<AccountRateLimits | null>;
+  getBankedResets(remoteConnectionId?: string): Promise<import('./contracts/banked-resets').BankedResets>;
+  useBankedReset(input: import('./contracts/banked-resets').UseBankedResetInput, remoteConnectionId?: string): Promise<import('./contracts/banked-resets').BankedResetResult>;
   setProviderEnabled(backend: AgentBackend, enabled: boolean, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderConnection[]>;
   disconnectProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   authenticateProvider(backend: AgentBackend, action: 'login' | 'cancel'): Promise<import('./contracts/provider-setup').ProviderAuthentication>;

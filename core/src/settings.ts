@@ -1,3 +1,4 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
 import { spokenAnnouncementVoices, type AppGeneralSettings, type AppPluginSettings, type AppshotSettings, type AppSnapshot, type AppThemeSettings, type ModelFavorite, type SavedPromptDraft, type SourceFolderState, type SpokenAnnouncementVoice, type UpdateSettingsInput, type WorkProviderSettings } from './contracts';
@@ -39,8 +40,11 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   cockpitAgentViewMode: 'teams',
   collapsedRepositoryKeys: [],
   modelFavorites: [],
+  backlogRepositoryFavorites: {},
   savedPromptDrafts: [],
   worktreeInitializationMode: 'automatic',
+  worktreeDelegationStartingContext: 'handoff',
+  worktreeDelegationInstructions: '',
   sessionCompressionWarningEnabled: true,
   repositoryIcons: {},
   appshots: { ...defaultAppshotSettings },
@@ -152,9 +156,12 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     cockpitAgentViewMode: value.cockpitAgentViewMode === 'recent' ? 'recent' : 'teams',
     collapsedRepositoryKeys: normalizeStringList(value.collapsedRepositoryKeys, 200),
     modelFavorites: normalizeModelFavorites(value.modelFavorites),
+    backlogRepositoryFavorites: normalizeBacklogRepositoryFavorites(value.backlogRepositoryFavorites),
     savedPromptDrafts: normalizeSavedPromptDrafts(value.savedPromptDrafts),
     ...(value.browserBookmarks !== undefined ? { browserBookmarks: normalizeBrowserBookmarks(value.browserBookmarks) } : {}),
     worktreeInitializationMode: normalizeWorktreeInitializationMode(value.worktreeInitializationMode),
+    worktreeDelegationStartingContext: value.worktreeDelegationStartingContext === 'conversation' ? 'conversation' : 'handoff',
+    worktreeDelegationInstructions: normalizeString(value.worktreeDelegationInstructions)?.slice(0, MAX_DELEGATION_INSTRUCTIONS_LENGTH).trim() ?? '',
     sessionCompressionWarningEnabled: value.sessionCompressionWarningEnabled !== false,
     repositoryIcons: normalizeRepositoryIcons(value.repositoryIcons),
     appshots: normalizeAppshotSettings(value.appshots),
@@ -220,6 +227,12 @@ function normalizeRepositoryIcons(value: unknown): Record<string, string> {
     if (Object.keys(icons).length >= 200) break;
   }
   return icons;
+}
+
+function normalizeBacklogRepositoryFavorites(value: unknown): AppGeneralSettings['backlogRepositoryFavorites'] {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(workProviderKinds.filter(provider => provider in value)
+    .map(provider => [provider, normalizeStringList(value[provider], 200)]));
 }
 
 function normalizeStringList(value: unknown, maximum: number): string[] {

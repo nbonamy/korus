@@ -123,6 +123,21 @@ Search by behavior first.
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
 | Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
 
+App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
+native input routing, shell matching and the shortcut reference share these
+binding declarations. Availability reflects the host and current surface; provider
+composer bindings remain SDK-owned. Reference and command-palette opening bindings
+are handled in the renderer so editable targets and modal dialogs retain their input.
+The command palette and shortcut reference share the canonical quick-open dialog's
+search, rows and key hints. The reference groups read-only rows; the palette invokes
+existing shell handlers. Their action icons share renderer presentation metadata;
+Git actions retain the icons supplied by their workflow control.
+Palette entries declare their sections explicitly and preserve owning-menu order.
+Settings destinations share their icons, labels and host/provider availability in
+`components/settings-tabs.ts`, consumed by both the sidebar and command search.
+Git command availability and dispatch come from the focused agent's workflow control,
+which retains ownership of operation state, confirmations and host routing.
+
 ## Interaction
 
 - **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one

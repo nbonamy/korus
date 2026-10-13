@@ -4,12 +4,12 @@ import { ElMessageBox } from 'element-plus';
 import type {
   CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import type { AgentConversationView } from '../../app-state';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
-import type { Agent, WorkSource } from '@workspace/core/contracts';
+import type { AppApi, AppCommand, Agent, UpdateSettingsInput, WorkSource } from '@workspace/core/contracts';
 import { useConfetti } from '../../shared/confetti/use-confetti';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 
@@ -45,6 +45,29 @@ afterEach(() => {
 });
 
 describe('AppShell navigation and teams', () => {
+  it('opens the shortcut reference through the keyboard and native Help command, leaving typing alone', async () => {
+    let command: (value: AppCommand) => void = () => {};
+    window.app = { onAppCommand: vi.fn(listener => { command = listener; return () => {}; }) } as unknown as AppApi;
+    const wrapper = mountShell();
+    const editor = document.createElement('textarea');
+    document.body.append(editor);
+    const typing = new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, bubbles: true, cancelable: true });
+    editor.dispatchEvent(typing);
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(false);
+    expect(typing.defaultPrevented).toBe(false);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', code: 'Slash', metaKey: true, shiftKey: true, cancelable: true }));
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(true);
+    await wrapper.get('input[type="search"]').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(false);
+    command({ type: 'open-keyboard-shortcuts' });
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'KeyboardShortcutsDialog' }).exists()).toBe(true);
+    wrapper.unmount();
+    editor.remove();
+  });
+
   it('forwards interrupts from the composer stop button', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].status = { type: 'working' };
@@ -557,6 +580,33 @@ describe('AppShell navigation and teams', () => {
     });
     expect(wrapper.findComponent({ name: 'CockpitWorkInbox' }).props('globalScope')).toBe('all');
     expect(wrapper.findComponent({ name: 'CockpitWorkInbox' }).props()).toMatchObject({ page: 1, pageSize: 25, totalItems: 12 });
+  });
+
+  it.each(['github', 'linear'] as const)('persists %s backlog favorites without loading work until the favorite is selected', async (provider) => {
+    const snapshot = reactive(createInitialSnapshot());
+    snapshot.workBacklog.connections = [{ provider, status: 'connected' }];
+    const otherProvider = provider === 'github' ? 'linear' : 'github';
+    snapshot.general.backlogRepositoryFavorites = { [otherProvider]: ['other-provider-id'] };
+    const repository: WorkSource = { provider, id: 'org/repo', owner: 'org', name: 'repo', fullName: 'org/repo', url: 'https://github.com/org/repo', isPrivate: false };
+    // Electron IPC rejects Vue proxies; exercise the native serialization boundary.
+    const updateSettings = vi.fn(async (input: UpdateSettingsInput) => { structuredClone(input); });
+    const configureWorkBacklog = vi.fn().mockResolvedValue(undefined);
+    const loadWorkItems = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountShell({ snapshot, updateSettings, configureWorkBacklog, loadWorkItems, workRepositoriesByProvider: { [provider]: [repository] } });
+    await wrapper.get('[aria-label="Backlog"]').trigger('click');
+    await flushPromises();
+    loadWorkItems.mockClear();
+    configureWorkBacklog.mockClear();
+    await wrapper.get('[aria-label="Add repo to favorites"]').trigger('click');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { backlogRepositoryFavorites: { [otherProvider]: ['other-provider-id'], [provider]: ['org/repo'] } } });
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(loadWorkItems).not.toHaveBeenCalled();
+    expect(configureWorkBacklog).not.toHaveBeenCalled();
+    await wrapper.get('.cockpit-view__repositories button[title="repo"]').trigger('click');
+    await flushPromises();
+    expect(configureWorkBacklog).toHaveBeenCalledWith({ provider, configuration: { sourceId: 'org/repo', assigneeLogin: null, tagName: null } });
+    expect(loadWorkItems).toHaveBeenCalled();
   });
 
   it('remembers the explicit load-everything confirmation', async () => {
