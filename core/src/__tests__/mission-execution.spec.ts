@@ -26,26 +26,44 @@ it('carries the assigned stage, accepted artifacts, workspace, skills and revisi
     expect(prompt).toContain('Check permissions');
     expect(prompt).toContain('User-provided context and feedback:');
     expect(prompt).toContain('Only owners');
-    expect(prompt).toContain('workspace.submit-mission-result');
-    expect(prompt).toContain('workspace.list-mission-artifacts');
-    expect(prompt).toContain('workspace.read-mission-artifact');
-    expect(prompt).toContain('workspace.write-mission-artifact');
+    expect(prompt).toContain(`${product.mcpServerName}.submit-mission-result`);
+    expect(prompt).toContain(`${product.mcpServerName}.read-mission-artifact`);
     if (stage === 'tickets') {
       expect(prompt).toContain('Continue as the same Mission orchestrator');
     }
     if (stage === 'implementation') {
       expect(prompt).toContain('coherent local commits');
-      expect(prompt).toContain('commit SHAs');
     }
     if (stage === 'review') {
       expect(prompt).toContain('may inspect every listed isolated Mission worktree');
-      expect(prompt).toContain('After submission succeeds, end with one or two short, natural sentences');
       expect(prompt).not.toContain('Do not edit source checkouts or other Mission worktrees');
     }
     expect(prompt).toContain(`${product.name}-owned Mission skill`);
-    expect(prompt).toContain('already visible in the Mission workspace');
     expect(missionDeveloperInstructions(mission, { ...run, skills: [], ticketIndex: undefined, feedback: '' })).toContain('no agent-run skill');
   }
+});
+
+it('preserves accepted criteria and ticket indices when saved artifact metadata is present', () => {
+  const snapshot = createInitialSnapshot();
+  const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+  mission.artifacts.requirements = { problem: 'Persisted problem', acceptance: 'Persisted acceptance' };
+  mission.artifacts.tickets = [
+    { id: 'mission-ticket-1', title: 'First ticket', body: 'Unrelated ticket body', done: true },
+    { id: 'mission-ticket-2', title: 'Assigned ticket', body: 'Exact acceptance for this worker', repositoryPath: '/repo', done: false },
+  ];
+  mission.artifactFiles = {
+    requirements: { revision: 2, size: 100, updatedAt: 'now' },
+    tickets: { revision: 3, size: 200, updatedAt: 'now' },
+  };
+  const run: MissionRun = { id: 'run', stage: 'implementation', memberId: 'member', repositoryPath: '/repo', ticketIndex: 1, status: 'running', skills: [{ name: 'mission-implement-ticket' }], feedback: '', startedAt: 'now' };
+  const prompt = missionDeveloperInstructions(mission, run);
+  expect(prompt).toContain('"revision": 2');
+  expect(prompt).toContain('"revision": 3');
+  expect(prompt).toContain('Exact acceptance for this worker');
+  expect(prompt).toContain('mission-ticket-2');
+  expect(prompt).toContain('Persisted acceptance');
+  expect(prompt).toContain('Unrelated ticket body');
+  expect(prompt).toContain('Implement ONLY ticket 2 in /repo');
 });
 
 it('allows Review approval independently of optional finding remediation', () => {

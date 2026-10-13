@@ -49,7 +49,7 @@ export class DurableTaskService {
 
   instructions(worker: string): string | undefined {
     const task = this.tasks.find(task => task.workerAgentId === worker && !terminal(task));
-    return task ? `Durable assignment ${task.id}: ${task.assignment.title}\nDone when: ${task.assignment.doneWhen}\nSubmit the outcome with complete-task (summary, evidence, artifact references, caveats) before finish_turn. Do not send a completion chat message to the parent; ${product.name} delivers the saved result after your submitting turn succeeds. Do not continue mutating files after submission. End foreground tools and any background work you started before submitting; ${product.name} cannot certify background process quiescence. Completion does not authorize merging, publication or Mission progression. Task result notifications require no acknowledgment or reply.` : undefined;
+    return task ? `Durable assignment ${task.id}: ${task.assignment.title}\nDone when: ${task.assignment.doneWhen}\nLoad korus-delegation for the result procedure. Finish foreground/background work, submit with complete-task before finish_turn, and make no further mutations. ${product.name} delivers the result after this turn succeeds; no completion message is needed. Completion grants no merge, publication or Mission progression authority.` : undefined;
   }
 
   create(parent: Agent, input: CreateTaskInput, provision: (task: DelegatedTask) => Promise<Agent>): Promise<DelegatedTask> {

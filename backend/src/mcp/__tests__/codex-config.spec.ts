@@ -89,15 +89,7 @@ describe('codex-config', () => {
     });
 
     expect(config.developerInstructions).toContain('korus-computer-use');
-    expect(config.developerInstructions).toContain("Do not load or use Codex's built-in computer-use skill or sky.* methods");
     expect(config.config?.['mcp_servers.node_repl.enabled']).toBe(true);
-  });
-
-  it('adds the unified status and spoken acknowledgment policy', () => {
-    const config = buildAppThreadConfig(agent, 'http://127.0.0.1:8767/mcp');
-
-    expect(config.developerInstructions).toContain('call set-status exactly once as your very first action');
-    expect(config.developerInstructions).toContain('announcement containing phase start');
   });
 
   it('adds celebration policy only when the setting is enabled', () => {

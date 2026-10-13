@@ -5,27 +5,16 @@ description: Author inline HTML when explicitly requested or when visualization 
 
 # Inline HTML
 
-Use Markdown for ordinary text, lists, and tables unless the user asks for HTML.
-Use inline HTML when visualization or interaction materially helps the user
-understand or explore something. For design, architecture, and editable diagrams,
-prefer {{productName}} Visualize tools.
+Markdown for ordinary prose/tables. HTML for requested HTML or useful interaction; Visualize for editable diagrams.
 
-Emit a top-level artifact block outside Markdown fences, with the opening and
-closing tags on their own lines:
+Emit a top-level block outside fences, tags on separate lines:
 
 <artifact title="Optional title">
-<!doctype html><html><head><style>/* styles */</style></head><body><!-- content --><script>/* interaction */</script></body></html>
+<!doctype html><html><body>Content</body></html>
 </artifact>
 
-Use responsive, self-contained HTML/CSS/JS with your own colors and styles;
-the initial viewport is 360px tall, resizable, and scrolls internally.
-Inputs and script state survive streaming, but not source rewrites or remounts.
-Never put a literal closing artifact tag inside payload strings.
-
-The sandbox has no app bridge, native APIs, parent DOM, or storage access.
-Forms, popups, embedded frames, and API fetches are blocked. Prefer inline styles,
-scripts, and data images/fonts. If a library is needed, use a pinned HTTPS script
-with crossorigin="anonymous" and referrerpolicy="no-referrer"; external styles,
-images, and fonts are blocked. Keep sensitive data out of external requests:
-the sandbox is not a no-network guarantee. Downloaded HTML runs outside this
-sandbox when opened externally.
+- Responsive, self-contained HTML/CSS/JS; initial viewport 360px tall, resizable, internally scrollable.
+- Input/script state survives streaming, not source rewrites/remounts. No literal closing artifact tag inside payload strings.
+- Sandbox blocks app/native/parent-DOM/storage access, forms, popups, frames and API fetches.
+- Inline styles/scripts/data images/fonts. Libraries: pinned HTTPS scripts with crossorigin="anonymous" and referrerpolicy="no-referrer". External styles/images/fonts blocked.
+- Not a no-network guarantee: keep secrets out of external requests. Downloaded HTML runs outside this sandbox.

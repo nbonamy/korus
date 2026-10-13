@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DocumentWorkspaceService } from '../../document-workspace-service';
 import { product } from '@workspace/core/product';
+import { createMobileSimulatorToolModuleProvider } from '../mobile-simulator-tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentBackendDriver, BackendEvent } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -71,6 +72,53 @@ describe('AppMcpService', () => {
     enabled = false;
     expect((await read('korus-computer-use')).result.isError).toBe(true);
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('loads workflow procedures only when the caller has the corresponding tool family', async () => {
+    const snapshot = createInitialSnapshot();
+    const owner = snapshot.agents[0]!;
+    const browser = { open: vi.fn(), execute: vi.fn() };
+    const simulator = vi.fn();
+    service = new AppMcpService({ snapshot, browser, persistSnapshot: vi.fn(),
+      startAutomaticReview: vi.fn(),
+      toolModuleProviders: [createMobileSimulatorToolModuleProvider(simulator)] });
+    const url = await service.start();
+    for (const name of ['korus-delegation', 'korus-browser', 'korus-simulator', 'korus-automations', 'korus-review-launch']) {
+      const result = (await callTool(url, owner.id, 'read-skill', { name })).result;
+      expect(result).toMatchObject({ isError: false, structuredContent: { name, loaded: true } });
+      expect(result.content[0].text).not.toMatch(/\{\{(?:productName|mcpServerName)\}\}/);
+    }
+    expect(browser.open).not.toHaveBeenCalled();
+    expect(simulator).not.toHaveBeenCalled();
+
+    owner.sessionKind = 'quickChat';
+    expect((await callTool(url, owner.id, 'read-skill', { name: 'korus-review-launch' })).result.isError).toBe(true);
+    expect((await callTool(url, owner.id, 'read-skill', { name: 'korus-automations' })).result.isError).toBe(false);
+    owner.sessionKind = undefined;
+
+    const context = service.createReviewToolContext(owner.id, 'review-skill-context', {
+      finishReviewRound: vi.fn(), reportFinding: vi.fn(), updateFinding: vi.fn(), deleteFinding: vi.fn(),
+    });
+    const readReview = async (contextUrl: string) => (await postJson(contextUrl, {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'read-skill', arguments: { name: 'korus-reviewer' } },
+    })).result;
+    expect((await readReview(`${url}?agentId=${owner.id}`)).isError).toBe(true);
+    expect(await readReview(context.url)).toMatchObject({ isError: false, structuredContent: { name: 'korus-reviewer', loaded: true } });
+    const otherUrl = new URL(context.url);
+    otherUrl.searchParams.set('agentId', snapshot.agents[1]!.id);
+    expect((await readReview(otherUrl.toString())).isError).toBe(true);
+    service.closeReviewToolContext(context.id);
+    expect((await readReview(context.url)).isError).toBe(true);
+  });
+
+  it('does not serve procedures for absent desktop or scheduling adapters', async () => {
+    const snapshot = createInitialSnapshot();
+    service = new AppMcpService({ snapshot });
+    const url = await service.start();
+    for (const name of ['korus-browser', 'korus-simulator', 'korus-automations', 'korus-review-launch']) {
+      expect((await callTool(url, snapshot.agents[0]!.id, 'read-skill', { name })).result.isError).toBe(true);
+    }
   });
 
   it('returns recoverable round-count errors over MCP and persists an accepted inspection', async () => {

@@ -633,13 +633,7 @@ describe('ClaudeBackendDriver', () => {
       allowedTools: [`mcp__${product.mcpServerName}__*`],
       appendSystemPrompt: expect.stringContaining(`Use the ${product.mcpServerName} MCP server for agent collaboration.`),
     });
-    expect(transport.startTurn.mock.calls[0]?.[0].appendSystemPrompt).toContain(
-      'call set-status exactly once as your very first action',
-    );
-    expect(transport.startTurn.mock.calls[0]?.[0].appendSystemPrompt).toContain(
-      'announcement containing phase start',
-    );
-    expect(transport.startTurn.mock.calls[0]?.[0].appendSystemPrompt).not.toContain('call celebrate');
+    expect(transport.startTurn.mock.calls[0]?.[0].appendSystemPrompt).not.toContain('celebration: true');
     expect(transport.startTurn.mock.calls[0]?.[0].appendSystemPrompt).toContain('<context>\nMission contract\n</context>');
     const developerInstructions = transport.startTurn.mock.calls[0]![0].appendSystemPrompt!;
     expect(developerInstructions.indexOf(`Use the ${product.mcpServerName} MCP server`))

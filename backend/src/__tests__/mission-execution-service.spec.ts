@@ -240,7 +240,8 @@ describe('mission execution', () => {
     expect(apiPrompt).toContain('finding-api-1');
     expect(apiPrompt).toContain('finding-api-2');
     expect(apiPrompt).toContain('Repository: /repo/api\nMission worktree: /mission/api');
-    expect(apiPrompt).toContain('Commit the verified remediation in one or more coherent local commits');
+    expect(apiPrompt).toContain('mission-review');
+    expect(apiPrompt).toContain('local commits are authorized');
     expect(apiPrompt).not.toContain('finding-web');
     expect(webPrompt).toContain('finding-web');
     expect(webPrompt).toContain('Repository: /repo/web\nMission worktree: /mission/web');

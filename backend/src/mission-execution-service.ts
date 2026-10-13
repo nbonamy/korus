@@ -721,6 +721,6 @@ function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFindin
       finding.body,
       '',
     ]),
-    'Apply each fix only inside the Mission worktree mapped to its repository. Keep fixes focused and verify each one. Commit the verified remediation in one or more coherent local commits before marking findings fixed; do not push. After each finding is fixed and committed, call workspace.update-mission-review-finding with its ID, status "fixed", and concise verification evidence. Do not submit another Review result or start another review round.',
+    'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
   ].join('\n');
 }

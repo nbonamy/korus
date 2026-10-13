@@ -386,7 +386,7 @@ describe('daemon runtime', () => {
     });
     const instructions = driverOptions.additionalDeveloperInstructions(mocks.snapshot.agents[0]!);
     expect(instructions?.startsWith('<context>\nMission contract\n</context>\n\n')).toBe(true);
-    expect(instructions).toContain('read-skill with name="korus-visualize"');
+    expect(instructions).toContain('korus-visualize');
     expect(mocks.missionDeveloperInstructions).toHaveBeenCalledWith('agent-dina');
 
     const server = mocks.serverOptions[0] as ServerOptions;

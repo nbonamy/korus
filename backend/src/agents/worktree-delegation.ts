@@ -1,12 +1,7 @@
 import { product } from '@workspace/core/product';
 const delegationInstructions = [
-  `Delegate this task to a new ${product.name} co-agent in a dedicated worktree, not an engine-native subagent.`,
-  'Use the current conversation to write a self-contained handoff with the task, decisions, relevant context, constraints, and acceptance criteria.',
-  'Include guidance to commit frequently at coherent, reviewable milestones, keeping each behavior change and its tests together. Keep commits local; pushing or merging requires explicit user approval.',
-  'State in the handoff that the user has explicitly approved this implementation, so the co-agent starts working straight away instead of asking for confirmation or proposing a plan first.',
-  'Choose an appropriate branch name and use the create-agent tool with createWorktree set to true, a concise user-visible task as prompt, and the full handoff as instructions.',
-  'If no specific task is supplied, delegate the work just agreed in this conversation. If the task or repository is unclear, ask before creating the co-agent.',
-  'Have the co-agent report back when ready for review. Keep this conversation and the current agent open; do not implement the delegated work here or merge it automatically.',
+  'Load korus-delegation through read-skill and delegate the specified task, or the work just agreed in this conversation.',
+  `The user requests a new ${product.name} co-agent in a dedicated worktree. Preserve the agreed task and its authority: implementation approval must not be invented for investigation or discussion. Keep commits local; no push or merge is authorized.`,
 ].join(' ');
 
 export const WORKTREE_DELEGATION_PROMPT = `Delegate this task to a new agent in a dedicated worktree.\n\n<context>\n${delegationInstructions}\n</context>`;
