@@ -1,6 +1,16 @@
 <template>
-  <button class="app-button app-button--secondary" type="button" :aria-label="$t('runProfiles.title')" @click="open">{{ $t('runProfiles.run') }}</button>
-  <FormDialog :model-value="visible" :title="$t('runProfiles.title')" :subtitle="`${hostLabel} · ${catalog?.worktree ?? agent.folder ?? ''}`" width="680px" @update:model-value="setVisible">
+  <div class="run-profiles-control">
+    <el-popover v-model:visible="menuOpen" placement="bottom-end" trigger="click" :teleported="false" :width="300" :show-arrow="false" popper-class="app-popover">
+      <template #reference>
+        <button class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')" aria-haspopup="menu" :aria-expanded="menuOpen">
+          <PlayerPlayIcon aria-hidden="true" /><ChevronDown aria-hidden="true" />
+        </button>
+      </template>
+      <AppMenu class="app-menu--embedded run-profiles-control__menu" :ariaLabel="$t('runProfiles.title')" :items="menuItems" @select="selectAction" />
+    </el-popover>
+  </div>
+  <RunProfileImport v-if="visible && importing" :agent-id="agent.id" :profiles="catalog?.profiles ?? []" :subtitle="`${hostLabel} · ${catalog?.worktree ?? agent.folder ?? ''}`" @done="importing = false; refresh()" @cancel="importing = false; refresh()" />
+  <FormDialog v-if="!importing" :model-value="visible" :title="$t(confirmation ? 'runProfiles.runCommand' : 'runProfiles.title')" :subtitle="`${hostLabel} · ${catalog?.worktree ?? agent.folder ?? ''}`" width="680px" @update:model-value="setVisible">
     <div class="run-profiles__body">
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loading && !catalog" role="status">{{ $t('runProfiles.loading') }}</p>
@@ -45,26 +55,36 @@
     </template>
     </div>
     <template #footer>
-      <button v-if="editor || confirmation" class="app-button app-button--tertiary" :disabled="busy" @click="editor = null; confirmation = null">{{ $t('common.cancel') }}</button>
-      <button v-else class="app-button app-button--tertiary" @click="setVisible(false)">{{ $t('common.close') }}</button>
+      <button v-if="!importing && (editor || confirmation)" class="app-button app-button--tertiary" :disabled="busy" @click="editor = null; confirmation = null">{{ $t('common.cancel') }}</button>
+      <button v-else-if="!importing" class="app-button app-button--tertiary" @click="setVisible(false)">{{ $t('common.close') }}</button>
       <button v-if="editor" class="app-button app-button--primary" form="run-profile-editor" type="submit" :disabled="busy || !editor.name.trim() || !editor.command.trim()">{{ $t('runProfiles.save') }}</button>
       <button v-else-if="confirmation" class="app-button app-button--primary" :disabled="busy" @click="start">{{ $t('runProfiles.runCommand') }}</button>
-      <button v-else class="app-button app-button--primary" :disabled="busy" @click="edit()">{{ $t('runProfiles.new') }}</button>
+      <template v-else-if="!importing">
+        <button class="app-button app-button--secondary" :disabled="busy" @click="importing = true">{{ $t('runProfiles.importActions') }}</button>
+        <button class="app-button app-button--primary" :disabled="busy" @click="edit()">{{ $t('runProfiles.new') }}</button>
+      </template>
     </template>
   </FormDialog>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, markRaw, onBeforeUnmount, ref, watch } from 'vue';
 import type { Agent } from '@workspace/core/contracts';
 import type { RunProfile, RunProfileCatalog, RunProfileInput } from '@workspace/core/run-profiles';
 import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
+import AppMenu from '../shared/menu/AppMenu.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
+import { ChevronDown, LogsIcon, PlayerPlayIcon, SettingsIcon, X } from '../shared/icons/app-icons';
+import { translate } from '../i18n';
+import RunProfileImport from './RunProfileImport.vue';
 
 const props = defineProps<{ agent: Agent; hostLabel: string; previewAvailable: boolean }>();
 const emit = defineEmits<{ preview: [url: string]; visibility: [visible: boolean] }>();
 const visible = ref(false);
+const menuOpen = ref(false);
+const importing = ref(false);
 const catalog = ref<RunProfileCatalog | null>(null);
 const editor = ref<RunProfileInput | null>(null);
 const confirmation = ref<{ profile: RunProfile; cwd: string } | null>(null);
@@ -76,11 +96,32 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let revision = 0;
 let requestId = 0;
 
+const menuItems = computed<AppMenuItem[]>(() => [
+  ...(catalog.value?.profiles ?? []).map(profile => ({ type: 'action' as const, id: `run:${profile.id}`, label: profile.name, description: profile.command, icon: markRaw(PlayerPlayIcon), disabled: busy.value || running(profile.id) || !catalog.value?.targets[profile.id]?.cwd })),
+  ...(!catalog.value?.profiles.length ? [{ type: 'action' as const, id: 'empty', label: translate(loading.value ? 'runProfiles.loading' : 'runProfiles.noActions'), disabled: true }] : []),
+  ...(catalog.value?.runs ?? []).flatMap(run => [
+    { type: 'action' as const, id: `output:${run.id}`, label: translate('runProfiles.outputNamed', { name: catalog.value?.profiles.find(p => p.id === run.profileId)?.name ?? run.command }), icon: LogsIcon },
+    ...(run.state === 'running' ? [{ type: 'action' as const, id: `stop:${run.id}`, label: translate('runProfiles.stopNamed', { name: catalog.value?.profiles.find(p => p.id === run.profileId)?.name ?? run.command }), icon: X, disabled: busy.value }] : []),
+  ]),
+  ...(error.value ? [{ type: 'action' as const, id: 'error', label: error.value, disabled: true }] : []),
+  { type: 'separator', id: 'configure-separator' },
+  { type: 'action', id: 'configure', label: translate('runProfiles.configure'), icon: SettingsIcon },
+]);
+
+function selectAction(id: string) {
+  menuOpen.value = false;
+  if (id === 'configure') { importing.value = false; editor.value = null; confirmation.value = null; visible.value = true; void refresh(); return; }
+  if (id.startsWith('run:')) {
+    const profile = catalog.value?.profiles.find(profile => profile.id === id.slice(4));
+    if (profile) { review(profile); visible.value = true; }
+  } else if (id.startsWith('output:')) { outputId.value = id.slice(7); visible.value = true; void refresh(); }
+  else if (id.startsWith('stop:')) { outputId.value = id.slice(5); visible.value = true; void stop(id.slice(5)); }
+}
+
 function api() { if (!appApi) throw new Error('Connection unavailable. Reconnect to the owning host.'); return appApi; }
 function running(id: string) { return catalog.value?.runs.some(run => run.profileId === id && run.state === 'running'); }
-function reset() { revision++; requestId++; clearTimeout(timer); catalog.value = null; editor.value = null; confirmation.value = null; outputId.value = null; error.value = ''; }
+function reset() { revision++; requestId++; clearTimeout(timer); catalog.value = null; editor.value = null; confirmation.value = null; outputId.value = null; importing.value = false; error.value = ''; }
 function setVisible(value: boolean) { visible.value = value; if (!value) reset(); }
-async function open() { reset(); visible.value = true; await refresh(); }
 async function refresh() {
   const current = revision;
   const request = ++requestId;
@@ -88,13 +129,13 @@ async function refresh() {
   loading.value = true;
   try {
     const result = await api().getRunProfiles(agentId);
-    if (current === revision && request === requestId && visible.value) catalog.value = result;
+    if (current === revision && request === requestId && (visible.value || menuOpen.value || busy.value)) catalog.value = result;
   } catch (cause) { if (current === revision && request === requestId) error.value = (cause as Error).message; }
   finally {
     if (current === revision && request === requestId) {
       loading.value = false;
       clearTimeout(timer);
-      if (visible.value) timer = setTimeout(() => void refresh(), 1000);
+      if (visible.value || menuOpen.value) timer = setTimeout(() => void refresh(), 1000);
     }
   }
 }
@@ -129,11 +170,17 @@ async function start() {
 async function stop(runId: string) { await act(id => api().stopProfileRun(id, runId)); }
 function preview(url: string) { if (props.previewAvailable) { setVisible(false); emit('preview', url); } }
 watch(visible, value => emit('visibility', value));
-watch(() => props.agent.id, () => { setVisible(false); });
+watch(menuOpen, value => { if (value) { error.value = ''; void refresh(); } else if (!visible.value) clearTimeout(timer); });
+watch(() => props.agent.id, () => { menuOpen.value = false; setVisible(false); });
 onBeforeUnmount(() => { revision++; clearTimeout(timer); emit('visibility', false); });
 </script>
 
 <style scoped>
+.run-profiles-control { display: inline-flex; -webkit-app-region: no-drag; }
+.run-profiles-control__trigger { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-lowest); color: var(--color-text-muted); cursor: pointer; -webkit-app-region: no-drag; }
+.run-profiles-control__trigger:hover { background: var(--color-surface-low); color: var(--color-text); }
+.run-profiles-control__trigger svg { width: var(--icon-md); height: var(--icon-md); }
+.run-profiles-control__menu { max-height: 60vh; overflow: auto; }
 .run-profiles__body { max-height: 60vh; overflow: auto; }
 .run-profiles__list { list-style: none; padding: 0; margin: 0; }
 .run-profiles__list li { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }

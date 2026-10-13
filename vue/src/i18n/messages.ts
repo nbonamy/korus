@@ -4,6 +4,10 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     runProfiles: {
+      configure: 'Configure…', noActions: 'No actions configured', outputNamed: 'Output: {name}', stopNamed: 'Stop: {name}',
+      importActions: 'Import actions…', importHelp: 'Choose actions from package.json, Makefiles, or justfiles. Importing saves profiles without running them.',
+      scan: 'Find actions', scanning: 'Finding actions…', noImports: 'No scripts or targets found in this directory.', importCandidates: 'Actions to import',
+      alreadyImported: 'Already imported', importSelected: 'Import {count} actions',
       title: 'Run profiles', run: 'Run', loading: 'Loading profiles…', name: 'Name', command: 'Command',
       credentialsHelp: 'Use credentials configured privately on this host. Keep secret values out of commands.',
       commandExample: 'npm run dev', directory: 'Working directory', directoryHelp: 'Relative to the selected worktree.',
