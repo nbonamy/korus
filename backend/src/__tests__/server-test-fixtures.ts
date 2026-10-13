@@ -51,9 +51,12 @@ export function createTestSnapshot(): AppSnapshot {
       cockpitAgentViewMode: 'teams',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'conversation',
+      worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: {
         hotkey: 'command',

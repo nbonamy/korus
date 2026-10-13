@@ -9,6 +9,18 @@ import { configureAppClient } from '../../platform-api';
 import { setElectronTestClient } from '../../test/client';
 
 describe('SettingsView', () => {
+  it('places Workflows in Workspace and opens its Delegation section with saved preferences', () => {
+    setElectronTestClient({});
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'workflows', settings: defaultThemeSettings,
+      generalSettings: { ...defaultGeneralSettings, worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Run focused tests' },
+    } });
+    const workspace = wrapper.findAll('.el-menu-item-group').find(group => group.get('.el-menu-item-group__title').text() === 'Workspace')!;
+    expect(workspace.text()).toContain('Workflows');
+    expect(wrapper.get('h2').text()).toBe('Workflows');
+    expect(wrapper.findAll('h3').map(heading => heading.text())).toContain('Delegation');
+    expect((wrapper.get('[aria-label="Delegation instructions"]').element as HTMLTextAreaElement).value).toBe('Run focused tests');
+  });
   it('uses daemon availability for gated settings and falls back from a saved unavailable tab', async () => {
     setElectronTestClient({});
     const connectAntigravity = vi.fn();
@@ -65,6 +77,7 @@ describe('SettingsView', () => {
       'Claude Code',
       'Plugins',
       'Git',
+      'Workflows',
       'Integrations',
       'Connections',
     ]);

@@ -392,6 +392,7 @@ describe('useAppState', () => {
       'remoteControl.statusChanged',
       'provider.authenticationChanged',
       'workspace.fileActivityDetected',
+      'git.branchWorkProgress',
       'git.operationProgress',
       'mission.implementationStartProgress',
       'models.changed',
@@ -433,6 +434,13 @@ describe('useAppState', () => {
       type: 'provider.authenticationChanged',
       payload: { kind: 'claude', connected: false, state: { loggedIn: false } },
       occurredAt: '2026-06-05T00:00:04.000Z',
+    });
+    listeners[0]?.({
+      seq: 5,
+      agentId: 'agent-dina',
+      type: 'git.branchWorkProgress',
+      payload: { id: 'branch-work-1', agentId: 'agent-dina', branchName: 'feat/example', state: 'running', phase: 'movingChanges' },
+      occurredAt: '2026-06-05T00:00:05.000Z',
     });
 
     expect(state.snapshot.value).toBe(originalSnapshot);

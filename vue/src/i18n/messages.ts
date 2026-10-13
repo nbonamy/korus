@@ -3,7 +3,29 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    commands: {
+      title: 'Command Palette', search: 'Search commands…', empty: 'No commands available in this context.', noResults: 'No matching commands.',
+      disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
+      groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
+      cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
+      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', gitAction: 'Git: {action}',
+    },
+    shortcuts: {
+      title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
+      groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
+      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Edit agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
+    },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
+    branchWork: {
+      menu: 'Branch…', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
+      loading: 'Loading…', branchName: 'Branch name', branchPlaceholder: 'Branch name…',
+      resume: 'Resume {branch}', submit: 'Branch', working: 'Branching…', retry: 'Retry', refresh: 'Refresh', close: 'Close', cancel: 'Cancel',
+      progressEyebrow: 'Branch current work', progressTitle: 'Preparing your new worktree', progressReady: '{branch} is ready', progressFailed: 'Worktree setup needs attention',
+      progressWorktree: 'Create the worktree', progressChanges: 'Move your changes', progressChangesDetail: 'Keep staged and unstaged changes uncommitted.',
+      progressAgent: 'Prepare the new agent', progressAgentDetail: 'Ready to continue in the new worktree.', progressSource: 'Reset the current branch', progressSourceDetail: 'Restore the files that were moved.',
+      completed: 'Changes moved. Open the new agent to continue.', recovery: 'The move needs recovery. Your work is preserved.',
+      backups: 'Source recovery copies: {folder}', retained: 'Retained in the source checkout:', inspect: 'Open agent',
+    },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',
@@ -74,9 +96,9 @@ export const messages = {
       currentModel: 'Current model', currentEffort: 'Current effort', defaultModel: 'Default model', defaultEffort: 'Default effort',
       independent: 'Automatic mode uses an independent reviewer for each round.',
       currentThreadUnavailable: 'Not available for automatic reviews',
-      stop: 'Stop automatic review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
+      switchToManual: 'Switch to manual', stopReview: 'Stop review', paused: 'Automatic review paused', running: 'Automatic · round {round} of {max}',
       modelError: 'Could not load models. You can use the default model or retry.', retry: 'Retry models',
-      manual: 'Continue manually',
+      manual: 'Manual review',
     },
     workAuthorization: {
       copyCode: 'Copy {provider} device code {code}', step2: 'Step 2: Open {provider}',
@@ -475,6 +497,14 @@ export const messages = {
       sendPromptPlaceholder: 'Send prompt…',
       workingPlaceholder: 'Working…',
     },
+    backlogFavorites: {
+      heading: 'Favorites',
+      saveFailed: 'Could not save favorites. Please try again.',
+      add: 'Add {repository} to favorites',
+      remove: 'Remove {repository} from favorites',
+      reorder: 'Reorder {repository}',
+      dragHint: 'Drag to reorder, or use the up and down arrow keys',
+    },
     startWork: {
       addProject: 'Add project',
       addProjectFrom: 'Add project from',
@@ -598,6 +628,25 @@ export const messages = {
       git: {
         pullRequestChangesRequired: 'This branch has no committed changes. Commit your work before creating a pull request.',
       },
+    },
+    workflows: {
+      title: 'Workflows',
+    },
+    delegation: {
+      title: 'Delegation',
+      startingContext: 'Starting context',
+      conversation: 'Fork',
+      handoff: 'Handoff',
+      forkDescription: 'Keep the conversation’s context and decisions. Falls back to a handoff when switching providers or if the current agent doesn’t support forking.',
+      handoffDescription: 'Start a fresh conversation with a task brief and your delegation instructions.',
+      instructions: 'Delegation instructions',
+      instructionsDescription: 'Used for worktree assignments. Your per-task instructions take priority.',
+      instructionsPlaceholder: 'e.g. Run focused tests before handing work back',
+      submit: 'Delegate to a worktree',
+      agentUnavailable: 'The source agent is unavailable. Reopen the conversation to delegate.',
+      taskInstructions: 'Task-specific instructions',
+      taskInstructionsDescription: 'Optional directions for this assignment. They take precedence over saved delegation preferences.',
+      taskInstructionsPlaceholder: 'Add directions for this assignment…',
     },
     agentCreationProgress: {
       eyebrow: 'Delegating work',

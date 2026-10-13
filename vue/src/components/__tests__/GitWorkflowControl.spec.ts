@@ -1,9 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessage } from 'element-plus';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import GitWorkflowControl from '../GitWorkflowControl.vue';
 import type { Agent, AgentGitStatus, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
+import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
 import { stubElectronTestWindow } from '../../test/client';
 import '../../styles/base.css';
@@ -16,6 +17,41 @@ function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('GitWorkflowControl', () => {
+  beforeEach(() => window.localStorage.removeItem('app:mergeCleanup'));
+  afterEach(() => window.localStorage.removeItem('app:mergeCleanup'));
+  afterEach(() => vi.useRealTimers());
+  it('opens the branch transfer dialog through the Git menu without starting a transfer', async () => {
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
+    const branchCurrentWork = vi.fn();
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+    const wrapper = mountControl(); await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    expect(wrapper.find('[role="dialog"] input[name="branch"]').exists()).toBe(true);
+    expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
+    expect(branchCurrentWork).not.toHaveBeenCalled(); wrapper.unmount();
+  });
+  it('opens the new agent through shell navigation after worktree progress completes', async () => {
+    vi.useFakeTimers();
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const branchCurrentWork = vi.fn(async (_agentId: string, _input: BranchWorkInput) => { await pending; return { state: 'completed' as const, folder: '/worktree', branchName: 'feature', agentId: 'worker', retainedPaths: [] }; });
+    let publish!: (event: MainToRendererEvent) => void;
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork, onEvent: listener => { publish = listener; return () => undefined; } } });
+    const wrapper = mountControl(); await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    await wrapper.get('input[name="branch"]').setValue('feature');
+    await submitButton(wrapper, 'Branch').trigger('click'); await flushPromises();
+    publish({ type: 'git.branchWorkProgress', agentId: agent.id, occurredAt: '', seq: 1, payload: { id: branchCurrentWork.mock.calls[0]![1].requestId, agentId: agent.id, branchName: 'feature', state: 'running', phase: 'creatingAgent' } });
+    await flushPromises();
+    expect(wrapper.findAll('.staged-operation-progress li')[2]!.classes()).toContain('is-active');
+    finish(); await flushPromises();
+    vi.advanceTimersByTime(1); await flushPromises();
+    vi.advanceTimersByTime(600); await flushPromises();
+    expect(wrapper.emitted('inspect-agent')).toStrictEqual([['worker']]); wrapper.unmount();
+  });
   it('opens repository pruning from the final menu section without deleting anything', async () => {
     const getAgentGitPrune = vi.fn(async () => ({ repository: 'repo', baseBranch: 'main', groups: [], unavailableRemotes: [] }));
     const pruneAgentGit = vi.fn();
@@ -293,6 +329,7 @@ describe('GitWorkflowControl', () => {
     )).toStrictEqual([
       'Revert',
       'Commit',
+      'Branch…',
       '---',
       'Pull',
       'Push',
@@ -555,7 +592,11 @@ describe('GitWorkflowControl', () => {
     expect(choices[0]?.classes()).toContain('git-workflow-control__merge-option--selected');
     expect(wrapper.findAllComponents({ name: 'ElSwitch' })).toHaveLength(2);
     expect(wrapper.findAll('.git-workflow-control__merge-cleanup')[1]?.text()).toBe('Delete local and origin branches');
-    expect(wrapper.findAllComponents({ name: 'ElSwitch' })[1]?.props('disabled')).toBe(true);
+    const cleanup = wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
+    expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, true]);
+    await cleanup[0]!.setValue(false);
+    expect(cleanup[1]!.element.checked).toBe(false);
+    expect(cleanup[1]!.element.disabled).toBe(true);
     await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(true);
     expect(wrapper.findAllComponents({ name: 'ElSwitch' })[1]?.props('disabled')).toBe(false);
     await wrapper.findAllComponents({ name: 'ElSwitch' })[1]!.setValue(true);
@@ -578,6 +619,39 @@ describe('GitWorkflowControl', () => {
     });
   });
 
+  it('remembers cleanup choices across dialog and agent recreation without primary checkouts overwriting them', async () => {
+    const openMerge = async (wrapper: ReturnType<typeof mountControl>) => {
+      await flushPromises();
+      await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Merge')!.trigger('click');
+      await flushPromises();
+    };
+    const first = mountControl({ mergeBranch: vi.fn() });
+    await openMerge(first);
+    await first.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')[1]!.setValue(false);
+    await submitButton(first, 'Cancel').trigger('click');
+    first.unmount();
+
+    const primary = mountControl({ getWorkflow: async () => ({ ...workflow, isLinkedWorktree: false }), mergeBranch: vi.fn() });
+    await openMerge(primary);
+    expect(primary.find('.git-workflow-control__merge-cleanup').exists()).toBe(false);
+    primary.unmount();
+
+    const mergeBranch = vi.fn(async () => workflow);
+    const next = mountControl({ agent: { ...agent, id: 'next-agent' }, mergeBranch });
+    await openMerge(next);
+    const cleanup = next.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
+    expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, false]);
+    await cleanup[0]!.setValue(false);
+    await submitButton(next, 'Cancel').trigger('click');
+    await openMerge(next);
+    expect(next.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]').map(control => control.element.checked)).toStrictEqual([false, false]);
+    await submitButton(next, 'Merge').trigger('click');
+    await flushPromises();
+    expect(mergeBranch).toHaveBeenCalledExactlyOnceWith('next-agent', { strategy: 'merge', deleteBranch: false, deleteWorktree: false, confirmed: true });
+    next.unmount();
+  });
+
   it('omits worktree cleanup when the agent uses the primary checkout', async () => {
     const primaryWorkflow = { ...workflow, isLinkedWorktree: false };
     const wrapper = mountControl({
@@ -593,6 +667,23 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.text()).not.toContain('Delete worktree after merging');
     expect(wrapper.text()).not.toContain('Delete local and origin branches');
     expect(wrapper.findAllComponents({ name: 'ElSwitch' })).toHaveLength(0);
+  });
+
+  it.each(['getItem', 'setItem'] as const)('keeps merging usable when preference %s fails', async method => {
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => { throw new Error('Storage unavailable'); });
+    const mergeBranch = vi.fn(async () => workflow);
+    const wrapper = mountControl({ mergeBranch });
+    await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Merge')!.trigger('click');
+    await flushPromises();
+    const cleanup = wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
+    expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, true]);
+    await cleanup[0]!.setValue(false);
+    await submitButton(wrapper, 'Merge').trigger('click');
+    await flushPromises();
+    expect(mergeBranch).toHaveBeenCalledExactlyOnceWith(agent.id, { strategy: 'merge', deleteBranch: false, deleteWorktree: false, confirmed: true });
+    wrapper.unmount();
   });
 
   it('shows merge progress and passive success before closing automatically', async () => {
@@ -833,7 +924,7 @@ describe('GitWorkflowControl', () => {
     await submitButton(merge, 'Merge').trigger('click');
     await flushPromises();
     expect(mergeBranch).toHaveBeenCalledWith('agent-1', {
-      strategy: 'merge', deleteBranch: false, deleteWorktree: false, reportBack: true, confirmed: true,
+      strategy: 'merge', deleteBranch: true, deleteWorktree: true, reportBack: true, confirmed: true,
     });
     expect(merge.emitted('delivery-complete')).toStrictEqual([[{ kind: 'merge' }]]);
   });

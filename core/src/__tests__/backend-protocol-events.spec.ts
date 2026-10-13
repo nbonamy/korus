@@ -316,6 +316,10 @@ function createFixtures(): EventFixtures {
         ticketCount: 3,
       },
     },
+    'git.branchWorkProgress': {
+      ...agent, type: 'git.branchWorkProgress',
+      payload: { id: 'branch-move-1', agentId: 'agent-1', branchName: 'feature/work', state: 'running', phase: 'movingChanges' },
+    },
     'git.operationProgress': {
       ...agent,
       type: 'git.operationProgress',

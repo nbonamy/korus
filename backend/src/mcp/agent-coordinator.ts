@@ -130,6 +130,7 @@ export type McpCreateAgentInput = {
   prompt?: string;
   instructions?: string;
   reasoningEffort?: string;
+  startingContext?: import('@workspace/core/delegation-context').DelegationStartingContext;
   repoPath: string;
 };
 
@@ -142,6 +143,7 @@ export type McpCreateAgentResponse = {
   branchName?: string;
   folder?: string;
   promptSubmitted?: boolean;
+  delegationContext?: import('@workspace/core/delegation-context').DelegationContext;
   message: string;
 };
 
@@ -511,6 +513,7 @@ export class AppMcpAgentCoordinator {
       reasoningEffort: input.reasoningEffort?.trim() || undefined,
       repoPath: input.repoPath.trim(),
       createWorktree: input.createWorktree,
+      startingContext: input.startingContext,
       branchName: input.branchName?.trim(),
       destinationPath: input.destinationPath?.trim() || undefined,
       teamId: agent.teamId,

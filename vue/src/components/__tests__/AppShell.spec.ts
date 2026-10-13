@@ -1185,7 +1185,13 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
-    if (label === 'Delegate') expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate');
+    if (label === 'Delegate') {
+      expect(sendPromptAction).not.toHaveBeenCalled();
+      await wrapper.get('[aria-label="Task-specific instructions"]').setValue('Keep the API stable');
+      await wrapper.get('.app-form-dialog__footer .app-button--primary').trigger('click');
+      await flushPromises();
+      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate', { delegation: { startingContext: 'handoff', instructions: 'Keep the API stable' } });
+    }
     else expect(sendPromptAction).not.toHaveBeenCalled();
     expect(wrapper.get('[role="textbox"][contenteditable]').text()).toBe(draft.text);
     expect(wrapper.emitted('update:composerState')).toBeUndefined();

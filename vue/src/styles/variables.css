@@ -19,6 +19,7 @@
   --color-on-secondary-container: #1159BC;
 
   /* Semantic */
+  --color-bookmark-saved: #EAB308;
   --color-error: #D5351F;
   --color-on-error: #FFFFFF;
   --color-error-container: #FEF3F2;
@@ -187,6 +188,7 @@ html.dark {
   --shell-glass-opacity: 88%;
   --color-shell-collapsed-header: var(--color-shell-main);
   /* Semantic */
+  --color-bookmark-saved: #FACC15;
   --color-error: #FF8A78;
   --color-on-error: #3D0B05;
   --color-error-container: #4A1710;

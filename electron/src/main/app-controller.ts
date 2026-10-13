@@ -617,6 +617,9 @@ export class AppController {
     ipc.handle(ipcChannels.commitCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewCommit, { agentId, sessionId }))
     ));
+    ipc.handle(ipcChannels.switchCodeReviewToManual, async (_event, agentId: string, sessionId: string) => (
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewManual, { agentId, sessionId }))
+    ));
     ipc.handle(ipcChannels.discardCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewDiscard, { agentId, sessionId }))
     ));

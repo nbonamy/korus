@@ -130,6 +130,9 @@ Rules:
 - Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
   rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- Within a supported schema version, additive fields do not block loading agents,
+  settings, tasks, document workspaces or visualizations. Known field types and task
+  lifecycle invariants remain validated; command inputs retain their own strict validation.
 - Agents with an unknown engine kind are excluded from runtime state and logged.
   The store preserves their opaque records, team membership, work assignments and
   subagent data across ordinary saves; it never converts them to another provider.
@@ -210,6 +213,19 @@ backend locations.
 
 ## Source Repositories And Worktrees
 
+Branch moves capture all tracked and untracked changes against a source HEAD,
+preserving staging and working-file contents separately. Ignored files stay in the
+source checkout. The backend saves a private recovery journal under the repository's
+common Git directory and protects both captured trees with private refs until delivery.
+Moves create an idle agent without committing or starting a task; worktree setup and
+environment copying are disabled. Source cleanup requires a complete destination
+snapshot and persisted agent. Newer source edits remain in place. Path cleanup holds
+the source index lock and retains source file inodes as private recovery copies,
+protecting edits through already-open file descriptors. Retries reuse the reserved
+agent identity and never overwrite changed destination files. Move progress is
+backend-authored and correlated by request and source agent; it remains renderer-only
+state and does not start an agent conversation.
+
 The source folder is a backend-location convenience setting, not team membership
 and not an agent setting. It is auto-detected once on a fresh state; after the user
 clears or changes it, Korus never re-detects.
@@ -232,6 +248,23 @@ clears or changes it, Korus never re-detects.
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+- Worktree delegation preferences belong to app settings. A delegation can
+  override its starting context and add task instructions. App-submitted user
+  overrides retain their provenance through prompt admission and persistence.
+  Explicit per-task user directions override saved user preferences; both outrank
+  agent-generated assignment guidance within the user's authorized scope.
+  User directions are frozen in the durable task and worker metadata, and supplied
+  once in the worker request's hidden context. The visible prompt contains only
+  the task. Agent-generated assignment guidance is
+  contextual task data and cannot present itself as a direct user override.
+  Assignment instructions are frozen before durable startup and never grant
+  publication or merge authority.
+- Same-provider worktree delegation uses an optional driver-owned native fork,
+  rebound to the worker's identity, folder and provider configuration. A busy
+  source uses a completed native boundary when supported. Cross-provider,
+  unsupported or refused forks start a fresh handoff with persisted
+  context metadata. Korus never replays a transcript to imitate a fork.
+  Independent code reviewers always start fresh.
 - Korus-created pull requests are tracked on their agent; a runtime scheduler
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree
@@ -280,6 +313,8 @@ separate from worker agents and provider conversations. They are stored in
   progression.
 - Result delivery batches are persisted before parent prompt acceptance and use
   normal prompt admission, waiting while the parent is busy or awaiting input.
+  The prompt presents readable task outcomes; tracking markers, coordination
+  instructions and complete structured results remain in hidden context.
   Explicit interruption, a missing parent, or a restart blocks automatic wakeup.
   Acceptance markers in provider history can reconcile an uncertain delivery;
   missing or truncated history never proves non-execution and never triggers a
@@ -349,6 +384,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
   through subsequent rounds and reloads.
 - Finishing saves a report first, then removes the ledger and the review-owned
   agent. Discarding removes the ledger from any state. Reopening starts from zero.
+- Switching an automatic review to manual is a durable ledger transition. It keeps
+  the active provider turn and review context intact; async completion can finish
+  that operation but cannot schedule automatic remediation, commits or fresh rounds.
+  Provider interruption remains a separate operation.
 - Findings and the `finish_review_round` acknowledgment are model tools
   ([mcp.md](mcp.md)); user decisions and workflow transitions are backend
   commands.
@@ -421,6 +460,10 @@ annotations arrive as structured metadata the renderer batches into one prompt.
 Open browser tabs retain their browser identity and latest URL in the per-client
 workspace store. Restoring a tab navigates through the normal host browser API;
 page contents, navigation history and live guest handles remain ephemeral.
+Named web bookmarks belong to the owning client's presentation preferences,
+independent of agents and tabs. Stored URLs are normalized HTTP/HTTPS addresses
+without embedded credentials; opening one uses the normal host navigation policy.
+The settings store retains their client identity separately from shared defaults.
 The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
