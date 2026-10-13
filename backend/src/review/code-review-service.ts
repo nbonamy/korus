@@ -51,6 +51,7 @@ export class CodeReviewService {
   private readonly now: () => Date;
   private readonly activeRoundTurns = new Set<string>();
   private readonly activeInspections = new Set<string>();
+  private readonly simulatedInspections = new WeakSet<CodeReviewSession>();
   private readonly reviewContexts = new WeakMap<CodeReviewSession, { id: string; url: string }>();
   private readonly git: ReviewGitPort;
 
@@ -432,6 +433,38 @@ export class CodeReviewService {
     return roundId && this.activeInspections.has(roundId) ? roundId : undefined;
   }
 
+  simulateInspection(agent: Agent, session: CodeReviewSession): void {
+    if ((agent.status.type === 'working' || agent.status.type === 'awaitingInput'
+      || (agent.codeReview && this.activeRoundTurns.has(agent.codeReview.activeRoundId)))
+      && (!agent.codeReview || !this.simulatedInspections.has(agent.codeReview))) {
+      throw new Error('Wait for the active agent turn before starting a review simulation.');
+    }
+    if (agent.codeReview) this.closeReviewToolContext(agent.codeReview);
+    agent.codeReview = session;
+    agent.status = { type: 'working' };
+    this.simulatedInspections.add(session);
+    this.activeInspections.add(session.activeRoundId);
+    this.activeRoundTurns.add(session.activeRoundId);
+    this.reviewToolContext(agent, session);
+  }
+
+  async interruptSimulatedInspection(agent: Agent): Promise<boolean> {
+    const session = agent.codeReview;
+    if (!session || !this.simulatedInspections.has(session)) return false;
+    await this.handleTurnInterrupted(agent, session.activeRoundId);
+    this.endSimulatedInspection(session);
+    await this.options.changed();
+    return true;
+  }
+
+  private endSimulatedInspection(session: CodeReviewSession): void {
+    if (!this.simulatedInspections.delete(session)) return;
+    this.activeInspections.delete(session.activeRoundId);
+    this.activeRoundTurns.delete(session.activeRoundId);
+    const reviewer = this.options.snapshot.agents.find(agent => agent.id === session.reviewerAgentId);
+    if (reviewer?.codeReview === session) reviewer.status = { type: 'idle' };
+  }
+
   async handleTurnInterrupted(agent: Agent, inspectionRoundId?: string): Promise<boolean> {
     const session = agent.codeReview;
     if (!session) return false;
@@ -744,6 +777,7 @@ export class CodeReviewService {
   }
 
   private closeReviewToolContext(session: CodeReviewSession): void {
+    this.endSimulatedInspection(session);
     const context = this.reviewContexts.get(session);
     if (!context) return;
     this.options.tools.closeReviewToolContext(context.id);

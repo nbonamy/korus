@@ -14,7 +14,7 @@ export type AppMenuOptions = {
   updateStatus?: DesktopUpdateStatus;
 };
 
-export type DebugCodeReviewScenario = 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
+export type DebugCodeReviewScenario = 'automaticReviewing' | 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
 
 export type AppMenuCallbacks = {
   checkForUpdates?: () => void;
@@ -205,6 +205,11 @@ function buildDebugMissionFixtures(callbacks: AppMenuCallbacks): MenuItemConstru
 
 function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
   return [
+    {
+      label: 'Automatic Review in Progress',
+      enabled: Boolean(callbacks.injectDebugCodeReview),
+      click: () => callbacks.injectDebugCodeReview?.('automaticReviewing'),
+    },
     {
       label: 'Findings While Reviewing',
       enabled: Boolean(callbacks.injectDebugCodeReview),

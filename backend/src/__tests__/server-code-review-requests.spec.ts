@@ -10,6 +10,65 @@ import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-to
 
 
 describe('AppBackendServer code review workflow', () => {
+  it('simulates automatic inspection through manual handoff and stop without calling a provider', async () => {
+    const snapshot = createTestSnapshot();
+    const owner: Agent = {
+      id: 'debug-owner', teamId: snapshot.teams[0]!.id, name: 'Debug owner', folder: '/repo',
+      backend: 'codex', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
+    };
+    snapshot.agents = [owner];
+    snapshot.teams[0]!.agentIds = [owner.id];
+    const interrupt = vi.fn();
+    const runCodeReview = vi.fn();
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+      getCapabilities: () => codexBackendCapabilities, runCodeReview, interrupt,
+      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn(),
+    };
+    const server = new AppBackendServer({
+      version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined),
+      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      codeReviewTools: {
+        createReviewToolContext: () => ({ id: 'debug-context', url: 'http://review.test/mcp' }),
+        closeReviewToolContext: vi.fn(),
+      },
+    });
+    try {
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'automaticReviewing' });
+      const session = owner.codeReview!;
+      expect(session).toMatchObject({ status: 'reviewing', automation: { enabled: true, state: 'running' } });
+      const findings = structuredClone(session.rounds[0]!.findings);
+      expect(findings).toHaveLength(4);
+      await request(server, backendMethods.agentCodeReviewManual, { agentId: owner.id, sessionId: session.id });
+      expect(session).toMatchObject({ status: 'reviewing', automation: { enabled: false, state: 'manual' } });
+      expect(owner.status.type).toBe('working');
+      await request(server, backendMethods.agentInterrupt, { agentId: owner.id });
+      expect(owner.codeReview).toBe(session);
+      expect(session.status).toBe('failed');
+      expect(session.rounds[0]!.error).toBe('Review stopped. Retry to complete the inspection.');
+      expect(session.rounds[0]!.findings).toStrictEqual(findings);
+      expect(session.automation?.state).toBe('manual');
+      expect(owner.status.type).toBe('idle');
+      expect(interrupt).not.toHaveBeenCalled();
+      expect(runCodeReview).not.toHaveBeenCalled();
+
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'automaticReviewing' });
+      expect(owner.codeReview).not.toBe(session);
+      expect(owner.codeReview?.automation?.state).toBe('running');
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'ready' });
+      expect(owner.codeReview?.status).toBe('ready');
+      expect(owner.status.type).toBe('idle');
+      const idleFixture = owner.codeReview;
+      owner.status = { type: 'working' };
+      await expect(server.handleMessage({
+        jsonrpc: '2.0', id: 'busy-simulation', method: backendMethods.debugCodeReviewSet,
+        params: { agentId: owner.id, scenario: 'automaticReviewing' },
+      })).rejects.toThrow('active agent turn');
+      expect(owner.codeReview).toBe(idleFixture);
+      owner.status = { type: 'idle' };
+    } finally { await server.close(); }
+  });
+
   it.each(['reviewing', 'fixing'] as const)('resumes a persisted %s session after startup connection detection without replacing the open context', async status => {
     const snapshot = createTestSnapshot();
     snapshot.sourceFolder = { path: '/repo', initialized: true, recentRepoNames: [] };
