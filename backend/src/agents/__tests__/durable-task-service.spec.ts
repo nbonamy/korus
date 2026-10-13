@@ -57,21 +57,6 @@ describe('durable assignment lifecycle', () => {
     expect(f.provision).toHaveBeenCalledOnce();
   });
 
-  it('retries only a provably failed provisioning phase using the reserved identity', async () => {
-    const f = fixture();
-    f.provision.mockRejectedValueOnce(new Error('roster save failed'));
-    await expect(f.create()).rejects.toThrow('roster save failed');
-    const failed = f.disk()[0]!;
-    const retry = () => f.service.create(f.parent, { requestId: 'request-1', retryFailedProvision: true, task: failed.assignment, prompt: 'Fix the bug', backend: 'codex', specification: { prompt: 'Fix the bug', requestId: 'request-1' } }, f.provision);
-    const [first, second] = await Promise.all([retry(), retry()]);
-    expect(first.id).toBe(failed.id); expect(second.workerAgentId).toBe(failed.workerAgentId);
-    expect(f.send).toHaveBeenCalledOnce(); expect(f.agents).toHaveLength(2);
-    f.finish(first, 'failed');
-    await vi.waitFor(() => expect(f.service.list(f.parent.id)[0]!.state).toBe('failed'));
-    await retry();
-    expect(f.send).toHaveBeenCalledOnce();
-  });
-
   it('does not provision or report success when the assignment cannot be saved', async () => {
     const f = fixture();
     f.save.mockRejectedValueOnce(new Error('disk full'));

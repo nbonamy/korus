@@ -416,26 +416,14 @@ export class AppBackendServer {
     });
     this.agentGitWorkflows = new AgentGitWorkflowService({
       branchWork: new BranchCurrentWorkService({
-        git: this.agentGitService,
-        provision: async (parent, input, folder) => {
-          if (!this.tasks) throw new Error('Durable tasks are unavailable.');
-          const task = await this.tasks.create(parent, {
-            requestId: `branch:${input.requestId}`, retryFailedProvision: true,
-            backend: parent.backend, specification: { input, folder },
-            task: { title: `Continue ${input.branchName}`, doneWhen: 'The requested work is complete, verified and ready for review. No push or merge.' },
-            prompt: `Continue the work committed on ${input.branchName} in ${folder}. Selected source changes were transferred as a local commit. Preserve unrelated work. Do not push or merge.\n\n${input.prompt}`,
-            workspace: { repositoryPath: parent.folder!, branchName: input.branchName, destinationPath: folder },
-          }, async reserved => {
-            const worker = this.snapshot.agents.find(candidate => candidate.id === reserved.workerAgentId)
-              ?? this.agentCreation.create({ name: input.branchName, folder, backend: parent.backend, teamId: parent.teamId, delegatedByAgentId: parent.id }, { id: reserved.workerAgentId, select: false });
-            if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
-            await this.agentWorkspaces.refreshIdentity(worker.id);
-            await this.persistAndEmitSnapshot();
-            return worker;
-          });
-          // Reconfirm roster durability even when recovering a previous task.
+        progress: payload => this.applyAndEmitBackendEvent({ agentId: payload.agentId, type: 'git.branchWorkProgress', payload }),
+        provision: async (parent, input, folder, agentId) => {
+          const worker = this.snapshot.agents.find(candidate => candidate.id === agentId)
+            ?? this.agentCreation.create({ name: input.branchName, folder, backend: parent.backend, teamId: parent.teamId, delegatedByAgentId: parent.id }, { id: agentId, select: false });
+          if (worker.folder !== folder) throw new Error('Reserved agent is bound to a different folder.');
+          await this.agentWorkspaces.refreshIdentity(worker.id);
+          await this.agentWorkspaces.refreshGitStatus(worker.id);
           await this.persistAndEmitSnapshot();
-          return { taskId: task.id, agentId: task.workerAgentId, accepted: Boolean(task.acceptance) && this.snapshot.agents.some(worker => worker.id === task.workerAgentId && worker.folder === folder) && task.state !== 'cancelled' };
         },
       }),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),

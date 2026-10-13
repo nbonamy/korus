@@ -2051,6 +2051,7 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
   switch (event.type) {
     case 'client.connectionChanged':
     case 'remoteControl.statusChanged':
+    case 'git.branchWorkProgress':
     case 'git.operationProgress':
     case 'browser.annotationCreated':
       return;

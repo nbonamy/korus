@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import GitWorkflowControl from '../GitWorkflowControl.vue';
 import type { Agent, AgentGitStatus, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
+import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
 import { stubElectronTestWindow } from '../../test/client';
 import '../../styles/base.css';
@@ -16,29 +17,37 @@ function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('GitWorkflowControl', () => {
+  afterEach(() => vi.useRealTimers());
   it('opens the branch transfer dialog through the Git menu without starting a transfer', async () => {
-    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot', files: [{ path: 'a.ts', indexStatus: 'M', worktreeStatus: ' ', sensitive: false }] }));
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
     const branchCurrentWork = vi.fn();
     stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
     const wrapper = mountControl(); await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
-    expect(wrapper.get('[role="dialog"]').text()).toContain('a.ts');
+    expect(wrapper.find('[role="dialog"] input[name="branch"]').exists()).toBe(true);
     expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
     expect(branchCurrentWork).not.toHaveBeenCalled(); wrapper.unmount();
   });
-  it('emits agent inspection after a transfer instead of bypassing shell navigation', async () => {
-    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot', files: [{ path: 'a.ts', indexStatus: 'M', worktreeStatus: ' ', sensitive: false }] }));
-    const branchCurrentWork = vi.fn(async () => ({ state: 'completed' as const, folder: '/worktree', branchName: 'feature', agentId: 'worker', retainedPaths: [] }));
-    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+  it('opens the new agent through shell navigation after worktree progress completes', async () => {
+    vi.useFakeTimers();
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const branchCurrentWork = vi.fn(async (_agentId: string, _input: BranchWorkInput) => { await pending; return { state: 'completed' as const, folder: '/worktree', branchName: 'feature', agentId: 'worker', retainedPaths: [] }; });
+    let publish!: (event: MainToRendererEvent) => void;
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork, onEvent: listener => { publish = listener; return () => undefined; } } });
     const wrapper = mountControl(); await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
     await wrapper.get('input[name="branch"]').setValue('feature');
-    await wrapper.get('input[name="message"]').setValue('feat: work');
-    await wrapper.get('textarea[name="prompt"]').setValue('Finish');
     await submitButton(wrapper, 'Branch').trigger('click'); await flushPromises();
-    await wrapper.get('.branch-work__result button').trigger('click');
+    publish({ type: 'git.branchWorkProgress', agentId: agent.id, occurredAt: '', seq: 1, payload: { id: branchCurrentWork.mock.calls[0]![1].requestId, agentId: agent.id, branchName: 'feature', state: 'running', phase: 'creatingAgent' } });
+    await flushPromises();
+    expect(wrapper.findAll('.staged-operation-progress li')[2]!.classes()).toContain('is-active');
+    finish(); await flushPromises();
+    vi.advanceTimersByTime(1); await flushPromises();
+    vi.advanceTimersByTime(600); await flushPromises();
     expect(wrapper.emitted('inspect-agent')).toStrictEqual([['worker']]); wrapper.unmount();
   });
   it('opens repository pruning from the final menu section without deleting anything', async () => {

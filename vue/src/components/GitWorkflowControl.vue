@@ -383,7 +383,7 @@
       <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
-  <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
+  <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" :progress="branchWorkProgress" @started="branchWorkProgress = null" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
   <GitPruneDialog v-if="pruneDialogOpen && appApi" :key="agent.id" v-model="pruneDialogOpen" :agent-id="agent.id" :load="appApi.getAgentGitPrune" :prune="appApi.pruneAgentGit" @pruned="loadWorkflow({ closeMenu: false })" />
 </template>
 
@@ -401,6 +401,7 @@ import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import GitPruneDialog from './GitPruneDialog.vue';
 import BranchCurrentWorkDialog from './BranchCurrentWorkDialog.vue';
+import type { BranchWorkProgress } from '@workspace/core/branch-current-work';
 import { Trash2Icon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
@@ -433,6 +434,7 @@ const commitDialogOpen = ref(false);
 const revertDialogOpen = ref(false);
 const pruneDialogOpen = ref(false);
 const branchWorkDialogOpen = ref(false);
+const branchWorkProgress = ref<BranchWorkProgress | null>(null);
 const revertIncludeUntracked = ref(false);
 const revertError = ref<string | null>(null);
 const pushDialogOpen = ref(false);
@@ -721,6 +723,7 @@ watch([() => props.agent.id, () => props.agent.folder], () => {
   revertDialogOpen.value = false;
   pruneDialogOpen.value = false;
   branchWorkDialogOpen.value = false;
+  branchWorkProgress.value = null;
   void loadWorkflow({ reset: true });
 });
 watch(() => props.gitStatus?.updatedAt, () => {
@@ -1301,6 +1304,10 @@ defineExpose({ showDebugOperationProgress });
 let unsubscribeMainEvents: (() => void) | null = null;
 
 function handleMainEvent(event: MainToRendererEvent): void {
+  if (event.type === 'git.branchWorkProgress' && event.agentId === props.agent.id) {
+    branchWorkProgress.value = event.payload;
+    return;
+  }
   if (event.type !== 'git.operationProgress' || event.agentId !== props.agent.id) return;
   gitOperationProgress.value = {
     operation: event.payload.operation,

@@ -6,7 +6,7 @@ import { providerConversationEventView } from '@workspace/core/provider-conversa
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { taskContractSchema, taskResultSchema } from '../persistence/task-schema';
 
-type CreateTaskInput = { retryFailedProvision?: boolean; requestId: string; task: TaskContract; prompt: string; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
+type CreateTaskInput = { requestId: string; task: TaskContract; prompt: string; backend: Agent['backend']; workspace?: TaskWorkspace; specification: unknown };
 type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
@@ -73,11 +73,6 @@ export class DurableTaskService {
       const existing = tasks.find(task => task.parentAgentId === parent.id && task.requestId === requestId);
       if (existing) {
         if (existing.requestFingerprint !== fingerprint) throw new Error('requestId already belongs to a different assignment.');
-        if (input.retryFailedProvision && existing.state === 'failed' && !existing.folder && !existing.acceptance && !existing.executionTurnId && !existing.submission) {
-          existing.state = 'preparing';
-          delete existing.detail;
-          created = true;
-        }
         return existing;
       }
       created = true;

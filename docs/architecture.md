@@ -210,15 +210,18 @@ backend locations.
 
 ## Source Repositories And Worktrees
 
-Branch transfers capture whole selected file paths against a source HEAD. The
-backend saves a private recovery journal under the repository's common Git
-directory and protects the captured tree with a private ref until delivery.
-Worktree setup and environment copying are disabled for transfers. Source cleanup
-requires both a destination commit and a persisted agent/task acceptance; newer
-source edits remain in place. Path cleanup holds the source index lock and retains
-source file inodes as private recovery copies, protecting edits through already-open
-file descriptors. Retry identity belongs to the transfer and durable
-task, so an uncertain provider start is inspected rather than replayed.
+Branch moves capture all tracked and untracked changes against a source HEAD,
+preserving staging and working-file contents separately. Ignored files stay in the
+source checkout. The backend saves a private recovery journal under the repository's
+common Git directory and protects both captured trees with private refs until delivery.
+Moves create an idle agent without committing or starting a task; worktree setup and
+environment copying are disabled. Source cleanup requires a complete destination
+snapshot and persisted agent. Newer source edits remain in place. Path cleanup holds
+the source index lock and retains source file inodes as private recovery copies,
+protecting edits through already-open file descriptors. Retries reuse the reserved
+agent identity and never overwrite changed destination files. Move progress is
+backend-authored and correlated by request and source agent; it remains renderer-only
+state and does not start an agent conversation.
 
 The source folder is a backend-location convenience setting, not team membership
 and not an agent setting. It is auto-detected once on a fresh state; after the user

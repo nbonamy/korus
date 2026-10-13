@@ -34,10 +34,10 @@ describe(`${product.name} web operations`, () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
-  it('preserves branch transfer selection and recovery result through the web transport', async () => {
-    const result = { state: 'recovery', folder: '/repo-work', branchName: 'feature', commit: 'commit', retainedPaths: ['file'] };
+  it('preserves the branch name and recovery result through the web transport', async () => {
+    const result = { state: 'recovery', folder: '/repo-work', branchName: 'feature', retainedPaths: ['file'] };
     const request = vi.fn().mockResolvedValue(result);
-    const input = { confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature', paths: ['file'], message: 'feat: work', prompt: 'Finish work' };
+    const input = { confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature' };
     await invokeAppWebOperation({ request }, 'previewBranchCurrentWork', ['agent']);
     await expect(invokeAppWebOperation({ request }, 'branchCurrentWork', ['agent', input])).resolves.toStrictEqual(result);
     expect(request.mock.calls).toStrictEqual([
