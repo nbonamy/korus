@@ -8,6 +8,7 @@ import type { Visualization } from '@workspace/core/visualize';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../../state-persistence';
 import { AppStateStore } from '../store';
 import { StoreFormatError, parseStoreFile } from '../store-format';
+import { projectClientSnapshot } from '@workspace/core/client-preferences';
 
 const visualization = (id: string): Visualization => ({ id, title: id, content: { kind: 'mermaid', source: 'flowchart LR; A --> B' }, createdAt: '2026-09-21T12:00:00.000Z', updatedAt: '2026-09-21T12:00:00.000Z' });
 
@@ -35,6 +36,29 @@ function snapshotWithCalendar(): AppSnapshot {
 }
 
 describe('AppStateStore', () => {
+  it('persists bookmarks by owning client through restart, agent deletion and removal', async () => {
+    const snapshot = createInitialSnapshot();
+    const desktopBookmarks = [{ title: 'Desktop preview', url: 'http://localhost:5173/' }];
+    const otherBookmarks = [{ title: 'Other preview', url: 'https://example.com/' }];
+    snapshot.clientPreferences = {
+      desktop: { general: { browserBookmarks: desktopBookmarks, agentListCompact: true }, theme: { mode: 'dark' } },
+      other: { general: { browserBookmarks: otherBookmarks } },
+    };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(projectClientSnapshot(restored, 'desktop').general.browserBookmarks).toStrictEqual(desktopBookmarks);
+    expect(projectClientSnapshot(restored, 'other').general.browserBookmarks).toStrictEqual(otherBookmarks);
+    expect(projectClientSnapshot(restored, 'new-client').general.browserBookmarks ?? []).toStrictEqual([]);
+    expect(restored.general.agentListCompact).toBe(true);
+    expect(restored.theme.mode).toBe('dark');
+    restored.agents = [];
+    restored.teams = [];
+    restored.clientPreferences!.desktop!.general!.browserBookmarks = [];
+    await new AppStateStore(home).save(restored);
+    const afterRemoval = await new AppStateStore(home).load();
+    expect(projectClientSnapshot(afterRemoval, 'desktop').general.browserBookmarks).toStrictEqual([]);
+    expect(projectClientSnapshot(afterRemoval, 'other').general.browserBookmarks).toStrictEqual(otherBookmarks);
+  });
   it.each(['codex', 'claude', 'antigravity'] as const)('loads additive store fields without blocking existing %s agents', async backend => {
     const snapshot = snapshotWithVisualizations();
     const agent = snapshot.agents[0]!;

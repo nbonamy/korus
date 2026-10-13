@@ -502,6 +502,8 @@ export type AppGeneralSettings = {
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
+  /** User-wide on the owning client, independent of browser tabs and agents. */
+  browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;

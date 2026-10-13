@@ -16,28 +16,34 @@
       <div ref="results" class="quick-open-dialog__results" :role="readOnly ? 'list' : undefined" :tabindex="readOnly ? 0 : undefined" :aria-label="readOnly ? dialogLabel : undefined">
         <template v-for="(item, index) in matches" :key="item.id">
           <h3 v-if="item.group && item.group !== matches[index - 1]?.group" class="quick-open-dialog__group">{{ item.group }}</h3>
-          <component
-            :is="readOnly ? 'div' : 'button'"
-            :type="readOnly ? undefined : 'button'"
-            :disabled="readOnly ? undefined : item.disabled"
-            :role="readOnly ? 'listitem' : undefined"
-            class="quick-open-dialog__item"
-            :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
-            @click="select(item.id)"
-            @mouseenter="selectedIndex = index"
-            @focus="selectedIndex = index"
-          >
-            <slot name="item" :item="item">
-              <span class="quick-open-dialog__row">
-                <component :is="toRaw(item.icon)" v-if="item.icon" v-bind="item.iconProps" class="quick-open-dialog__icon" aria-hidden="true" />
-                <span class="quick-open-dialog__copy"><span class="quick-open-dialog__label">{{ item.label }}</span><small v-if="item.detail">{{ item.detail }}</small></span>
-                <span v-if="item.keys?.length" class="quick-open-dialog__keys"><kbd v-for="(key, keyIndex) in item.keys" :key="keyIndex">{{ key }}</kbd></span>
-              </span>
-            </slot>
-          </component>
+          <div class="quick-open-dialog__result" :class="{ 'quick-open-dialog__result--selected': index === selectedIndex }" @mouseenter="selectedIndex = index" @focusin="selectedIndex = index">
+            <component
+              :is="readOnly ? 'div' : 'button'"
+              :type="readOnly ? undefined : 'button'"
+              :disabled="readOnly ? undefined : item.disabled"
+              :role="readOnly ? 'listitem' : undefined"
+              class="quick-open-dialog__item"
+              :class="{ 'quick-open-dialog__item--selected': index === selectedIndex }"
+              @click="select(item.id)"
+              @mouseenter="selectedIndex = index"
+              @focus="selectedIndex = index"
+            >
+              <slot name="item" :item="item">
+                <span class="quick-open-dialog__row">
+                  <component :is="toRaw(item.icon)" v-if="item.icon" v-bind="item.iconProps" class="quick-open-dialog__icon" aria-hidden="true" />
+                  <span class="quick-open-dialog__copy"><span class="quick-open-dialog__label">{{ item.label }}</span><small v-if="item.detail">{{ item.detail }}</small></span>
+                  <span v-if="item.keys?.length" class="quick-open-dialog__keys"><kbd v-for="(key, keyIndex) in item.keys" :key="keyIndex">{{ key }}</kbd></span>
+                </span>
+              </slot>
+            </component>
+            <div v-if="$slots['item-actions']" class="quick-open-dialog__item-actions">
+              <slot name="item-actions" :item="item" />
+            </div>
+          </div>
         </template>
         <p v-if="matches.length === 0" role="status">{{ query.trim() ? noResultsLabel ?? emptyLabel : emptyLabel }}</p>
       </div>
+      <slot name="feedback" />
     </section>
   </div>
 </template>
@@ -66,6 +72,7 @@ const props = defineProps<{
   noResultsLabel?: string;
   readOnly?: boolean;
   prioritizeLabelMatches?: boolean;
+  returnFocusTo?: HTMLElement | null;
 }>();
 const emit = defineEmits<{ close: []; select: [id: string] }>();
 const input = ref<HTMLInputElement | null>(null);
@@ -93,7 +100,10 @@ const matches = computed(() => {
 watch(query, () => { selectedIndex.value = 0; });
 watch(matches, () => { selectedIndex.value = Math.min(selectedIndex.value, Math.max(0, matches.value.length - 1)); });
 onMounted(() => void nextTick(() => input.value?.focus()));
-onUnmounted(() => { if (previousFocus?.isConnected) previousFocus.focus(); });
+onUnmounted(() => {
+  const target = props.returnFocusTo ?? previousFocus;
+  if (target?.isConnected) target.focus();
+});
 function trapFocus(event: KeyboardEvent): void {
   const controls = panel.value?.querySelectorAll<HTMLElement>('input, button:not(:disabled), [tabindex="0"]');
   if (!controls?.length) return;
@@ -165,6 +175,8 @@ function select(id: string): void {
 }
 
 .quick-open-dialog__item {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 0;
@@ -172,6 +184,33 @@ function select(id: string): void {
   color: var(--color-text);
   background: transparent;
   text-align: left;
+}
+
+.quick-open-dialog__result {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.quick-open-dialog__result:hover,
+.quick-open-dialog__result--selected {
+  background: var(--color-primary-container);
+}
+
+.quick-open-dialog__item-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: var(--space-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.quick-open-dialog__result:hover .quick-open-dialog__item-actions,
+.quick-open-dialog__result:focus-within .quick-open-dialog__item-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .quick-open-dialog__item:hover,

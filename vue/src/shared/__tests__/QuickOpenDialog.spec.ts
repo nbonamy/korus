@@ -1,10 +1,36 @@
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { h, nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import QuickOpenDialog from '../QuickOpenDialog.vue';
 import { CopyIcon, FileTextIcon } from '../icons/app-icons';
 
 describe('QuickOpenDialog', () => {
+  it('keeps row actions separate from selection and includes them in the keyboard focus trap', async () => {
+    const remove = vi.fn();
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    const wrapper = mount(QuickOpenDialog, { attachTo: document.body, props: {
+      dialogLabel: 'Bookmarks', inputAriaLabel: 'Search', placeholder: 'Search', emptyLabel: 'Empty',
+      items: [{ id: 'example', label: 'Example' }],
+      returnFocusTo: trigger,
+    }, slots: {
+      'item-actions': ({ item }) => h('button', { type: 'button', 'aria-label': 'Remove Example', onClick: () => remove(item.id) }, 'Remove'),
+    } });
+    await nextTick();
+    const action = wrapper.get('[aria-label="Remove Example"]');
+    expect(action.element.closest('.quick-open-dialog__item')).toBeNull();
+    await action.trigger('click');
+    expect(remove).toHaveBeenCalledExactlyOnceWith('example');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    await wrapper.get('input').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(action.element);
+    await action.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(wrapper.get('input').element);
+    wrapper.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
   it('presents a grouped shortcut reference with key search and no command activation', async () => {
     const wrapper = mount(QuickOpenDialog, { attachTo: document.body, props: {
       dialogLabel: 'Keyboard shortcuts', inputAriaLabel: 'Search shortcuts', placeholder: 'Search', emptyLabel: 'Empty', readOnly: true,

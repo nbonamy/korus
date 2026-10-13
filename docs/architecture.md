@@ -460,6 +460,10 @@ annotations arrive as structured metadata the renderer batches into one prompt.
 Open browser tabs retain their browser identity and latest URL in the per-client
 workspace store. Restoring a tab navigates through the normal host browser API;
 page contents, navigation history and live guest handles remain ephemeral.
+Named web bookmarks belong to the owning client's presentation preferences,
+independent of agents and tabs. Stored URLs are normalized HTTP/HTTPS addresses
+without embedded credentials; opening one uses the normal host navigation policy.
+The settings store retains their client identity separately from shared defaults.
 The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
