@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { ProviderLifecycle } from '../provider-lifecycle';
 import { backendHomeDir } from '../state';
 import { resolveAcpRuntime } from './runtime';
+import { installAcpRuntime } from './installer';
 
 export function createAntigravityLifecycle(): ProviderLifecycle {
   const isolated = path.join(backendHomeDir(), 'antigravity-home');
@@ -12,6 +13,7 @@ export function createAntigravityLifecycle(): ProviderLifecycle {
   return {
     home: (_snapshot, choice = { isolated: true, shareSkills: false }) => ({ ...choice, homePath: choice.isolated ? isolated : existing }),
     installed: () => Boolean(resolveAcpRuntime()),
+    install: installAcpRuntime,
     async prepareHome(home, configuring) {
       await mkdir(home.homePath, { recursive: true, mode: 0o700 });
       if (!home.isolated) return;

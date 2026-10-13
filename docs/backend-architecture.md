@@ -50,14 +50,19 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 ## Antigravity
 
-`backend/src/antigravity` detects the externally installed ACP runtime/harness and
-owns OAuth observations and the provider replica; the agy CLI is not the
-execution path. OAuth renewal stays native, background checks suppress login UI,
+`backend/src/antigravity` owns installation and discovery of the ACP
+runtime/harness, OAuth observations, and the provider replica. The agy CLI is not
+the execution path. OAuth renewal stays native, background checks suppress login UI,
 and child environments sanitize Google credentials/projects with isolated
 `GEMINI_HOME` and temporary storage. Home routing is not a filesystem sandbox.
-Korus provides installation instructions and rechecks availability; it never
-downloads the runtime. Discovery accepts the paired executables on PATH, explicit
-runtime/harness environment paths, or an existing versioned runtime directory.
+An explicit installation request downloads a pinned Google-hosted archive into
+private temporary storage. Size and SHA-256 checks precede bounded extraction of
+regular executable files; an ACP handshake in a disposable home verifies the
+qualified runtime before atomic activation. Installation never authenticates,
+and runtime binaries remain outside app release resources. Provider setup
+serializes installation with home changes and detection refreshes. Discovery
+accepts the managed pair, paired executables on PATH, explicit runtime/harness
+environment paths, or an existing versioned runtime directory.
 
 Each agent owns a process/session with serialized prompts and bounded cancellation.
 Cold replay validates session identity and rebuilds atomically: replay tool IDs

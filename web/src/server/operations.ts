@@ -134,6 +134,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   disconnectProvider: [backendMethods.providerDisconnect, (args) => ({ backend: args[0], ...(args[1] ? { remoteConnectionId: args[1] } : {}) })],
   authenticateProvider: [backendMethods.providerAuthenticate, (args) => ({ backend: args[0], action: args[1] })],
   configureProviderSetup: [backendMethods.providerSetupConfigure, named('backend', 'choice')],
+  installProvider: [backendMethods.providerInstall, named('backend', 'remoteConnectionId')],
   refreshProvider: [backendMethods.providerRefresh, named('backend', 'remoteConnectionId')],
   cancelCodexChatGptLogin: [backendMethods.codexLoginCancel, namedOptional('remoteConnectionId', 'loginId')],
   startCodexChatGptDeviceCodeLogin: [backendMethods.codexChatGptDeviceCodeLoginStart, named('remoteConnectionId')],

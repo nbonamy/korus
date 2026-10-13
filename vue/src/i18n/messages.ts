@@ -3,7 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
-    antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', installInstructions: 'Download ACP 1.3.0 for your platform from the linked registry. Extract agy_acp_server.par and localharness_external into the same directory on your PATH and make both executable, then check again.' },
+    antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
     gitPrune: {
       title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',

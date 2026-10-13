@@ -39,6 +39,7 @@ const requestTimeoutByMethod = {
   [backendMethods.providerAuthenticate]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.providerSetupGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.providerSetupConfigure]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.providerInstall]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.providerRefresh]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.engineInstructionsRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.engineInstructionsSave]: IO_REQUEST_TIMEOUT_MS,

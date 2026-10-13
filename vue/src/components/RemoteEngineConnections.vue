@@ -1,7 +1,7 @@
 <template>
   <div class="remote-engine-connections">
     <template v-for="engine in engines" :key="engine.backend">
-      <SettingsEngineConnectionRow compact :backend="engine.backend" :installed="engine.installed" :title="backendDisplayName(engine.backend)" :authentication="engine.authentication" :connected="engine.connected" :enabled="engine.enabled" :busy="busy" :set-enabled="enabled => setEnabled(engine.backend, enabled)" @refresh="refreshProvider(engine.backend)" @connect="connect(engine)" @disconnect="disconnect(engine.backend)" />
+      <SettingsEngineConnectionRow compact :backend="engine.backend" :installed="engine.installed" :title="backendDisplayName(engine.backend)" :authentication="engine.authentication" :connected="engine.connected" :enabled="engine.enabled" :busy="busy" :set-enabled="enabled => setEnabled(engine.backend, enabled)" @refresh="refreshProvider(engine.backend)" @install="installProvider(engine.backend)" @connect="connect(engine)" @disconnect="disconnect(engine.backend)" />
       <RemoteCodexAuthentication v-if="signingIn === engine.backend && engine.backend === 'codex'" :connection="connection" @connected="finishConnection" />
       <ProviderUpdateRow v-if="engine.installed && engine.backend !== 'antigravity'" :backend="engine.backend" :remote-connection-id="connection.id" />
       <RemoteClaudeAuthentication v-if="signingIn === engine.backend && engine.backend === 'claude'" :connection="connection" @connected="finishConnection" />
@@ -42,13 +42,21 @@ async function refresh() {
     if (expected === revision) error.value = cause instanceof Error ? cause.message : String(cause);
   } finally { if (expected === revision) busy.value = false; }
 }
+async function installProvider(backend: AgentBackend) {
+  await updateProvider(backend, true);
+}
 async function refreshProvider(backend: AgentBackend) {
+  await updateProvider(backend, false);
+}
+async function updateProvider(backend: AgentBackend, install: boolean) {
+  if (busy.value) return;
   busy.value = true;
   error.value = '';
   const expected = revision;
   try {
     if (!appApi) throw new Error('Backend connection is unavailable.');
-    await appApi.refreshProvider(backend, props.connection.id);
+    if (install) await appApi.installProvider(backend, props.connection.id);
+    else await appApi.refreshProvider(backend, props.connection.id);
     if (expected === revision) await refresh();
   } catch (cause) {
     if (expected === revision) error.value = cause instanceof Error ? cause.message : String(cause);

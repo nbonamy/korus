@@ -3,6 +3,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAppBrowserClient } from '../browser-client';
 
 describe(`${product.name} browser client`, () => {
+  it('keeps an explicit runtime install pending beyond the ordinary request timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new FakeBrowserSocket();
+      const api = createAppBrowserClient({ createSocket: () => socket as unknown as WebSocket });
+      const settled = vi.fn();
+      const pending = api.installProvider('antigravity');
+      void pending.then(settled, settled);
+      socket.receive({ version: 1, type: 'ready', userId: 'local-single-user' });
+      await vi.advanceTimersByTimeAsync(60_001);
+      expect(settled).not.toHaveBeenCalled();
+      const request = JSON.parse(socket.sent[0]!);
+      const result = { backend: 'antigravity', installed: true, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
+      socket.receive({ version: 1, type: 'response', id: request.id, ok: true, result });
+      await expect(pending).resolves.toStrictEqual(result);
+    } finally { vi.useRealTimers(); }
+  });
   it('waits for readiness, correlates operations, and emits backend events', async () => {
     const socket = new FakeBrowserSocket();
     const api = createAppBrowserClient({ createSocket: () => socket as unknown as WebSocket });

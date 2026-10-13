@@ -145,6 +145,7 @@ const api: AppApi = {
   disconnectProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.disconnectProvider, backend, remoteConnectionId),
   authenticateProvider: (backend, action) => ipc.invoke(ipcChannels.authenticateProvider, backend, action),
   configureProviderSetup: (backend, choice) => ipc.invoke(ipcChannels.configureProviderSetup, backend, choice),
+  installProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.installProvider, backend, remoteConnectionId),
   refreshProvider: (backend, remoteConnectionId) => ipc.invoke(ipcChannels.refreshProvider, backend, remoteConnectionId),
   cancelCodexChatGptLogin: (remoteConnectionId?: string, loginId?: string) => ipc.invoke(ipcChannels.cancelCodexChatGptLogin, remoteConnectionId, loginId),
   startCodexChatGptDeviceCodeLogin: (remoteConnectionId: string) => ipc.invoke(ipcChannels.startCodexChatGptDeviceCodeLogin, remoteConnectionId),

@@ -74,7 +74,7 @@
               {{ t(antigravityConnected ? (antigravityEnabled ? 'antigravity.connected' : 'antigravity.enable') : 'antigravity.connect') }}
             </el-button>
             <div class="codex-login__detection">
-              <ProviderInstallActions v-if="missing('antigravity')" backend="antigravity" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" />
+              <ProviderInstallActions v-if="missing('antigravity')" backend="antigravity" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" @install="emit('install-provider', 'antigravity')" />
               <button v-else-if="antigravityPending" class="codex-login__cancel" type="button" @click="emit('cancel-antigravity')"><i class="codex-login__spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'antigravity' || antigravityLoading" role="status">{{ t('auth.checking') }}</span>
@@ -136,7 +136,7 @@ const props = withDefaults(defineProps<{
   antigravityEnabled: true,
 });
 
-const emit = defineEmits<{ cancel: []; login: []; 'connect-claude': []; 'connect-antigravity': []; 'cancel-antigravity': []; continue: []; customize: [backend: AgentBackend]; 'refresh-provider': [backend: AgentBackend] }>();
+const emit = defineEmits<{ cancel: []; login: []; 'connect-claude': []; 'connect-antigravity': []; 'cancel-antigravity': []; continue: []; customize: [backend: AgentBackend]; 'refresh-provider': [backend: AgentBackend]; 'install-provider': [backend: AgentBackend] }>();
 const { t } = useI18n();
 const detected = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && setup.installed);
 const antigravityAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'antigravity') ?? false);

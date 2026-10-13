@@ -2249,9 +2249,10 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.providerConnections.refreshDisconnected());
       }
       case backendMethods.providerSetupConfigure:
+      case backendMethods.providerInstall:
       case backendMethods.providerRefresh: {
         const connectionId = requireOptionalConnectionId(message.params);
-        if (connectionId && message.method === backendMethods.providerRefresh) {
+        if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
         }
@@ -2261,6 +2262,7 @@ export class AppBackendServer {
         if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
         let result;
         if (message.method === backendMethods.providerRefresh) result = await this.providerSetup.refresh(input.backend);
+        else if (message.method === backendMethods.providerInstall) result = await this.providerSetup.install(input.backend);
         else {
           if (connectionId) throw new Error('Change remote engine setup on its owning host.');
           const choice = requireRecord(input.choice);

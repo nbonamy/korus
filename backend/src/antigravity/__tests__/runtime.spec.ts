@@ -16,6 +16,8 @@ beforeEach(async () => {
   vi.stubEnv('GEMINI_HOME', path.join(root, 'external'));
   vi.stubEnv('APP_ANTIGRAVITY_COMMAND', path.join(root, 'runtime'));
   vi.stubEnv('ANTIGRAVITY_HARNESS_PATH', path.join(root, 'harness'));
+  // Native fixtures use inherited PATH rather than the user's shell startup files.
+  vi.stubEnv('SHELL', path.join(root, 'no-login-shell'));
 });
 afterEach(async () => {
   await Promise.all(processes.splice(0).map(runtime => runtime.close()));
@@ -131,7 +133,6 @@ describe('Antigravity native lifecycle', () => {
     vi.stubEnv('APP_ANTIGRAVITY_COMMAND', '');
     vi.stubEnv('ANTIGRAVITY_HARNESS_PATH', '');
     vi.stubEnv('PATH', root);
-    vi.stubEnv('SHELL', '/bin/sh');
     const lifecycle = createAntigravityLifecycle();
     const home = lifecycle.home(createTestSnapshot());
     await lifecycle.prepareHome(home, false);

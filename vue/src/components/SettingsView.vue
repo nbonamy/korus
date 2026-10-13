@@ -58,6 +58,7 @@
           v-else-if="activeTab === 'antigravity'"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
+          @install="installProvider?.('antigravity')"
           :connected="providerConnections?.some(engine => engine.backend === 'antigravity' && engine.connected)"
           :authentication="providerConnections?.find(engine => engine.backend === 'antigravity')?.authentication"
           :home="generalSettings.providerHomes?.antigravity"
@@ -171,6 +172,7 @@ const props = withDefaults(defineProps<{
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
+  installProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;
   providerSetupError?: string | null;
   customizeProvider?: (backend: AgentBackend) => unknown;
