@@ -41,6 +41,11 @@ export class InteractivePlanService {
     if (!conversationId)
       throw new Error("Start a conversation before publishing a plan.");
     const previous = agent.interactivePlan;
+    const existing =
+      previous?.agentId === agent.id &&
+      previous.conversationId === conversationId
+        ? previous
+        : undefined;
     if (input.planId !== undefined) {
       const current = this.read(agent);
       if (
@@ -54,6 +59,10 @@ export class InteractivePlanService {
         throw new Error("Start a new plan after 20 revisions.");
     } else if (input.expectedRevision !== undefined)
       throw new Error("A revision requires a plan ID.");
+    else if (existing)
+      throw new Error(
+        "An existing plan must be revised with its plan ID and expected revision.",
+      );
     return this.lock(agent.id, async () => {
       const current = input.planId ? previous : undefined;
       const next: InteractivePlan = {

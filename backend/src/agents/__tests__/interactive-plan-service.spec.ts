@@ -63,6 +63,45 @@ function fixture() {
   };
 }
 describe("interactive planning lifecycle", () => {
+  it("preserves saved feedback unless an existing plan is revised by ID", async () => {
+    const f = fixture();
+    const initial = await f.service.publish(f.agent, { document });
+    const plan = await f.service.publish(f.agent, {
+      planId: initial.id,
+      expectedRevision: initial.revision,
+      document: { ...document, title: "Revised plan" },
+    });
+    const answers = f.response().answers;
+    await f.service.respond(f.agent, f.response());
+
+    await expect(
+      f.service.publish(f.agent, {
+        document: { ...document, title: "A different plan" },
+      }),
+    ).rejects.toThrow("existing plan must be revised");
+
+    expect(f.agent.interactivePlan).toMatchObject({
+      id: plan.id,
+      revision: 2,
+      answers,
+      history: [{
+        revision: 1,
+        answers: { choices: {}, comments: {} },
+        submitted: false,
+      }],
+    });
+    expect(f.restore().agents[0]!.interactivePlan).toMatchObject({
+      id: plan.id,
+      revision: 2,
+      answers,
+      history: [{
+        revision: 1,
+        answers: { choices: {}, comments: {} },
+        submitted: false,
+      }],
+    });
+  });
+
   it("persists answers without a turn, sends explicit structured feedback, and isolates revised plans", async () => {
     const f = fixture();
     const plan = await f.service.publish(f.agent, { document });
