@@ -599,7 +599,7 @@ describe('AppShell navigation and teams', () => {
     configureWorkBacklog.mockClear();
     await wrapper.get('[aria-label="Add repo to favorites"]').trigger('click');
     await flushPromises();
-    expect(updateSettings).toHaveBeenCalledWith({ general: { backlogRepositoryFavorites: { [otherProvider]: ['other-provider-id'], [provider]: ['org/repo'] } } });
+    expect(updateSettings).toHaveBeenCalledWith({ general: { backlogRepositoryFavorites: { [provider]: ['org/repo'] } } });
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(loadWorkItems).not.toHaveBeenCalled();
     expect(configureWorkBacklog).not.toHaveBeenCalled();

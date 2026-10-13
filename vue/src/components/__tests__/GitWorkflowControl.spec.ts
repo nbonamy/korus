@@ -3,6 +3,8 @@ import { ElMessage } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import GitWorkflowControl from '../GitWorkflowControl.vue';
+import CommandPalette from '../CommandPalette.vue';
+import type { CommandPaletteAction } from '../command-palette-actions';
 import type { Agent, AgentGitStatus, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
 import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
@@ -20,6 +22,29 @@ describe('GitWorkflowControl', () => {
   beforeEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => vi.useRealTimers());
+  it('opens Branch from the actual command palette and submits through its confirmation dialog', async () => {
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
+    const branchCurrentWork = vi.fn(async () => ({ state: 'completed' as const, folder: '/new-worktree', branchName: 'fix', retainedPaths: [] }));
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+    const wrapper = mountControl();
+    await flushPromises();
+    const actions = (wrapper.vm as unknown as { getCommandActions(): CommandPaletteAction[] }).getCommandActions();
+    const palette = mount(CommandPalette, { props: { actions }, attrs: { onExecute: (action: CommandPaletteAction) => action.run() } });
+    try {
+      await palette.get('input').setValue('Branch');
+      const row = palette.findAll('button').find(button => button.text().includes('Branch…'))!;
+      expect(row.element.disabled).toBe(false);
+      await row.trigger('click');
+      await flushPromises();
+      expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
+      expect(branchCurrentWork).not.toHaveBeenCalled();
+      await wrapper.get('[role="dialog"] input[name="branch"]').setValue('fix');
+      await submitButton(wrapper, 'Branch').trigger('click');
+      await flushPromises();
+      expect(branchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id, { confirmed: true, requestId: expect.any(String), snapshotId: 'snapshot', branchName: 'fix' });
+    } finally { palette.unmount(); wrapper.unmount(); }
+  });
+
   it('opens the branch transfer dialog through the Git menu without starting a transfer', async () => {
     const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
     const branchCurrentWork = vi.fn();

@@ -6,6 +6,23 @@ import { ClientPreferencesService } from '../client-preferences-service';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 
 describe('client presentation preferences', () => {
+  it('merges overlapping provider favorite patches and persists clearing only the selected provider', async () => {
+    const snapshot = createInitialSnapshot();
+    const service = new ClientPreferencesService({ snapshot: async () => snapshot, save: async (id, preferences) => {
+      await Promise.resolve();
+      snapshot.clientPreferences = { ...snapshot.clientPreferences, [id]: preferences };
+    } });
+    await Promise.all([
+      service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: ['owner/repo'] } } } }),
+      service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { linear: ['team-id', 'team-id'], unknown: ['invalid'] } } } }),
+    ]);
+    expect(projectClientSnapshot(snapshot, 'desktop').general.backlogRepositoryFavorites).toStrictEqual({ github: ['owner/repo'], linear: ['team-id'] });
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: [] } } } });
+    const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
+    expect(projectClientSnapshot(restored, 'desktop').general.backlogRepositoryFavorites).toStrictEqual({ github: [], linear: ['team-id'] });
+    expect(projectClientSnapshot(restored, 'other-client').general.backlogRepositoryFavorites).toStrictEqual({});
+  });
+
   it('retains bookmarks after restart and agent deletion while preserving unrelated client settings', async () => {
     const snapshot = createInitialSnapshot();
     const service = new ClientPreferencesService({ snapshot: async () => snapshot, save: async (id, preferences) => {

@@ -1315,6 +1315,7 @@ function getCommandActions(): import('./command-palette-actions').CommandPalette
     revert: Boolean(props.revertChanges), commit: Boolean(props.commitChanges), push: Boolean(props.pushBranch),
     'create-pr': Boolean(props.createPullRequest), merge: Boolean(props.mergeBranch),
     pull: Boolean(props.pullBranch), 'update-from-base': Boolean(props.updateFromBase), prune: Boolean(appApi),
+    'branch-work': Boolean(appApi),
   };
   return menuItems.value.filter(item => item.type === 'action').map(item => ({
     id: `git:${item.id}`,
