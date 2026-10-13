@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { BranchWorkProgress } from '@workspace/core/branch-current-work';
 import type { AgentCreationProgress } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import StagedOperationProgress, { type StagedOperationStep } from './StagedOperationProgress.vue';
@@ -43,6 +44,7 @@ import { missionRepositoryName } from './mission-implementation-model';
 import { backendDisplayName } from '@workspace/core/backend-driver';
 
 export type WorkspaceProvisioningOperation =
+  | { mode: 'branchMove'; progress: BranchWorkProgress }
   | { mode: 'single'; progress: AgentCreationProgress }
   | {
       mode: 'multiple';
@@ -61,32 +63,35 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const progress = computed(() => props.operation?.mode === 'single' ? props.operation.progress : null);
-const operationId = computed(() => props.operation?.mode === 'single' ? props.operation.progress.id : props.operation?.id);
-const operationState = computed(() => props.operation?.mode === 'single'
+const branchMove = computed(() => props.operation?.mode === 'branchMove' ? props.operation.progress : null);
+const operationId = computed(() => props.operation?.mode === 'single' || props.operation?.mode === 'branchMove' ? props.operation.progress.id : props.operation?.id);
+const operationState = computed(() => props.operation?.mode === 'single' || props.operation?.mode === 'branchMove'
   ? props.operation.progress.state
   : props.operation?.state ?? 'running');
-const eyebrow = computed(() => props.operation?.mode === 'multiple'
+const eyebrow = computed(() => branchMove.value ? t('branchWork.progressEyebrow') : props.operation?.mode === 'multiple'
   ? t('missions.implementationStartEyebrow')
   : t('agentCreationProgress.eyebrow'));
 const title = computed(() => {
+  if (branchMove.value) return t('branchWork.progressTitle');
   if (props.operation?.mode === 'multiple') return t('missions.implementationStartTitle');
   if (progress.value?.createProject) return t('agentCreationProgress.creatingProject', { repository: progress.value.repositoryName });
   return progress.value?.createWorktree
     ? t('agentCreationProgress.buildingIsolatedHome', { repository: progress.value.repositoryName })
     : t('agentCreationProgress.creatingAgent', { repository: progress.value?.repositoryName ?? '' });
 });
-const completeTitle = computed(() => props.operation?.mode === 'multiple'
+const completeTitle = computed(() => branchMove.value ? t('branchWork.progressReady', { branch: branchMove.value.branchName }) : props.operation?.mode === 'multiple'
   ? t('missions.implementationStartComplete')
   : t('agentCreationProgress.ready', {
       agent: progress.value?.agentName ?? progress.value?.branchName ?? progress.value?.repositoryName ?? '',
     }));
-const errorTitle = computed(() => props.operation?.mode === 'multiple'
+const errorTitle = computed(() => branchMove.value ? t('branchWork.progressFailed') : props.operation?.mode === 'multiple'
   ? t('missions.implementationStartTitle')
   : t('agentCreationProgress.failed'));
-const errorDetail = computed(() => props.operation?.mode === 'multiple'
+const errorDetail = computed(() => branchMove.value ? branchMove.value.error : props.operation?.mode === 'multiple'
   ? props.operation.error
   : progress.value?.error);
 const activeStep = computed(() => {
+  if (branchMove.value) return ['creatingWorktree', 'movingChanges', 'creatingAgent', 'resettingSource'].indexOf(branchMove.value.phase);
   if (props.operation?.mode === 'multiple') {
     if (props.operation.phase === 'startingAgents') return 2;
     if (props.operation.phase === 'initializingWorkspaces') return 1;
@@ -103,6 +108,12 @@ const activeStep = computed(() => {
   return 0;
 });
 const steps = computed<StagedOperationStep[]>(() => {
+  if (branchMove.value) return [
+    { title: t('branchWork.progressWorktree'), detail: branchMove.value.branchName },
+    { title: t('branchWork.progressChanges'), detail: t('branchWork.progressChangesDetail') },
+    { title: t('branchWork.progressAgent'), detail: t('branchWork.progressAgentDetail') },
+    { title: t('branchWork.progressSource'), detail: t('branchWork.progressSourceDetail') },
+  ];
   if (props.operation?.mode === 'multiple') return [
     {
       title: t('missions.implementationStartWorktrees'),

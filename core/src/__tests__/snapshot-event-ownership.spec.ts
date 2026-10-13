@@ -62,6 +62,7 @@ const rendererEventTypes = [
   'client.celebrationRequested',
   'agentCreation.progress',
   'mission.implementationStartProgress',
+  'git.branchWorkProgress',
   'git.operationProgress',
   'browser.annotationCreated',
   'conversation.modeUpdated',
@@ -235,6 +236,11 @@ const rendererOnlyEvents = [
       repositoryCount: 2,
       ticketCount: 3,
     },
+  },
+  {
+    ...agent,
+    type: 'git.branchWorkProgress',
+    payload: { id: 'branch-move-1', agentId: 'agent-dina', branchName: 'feature/work', state: 'running', phase: 'creatingWorktree' },
   },
   {
     ...agent,

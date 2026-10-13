@@ -12,6 +12,15 @@ afterEach(() => {
 });
 
 describe('SettingsMenu', () => {
+  it('opens the shortcuts reference from the shared navigation menu', async () => {
+    const wrapper = mountMenu();
+    await openMenu(wrapper);
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Keyboard Shortcuts')!.trigger('click');
+    expect(wrapper.emitted('open-keyboard-shortcuts')).toStrictEqual([[]]);
+    expect(document.activeElement).toBe(wrapper.get('.settings-menu__trigger').element);
+    wrapper.unmount();
+  });
+
   it('loads subscription usage on opening without requiring a conversation, and hides API billing on reopening', async () => {
     const getProviderUsage = vi.fn().mockResolvedValue({
       limitId: 'claude', primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: null },
@@ -142,9 +151,9 @@ describe('SettingsMenu', () => {
 
     await openMenu(wrapper);
     const actions = wrapper.findAll('.app-menu__item');
-    expect(actions.map((button) => button.get('.app-menu__label').text())).toStrictEqual(['Settings', 'What’s New', 'Quit']);
-    expect(actions[0]?.get('.app-menu__value').text()).toBe('⌘,');
-    expect(actions[2]?.classes()).toContain('app-menu__item--danger');
+    expect(actions.map((button) => button.get('.app-menu__label').text())).toStrictEqual(['Command Palette', 'Settings', 'Keyboard Shortcuts', 'What’s New', 'Quit']);
+    expect(actions.find(item => item.text().includes('Settings'))?.get('.app-menu__value').text()).toBe('⌘,');
+    expect(actions.find(item => item.text() === 'Quit')?.classes()).toContain('app-menu__item--danger');
     await wrapper.findAll('button').find((button) => button.text() === 'What’s New')?.trigger('click');
     await openMenu(wrapper);
     await wrapper.findAll('button').find((button) => {

@@ -15,7 +15,7 @@ export function createQuickChatProjectToolModuleProvider(options: {
         id: 'quick-chat-project',
         register: server => {
           server.registerTool('create-project', {
-            description: 'Turn this Quick Chat into a new project folder and start a project agent with a self-contained handoff. Use only when the user explicitly asks to create a project. The project is created in the configured source folder without initializing Git, and this Quick Chat remains available.',
+            description: 'Create a project folder and agent only on explicit request. Read korus-delegation first. Uses the configured source folder without initializing Git; preserves this Quick Chat.',
             inputSchema: {
               backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Coding backend; defaults to this Quick Chat’s backend.'),
               name: z.string().trim().min(1).describe('A single folder name for the new project.'),

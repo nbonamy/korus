@@ -10,8 +10,26 @@ describe('appDeveloperInstructions', () => {
     expect(instructions).toContain('read-skill');
     expect(instructions).toContain('korus-inline-html');
     expect(instructions).toContain('korus-visualize');
+    expect(instructions).toContain('korus-delegation');
+    expect(instructions).not.toMatch(/^# /m);
     expect(instructions).not.toContain('<artifact');
     expect(instructions).not.toContain('korus-computer-use');
     expect(appDeveloperInstructions(agent, { computerUseEnabled: true, chromeEnabled: false })).toContain('korus-computer-use');
+  });
+
+  it('preserves caller identity, Quick Chat routing, plugin enablement and workflow-specific context', () => {
+    const agent = createInitialSnapshot().agents[0]!;
+    agent.sessionKind = 'quickChat';
+    agent.delegatedByAgentId = 'parent';
+    const instructions = appDeveloperInstructions(agent, { computerUseEnabled: false, chromeEnabled: true }, {
+      celebrationsEnabled: false, developerInstructions: 'Assigned scope: issue 42, no publication.',
+    });
+    expect(instructions).toContain(agent.id);
+    expect(instructions).toContain('create-project');
+    expect(instructions).toContain('already a delegated co-agent');
+    expect(instructions).toContain('chrome:control-chrome');
+    expect(instructions).not.toContain('korus-computer-use');
+    expect(instructions).not.toContain('celebration: true');
+    expect(instructions).toContain('Assigned scope: issue 42, no publication.');
   });
 });

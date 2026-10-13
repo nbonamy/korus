@@ -49,7 +49,7 @@ function registerMissionTools(
   }, input => loggedToolResult('write-mission-artifact', { callerAgentId, stage: input.stage }, () => coordinator.writeMissionArtifact(callerAgentId, input)));
 
   server.registerTool('upsert-mission-ticket', {
-    description: 'Create or revise one ticket in the active Mission Tickets stage. Assign exactly one represented repository path. Call once per ticket and again after each revision so the user sees the backlog emerge live. Omit ticketId to create; pass the returned Mission ticket ID to revise. Use blockedByTicketIds for dependencies. A tracker issue number is optional and belongs in reference only after publication.',
+    description: 'Create or revise one Mission ticket assigned to exactly one represented repository. Omit ticketId to create; use the returned ID to revise. Read mission-to-tickets for the stage procedure.',
     inputSchema: {
       ticketId: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(),
       title: z.string().trim().min(1).max(500),

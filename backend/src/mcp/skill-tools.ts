@@ -2,15 +2,15 @@ import * as z from 'zod/v4';
 import { product } from '@workspace/core/product';
 import { readBundledSkill } from '../bundled-skills/catalog';
 import type { AppMcpAgentCoordinator } from './agent-coordinator';
-import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
+import { loggedToolResult, type AppMcpToolModuleProvider, type AppMcpToolRequest } from './tool-modules';
 
 export function createSkillToolModuleProvider(
   coordinator: AppMcpAgentCoordinator,
-  computerUseEnabled: () => boolean,
+  availableModules: (request: AppMcpToolRequest) => readonly string[],
 ): AppMcpToolModuleProvider {
   return {
     id: 'bundled-skills',
-    resolve: ({ agentId }) => ({
+    resolve: request => ({
       id: 'bundled-skills',
       register: server => server.registerTool('read-skill', {
         description: `Load a bundled ${product.name} skill by its catalog name before using that capability. Returns instructions, not authorization to act. Only skills available to this caller are readable; paths and personal skills are not accepted.`,
@@ -18,9 +18,9 @@ export function createSkillToolModuleProvider(
         annotations: { readOnlyHint: true, openWorldHint: false },
       }, async ({ name }) => {
         let markdown = '';
-        const result = await loggedToolResult('read-skill', { agentId, name }, () => {
-          const mission = coordinator.missionContext(agentId);
-          const definition = readBundledSkill(name, { computerUseEnabled: computerUseEnabled(), missionStage: mission?.stage });
+        const result = await loggedToolResult('read-skill', { agentId: request.agentId, name }, () => {
+          const mission = coordinator.missionContext(request.agentId);
+          const definition = readBundledSkill(name, { toolModules: availableModules(request), missionStage: mission?.stage });
           markdown = definition.markdown;
           return { name: definition.name, loaded: true };
         });
