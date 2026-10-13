@@ -206,12 +206,21 @@ function buildDebugMissionFixtures(callbacks: AppMenuCallbacks): MenuItemConstru
 function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
   return [
     {
+      label: 'Simulate Uncommitted Changes',
+      type: 'checkbox',
+      checked: callbacks.getDebugReviewUncommitted?.() ?? false,
+      enabled: Boolean(callbacks.setDebugReviewUncommitted),
+      click: item => callbacks.setDebugReviewUncommitted?.(item.checked),
+    },
+    { type: 'separator' },
+    {
       label: 'Automatic Review in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('automaticReviewing'),
     },
+    { type: 'separator' },
     {
-      label: 'Findings While Reviewing',
+      label: 'Manual Review in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('reviewing'),
     },
@@ -221,22 +230,14 @@ function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemCons
       click: () => callbacks.injectDebugCodeReview?.('ready'),
     },
     {
-      label: 'Remediation Mix',
+      label: 'Remediation in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('fixing'),
     },
     {
-      label: 'Completed Without Findings',
+      label: 'Ready to Finish (No Findings)',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('readyToFinish'),
-    },
-    { type: 'separator' },
-    {
-      label: 'Simulate Uncommitted Changes',
-      type: 'checkbox',
-      checked: callbacks.getDebugReviewUncommitted?.() ?? false,
-      enabled: Boolean(callbacks.setDebugReviewUncommitted),
-      click: item => callbacks.setDebugReviewUncommitted?.(item.checked),
     },
   ];
 }

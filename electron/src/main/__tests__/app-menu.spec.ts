@@ -446,13 +446,15 @@ describe('app menu', () => {
       type: 'checkbox',
       checked: false,
     });
-    expect(submenuLabels(debugMenu, 'Debug', 'Review')).toStrictEqual([
-      'Automatic Review in Progress',
-      'Findings While Reviewing',
-      'Findings Ready for Selection',
-      'Remediation Mix',
-      'Completed Without Findings',
+    expect(nestedSubmenu(debugMenu, 'Debug', 'Review').map(menuEntryLabel)).toStrictEqual([
       'Simulate Uncommitted Changes',
+      'separator',
+      'Automatic Review in Progress',
+      'separator',
+      'Manual Review in Progress',
+      'Findings Ready for Selection',
+      'Remediation in Progress',
+      'Ready to Finish (No Findings)',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Thread Flags')).toStrictEqual([
       'Delegate to Worktree',
@@ -513,10 +515,10 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Ship');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Suggestions');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Diagrams');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Findings While Reviewing');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Manual Review in Progress');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Findings Ready for Selection');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Remediation Mix');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Completed Without Findings');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Remediation in Progress');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Ready to Finish (No Findings)');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Automatic Review in Progress');
     clickThreadFlagItem(debugMenu, 'Delegate to Worktree', true);
     clickThreadFlagItem(debugMenu, 'Delegate to Worktree', false);
