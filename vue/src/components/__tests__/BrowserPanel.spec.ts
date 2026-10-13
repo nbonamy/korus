@@ -106,7 +106,7 @@ describe('BrowserPanel', () => {
     expect(wrapper.get('button[aria-label="Edit bookmark"]').attributes('aria-pressed')).toBe('true');
     await wrapper.get('[aria-label="Bookmarks"]').trigger('click');
     await flushPromises();
-    await page.get('.browser-bookmarks__open').trigger('click');
+    await page.get('.quick-open-dialog__item').trigger('click');
     await flushPromises();
     expect(api.browserNavigate).toHaveBeenLastCalledWith('agent-2', 'second-tab', 'https://example.com/');
     await wrapper.setProps({ visualization: { path: '/repo/chart.html', title: 'Chart' } });
