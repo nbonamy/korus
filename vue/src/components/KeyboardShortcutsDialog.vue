@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { availableShortcuts, shortcutKeys, type KeyboardShortcut, type ShortcutContext } from '@workspace/core/keyboard-shortcuts';
+import { actionIcon } from '../shared/icons/action-icons';
 import { translate } from '../i18n';
 import QuickOpenDialog from '../shared/QuickOpenDialog.vue';
 const props = defineProps<{ context: ShortcutContext }>();
@@ -24,7 +25,7 @@ function label(item: KeyboardShortcut): string {
 const items = computed(() => {
   const shortcuts = availableShortcuts(props.context);
   return ['navigation', 'agents', 'application'].flatMap(group => shortcuts.filter(item => item.group === group).map(item => ({
-    id: item.id, label: label(item), keys: shortcutKeys(item, props.context), group: translate(`shortcuts.groups.${group}`),
+    id: item.id, label: label(item), icon: actionIcon(item.id), keys: shortcutKeys(item, props.context), group: translate(`shortcuts.groups.${group}`),
   })));
 });
 </script>

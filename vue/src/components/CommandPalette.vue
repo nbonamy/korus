@@ -20,7 +20,7 @@ const props = defineProps<{ actions: CommandPaletteAction[] }>();
 const emit = defineEmits<{ close: []; execute: [action: CommandPaletteAction] }>();
 const selecting = ref(false);
 const items = computed(() => props.actions.map(action => ({
-  id: action.id, label: action.label, detail: action.disabledReason, disabled: Boolean(action.disabledReason), keys: action.keys, group: action.group,
+  id: action.id, label: action.label, detail: action.disabledReason, disabled: Boolean(action.disabledReason), keys: action.keys, group: action.group, icon: action.icon, iconProps: action.iconProps,
   searchText: `${action.label} ${action.aliases ?? ''}`,
 })));
 function select(id: string): void {

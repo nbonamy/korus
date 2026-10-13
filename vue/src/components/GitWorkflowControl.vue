@@ -1296,6 +1296,7 @@ function getCommandActions(): import('./command-palette-actions').CommandPalette
   };
   return menuItems.value.filter(item => item.type === 'action').map(item => ({
     id: `git:${item.id}`,
+    icon: item.icon,
     label: translate('commands.gitAction', { action: item.label }),
     aliases: item.id === 'create-pr' ? 'pull request github' : item.id === 'revert' ? 'discard changes' : item.id,
     disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || workflowError.value ? translate('commands.gitUnavailable') : undefined,

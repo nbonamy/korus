@@ -10,7 +10,7 @@
       <el-menu-item-group v-for="group in groups" :key="group.id" :title="$t(group.labelKey)">
         <el-menu-item v-for="destination in destinations.filter(item => item.group === group.id)" :key="destination.id" :index="destination.id">
           <BackendIcon v-if="destination.backend" :backend="destination.backend" monochrome />
-          <component :is="icons[destination.icon!]" v-else aria-hidden="true" />
+          <component :is="destination.icon" v-else aria-hidden="true" />
           <span>{{ $t(destination.labelKey) }}</span>
         </el-menu-item>
       </el-menu-item-group>
@@ -22,7 +22,6 @@
 import { computed } from 'vue';
 import { availableSettingsDestinations, type SettingsTab } from './settings-tabs';
 import type { AgentBackend } from '@workspace/core/contracts';
-import { AffiliateIcon, GitBranchIcon, MicrophoneIcon, PaletteIcon, PuzzleIcon, ScreenshotIcon, SettingsIcon, TerminalIcon, UserIcon } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { appHostCapabilities } from '../platform-api';
 
@@ -40,7 +39,6 @@ const groups = [
   { id: 'agents', labelKey: 'surface.settingsSidebar.groupAgents' },
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
-const icons = { settings: SettingsIcon, palette: PaletteIcon, microphone: MicrophoneIcon, user: UserIcon, screenshot: ScreenshotIcon, puzzle: PuzzleIcon, git: GitBranchIcon, affiliate: AffiliateIcon, terminal: TerminalIcon };
 const destinations = computed(() => availableSettingsDestinations({ appshots: appHostCapabilities.appshots, availableBackends: props.availableBackends ?? [] }));
 function selectTab(tab: string): void {
   const destination = destinations.value.find(item => item.id === tab);

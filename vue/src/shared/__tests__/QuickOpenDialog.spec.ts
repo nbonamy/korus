@@ -2,18 +2,21 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import QuickOpenDialog from '../QuickOpenDialog.vue';
+import { CopyIcon, FileTextIcon } from '../icons/app-icons';
 
 describe('QuickOpenDialog', () => {
   it('presents a grouped shortcut reference with key search and no command activation', async () => {
     const wrapper = mount(QuickOpenDialog, { attachTo: document.body, props: {
       dialogLabel: 'Keyboard shortcuts', inputAriaLabel: 'Search shortcuts', placeholder: 'Search', emptyLabel: 'Empty', readOnly: true,
       items: [
-        { id: 'files', label: 'Go to file', keys: ['⌘', 'P'], group: 'Navigation' },
-        { id: 'duplicate', label: 'Duplicate agent', keys: ['⌘', 'D'], group: 'Agents' },
+        { id: 'files', label: 'Go to file', keys: ['⌘', 'P'], group: 'Navigation', icon: FileTextIcon },
+        { id: 'duplicate', label: 'Duplicate agent', keys: ['⌘', 'D'], group: 'Agents', icon: CopyIcon },
       ],
     } });
     await nextTick();
     expect(wrapper.findAll('button')).toHaveLength(0);
+    expect(wrapper.findAll('.quick-open-dialog__icon')).toHaveLength(2);
+    for (const icon of wrapper.findAll('.quick-open-dialog__icon')) expect(icon.attributes('aria-hidden')).toBe('true');
     expect(wrapper.findAll('h3').map(group => group.text())).toStrictEqual(['Navigation', 'Agents']);
     await wrapper.get('input').setValue('cmd+d');
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);

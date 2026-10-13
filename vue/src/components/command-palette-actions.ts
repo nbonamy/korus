@@ -1,3 +1,6 @@
+import type { Component } from 'vue';
+import BackendIcon from './BackendIcon.vue';
+import { actionIcon } from '../shared/icons/action-icons';
 import { availableShortcuts, keyboardShortcuts, shortcutKeys, type ShortcutContext } from '@workspace/core/keyboard-shortcuts';
 import type { Agent, AppCommand, BackendCapabilities, Team } from '@workspace/core/contracts';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
@@ -9,6 +12,8 @@ export type CommandPaletteAction = {
   label: string;
   aliases?: string;
   group?: string;
+  icon?: Component;
+  iconProps?: Record<string, unknown>;
   keys?: string[];
   disabledReason?: string;
   scope?: string;
@@ -61,7 +66,8 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   };
   addShortcut('settings');
   result.push(...availableSettingsDestinations(context.settings).map(destination => ({
-    id: `settings:${destination.id}`, label: translate(destination.labelKey), aliases: destination.aliases,
+    id: `settings:${destination.id}`, icon: destination.backend ? BackendIcon : destination.icon,
+    iconProps: destination.backend ? { backend: destination.backend, monochrome: true } : undefined, label: translate(destination.labelKey), aliases: destination.aliases,
     run: () => actions.settings(destination.id),
   })));
   addShortcut('help');
@@ -112,5 +118,5 @@ function groupedActions(actions: CommandPaletteAction[]): CommandPaletteAction[]
     return 'agent';
   };
   return groups.flatMap(group => actions.filter(action => groupFor(action.id) === group)
-    .map(action => ({ ...action, group: translate(`commands.groups.${group}`) })));
+    .map(action => ({ ...action, icon: action.icon ?? actionIcon(action.id), group: translate(`commands.groups.${group}`) })));
 }

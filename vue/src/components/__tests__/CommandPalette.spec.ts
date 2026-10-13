@@ -43,6 +43,7 @@ describe('CommandPalette', () => {
     }
     await wrapper.get('input').setValue('settings font');
     expect(wrapper.get('button').text()).toBe('Appearance');
+    expect(wrapper.get('button .quick-open-dialog__icon').attributes('aria-hidden')).toBe('true');
     wrapper.unmount();
   });
   it('prioritizes named commands over settings aliases for action searches', async () => {

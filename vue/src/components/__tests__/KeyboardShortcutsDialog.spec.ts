@@ -17,6 +17,7 @@ describe('KeyboardShortcutsDialog', () => {
     await search.setValue('duplicate');
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
     expect(wrapper.get('[role="listitem"]').text()).toContain('Duplicate agent');
+    expect(wrapper.get('[role="listitem"] .quick-open-dialog__icon').attributes('aria-hidden')).toBe('true');
     expect(wrapper.findAll('kbd').map(key => key.text())).toStrictEqual(['⌘', 'D']);
     await search.setValue('cmd+d');
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);

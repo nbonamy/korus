@@ -29,6 +29,7 @@
           >
             <slot name="item" :item="item">
               <span class="quick-open-dialog__row">
+                <component :is="toRaw(item.icon)" v-if="item.icon" v-bind="item.iconProps" class="quick-open-dialog__icon" aria-hidden="true" />
                 <span class="quick-open-dialog__copy"><span class="quick-open-dialog__label">{{ item.label }}</span><small v-if="item.detail">{{ item.detail }}</small></span>
                 <span v-if="item.keys?.length" class="quick-open-dialog__keys"><kbd v-for="(key, keyIndex) in item.keys" :key="keyIndex">{{ key }}</kbd></span>
               </span>
@@ -42,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, toRaw, watch, type Component } from 'vue';
 
 export type QuickOpenItem = {
   id: string;
@@ -52,6 +53,8 @@ export type QuickOpenItem = {
   disabled?: boolean;
   keys?: string[];
   group?: string;
+  icon?: Component;
+  iconProps?: Record<string, unknown>;
 };
 
 const props = defineProps<{
@@ -186,10 +189,12 @@ function select(id: string): void {
 }
 
 .quick-open-dialog__group {
-  margin: var(--space-3) var(--space-4) var(--space-2);
+  margin: var(--space-4) var(--space-4) var(--space-2);
   color: var(--color-text-muted);
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .quick-open-dialog__row {
@@ -199,6 +204,17 @@ function select(id: string): void {
   gap: var(--space-4);
 }
 
+.quick-open-dialog__icon {
+  flex: 0 0 auto;
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.quick-open-dialog__copy {
+  flex: 1;
+  min-width: 0;
+}
+
 .quick-open-dialog__copy small {
   display: block;
   color: var(--color-text-muted);
@@ -206,6 +222,7 @@ function select(id: string): void {
 }
 
 .quick-open-dialog__keys {
+  flex: 0 0 auto;
   display: flex;
   gap: var(--space-1);
 }
