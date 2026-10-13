@@ -35,14 +35,15 @@ describe('state persistence', () => {
       snapshot.clientPreferences = { ...snapshot.clientPreferences, [id]: preferences };
       await store.save(snapshot);
     } });
+    const linear = ['team-b-uuid', 'team-a-uuid'];
     for (const github of [['org/a'], ['org/a', 'org/b'], ['org/b', 'org/a']]) {
-      await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github } } } });
+      await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github, linear } } } });
     }
     const restored = await new AppStateStore(home).load();
-    expect(restored.general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/b', 'org/a'] });
+    expect(restored.general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/b', 'org/a'], linear });
     expect(restored.workBacklog).toStrictEqual(snapshot.workBacklog);
-    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: ['org/a'] } } } });
-    expect((await new AppStateStore(home).load()).general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/a'] });
+    await service.update('desktop', backendMethods.clientPreferencesUpdate, { input: { general: { backlogRepositoryFavorites: { github: ['org/a'], linear: [...linear].reverse() } } } });
+    expect((await new AppStateStore(home).load()).general.backlogRepositoryFavorites).toStrictEqual({ github: ['org/a'], linear: ['team-a-uuid', 'team-b-uuid'] });
   });
   it('roundtrips Antigravity session identity and isolated provider preferences through disk', async () => {
     const home = await tempHome();

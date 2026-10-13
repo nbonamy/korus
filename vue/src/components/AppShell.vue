@@ -3127,10 +3127,11 @@ async function updateCollapsedRepositories(collapsedRepositoryKeys: string[]): P
 }
 
 async function updateBacklogRepositoryFavorites(repositoryIds: string[]): Promise<void> {
-  await updateSettings({ general: { backlogRepositoryFavorites: {
-    ...props.snapshot.general.backlogRepositoryFavorites,
-    [cockpitBacklogState.provider.value]: repositoryIds,
-  } } });
+  const backlogRepositoryFavorites = Object.fromEntries(
+    Object.entries(props.snapshot.general.backlogRepositoryFavorites).map(([provider, ids]) => [provider, [...(ids ?? [])]]),
+  );
+  backlogRepositoryFavorites[cockpitBacklogState.provider.value] = [...repositoryIds];
+  await updateSettings({ general: { backlogRepositoryFavorites } });
 }
 
 function updateCockpitAgentViewMode(cockpitAgentViewMode: CockpitAgentViewMode): void {

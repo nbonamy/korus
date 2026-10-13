@@ -8,7 +8,7 @@
       <nav>
         <BacklogSourceSelector class="cockpit-view__provider" size="small" full-width :provider="workProvider ?? 'github'" :providers="workProviders ?? []" :show-source="false" @select-provider="emit('select-work-provider', $event)" />
         <div class="cockpit-view__navigation-section">
-          <strong>{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</strong>
+          <strong class="app-section-label">{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</strong>
           <el-dropdown
             placement="bottom-end"
             trigger="click"
@@ -42,9 +42,9 @@
         <p v-if="favoritesSaveFailed" class="cockpit-view__favorites-error" role="alert">{{ $t('backlogFavorites.saveFailed') }}</p>
         <div v-if="workBacklog" class="cockpit-view__repositories">
           <p v-if="filteredRepositories.length === 0" class="cockpit-view__repositories-empty"> {{ $t('surface.cockpitView.noRepositoriesFound') }} </p>
-          <h2 v-if="favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('backlogFavorites.heading') }}</h2>
+          <h2 v-if="favoriteRepositories.length" class="cockpit-view__favorites-heading app-section-label">{{ $t('backlogFavorites.heading') }}</h2>
           <template v-for="(repository, index) in displayedRepositories" :key="repository.id">
-            <h2 v-if="favoriteRepositories.length && index === favoriteRepositories.length" class="cockpit-view__favorites-heading">{{ $t('surface.cockpitView.repositories') }}</h2>
+            <h2 v-if="favoriteRepositories.length && index === favoriteRepositories.length" class="cockpit-view__favorites-heading app-section-label">{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</h2>
             <div
               :data-repository-id="repository.id"
               :class="isFavorite(repository.id) ? favoriteReorder.dropTargetClass(repository.id) : {}"
@@ -53,16 +53,7 @@
               @drop.stop="isFavorite(repository.id) ? favoriteReorder.onDrop(repository.id, $event) : favoriteReorder.onDragEnd()"
             >
               <button
-                type="button"
-                :title="repository.name"
-                :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
-                @click="selectRepository(repository.id)"
-              >
-                <IconFolder aria-hidden="true" />
-                <span>{{ repository.name }}</span>
-              </button>
-              <button
-                v-if="isFavorite(repository.id) && workProviderDefinition(workProvider ?? 'github').repositoryBacked"
+                v-if="isFavorite(repository.id)"
                 class="cockpit-view__repository-reorder"
                 type="button"
                 v-bind="favoriteReorder.dragItemAttributes(repository.id)"
@@ -74,11 +65,18 @@
                 @keydown.up.prevent.stop="moveFavorite(repository.id, -1, $event)"
                 @keydown.down.prevent.stop="moveFavorite(repository.id, 1, $event)"
               >
-                <ArrowsVerticalIcon aria-hidden="true" />
+                <IconGripVertical aria-hidden="true" />
               </button>
-              <span v-else-if="workProviderDefinition(workProvider ?? 'github').repositoryBacked" class="cockpit-view__repository-reorder-space" aria-hidden="true" />
               <button
-                v-if="workProviderDefinition(workProvider ?? 'github').repositoryBacked"
+                type="button"
+                :title="repository.name"
+                :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
+                @click="selectRepository(repository.id)"
+              >
+                <IconFolder class="cockpit-view__repository-folder" aria-hidden="true" />
+                <span>{{ repository.name }}</span>
+              </button>
+              <button
                 class="cockpit-view__repository-favorite"
                 type="button"
                 :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
@@ -172,11 +170,11 @@
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
-import { IconChevronDown, IconFolder, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-vue';
+import { IconChevronDown, IconFolder, IconGripVertical, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
-import { ArrowsVerticalIcon, ExternalLinkIcon } from '../shared/icons/app-icons';
+import { ExternalLinkIcon } from '../shared/icons/app-icons';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -274,7 +272,6 @@ const filteredRepositories = computed(() => {
   ));
 });
 const favoriteRepositories = computed(() => {
-  if (!workProviderDefinition(props.workProvider ?? 'github').repositoryBacked) return [];
   const repositories = new Map(filteredRepositories.value.map(repository => [repository.id, repository]));
   return favoriteIds.value.flatMap(id => repositories.has(id) ? [repositories.get(id)!] : []);
 });
@@ -314,7 +311,7 @@ async function commitFavorites(ids: string[], control?: EventTarget | null): Pro
 }
 
 function toggleFavorite(id: string, event: MouseEvent): void {
-  void commitFavorites(isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id], event.currentTarget);
+  void commitFavorites(isFavorite(id) ? favoriteIds.value.filter(candidate => candidate !== id) : [...favoriteIds.value, id], event.detail === 0 ? event.currentTarget : undefined);
 }
 
 function reorderFavorite(id: string, beforeId: string | null): void {
@@ -477,10 +474,6 @@ function selectWorkView(view: InboxView): void {
   line-height: var(--line-height-20);
 }
 
-.cockpit-view__navigation-section strong {
-  font-weight: var(--font-weight-semibold);
-}
-
 .cockpit-view__repository-sort {
   display: inline-flex;
   align-items: center;
@@ -540,7 +533,7 @@ function selectWorkView(view: InboxView): void {
   border-radius: var(--radius-md);
 }
 
-.cockpit-view__repositories > div > button:first-child {
+.cockpit-view__repositories > div > button[aria-pressed] {
   min-width: 0;
   flex: 1;
   display: flex;
@@ -560,20 +553,21 @@ function selectWorkView(view: InboxView): void {
   cursor: pointer;
 }
 
-.cockpit-view__repositories > div > button:first-child svg {
+.cockpit-view__repositories > div > button[aria-pressed] svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
   flex: 0 0 auto;
   color: var(--color-text-muted);
 }
 
-.cockpit-view__repositories > div > button:first-child span {
+.cockpit-view__repositories > div > button[aria-pressed] span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cockpit-view__repositories > div:hover,
+.cockpit-view__repositories > div:has(:focus-visible),
 .cockpit-view__repositories > div:has(button[aria-pressed="true"]) {
   color: var(--color-text);
   background: var(--color-surface-low);
@@ -595,14 +589,9 @@ function selectWorkView(view: InboxView): void {
 
 .cockpit-view__favorites-heading {
   margin: var(--space-6) var(--space-6) var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-13);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-20);
 }
 
 .cockpit-view__repository-reorder,
-.cockpit-view__repository-reorder-space,
 .cockpit-view__repository-favorite,
 .cockpit-view__repository-link {
   width: 26px;
@@ -624,29 +613,50 @@ function selectWorkView(view: InboxView): void {
   cursor: pointer;
 }
 
-.cockpit-view__repository-reorder { cursor: grab; }
+.cockpit-view__repository-reorder {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(var(--space-6) + (var(--icon-sm) - 26px) / 2);
+  margin-right: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+  cursor: grab;
+}
 .cockpit-view__repository-reorder:active { cursor: grabbing; }
 
+.cockpit-view__repositories > div:hover:has(.cockpit-view__repository-reorder) .cockpit-view__repository-folder,
+.cockpit-view__repositories > div:has(.cockpit-view__repository-reorder):has(:focus-visible) .cockpit-view__repository-folder {
+  opacity: 0;
+}
+
 .cockpit-view__repositories > div:hover .cockpit-view__repository-reorder,
-.cockpit-view__repositories > div:focus-within .cockpit-view__repository-reorder,
+.cockpit-view__repositories > div:has(:focus-visible) .cockpit-view__repository-reorder {
+  pointer-events: auto;
+}
+
+.cockpit-view__repositories > div:hover .cockpit-view__repository-reorder,
+.cockpit-view__repositories > div:has(:focus-visible) .cockpit-view__repository-reorder,
 .cockpit-view__repositories > div:hover .cockpit-view__repository-favorite,
-.cockpit-view__repositories > div:focus-within .cockpit-view__repository-favorite,
+.cockpit-view__repositories > div:has(:focus-visible) .cockpit-view__repository-favorite,
 .cockpit-view__repositories > div:hover .cockpit-view__repository-link,
-.cockpit-view__repositories > div:focus-within .cockpit-view__repository-link {
+.cockpit-view__repositories > div:has(:focus-visible) .cockpit-view__repository-link {
   opacity: 1;
 }
 
 .cockpit-view__repository-reorder:hover,
+.cockpit-view__repository-reorder:focus-visible,
 .cockpit-view__repository-favorite:hover,
-.cockpit-view__repository-link:hover {
+.cockpit-view__repository-favorite:focus-visible,
+.cockpit-view__repository-link:hover,
+.cockpit-view__repository-link:focus-visible {
   color: var(--color-primary);
   background: var(--color-primary-container);
 }
 
 .cockpit-view__repositories > div button:focus-visible,
 .cockpit-view__repository-link:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .cockpit-view__repository-reorder svg,

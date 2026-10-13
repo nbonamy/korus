@@ -7,8 +7,51 @@ import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import BacklogView from '../BacklogView.vue';
 import CockpitWorkInbox from '../CockpitWorkInbox.vue';
 import { useCockpitBacklog } from '../use-cockpit-backlog';
+import '../../styles/base.css';
 
 describe('BacklogView', () => {
+  it('reveals keyboard-focused favorite controls without a button outline', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')], undefined, 'nbonamy/a', document.body);
+    try {
+      await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
+      const star = wrapper.get<HTMLButtonElement>('[aria-label="Remove a from favorites"]');
+      star.element.focus();
+      expect(document.activeElement).toBe(star.element);
+      expect(getComputedStyle(star.element).opacity).toBe('1');
+      expect(getComputedStyle(star.element).outline).toBe('none');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('favorites and reorders Linear sources without changing selection, and filters both sections', async () => {
+    const sources: WorkSource[] = ['Engineering', 'Research', 'Support'].map(name => ({ ...repository(name, ''), provider: 'linear', id: `${name.toLowerCase()}-uuid`, fullName: name }));
+    const wrapper = mountView(createInitialSnapshot(), [], sources, undefined, 'research-uuid');
+    await wrapper.setProps({ workProvider: 'linear', repositoryFavorites: ['research-uuid', 'engineering-uuid'] });
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['Research', 'Engineering', 'Support']);
+    expect(wrapper.findAll('.cockpit-view__favorites-heading').map(heading => heading.text())).toStrictEqual(['Favorites', 'Sources']);
+    const transfer = { effectAllowed: '', dropEffect: '', setData: vi.fn() };
+    await wrapper.get('[aria-label="Reorder Engineering"]').trigger('dragstart', { dataTransfer: transfer });
+    const target = wrapper.get('[data-repository-id="research-uuid"]');
+    vi.spyOn(target.element, 'getBoundingClientRect').mockReturnValue({ top: 10, height: 40 } as DOMRect);
+    await target.trigger('dragover', { clientY: 11, dataTransfer: transfer });
+    await target.trigger('drop', { clientY: 11, dataTransfer: transfer });
+    await flushPromises();
+    expect(wrapper.props('repositoryFavorites')).toStrictEqual(['engineering-uuid', 'research-uuid']);
+    await wrapper.get('input[aria-label="Filter sources"]').setValue('Research');
+    expect(wrapper.findAll('.cockpit-view__repositories > div')).toHaveLength(1);
+    await wrapper.get('input[aria-label="Filter sources"]').setValue('');
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['Engineering', 'Research', 'Support']);
+    await wrapper.get('[aria-label="Remove Engineering from favorites"]').trigger('click');
+    await wrapper.get('[aria-label="Add Support to favorites"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.props('repositoryFavorites')).toStrictEqual(['research-uuid', 'support-uuid']);
+    expect(wrapper.get('[title="Research"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+    await wrapper.get('[title="Support"]').trigger('click');
+    expect(wrapper.emitted('select-work-repository')).toStrictEqual([['support-uuid']]);
+  });
+
   it('rolls back a failed favorite save and accepts later saved preferences', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')]);
     let rejectSave!: (error: Error) => void;
@@ -67,7 +110,7 @@ describe('BacklogView', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('ENG-24');
     expect(wrapper.text()).not.toContain('#99');
-    expect(wrapper.get('.cockpit-view__repositories button').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('.cockpit-view__repositories button[aria-pressed]').attributes('aria-pressed')).toBe('true');
     await wrapper.get('.cockpit-inbox__row-action').trigger('click');
     expect(wrapper.get('.work-item-detail').text()).toContain('Linear details');
     expect(snapshot.workBacklog.providerConfigurations.linear?.sourceId).toBe('linear:team');
@@ -83,7 +126,7 @@ describe('BacklogView', () => {
     expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
     await wrapper.get('[aria-label="Add b to favorites"]').trigger('click');
     expect(wrapper.get('.cockpit-view__favorites-heading').text()).toBe('Favorites');
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['b', 'a']);
     expect(vi.mocked(wrapper.props('saveRepositoryFavorites')).mock.calls).toStrictEqual([[['nbonamy/b']]]);
     expect(wrapper.emitted('select-work-repository')).toBeUndefined();
     expect(wrapper.get('[title="a"]').attributes('aria-pressed')).toBe('true');
@@ -91,7 +134,7 @@ describe('BacklogView', () => {
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['nbonamy/b']]);
     await wrapper.get('[aria-label="Remove b from favorites"]').trigger('click');
     expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['a', 'b']);
     expect(wrapper.emitted('select-work-repository')).toHaveLength(1);
   });
 
@@ -100,19 +143,19 @@ describe('BacklogView', () => {
     const wrapper = mountView(createInitialSnapshot(), [], repositories);
     await wrapper.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable'] });
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('/a');
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['a']);
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('/c');
     expect(wrapper.find('.cockpit-view__favorites-heading').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Add c to favorites"]').exists()).toBe(true);
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a', 'c']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['b', 'a', 'c']);
     expect(wrapper.props('saveRepositoryFavorites')).not.toHaveBeenCalled();
     await wrapper.get('[aria-label="Add c to favorites"]').trigger('click');
     expect(vi.mocked(wrapper.props('saveRepositoryFavorites')).mock.calls).toStrictEqual([[['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c']]]);
     wrapper.unmount();
     const restored = mountView(createInitialSnapshot(), [], repositories);
     await restored.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c'] });
-    expect(restored.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['b', 'a', 'c']);
+    expect(restored.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['b', 'a', 'c']);
   });
 
   it('reorders favorites by drag and keyboard without selecting a repository or losing hidden favorites', async () => {
@@ -134,10 +177,10 @@ describe('BacklogView', () => {
     await wrapper.get('[aria-label="Reorder a"]').trigger('keydown', { key: 'ArrowUp' });
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
     expect(saveRepositoryFavorites.mock.calls[1]).toStrictEqual([['nbonamy/a', 'nbonamy/b', 'unavailable', 'nbonamy/c']]);
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b', 'c']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['a', 'b', 'c']);
     // A delayed snapshot from the earlier drag must not undo the more recent keyboard move.
     await wrapper.setProps({ repositoryFavorites: ['nbonamy/b', 'nbonamy/a', 'unavailable', 'nbonamy/c'] });
-    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b', 'c']);
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['a', 'b', 'c']);
     expect(wrapper.emitted('select-work-repository')).toBeUndefined();
     saves[0]!();
     await wrapper.setProps({ repositoryFavorites: ['nbonamy/a', 'nbonamy/b', 'unavailable', 'nbonamy/c'] });
@@ -178,6 +221,29 @@ describe('BacklogView', () => {
     }
   });
 
+  it('leaves pointer activation out of keyboard focus restoration when a row moves', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', ''), repository('c', '')], undefined, 'nbonamy/a', document.body);
+    try {
+      await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
+      const star = wrapper.get<HTMLButtonElement>('[aria-label="Add c to favorites"]');
+      star.element.focus();
+      star.element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      await flushPromises();
+      expect(wrapper.find('[aria-label="Remove c from favorites"]').exists()).toBe(true);
+      expect(document.activeElement).not.toBe(star.element);
+      expect(wrapper.emitted('select-work-repository')).toBeUndefined();
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('places the keyboard reorder handle before repository selection in tab order', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')]);
+    await wrapper.setProps({ repositoryFavorites: ['nbonamy/a'] });
+    const row = wrapper.get('[data-repository-id="nbonamy/a"]');
+    expect(row.findAll('button').map(button => button.attributes('aria-label') ?? button.attributes('title'))).toStrictEqual(['Reorder a', 'a', 'Remove a from favorites']);
+  });
+
   it('retains handle focus when a failed keyboard reorder restores the saved order', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', ''), repository('c', '')], undefined, 'nbonamy/a', document.body);
     try {
@@ -188,7 +254,7 @@ describe('BacklogView', () => {
       await handle.trigger('keydown', { key: 'ArrowDown' });
       rejectSave(new Error('Disconnected'));
       await flushPromises();
-      expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(['a', 'b', 'c']);
+      expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(['a', 'b', 'c']);
       expect(document.activeElement).toBe(handle.element);
       expect(wrapper.emitted('select-work-repository')).toBeUndefined();
       await handle.trigger('keydown', { key: 'ArrowDown' });
@@ -215,7 +281,7 @@ describe('BacklogView', () => {
       ] as const) {
         await handle.trigger('keydown', { key });
         await flushPromises();
-        expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button:first-child').text())).toStrictEqual(order);
+        expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.get('button[aria-pressed]').text())).toStrictEqual(order);
         expect(document.activeElement).toBe(handle.element);
       }
       expect(wrapper.emitted('select-work-repository')).toBeUndefined();
