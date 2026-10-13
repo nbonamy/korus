@@ -244,6 +244,8 @@
         :list-source-repositories="listSourceRepositories"
         :teams="snapshot.teams"
         :work-backlog="cockpitWorkBacklog"
+        :repository-favorites="snapshot.general.backlogRepositoryFavorites[cockpitBacklogState.provider.value] ?? []"
+        :save-repository-favorites="updateBacklogRepositoryFavorites"
         @assign-work-item-to-new-agent="openNewAgentForWorkItem"
         @assign-work-item="assignExistingAgentWorkItem"
         @refresh-work-items="refreshWorkItems"
@@ -3190,6 +3192,14 @@ async function updateRepositoryIcon(payload: {
 
 async function updateCollapsedRepositories(collapsedRepositoryKeys: string[]): Promise<void> {
   await updateSettings({ general: { collapsedRepositoryKeys } });
+}
+
+async function updateBacklogRepositoryFavorites(repositoryIds: string[]): Promise<void> {
+  const backlogRepositoryFavorites = Object.fromEntries(
+    Object.entries(props.snapshot.general.backlogRepositoryFavorites).map(([provider, ids]) => [provider, [...(ids ?? [])]]),
+  );
+  backlogRepositoryFavorites[cockpitBacklogState.provider.value] = [...repositoryIds];
+  await updateSettings({ general: { backlogRepositoryFavorites } });
 }
 
 function updateCockpitAgentViewMode(cockpitAgentViewMode: CockpitAgentViewMode): void {

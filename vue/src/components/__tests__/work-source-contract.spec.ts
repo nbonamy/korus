@@ -100,7 +100,7 @@ it('uses opaque continuations without totals, including an empty filtered page a
       void state.initialize();
       return () => h(BacklogView, {
         agents: [], teams: [], workProvider: state.provider.value, workProviders: state.providers.value,
-        workBacklog: state.workBacklog.value, startWorkItemsAction: async () => {},
+        workBacklog: state.workBacklog.value, startWorkItemsAction: async () => {}, saveRepositoryFavorites: async () => {},
         onChangeWorkItemsPage: state.changePage,
       });
     },
