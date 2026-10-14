@@ -62,7 +62,7 @@ struct ComposerView: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .regular))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(.primary)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
@@ -101,7 +101,7 @@ struct ComposerView: View {
             model.isDictating.toggle()
         } label: {
             Image(systemName: model.isDictating ? "waveform" : "mic")
-                .font(.system(size: 17))
+                .font(.system(size: 22))
                 .symbolEffect(.variableColor.iterative, isActive: model.isDictating)
                 .foregroundStyle(model.isDictating ? Color.accentColor : .primary)
                 .frame(width: 38, height: 38)
