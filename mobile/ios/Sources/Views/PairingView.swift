@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// First run, or after forgetting a laptop: the only thing to do is type the code the laptop shows.
+/// First run, or after forgetting a laptop: enter or scan the code shown by the laptop.
 struct PairingView: View {
     @Environment(AppModel.self) private var model
     @State private var code = ""
+    @State private var scannerOpen = false
+    @State private var scannedCode: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -56,20 +58,40 @@ struct PairingView: View {
                 if model.pairing == .awaitingApproval {
                     Label("Approve this phone on your laptop.", systemImage: "hourglass").font(.subheadline).foregroundStyle(.secondary)
                 }
-                TextField("XXXX-XXXX", text: $code)
-                    .font(.system(size: 26, weight: .semibold, design: .monospaced))
-                    .multilineTextAlignment(.center)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .focused($focused)
-                    .padding(.vertical, 18)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
-                    .disabled(model.pairing != .idle)
-                    .onChange(of: code) { _, value in
-                        let formatted = PairingCode.format(value)
-                        if formatted != value { code = formatted; return }
-                        if PairingCode.isComplete(formatted) { model.pair(code: formatted) }
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 48, height: 1).accessibilityHidden(true)
+                    TextField("XXXX-XXXX", text: $code)
+                        .font(.system(size: 26, weight: .semibold, design: .monospaced))
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .focused($focused)
+                        .accessibilityLabel("Pairing code")
+                        .onChange(of: code) { _, value in
+                            let formatted = PairingCode.format(value)
+                            if formatted != value { code = formatted; return }
+                            if PairingCode.isComplete(formatted), model.pairing == .idle {
+                                focused = false
+                                model.pair(code: formatted)
+                            }
+                        }
+                    Button {
+                        focused = false
+                        scannerOpen = true
+                    } label: {
+                        Image(systemName: "camera")
+                            .font(.system(size: 22))
+                            .frame(width: 48, height: 56)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Scan laptop QR code")
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 6)
+                .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+                .disabled(model.pairing != .idle)
             }
             .padding(.bottom, 8)
         }
@@ -77,6 +99,18 @@ struct PairingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
         .onAppear { focused = true }
+        .sheet(isPresented: $scannerOpen, onDismiss: {
+            guard let scanned = scannedCode else { return }
+            scannedCode = nil
+            guard model.pairing == .idle else { return }
+            if code == scanned { model.pair(code: scanned) }
+            else { code = scanned }
+        }) {
+            PairingScannerView { scanned in
+                scannedCode = scanned
+                scannerOpen = false
+            }
+        }
     }
 
     static func message(for key: String) -> String {
@@ -89,17 +123,4 @@ struct PairingView: View {
         default: "Pairing failed. Check the code and try again."
         }
     }
-}
-
-/// Eight symbols from an alphabet without look-alikes, shown as two groups of four.
-enum PairingCode {
-    private static let alphabet = Set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-
-    static func format(_ input: String) -> String {
-        let symbols = input.uppercased().filter { alphabet.contains($0) }.prefix(8)
-        guard symbols.count > 4 else { return String(symbols) }
-        return "\(symbols.prefix(4))-\(symbols.dropFirst(4))"
-    }
-
-    static func isComplete(_ formatted: String) -> Bool { formatted.filter { $0 != "-" }.count == 8 }
 }

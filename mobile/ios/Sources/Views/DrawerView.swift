@@ -118,8 +118,6 @@ struct DrawerView: View {
             Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
             Spacer()
             Menu {
-                if model.connection == .connected { Button("Disconnect", systemImage: "wifi.slash") { model.disconnect() } }
-                else { Button("Reconnect", systemImage: "arrow.clockwise") { model.reconnect() } }
                 Button("Forget laptop", systemImage: "trash", role: .destructive) { model.forget() }
                 Divider()
                 Button("Debug", systemImage: "ladybug") {}
