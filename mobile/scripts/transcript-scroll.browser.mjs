@@ -2,13 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
+
+const browserEngine = process.env.TRANSCRIPT_BROWSER === 'webkit' ? webkit : chromium;
 
 test('empty repository chats show the repository and branch without overlapping wrapped headings', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
-    await server.listen(); browser = await chromium.launch();
+    await server.listen(); browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
     await page.addInitScript(() => { window.webkit = { messageHandlers: { transcript: { postMessage() {} } } }; });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
@@ -40,7 +42,7 @@ test('the transcript retrieves deferred Claude content only on demand through bo
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
-    await server.listen(); browser = await chromium.launch();
+    await server.listen(); browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.contentRequests = [];
@@ -84,7 +86,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
   let browser;
   try {
     await server.listen();
-    browser = await chromium.launch();
+    browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     // Only the native ready notification is replaced; render the actual shared pane.
     await page.addInitScript(() => {
@@ -229,7 +231,7 @@ test('a context update changes the chat around the transcript without redrawing 
   let browser;
   try {
     await server.listen();
-    browser = await chromium.launch();
+    browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => { window.webkit = { messageHandlers: { transcript: { postMessage() {} } } }; });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
@@ -269,7 +271,7 @@ test('transcript links ask iOS to open external destinations without navigating 
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
-    await server.listen(); browser = await chromium.launch();
+    await server.listen(); browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.nativeEvents = [];
@@ -301,7 +303,7 @@ test('conversation images open the native viewer through the SDK action without 
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
-    await server.listen(); browser = await chromium.launch();
+    await server.listen(); browser = await browserEngine.launch();
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.nativeEvents = [];

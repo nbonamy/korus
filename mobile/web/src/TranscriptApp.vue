@@ -1,6 +1,6 @@
 <template>
   <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px` }">
-    <button v-if="history.failed" class="app-button app-button--tertiary" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
+    <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <ConversationPane
       v-if="agent && (frame || ready)"
       :controller="controller"
@@ -162,7 +162,9 @@ window.companionTranscript = {
 
 <style>
 html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-.transcript { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
+.transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
+/* History errors must not resize the reading viewport when shown or dismissed. */
+.transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; background: var(--color-surface-lowest); }
 /* Keep secondary transcript text legible at a phone's viewing distance. */
 .transcript, .transcript :where(.codex-chat-theme) {
   --font-size-12: 14px;
