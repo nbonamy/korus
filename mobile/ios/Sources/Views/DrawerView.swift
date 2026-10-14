@@ -7,13 +7,13 @@ struct DrawerView: View {
         VStack(spacing: 0) {
             header
             teams
-            newChatButton
+            if !model.groups.contains(where: \.hasQuickChats) { newChatButton }
             List {
                 ForEach(model.groups) { group in
                     Section {
                         ForEach(group.sessions) { session in
                             SessionRow(session: session, group: group, isActive: session.agentId == model.activeAgentID)
-                                .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+                                .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                                 .contentShape(Rectangle())
@@ -25,10 +25,14 @@ struct DrawerView: View {
                         }
                     } header: {
                         GroupHeader(group: group)
+                            .listRowInsets(.vertical, 0)
                     }
+                    .listSectionMargins(.top, 12)
+                    .listSectionMargins(.bottom, 0)
                 }
             }
             .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 44)
             .scrollContentBackground(.hidden)
             footer
         }
@@ -50,8 +54,8 @@ struct DrawerView: View {
             Spacer()
         }
         .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 
     private var teams: some View {
@@ -69,7 +73,7 @@ struct DrawerView: View {
                 .padding(.horizontal, 20)
             }
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, 4)
     }
 
     /// The one entry point for a conversation that isn't about a repository: a plain link, like a row in the list.
@@ -81,14 +85,14 @@ struct DrawerView: View {
                     else { Image(systemName: "square.and.pencil").font(.system(size: 17, weight: .medium)) }
                 }
                 .frame(width: 22)
-                Text("New Chat").font(.body.weight(.medium))
+                Text("New Chat").font(.body)
                 Spacer()
             }
-            .padding(.horizontal, 22).frame(height: 48)
+            .padding(.horizontal, 22).frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(.secondary)
         .disabled(!model.canStartChat || model.chatCreation == .creating)
         .opacity(model.canStartChat ? 1 : 0.4)
     }
@@ -110,7 +114,7 @@ struct DrawerView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -126,7 +130,21 @@ private struct GroupHeader: View {
                 .foregroundStyle(.secondary)
                 .textCase(nil)
             Spacer(minLength: 8)
-            if group.repositoryId != nil, model.canStartChat { newChatMenu }
+            if model.canStartChat {
+                if group.hasQuickChats {
+                    Button { model.startQuickChat() } label: {
+                        Group {
+                            if model.creatingChatGroupID == AppModel.quickChatID { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
+                        }
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(model.chatCreation == .creating)
+                    .accessibilityLabel("New chat")
+                } else if group.repositoryId != nil { newChatMenu }
+            }
         }
         .padding(.leading, 10)
     }
@@ -154,18 +172,22 @@ struct GroupIcon: View {
     var body: some View {
         Group {
             if let icon = group.icon, !icon.isEmpty {
-                Text(icon).font(.system(size: 15))
+                Text(icon).font(.system(size: 15, weight: group.usesIconBadge ? .semibold : .regular))
                     .frame(width: 24, height: 24)
             } else {
                 Image(systemName: group.kind == .quickChats ? "bubble.left" : "folder")
                     .font(.system(size: 14))
                     .frame(width: 24, height: 24)
                     .foregroundStyle(.secondary)
-                    .background {
-                        if group.kind != .quickChats {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(.quaternary)
-                        }
+            }
+        }
+        .background {
+            if group.usesIconBadge {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(.quaternary)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(.secondary.opacity(0.3), lineWidth: 0.5)
                     }
             }
         }

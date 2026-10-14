@@ -40,6 +40,15 @@ struct SidebarGroup: Identifiable, Hashable, Codable, Sendable {
     var sessions: [SidebarSession]
     /// Names the repository to the laptop when a chat starts in it; folders and quick chats have none.
     var repositoryId: String? = nil
+
+    var hasQuickChats: Bool { kind == .quickChats && !sessions.isEmpty }
+
+    /// Match the desktop: letters and fallbacks get a badge; pictographs stand alone.
+    var usesIconBadge: Bool {
+        guard kind != .quickChats else { return false }
+        guard let icon, !icon.isEmpty else { return true }
+        return !icon.hasPrefix("data:image/") && icon.range(of: "\\p{Extended_Pictographic}", options: .regularExpression) == nil
+    }
 }
 
 /// What the header shows for the open conversation.
