@@ -4,6 +4,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { createCompanionRelay } from './relay';
 import { z } from 'zod';
 import { startRelayHealth } from './relay-health';
+import { RelayStartupError } from './relay-startup-error';
 
 const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
@@ -15,16 +16,24 @@ const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d
     if (secure && (!config.certificateFile || !config.privateKeyFile)) context.addIssue({ code: 'custom', message: 'A TLS listener needs certificateFile and privateKeyFile.' });
     if (!secure && !/^\/ip(4\/127\.0\.0\.1|6\/::1)\//.test(config.listen)) context.addIssue({ code: 'custom', message: 'A plaintext listener must be bound to loopback.' });
   });
-export function parseRelayConfig(source: string) { return configSchema.parse(JSON.parse(source)); }
+export function parseRelayConfig(source: string) {
+  try { return configSchema.parse(JSON.parse(source)); }
+  catch (cause) {
+    throw new RelayStartupError('Invalid operator configuration. Provide valid JSON with a listen address, admitted hostIds and stateDirectory; public listeners require TLS certificateFile and privateKeyFile, and plaintext listeners must use loopback.', { cause });
+  }
+}
 export async function runCompanionRelay(configFile: string) {
-  if (!configFile) throw new Error('Provide the relay operator configuration file.');
+  if (!configFile) throw new RelayStartupError('Provide the relay operator configuration file as the first argument, or use npm run dev:relay for local development.');
   const config = parseRelayConfig(await readFile(configFile, 'utf8'));
   await mkdir(config.stateDirectory, { recursive: true, mode: 0o700 });
   const identityFile = path.join(config.stateDirectory, 'identity.key');
   let identity;
   try { identity = privateKeyFromProtobuf(await readFile(identityFile)); }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Relay identity is invalid. Restore it; do not silently replace pinned identities.');
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      throw new RelayStartupError('The persistent relay identity could not be read. Check access or restore the original identity; do not replace it, because paired devices pin this identity.', { cause: error });
+    }
     identity = await generateKeyPair('Ed25519');
     await writeFile(identityFile, privateKeyToProtobuf(identity), { flag: 'wx', mode: 0o600 });
   }

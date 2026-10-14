@@ -1,5 +1,6 @@
 import { runCompanionRelay } from './relay-cli';
-void runCompanionRelay(process.argv[2] ?? '').catch(() => {
-  process.stderr.write('Relay startup failed. Check the protected operator configuration, TLS certificate and persistent identity.\n');
+import { relayStartupMessage } from './relay-startup-error';
+void runCompanionRelay(process.argv[2] ?? '').catch((error: unknown) => {
+  process.stderr.write(`${relayStartupMessage(error)}\n`);
   process.exitCode = 1;
 });
