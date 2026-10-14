@@ -35,12 +35,25 @@ struct ConversationScreen: View {
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Stop", systemImage: "stop.circle") { model.interrupt() }
-                    } label: { Image(systemName: "ellipsis") }
+                        Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
+                            .disabled(!model.canManageSession || model.isWorking)
+                        Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
+                            .disabled(!model.canManageSession)
+                    } label: {
+                        if model.sessionAction == "previewClose" { ProgressView() }
+                        else { Image(systemName: "ellipsis") }
+                    }
                     .buttonBorderShape(.circle)
+                    .accessibilityLabel("Session actions")
                 }
             }
             .toolbarTitleDisplayMode(.inline)
+            .sheet(item: Binding(get: { model.closePreview }, set: { if $0 == nil { model.cancelCloseSession() } })) { preview in
+                CloseSessionSheet(preview: preview)
+            }
+            .alert("Session action failed", isPresented: Binding(get: { model.sessionActionFailed && model.closePreview == nil }, set: { if !$0 { model.dismissSessionError() } })) {
+                Button("OK", role: .cancel) { model.dismissSessionError() }
+            } message: { Text("The laptop couldn’t complete the action. Check the connection and try again.") }
         }
     }
 }

@@ -6,6 +6,7 @@ struct ComposerView: View {
     @FocusState private var focused: Bool
 
     private var expanded: Bool { focused || !model.composerText.isEmpty || model.dictation.active }
+    private var stopping: Bool { model.isWorking && model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         @Bindable var model = model
@@ -19,7 +20,10 @@ struct ComposerView: View {
                     .font(.body)
                     .padding(.horizontal, 6)
                     .padding(.top, expanded ? 6 : 0)
-                if !expanded { micButton }
+                if !expanded {
+                    micButton
+                    if stopping { sendButton }
+                }
             }
             if expanded {
                 HStack(spacing: 6) {
@@ -125,18 +129,19 @@ struct ComposerView: View {
 
     private var sendButton: some View {
         let empty = model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let disabled = stopping ? !model.canManageSession || !model.canInterrupt : empty || !model.canSend
         return Button {
-            model.send()
-            focused = false
+            if stopping { model.interrupt() }
+            else { model.send(); focused = false }
         } label: {
-            Image(systemName: "arrow.up")
+            Image(systemName: stopping ? "stop.fill" : "arrow.up")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
-                .background(empty ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
+                .background(disabled ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
         }
-        .disabled(empty)
-        .animation(.smooth(duration: 0.2), value: empty)
-        .accessibilityLabel("Send")
+        .disabled(disabled)
+        .animation(.smooth(duration: 0.2), value: stopping)
+        .accessibilityLabel(stopping ? "Stop" : "Send")
     }
 }

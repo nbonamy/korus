@@ -1,6 +1,6 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
 import type { BackendModelOption } from '@workspace/core/contracts';
-import { companionSessionId } from '@workspace/core/companion-protocol';
+import { companionSessionId, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
@@ -9,6 +9,9 @@ import { restoreDraftRecord, type DraftState, type DraftStore } from './protecte
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
+  const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
+  const sessionActionFailed = ref(false);
+  const closePreview = shallowRef<CompanionClosePreview | null>(null);
   const laptopId = ref('');
   const teamId = ref('');
   const agentId = ref('');
@@ -81,9 +84,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
-    && storageReady.value && !loading.value && !sending[key()] && !deliveryUnknown.value);
+    && storageReady.value && !loading.value && !sessionAction.value && !sending[key()] && !deliveryUnknown.value);
 
   function closeSession() {
+    closePreview.value = null;
     clearTimeout(retryTimer);
     retryTimer = undefined;
     ++connectionEpoch;
@@ -197,8 +201,57 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
   const startReview = (input: CompanionReviewInput) => runCommand(() => agentId.value ? session?.startReview?.(agentId.value, input) : undefined);
-  function interrupt() { const id = agentId.value; if (id) void session?.interrupt?.(id)?.catch(() => {}); }
+  async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
+    const id = agentId.value; const active = session; const epoch = selectionEpoch;
+    if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
+    const preview = closePreview.value;
+    if (action === 'close' && preview?.target.agentId !== id) return;
+    sessionAction.value = action; sessionActionFailed.value = false;
+    try {
+      if (action === 'close' && active.closeSession && preview) await active.closeSession(preview.target, input);
+      else if (action === 'restart' && active.restartSession) await active.restartSession(id);
+      else if (action === 'interrupt' && active.interrupt) await active.interrupt(id);
+      else throw new Error('Session action unavailable.');
+      const next = await active.getWorkspace();
+      if (active !== session) return;
+      workspace.value = next;
+      if (epoch !== selectionEpoch) return;
+      if (action !== 'interrupt') {
+        conversation.value = null; selectedConversationKey = '';
+        await selectAgent(action === 'restart' ? id : agents.value[0]?.id ?? '');
+      }
+    } catch {
+      if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
+    } finally { sessionAction.value = null; }
+  }
+  const interrupt = () => controlSession('interrupt');
+  const restartSession = () => controlSession('restart');
+  async function requestCloseSession() {
+    const id = agentId.value; const active = session; const epoch = selectionEpoch;
+    if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
+    sessionAction.value = 'previewClose'; sessionActionFailed.value = false;
+    closePreview.value = null;
+    try {
+      if (!active.previewCloseSession) throw new Error('Close preview unavailable.');
+      const preview = await active.previewCloseSession(id);
+      if (epoch !== selectionEpoch || active !== session) return;
+      closePreview.value = preview;
+    } catch {
+      if (epoch === selectionEpoch && active === session) sessionActionFailed.value = true;
+    } finally { sessionAction.value = null; }
+    if (closePreview.value && !closePreview.value.isLinkedWorktree) await controlSession('close');
+  }
+  async function confirmCloseSession(id: string, deleteWorktree: boolean, deleteRemoteBranch = false, discardChanges = false) {
+    const preview = closePreview.value;
+    if (!preview || preview.target.agentId !== id || id !== agentId.value) return;
+    if (deleteWorktree && (!preview.isLinkedWorktree || (preview.hasChanges && !discardChanges))) return;
+    await controlSession('close', deleteWorktree ? { deleteWorktree: true, deleteRemoteBranch, discardChanges, confirmed: true } : undefined);
+  }
+  const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
+  const dismissSessionError = () => { sessionActionFailed.value = false; };
   async function selectAgent(id: string) {
+    closePreview.value = null;
+    sessionActionFailed.value = false;
     const epoch = ++selectionEpoch;
     const nextAgent = agents.value.find((a) => a.id === id);
     const nextKey = nextAgent ? JSON.stringify([laptopId.value, id, companionSessionId(nextAgent)]) : '';
@@ -302,6 +355,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
-    draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

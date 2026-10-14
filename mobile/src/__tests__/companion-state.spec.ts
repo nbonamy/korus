@@ -3,6 +3,50 @@ import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
 
 describe('companion state', () => {
+  it.each([false, true])('waits for worktree confirmation, then closes only the previewed session (delete: %s)', async (deleting) => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const target = { hostId: 'laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null };
+    const preview = { target, isLinkedWorktree: true, branch: 'feature', upstream: 'origin/feature', hasChanges: true };
+    const closeSession = vi.fn();
+    connector.connect = async (id) => {
+      const session = await original(id); let workspace = await session.getWorkspace();
+      closeSession.mockImplementation(async () => { workspace = { ...workspace, agents: workspace.agents.filter((agent) => agent.id !== target.agentId) }; });
+      return { ...session, getWorkspace: async () => workspace, previewCloseSession: async () => preview, closeSession };
+    };
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await state.requestCloseSession();
+      expect(state.closePreview.value).toStrictEqual(preview);
+      expect(closeSession).not.toHaveBeenCalled();
+      await state.confirmCloseSession('demo-agent', true, false, false);
+      expect(closeSession).not.toHaveBeenCalled(); // Dirty work needs explicit discard consent.
+      await state.confirmCloseSession('demo-agent', deleting, deleting, deleting);
+      expect(closeSession).toHaveBeenCalledExactlyOnceWith(target, deleting ? { deleteWorktree: true, deleteRemoteBranch: true, discardChanges: true, confirmed: true } : undefined);
+      expect(state.closePreview.value).toBeNull();
+      expect(state.agentId.value).toBe('demo-reviewer');
+      expect(state.conversation.value?.agentId).toBe('demo-reviewer');
+    } finally { state.dispose(); }
+  });
+  it('keeps a refused close open and rejects stale confirmation after changing conversations', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const closeSession = vi.fn(async () => { throw new Error('Worktree changed'); });
+    const preview = { target: { hostId: 'laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null }, isLinkedWorktree: true, branch: 'feature', upstream: null, hasChanges: false };
+    connector.connect = async (id) => ({ ...await original(id), closeSession, previewCloseSession: async () => preview });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await state.requestCloseSession(); await state.confirmCloseSession('demo-agent', true);
+      expect(state.sessionActionFailed.value).toBe(true);
+      expect(state.closePreview.value).toStrictEqual(preview);
+      expect(state.agentId.value).toBe('demo-agent');
+      await state.selectAgent('demo-reviewer');
+      await state.confirmCloseSession('demo-agent', true);
+      expect(closeSession).toHaveBeenCalledTimes(1);
+      expect(state.closePreview.value).toBeNull();
+      expect(state.sessionActionFailed.value).toBe(false);
+    } finally { state.dispose(); }
+  });
   it('retries transport loss with receipt reconciliation and stops retrying on manual disconnect', async () => {
     vi.useFakeTimers();
     const connector = createDemoConnector(); const original = connector.connect;

@@ -14,6 +14,34 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('reports stop failures, prevents duplicate actions, and rehydrates an empty restarted session without losing the draft', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const interrupt = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(undefined);
+    let finish!: () => void; let restarted = false;
+    const restartSession = vi.fn(async () => { await new Promise<void>((resolve) => { finish = resolve; }); restarted = true; });
+    connector.connect = async (id) => {
+      const session = await original(id);
+      return { ...session, interrupt, restartSession, loadConversation: async (id: string) => restarted ? null : session.loadConversation(id) };
+    };
+    const { engine, latest, events } = open(connector);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await engine.dispatch({ type: 'draft', text: 'Keep my draft' });
+      await engine.dispatch({ type: 'interrupt' });
+      expect(latest().sessionActionFailed).toBe(true);
+      await engine.dispatch({ type: 'dismissSessionError' });
+      expect(latest().sessionActionFailed).toBe(false);
+      await engine.dispatch({ type: 'interrupt' });
+      const restarting = engine.dispatch({ type: 'restartSession' });
+      expect(latest()).toMatchObject({ sessionAction: 'restart', canSend: false });
+      await engine.dispatch({ type: 'restartSession' });
+      expect(restartSession).toHaveBeenCalledExactlyOnceWith('demo-agent');
+      finish(); await restarting;
+      expect(latest()).toMatchObject({ agentId: 'demo-agent', sessionAction: null, sessionActionFailed: false, draft: 'Keep my draft', canSend: true });
+      expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ frame: null, ready: true });
+    } finally { engine.dispose(); }
+  });
   function selectionStorage() {
     const values = new Map<string, string>();
     return createSelectionStore({
@@ -260,6 +288,59 @@ describe('companion engine', () => {
     await engine.dispatch({ type: 'interrupt' });
     expect(interrupt).toHaveBeenCalledWith('demo-agent');
     engine.dispose();
+  });
+  describe('a prompt Claude has not published yet', () => {
+    // Claude publishes the prompt on the next read; the phone has to show it before that.
+    function claude(published: { texts: string[] }, sendPrompt: () => Promise<void> = async () => {}) {
+      const connector = createDemoConnector(); const original = connector.connect;
+      connector.connect = async (id) => {
+        const session = await original(id); const workspace = await session.getWorkspace();
+        return { ...session, sendPrompt,
+          getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, backend: 'claude' as const })) }),
+          loadConversation: async (agentId) => ({ type: 'claude.conversationSnapshotChanged', seq: 1, occurredAt: '2026-01-01T00:00:00Z', agentId, backend: 'claude', payload: { revision: 1, snapshot: {
+            agentId, sessionId: 's', activeTurnId: null, turnIds: [], turns: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false },
+            contextUsage: null, plan: null, error: null,
+            messages: published.texts.map((text, index) => ({ id: `m${index}`, agentId, role: 'user' as const, status: 'complete' as const, createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text' as const, text }] })),
+          } } }) };
+      };
+      return connector;
+    }
+    const texts = (events: EngineEvent[]) => { const last = events.filter((event) => event.type === 'conversation').at(-1); return last?.type === 'conversation' && last.frame && 'messages' in last.frame.payload.snapshot ? last.frame.payload.snapshot.messages.map((message) => message.parts.map((part) => part.type === 'text' ? part.text : '').join('')) : []; };
+    async function opened(published: { texts: string[] }, sendPrompt?: () => Promise<void>) {
+      const harness = open(claude(published, sendPrompt));
+      await harness.engine.start(); await harness.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await harness.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      return harness;
+    }
+    it('shows it at once and does not duplicate it once it is published', async () => {
+      const published = { texts: ['Earlier'] }; const { engine, events } = await opened(published);
+      await engine.dispatch({ type: 'send', text: 'Hello' });
+      expect(texts(events)).toEqual(['Earlier', 'Hello']);
+      published.texts.push('Hello');
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(texts(events)).toEqual(['Earlier', 'Hello']);
+      engine.dispose();
+    });
+    it('is not hidden by an earlier identical prompt', async () => {
+      const { engine, events } = await opened({ texts: ['Hello'] });
+      await engine.dispatch({ type: 'send', text: 'Hello' });
+      expect(texts(events)).toEqual(['Hello', 'Hello']);
+      engine.dispose();
+    });
+    it('is withdrawn when delivery fails and after thirty quiet seconds', async () => {
+      const failed = await opened({ texts: [] }, async () => { throw new Error('offline'); });
+      await failed.engine.dispatch({ type: 'send', text: 'Hello' });
+      expect(texts(failed.events)).toEqual([]);
+      failed.engine.dispose();
+      vi.useFakeTimers();
+      try {
+        const quiet = await opened({ texts: [] });
+        await quiet.engine.dispatch({ type: 'send', text: 'Hello' });
+        expect(texts(quiet.events)).toEqual(['Hello']);
+        await vi.advanceTimersByTimeAsync(30_001);
+        expect(texts(quiet.events)).toEqual([]);
+        quiet.engine.dispose();
+      } finally { vi.useRealTimers(); }
+    });
   });
   it('forgets a laptop and reflects the empty list', async () => {
     const { engine, latest } = open();

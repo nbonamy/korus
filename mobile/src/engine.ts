@@ -6,6 +6,7 @@ import { createCompanionState } from './companion-state';
 import type { ComposerChange } from './composer-settings';
 import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
+import type { CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
@@ -23,6 +24,9 @@ export type EngineState = {
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   canSend: boolean;
+  sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
+  sessionActionFailed: boolean;
+  closePreview: CompanionClosePreview | null;
   draft: string;
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
@@ -48,6 +52,9 @@ export type EngineCommand =
   | { type: 'draft'; text: string }
   | { type: 'send'; text: string; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
+  | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
+  | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
+  | { type: 'cancelCloseSession' }
   | { type: 'composer'; change: ComposerChange }
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
@@ -102,6 +109,8 @@ export function createEngine(port: EnginePort) {
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       loading: state.loading.value && !state.conversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
+      closePreview: state.closePreview.value,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
@@ -118,9 +127,45 @@ export function createEngine(port: EnginePort) {
     queueMicrotask(() => { scheduled = false; if (!disposed) port.post({ type: 'state', state: snapshot() }); });
   }
   watch(snapshot, publish, { deep: true, flush: 'sync' });
-  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, ([frame, agent, agents, history, ready]) => {
-    port.post({ type: 'conversation', agentId: state.agentId.value, ready, frame, agent, agents, history });
-  }, { flush: 'sync' });
+  // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
+  // Until the real message arrives, the transcript shows the prompt as sent.
+  const pending: { id: string; agentId: string; text: string; baseline: number; expires: number; createdAt: string }[] = [];
+  let expiry: ReturnType<typeof setTimeout> | undefined;
+  const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
+    .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
+  function withPending(frame: CompanionConversation | null): CompanionConversation | null {
+    if (!frame || frame.backend === 'codex') return frame;
+    const now = Date.now();
+    const sent = new Map<string, number>();
+    const shown = pending.filter((entry) => {
+      const seen = (sent.get(entry.text) ?? 0) + 1;
+      sent.set(entry.text, seen);
+      return entry.agentId === frame.agentId && entry.expires > now && userTexts(frame, entry.text) < entry.baseline + seen;
+    });
+    if (!shown.length) return frame;
+    const snapshot = frame.payload.snapshot;
+    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], createdAt: entry.createdAt }))];
+    return { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation;
+  }
+  function postConversation() {
+    if (disposed) return;
+    const now = Date.now();
+    for (let index = pending.length - 1; index >= 0; index--) if (pending[index]!.expires <= now) pending.splice(index, 1);
+    clearTimeout(expiry);
+    if (pending.length) expiry = setTimeout(postConversation, Math.max(0, Math.min(...pending.map((entry) => entry.expires)) - now) + 1);
+    port.post({ type: 'conversation', agentId: state.agentId.value, ready: state.conversationReady.value, frame: withPending(state.conversation.value), agent: state.agent.value, agents: state.agents.value, history: state.history.value });
+  }
+  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, postConversation, { flush: 'sync' });
+
+  async function send(command: Extract<EngineCommand, { type: 'send' }>) {
+    const frame = state.conversation.value;
+    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, command.options);
+    const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
+    pending.push(entry);
+    postConversation();
+    await state.submit(command.text, command.options);
+    if (state.error.value) { pending.splice(pending.indexOf(entry), 1); postConversation(); }
+  }
 
   async function pair(code: string, deviceName: string) {
     if (!port.connector.pair || pairing !== 'idle') return;
@@ -161,8 +206,13 @@ export function createEngine(port: EnginePort) {
       }
       case 'loadOlder': return state.loadOlder(command.agentId);
       case 'draft': return state.updateDraft({ text: command.text, selectionStart: command.text.length, selectionEnd: command.text.length });
-      case 'send': return state.submit(command.text, command.options);
+      case 'send': return send(command);
       case 'interrupt': return state.interrupt();
+      case 'restartSession': await state.restartSession(); return rememberSelection();
+      case 'closeSession': await state.requestCloseSession(); return rememberSelection();
+      case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
+      case 'cancelCloseSession': return state.cancelCloseSession();
+      case 'dismissSessionError': return state.dismissSessionError();
       case 'composer': return state.updateComposerSettings(command.change);
       case 'approvalPreset': return state.setApprovalPreset(command.preset);
       case 'permissionMode': return state.setPermissionMode(command.mode);
@@ -184,7 +234,7 @@ export function createEngine(port: EnginePort) {
     publish();
   }
 
-  return { dispatch, start, snapshot, dispose() { disposed = true; state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot, dispose() { disposed = true; clearTimeout(expiry); state.dispose(); void port.connector.dispose?.(); } };
 }
 
 export type { CompanionPromptOptions };

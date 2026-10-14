@@ -142,6 +142,14 @@ describe('native relay host adapter', () => {
     await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
     expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
       .toStrictEqual([['agent.interrupt', { agentId: 'agent' }], ['agent.approvalPreset.set', { agentId: 'agent', preset: 'full-access' }], ['agent.permissionMode.set', { agentId: 'agent', mode: 'acceptEdits' }]]);
+    await session.restartSession!('agent');
+    const selectedTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.restart', args: selectedTarget });
+    await session.previewCloseSession!('agent');
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.close.preview', args: selectedTarget });
+    const input = { deleteWorktree: true as const, deleteRemoteBranch: false, discardChanges: true, confirmed: true as const };
+    await session.closeSession!(selectedTarget, input);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.close', args: { target: selectedTarget, input } });
     session.close(); await connector.dispose!();
   });
   it('holds native networking closed in background and reconnects only after foreground resume', async () => {

@@ -1,4 +1,5 @@
 import type { Agent, AgentModelSelection, BackendModelOption, ModelFavorite, ProviderConversationFrame, Team } from '@workspace/core/contracts';
+import type { CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
@@ -22,6 +23,9 @@ export type CompanionSession = {
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
   interrupt?(agentId: string): Promise<void>;
+  restartSession?(agentId: string): Promise<void>;
+  previewCloseSession?(agentId: string): Promise<CompanionClosePreview>;
+  closeSession?(target: CompanionTarget, input?: CompanionCloseOptions): Promise<void>;
   startReview?(agentId: string, input: CompanionReviewInput): Promise<void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;

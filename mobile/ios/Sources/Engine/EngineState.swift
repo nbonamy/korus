@@ -30,6 +30,15 @@ struct EngineState: Decodable {
     struct Mode: Decodable, Hashable { let id: String; let label: String }
     struct Permissions: Decodable { let approvalPreset: String?; let permissionMode: String?; let presets: [String]; let modes: [Mode] }
     struct Capabilities: Decodable { let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
+    struct ClosePreview: Decodable, Identifiable {
+        struct Target: Decodable { let agentId: String }
+        let target: Target
+        let isLinkedWorktree: Bool
+        let branch: String?
+        let upstream: String?
+        let hasChanges: Bool
+        var id: String { target.agentId }
+    }
     enum Pairing: String, Decodable { case idle, working, awaitingApproval }
 
     enum Startup: String, Decodable { case loading, ready, error }
@@ -47,6 +56,9 @@ struct EngineState: Decodable {
     let header: Header?
     let loading: Bool
     let canSend: Bool
+    let sessionAction: String?
+    let sessionActionFailed: Bool
+    let closePreview: ClosePreview?
     let draft: String
     let models: [Model]
     let composer: Composer

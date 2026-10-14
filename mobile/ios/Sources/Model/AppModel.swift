@@ -26,6 +26,12 @@ final class AppModel {
     var approvalPreset: String?
     var approvalPresets: [String] = []
     var canSend = false
+    var canInterrupt = false
+    var sessionAction: String?
+    var sessionActionFailed = false
+    var closePreview: EngineState.ClosePreview?
+    var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
+    var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     var composerText = ""
     var drawerOpen = false
     let dictation = DictationController(capture: AppleDictationCapture())
@@ -86,6 +92,10 @@ final class AppModel {
         approvalPreset = state.permissions.approvalPreset
         approvalPresets = state.permissions.presets
         canSend = state.canSend
+        canInterrupt = state.capabilities.interrupt
+        sessionAction = state.sessionAction
+        sessionActionFailed = state.sessionActionFailed
+        closePreview = state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {
@@ -120,6 +130,13 @@ final class AppModel {
     func setPlanMode(_ on: Bool) { command("composer", ["change": ["planMode": on]]) }
     func setApprovalPreset(_ preset: String) { command("approvalPreset", ["preset": preset]) }
     func interrupt() { command("interrupt") }
+    func restartSession() { dictation.cancel(); command("restartSession") }
+    func closeSession() { dictation.cancel(); command("closeSession") }
+    func confirmCloseSession(_ id: String, deleteWorktree: Bool, deleteRemoteBranch: Bool = false, discardChanges: Bool = false) {
+        command("confirmCloseSession", ["agentId": id, "deleteWorktree": deleteWorktree, "deleteRemoteBranch": deleteRemoteBranch, "discardChanges": discardChanges])
+    }
+    func cancelCloseSession() { if sessionAction == nil { closePreview = nil; command("cancelCloseSession") } }
+    func dismissSessionError() { sessionActionFailed = false; command("dismissSessionError") }
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
     func forget() { command("forget") }
