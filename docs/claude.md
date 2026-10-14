@@ -97,6 +97,33 @@ records. Queue operations, `last-prompt`, sidechains and meta command records ar
 ignored. Hydration also restores the latest model and effort, falling back to the
 agent's last used.
 
+The host opens the newest history window and prepends older pages through the
+driver history seam. Each page has both a message-count and serialized-byte
+budget; pages use immutable message/turn identities from one normalized transcript
+read, so appends cannot move the older-history cursor. Cold reads still parse the
+native file on the owning backend; the retained history and cursor are ephemeral
+and cleared on release or session replacement. Reads overtaken by a newer load,
+release, or live turn cannot replace that conversation.
+
+Oversized message content stays on the owning host behind an agent/session-scoped
+content reference. The conversation carries a preview; explicit reads retrieve the
+exact message JSON in bounded base64 chunks, including duplicated native tool
+fields and Unicode. Content updates invalidate superseded references. Clients
+render fetched content locally and never put it back into provider snapshots.
+History prepends and context updates are revisioned deltas. Reconnect snapshots
+contain a bounded recent window rather than accumulated scroll-back pages; the
+companion forwards older-page frames directly and rechecks authorization after
+content reads.
+
+A long conversation never travels whole: the daemon opens the most recent rows within a
+byte budget (so one event stays far under the 4 MiB limit and a phone never receives a
+frame it cannot take) and prepends older pages on demand. A row is shown as it is. Only a
+part that is huge on its own (a screenshot, a file dump) is cut to a preview, and a row
+that would still not fit is cut part by part, never dropped. The exact row stays readable
+by content ID in bounded chunks. The desktop pane reads a cut row in the background as it
+appears and shows nothing to press: a row too large to be worth reading keeps its preview,
+as does a client that cannot read content, such as the phone.
+
 **Canonical cwd gotcha:** Claude stores the resolved path (`/tmp` is
 `/private/tmp` on macOS), so history and Resume discovery check both the logical
 and the resolved path, dedupe session IDs, and keep reads working for removed

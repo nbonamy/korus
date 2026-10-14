@@ -48,6 +48,15 @@ vi.mock('electron', () => ({
 }));
 
 describe('createClientRequestHandlers', () => {
+  it('reads current desktop focus for push decisions instead of retaining a stale focus state', async () => {
+    let focused = true;
+    const handlers = createClientRequestHandlers({ openExternal: vi.fn(), getSystemPermissionsStatus: vi.fn(),
+      openAccessibilitySettings: vi.fn(), computerUseOptions, desktopFocused: () => focused });
+    expect(handlers['client/focus/get']!({})).toStrictEqual({ focused: true });
+    focused = false;
+    expect(handlers['client/focus/get']!({})).toStrictEqual({ focused: false });
+  });
+
   it('validates browser execution identity and arguments before invoking the desktop port', async () => {
     const browserExecute = vi.fn().mockResolvedValue({ clicked: '#save' });
     const handlers = createClientRequestHandlers({

@@ -368,6 +368,7 @@ export type Agent = {
   backendSession?: BackendSession;
   /** Locks provider choice as soon as the first prompt is admitted. */
   hasSubmittedPrompt?: boolean;
+  readState?: import('./agent-read-state').AgentReadState;
   backendDefaults?: BackendDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: AgentGitDiffTarget;
@@ -846,6 +847,7 @@ export type AppApi = {
   checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
+  companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
   getRemoteControlStatus(): Promise<DevicePairingStatus>;
   enableRemoteControl(): Promise<DevicePairingStatus>;
   disableRemoteControl(): Promise<DevicePairingStatus>;
@@ -941,8 +943,10 @@ export type AppApi = {
   compressAgentSession(agentId: string): Promise<AppSnapshot>;
   loadConversationHistory(agentId: string): Promise<AppSnapshot>;
   loadOlderAgentHistory(agentId: string): Promise<AgentHistoryLoadResult>;
+  readConversationContent(agentId: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   closeAgent(agentId: string, input?: AgentCloseInput): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
+  markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;

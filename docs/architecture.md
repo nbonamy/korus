@@ -49,6 +49,8 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;
 [the MCP model](mcp.md#mobile-simulators) records the attachment and coordinate rules.
+Normal video teardown settles pending reads with an ended result; cleanup is
+idempotent and cannot stop a replacement view. Native stream failures remain errors.
 
 Host capabilities are enforced in `daemon` as well as in the UI: a persisted
 desktop preference cannot enable a tool the host does not provide.
@@ -61,9 +63,119 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
+| `mobile` | native iOS shell, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
+
+The mobile companion engine is a narrow workspace/read/send port over the companion
+protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
+window above native sheets and full-screen presentations while locked or inactive;
+locked settings cannot disable protection. A background WKWebView hosts
+the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
+through the shared Vue conversation pane without a transcript reducer. Native safe
+area insets reserve the header and composer space, including the scroll-to-bottom
+control. History requests route through the owning daemon to provider-owned paging.
+A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
+rather than per-update: the engine sends the transcript once per change of its own
+content, capped at ten transfers per second during streaming (the provider replica
+has already applied every event), and changes around it (agent status, names, history, engine
+choice) travel as a small context message that never resends the transcript.
+Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+The native side routes on an event type without parsing the transcript payload, hands
+the page one message at a time, and replaces anything that piled up with the newest.
+Unread activity belongs to the owning daemon and persists with each agent. Clients
+acknowledge the attention revision they displayed; older acknowledgments cannot
+clear newer activity. Desktop and companion indicators consume the same metadata.
+The phone acknowledges only its rendered, unlocked foreground conversation with the drawer
+closed; cached subscriptions and background updates never count as reading.
+
+Mobile attention alerts originate from live completed-turn and normalized request
+creation events in the owning daemon. Snapshots do not create alerts. An event ID
+binds the host, conversation and turn/request across the foreground stream and APNs;
+native presentation suppresses duplicates and the visible conversation. A live
+foreground phone receives only the in-app stream, not an APNs push. Stream closure
+or an expired inbound heartbeat restores push eligibility independently per device.
+Desktop-originated turns suppress push while Electron reports current focus;
+mobile-originated work and unknown origins remain eligible. Prompt provenance is
+volatile, scoped to the turn, and carried through in-process queued admission.
+It never changes provider conversation state. Desktop focus failures leave push
+available rather than retaining stale focus. Suppressed alerts are not replayed.
+Banner dismissal does not acknowledge unread activity. Notification navigation validates
+the paired host and current full conversation target before opening it.
+Push device tokens belong to each authenticated pairing and are persisted privately
+with its grant; revocation removes them. The relay holds the APNs signing keys and
+accepts bounded, rate-limited notification requests only from admitted laptops for
+their registered phones, with phone-signed consent scoped to the relay, laptop,
+token, environment and expiration. Public relay admission needs no account or
+operator enrollment; pairing proof and desktop approval still gate access.
+APNs receives agent names, attention kinds and opaque navigation IDs, never
+conversation text, prompts, approvals or tool arguments.
+Foreground APNs delivery uses the same native banner path with system presentation
+suppressed; background delivery belongs to iOS. The native app bundle ID and APNs
+topic both use the product app ID. Sandbox and production credentials are separate.
+
+Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
+events: those projections are absent from the mobile workspace, and conversation
+content travels through the subscribed provider stream.
+Mobile prompts start a turn when idle and steer active work, without entering the
+prompt queue. The owning daemon decides at admission time; durable companion receipts
+also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.
+Receipts distinguish active admission from a confirmed rejection and an unknown
+provider outcome. The phone reconciles timed-out admissions while connected,
+without replaying them; late acceptance clears only the captured native draft
+and attachments. An unresolved outcome keeps its warning and draft but permits
+an explicit new send after the user checks the conversation.
+The composer microphone uses Apple's Speech framework with on-device recognition
+required and native microphone permissions. Audio stays on the phone; partial and
+final transcripts update only the active draft. Sending, navigation, and backgrounding
+stop capture and invalidate late recognition callbacks. Keyboard dictation remains
+available through the system text field.
+
+Pairing identities, laptop records, and each laptop's last-opened team and agent use
+device-only Keychain entries accessible while unlocked. Selection restoration checks
+the connected workspace and falls back in desktop team/agent order. The engine's
+optional protected draft store persists prompt intent
+and delivery uncertainty by laptop and agent; its native host keeps composer text
+and selected attachment bytes in memory, keyed by the full laptop/conversation target.
+Pending first-send drafts follow initialization of their empty provider session;
+established-session replacements keep separate drafts. Native pickers and explicit
+clipboard paste supply bounded bytes, never device paths.
+Goal mode is a native draft choice; setting and clearing use target-bound companion
+commands routed to the same daemon goal operations as desktop. The native goal bar
+reads the daemon's goal projection, and uncertain delivery retains the objective
+without replaying the mutation.
+Review initialization reads the desktop's Git scope and reviewer model catalog through
+a target-bound companion request. Native choices use the existing review-start input;
+the daemon remains the owner of review execution and findings. Opening setup does not
+start a review, and automatic fixes and local commits require explicit selection.
+The companion engine validates the target before submission and reports admission
+back to the native draft; only accepted sends clear their captured text and attachments.
+The laptop stores uploads privately and passes ordinary provider attachment paths
+through its existing prompt route. Nested remote teams remain text-only until their
+owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
+and retains the last loaded snapshot while rehydrating the same provider session.
+
+Repository branch selection uses the desktop branch catalog on the repository’s
+owning host. The phone receives names and checkout status, never checkout paths;
+chat creation resolves the branch again and reuses its checkout or creates a
+worktree on that existing branch.
+
+Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
+protocol runs through an outbound WebSocket circuit relay, with Noise authenticating
+and encrypting the laptop-to-device channel. A phone pairs with a short code that
+expires after five minutes and is claimed by one authenticated phone. The pinned
+relay is trusted for this initial identity introduction; subsequent connections use
+the saved laptop and phone identity pins. Explicit desktop approval is required;
+an approved phone can read every team and send prompts. The relay carries
+conversation ciphertext, connection metadata and optional push attention metadata;
+its leased host registrations, temporary claimed-device routes and traffic bounds
+constrain routing. Endpoint authorization constrains app methods and location/team/agent/session
+targets. Local revocation persists before closing device connections. The local web,
+MCP and daemon socket transports retain their existing exposure boundaries.
+Native Debug builds may use WS for their configured relay on local Wi-Fi without
+a TLS certificate; Noise and pairing still apply. Release builds require WSS
+outside loopback, and saved pairings cannot enable the development exception.
 
 ## Conversation Ownership
 

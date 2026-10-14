@@ -1,15 +1,23 @@
 import type { Agent, AppSnapshot, MainToRendererEvent } from '@workspace/core/contracts';
 import { providerConversationEventView } from '@workspace/core/provider-conversation-event';
 import { computed, ref } from 'vue';
+import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { appHostCapabilities, appApi } from './platform-api';
 
 export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot }) {
   const agentIds = ref(new Set<string>());
   const rendererWindowFocused = ref(true);
-  const unreadAgentIds = computed(() => [...agentIds.value]);
+  const acknowledged = ref<Record<string, number>>({});
+  const pending = new Set<string>();
+  const unreadAgentIds = computed(() => [...new Set([
+    ...agentIds.value,
+    ...options.getSnapshot().agents.filter(agent => hasUnreadActivity(agent)
+      && (acknowledged.value[agent.id] ?? 0) < agent.readState!.revision).map(agent => agent.id),
+  ])]);
 
   function reset(): void {
     agentIds.value = new Set();
+    acknowledged.value = {};
     syncDockBadge();
   }
 
@@ -21,10 +29,19 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   }
 
   function handleMainEvent(event: MainToRendererEvent): void {
+    if (event.type === 'snapshot.updated' || (event.type === 'agent.updated' && event.payload.readState)) {
+      // Shared metadata supersedes any legacy or Debug marker for this agent.
+      agentIds.value = new Set([...agentIds.value].filter(id => !options.getSnapshot().agents.find(agent => agent.id === id)?.readState));
+      const active = options.getSnapshot().activeAgentId;
+      if (rendererWindowFocused.value && active) markRead(active);
+      syncDockBadge();
+      return;
+    }
     const conversationEvent = providerConversationEventView(event);
     if (!event.agentId || !isUnreadWorthyEvent(conversationEvent.type)) return;
     const snapshot = options.getSnapshot();
-    if (!snapshot.agents.some((agent) => agent.id === event.agentId)) return;
+    const agent = snapshot.agents.find((agent) => agent.id === event.agentId);
+    if (!agent || agent.readState) return;
     if (rendererWindowFocused.value && snapshot.activeAgentId === event.agentId) {
       markRead(event.agentId);
       return;
@@ -65,6 +82,18 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
   }
 
   function markRead(agentId: string): void {
+    const state = options.getSnapshot().agents.find(agent => agent.id === agentId)?.readState;
+    if (state && state.revision > state.readRevision && (acknowledged.value[agentId] ?? 0) < state.revision && appApi?.markAgentRead) {
+      const revision = state.revision;
+      const key = `${agentId}/${revision}`;
+      if (!pending.has(key)) {
+        pending.add(key);
+        void appApi.markAgentRead(agentId, revision).then(() => {
+          acknowledged.value = { ...acknowledged.value, [agentId]: Math.max(acknowledged.value[agentId] ?? 0, revision) };
+          syncDockBadge();
+        }).catch(() => {}).finally(() => pending.delete(key));
+      }
+    }
     if (agentIds.value.has(agentId)) {
       const next = new Set(agentIds.value);
       next.delete(agentId);
@@ -83,7 +112,7 @@ export function createAgentUnreadState(options: { getSnapshot: () => AppSnapshot
 
   function syncDockBadge(): void {
     if (appHostCapabilities.dockBadge) {
-      void appApi?.setDockBadgeCount?.(agentIds.value.size).catch(() => undefined);
+      void appApi?.setDockBadgeCount?.(unreadAgentIds.value.length).catch(() => undefined);
     }
   }
 

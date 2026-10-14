@@ -845,6 +845,27 @@ export const surfaceMessages = {
     "thisOptionCannotBeChangedWhileChatsAreRunning": "This option cannot be changed while chats are running",
     "useTheSameSkillsAndPluginsAsChatGPTChangingThisRestartsT": "Use the same skills and plugins as ChatGPT. Changing this restarts the backend."
   },
+  "settingsMobileSection": {
+    "title": "Mobile access",
+    "unavailable": "Mobile access is unavailable",
+    "daemonHint": "Check that the laptop daemon is running.",
+    "operationFailed": "Could not complete this mobile access operation.",
+    "relayNotConfigured": "Relay not configured",
+    "relayNotConfiguredHint": "Set APP_COMPANION_RELAY_URL and APP_COMPANION_RELAY_PEER_ID, then restart.",
+    "allowConnections": "Allow connections",
+    "allowConnectionsHint": "Let paired devices connect to this laptop.",
+    "keepAwakeHint": "Prevent sleep when this Mac is plugged in and mobile access is enabled.",
+    "pairedDevices": "Paired devices",
+    "noDevices": "No paired devices",
+    "addDevice": "Add device",
+    "relayReconnecting": "Relay unreachable. Reconnecting…",
+    "pairingCode": "Scan to connect",
+    "pairingCodeHint": "Or enter this code in the companion app.",
+    "invitationAlt": "Pairing code QR",
+    "approve": "Approve device",
+    "deny": "Deny",
+    "revoke": "Revoke"
+  },
   "settingsConnectionsPanel": {
     "connections": "Connections",
     "addRemote": "Add remote",

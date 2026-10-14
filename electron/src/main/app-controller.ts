@@ -220,6 +220,7 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
     ipc.handle(ipcChannels.disableRemoteControl, () => this.disableRemoteControl());
@@ -490,10 +491,15 @@ export class AppController {
     ipc.handle(ipcChannels.loadOlderAgentHistory, async (_event, agentId: string) => {
       return this.loadOlderAgentHistory(agentId);
     });
+    ipc.handle(ipcChannels.readConversationContent, async (_event, agentId: string, input) => {
+      return this.requireBackendClient().request(backendMethods.agentConversationContentRead, { agentId, input });
+    });
 
     ipc.handle(ipcChannels.closeAgent, async (_event, agentId: string, input) => {
       return this.closeAgent(agentId, input);
     });
+
+    ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
 
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {
       return this.selectAgent(agentId);

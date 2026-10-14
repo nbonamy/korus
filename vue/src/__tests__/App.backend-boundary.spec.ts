@@ -326,19 +326,23 @@ describe('Unified backend → mounted application', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
+    // Other mounted workspaces must not determine which agent receives the review.
+    snapshot.agents.reverse();
     const { api } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.findAll('.right-workspace-panel__launcher button')
+    const targetWorkspace = wrapper.findAllComponents({ name: 'RightWorkspacePanel' })
+      .find(panel => panel.props('agent').id === agent.id)!;
+    await targetWorkspace.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Review'))!
       .trigger('click');
     await flushPromises();
-    expect(wrapper.get('.code-review-panel').text()).toContain('Start a review');
+    expect(targetWorkspace.get('.code-review-panel').text()).toContain('Start a review');
 
     const ready = structuredClone(snapshot);
     const reviewer = {
-      ...structuredClone(ready.agents[0]!),
+      ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
       backendSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
@@ -364,7 +368,7 @@ describe('Unified backend → mounted application', () => {
     ready.teams[0]!.activeAgentId = reviewer.id;
     ready.activeAgentId = reviewer.id;
     api.startCodeReview.mockResolvedValueOnce(ready);
-    await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
+    await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {

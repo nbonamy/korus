@@ -1,3 +1,4 @@
+import { isAgentReadState } from '@workspace/core/agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { isAgentHandoff } from '@workspace/core/agent-handoff';
@@ -62,6 +63,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   backend: AgentBackend;
   backendSession?: BackendSession;
   hasSubmittedPrompt?: boolean;
+  readState?: Agent['readState'];
   backendDefaults?: BackendDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: Agent['gitDiffTarget'];
@@ -140,6 +142,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.workspace ? { workspace: { ...agent.workspace } } : {}),
     backend: agent.backend,
     ...(agent.backendSession ? { backendSession: cloneBackendSession(agent.backendSession) } : {}),
+    ...(agent.readState ? { readState: agent.readState } : {}),
     ...(agent.hasSubmittedPrompt ? { hasSubmittedPrompt: true } : {}),
     ...(agent.backendDefaults ? { backendDefaults: cloneBackendDefaults(agent.backendDefaults) } : {}),
     ...(agent.openInApplication ? { openInApplication: agent.openInApplication } : {}),
@@ -392,6 +395,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(workspace ? { workspace } : {}),
     backend,
     ...(backendSession ? { backendSession } : {}),
+    ...(isAgentReadState(value.readState) ? { readState: value.readState } : {}),
     ...(value.hasSubmittedPrompt === true ? { hasSubmittedPrompt: true } : {}),
     ...(backendDefaults ? { backendDefaults } : {}),
     ...(openInApplication ? { openInApplication } : {}),

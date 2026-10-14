@@ -9,6 +9,7 @@ import { LocalSocketRpcServer } from './socket-server';
 import { StdioRpcPeer } from './stdio';
 import { debugMain, flushBackendLogs, logMain, warnMain } from './log';
 import backendPackage from '../package.json';
+import { runCompanionRelay } from './companion/relay-cli';
 
 export const DAEMON_VERSION = backendPackage.version;
 
@@ -36,12 +37,17 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     return;
   }
 
+  if (argv.includes('companion-relay')) {
+    await runCompanionRelay(argv[argv.indexOf('companion-relay') + 1] ?? '');
+    return;
+  }
+
   if (argv.includes('connect')) {
     process.exitCode = await connectToDaemon();
     return;
   }
 
-  process.stderr.write(`Usage: ${product.daemonName} --stdio | serve | connect | --version
+  process.stderr.write(`Usage: ${product.daemonName} --stdio | serve | connect | companion-relay <config-file> | --version
 Set APP_HOME to override ~/${product.homeDirectory}.
 `);
   process.exitCode = 1;

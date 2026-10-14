@@ -1,3 +1,4 @@
+import { isAgentReadState } from './agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
 import { normalizeAutomationSchedule } from './automation-schedule';
@@ -130,6 +131,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'plan', isThreadPlan) &&
     optional(value, 'planReview', isPlanReview) &&
     optional(value, 'codeReview', isCodeReviewSession) &&
+    optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&

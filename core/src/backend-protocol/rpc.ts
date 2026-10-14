@@ -73,6 +73,7 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
     result: AppSnapshot;

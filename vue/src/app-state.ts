@@ -1338,6 +1338,11 @@ export function useAppState() {
     adoptBackgroundSnapshot(await appApi.removeRemoteConnection(connectionId));
   }
 
+  async function companionControl(input: import('@workspace/core/companion-protocol').CompanionControl) {
+    if (!appApi?.companionControl) throw new Error('Mobile access is unavailable on this host.');
+    return appApi.companionControl(input);
+  }
+
   async function getRemoteControlStatus(): Promise<DevicePairingStatus> {
     if (!appApi?.getRemoteControlStatus) return { status: 'disabled' };
     return appApi.getRemoteControlStatus();
@@ -1780,6 +1785,7 @@ export function useAppState() {
     checkRemoteConnection,
     updateRemoteConnection,
     removeRemoteConnection,
+    companionControl,
     getRemoteControlStatus,
     enableRemoteControl,
     disableRemoteControl,

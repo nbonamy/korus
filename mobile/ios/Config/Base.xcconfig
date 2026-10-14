@@ -1,0 +1,3 @@
+// Product identity and relay come from `node mobile/scripts/ios.mjs prepare`, which reads
+// core/src/product.json and the deployment environment (APP_COMPANION_RELAY_URL / _PEER_ID).
+#include "Generated.xcconfig"

@@ -489,7 +489,10 @@ describe('AppBackendServer', () => {
     })).rejects.toThrow('This session does not have a project workspace.');
   });
 
-  it('routes remote agent prompts to the owning remote daemon', async () => {
+  it.each([
+    { method: 'agent/prompt/send', delivery: {} },
+    { method: 'agent/prompt/steer', delivery: { startIfIdle: true, expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
+  ])('routes remote agent prompts to the owning remote daemon ($method)', async ({ method, delivery }) => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
@@ -530,10 +533,11 @@ describe('AppBackendServer', () => {
     const response = await server.handleMessage({
       jsonrpc: '2.0',
       id: 'prompt',
-      method: 'agent/prompt/send',
+      method,
       params: {
         agentId: 'agent-remote',
         prompt: 'hello',
+        ...delivery,
       },
     });
     expect(response).toMatchObject({
@@ -557,11 +561,12 @@ describe('AppBackendServer', () => {
     expect(remoteClients.request).toHaveBeenNthCalledWith(
       2,
       snapshot.remoteConnections.connections[0],
-      'agent/prompt/send',
+      method,
       { ...{
         agentId: 'agent-remote',
         prompt: 'hello',
         options: undefined,
+        ...delivery,
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );

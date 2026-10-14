@@ -12,14 +12,26 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "build:relay": "vite build --config vite.relay.config.ts",
+    "start:relay": "node relay-dist/relay.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.226",
+    "@chainsafe/libp2p-noise": "17.0.0",
+    "@chainsafe/libp2p-yamux": "8.0.1",
     "@codex-app-sdk/backend": "0.16.0",
     "@codex-app-sdk/core": "0.16.0",
+    "@libp2p/circuit-relay-v2": "4.2.14",
+    "@libp2p/crypto": "5.1.24",
+    "@libp2p/identify": "4.1.15",
+    "@libp2p/interface": "3.3.1",
+    "@libp2p/peer-id": "6.0.16",
+    "@libp2p/websockets": "10.1.22",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@multiformats/multiaddr": "13.0.3",
     "@workspace/core": "0.34.0",
+    "libp2p": "3.3.12",
     "pino": "^10.3.1",
     "yauzl": "^3.4.0",
     "zod": "^4.4.3"

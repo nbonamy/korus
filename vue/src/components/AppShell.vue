@@ -177,6 +177,7 @@
         :check-remote-connection="checkRemoteConnection"
         :update-remote-connection="updateRemoteConnection"
         :remove-remote-connection="removeRemoteConnection"
+        :companion-control="companionControl"
         :get-remote-control-status="getRemoteControlStatus"
         :enable-remote-control="enableRemoteControl"
         :disable-remote-control="disableRemoteControl"
@@ -811,6 +812,7 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;

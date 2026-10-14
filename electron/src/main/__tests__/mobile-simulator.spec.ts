@@ -71,7 +71,7 @@ describe('mobile simulator attachment', () => {
     const pending = service.view('a', {action:'start',attachmentId:attachment!.id});
     await vi.waitFor(() => expect(adapter.startView).toHaveBeenCalled());
     service.clear(); const stop = vi.fn(); finish({touch:vi.fn(),stop});
-    await expect(pending).rejects.toThrow('ended'); expect(stop).toHaveBeenCalledOnce();
+    await expect(pending).resolves.toMatchObject({ ended: true }); expect(stop).toHaveBeenCalledOnce();
   });
   it('attaches a virtual device that started after the pane listed it', async () => {
     const { service, adapter } = fixture();
@@ -191,12 +191,13 @@ describe('mobile simulator attachment', () => {
       expect(adapter.screen).not.toHaveBeenCalled();
       await expect(service.execute('a', { action: 'button', button: 'home', attachmentId })).rejects.toThrow('touch');
       const pending = service.view('a', { ...target, action: 'frame' });
-      const rejected = expect(pending).rejects.toThrow('ended');
+      const ended = expect(pending).resolves.toStrictEqual({ viewId, ended: true });
       await service.execute('a', { action: 'detach', attachmentId });
-      await rejected;
+      await ended;
       expect(device.stop).toHaveBeenCalledOnce();
       frame(Buffer.from('late'));
       await expect(service.view('a', { ...target, action: 'frame' })).rejects.toThrow('attachment');
+      await expect(service.view('a', { ...target, action: 'stop' })).resolves.toStrictEqual({ viewId, ended: true });
     } finally { service.clear(); }
   });
 
@@ -219,24 +220,101 @@ describe('mobile simulator attachment', () => {
       await timedOut;
       expect(stop).toHaveBeenCalledOnce();
       const replacement = await service.view('a', { action: 'start', attachmentId });
-      await expect(service.view('a', { ...target, action: 'stop' })).rejects.toThrow('view');
+      await expect(service.view('a', { ...target, action: 'stop' })).resolves.toStrictEqual({ viewId, ended: true });
+      expect(stop).toHaveBeenCalledOnce(); // Stale cleanup must not stop the replacement.
       await vi.advanceTimersByTimeAsync(15_000);
       await expect(service.view('a', { action: 'frame', attachmentId, viewId: replacement.viewId })).rejects.toThrow('expired');
       expect(stop).toHaveBeenCalledTimes(2);
     } finally { service.clear(); }
   });
 
-  it('discards a view started across agent removal', async () => {
+  it.each(['screen', 'rotation'] as const)('discards a view removed during its %s read', async (step) => {
     const { service, adapter } = fixture();
     const { attachment } = await service.execute('a', { action: 'attach', deviceId: 'phone' });
-    let resolve!: (screen: any) => void;
-    vi.mocked(adapter.screen).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    let reached!: () => void;
+    const boundary = new Promise<void>(resolve => { reached = resolve; });
+    let finish!: () => void;
+    if (step === 'screen') {
+      vi.mocked(adapter.screen).mockImplementationOnce(() => {
+        reached();
+        return new Promise(resolve => { finish = () => resolve({ png: Buffer.from('x'), width: 1200, height: 2400, scale: 3 }); });
+      });
+    } else {
+      vi.mocked(adapter.displayRotation).mockImplementationOnce(() => {
+        reached();
+        return new Promise(resolve => { finish = () => resolve(0); });
+      });
+    }
     adapter.startView = vi.fn();
     const pending = service.view('a', { action: 'start', attachmentId: attachment!.id });
-    service.retainAgents([]);
-    resolve({ png: Buffer.from('x'), width: 1200, height: 2400, scale: 3 });
-    await expect(pending).rejects.toThrow('ended');
-    expect(adapter.startView).not.toHaveBeenCalled();
+    try {
+      await boundary;
+      service.retainAgents([]);
+      finish();
+      await expect(pending).resolves.toMatchObject({ ended: true });
+      expect(adapter.startView).not.toHaveBeenCalled();
+    } finally { service.clear(); }
+  });
+
+  it('keeps native video failures observable instead of treating them as normal closure', async () => {
+    const { service, adapter } = fixture();
+    let fail!: (error: Error) => void;
+    const stop = vi.fn();
+    adapter.startView = vi.fn((_device, _screen, _frame, onError) => {
+      fail = onError;
+      return { touch: vi.fn(), stop };
+    });
+    const { attachment } = await service.execute('a', { action: 'attach', deviceId: 'phone' });
+    try {
+      const { viewId } = await service.view('a', { action: 'start', attachmentId: attachment!.id });
+      const target = { attachmentId: attachment!.id, viewId };
+      const failure = new Error('Native video bridge failed');
+      const pending = service.view('a', { ...target, action: 'frame' });
+      const rejected = expect(pending).rejects.toBe(failure);
+      fail(failure);
+      await rejected;
+      await expect(service.view('a', { ...target, action: 'frame' })).rejects.toBe(failure);
+      await service.view('a', { ...target, action: 'stop' });
+      expect(stop).toHaveBeenCalledOnce();
+    } finally { service.clear(); }
+  });
+
+  it.each(['shutdown', 'clear'] as const)('settles a pending video read and repeated cleanup during %s', async (action) => {
+    const { service, adapter } = fixture();
+    const stop = vi.fn();
+    adapter.startView = vi.fn(() => ({ touch: vi.fn(), stop }));
+    const { attachment } = await service.execute('a', { action: 'attach', deviceId: 'phone' });
+    try {
+      const { viewId } = await service.view('a', { action: 'start', attachmentId: attachment!.id });
+      const target = { attachmentId: attachment!.id, viewId };
+      const pending = service.view('a', { ...target, action: 'frame' });
+      const ended = expect(pending).resolves.toStrictEqual({ viewId, ended: true });
+      if (action === 'clear') service.clear();
+      else await service.execute('a', { action, attachmentId: attachment!.id });
+      await ended;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(service.view('a', { ...target, action: 'stop' })).resolves.toStrictEqual({ viewId, ended: true });
+      }
+      expect(stop).toHaveBeenCalledOnce();
+      expect(await service.execute('a', { action: 'status' })).toStrictEqual({ attachment: null });
+    } finally { service.clear(); }
+  });
+
+  it('does not let cleanup for another agent or attachment close an active view', async () => {
+    const { service, adapter } = fixture();
+    let frame!: DeviceFrameListener;
+    const stop = vi.fn();
+    adapter.startView = vi.fn((_device, _screen, onFrame) => { frame = onFrame; return { touch: vi.fn(), stop }; });
+    const { attachment } = await service.execute('a', { action: 'attach', deviceId: 'phone' });
+    try {
+      const { viewId } = await service.view('a', { action: 'start', attachmentId: attachment!.id });
+      const target = { attachmentId: attachment!.id, viewId };
+      await service.view('b', { ...target, action: 'stop' });
+      await service.view('a', { ...target, attachmentId: 'wrong-attachment', action: 'stop' });
+      frame(Buffer.from('still-live'));
+      expect((await service.view('a', { ...target, action: 'frame' })).frame?.data).toStrictEqual(new Uint8Array(Buffer.from('still-live')));
+      expect(stop).not.toHaveBeenCalled();
+    } finally { service.clear(); }
   });
   it('grants one owner, refuses competing agents, and releases without stopping the device', async () => {
     const { service, adapter } = fixture();

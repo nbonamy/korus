@@ -1,3 +1,4 @@
+import { PromptRejectedError } from './prompt-rejected';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
 import type { Agent, AppSnapshot, SendPromptOptions } from '@workspace/core/contracts';
@@ -5,8 +6,9 @@ import { createEntityId } from '@workspace/core/ids';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 
 export type AgentPromptManagerOptions = {
+  onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   getSnapshot: () => AppSnapshot;
-  driverForAgent: (agent: Agent) => AgentBackendDriver;
+  driverForAgent: (agent: Agent, expectedSessionId?: string | null) => AgentBackendDriver;
   applyEvent: (event: BackendEvent) => void;
   persistSnapshot: () => Promise<unknown>;
   setNewConversationTitle: (agentId: string, wasNewSession: boolean) => void;
@@ -16,6 +18,7 @@ export type AgentPromptManagerOptions = {
 
 /** Owns prompt admission, queued delivery, and bounded retry scheduling. */
 export class AgentPromptManager {
+  private readonly queuedSources = new Map<string, string>();
   private readonly inFlightQueuedPrompts = new Set<string>();
   private readonly retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -25,18 +28,18 @@ export class AgentPromptManager {
     return canStartPrompt(agent);
   }
 
-  sendAndWaitForAcceptance(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<void> {
-    return this.sendWithReceipt(agent, prompt, options).then(() => undefined);
+  sendAndWaitForAcceptance(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string): Promise<void> {
+    return this.sendWithReceipt(agent, prompt, options, expectedSessionId, clientId).then(() => undefined);
   }
 
-  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult> {
-    if (!canStartPrompt(agent)) return Promise.reject(new Error('Agent is busy. Try the review decision again when idle.'));
+  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null, clientId?: string): Promise<BackendSendResult> {
+    if (!canStartPrompt(agent)) return Promise.reject(new PromptRejectedError('Agent is busy. Try the review decision again when idle.'));
     return new Promise((resolve, reject) => {
-      this.start(agent, prompt, options, undefined, { resolve, reject });
+      this.start(agent, prompt, options, undefined, { resolve, reject, expectedSessionId }, clientId);
     });
   }
 
-  send(agentId: string, prompt: string, promptOptions?: SendPromptOptions): AppSnapshot {
+  send(agentId: string, prompt: string, promptOptions?: SendPromptOptions, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
     if (!agent) return snapshot;
@@ -44,11 +47,13 @@ export class AgentPromptManager {
     if (this.options.isEngineConnected?.(agent) === false) throw new Error('Engine is not connected. Reconnect in Settings.');
 
     if (!canStartPrompt(agent)) {
+      const id = createEntityId('prompt');
+      if (clientId) this.queuedSources.set(queuedPromptKey(agentId, id), clientId);
       this.options.applyEvent({
         agentId,
         type: 'agent.promptQueued',
         payload: {
-          id: createEntityId('prompt'),
+          id,
           text: prompt.trim(),
           ...(promptOptions ? { options: promptOptions } : {}),
         },
@@ -56,7 +61,7 @@ export class AgentPromptManager {
       return snapshot;
     }
 
-    return this.start(agent, prompt, promptOptions);
+    return this.start(agent, prompt, promptOptions, undefined, undefined, clientId);
   }
 
   startQueued(agent: Agent, promptId: string, replacement?: string): AppSnapshot {
@@ -85,6 +90,7 @@ export class AgentPromptManager {
   }
 
   dequeue(agentId: string, promptId: string): void {
+    this.queuedSources.delete(queuedPromptKey(agentId, promptId));
     this.inFlightQueuedPrompts.delete(queuedPromptKey(agentId, promptId));
     this.clearRetry(promptId);
     this.options.applyEvent({ agentId, type: 'agent.promptDequeued', payload: { ids: [promptId] } });
@@ -93,13 +99,14 @@ export class AgentPromptManager {
   close(): void {
     for (const timer of this.retryTimers.values()) clearTimeout(timer);
     this.retryTimers.clear();
+    this.queuedSources.clear();
     this.inFlightQueuedPrompts.clear();
   }
 
-  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void }): AppSnapshot {
+  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null }, clientId?: string): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     if (this.options.isEngineConnected?.(agent) === false) {
-      acceptance?.reject(new Error('Engine is not connected. Reconnect in Settings.'));
+      acceptance?.reject(new PromptRejectedError('Engine is not connected. Reconnect in Settings.'));
       return snapshot;
     }
     const inFlightKey = queuedPromptId ? queuedPromptKey(agent.id, queuedPromptId) : undefined;
@@ -111,10 +118,11 @@ export class AgentPromptManager {
     if (inFlightKey) this.inFlightQueuedPrompts.add(inFlightKey);
     this.options.onPromptStarting?.(agent.id, promptOptions);
 
+    const rollback = this.options.onPromptSource?.(agent, clientId ?? (inFlightKey && this.queuedSources.get(inFlightKey)) ?? 'internal');
     try {
       return sendAgentPrompt(
         snapshot,
-        this.options.driverForAgent(agent),
+        acceptance?.expectedSessionId !== undefined ? this.options.driverForAgent(agent, acceptance.expectedSessionId) : this.options.driverForAgent(agent),
         agent.id,
         prompt,
         promptOptions,
@@ -130,6 +138,7 @@ export class AgentPromptManager {
             acceptance?.resolve(result);
           },
           onPromptFailed: (error) => {
+            rollback?.();
             acceptance?.reject(error);
             if (queuedPromptId) {
               this.inFlightQueuedPrompts.delete(queuedPromptKey(agent.id, queuedPromptId));
@@ -139,6 +148,7 @@ export class AgentPromptManager {
         },
       );
     } catch (error) {
+      rollback?.();
       if (inFlightKey) this.inFlightQueuedPrompts.delete(inFlightKey);
       throw error;
     }

@@ -54,6 +54,7 @@ export type BackendConversationForkResult = BackendConversationResumeResult & {
 
 export type BackendHistoryLoadResult = {
   hasOlder: boolean;
+  frame?: Extract<BackendPublishedEvent, { type: 'claude.conversationEventReceived' }>;
 };
 
 export type BackendGoalResult = {
@@ -127,6 +128,7 @@ export type AgentBackendDriver = {
   respondToAgentRequest(response: AgentRequestResponse): Promise<void>;
   loadConversation?(agent: Agent): Promise<BackendSession | null>;
   loadOlderHistory?(agent: Agent): Promise<BackendHistoryLoadResult>;
+  readConversationContent?(agent: Agent, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   listConversations?(agent: Agent, input?: ConversationListInput): Promise<ConversationSummary[]>;
   resumeConversation?(agent: Agent, target: ConversationResumeTarget): Promise<BackendConversationResumeResult>;
   replaceConversationWithSummary?(agent: Agent): Promise<BackendConversationReplacementResult>;

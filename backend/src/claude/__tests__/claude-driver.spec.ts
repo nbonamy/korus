@@ -1026,13 +1026,9 @@ describe('ClaudeBackendDriver', () => {
       expect.objectContaining({
         agentId: 'agent-claude',
         backend: 'claude',
-        type: 'claude.conversationSnapshotChanged',
-        payload: expect.objectContaining({
-          snapshot: expect.objectContaining({
-            sessionId: 'claude-session-existing',
-            contextUsage: expect.objectContaining({ totalTokens: 33_120 }),
-          }),
-        }),
+        type: 'context.usageUpdated',
+        backendSessionId: 'claude-session-existing',
+        payload: { contextUsage: expect.objectContaining({ totalTokens: 33_120 }) },
       }),
     ]);
   });

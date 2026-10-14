@@ -183,6 +183,42 @@ workflow.
 See [GitHub desktop releases](docs/backend-architecture.md#github-desktop-releases)
 for the target matrix, launch/monitor commands, signing setup, and publication.
 
+### Native companion development
+
+Run the relay on its own, in a separate terminal:
+
+```bash
+npm run dev:relay
+```
+
+It serves the plain `ws://localhost:<port>` address from `APP_COMPANION_RELAY_URL` (the
+repository `.env` sets it) for the local daemon's laptop identity; plaintext is accepted
+only on loopback and no certificate is involved. On start it prints its identity for
+`APP_COMPANION_RELAY_PEER_ID`. Start the desktop app once beforehand so the laptop has an
+identity. It rebuilds the relay bundle on every start.
+
+The iOS companion connects to the owning laptop daemon through a WSS relay. The relay
+is deployment configuration shared by the laptop and the phone build:
+
+```bash
+APP_COMPANION_RELAY_URL=wss://relay.example
+APP_COMPANION_RELAY_PEER_ID=<relay identity printed by the relay at startup>
+```
+
+The daemon reads them at runtime (desktop app environment or `.env`); set them as GitHub
+variables for the production pipeline. With a relay configured, Settings → Connections →
+Mobile access offers Pair phone, which shows a short code like `K7QD-M2XP` (and a QR code
+of it). Entering it in the companion app pairs the phone; a new phone then needs your
+approval on the desktop, which grants it every team and prompt sending.
+
+Relay operators build the standalone artifact with
+`npm run build:relay -w @workspace/backend`. Container packaging lives in
+`backend/companion-relay/`: supply a reviewed Node image pinned by digest, a valid
+public TLS certificate, a persistent identity volume and admitted laptop PeerIds.
+The compose configuration maps outbound-facing WSS port 443 to the container's
+8443 listener. Health checks remain inside the container. Relay deployment and
+native signing are separate from building these artifacts.
+
 ## Architecture
 
 Korus separates the desktop shell from the long-running agent backend:
