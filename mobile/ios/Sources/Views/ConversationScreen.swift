@@ -29,6 +29,7 @@ struct ConversationScreen: View {
                     Button {
                         withAnimation(.smooth(duration: 0.32)) { model.drawerOpen.toggle() }
                     } label: { Image(systemName: "line.3.horizontal") }
+                    .buttonBorderShape(.circle)
                     .accessibilityLabel("Agents")
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
@@ -36,6 +37,7 @@ struct ConversationScreen: View {
                     Menu {
                         Button("Stop", systemImage: "stop.circle") { model.interrupt() }
                     } label: { Image(systemName: "ellipsis") }
+                    .buttonBorderShape(.circle)
                 }
             }
             .toolbarTitleDisplayMode(.inline)
