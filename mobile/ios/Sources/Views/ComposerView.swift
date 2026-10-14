@@ -39,7 +39,9 @@ struct ComposerView: View {
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
-        .animation(.smooth(duration: 0.2), value: expanded)
+        // Let iOS own keyboard dismissal. Animating this collapse independently
+        // also animates the text field's width/height while it resigns focus.
+        .animation(expanded ? .smooth(duration: 0.2) : nil, value: expanded)
         .alert("Dictation unavailable", isPresented: Binding(get: { model.dictation.error != nil }, set: { if !$0 { model.dictation.error = nil } })) {
             Button("OK", role: .cancel) { model.dictation.error = nil }
         } message: { Text(model.dictation.error ?? "") }
@@ -132,7 +134,7 @@ struct ComposerView: View {
         let disabled = stopping ? !model.canManageSession || !model.canInterrupt : empty || !model.canSend
         return Button {
             if stopping { model.interrupt() }
-            else { model.send(); focused = false }
+            else { focused = false; model.send() }
         } label: {
             Image(systemName: stopping ? "stop.fill" : "arrow.up")
                 .font(.system(size: 16, weight: .bold))
