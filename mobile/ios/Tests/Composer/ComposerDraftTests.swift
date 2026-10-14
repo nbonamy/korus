@@ -16,6 +16,7 @@ final class ComposerDraftTests: XCTestCase {
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
         XCTAssertEqual(payload["goalMode"] as? Bool, true)
         drafts.completeSend(.init(requestId: request.requestId, status: .unknown))
+        XCTAssertEqual(drafts.primaryAction(isWorking: false), .send)
         XCTAssertTrue(drafts.goalMode)
         XCTAssertEqual(drafts.text, "Ship the feature")
         XCTAssertNotNil(drafts.error)
@@ -40,7 +41,10 @@ final class ComposerDraftTests: XCTestCase {
         let drafts = ComposerDrafts()
         drafts.select(ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "new", sessionId: nil))
         drafts.text = "Hello"
+        XCTAssertEqual(drafts.primaryAction(isWorking: false), .send)
         let request = try XCTUnwrap(drafts.beginSend())
+        XCTAssertEqual(drafts.primaryAction(isWorking: false), .sending)
+        XCTAssertEqual(drafts.primaryAction(isWorking: true), .sending)
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
         let target = try XCTUnwrap(payload["target"] as? [String: Any])
         XCTAssertTrue(target["sessionId"] is NSNull, "The engine target uses null for a chat without a provider session")
@@ -48,6 +52,10 @@ final class ComposerDraftTests: XCTestCase {
         XCTAssertEqual((payload["uploads"] as? [Any])?.count, 0)
         drafts.completeSend(.init(requestId: request.requestId, status: .accepted))
         XCTAssertEqual(drafts.text, "")
+        XCTAssertEqual(drafts.primaryAction(isWorking: true), .stop)
+        XCTAssertEqual(drafts.primaryAction(isWorking: false), .send)
+        drafts.text = "Follow up"
+        XCTAssertEqual(drafts.primaryAction(isWorking: true), .send)
     }
 
     func testLatePickerResultsStayWithTheirOriginalChatAndDraftSurvivesNavigation() throws {

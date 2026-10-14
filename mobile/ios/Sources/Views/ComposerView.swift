@@ -23,7 +23,7 @@ struct ComposerView: View {
     }
 
     private var expanded: Bool { focused || model.goalMode || model.planMode || !model.composerDrafts.empty || model.dictation.active || model.composerDrafts.importing || model.composerDrafts.error != nil }
-    private var stopping: Bool { model.isWorking && model.composerDrafts.empty && !model.goalMode }
+    private var primaryAction: ComposerDrafts.PrimaryAction { model.composerDrafts.primaryAction(isWorking: model.isWorking) }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -124,7 +124,7 @@ struct ComposerView: View {
                     .padding(.top, expanded ? 6 : 0)
                 if !expanded {
                     micButton
-                    if stopping { sendButton }
+                    if primaryAction != .send { sendButton }
                 }
             }
             if expanded {
@@ -302,19 +302,24 @@ struct ComposerView: View {
 
     private var sendButton: some View {
         let empty = model.composerDrafts.empty
-        let disabled = stopping ? !model.canManageSession || !model.canInterrupt : empty || !model.canSend || model.composerDrafts.importing || model.composerDrafts.sending || (!model.supportsAttachments && !model.composerDrafts.items.isEmpty)
+        let stopping = primaryAction == .stop
+        let sending = primaryAction == .sending
+        let disabled = sending || (stopping ? !model.canManageSession || !model.canInterrupt : empty || !model.canSend || model.composerDrafts.importing || (!model.supportsAttachments && !model.composerDrafts.items.isEmpty))
         return Button {
             if stopping { model.interrupt() }
             else { focused = false; model.send() }
         } label: {
-            Image(systemName: stopping ? "stop.fill" : "arrow.up")
+            Group {
+                if sending { ProgressView().tint(.white) }
+                else { Image(systemName: stopping ? "stop.fill" : "arrow.up") }
+            }
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
-                .background(disabled ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
+                .background(disabled && !sending ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
         }
         .disabled(disabled)
-        .animation(.smooth(duration: 0.2), value: stopping)
-        .accessibilityLabel(stopping ? "Stop" : model.goalMode ? "Set goal" : "Send")
+        .animation(.smooth(duration: 0.2), value: primaryAction)
+        .accessibilityLabel(sending ? "Sending" : stopping ? "Stop" : model.goalMode ? "Set goal" : "Send")
     }
 }

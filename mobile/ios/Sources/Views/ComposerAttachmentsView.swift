@@ -29,10 +29,10 @@ struct ComposerAttachmentsView: View {
             }
             .scrollIndicators(.hidden)
         }
-        if drafts.importing || drafts.sending {
+        if drafts.importing {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(drafts.importing ? "Preparing attachments…" : "Sending…").font(.caption).foregroundStyle(.secondary)
+                Text("Preparing attachments…").font(.caption).foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
         }

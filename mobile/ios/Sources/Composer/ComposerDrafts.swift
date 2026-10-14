@@ -39,6 +39,7 @@ struct ComposerSendResult: Decodable {
 @Observable
 @MainActor
 final class ComposerDrafts {
+    enum PrimaryAction { case send, sending, stop }
     static let maxCount = 5
     static let maxBytes = 2_500_000
     struct Import: Identifiable, Equatable { let id = UUID(); let target: ComposerTarget }
@@ -75,6 +76,11 @@ final class ComposerDrafts {
     var sending: Bool { draft.sending != nil }
     var error: String? { draft.error }
     var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && items.isEmpty }
+
+    func primaryAction(isWorking: Bool) -> PrimaryAction {
+        if sending { return .sending }
+        return isWorking && empty && !goalMode ? .stop : .send
+    }
 
     func select(_ next: ComposerTarget?) {
         guard next != target else { return }
