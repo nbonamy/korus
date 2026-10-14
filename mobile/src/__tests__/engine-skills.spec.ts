@@ -28,7 +28,7 @@ describe('mobile skill catalog', () => {
         { id: skills[0]!.path, name: 'Commit-Push (cp)', insertText: 'cp', description: 'Commit and push changes' },
       ] });
       await f.engine.dispatch({ type: 'send', text: 'Please $cp this change' });
-      expect(f.sendPrompt).toHaveBeenCalledWith('demo-agent', 'Please $cp this change', expect.any(String), expect.objectContaining({ skills: [{ name: skills[0]!.name, path: skills[0]!.path }] }));
+      expect(f.sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Please $cp this change', expect.any(String), expect.objectContaining({ skills: [{ name: skills[0]!.name, path: skills[0]!.path }] }));
     } finally { f.engine.dispose(); }
   });
 
@@ -67,7 +67,7 @@ describe('mobile skill catalog', () => {
       expect(list).toHaveBeenCalledTimes(1);
       resolve(skills);
       await Promise.all([first, second]);
-      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '$cp this', expect.any(String), expect.objectContaining({ skills: [{ name: skills[0]!.name, path: skills[0]!.path }] }));
+      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '$cp this', expect.any(String), expect.objectContaining({ skills: [{ name: skills[0]!.name, path: skills[0]!.path }] }));
     } finally { f.engine.dispose(); }
   });
 });

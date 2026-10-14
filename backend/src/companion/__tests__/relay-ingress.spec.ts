@@ -48,6 +48,15 @@ describe('relay source admission through WebSocket upgrades', () => {
       expect(await negotiate(port, '192.0.2.3, 192.0.2.4')).toBe(false);
     } finally { await relay.stop(); }
   });
+  it('counts every address of an IPv6 /64 as one source, so rotating addresses cannot multiply its allowance', async () => {
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', trustedProxy: true });
+    const port = Number(relay.getMultiaddrs()[0]!.getComponents().find(part => part.name === 'tcp')!.value);
+    try {
+      for (let n = 0; n < 60; n++) expect(await negotiate(port, `2001:db8:1:2::${(n + 1).toString(16)}`)).toBe(true);
+      expect(await negotiate(port, '2001:0db8:0001:0002:ffff:ffff:ffff:ffff')).toBe(false);
+      expect(await negotiate(port, '2001:db8:1:3::1')).toBe(true);
+    } finally { await relay.stop(); }
+  });
   it('ignores spoofed proxy headers unless proxy mode is explicitly enabled', async () => {
     const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws' });
     const port = Number(relay.getMultiaddrs()[0]!.getComponents().find(part => part.name === 'tcp')!.value);

@@ -391,7 +391,7 @@ describe('companion engine', () => {
     await engine.dispatch({ type: 'draft', text: 'Hello' });
     expect(latest().draft).toBe('Hello');
     await engine.dispatch({ type: 'send', text: 'Hello' });
-    expect(sendPrompt).toHaveBeenCalledWith('demo-agent', 'Hello', expect.any(String), expect.anything());
+    expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Hello', expect.any(String), expect.anything());
     await engine.dispatch({ type: 'interrupt' });
     expect(interrupt).toHaveBeenCalledWith('demo-agent');
     engine.dispose();

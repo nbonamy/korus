@@ -42,7 +42,7 @@ describe('native attachment submission', () => {
       const target = f.engine.snapshot().composerTarget!;
       expect(target.sessionId).toBeNull();
       await f.engine.dispatch({ type: 'send', requestId: 'text', target, text: 'Hello', uploads: [] });
-      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', 'Hello', expect.any(String), expect.anything());
+      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Hello', expect.any(String), expect.anything());
       expect(f.events.at(-1)).toMatchObject({ type: 'sendResult', requestId: 'text', status: 'accepted' });
     } finally { f.engine.dispose(); }
   });
@@ -67,7 +67,7 @@ describe('native attachment submission', () => {
       const sending = f.engine.dispatch({ type: 'send', requestId: 'send-1', target: f.engine.snapshot().composerTarget!, text: '', uploads: [photo] });
       await vi.waitFor(() => expect(f.sendPrompt).toHaveBeenCalledOnce());
       expect(f.events.filter((event) => event.type === 'sendResult')).toEqual([]);
-      expect(f.sendPrompt).toHaveBeenCalledWith('demo-agent', '', expect.any(String), expect.anything(), [photo]);
+      expect(f.sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), '', expect.any(String), expect.anything(), [photo]);
       accept(); await sending;
       expect(f.events.at(-1)).toMatchObject({ type: 'sendResult', requestId: 'send-1', status: 'accepted' });
     } finally { f.engine.dispose(); }

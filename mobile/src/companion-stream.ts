@@ -1,7 +1,7 @@
 import { isCompanionNotification } from '@workspace/core/companion-notification';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import type { Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionResponseLimit, encodeCompanionFrame, type CompanionUpdate } from '@workspace/core/companion-protocol';
+import { companionResponseLimit, encodeCompanionFrame, readCompanionFrames, type CompanionUpdate } from '@workspace/core/companion-protocol';
 
 export class CompanionOperationDenied extends Error {
   constructor() { super('Laptop denied the operation or is unavailable.'); }
@@ -35,9 +35,8 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     }).catch((error) => { fail(); throw error; });
   }
   async function receive(source: Stream) {
-    const decoder = new CompanionFrameDecoder(companionResponseLimit);
     try {
-      for await (const chunk of source) for (const raw of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+      for await (const raw of readCompanionFrames(source, companionResponseLimit)) {
         if (closed) return;
         if (!raw || typeof raw !== 'object' || !('v' in raw) || raw.v !== 1) throw new Error('Invalid update envelope.');
         if ('update' in raw) {

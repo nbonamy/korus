@@ -25,7 +25,7 @@ describe('native composer actions', () => {
     try {
       await f.engine.dispatch({ type: 'draft', text: 'Keep this thought' });
       await f.engine.dispatch({ type: 'delegate', startingContext: 'handoff' });
-      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '/delegate', expect.any(String), { delegation: { startingContext: 'handoff' } });
+      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '/delegate', expect.any(String), { delegation: { startingContext: 'handoff' } });
       expect(f.engine.snapshot().draft).toBe('Keep this thought');
       await f.engine.dispatch({ type: 'disconnect' });
       await f.engine.dispatch({ type: 'delegate', startingContext: 'handoff' });
@@ -45,7 +45,7 @@ describe('native composer actions', () => {
       const starting = f.engine.dispatch({ type: 'review', target: f.setup.target, input });
       expect(f.engine.snapshot().review.status).toBe('starting');
       await f.engine.dispatch({ type: 'review', target: f.setup.target, input });
-      expect(f.startReview).toHaveBeenCalledExactlyOnceWith('demo-agent', input);
+      expect(f.startReview).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), input);
       accept(); await starting;
       expect(f.engine.snapshot().review.status).toBe('started');
     } finally { f.engine.dispose(); }

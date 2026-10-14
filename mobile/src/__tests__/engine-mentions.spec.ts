@@ -31,7 +31,7 @@ describe('mobile agent and plugin mentions', () => {
         { id: 'plugin:github@bundled', kind: 'plugin', name: 'GitHub', insertText: 'github', description: 'Work with repositories' },
       ] });
       await f.engine.dispatch({ type: 'send', text: 'Ask @agent:demo-reviewer about @github' });
-      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', 'Ask @agent:demo-reviewer about @github', expect.any(String), expect.any(Object));
+      expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Ask @agent:demo-reviewer about @github', expect.any(String), expect.any(Object));
     } finally { f.engine.dispose(); }
   });
 

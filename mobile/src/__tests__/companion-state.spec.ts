@@ -399,7 +399,7 @@ describe('companion state', () => {
     await connecting;
     expect(state.status.value).toBe('revoked');
     expect(state.workspace.value.agents).toStrictEqual([]);
-    await expect(original.sendPrompt('demo-agent', 'hello')).rejects.toThrow();
+    await expect(original.sendPrompt({ hostId: 'demo-laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null }, 'hello')).rejects.toThrow();
     state.dispose();
   });
   it('lists a team\'s agents in the desktop order, not the order the laptop stores them', async () => {
@@ -433,7 +433,34 @@ describe('companion state', () => {
       state.updateComposerSettings({ planMode: true });
       expect(selectModel).toHaveBeenCalledTimes(1);
       await state.submit('Do it');
-      expect(sendPrompt).toHaveBeenCalledWith('demo-agent', 'Do it', expect.any(String), { model: 'deep-1', planMode: true, reasoningEffort: 'high' });
+      expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { model: 'deep-1', planMode: true, reasoningEffort: 'high' });
+    } finally { state.dispose(); }
+  });
+  it('sends a prompt to the session it was written for, even if the session is replaced while the draft is saved', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
+    let workspace!: CompanionWorkspace;
+    const sendPrompt = vi.fn(async () => {});
+    connector.connect = async id => {
+      const session = await connect(id);
+      const initial = await session.getWorkspace();
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: 'original' } })) };
+      return { ...session, sendPrompt, getWorkspace: async () => workspace, onUpdate: listener => { update = listener; return () => {}; } };
+    };
+    let saving: (() => void) | undefined; let hold = false;
+    const store = { read: async () => null, write: async () => { if (hold) await new Promise<void>(resolve => { saving = resolve; }); } };
+    const state = createCompanionState(connector, store);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      hold = true;
+      const sent = state.submit('Ship it');
+      await vi.waitFor(() => expect(saving).toBeDefined());
+      hold = false;
+      workspace = { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: 'replacement' } })) };
+      update(workspace, null);
+      saving!();
+      await sent;
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'original' }) }), 'Ship it', expect.any(String), expect.anything());
     } finally { state.dispose(); }
   });
   it('sends attachments with a prompt, even without text, and nothing when there is neither', async () => {
@@ -446,7 +473,7 @@ describe('companion state', () => {
       await state.submit('   ');
       expect(sendPrompt).not.toHaveBeenCalled();
       await state.submit('', { attachments: [{ type: 'image', reference: 'phone-attachment:1' }] });
-      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '', expect.any(String), { planMode: false }, [upload]);
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '', expect.any(String), { planMode: false }, [upload]);
     } finally { state.dispose(); }
   });
   it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {
@@ -484,7 +511,7 @@ describe('companion state', () => {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       state.updateDraft({ text: 'half-written thought', selectionStart: 0, selectionEnd: 0 });
       await state.delegate({ startingContext: 'handoff', instructions: 'Run tests' });
-      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '/delegate', expect.any(String), { delegation: { startingContext: 'handoff', instructions: 'Run tests' } });
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '/delegate', expect.any(String), { delegation: { startingContext: 'handoff', instructions: 'Run tests' } });
       expect(state.draft.value.text).toBe('half-written thought'); expect(state.error.value).toBe('');
       sendPrompt.mockRejectedValueOnce(new Error('refused'));
       await state.delegate({ startingContext: 'handoff' });

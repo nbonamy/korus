@@ -40,7 +40,7 @@ export function createDemoConnector(): CompanionConnector {
             payload: { revision: sequence, snapshot: snapshot(agentId, [...messages.get(agentId)!]) },
           };
         },
-        async sendPrompt(agentId, prompt) {
+        async sendPrompt({ agentId }, prompt) {
           requireSession(agentId);
           if (!prompt.trim()) throw new Error('Enter a prompt.');
           messages.get(agentId)!.push(

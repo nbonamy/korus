@@ -30,7 +30,8 @@ export type CompanionSession = {
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
-  sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
+  /** Prompts and reviews name the target captured when the person acted, so a replaced session is refused rather than retargeted. */
+  sendPrompt(target: CompanionTarget, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   listPlugins?(agentId: string): Promise<BackendPluginSummary[]>;
   listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
@@ -46,7 +47,7 @@ export type CompanionSession = {
   createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
   setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
   reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
-  startReview?(agentId: string, input: CompanionReviewInput): Promise<string | void>;
+  startReview?(target: CompanionTarget, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;

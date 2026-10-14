@@ -84,7 +84,8 @@ docs only when an architecture, process, or reusable convention changes.
   ownership, backend seam, persistence, remote teams, worktrees, durable tasks,
   Missions, code review, work providers.
 - `docs/backend-architecture.md`: `daemon` design rules, transports, runtime
-  packaging, GitHub desktop releases, auto-update, security.
+  packaging, GitHub desktop releases, auto-update, security. Read its companion
+  gateway and relay invariants before changing or reviewing mobile access.
 - `docs/protocol.md`: app-owned JSON-RPC conventions, synchronization, and
   lifecycles; the method catalog itself is in `core/src/backend-protocol/`.
 - `docs/codex.md`: read before changing Codex conversation state, rendering,

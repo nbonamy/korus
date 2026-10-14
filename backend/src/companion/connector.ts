@@ -8,10 +8,11 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, PrivateKey, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { readCompanionFrames, readFirstCompanionFrame, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { relayAddress, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import type { CompanionGateway } from './gateway';
+import { sendWithBackpressure } from './stream-io';
 
 const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method: z.string().min(1).max(80), args: z.unknown() }).strict();
 export class CompanionOutboundConnector {
@@ -36,18 +37,10 @@ export class CompanionOutboundConnector {
         denyDialMultiaddr: (candidate) => candidate.toString() !== address.toString(),
         denyInboundRelayedConnection: (relay) => relay.toString() !== relayPeerId },
     });
-    await this.node.handle(companionProtocol, (stream, connection) => {
-      const peerId = connection.remotePeer.toString();
-      const streams = this.active.get(peerId) ?? new Set<Stream>();
-      streams.add(stream); this.active.set(peerId, streams);
-      void this.serve(stream, peerId).finally(() => { streams.delete(stream); if (!streams.size) this.active.delete(peerId); });
-    }, { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
-    await this.node.handle(companionUpdatesProtocol, (stream, connection) => {
-      const peerId = connection.remotePeer.toString();
-      const streams = this.active.get(peerId) ?? new Set<Stream>();
-      streams.add(stream); this.active.set(peerId, streams);
-      void this.serveUpdates(stream, peerId).finally(() => { streams.delete(stream); if (!streams.size) this.active.delete(peerId); });
-    }, { maxInboundStreams: 1, maxOutboundStreams: 1, runOnLimitedConnection: true });
+    await this.node.handle(companionProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), this.serve),
+      { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
+    await this.node.handle(companionUpdatesProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), this.serveUpdates),
+      { maxInboundStreams: 1, maxOutboundStreams: 1, runOnLimitedConnection: true });
     this.node.addEventListener('connection:close', () => {
       if (!this.node?.getConnections().some((connection) => connection.remotePeer.toString() === relayPeerId)) {
         this.connected = false; if (!this.reserving) this.schedule(address.toString());
@@ -63,10 +56,7 @@ export class CompanionOutboundConnector {
       const stream = await this.node.dialProtocol(multiaddr(this.relay), companionAdmissionProtocol, { signal: AbortSignal.timeout(10_000) });
       stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), invitations: this.gateway.pairingInvitations() }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-      const decoder = new CompanionFrameDecoder();
-      for await (const chunk of stream) for (const frame of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
-        return z.object({ ok: z.literal(true) }).strict().safeParse(frame).success;
-      }
+      return z.object({ ok: z.literal(true) }).strict().safeParse(await readFirstCompanionFrame(stream)).success;
     } catch { /* Endpoint grants remain authoritative during relay outages. */ }
     return false;
   }
@@ -78,11 +68,7 @@ export class CompanionOutboundConnector {
       stream.maxReadBufferLength = 16_384; stream.inactivityTimeout = 15_000;
       stream.send(encodeCompanionFrame({ peerId, registration, notification }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-      const decoder = new CompanionFrameDecoder();
-      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
-        return z.object({ result: z.enum(['sent', 'invalid', 'unavailable']) }).strict().parse(value).result;
-      }
-      return 'unavailable';
+      return z.object({ result: z.enum(['sent', 'invalid', 'unavailable']) }).strict().parse(await readFirstCompanionFrame(stream)).result;
     } finally { stream.abort(new Error('Push request finished.')); }
   }
   revoke(peerId: string) {
@@ -119,7 +105,6 @@ export class CompanionOutboundConnector {
     stream.maxReadBufferLength = companionFrameLimit + 4;
     stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = 45_000;
-    const decoder = new CompanionFrameDecoder();
     let sequence = 0; let queuedBytes = 0; let queuedFrames = 0; let closed = false;
     let pending = Promise.resolve();
     const fail = () => { closed = true; stream.abort(new Error('Companion update stream closed.')); };
@@ -131,12 +116,7 @@ export class CompanionOutboundConnector {
       if (queuedBytes > companionResponseLimit * 2 || queuedFrames > 256) { fail(); return; }
       pending = pending.then(async () => {
         if (closed) return;
-        if (!stream.send(bytes)) await new Promise<void>((resolve, reject) => {
-          const cleanup = () => { stream.removeEventListener('close', close); stream.removeEventListener('drain', drain); };
-          const close = () => { cleanup(); reject(new Error('Closed.')); };
-          const drain = () => { cleanup(); resolve(); };
-          stream.addEventListener('close', close, { once: true }); stream.addEventListener('drain', drain, { once: true });
-        });
+        await sendWithBackpressure(stream, bytes);
         queuedBytes -= bytes.byteLength; queuedFrames--;
       }).catch(fail);
     };
@@ -145,7 +125,7 @@ export class CompanionOutboundConnector {
     stream.addEventListener('close', cleanup, { once: true });
     try {
       subscription = this.gateway.subscribe(peerId, (update) => send({ v: 1, seq: ++sequence, update }), fail);
-      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+      for await (const value of readCompanionFrames(stream)) {
         const request = requestSchema.parse(value);
         try {
           const result = await subscription.request(request.method, request.args);
@@ -159,28 +139,20 @@ export class CompanionOutboundConnector {
     stream.maxReadBufferLength = companionFrameLimit + 4;
     stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = 30_000;
-    const decoder = new CompanionFrameDecoder();
     try {
-      for await (const chunk of stream) {
-        const frames = decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
-        if (!frames.length) continue;
-        if (frames.length !== 1) throw new Error('One request per stream.');
-        const request = requestSchema.parse(frames[0]);
-        let response;
-        try { response = encodeCompanionFrame({ v: 1, id: request.id, result: await this.gateway.request(peerId, request.method, request.args) }, companionResponseLimit); }
-        catch { response = encodeCompanionFrame({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
-        if (stream.status !== 'open') return;
-        if (!stream.send(response)) {
-          await new Promise<void>((resolve, reject) => {
-            const close = () => { cleanup(); reject(new Error('Closed.')); };
-            const drain = () => { cleanup(); resolve(); };
-            const cleanup = () => { stream.removeEventListener('close', close); stream.removeEventListener('drain', drain); };
-            stream.addEventListener('close', close, { once: true }); stream.addEventListener('drain', drain, { once: true });
-          });
-        }
-        await stream.close({ signal: AbortSignal.timeout(5000) });
-        return;
-      }
+      const request = requestSchema.parse(await readFirstCompanionFrame(stream));
+      let response;
+      try { response = encodeCompanionFrame({ v: 1, id: request.id, result: await this.gateway.request(peerId, request.method, request.args) }, companionResponseLimit); }
+      catch { response = encodeCompanionFrame({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
+      if (stream.status !== 'open') return;
+      await sendWithBackpressure(stream, response);
+      await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Invalid companion request.')); }
+  }
+  /** Revocation and shutdown abort every stream a device holds. */
+  private track(stream: Stream, peerId: string, serve: (this: CompanionOutboundConnector, stream: Stream, peerId: string) => Promise<void>) {
+    const streams = this.active.get(peerId) ?? new Set<Stream>();
+    streams.add(stream); this.active.set(peerId, streams);
+    void serve.call(this, stream, peerId).finally(() => { streams.delete(stream); if (!streams.size) this.active.delete(peerId); });
   }
 }

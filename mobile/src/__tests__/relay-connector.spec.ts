@@ -246,16 +246,17 @@ describe('native relay host adapter', () => {
     expect(await session.listPlugins!('agent')).toStrictEqual([{ id: 'github', name: 'github', displayName: 'GitHub', enabled: true }]);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'plugins.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
     await session.selectModel!('agent', { model: 'm', reasoningEffort: 'high', serviceTier: null });
-    await session.sendPrompt('agent', 'Go', randomUUID(), { model: 'm', planMode: true }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
-    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ agentId: 'agent', model: 'm', reasoningEffort: 'high', serviceTier: null });
-    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ text: 'Go', options: { model: 'm', planMode: true }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
-    await session.startReview!('agent', { scope: { type: 'uncommitted' }, threadMode: 'independent' });
-    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { agentId: 'agent', input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
+    const selectedTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
+    await session.sendPrompt(selectedTarget, 'Go', randomUUID(), { model: 'm', planMode: true }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
+    expect(transport.requests.find((request) => request.method === 'models.list')?.args).toStrictEqual(selectedTarget);
+    expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ target: selectedTarget, model: 'm', reasoningEffort: 'high', serviceTier: null });
+    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ target: selectedTarget, text: 'Go', options: { model: 'm', planMode: true }, attachments: [{ name: 'photo.jpg', data: 'AAAA' }] });
+    await session.startReview!(selectedTarget, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.review.start', args: { target: selectedTarget, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } } });
     await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
     expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
-      .toStrictEqual([['agent.interrupt', { agentId: 'agent' }], ['agent.approvalPreset.set', { agentId: 'agent', preset: 'full-access' }], ['agent.permissionMode.set', { agentId: 'agent', mode: 'acceptEdits' }]]);
+      .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }], ['agent.permissionMode.set', { target: selectedTarget, mode: 'acceptEdits' }]]);
     await session.restartSession!('agent');
-    const selectedTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.restart', args: selectedTarget });
     await session.previewCloseSession!('agent');
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.close.preview', args: selectedTarget });
@@ -336,14 +337,14 @@ describe('native relay host adapter', () => {
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     await session.loadConversation('agent');
-    const commandId = randomUUID(); await session.sendPrompt('agent', 'Reply once', commandId);
-    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ clientCommandId: commandId,
-      target: { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify(agent.backendSession) } });
+    const remoteTarget = { hostId: host.hostId, locationId: 'remote-host', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify(agent.backendSession) };
+    const commandId = randomUUID(); await session.sendPrompt(remoteTarget, 'Reply once', commandId);
+    expect(transport.requests.find((request) => request.method === 'prompt.submit')?.args).toMatchObject({ clientCommandId: commandId, target: remoteTarget });
     expect(await session.commandStatus!(commandId)).toBe('accepted');
     await expect(session.loadConversation('foreign')).rejects.toThrow('scope');
     await connector.revoke(host.hostId);
     expect(connector.laptops).toEqual([]); expect(storage.values.get('paired-hosts')).toBe('[]');
-    await expect(session.sendPrompt('agent', 'Again')).rejects.toThrow('Disconnected');
+    await expect(session.sendPrompt(remoteTarget, 'Again')).rejects.toThrow('Disconnected');
     expect(transport.requests.some((request) => request.method === 'device.forget')).toBe(true);
     await connector.dispose!(); expect(transport.stop).toHaveBeenCalledOnce();
   });
@@ -398,8 +399,10 @@ describe('native relay host adapter', () => {
       expect(await quick).toBe('quick-chat');
     } finally { vi.useRealTimers(); }
     expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
+    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
+    await session.getWorkspace();
     await session.setBackend!('new-chat', 'claude');
-    expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ agentId: 'new-chat', backend: 'claude' });
+    expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, backend: 'claude' });
     await connector.dispose!();
   });
 });

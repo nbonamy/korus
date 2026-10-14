@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { CompanionGateway, type GatewayState } from '../gateway';
-import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { CompanionGateway, companionAgentMethods, type GatewayState } from '../gateway';
+import { companionSessionId, type CompanionTarget, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
@@ -167,7 +167,7 @@ describe('companion authorization gateway', () => {
       agentBackend: 'codex' as const, backend: 'codex' as const, backends: ['codex' as const], models: [] };
     f.port.reviewSetup.mockResolvedValue(setup);
     expect(await f.gateway.request('phone', 'agent.review.setup', { target })).toStrictEqual(setup);
-    await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
     expect(f.port.startReview).not.toHaveBeenCalled();
     f.port.reviewSetup.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return setup; });
     await expect(f.gateway.request('phone', 'agent.review.setup', { target })).rejects.toThrow('authorized');
@@ -269,6 +269,80 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
   });
 
+  it.each([
+    ['answers a request', 'agent.request.respond', 'respondRequest'],
+    ['changes the engine', 'agent.backend.set', 'setBackend'],
+  ] as const)('never %s for a device revoked during any workspace read', async (_name, method, effect) => {
+    const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
+    const current = { ...workspace, backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
+    const args = method === 'agent.request.respond' ? { target, id: 'q', conversationId: 'conversation', outcome: { kind: 'cancelled' } } : { target, backend: 'claude' };
+    for (const revokedOnRead of [1, 2, 3]) {
+      const f = fixture(); await f.pair();
+      let reads = 0; let revoked = false;
+      f.port.workspace.mockImplementation(async () => {
+        if (++reads === revokedOnRead) { await f.gateway.revoke('phone'); revoked = true; }
+        return current;
+      });
+      await f.gateway.request('phone', method, args).catch(() => {});
+      expect(f.port[effect]).toHaveBeenCalledTimes(revoked ? 0 : 1);
+    }
+  });
+  describe('every agent operation', () => {
+    const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
+    const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    const rows: Record<string, Row> = {
+      'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
+      'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },
+      'conversation.loadOlder': { args: (t) => t, effect: 'loadOlderHistory', read: true },
+      'conversation.content.read': { args: (t) => ({ target: t, input: { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 } }), effect: 'readConversationContent', read: true, agent: claude },
+      'agent.request.respond': { args: (t) => ({ target: t, id: 'q', conversationId: 'conversation', outcome: { kind: 'cancelled' } }), effect: 'respondRequest' },
+      'skills.list': { args: (t) => t, effect: 'skills', read: true },
+      'plugins.list': { args: (t) => t, effect: 'plugins', read: true },
+      'models.list': { args: (t) => t, effect: 'models', read: true },
+      'agent.model.select': { args: (t) => ({ target: t, model: 'gpt', reasoningEffort: null, serviceTier: null }), effect: 'selectModel' },
+      'agent.interrupt': { args: (t) => t, effect: 'interrupt' },
+      'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setApprovalPreset' },
+      'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermissionMode' },
+      'agent.goal.set': { args: (t) => ({ target: t, objective: 'Ship' }), effect: 'changeGoal' },
+      'agent.backend.set': { args: (t) => ({ target: t, backend: 'claude' }), effect: 'setBackend' },
+      'agent.restart': { args: (t) => t, effect: 'restart' },
+      'agent.close.preview': { args: (t) => t, effect: 'closePreview', read: true },
+      'agent.close': { args: (t) => ({ target: t }), effect: 'close' },
+      'agent.review.setup': { args: (t) => ({ target: t }), effect: 'reviewSetup', read: true },
+      'agent.review.start': { args: (t) => ({ target: t, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } }), effect: 'startReview' },
+    };
+    function ready(row: Row) {
+      const f = fixture();
+      const agent = { ...workspace.agents[0]!, ...row.agent };
+      const current = { ...workspace, agents: [agent, workspace.agents[1]!], backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
+      f.port.workspace.mockResolvedValue(current);
+      f.port.conversation.mockResolvedValue({ type: `${agent.backend}.conversationSnapshotChanged`, backend: agent.backend, agentId: 'agent', payload: { snapshot: {} } });
+      return { f, current, target: { ...target, sessionId: companionSessionId(agent) } };
+    }
+    it('has a stale, revoked and mid-read case for each operation the gateway binds to a target', () => {
+      expect(Object.keys(rows).sort()).toStrictEqual([...companionAgentMethods].sort());
+    });
+    it.each(Object.entries(rows))('%s rejects a replaced session and an unpaired device without acting', async (method, row) => {
+      const { f, target: current } = ready(row); await f.pair();
+      await expect(f.gateway.request('phone', method, row.args({ ...current, sessionId: 'replaced' }))).rejects.toThrow('stale');
+      await expect(f.gateway.request('stranger', method, row.args(current))).rejects.toThrow('authorized');
+      expect(f.port[row.effect]).not.toHaveBeenCalled();
+    });
+    it.each(Object.entries(rows))('%s never acts or answers for a device revoked during any workspace read', async (method, row) => {
+      for (const revokedOnRead of [1, 2, 3]) {
+        const { f, current, target: selected } = ready(row); await f.pair();
+        let reads = 0; let revoked = false;
+        f.port.workspace.mockImplementation(async () => {
+          if (++reads === revokedOnRead) { await f.gateway.revoke('phone'); revoked = true; }
+          return current;
+        });
+        const outcome = await f.gateway.request('phone', method, row.args(selected)).then(() => 'answered', (error: Error) => error.message);
+        expect(outcome).toBe(revoked ? 'Device is not authorized.' : 'answered');
+        expect(f.port[row.effect]).toHaveBeenCalledTimes(revoked && (!row.read || revokedOnRead === 1) ? 0 : 1);
+      }
+    });
+  });
   it('authorizes session actions against the selected session and requires explicit worktree deletion consent', async () => {
     const f = fixture();
     await expect(f.gateway.request('phone', 'agent.close.preview', target)).rejects.toThrow('authorized');
@@ -406,38 +480,55 @@ describe('companion authorization gateway', () => {
   });
   it('lists models and saves a model choice only for agents the laptop shows', async () => {
     const f = fixture(); await f.pair();
-    expect(await f.gateway.request('phone', 'models.list', { agentId: 'agent' })).toStrictEqual({ models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] });
+    expect(await f.gateway.request('phone', 'models.list', target)).toStrictEqual({ models: [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }] });
     expect(f.port.models).toHaveBeenCalledExactlyOnceWith('agent');
-    await f.gateway.request('phone', 'agent.model.select', { agentId: 'agent', model: 'gpt', reasoningEffort: 'high', serviceTier: null });
+    await f.gateway.request('phone', 'agent.model.select', { target, model: 'gpt', reasoningEffort: 'high', serviceTier: null });
     expect(f.port.selectModel).toHaveBeenCalledExactlyOnceWith('agent', { model: 'gpt', reasoningEffort: 'high', serviceTier: null });
-    await expect(f.gateway.request('phone', 'models.list', { agentId: 'unknown' })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { agentId: 'unknown', model: 'gpt', reasoningEffort: null, serviceTier: null })).rejects.toThrow('stale');
-    await expect(f.gateway.request('phone', 'agent.model.select', { agentId: 'agent', model: 'gpt', reasoningEffort: null, serviceTier: null, extra: 1 })).rejects.toThrow();
-    await expect(f.gateway.request('stranger', 'models.list', { agentId: 'agent' })).rejects.toThrow('authorized');
+    await expect(f.gateway.request('phone', 'models.list', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { target: { ...target, agentId: 'unknown' }, model: 'gpt', reasoningEffort: null, serviceTier: null })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.model.select', { target, model: 'gpt', reasoningEffort: null, serviceTier: null, extra: 1 })).rejects.toThrow();
+    await expect(f.gateway.request('stranger', 'models.list', target)).rejects.toThrow('authorized');
   });
   it('lets the phone stop an agent and change its permissions, only for agents the laptop shows', async () => {
     const f = fixture(); await f.pair();
-    await f.gateway.request('phone', 'agent.interrupt', { agentId: 'agent' });
-    await f.gateway.request('phone', 'agent.approvalPreset.set', { agentId: 'agent', preset: 'full-access' });
-    await f.gateway.request('phone', 'agent.permissionMode.set', { agentId: 'remote-agent', mode: 'acceptEdits' });
+    const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
+    await f.gateway.request('phone', 'agent.interrupt', target);
+    await f.gateway.request('phone', 'agent.approvalPreset.set', { target, preset: 'full-access' });
+    await f.gateway.request('phone', 'agent.permissionMode.set', { target: remote, mode: 'acceptEdits' });
     expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('agent');
     expect(f.port.setApprovalPreset).toHaveBeenCalledExactlyOnceWith('agent', 'full-access');
     expect(f.port.setPermissionMode).toHaveBeenCalledExactlyOnceWith('remote-agent', 'acceptEdits');
-    for (const [method, args] of [['agent.interrupt', {}], ['agent.approvalPreset.set', { preset: 'x' }], ['agent.permissionMode.set', { mode: 'x' }]] as const) {
-      await expect(f.gateway.request('phone', method, { agentId: 'unknown', ...args })).rejects.toThrow('stale');
-      await expect(f.gateway.request('stranger', method, { agentId: 'agent', ...args })).rejects.toThrow('authorized');
+    await expect(f.gateway.request('phone', 'agent.interrupt', { ...target, agentId: 'unknown' })).rejects.toThrow('stale');
+    await expect(f.gateway.request('stranger', 'agent.interrupt', target)).rejects.toThrow('authorized');
+    for (const [method, args] of [['agent.approvalPreset.set', { preset: 'x' }], ['agent.permissionMode.set', { mode: 'x' }]] as const) {
+      await expect(f.gateway.request('phone', method, { target: { ...target, agentId: 'unknown' }, ...args })).rejects.toThrow('stale');
+      await expect(f.gateway.request('stranger', method, { target, ...args })).rejects.toThrow('authorized');
     }
-    await expect(f.gateway.request('phone', 'agent.permissionMode.set', { agentId: 'agent', mode: 'x', extra: 1 })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'agent.permissionMode.set', { target, mode: 'x', extra: 1 })).rejects.toThrow();
+  });
+  it('never applies an agent command to a conversation that replaced the one the phone saw', async () => {
+    const f = fixture(); await f.pair();
+    f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'] } });
+    const old = { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'replaced' }) };
+    const commands: [string, object][] = [
+      ['agent.interrupt', old], ['models.list', old],
+      ['agent.model.select', { target: old, model: 'gpt', reasoningEffort: null, serviceTier: null }],
+      ['agent.approvalPreset.set', { target: old, preset: 'full-access' }], ['agent.permissionMode.set', { target: old, mode: 'acceptEdits' }],
+      ['agent.backend.set', { target: old, backend: 'claude' }],
+      ['agent.review.start', { target: old, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } }],
+    ];
+    for (const [method, args] of commands) await expect(f.gateway.request('phone', method, args)).rejects.toThrow('stale');
+    for (const port of [f.port.interrupt, f.port.models, f.port.selectModel, f.port.setApprovalPreset, f.port.setPermissionMode, f.port.setBackend, f.port.startReview]) expect(port).not.toHaveBeenCalled();
   });
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();
     const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', backend: 'claude', model: 'review-model', reasoningEffort: 'high', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false } };
-    await f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input });
+    await f.gateway.request('phone', 'agent.review.start', { target, input });
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
-    await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'unknown', input })).rejects.toThrow('stale');
-    await expect(f.gateway.request('stranger', 'agent.review.start', { agentId: 'agent', input })).rejects.toThrow('authorized');
+    await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
+    await expect(f.gateway.request('stranger', 'agent.review.start', { target, input })).rejects.toThrow('authorized');
     for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
-      await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input: bad })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.review.start', { target, input: bad })).rejects.toThrow();
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };
     await f.gateway.request('phone', 'prompt.submit', { target, text: '/delegate', clientCommandId: randomUUID(), options: { delegation } });
@@ -495,6 +586,16 @@ describe('companion authorization gateway', () => {
     await restored.request('phone', 'prompt.submit', command);
     expect(f.port.submit).toHaveBeenCalledTimes(1);
     await expect(restored.request('phone', 'prompt.submit', { ...command, text: 'Changed' })).rejects.toThrow('reused');
+  });
+  it('reports a prompt left pending by an ended process as unresolved and never replays it', async () => {
+    const f = fixture(); await f.pair(); f.port.submit.mockReturnValueOnce(new Promise(() => {}));
+    const command = { target, text: 'Maybe sent', clientCommandId: randomUUID() };
+    void f.gateway.request('phone', 'prompt.submit', command);
+    await vi.waitFor(() => expect(f.port.submit).toHaveBeenCalledTimes(1));
+    const restarted = new CompanionGateway('host', f.saved(), f.port);
+    expect(await restarted.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toStrictEqual({ target, clientCommandId: command.clientCommandId, state: 'unresolved' });
+    expect(await restarted.request('phone', 'prompt.submit', command)).toStrictEqual({ target, clientCommandId: command.clientCommandId, state: 'unresolved' });
+    expect(f.port.submit).toHaveBeenCalledTimes(1);
   });
   it('never resubmits an admission with unknown provider outcome and rejects revoked peers', async () => {
     const f = fixture(); await f.pair(); f.port.submit.mockRejectedValue(new Error('lost receipt'));
@@ -602,7 +703,7 @@ describe('companion authorization gateway', () => {
     }
     it('switches an agent that has not started yet', async () => {
       const f = await ready();
-      await f.gateway.request('phone', 'agent.backend.set', { agentId: 'agent', backend: 'claude' });
+      await f.gateway.request('phone', 'agent.backend.set', { target, backend: 'claude' });
       expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
     });
     it.each([
@@ -612,13 +713,14 @@ describe('companion authorization gateway', () => {
       ['an engine the laptop cannot use', {}, 'antigravity'],
     ])('refuses %s', async (_name, change, backend) => {
       const f = await ready(change);
-      await expect(f.gateway.request('phone', 'agent.backend.set', { agentId: 'agent', backend })).rejects.toThrow();
-      await expect(f.gateway.request('phone', 'agent.backend.set', { agentId: 'ghost', backend: 'claude' })).rejects.toThrow('not found');
+      const current = 'backendSession' in change ? { ...target, sessionId: JSON.stringify(change.backendSession) } : target;
+      await expect(f.gateway.request('phone', 'agent.backend.set', { target: current, backend })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.backend.set', { target: { ...target, agentId: 'ghost' }, backend: 'claude' })).rejects.toThrow('stale');
       expect(f.port.setBackend).not.toHaveBeenCalled();
     });
     it('needs a paired phone', async () => {
       const f = fixture();
-      await expect(f.gateway.request('stranger', 'agent.backend.set', { agentId: 'agent', backend: 'claude' })).rejects.toThrow('authorized');
+      await expect(f.gateway.request('stranger', 'agent.backend.set', { target, backend: 'claude' })).rejects.toThrow('authorized');
     });
   });
   describe('starting a quick chat', () => {

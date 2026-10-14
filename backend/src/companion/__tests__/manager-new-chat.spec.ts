@@ -176,7 +176,7 @@ describe('mobile chat creation', () => {
   it('changes the engine of a chat that has not started, through the same update the desktop uses', async () => {
     const f = await fixture();
     f.snapshot.agents[0]!.status = { type: 'idle' };
-    await f.gateway.request('phone', 'agent.backend.set', { agentId: 'existing', backend: 'claude' });
+    await f.gateway.request('phone', 'agent.backend.set', { target: { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: null }, backend: 'claude' });
     expect(f.calls.find((call) => call.method === backendMethods.agentUpdate)?.params).toMatchObject({ input: { id: 'existing', backend: 'claude' } });
     expect(f.snapshot.agents[0]!.backend).toBe('claude');
   });

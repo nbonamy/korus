@@ -13,7 +13,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
@@ -97,14 +97,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   async function resolve(networkNode: Libp2p, config: RelayConfig, code: string): Promise<string> {
     const stream: Stream = await networkNode.dialProtocol(multiaddr(addressFor(config.origin, config.peerId)), companionRendezvousProtocol, { signal: AbortSignal.timeout(15_000) });
     stream.maxReadBufferLength = 4096; stream.maxWriteBufferLength = 4096; stream.inactivityTimeout = 15_000;
-    const decoder = new CompanionFrameDecoder();
     try {
       stream.send(encodeCompanionFrame({ code }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
-        const hostId = value && typeof value === 'object' && 'hostId' in value ? String(value.hostId) : '';
-        try { peerIdFromString(hostId); return hostId; } catch { break; }
-      }
+      const value = await readFirstCompanionFrame(stream);
+      const hostId = value && typeof value === 'object' && 'hostId' in value ? String(value.hostId) : '';
+      peerIdFromString(hostId);
+      return hostId;
     } catch { /* The relay aborts unavailable invitations. */ } finally { stream.abort(new Error('Lookup complete.')); }
     throw new PairingError('mobile.errors.noLaptop');
   }
@@ -228,21 +227,21 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
           return chunk;
         },
-        async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
+        async sendPrompt(target, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
-          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
+          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target, text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
           if (receipt.state === 'rejected') throw new PromptRejectedError('Prompt was rejected.');
           if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
         },
-        async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', { agentId })).models; },
+        async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', target(agentId))).models; },
         async listPlugins(agentId) { return (await request<{ plugins: BackendPluginSummary[] }>(host, 'plugins.list', target(agentId))).plugins; },
         async listSkills(agentId) { return (await request<{ skills: BackendSkillSummary[] }>(host, 'skills.list', target(agentId))).skills; },
-        async selectModel(agentId, selection) { await request(host, 'agent.model.select', { agentId, ...selection }); },
+        async selectModel(agentId, selection) { await request(host, 'agent.model.select', { target: target(agentId), ...selection }); },
         async changeGoal(target, objective) {
           if (closed) throw new Error('Disconnected.');
           await request(host, 'agent.goal.set', { target, objective });
         },
-        async interrupt(agentId) { await request(host, 'agent.interrupt', { agentId }); },
+        async interrupt(agentId) { await request(host, 'agent.interrupt', target(agentId)); },
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },
@@ -250,14 +249,14 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
         async createChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.create', chat)).creationId, signal); },
         async createQuickChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.quickChat.create', chat)).creationId, signal); },
-        async setBackend(agentId, backend) { await request(host, 'agent.backend.set', { agentId, backend }); },
+        async setBackend(agentId, backend) { await request(host, 'agent.backend.set', { target: target(agentId), backend }); },
         reviewSetup: (agentId, backend) => request(host, 'agent.review.setup', { target: target(agentId), ...(backend ? { backend } : {}) }),
-        async startReview(agentId, input) {
-          const result = await request<{ reviewerAgentId?: string | null }>(host, 'agent.review.start', { agentId, target: target(agentId), input });
+        async startReview(target, input) {
+          const result = await request<{ reviewerAgentId?: string | null }>(host, 'agent.review.start', { target, input });
           return result.reviewerAgentId ?? undefined;
         },
-        async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },
-        async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },
+        async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { target: target(agentId), preset }); },
+        async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { target: target(agentId), mode }); },
         async commandStatus(clientCommandId) { return (await request<{ state: CompanionCommandReceipt['state'] | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
         onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         onUpdate(listener) { updates.add(listener); return () => updates.delete(listener); },

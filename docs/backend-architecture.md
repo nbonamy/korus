@@ -110,6 +110,20 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 
 ### Companion gateway and relay
 
+Each companion safety property has one owner. Extend the owner instead of adding a
+parallel check, counter or state flag:
+
+- Device authorization and target binding: the gateway operation table. Agent
+  operations go through its target check and act on the workspace that check read,
+  checking the grant after the last read; none accepts a bare agent ID.
+- At-most-once prompt admission: `CommandLedger`, the only holder of in-flight state.
+- Rate limits: `WindowBudget`. Limits that protect other clients are keyed by
+  `sourceNetwork`; counters keyed by a peer identity only reduce noise.
+- Stream framing and backpressure: the shared frame readers and `sendWithBackpressure`.
+
+A review finding against this area names the invariant below that it breaks. Behavior
+listed as outside the relay's guarantees is not a defect.
+
 `CompanionManager` runs inside the authoritative daemon and delegates reads and
 prompt admission to existing app-owned handlers, including remote-team routing.
 Its protected state owns a stable Noise identity, device grants and a command
@@ -123,6 +137,11 @@ a copy that has gone quiet for 30 seconds, sends the read back to the provider.
 Retained conversation routing data excludes app snapshots, is capped at 64 agents,
 and is pruned against workspace membership; disabling access or stopping the service
 clears it. The gateway exposes no generic RPC, filesystem or shell forwarding.
+Every agent operation names a full target (host, location, team, agent and session); a
+session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews
+carry the target the native composer captured; other commands use the engine's latest
+workspace when sent. Reads recheck the target after
+the provider answers.
 Prompt admission carries the captured session identity through remote routing and
 provider preflight. The owning daemon checks it before dispatch; a stale session is
 a confirmed rejection rather than a prompt in a replacement conversation.
@@ -163,6 +182,12 @@ duration and data budgets force an explicit reconnect and authoritative rehydrat
 An optional nonempty `hostIds` configuration restricts a privately operated relay.
 Public admission never replaces pairing proof or explicit desktop approval.
 
+The relay is untrusted infrastructure. It must preserve confidentiality, endpoint
+authentication and authorization, and bound its own memory, sockets and outbound APNs
+traffic. Code guessing is bounded by the code space, its lifetime and desktop approval;
+relay guess counters only reduce noise. Availability under distributed abuse, and
+identity introduction by a compromised relay during pairing, are outside its guarantees.
+
 Both endpoints initiate outbound WSS connections. The product metadata supplies the
 public relay URL and pinned peer identity. `APP_COMPANION_RELAY_URL` and
 `APP_COMPANION_RELAY_PEER_ID` override these together; the daemon also honors a relay
@@ -179,8 +204,11 @@ ACME webroot and reloads nginx after successful renewal. Only published Cloudfla
 proxy ranges may supply the client address used for connection and request limits;
 direct clients retain their socket address. nginx overwrites `X-Real-IP` and the
 relay accepts it only in explicit `trustedProxy` mode on a loopback listener.
-Connection rates, concurrent sockets and laptop leases are bounded per source,
-so rotating peer identities does not consume an unrelated client’s allowance.
+Connection rates, concurrent sockets, laptop leases and push requests are bounded per
+source network: an IPv4 address or an IPv6 /64. Peer identities cost nothing to create, so
+no limit that protects other clients is keyed on one. Full rate counters evict their oldest
+window rather than refusing new clients; the bounded laptop lease table refuses new hosts
+when full.
 Circuit reservations and admission leases share a bounded lifetime.
 The systemd service runs without root,
 with bounded memory and a read-only system filesystem. Versioned bundles live under

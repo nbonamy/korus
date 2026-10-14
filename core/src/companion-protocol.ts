@@ -80,3 +80,13 @@ export class CompanionFrameDecoder {
     return frames;
   }
 }
+/** Decoded frames of a stream, in arrival order. */
+export async function* readCompanionFrames(source: AsyncIterable<Uint8Array | { subarray(): Uint8Array }>, limit = companionFrameLimit): AsyncGenerator<unknown> {
+  const decoder = new CompanionFrameDecoder(limit);
+  for await (const chunk of source) yield* decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
+}
+/** The first frame of a one-shot stream; closing without one is an error. */
+export async function readFirstCompanionFrame(source: AsyncIterable<Uint8Array | { subarray(): Uint8Array }>, limit = companionFrameLimit): Promise<unknown> {
+  for await (const frame of readCompanionFrames(source, limit)) return frame;
+  throw new Error('Stream closed without a frame.');
+}

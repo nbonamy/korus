@@ -1,4 +1,5 @@
 import { RelayIngress } from './relay-ingress';
+import { WindowBudget } from './source-budget';
 import { companionPushProtocol } from '@workspace/core/companion-notification';
 import { CompanionPushRelay } from './push-relay';
 import type { ApnsSender } from './apns';
@@ -9,7 +10,7 @@ import { webSockets } from '@libp2p/websockets';
 import { circuitRelayServer } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import type { PrivateKey, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
 import { companionAdmissionProtocol, companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { normalizePairingCode, pairingLifetimeMs, type PairingInvitation } from '@workspace/core/companion-pairing';
@@ -18,9 +19,10 @@ import { normalizePairingCode, pairingLifetimeMs, type PairingInvitation } from 
 export class CompanionRelayPolicy {
   private readonly routes = new Map<string, Set<string>>();
   private readonly invitations = new Map<string, PairingInvitation & { host: string; claimant?: string; withdrawn: boolean }>();
-  private readonly lookups = new Map<string, { expiresAt: number; count: number }>();
   private readonly leases = new Map<string, { until: number; source: string }>();
+  private readonly lookups: WindowBudget;
   constructor(private readonly hosts?: Set<string>, private readonly now = Date.now) {
+    this.lookups = new WindowBudget(10, pairingLifetimeMs, 200, now);
     if (hosts && (!hosts.size || hosts.size > 100)) throw new Error('Configure between 1 and 100 admitted laptop identities.');
   }
   private prune() {
@@ -62,12 +64,7 @@ export class CompanionRelayPolicy {
   /** Claim atomically for the Noise-authenticated phone. Retrying that phone recovers a lost reply. */
   resolve(source: string, code: string) {
     this.prune();
-    for (const [id, lookup] of this.lookups) if (lookup.expiresAt <= this.now()) this.lookups.delete(id);
-    // Throwaway identities must not be able to lock honest phones out: make room by dropping the oldest guess counter.
-    if (this.lookups.size >= 200 && !this.lookups.has(source)) this.lookups.delete(this.lookups.keys().next().value!);
-    const lookup = this.lookups.get(source) ?? { count: 0, expiresAt: this.now() + pairingLifetimeMs };
-    this.lookups.set(source, lookup);
-    if (++lookup.count > 10) return null;
+    if (!this.lookups.take(source)) return null;
     const owner = this.invitations.get(code);
     if (!owner || owner.withdrawn || owner.expiresAt <= this.now() || !this.admitted(owner.host)
       || (owner.claimant && owner.claimant !== source)) return null;
@@ -132,7 +129,7 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
     try {
       const source = ingress.source(connection.remoteAddr);
       if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
-      const result = await push.send(connection.remotePeer.toString(), await readOne(stream));
+      const result = await push.send(connection.remotePeer.toString(), source, await readOne(stream));
       stream.send(encodeCompanionFrame({ result }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Push unavailable.')); }
@@ -141,10 +138,5 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
 }
 async function readOne(stream: Stream): Promise<unknown> {
   stream.maxReadBufferLength = 16_384; stream.maxWriteBufferLength = 16_384; stream.inactivityTimeout = 10_000;
-  const decoder = new CompanionFrameDecoder(16_384);
-  for await (const chunk of stream) {
-    const frames = decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
-    if (frames.length) { if (frames.length !== 1) throw new Error('One admission per stream.'); return frames[0]; }
-  }
-  throw new Error('Admission closed.');
+  return readFirstCompanionFrame(stream, 16_384);
 }

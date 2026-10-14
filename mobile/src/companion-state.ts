@@ -140,7 +140,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       || (input.threadMode === 'independent' && input.backend !== setup.backend)) return;
     review.value = { status: 'starting', setup };
     try {
-      const reviewerId = await active.startReview(setup.target.agentId, input);
+      const reviewerId = await active.startReview(setup.target, input);
       if (epoch !== reviewEpoch) return;
       if (reviewerId && reviewerId !== agentId.value) {
         // Discovery failure does not turn an acknowledged start into a retryable start.
@@ -421,10 +421,15 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     error.value = '';
     try { await command(); } catch { error.value = 'mobile.errors.commandFailed'; }
   }
+  /** The selected conversation as the laptop identifies it, captured before any await. */
+  function currentTarget(): CompanionTarget | null {
+    const selected = agent.value;
+    const team = workspace.value.teams.find(team => team.id === selected?.teamId);
+    return selected && team ? companionTarget(laptopId.value, team, selected) : null;
+  }
   async function changeGoal(target: CompanionTarget, objective: string | null): Promise<'accepted' | 'rejected' | 'unknown'> {
     const active = session; const selected = agent.value;
-    const team = workspace.value.teams.find(team => team.id === selected?.teamId);
-    const current = selected && team ? companionTarget(laptopId.value, team, selected) : null;
+    const current = currentTarget();
     if (!canSend.value || !active?.changeGoal || !selected || !defaultBackendCapabilities(selected.backend).goals
       || !current || !(Object.keys(current) as (keyof CompanionTarget)[]).every(key => current[key] === target[key])
       || (objective !== null && (!objective.trim() || objective.trim().length > 100_000))) return 'rejected';
@@ -452,7 +457,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     } finally { pendingGoals.delete(key); }
   }
 
-  const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => canSend.value && agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
+  const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => { const target = currentTarget(); return canSend.value && target ? session?.sendPrompt(target, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined; });
   async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
     if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
@@ -572,7 +577,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
     if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
-    const target = agentId.value;
+    const target = currentTarget();
+    if (!target) return 'rejected';
     const draftKey = key();
     const capturedSession = session;
     const epoch = selectionEpoch;
@@ -606,7 +612,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
       uncertain[draftKey] = false;
       await persist();
-      if (epoch === selectionEpoch) await selectAgent(target);
+      if (epoch === selectionEpoch) await selectAgent(target.agentId);
       return 'accepted';
     } catch (failure) {
       if (failure instanceof PromptRejectedError) {
