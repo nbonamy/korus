@@ -72,6 +72,9 @@ the TypeScript engine; a separate WKWebView renders authoritative provider snaps
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
 control. History requests route through the owning daemon to provider-owned paging.
+Mobile prompts start a turn when idle and steer active work, without entering the
+prompt queue. The owning daemon decides at admission time; durable companion receipts
+also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.
 The composer microphone uses Apple's Speech framework with on-device recognition
 required and native microphone permissions. Audio stays on the phone; partial and
 final transcripts update only the active draft. Sending, navigation, and backgrounding

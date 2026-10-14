@@ -123,7 +123,7 @@ export class CompanionManager {
       submit: async (agentId, prompt, clientId, options, uploads) => {
         const attachments = uploads ? await storePromptUploads(this.directory, uploads) : undefined;
         const promptOptions = options || attachments ? { ...options, ...(attachments ? { attachments } : {}) } : undefined;
-        await this.backend.request(backendMethods.agentPromptSend, { agentId, prompt, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
+        await this.backend.request(backendMethods.agentPromptSteer, { agentId, prompt, startIfIdle: true, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
       },
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
       interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },

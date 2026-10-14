@@ -1852,8 +1852,18 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const prompt = requireString(params.prompt, 'prompt').trim();
         const options = params.options as SendPromptOptions | undefined;
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options }, async (agent) => {
+        if (params.startIfIdle !== undefined && typeof params.startIfIdle !== 'boolean') throw new Error('Invalid startIfIdle.');
+        const startIfIdle = params.startIfIdle === true;
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options, ...(startIfIdle ? { startIfIdle } : {}) }, async (agent) => {
           if (!prompt && !options?.attachments?.length) {
+            return this.snapshot;
+          }
+          // Decide at the owning daemon, never from a phone's potentially stale snapshot.
+          // Receipt-based admission starts immediately or rejects; it cannot enqueue.
+          if (startIfIdle && this.agentPrompts.canStart(agent)) {
+            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options);
+            this.clearTurnSuggestionsForNewPrompt(agent);
+            await this.persistSnapshotOnly();
             return this.snapshot;
           }
           if (options?.delegation !== undefined) {
