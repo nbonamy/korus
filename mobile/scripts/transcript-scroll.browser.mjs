@@ -4,6 +4,38 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
+test('empty repository chats show the repository and branch without overlapping wrapped headings', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
+    await page.addInitScript(() => { window.webkit = { messageHandlers: { transcript: { postMessage() {} } } }; });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    for (const repositoryName of ['korus', 'a-very-long-repository-name-that-needs-to-wrap']) {
+      await page.evaluate(async (repositoryName) => {
+        const agent = { id: 'empty-repository', teamId: 'team', name: 'feat/mobile-companion', backend: 'codex',
+          status: { type: 'idle' }, workspace: { kind: 'git', repositoryName, branch: 'feat/mobile-companion' } };
+        await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, frame: null, ready: true,
+          engines: { current: 'codex', choices: ['codex', 'claude', 'antigravity'] } }));
+      }, repositoryName);
+      assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), `Chat in ${repositoryName}`);
+      assert.ok(await page.getByText('feat/mobile-companion', { exact: true }).isVisible());
+      const geometry = await page.getByRole('heading', { level: 1 }).evaluate(element => {
+        const style = getComputedStyle(element);
+        const heading = element.getBoundingClientRect();
+        const subtitle = element.nextElementSibling.getBoundingClientRect();
+        return { font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight), bottom: heading.bottom, subtitleTop: subtitle.top,
+          left: heading.left, right: heading.right, viewport: innerWidth };
+      });
+      assert.ok(geometry.line >= geometry.font, 'wrapped title lines must not overlap');
+      assert.ok(geometry.subtitleTop >= geometry.bottom, 'branch must sit below the title');
+      assert.ok(geometry.left >= 0 && geometry.right <= geometry.viewport, 'long repository names must fit the phone');
+    }
+  } finally { await browser?.close(); await server.close(); }
+});
+
 test('the transcript retrieves deferred Claude content only on demand through bounded native replies', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;

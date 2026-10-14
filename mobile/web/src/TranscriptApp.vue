@@ -11,7 +11,8 @@
       :history-loading="false"
       :has-visible-messages="messages.length > 0"
       :read-conversation-content="readConversationContent"
-      empty-subhead=""
+      :empty-headline="repository ? `Chat in ${repository.repositoryName}` : undefined"
+      :empty-subhead="repository?.branch ?? ''"
     >
       <template v-if="engines" #empty-actions>
         <div class="engine-picker" role="radiogroup" aria-label="Engine">
@@ -44,6 +45,7 @@ const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlde
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
 
 const messages = computed(() => frame.value?.payload.snapshot.messages ?? []);
+const repository = computed(() => agent.value?.workspace?.kind === 'git' ? agent.value.workspace : null);
 const contentRequests = new Map<string, { agentId: string; sessionId: string; resolve: (chunk: ConversationContentChunk) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 function readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk> {
   const requestId = crypto.randomUUID();
@@ -148,6 +150,8 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
 .transcript .codex-conversation-pane__messages { --codex-scroll-to-bottom-offset: var(--space-12); }
 /* The shared empty state frames its actions as a card; the engine control stands on its own. */
 .transcript .conversation-pane__empty-actions { width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+.transcript .conversation-pane__empty h1 { margin: 0; line-height: 1.15; overflow-wrap: anywhere; }
+.transcript .conversation-pane__empty p { margin: 0; line-height: 1.4; overflow-wrap: anywhere; color: var(--color-text-muted); }
 /* A segmented control under the empty chat's title: the selected engine is raised, the others recede. */
 .engine-picker { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--color-surface-base); }
 .engine-picker__option { appearance: none; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 15px; font-weight: 500; padding: 8px 16px; border-radius: 999px; transition: background 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
