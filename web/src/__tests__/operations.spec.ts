@@ -105,6 +105,16 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.teamConnect, { input }],
     ]);
   });
+  it.each([
+    ['getAgentGitLog', backendMethods.agentGitLogGet, { search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }],
+    ['getAgentGitLogCommit', backendMethods.agentGitLogCommitGet, { head: 'head', sha: 'sha' }],
+    ['getAgentGitLogFile', backendMethods.agentGitLogFileGet, { head: 'head', sha: 'sha', path: 'file.ts' }],
+  ] as const)('preserves historical selection through %s', async (operation, method, input) => {
+    const result = { history: 'owning host result' };
+    const request = vi.fn().mockResolvedValue(result);
+    await expect(invokeAppWebOperation({ request }, operation, ['agent-1', input])).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith(method, { agentId: 'agent-1', input });
+  });
   it('returns diff query data and preserves the selected target', async () => {
     const target = { type: 'commit', sha: 'abc123' };
     const diff = { target, summary: { addedLines: 1, removedLines: 0, changedFiles: 1 }, diff: 'patch', sections: [] };

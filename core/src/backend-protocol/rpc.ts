@@ -133,6 +133,18 @@ export type AppBackendRequestMap = {
     params: undefined;
     result: ClientState;
   };
+  [backendMethods.agentGitLogGet]: {
+    params: { agentId: string; input?: import('../contracts').AgentGitLogInput };
+    result: import('../contracts').AgentGitLogPage;
+  };
+  [backendMethods.agentGitLogCommitGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogCommitInput };
+    result: import('../contracts').AgentGitLogDetails;
+  };
+  [backendMethods.agentGitLogFileGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogFileInput };
+    result: import('../contracts').AgentGitLogFileDiff;
+  };
   [backendMethods.agentGitDiffGet]: {
     params: { agentId: string; target?: AgentGitDiffTarget };
     result: import('../contracts').AgentGitDiff;

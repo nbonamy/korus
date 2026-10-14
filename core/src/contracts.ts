@@ -24,6 +24,14 @@ import type {
   AgentGitStatus,
   AgentGitUpdateFromBaseInput,
   AgentGitUpdateFromBaseResult,
+  AgentGitLogInput,
+  AgentGitLogCommit,
+  AgentGitLogPage,
+  AgentGitLogCommitInput,
+  AgentGitLogFile,
+  AgentGitLogDetails,
+  AgentGitLogFileInput,
+  AgentGitLogFileDiff,
   AgentGitWorkflow,
   AgentPullRequestTracking,
   TurnGitDiff
@@ -126,6 +134,14 @@ export type {
   AgentGitStatus,
   AgentGitUpdateFromBaseInput,
   AgentGitUpdateFromBaseResult,
+  AgentGitLogInput,
+  AgentGitLogCommit,
+  AgentGitLogPage,
+  AgentGitLogCommitInput,
+  AgentGitLogFile,
+  AgentGitLogDetails,
+  AgentGitLogFileInput,
+  AgentGitLogFileDiff,
   AgentGitWorkflow,
   AgentPullRequestTracking,
   TurnGitDiff,
@@ -875,6 +891,9 @@ export type AppApi = {
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
   previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
   branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
+  getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;
+  getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
+  getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;

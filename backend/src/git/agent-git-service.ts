@@ -8,6 +8,7 @@ import { AppError } from '@workspace/core/app-error';
 import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import type { AgentGitStatus } from '@workspace/core/contracts';
 import { listSourceBranches, type GitWorktreeCreateInput } from '../git-worktrees';
+import { AgentGitHistoryService } from './agent-git-history-service';
 import { GitPruneService } from './git-prune-service';
 
 const execFileAsync = promisify(execFile);
@@ -27,6 +28,7 @@ export type AgentGitGenerationContext = {
 };
 
 export class AgentGitService {
+  readonly history = new AgentGitHistoryService();
   readonly pruning: GitPruneService;
   private settings: () => GitSettings = () => normalizeGitSettings(undefined);
 

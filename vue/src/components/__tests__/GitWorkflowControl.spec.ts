@@ -95,7 +95,7 @@ describe('GitWorkflowControl', () => {
     const wrapper = mountControl({ revertChanges });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    const first = wrapper.findAll('[role="menuitem"]')[0]!;
+    const first = wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!;
     expect(first.text()).toBe('Revert');
     expect(first.find('svg.tabler-icon-arrow-back-up').exists()).toBe(true);
     await first.trigger('click');
@@ -104,7 +104,7 @@ describe('GitWorkflowControl', () => {
     await submitButton(wrapper, 'Cancel').trigger('click');
     expect(revertChanges).not.toHaveBeenCalled();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]')[0]!.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!.trigger('click');
     await wrapper.get('input[type="checkbox"]').setValue(includeUntracked);
     await submitButton(wrapper, 'Revert').trigger('click');
     await flushPromises();
@@ -118,7 +118,7 @@ describe('GitWorkflowControl', () => {
     const wrapper = mountControl({ revertChanges });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]')[0]!.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!.trigger('click');
     await submitButton(wrapper, 'Revert').trigger('click');
     await flushPromises();
     expect(wrapper.get('[role="dialog"]').text()).toContain('Repository is locked');
@@ -352,6 +352,8 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.findAll('[role="menuitem"], [role="separator"]').map((item) =>
       item.attributes('role') === 'separator' ? '---' : item.text(),
     )).toStrictEqual([
+      'Git log…',
+      '---',
       'Revert',
       'Commit',
       'Branch…',

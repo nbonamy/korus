@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import AgentHeader from '../AgentHeader.vue';
 import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
@@ -30,6 +30,18 @@ function mountHeader(backendRuntime: BackendRuntimeStatus, isLoading = false, gi
 }
 
 describe('AgentHeader', () => {
+
+  it('opens Git log for a restored Git workspace before volatile status has loaded', async () => {
+    const wrapper = mount(AgentHeader, { props: {
+      agent: { ...agent, folder: '/repo/worktree', workspace: { kind: 'git', folder: '/repo/worktree', repositoryName: 'repo', repositoryRoot: '/repo/worktree', primaryWorktreeRoot: '/repo', branch: 'feature', isLinkedWorktree: true, updatedAt: '' } },
+      backendRuntime: { backend: 'codex', status: 'running' }, gitStatus: null, isLoading: false, sidebarCollapsed: false,
+    } });
+    await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Git log…')!.trigger('click');
+    expect(wrapper.emitted('open-git-log')).toStrictEqual([[]]);
+    wrapper.unmount();
+  });
   it('renders the active agent identity without a duplicate right-side status', () => {
     const wrapper = mountHeader({ backend: 'codex', status: 'notConfigured' });
 

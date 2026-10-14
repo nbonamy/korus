@@ -243,6 +243,13 @@ clears or changes it, Korus never re-detects.
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
   dependencies. Existing worktrees are never re-initialized.
+- Git history is a read-only owning-host query through the agent Git protocol.
+  Pages are anchored to the worktree's HEAD and literal message search; stale
+  cursors require refresh. Commit details must belong to that history, and file
+  diffs use exact paths from its changed-file catalog. Merge details compare the
+  first parent; root commits compare the empty tree. Git commands have output and
+  time limits, and large catalogs disclose their display bound. Renderer history
+  is disposable selection state, separate from provider conversations and snapshots.
 - Delegated agents keep a durable link to the delegating agent. When the user
   finishes delegated work through PR or merge, `daemon` tells the idle worker
   which Git action Korus is taking over and asks for a whole-task handoff before

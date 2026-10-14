@@ -3,6 +3,17 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    gitLog: {
+      title: 'Git log', menu: 'Git log…', refresh: 'Refresh Git log', search: 'Search commits',
+      detached: 'Detached HEAD', today: 'Today', yesterday: 'Yesterday', loading: 'Loading commits…',
+      empty: 'No commits yet.', noMatches: 'No matching commits.', older: 'Load older commits',
+      readError: 'Unable to load Git history. Refresh to try again.', loadingDetails: 'Loading commit…',
+      detailsError: 'Unable to load this commit. Refresh the log if the branch has changed.',
+      fileError: 'Unable to load this file diff. The branch may have changed or the diff may be too large.',
+      retry: 'Retry', copy: 'Copy commit hash', copied: 'Copied', copyError: 'Unable to copy the commit hash.',
+      files: 'Changed files', noFiles: 'No changed files.', binary: 'Binary', viewFile: 'View changes in {path}',
+      filesTruncated: 'Showing the first 500 changed files.',
+    },
     planModeSettings: { title: 'Plan mode', interactive: 'Use interactive plans', description: 'Review plans with choices and section comments before approving implementation.' },
     planFeedback: { confirmAnswer: 'Confirm answer: {question}', confirmed: 'Confirmed', unconfirmedTitle: 'Unconfirmed choices', unconfirmedRevise: 'Some answers are unconfirmed. Only confirmed answers will be applied; the other questions will stay open.', unconfirmedApprove: 'Some answers are unconfirmed. Approve the plan and start implementation anyway?', goBack: 'Go back', reviseAnyway: 'Revise anyway', approveAnyway: 'Approve anyway', deliveryPending: 'Feedback delivery is unconfirmed. Check the conversation before requesting a new revision.', review: 'Interactive plan', submit: 'Revise', implement: 'Approve', comment: 'Comment on this section', proposed: 'proposed', clear: 'Clear choice', retry: 'Retry save', unavailable: 'Plan feedback is unavailable.' },
     commands: {

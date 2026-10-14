@@ -48,6 +48,24 @@ afterEach(() => {
   delete (window as Window & { codexAppSdkNative?: CodexNativeRendererApi }).codexAppSdkNative;
 });
 
+it('opens branch history from the first Git menu action in the real shell and closes its workspace tab', async () => {
+  const snapshot = createInitialSnapshot();
+  snapshot.agentGitStatuses['agent-dina'] = { folder: '/repo', branch: 'feature', state: 'clean', ahead: 0, behind: 0, changedFiles: 0, addedLines: 0, removedLines: 0, hasUntracked: false, updatedAt: '' };
+  const getAgentGitLog = vi.fn().mockResolvedValue({ repository: 'repo', branch: 'feature', head: 'a'.repeat(40), commits: [{ sha: 'a'.repeat(40), subject: 'Rendered branch history', author: 'Nicolas', date: '2026-10-14T12:00:00Z' }] });
+  setElectronTestClient({ getAgentGitLog });
+  const wrapper = mountShell({ snapshot }); await flushPromises();
+  await wrapper.get('.git-workflow-control__trigger').trigger('click');
+  const first = wrapper.findAll('.git-workflow-control [role="menuitem"]')[0]!;
+  expect(first.text()).toBe('Git log…');
+  await first.trigger('click'); await flushPromises();
+  expect(getAgentGitLog).toHaveBeenCalledExactlyOnceWith('agent-dina', { search: '' });
+  expect(wrapper.get('.git-log-panel').text()).toContain('Rendered branch history');
+  expect(wrapper.get('[role="tab"][aria-label="Git log"]').attributes('aria-selected')).toBe('true');
+  await wrapper.get('[aria-label="Close Git log tab"]').trigger('click');
+  expect(wrapper.find('.git-log-panel').exists()).toBe(false);
+  wrapper.unmount();
+});
+
 describe('AppShell workspace and plans', () => {
   it('persists browser navigation and reopens primary and additional browsers in a fresh workspace', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
