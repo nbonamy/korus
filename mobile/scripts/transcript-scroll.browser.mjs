@@ -42,11 +42,16 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       const empty = await cleared;
       // A genuinely empty, loaded thread is ready too; a null frame is not.
       const newThread = await window.companionTranscript.setConversation(JSON.stringify({ ...conversation,
-        ready: true, frame: null,
+        ready: true, frame: null, agent: { ...agent, name: null, sessionKind: 'quickChat' },
+        engines: { current: 'codex', choices: ['codex', 'claude'] },
       }));
       return { before, ready, after, superseded, empty, newThread };
     });
     assert.deepEqual(presentation, { before: false, ready: 'presentation-agent', after: true, superseded: null, empty: null, newThread: 'presentation-agent' });
+    assert.ok(await page.locator('.conversation-pane__empty h1').isVisible(), 'the empty quick chat shows its welcome headline');
+    assert.equal(await page.getByRole('radio', { name: 'Codex', exact: true }).getAttribute('aria-checked'), 'true');
+    await page.getByRole('radio', { name: 'Claude', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.nativeEvents.at(-1)), { type: 'backend', backend: 'claude' });
     // Cached switches reuse the mounted pane and may arrive while the previous paint is pending.
     for (let index = 0; index < 6; index++) {
       const expected = `Cached chat ${index}`;

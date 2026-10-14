@@ -435,15 +435,35 @@ describe('companion engine', () => {
       expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
       engine.dispose();
     });
-    it('starts a quick chat in the open team and opens it', async () => {
-      const connector = createDemoConnector(); const original = connector.connect; const createQuickChat = vi.fn(async () => 'demo-reviewer');
-      connector.connect = async (id) => ({ ...await original(id), createQuickChat });
-      const { engine, latest } = open(connector);
-      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
-      await engine.dispatch({ type: 'newQuickChat', backend: 'claude' });
-      expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', backend: 'claude' });
-      expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
-      engine.dispose();
+    it('presents a newly created empty quick chat with a render acknowledgment and engine choices', async () => {
+      const connector = createDemoConnector(); const original = connector.connect; let created = false;
+      let finishLoad!: (value: null) => void;
+      const empty = new Promise<null>((resolve) => { finishLoad = resolve; });
+      const createQuickChat = vi.fn(async () => { created = true; return 'new-chat'; });
+      connector.connect = async (id) => {
+        const session = await original(id);
+        return { ...session, createQuickChat,
+          loadConversation: (agentId) => agentId === 'new-chat' ? empty : session.loadConversation(agentId),
+          getWorkspace: async () => {
+            const workspace = await session.getWorkspace();
+            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
+              agents: [...workspace.agents, ...(created ? [{ ...workspace.agents[0]!, id: 'new-chat', backend: 'claude' as const, backendSession: undefined, sessionKind: 'quickChat' as const, hasSubmittedPrompt: false }] : [])] };
+          } };
+      };
+      const { engine, latest, events } = open(connector);
+      try {
+        await engine.start();
+        await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+        const creating = engine.dispatch({ type: 'newQuickChat', backend: 'claude' });
+        await vi.waitFor(() => expect(latest()).toMatchObject({ agentId: 'new-chat', loading: true }));
+        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: false, frame: null });
+        finishLoad(null); await creating;
+        expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', backend: 'claude' });
+        expect(latest()).toMatchObject({ agentId: 'new-chat', chatCreation: 'idle', loading: false, canSend: true });
+        // Context-only updates cannot acknowledge painting to the native loading overlay.
+        expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'new-chat', ready: true, frame: null,
+          engines: { current: 'claude', choices: ['codex', 'claude'] } });
+      } finally { engine.dispose(); }
     });
     it('uses the default checkout without a branch, reports a failure and lets it be dismissed', async () => {
       const createChat = vi.fn<Parameters<typeof withCreation>[0]>().mockRejectedValueOnce(new Error('Branch exists'));

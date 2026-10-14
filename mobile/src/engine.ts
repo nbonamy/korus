@@ -192,7 +192,7 @@ export function createEngine(port: EnginePort) {
   // A conversation crosses the bridge whole, so it crosses once per change of its own content and no faster than the page can
   // draw it: updates in between are folded into the latest. The provider's replica has already applied every one of them.
   const transcriptInterval = 100;
-  let sent: { agentId: string; frame: CompanionConversation | null; overlay: string; context: string } | null = null;
+  let sent: { agentId: string; frame: CompanionConversation | null; ready: boolean; overlay: string; context: string } | null = null;
   let sentAt = 0;
   let trailing: ReturnType<typeof setTimeout> | undefined;
   function postConversation() {
@@ -202,15 +202,18 @@ export function createEngine(port: EnginePort) {
     clearTimeout(expiry);
     if (pending.length) expiry = setTimeout(postConversation, Math.max(0, Math.min(...pending.map((entry) => entry.expires)) - now) + 1);
     const agentId = state.agentId.value; const raw = state.conversation.value;
+    const ready = state.conversationReady.value;
     const overlaid = withPending(raw);
-    const changed = !sent || sent.agentId !== agentId || sent.frame !== raw || sent.overlay !== overlaid.key;
+    // An empty chat has no frame to change when loading finishes. Present readiness
+    // through the acknowledged render path so the native loading overlay can clear.
+    const changed = !sent || sent.agentId !== agentId || sent.frame !== raw || sent.ready !== ready || sent.overlay !== overlaid.key;
     if (changed) {
       // Opening another chat, or a conversation appearing or going, is shown at once; streaming within one is paced.
-      const paced = Boolean(sent) && sent!.agentId === agentId && Boolean(sent!.frame) === Boolean(raw) && sent!.overlay === overlaid.key && now - sentAt < transcriptInterval;
+      const paced = Boolean(sent) && sent!.agentId === agentId && sent!.ready === ready && Boolean(sent!.frame) === Boolean(raw) && sent!.overlay === overlaid.key && now - sentAt < transcriptInterval;
       if (paced) { trailing ??= setTimeout(() => { trailing = undefined; postConversation(); }, transcriptInterval - (now - sentAt)); return; }
       clearTimeout(trailing); trailing = undefined;
       const context = contextNow();
-      sent = { agentId, frame: raw, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
+      sent = { agentId, frame: raw, ready, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
       port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
       return;
     }
