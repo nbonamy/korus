@@ -15,6 +15,7 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.clientFocusGet]: 1_000,
   [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.companionControl]: IO_REQUEST_TIMEOUT_MS,

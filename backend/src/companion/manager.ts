@@ -9,7 +9,7 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
+import type { Agent, AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -29,6 +29,7 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
+  desktopFocused?(): Promise<boolean>;
   request<Result>(method: string, params?: unknown): Promise<Result>;
   onAccessChanged?: (enabled: boolean) => void;
 };
@@ -67,13 +68,15 @@ export class CompanionManager {
     return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : product.companionRelay;
   }
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
+  recordPrompt(agent: Agent, clientId: string) { return this.notifications?.recordPrompt(agent, clientId); }
   event(event: AppBackendEvent) {
+    const desktopOrigin = this.notifications?.observe(event) === true;
     this.conversations.observe(event);
     if (this.saved?.enabled && this.notifications?.accepts(event)) {
       this.notificationWork = this.notificationWork.then(async () => {
         if (!this.saved.enabled) return;
         const notification = this.notifications!.create(event, await this.workspace());
-        if (notification && this.saved.enabled) void this.gateway.notify(notification).catch(() => { warnMain('companion', 'push delivery unavailable'); });
+        if (notification && this.saved.enabled) void this.gateway.notify(notification, async () => !desktopOrigin || !await this.backend.desktopFocused?.().catch(() => false)).catch(() => { warnMain('companion', 'push delivery unavailable'); });
       }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
     }
     for (const listener of this.eventListeners) listener(event);

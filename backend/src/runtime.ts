@@ -261,6 +261,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
+    desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet)).focused === true,
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
       if (response && 'error' in response && method === backendMethods.agentPromptSteer && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError('Prompt was rejected before dispatch.');
@@ -270,6 +271,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   server = new AppBackendServer({
     companionControl: (input) => companion.control(input),
+    onPromptSource: (agent, clientId) => companion.recordPrompt(agent, clientId),
     documents,
     tasks,
     providerSetup,

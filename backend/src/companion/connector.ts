@@ -148,7 +148,7 @@ export class CompanionOutboundConnector {
       for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
         const request = requestSchema.parse(value);
         try {
-          const result = request.method === 'ping' ? {} : await subscription.request(request.method, request.args);
+          const result = await subscription.request(request.method, request.args);
           send({ v: 1, id: request.id, result });
         } catch { send({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
       }

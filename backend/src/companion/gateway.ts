@@ -92,6 +92,7 @@ export class CompanionGateway {
   private readonly pairingAttempts = new Map<string, { count: number; expiresAt: number }>();
   private readonly pending = new Map<string, CompanionPending & { code: string }>();
   private readonly notifications = new Set<(notification: CompanionNotification) => void>();
+  private readonly livePhones = new Map<string, Set<CompanionSubscription>>();
   private mutations = Promise.resolve();
   private readonly creations = new ChatCreations();
   private readonly admissions = new Map<string, { fingerprint: string; target: CompanionTarget; result: Promise<StoredCommand> }>();
@@ -130,11 +131,12 @@ export class CompanionGateway {
       this.pending.delete(id); this.invitations.delete(pending.code);
     });
   }
-  async notify(notification: CompanionNotification) {
+  async notify(notification: CompanionNotification, allowPush: () => Promise<boolean> = async () => true) {
     for (const listener of this.notifications) listener(notification);
+    if (!await allowPush()) return;
     await Promise.all(this.state.grants.map(async grant => {
       const registration = this.state.push?.[grant.peerId];
-      if (!registration || !this.port.push) return;
+      if (!registration || !this.port.push || [...this.livePhones.get(grant.peerId) ?? []].some(subscription => subscription.foreground)) return;
       const result = await this.port.push(grant.peerId, registration, notification).catch(() => 'unavailable');
       if (result === 'invalid') await this.mutate(async () => {
         if (this.state.push?.[grant.peerId] !== registration) return;
@@ -155,12 +157,17 @@ export class CompanionGateway {
   subscribe(peerId: string, emit: ConstructorParameters<typeof CompanionSubscription>[1], fail: () => void) {
     const grant = this.state.grants.find((grant) => grant.peerId === peerId);
     if (!grant || !this.port.onEvent) throw new Error('Device is not authorized for updates.');
-    return new CompanionSubscription({
+    const subscriptions = this.livePhones.get(peerId) ?? new Set<CompanionSubscription>();
+    this.livePhones.set(peerId, subscriptions);
+    const subscription = new CompanionSubscription({
+      onClose: () => { subscriptions.delete(subscription); if (!subscriptions.size) this.livePhones.delete(peerId); },
       authorized: () => this.state.grants.includes(grant),
       onNotification: listener => { this.notifications.add(listener); return () => { this.notifications.delete(listener); }; },
       onEvent: (listener) => this.port.onEvent!(listener),
       request: (method, args) => this.request(peerId, method, args),
-    }, emit, fail);
+    }, emit, fail, this.now);
+    subscriptions.add(subscription);
+    return subscription;
   }
   async request(peerId: string, method: string, args: unknown): Promise<unknown> {
     this.expire();

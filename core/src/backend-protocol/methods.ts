@@ -1,4 +1,5 @@
 export const backendMethods = {
+  clientFocusGet: 'client/focus/get',
   companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",
   clientWorkspaceApply: "client/workspace/apply",

@@ -309,6 +309,7 @@ describe('AppBackendServer', () => {
     let acceptPrompt!: (value: { backendSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
     const sendPrompt = vi.fn().mockReturnValue(new Promise((resolve) => { acceptPrompt = resolve; }));
     const onPromptStarting = vi.fn();
+    const onPromptSource = vi.fn();
     const delegation = prompt === 'run next' ? { delegation: { startingContext: 'handoff' as const, instructions: 'Queued user directions' } } : {};
     const events: Array<{ type: string; snapshot?: AppSnapshot; payload: unknown }> = [];
     const driver: AgentBackendDriver = {
@@ -326,6 +327,7 @@ describe('AppBackendServer', () => {
       driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
       onEvent: (event) => events.push(event),
       onPromptStarting,
+      onPromptSource,
     });
 
     await server.handleMessage({
@@ -343,6 +345,7 @@ describe('AppBackendServer', () => {
         },
       },
     });
+    expect(onPromptSource).not.toHaveBeenCalled();
     expect(snapshot.queuedPrompts).toEqual([expect.objectContaining({
       agentId: 'agent-dina',
       text: prompt,
@@ -387,6 +390,7 @@ describe('AppBackendServer', () => {
       payload: { type: 'idle' },
     });
     await flushMicrotasks();
+    expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'desktop');
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), delivered, {
       model: 'sol',
       reasoningEffort: 'high',

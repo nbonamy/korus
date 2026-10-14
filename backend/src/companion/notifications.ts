@@ -1,3 +1,4 @@
+import type { Agent } from '@workspace/core/contracts';
 import { agentConversationId } from '@workspace/core/plan-review';
 import { createHash } from 'node:crypto';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
@@ -9,7 +10,33 @@ import type { CompanionNotification } from '@workspace/core/companion-notificati
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
 export class CompanionNotifications {
   private readonly seen = new Set<string>();
+  private readonly origins = new Map<string, { desktop: boolean; conversationId?: string; turnId?: string }>();
   constructor(private readonly hostId: string) {}
+  /** Volatile attention policy, never provider conversation state. Unknown origins keep push available. */
+  recordPrompt(agent: Agent, clientId: string): () => void {
+    const previous = this.origins.get(agent.id);
+    const entry = { desktop: clientId === 'desktop', conversationId: agentConversationId(agent) ?? undefined };
+    this.origins.set(agent.id, entry);
+    if (this.origins.size > 1024) this.origins.delete(this.origins.keys().next().value!);
+    return () => { if (this.origins.get(agent.id) === entry) { if (previous) this.origins.set(agent.id, previous); else this.origins.delete(agent.id); } };
+  }
+  /** Capture origin at event time, before asynchronous workspace/focus reads or a newer prompt. */
+  observe(event: AppBackendEvent): boolean {
+    const view = providerConversationEventView(event);
+    const entry = view.agentId && this.origins.get(view.agentId);
+    if (!entry || !view.agentId) return false;
+    const request = event.type === 'agentRequest.created' ? event.payload.request : undefined;
+    const conversationId = request?.conversationId ?? view.conversationId;
+    const turnId = request?.turnId ?? view.turnId;
+    if (entry.conversationId && conversationId && entry.conversationId !== conversationId) return false;
+    if (view.type === 'turn.started') {
+      if (entry.turnId && entry.turnId !== turnId) { this.origins.delete(view.agentId); return false; }
+      entry.turnId = turnId; entry.conversationId = conversationId;
+    }
+    if (entry.turnId && turnId && entry.turnId !== turnId) return false;
+    if (view.type === 'turn.completed') this.origins.delete(view.agentId);
+    return entry.desktop;
+  }
   accepts(event: AppBackendEvent) {
     return event.type === 'agentRequest.created' || providerConversationEventView(event).type === 'turn.completed';
   }

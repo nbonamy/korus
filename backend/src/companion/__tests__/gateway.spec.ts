@@ -17,7 +17,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
@@ -71,6 +71,34 @@ describe('companion authorization gateway', () => {
       .toStrictEqual({ clientCommandId: command.clientCommandId, state: 'notReceived' });
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
     expect(f.port.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the live foreground stream instead of push, independently per phone, and resumes push on close or stale heartbeat', async () => {
+    const f = fixture(); await f.pair();
+    const invite = f.gateway.invite(); const second = await claim(f.gateway, 'other', invite.code);
+    await f.gateway.decide(second.pendingId, true);
+    for (const peer of ['phone', 'other']) await f.gateway.request(peer, 'notifications.register', { token: 'ab'.repeat(32), environment: 'development' });
+    const updates = vi.fn(); const subscription = f.gateway.subscribe('phone', updates, vi.fn());
+    const notification = { id: 'event', target, name: 'Agent', kind: 'completed' as const, createdAt: 1 };
+    try {
+      await subscription.request('snapshot.get', { notifications: true });
+      await f.gateway.notify(notification);
+      expect(updates).toHaveBeenCalledWith({ type: 'notification', notification });
+      expect(f.port.push.mock.calls.map(call => call[0])).toStrictEqual(['other']);
+      f.port.push.mockClear();
+      await f.gateway.notify({ ...notification, id: 'desktop-focused' }, async () => false);
+      expect(updates).toHaveBeenCalledWith({ type: 'notification', notification: { ...notification, id: 'desktop-focused' } });
+      expect(f.port.push).not.toHaveBeenCalled();
+      f.advance();
+      await f.gateway.notify({ ...notification, id: 'stale' });
+      expect(f.port.push).toHaveBeenCalledTimes(2);
+      f.port.push.mockClear(); await subscription.request('ping', {});
+      await f.gateway.notify({ ...notification, id: 'renewed' });
+      expect(f.port.push.mock.calls.map(call => call[0])).toStrictEqual(['other']);
+      f.port.push.mockClear(); subscription.close();
+      await f.gateway.notify({ ...notification, id: 'closed' });
+      expect(f.port.push).toHaveBeenCalledTimes(2);
+    } finally { subscription.close(); }
   });
 
   it('persists push registration only for its authenticated phone and revokes both delivery paths', async () => {

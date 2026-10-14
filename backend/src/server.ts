@@ -91,6 +91,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
   tasks?: DurableTaskService;
@@ -299,6 +300,7 @@ export class AppBackendServer {
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
       onPromptStarting: options.onPromptStarting,
+      onPromptSource: options.onPromptSource,
     });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
@@ -721,7 +723,7 @@ export class AppBackendServer {
         }
       }
     }
-    const response = await this.dispatchMessage(request, (id) => { creation.id = id; });
+    const response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId);
     if (response && 'result' in response) {
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
         const created = (createsAgent ? response.result.agents : response.result.teams).find((item) => item.id === creation.id);
@@ -744,7 +746,12 @@ export class AppBackendServer {
     return response;
   }
 
-  private async dispatchMessage(message: AppRpcMessage, onCreated: (id: string) => void = () => undefined): Promise<AppRpcResponse | undefined> {
+  private async withPromptSource<T>(agent: Agent, clientId: string, run: () => T | Promise<T>): Promise<T> {
+    const rollback = this.options.onPromptSource?.(agent, clientId);
+    try { return await run(); } catch (error) { rollback?.(); throw error; }
+  }
+
+  private async dispatchMessage(message: AppRpcMessage, onCreated: (id: string) => void = () => undefined, clientId = 'desktop'): Promise<AppRpcResponse | undefined> {
     if (isAppRpcNotification(message)) {
       return undefined;
     }
@@ -1864,7 +1871,7 @@ export class AppBackendServer {
           },
           async (agent) => {
             const options = params.options as SendPromptOptions | undefined;
-            const result = this.agentPrompts.send(agentId, prompt, options);
+            const result = this.agentPrompts.send(agentId, prompt, options, clientId);
             if (prompt.trim() || options?.attachments?.length) this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return result;
@@ -1888,7 +1895,7 @@ export class AppBackendServer {
           // Decide at the owning daemon, never from a phone's potentially stale snapshot.
           // Receipt-based admission starts immediately or rejects; it cannot enqueue.
           if (startIfIdle && this.agentPrompts.canStart(agent)) {
-            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId);
+            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
             this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return this.snapshot;
@@ -1900,7 +1907,7 @@ export class AppBackendServer {
           const controls = options?.delegation !== undefined ? captureUserDelegationOverrides(agent, options.delegation) : previousControls;
           let result: BackendSendResult;
           try {
-            result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation }) as BackendSendResult;
+            result = await this.withPromptSource(agent, clientId, () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation })) as BackendSendResult;
             if (options?.delegation !== undefined) bindUserDelegationOverrides(agent, controls, result);
           } catch (error) {
             if (options?.delegation !== undefined && agent.userDelegationOverrides === controls) agent.userDelegationOverrides = previousControls;

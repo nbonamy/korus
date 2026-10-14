@@ -93,8 +93,15 @@ closed; cached subscriptions and background updates never count as reading.
 Mobile attention alerts originate from live completed-turn and normalized request
 creation events in the owning daemon. Snapshots do not create alerts. An event ID
 binds the host, conversation and turn/request across the foreground stream and APNs;
-native presentation suppresses duplicates and the visible conversation. Banner
-dismissal does not acknowledge unread activity. Notification navigation validates
+native presentation suppresses duplicates and the visible conversation. A live
+foreground phone receives only the in-app stream, not an APNs push. Stream closure
+or an expired inbound heartbeat restores push eligibility independently per device.
+Desktop-originated turns suppress push while Electron reports current focus;
+mobile-originated work and unknown origins remain eligible. Prompt provenance is
+volatile, scoped to the turn, and carried through in-process queued admission.
+It never changes provider conversation state. Desktop focus failures leave push
+available rather than retaining stale focus. Suppressed alerts are not replayed.
+Banner dismissal does not acknowledge unread activity. Notification navigation validates
 the paired host and current full conversation target before opening it.
 Push device tokens belong to each authenticated pairing and are persisted privately
 with its grant; revocation removes them. The relay holds the APNs signing keys and

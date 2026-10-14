@@ -4,6 +4,7 @@ import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import { companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 
 export type SubscriptionPort = {
+  onClose?(): void;
   onNotification?(listener: (notification: CompanionNotification) => void): () => void;
   request(method: string, args: unknown): Promise<unknown>;
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
@@ -24,13 +25,15 @@ export class CompanionSubscription {
   private readonly unlistenNotifications: () => void;
   private closed = false;
   private notificationsEnabled = false;
+  private lastRequestAt = 0;
+  get foreground() { return !this.closed && this.port.authorized() && this.notificationsEnabled && this.now() - this.lastRequestAt < 45_000; }
   private workspace: CompanionWorkspace | undefined;
   private workspaceJSON = '';
   private iconsVersion = '';
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private refreshing = false;
   private dirty = false;
-  constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void, private readonly fail: () => void) {
+  constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void, private readonly fail: () => void, private readonly now = Date.now) {
     this.unlistenNotifications = port.onNotification?.(notification => {
       if (!this.closed && this.notificationsEnabled && port.authorized()) this.emit({ type: 'notification', notification });
     }) ?? (() => {});
@@ -57,6 +60,8 @@ export class CompanionSubscription {
   }
   async request(method: string, args: unknown): Promise<unknown> {
     if (this.closed || !this.port.authorized()) throw new Error('Subscription closed.');
+    this.lastRequestAt = this.now();
+    if (method === 'ping') return {};
     if (method === 'snapshot.get') {
       const result = await this.port.request(method, args) as CompanionWorkspace;
       this.notificationsEnabled = (args as { notifications?: boolean })?.notifications === true;
@@ -94,7 +99,7 @@ export class CompanionSubscription {
   }
   close() {
     if (this.closed) return;
-    this.closed = true; clearTimeout(this.refreshTimer); this.unlisten(); this.unlistenNotifications(); this.watched.clear();
+    this.closed = true; clearTimeout(this.refreshTimer); this.unlisten(); this.unlistenNotifications(); this.watched.clear(); this.port.onClose?.();
   }
   private deliver(entry: Watched, frame: ProviderConversationFrame) {
     if (this.closed || !this.port.authorized()) return;
