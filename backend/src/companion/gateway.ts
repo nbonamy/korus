@@ -1,4 +1,6 @@
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
+import type { BackendHistoryLoadResult } from '@workspace/core/backend-driver';
+import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
@@ -46,7 +48,8 @@ export type GatewayPort = {
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
   conversation(agentId: string): Promise<CompanionReset>;
-  loadOlderHistory(agentId: string): Promise<{ hasOlder: boolean }>;
+  loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
+  readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
   skills(agentId: string): Promise<BackendSkillSummary[]>;
@@ -178,6 +181,14 @@ export class CompanionGateway {
       await this.validateTarget(target);
       this.requireGrant(peerId, grant);
       const page = method === 'conversation.loadOlder' ? await this.port.loadOlderHistory(target.agentId) : null;
+      if (page?.frame) {
+        const current = await this.validateTarget(target);
+        this.requireGrant(peerId, grant);
+        if (page.frame.agentId !== target.agentId || current.backendSession?.kind !== 'claude'
+          || page.frame.payload.event.backendSessionId !== current.backendSession.sessionId
+          || page.frame.payload.event.type !== 'history.prepended') throw new Error('Conversation identity mismatch.');
+        return { frame: page.frame, hasOlder: page.hasOlder };
+      }
       const frame = await this.port.conversation(target.agentId);
       const current = await this.validateTarget(target);
       this.requireGrant(peerId, grant);
@@ -188,6 +199,16 @@ export class CompanionGateway {
         || (session?.kind === 'antigravity' && frame.type !== 'antigravity.conversationSnapshotChanged')) throw new Error('Conversation session mismatch.');
       if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
       return page ? { frame, hasOlder: page.hasOlder } : frame;
+    }
+    if (method === 'conversation.content.read') {
+      const { target, input } = z.object({ target: targetSchema, input: z.object({ sessionId: identity, contentId: z.string().regex(/^[a-f0-9]{64}$/), offset: z.number().int().nonnegative().safe() }).strict() }).strict().parse(args);
+      const current = await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      if (current.backendSession?.kind !== 'claude' || current.backendSession.sessionId !== input.sessionId || !this.port.readConversationContent) throw new Error('Conversation content is unavailable.');
+      const chunk = await this.port.readConversationContent(target.agentId, input);
+      await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      return chunk;
     }
     if (method === 'agent.request.respond') {
       const reply = requestReplySchema.parse(args);

@@ -23,6 +23,30 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
+    let finish!: (value: typeof chunk) => void;
+    const readConversationContent = vi.fn().mockResolvedValueOnce(chunk).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    connector.connect = async (id) => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      workspace.agents[0] = { ...workspace.agents[0]!, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } };
+      return { ...session, getWorkspace: async () => workspace, readConversationContent };
+    };
+    const { engine, events } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' }); await nextTick();
+      expect(readConversationContent).not.toHaveBeenCalled();
+      const command = { type: 'readConversationContent' as const, requestId: 'one', agentId: 'demo-agent', input: { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 } };
+      await engine.dispatch(command);
+      expect(events.filter((event) => event.type === 'conversationContent')).toStrictEqual([{ type: 'conversationContent', requestId: 'one', agentId: 'demo-agent', sessionId: 'session', chunk }]);
+      const pending = engine.dispatch({ ...command, requestId: 'two' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      finish(chunk); await pending;
+      expect(events.filter((event) => event.type === 'conversationContent').at(-1)).toMatchObject({ requestId: 'two', error: expect.any(String) });
+      expect(events.filter((event) => event.type === 'conversation').every((event) => !JSON.stringify(event).includes('e30='))).toBe(true);
+    } finally { engine.dispose(); }
+  });
   it('publishes each cached selection with its own transcript, never the previous agent identity', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     connector.connect = async (id) => {

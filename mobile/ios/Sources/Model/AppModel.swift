@@ -57,6 +57,8 @@ final class AppModel {
     init() {
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
+        engine.onContent = { [weak self] json in self?.transcript.receiveContent(json) }
+        transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRendered = { [weak self] id in

@@ -86,7 +86,7 @@ describe('native relay host adapter', () => {
   const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);
-    const page = { frame: { agentId: 'agent', payload: { snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
+    const page = { frame: { type: 'codex.conversationSnapshotChanged', backend: 'codex', threadId: 'thread', agentId: 'agent', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
     transport.response = (method) => method === 'snapshot.get'
       ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote' }], agents: [agent] } : page;
     try {
@@ -164,6 +164,17 @@ describe('native relay host adapter', () => {
       session.deselectConversation!();
       const completed = await session.loadConversation('agent');
       expect(completed?.payload.snapshot).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', itemId: 'answer', text: 'The completed Claude answer.' }] })] });
+      const older = { id: 'older', agentId: 'agent', role: 'user', status: 'complete', createdAt: '', parts: [{ type: 'text', text: 'Earlier question' }] };
+      const pageFrame = { ...frame, type: 'claude.conversationEventReceived', seq: 5, payload: { revision: 5, event: { seq: 5, occurredAt: '', agentId: 'agent', backend: 'claude', backendSessionId: 'session', type: 'history.prepended', payload: { messages: [older], hasOlder: false } } } };
+      const chunk = { data: 'e30=', nextOffset: null, totalBytes: 2 };
+      transport.response = (method) => method === 'conversation.loadOlder' ? { frame: pageFrame, hasOlder: false } : chunk;
+      const page = await session.loadOlderHistory!('agent');
+      expect(page.frame.payload.snapshot.messages).toEqual([older, ...completed!.payload.snapshot.messages]);
+      const input = { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 };
+      expect(await session.readConversationContent!('agent', input)).toStrictEqual(chunk);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.content.read', args: { target: { agentId: 'agent' }, input } });
+      session.close();
+      await expect(session.readConversationContent!('agent', input)).rejects.toThrow('Disconnected');
     } finally { await connector.dispose!(); }
   });
   it('keeps repository icons across workspace updates and asks the laptop for them only when its copy is stale', async () => {

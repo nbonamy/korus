@@ -1,5 +1,6 @@
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
+import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
@@ -23,6 +24,7 @@ export type CompanionSession = {
   cachedConversation?(agentId: string): CompanionConversation | null | undefined;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
+  readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   listSkills?(agentId: string): Promise<BackendSkillSummary[]>;

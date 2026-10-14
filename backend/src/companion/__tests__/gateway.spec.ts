@@ -25,7 +25,7 @@ async function claim(gateway: CompanionGateway, peerId: string, shown: string, n
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
+  const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
@@ -41,6 +41,30 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('returns a Claude page directly and checks content reads again after revocation or session changes', async () => {
+    const f = fixture();
+    const backendSession = { kind: 'claude' as const, sessionId: 'claude-session', transport: 'stdio' as const };
+    const claudeWorkspace = { ...workspace, agents: [{ ...workspace.agents[0]!, backend: 'claude' as const, backendSession }] };
+    f.port.workspace.mockResolvedValue(claudeWorkspace);
+    const currentTarget = { ...target, sessionId: JSON.stringify({ kind: 'claude', sessionId: backendSession.sessionId }) };
+    const frame: NonNullable<import('@workspace/core/backend-driver').BackendHistoryLoadResult['frame']> = { type: 'claude.conversationEventReceived', agentId: 'agent', backend: 'claude', seq: 2, occurredAt: '', payload: { revision: 2, event: { seq: 2, occurredAt: '', backend: 'claude', agentId: 'agent', backendSessionId: backendSession.sessionId, type: 'history.prepended', payload: { messages: [], hasOlder: false } } } };
+    f.port.loadOlderHistory.mockResolvedValue({ frame, hasOlder: false });
+    const input = { sessionId: backendSession.sessionId, contentId: 'a'.repeat(64), offset: 0 };
+    await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('authorized');
+    await f.pair();
+    expect(await f.gateway.request('phone', 'conversation.loadOlder', currentTarget)).toStrictEqual({ frame, hasOlder: false });
+    expect(f.port.conversation).not.toHaveBeenCalled();
+    expect(await f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).toStrictEqual({ data: 'e30=', totalBytes: 2, nextOffset: null });
+    await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input: { ...input, offset: -1 } })).rejects.toThrow();
+    f.port.readConversationContent.mockImplementationOnce(async () => {
+      f.port.workspace.mockResolvedValue({ ...claudeWorkspace, agents: [{ ...claudeWorkspace.agents[0]!, backendSession: { ...backendSession, sessionId: 'new' } }] });
+      return { data: 'e30=', totalBytes: 2, nextOffset: null };
+    });
+    await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('stale');
+    f.port.workspace.mockResolvedValue(claudeWorkspace);
+    f.port.readConversationContent.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return { data: 'e30=', totalBytes: 2, nextOffset: null }; });
+    await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('authorized');
+  });
   it('lists skills for the current target and admits only enabled catalog references with prompts', async () => {
     const f = fixture();
     const skill = { name: 'review', path: '/skills/review/SKILL.md' };

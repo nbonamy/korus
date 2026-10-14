@@ -4,6 +4,46 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
+test('the transcript retrieves deferred Claude content only on demand through bounded native replies', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => {
+      window.contentRequests = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const command = JSON.parse(json);
+        if (command.type !== 'readConversationContent') return;
+        window.contentRequests.push(command);
+        const bytes = window.fullContentBytes;
+        const end = Math.min(command.input.offset + 64 * 1024, bytes.length);
+        const data = btoa(Array.from(bytes.slice(command.input.offset, end), (byte) => String.fromCharCode(byte)).join(''));
+        queueMicrotask(() => window.companionTranscript.setContent(JSON.stringify({ requestId: command.requestId, agentId: command.agentId, sessionId: command.input.sessionId,
+          chunk: { data, nextOffset: end < bytes.length ? end : null, totalBytes: bytes.length } })));
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = { id: 'content-agent', name: 'Content', folder: null, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'content-session', transport: 'stdio' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const message = { id: 'deferred-message', agentId: agent.id, role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: '工具🙂 '.repeat(15_000) + 'Lossless content reached the transcript.' }] };
+      window.fullContentBytes = new TextEncoder().encode(JSON.stringify(message));
+      const preview = { ...message, parts: [{ type: 'text', text: 'Preview only' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: window.fullContentBytes.length } };
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
+        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [preview], turns: [], activeTurnId: null, busy: false } } } }));
+    });
+    assert.equal(await page.evaluate(() => window.contentRequests.length), 0);
+    await page.getByRole('button', { name: 'Load full content', exact: true }).click();
+    await page.getByText('Lossless content reached the transcript.', { exact: false }).waitFor();
+    const requests = await page.evaluate(() => window.contentRequests);
+    assert.ok(requests.length > 1);
+    assert.deepEqual(requests.map((request) => request.input.offset), requests.map((_, index) => index * 64 * 1024));
+    assert.ok(requests.every((request) => request.agentId === 'content-agent' && request.input.sessionId === 'content-session'));
+    assert.equal(await page.getByText('Preview only', { exact: true }).count(), 0);
+  } finally { await browser?.close(); await server.close(); }
+});
+
 test('the embedded transcript scrolls, requests earlier history, and keeps its reading position', async () => {
   const server = await createServer({
     configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)),

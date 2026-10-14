@@ -491,6 +491,9 @@ export class AppController {
     ipc.handle(ipcChannels.loadOlderAgentHistory, async (_event, agentId: string) => {
       return this.loadOlderAgentHistory(agentId);
     });
+    ipc.handle(ipcChannels.readConversationContent, async (_event, agentId: string, input) => {
+      return this.requireBackendClient().request(backendMethods.agentConversationContentRead, { agentId, input });
+    });
 
     ipc.handle(ipcChannels.closeAgent, async (_event, agentId: string, input) => {
       return this.closeAgent(agentId, input);

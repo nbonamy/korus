@@ -798,6 +798,7 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
+      contentLoad: 'Load full content', contentLoading: 'Loading content…', contentFailed: 'Couldn’t load the content. Try again.',
       composerActions: { review: 'Review', delegate: 'Delegate', visualize: 'Visualize' },
       quickChatHeadline: 'What can I help with?',
       savedDrafts: {

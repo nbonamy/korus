@@ -10,6 +10,7 @@
       :plan-visible="false"
       :history-loading="false"
       :has-visible-messages="messages.length > 0"
+      :read-conversation-content="readConversationContent"
       empty-subhead=""
     >
       <template v-if="engines" #empty-actions>
@@ -27,6 +28,7 @@
 import { computed, nextTick, provide, reactive, shallowRef } from 'vue';
 import { createCodexConversationPaneController, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import type { Agent } from '@workspace/core/contracts';
+import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
 import type { CompanionConversation, CompanionHistoryState } from '../../src/companion-port';
@@ -42,6 +44,15 @@ const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlde
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
 
 const messages = computed(() => frame.value?.payload.snapshot.messages ?? []);
+const contentRequests = new Map<string, { agentId: string; sessionId: string; resolve: (chunk: ConversationContentChunk) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+function readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk> {
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { contentRequests.delete(requestId); reject(new Error('Content request timed out.')); }, 30_000);
+    contentRequests.set(requestId, { agentId, sessionId: input.sessionId, resolve, reject, timer });
+    void handler('transcript').postMessage(JSON.stringify({ type: 'readConversationContent', requestId, agentId, input }));
+  });
+}
 
 /** Read-only: the native app owns the composer and every interaction; this page only renders the conversation. */
 const controller = createCodexConversationPaneController({
@@ -84,6 +95,15 @@ function applyContext(message: Context) {
 
 let presentation = 0;
 window.companionTranscript = {
+  setContent(json) {
+    const reply = JSON.parse(json) as { requestId: string; agentId: string; sessionId: string; chunk?: ConversationContentChunk; error?: string };
+    const pending = contentRequests.get(reply.requestId);
+    if (!pending) return;
+    contentRequests.delete(reply.requestId); clearTimeout(pending.timer);
+    if (reply.agentId !== pending.agentId || reply.sessionId !== pending.sessionId || reply.agentId !== agent.value?.id
+      || agent.value.backendSession?.kind !== 'claude' || reply.sessionId !== agent.value.backendSession.sessionId || !reply.chunk || reply.error) pending.reject(new Error('Conversation changed.'));
+    else pending.resolve(reply.chunk);
+  },
   async setConversation(json) {
     const revision = ++presentation;
     const message = JSON.parse(json) as Context & { frame: CompanionConversation | null };

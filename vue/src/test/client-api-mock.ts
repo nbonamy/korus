@@ -148,6 +148,7 @@ export function createClientApiMock(
     compressAgentSession: unscripted('compressAgentSession'),
     loadConversationHistory: unscripted('loadConversationHistory'),
     loadOlderAgentHistory: unscripted('loadOlderAgentHistory'),
+    readConversationContent: unscripted('readConversationContent'),
     closeAgent: unscripted('closeAgent'),
     selectAgent: unscripted('selectAgent'),
     updateSettings: unscripted('updateSettings'),

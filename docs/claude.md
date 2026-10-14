@@ -97,6 +97,24 @@ records. Queue operations, `last-prompt`, sidechains and meta command records ar
 ignored. Hydration also restores the latest model and effort, falling back to the
 agent's last used.
 
+The host opens the newest history window and prepends older pages through the
+driver history seam. Each page has both a message-count and serialized-byte
+budget; pages use immutable message/turn identities from one normalized transcript
+read, so appends cannot move the older-history cursor. Cold reads still parse the
+native file on the owning backend; the retained history and cursor are ephemeral
+and cleared on release or session replacement. Reads overtaken by a newer load,
+release, or live turn cannot replace that conversation.
+
+Oversized message content stays on the owning host behind an agent/session-scoped
+content reference. The conversation carries a preview; explicit reads retrieve the
+exact message JSON in bounded base64 chunks, including duplicated native tool
+fields and Unicode. Content updates invalidate superseded references. Clients
+render fetched content locally and never put it back into provider snapshots.
+History prepends and context updates are revisioned deltas. Reconnect snapshots
+contain a bounded recent window rather than accumulated scroll-back pages; the
+companion forwards older-page frames directly and rechecks authorization after
+content reads.
+
 **Canonical cwd gotcha:** Claude stores the resolved path (`/tmp` is
 `/private/tmp` on macOS), so history and Resume discovery check both the logical
 and the resolved path, dedupe session IDs, and keep reads working for removed

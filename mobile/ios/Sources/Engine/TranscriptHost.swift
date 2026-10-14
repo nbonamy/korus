@@ -6,6 +6,7 @@ import WebKit
 final class TranscriptHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
     var onLoadOlder: ((String) -> Void)?
+    var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
     var onRendered: ((String) -> Void)?
     private var presentation = 0
@@ -53,6 +54,11 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     /// A new native selection invalidates acknowledgments already in flight.
     func beginSelection() { presentation += 1 }
 
+    func receiveContent(_ json: String) {
+        guard isReady else { return }
+        webView.callAsyncJavaScript("window.companionTranscript.setContent(json)", arguments: ["json": json], in: nil, in: .page) { _ in }
+    }
+
     func setInsets(top: Double, bottom: Double) {
         insets = (top, bottom)
         guard isReady else { return }
@@ -64,6 +70,10 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if event["type"] as? String == "loadOlder", let agentID = event["agentId"] as? String {
             onLoadOlder?(agentID)
+            return
+        }
+        if event["type"] as? String == "readConversationContent" {
+            onReadContent?(event)
             return
         }
         if event["type"] as? String == "backend", let backend = event["backend"] as? String {

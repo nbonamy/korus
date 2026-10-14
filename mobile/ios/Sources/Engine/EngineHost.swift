@@ -7,6 +7,7 @@ import WebKit
 final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
     let webView: WKWebView
     var onState: ((EngineState) -> Void)?
+    var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
     private var isReady = false
     private var pending: [[String: Any]] = []
@@ -68,6 +69,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(StateEvent.self, from: data) { onState?(decoded.state) }
         case "conversation": if let json { onTranscript?(.conversation, json) }
         case "conversationContext": if let json { onTranscript?(.context, json) }
+        case "conversationContent": if let json { onContent?(json) }
         default: break
         }
     }

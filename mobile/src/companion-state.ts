@@ -357,6 +357,16 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       void persist().catch(() => {});
     }
   }
+  async function readConversationContent(id: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) {
+    const active = session; const epoch = selectionEpoch;
+    const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected'
+      && agent.value?.backendSession?.kind === 'claude' && agent.value.backendSession.sessionId === input.sessionId;
+    if (!valid() || !active?.readConversationContent) throw new Error('Conversation content is unavailable.');
+    const chunk = await active.readConversationContent(id, input);
+    if (!valid()) throw new Error('Conversation changed.');
+    return chunk;
+  }
+
   async function loadOlder(id: string) {
     const active = session;
     if (id !== agentId.value || !active?.loadOlderHistory || status.value !== 'connected' || loadingOlder.value || !history.value.hasOlder) return;
@@ -466,6 +476,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
-    draft, deliveryUnknown, canSend, history, loadOlder, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; } };
 }

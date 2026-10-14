@@ -1647,6 +1647,13 @@ export class AppBackendServer {
           await this.handleAgentDriverRequest(agent, backendMethods.driverConversationHistoryLoadOlder, { agent }) as AgentHistoryLoadResult
         ));
       }
+      case backendMethods.agentConversationContentRead: {
+        const agentId = requireAgentId(message.params);
+        const input = requireRecord(message.params).input;
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationContentRead, { agentId, input }, async (agent) => (
+          this.handleAgentDriverRequest(agent, backendMethods.driverConversationContentRead, { agent, input })
+        ));
+      }
       case backendMethods.agentConversationResume: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');

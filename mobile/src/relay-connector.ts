@@ -15,7 +15,7 @@ import type { BackendModelOption, BackendSkillSummary } from '@workspace/core/co
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
-import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionHistoryPage, type CompanionSession } from './companion-port';
+import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionSession } from './companion-port';
 import type { ProtectedVault } from './protected-storage';
 
 /** Both ends of a pairing are pinned by identity; the code that introduced them is never stored. */
@@ -200,7 +200,22 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         deselectConversation() { void cache.select(null); },
         cachedConversation(agentId) { return cache.peek(target(agentId)); },
         async loadConversation(agentId) { return cache.select(agentId ? target(agentId) : null); },
-        async loadOlderHistory(agentId) { const page = await request<CompanionHistoryPage>(host, 'conversation.loadOlder', target(agentId)); cache.receive(page.frame); return { ...page, frame: cache.peek(target(agentId)) ?? page.frame }; },
+        async loadOlderHistory(agentId) {
+          const identity = target(agentId);
+          const page = await request<{ frame: import('@workspace/core/contracts').ProviderConversationFrame; hasOlder: boolean }>(host, 'conversation.loadOlder', identity);
+          if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
+          cache.receive(page.frame);
+          const frame = cache.peek(identity) ?? (page.frame.type === 'codex.conversationSnapshotChanged' || page.frame.type === 'claude.conversationSnapshotChanged' || page.frame.type === 'antigravity.conversationSnapshotChanged' ? page.frame : null);
+          if (!frame) throw new Error('Conversation history needs to be reloaded.');
+          return { hasOlder: page.hasOlder, frame };
+        },
+        async readConversationContent(agentId, input) {
+          const identity = target(agentId);
+          if (closed) throw new Error('Disconnected.');
+          const chunk = await request<import('@workspace/core/contracts/conversation').ConversationContentChunk>(host, 'conversation.content.read', { target: identity, input });
+          if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
+          return chunk;
+        },
         async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
           const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });

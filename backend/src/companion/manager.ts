@@ -117,7 +117,8 @@ export class CompanionManager {
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
-      loadOlderHistory: (agentId) => this.backend.request<{ hasOlder: boolean }>(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
+      loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
+      readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
       conversation: async (agentId) => {
         try { return await this.conversations.read(agentId); }
         catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }

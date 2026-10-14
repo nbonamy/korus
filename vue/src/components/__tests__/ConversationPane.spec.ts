@@ -61,6 +61,20 @@ const executionPlan: ThreadPlan = {
 };
 
 describe('ConversationPane', () => {
+  it('renders deferred Claude content through the SDK only after its explicit load action', async () => {
+    const full = { ...messages[1]!, parts: [{ type: 'text' as const, text: 'The full result is visible.' }] };
+    const bytes = Buffer.from(JSON.stringify(full));
+    const preview = { ...messages[1]!, deferredContent: { contentId: 'content', byteLength: bytes.length } };
+    const readConversationContent = vi.fn(async () => ({ data: bytes.toString('base64'), totalBytes: bytes.length, nextOffset: null }));
+    const wrapper = mountPane({ controller: controllerFor([preview]), agent: { ...agent, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } }, readConversationContent });
+    expect(readConversationContent).not.toHaveBeenCalled();
+    const button = wrapper.findAll('button').find((button) => button.text() === 'Load full content');
+    expect(button).toBeDefined();
+    await button!.trigger('click'); await flushPromises();
+    expect(wrapper.text()).toContain('The full result is visible.');
+    expect(wrapper.text()).not.toContain('Looking now.');
+    wrapper.unmount();
+  });
   it('renders the conversation without a delegation context banner', () => {
     const wrapper = mountPane({ controller: controllerFor(messages), agent: { ...agent, delegationContext: { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' } } });
     expect(wrapper.text()).not.toContain('Started with a fresh handoff');
@@ -916,6 +930,7 @@ function mountPane(props: {
   savedPromptDrafts?: readonly SavedPromptDraft[];
   savePromptDraft?: (agentId: string, text: string) => Promise<void>;
   removePromptDraft?: (id: string) => Promise<void>;
+  readConversationContent?: (agentId: string, input: import('@workspace/core/contracts/conversation').ConversationContentInput) => Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk>;
 }) {
   return mount(ConversationPane, {
     props,

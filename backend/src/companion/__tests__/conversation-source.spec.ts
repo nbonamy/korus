@@ -11,6 +11,17 @@ const userMessage = (id: string, text: string) => ({ id, agentId: 'agent', role:
 const messages = (frame: { payload: { snapshot: unknown } }) => (frame.payload.snapshot as { messages: { id: string }[] }).messages.map((message) => message.id);
 
 describe('conversation source', () => {
+  it('rehydrates a bounded provider window instead of replaying accumulated history on reconnect', async () => {
+    let source!: ConversationSource;
+    const recent = snapshot('session', [userMessage('recent', 'last')]);
+    const load = vi.fn(async () => { source.observe(reset(load.mock.calls.length, recent)); });
+    source = new ConversationSource(load);
+    await source.read('agent');
+    source.observe(delta(2, { type: 'history.prepended', backendSessionId: 'session', payload: { messages: Array.from({ length: 60 }, (_, i) => userMessage(`old-${i}`, 'old')), hasOlder: false } }));
+    const frame = await source.read('agent');
+    expect(messages(frame)).toStrictEqual(['recent']);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
   it('loads once, then follows the provider\'s own updates instead of asking again', async () => {
     let source!: ConversationSource;
     const load = vi.fn(async () => { source.observe(reset(1, snapshot('session', [userMessage('first', 'hello')]))); });

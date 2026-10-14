@@ -49,6 +49,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'conversationContent'; requestId: string; agentId: string; sessionId: string; chunk?: import('@workspace/core/contracts/conversation').ConversationContentChunk; error?: string }
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
   | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
@@ -63,6 +64,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
@@ -255,6 +257,15 @@ export function createEngine(port: EnginePort) {
 
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
+      case 'readConversationContent': {
+        try {
+          const chunk = await state.readConversationContent(command.agentId, command.input);
+          if (!disposed) port.post({ type: 'conversationContent', requestId: command.requestId, agentId: command.agentId, sessionId: command.input.sessionId, chunk });
+        } catch {
+          if (!disposed) port.post({ type: 'conversationContent', requestId: command.requestId, agentId: command.agentId, sessionId: command.input.sessionId, error: 'Conversation content is unavailable.' });
+        }
+        return;
+      }
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);

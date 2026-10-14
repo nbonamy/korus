@@ -40,6 +40,12 @@ export class ConversationSource {
 
   async read(agentId: string): Promise<CompanionReset> {
     const current = this.current(agentId);
+    // A reconnect needs the provider's bounded recent window, not accumulated pages.
+    if (current?.type === 'claude.conversationSnapshotChanged' && (current.payload.snapshot.messages.length > 50 || Buffer.byteLength(JSON.stringify(current)) > 768 * 1024)) {
+      await this.load(agentId);
+      const reset = this.frames.get(agentId);
+      if (reset?.type === 'claude.conversationSnapshotChanged') return reset;
+    }
     if (current) return current;
     this.frames.delete(agentId); this.followed.delete(agentId);
     await this.load(agentId);
