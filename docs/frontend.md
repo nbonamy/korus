@@ -114,6 +114,7 @@ Search by behavior first.
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `vue/src/shared/form/` |
+| Single-line text with an inline clear action | `ClearableTextInput` | `vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `vue/src/shared/` |
 | Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |

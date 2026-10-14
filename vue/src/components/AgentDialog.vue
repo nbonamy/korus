@@ -100,16 +100,13 @@
         :label="$t('surface.agentDialog.name')"
         label-for="agent-dialog-name"
       >
-        <div class="app-form-dialog__control app-form-dialog__input-control">
-          <input
-            id="agent-dialog-name"
-            v-model="name"
-            class="app-form-dialog__text-input"
-            type="text"
-            :aria-label="$t('surface.agentDialog.agentName')"
-            :placeholder="namePlaceholder"
-          />
-        </div>
+        <ClearableTextInput
+          id="agent-dialog-name"
+          v-model="name"
+          :disabled="submitting"
+          :aria-label="$t('surface.agentDialog.agentName')"
+          :placeholder="namePlaceholder"
+        />
       </FormField>
 
       <el-alert
@@ -147,14 +144,6 @@
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="close">{{ $t('surface.agentDialog.cancel') }}</button>
       <button
-        v-if="isEditing"
-        class="app-button app-button--secondary"
-        type="button"
-        :aria-busy="submitting"
-        :disabled="submitting"
-        @click="clearAgentName"
-      >{{ $t('surface.agentDialog.clear') }}</button>
-      <button
         class="app-button app-button--primary"
         type="button"
         :aria-busy="submitting"
@@ -174,6 +163,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import type { Agent, AgentBackend, CreateAgentInput, CreateSourceWorktreeInput, SourceFolderListing, SourceFolderListInput, SourceRepository, SourceWorktree, Team, UpdateAgentInput } from '@workspace/core/contracts';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
+import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
 import BackendSelector from './BackendSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
 const backendChoices = useBackendChoices(() => selectedTeam.value?.id);
@@ -586,26 +576,6 @@ async function submit(): Promise<void> {
 
       await props.createAgent(createInput);
     }
-    close();
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-  } finally {
-    submitting.value = false;
-  }
-}
-
-async function clearAgentName(): Promise<void> {
-  if (!isEditing.value || !props.agent || submitting.value) {
-    return;
-  }
-
-  submitting.value = true;
-  errorMessage.value = null;
-  try {
-    await props.updateAgent({
-      id: props.agent.id,
-      name: null,
-    });
     close();
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);

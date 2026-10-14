@@ -220,6 +220,7 @@ export const messages = {
     common: {
       back: 'Back',
       cancel: 'Cancel',
+      clearText: 'Clear text',
       close: 'Close',
       continue: 'Continue',
       copy: 'Copy',
