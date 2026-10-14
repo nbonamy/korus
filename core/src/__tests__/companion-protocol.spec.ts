@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CompanionFrameDecoder, companionFrameLimit, companionTarget, encodeCompanionFrame } from '../companion-protocol';
+import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, companionTarget, encodeCompanionFrame } from '../companion-protocol';
 import type { Agent } from '../contracts';
 
 describe('companion wire framing', () => {
@@ -21,6 +21,17 @@ describe('companion wire framing', () => {
     const rest = new Uint8Array(first.length - 6 + second.length);
     rest.set(first.slice(6)); rest.set(second, first.length - 6);
     expect(decoder.push(rest)).toStrictEqual([value, { id: 'two' }]);
+  });
+  it('accepts a larger paired-laptop response without raising the inbound request limit', () => {
+    const response = { result: { text: 'x'.repeat(companionFrameLimit) } };
+    const encoded = encodeCompanionFrame(response, companionResponseLimit);
+    expect(() => new CompanionFrameDecoder().push(encoded.subarray(0, 4))).toThrow('length');
+    const decoder = new CompanionFrameDecoder(companionResponseLimit);
+    expect(decoder.push(encoded.subarray(0, 100))).toEqual([]);
+    expect(decoder.push(encoded.subarray(100))).toEqual([response]);
+    const header = new Uint8Array(4);
+    new DataView(header.buffer).setUint32(0, companionResponseLimit + 1);
+    expect(() => new CompanionFrameDecoder(companionResponseLimit).push(header)).toThrow('length');
   });
   it('rejects oversized frames before accepting payload bytes and rejects malformed JSON', () => {
     const header = new Uint8Array(4);

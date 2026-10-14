@@ -9,7 +9,7 @@ import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomUUID } from 'node:crypto';
-import { companionProtocol, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 import { createCompanionRelay } from '../relay';
@@ -19,6 +19,20 @@ import type { Libp2p } from '@libp2p/interface';
 const stops: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
 describe('encrypted companion circuit', () => {
+  it('transfers a history response larger than four MiB over the encrypted circuit', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!.toString();
+    const port = address.match(/\/tcp\/(\d+)/)![1];
+    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
+    stops.push(() => phone.stop());
+    const large = { frame: { payload: { snapshot: { messages: [{ id: 'earlier', text: 'history '.repeat(700_000) }] } } }, hasOlder: true };
+    const gateway = { grants: [{ peerId: phone.peerId.toString() }], pairChannels: () => [], request: async () => large } as unknown as CompanionGateway;
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    expect(await rpc(phone, `${address}/p2p-circuit/p2p/${hostId}`, 'conversation.loadOlder', {})).toMatchObject({ result: large });
+  }, 15_000);
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relayKey = await generateKeyPair('Ed25519');
@@ -29,6 +43,7 @@ describe('encrypted companion circuit', () => {
     const connectorRef: { current?: CompanionOutboundConnector } = {};
     const gateway = new CompanionGateway(hostId, { grants: [], commands: {} }, {
       workspace: async () => ({ teams: [{ id: 'team', name: 'Actual gateway team', agentIds: [] }], agents: [] }),
+      loadOlderHistory: async () => ({ hasOlder: false }),
       conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, models: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {},
       revoked: (peer) => connectorRef.current?.revoke(peer),
     });
@@ -72,7 +87,8 @@ describe('encrypted companion circuit', () => {
 });
 async function rpc(phone: Libp2p, address: string, method: string, args: unknown) {
   const stream = await phone.dialProtocol(multiaddr(address), companionProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
-  const decoder = new CompanionFrameDecoder();
+  stream.maxReadBufferLength = companionResponseLimit + 4;
+  const decoder = new CompanionFrameDecoder(companionResponseLimit);
   try {
     stream.send(encodeCompanionFrame({ v: 1, id: randomUUID(), method, args })); await stream.close();
     for await (const chunk of stream) {

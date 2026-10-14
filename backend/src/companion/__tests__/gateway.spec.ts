@@ -23,7 +23,7 @@ async function claim(gateway: CompanionGateway, peerId: string, shown: string, n
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { workspace: vi.fn(async () => workspace), conversation: vi.fn(), submit: vi.fn(async () => {}),
+  const port = { workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
@@ -37,6 +37,19 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('loads earlier history only for an approved current target and returns the authoritative conversation', async () => {
+    const f = fixture();
+    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', payload: { snapshot: { messages: [] } } };
+    f.port.conversation.mockResolvedValue(frame);
+    await expect(f.gateway.request('phone', 'conversation.loadOlder', target)).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'conversation.loadOlder', { ...target, sessionId: 'stale' })).rejects.toThrow();
+    expect(f.port.loadOlderHistory).not.toHaveBeenCalled();
+    await expect(f.gateway.request('phone', 'conversation.loadOlder', target)).resolves.toEqual({ frame, hasOlder: false });
+    expect(f.port.loadOlderHistory).toHaveBeenCalledExactlyOnceWith('agent');
+    f.port.loadOlderHistory.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return { hasOlder: true }; });
+    await expect(f.gateway.request('phone', 'conversation.loadOlder', target)).rejects.toThrow('authorized');
+  });
   it('permits only pairing before explicit approval; rejects expiry, replay and a competing peer', async () => {
     const f = fixture(); const invite = f.gateway.invite();
     expect(invite.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);

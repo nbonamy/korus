@@ -27,6 +27,44 @@ describe('companion state', () => {
       await vi.advanceTimersByTimeAsync(60_000); expect(connect).toHaveBeenCalledTimes(count);
     } finally { state.dispose(); vi.useRealTimers(); }
   });
+  it('retains the loaded transcript when reconnect hydration fails, then recovers without leaking it to another agent', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const initial = await connect('demo-laptop');
+    const loadConversation = vi.fn(initial.loadConversation).mockImplementationOnce(initial.loadConversation).mockRejectedValueOnce(new Error('History response interrupted'));
+    connector.connect = async (id) => ({ ...await connect(id), loadConversation });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      const original = state.conversation.value;
+      expect(original?.payload.snapshot.messages.length).toBeGreaterThan(0);
+      state.disconnect(); await state.reconnect();
+      expect(state.conversation.value).toEqual(original);
+      expect(state.canSend.value).toBe(false);
+      expect(state.error.value).toBe('mobile.errors.loadConversation');
+      await state.selectAgent('demo-agent');
+      expect(state.canSend.value).toBe(true);
+      loadConversation.mockRejectedValueOnce(new Error('Unavailable'));
+      await state.selectAgent('demo-reviewer');
+      expect(state.conversation.value).toBeNull();
+    } finally { state.dispose(); }
+  });
+  it('discards retained messages if the owning provider session changed while disconnected', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      state.disconnect();
+      connector.connect = async (id) => {
+        const session = await connect(id);
+        const workspace = await session.getWorkspace();
+        return { ...session, getWorkspace: async () => ({ ...workspace, agents: workspace.agents.map((agent) => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: 'replacement' } })) }),
+          loadConversation: async () => { throw new Error('Unavailable'); } };
+      };
+      await state.reconnect();
+      expect(state.conversation.value).toBeNull();
+      expect(state.canSend.value).toBe(false);
+    } finally { state.dispose(); }
+  });
   it('reconciles durable command receipts after restart and preserves a newer draft', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     connector.connect = async (id) => ({ ...await connect(id), commandStatus: async () => 'accepted' });
@@ -163,9 +201,10 @@ describe('companion state', () => {
     finishLoad();
     await firstLoad;
     expect(state.conversation.value?.agentId).toBe('demo-reviewer');
+    const lastGood = state.conversation.value;
     mismatch = true;
     await state.selectAgent('demo-reviewer');
-    expect(state.conversation.value).toBeNull();
+    expect(state.conversation.value).toBe(lastGood);
     expect(state.canSend.value).toBe(false);
     expect(state.error.value).toBe('mobile.errors.loadConversation');
     state.dispose();

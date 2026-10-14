@@ -112,6 +112,7 @@ export class CompanionManager {
     this.saved = saved;
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       workspace: () => this.workspace(),
+      loadOlderHistory: (agentId) => this.backend.request<{ hasOlder: boolean }>(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       conversation: async (agentId) => {
         this.frames.delete(agentId);
         await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });

@@ -26,6 +26,7 @@ export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, 
 export type GatewayPort = {
   workspace(): Promise<CompanionWorkspace>;
   conversation(agentId: string): Promise<CompanionReset>;
+  loadOlderHistory(agentId: string): Promise<{ hasOlder: boolean }>;
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
   interrupt(agentId: string): Promise<void>;
@@ -135,9 +136,11 @@ export class CompanionGateway {
       const version = createHash('sha256').update(JSON.stringify(Object.entries(repositoryIcons).sort())).digest('hex').slice(0, 16);
       return { ...projected, iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
     }
-    if (method === 'conversation.subscribe') {
+    if (method === 'conversation.subscribe' || method === 'conversation.loadOlder') {
       const target = targetSchema.parse(args);
       await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      const page = method === 'conversation.loadOlder' ? await this.port.loadOlderHistory(target.agentId) : null;
       const frame = await this.port.conversation(target.agentId);
       const current = await this.validateTarget(target);
       this.requireGrant(peerId, grant);
@@ -146,7 +149,7 @@ export class CompanionGateway {
         || (session?.kind === 'claude' && (frame.type !== 'claude.conversationSnapshotChanged' || frame.payload.snapshot.sessionId !== session.sessionId))
         || (session?.kind === 'antigravity' && (frame.type !== 'antigravity.conversationSnapshotChanged' || frame.payload.snapshot.sessionId !== session.sessionId))) throw new Error('Conversation session mismatch.');
       if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
-      return frame;
+      return page ? { frame, hasOlder: page.hasOlder } : frame;
     }
     if (method === 'prompt.submit') {
       const command = commandSchema.parse(args);

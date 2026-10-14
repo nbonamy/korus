@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
-import { CompanionFrameDecoder, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { channel: string }[], known: '', phone: '', response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop }; } }));
 import { createRelayConnector } from '../relay-connector';
@@ -41,7 +41,7 @@ beforeEach(async () => {
       if (protocol === '/workspace/companion-rendezvous/1.0.0') { transport.rendezvous.push(request as never); reply = transport.known === (request as never as { channel: string }).channel ? { hostId: host.hostId } : undefined; return true; }
       transport.requests.push(request);
       reply = { v: 1, id: request.id, result: transport.response(request.method, request.args) }; return true;
-    }, close: async () => {}, abort: () => {}, async *[Symbol.asyncIterator]() { if (reply) yield encodeCompanionFrame(reply); } };
+    }, close: async () => {}, abort: () => {}, async *[Symbol.asyncIterator]() { if (reply) yield encodeCompanionFrame(reply, companionResponseLimit); } };
   });
   transport.known = 'K7QD';
 });
@@ -49,6 +49,20 @@ const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7
 describe('native relay host adapter', () => {
   const connect = (storage = vault()) => createRelayConnector(storage, host.relay);
   const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
+  it('receives large history pages from the pinned laptop and owning session', async () => {
+    const connector = connect(); await pairWith(connector);
+    const page = { frame: { agentId: 'agent', payload: { snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
+    transport.response = (method) => method === 'snapshot.get'
+      ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote' }], agents: [agent] } : page;
+    try {
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
+      expect(await session.loadOlderHistory!('agent')).toStrictEqual(page);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.loadOlder', args: {
+        hostId: host.hostId, locationId: 'remote', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","threadId":"thread"}',
+      } });
+      await expect(session.loadOlderHistory!('unknown')).rejects.toThrow();
+    } finally { await connector.dispose!(); }
+  });
   it('finds the laptop from the code, proves the code, and reuses the limited pinned circuit for approval polls', async () => {
     const connector = connect();
     const address = `/dns4/relay.example/tcp/443/tls/ws/p2p/${host.relay.peerId}/p2p-circuit/p2p/${host.hostId}`;

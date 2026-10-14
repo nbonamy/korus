@@ -8,12 +8,12 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption } from '@workspace/core/contracts';
 import type { CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
-import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionSession } from './companion-port';
+import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionHistoryPage, type CompanionSession } from './companion-port';
 import type { ProtectedVault } from './protected-storage';
 
 /** Both ends of a pairing are pinned by identity; the code that introduced them is never stored. */
@@ -71,8 +71,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     const stream: Stream = existing
       ? await existing.newStream(companionProtocol, options)
       : await networkNode.dialProtocol(multiaddr(address), companionProtocol, options);
-    stream.maxReadBufferLength = 4 * 1024 * 1024 + 4; stream.maxWriteBufferLength = 1024 * 1024; stream.inactivityTimeout = 20_000;
-    const id = crypto.randomUUID(); const decoder = new CompanionFrameDecoder();
+    stream.maxReadBufferLength = companionResponseLimit + 4; stream.maxWriteBufferLength = 1024 * 1024; stream.inactivityTimeout = 20_000;
+    const id = crypto.randomUUID(); const decoder = new CompanionFrameDecoder(companionResponseLimit);
     try {
       stream.send(encodeCompanionFrame({ v: 1, id, method, args }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
@@ -176,6 +176,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const session: CompanionSession = {
         getWorkspace: read,
         async loadConversation(agentId) { selected = agentId; return conversation(agentId); },
+        async loadOlderHistory(agentId) { return request<CompanionHistoryPage>(host, 'conversation.loadOlder', target(agentId)); },
         async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
           const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });

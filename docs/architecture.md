@@ -61,19 +61,23 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
-| `mobile` | iOS companion engine: relay transport, pairing, workspace and conversation reads, prompt sending | `core`; no Electron, provider process or backend filesystem authority |
+| `mobile` | native iOS shell, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
 The mobile companion engine is a narrow workspace/read/send port over the companion
-protocol. It hands authoritative provider snapshots to its host without a transcript
-reducer; the host app owns every native affordance (storage, camera, dictation, files,
-foreground/background events).
-Drafts and delivery uncertainty are scoped to laptop and agent and persisted through
-the device keychain (entries are device-only and accessible while unlocked). Prompt intent and a durable command identity are saved before dispatch;
-unavailable storage prevents sending. Reconnect reconciles receipts and rehydrates
-provider-owned state without replaying a prompt.
+protocol. SwiftUI owns navigation and the composer. A background WKWebView hosts
+the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
+through the shared Vue conversation pane without a transcript reducer. Native safe
+area insets reserve the header and composer space, including the scroll-to-bottom
+control. History requests route through the owning daemon to provider-owned paging.
+
+Pairing identities and laptop records use device-only Keychain entries accessible
+while unlocked. The engine's optional protected draft store persists prompt intent
+and delivery uncertainty by laptop and agent; its native host keeps composer text
+in memory. Reconnect reconciles available command receipts without replaying prompts
+and retains the last loaded snapshot while rehydrating the same provider session.
 
 Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
 protocol runs through an outbound WebSocket circuit relay, with Noise authenticating

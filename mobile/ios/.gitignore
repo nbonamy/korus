@@ -1,0 +1,5 @@
+Generated.xcconfig
+Build/
+Web/
+*.xcuserstate
+xcuserdata/

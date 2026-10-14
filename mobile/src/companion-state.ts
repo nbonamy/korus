@@ -1,7 +1,8 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
 import type { BackendModelOption } from '@workspace/core/contracts';
+import { companionSessionId } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import type { CompanionConnector, CompanionConversation, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
+import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 
@@ -15,6 +16,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversation = shallowRef<CompanionConversation | null>(null);
   const conversationReady = ref(false);
   const loading = ref(false);
+  const loadingOlder = ref(false);
+  const historyFailed = ref(false);
+  const hasOlder = ref<boolean | null>(null);
+  const history = computed<CompanionHistoryState>(() => ({
+    hasOlder: status.value === 'connected' && Boolean(conversation.value) && (hasOlder.value ?? conversation.value?.payload.snapshot.historyState?.hasOlder ?? true),
+    loadingOlder: loadingOlder.value,
+    failed: historyFailed.value,
+  }));
   const drafts = reactive<Record<string, DraftState>>({});
   const uncertain = reactive<Record<string, boolean>>({});
   const sending = reactive<Record<string, boolean>>({});
@@ -43,6 +52,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let unsubscribe = () => {};
   let connectionEpoch = 0;
   let selectionEpoch = 0;
+  let selectedConversationKey = '';
   let reconnectWanted = false;
   let retryCount = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -78,6 +88,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     retryTimer = undefined;
     ++connectionEpoch;
     ++selectionEpoch;
+    loadingOlder.value = false;
     loading.value = false;
     conversationReady.value = false;
     unsubscribe();
@@ -189,8 +200,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   function interrupt() { const id = agentId.value; if (id) void session?.interrupt?.(id)?.catch(() => {}); }
   async function selectAgent(id: string) {
     const epoch = ++selectionEpoch;
-    agentId.value = agents.value.some((a) => a.id === id) ? id : '';
-    conversation.value = null;
+    const nextAgent = agents.value.find((a) => a.id === id);
+    const nextKey = nextAgent ? JSON.stringify([laptopId.value, id, companionSessionId(nextAgent)]) : '';
+    const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;
+    selectedConversationKey = nextKey;
+    loadingOlder.value = false;
+    if (!retaining) { historyFailed.value = false; hasOlder.value = null; conversation.value = null; }
+    agentId.value = nextAgent?.id ?? '';
     conversationReady.value = false;
     error.value = '';
     loading.value = false;
@@ -215,6 +231,24 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (agentId.value && storageReady.value) {
       drafts[key()] = { ...next };
       void persist().catch(() => {});
+    }
+  }
+  async function loadOlder(id: string) {
+    const active = session;
+    if (id !== agentId.value || !active?.loadOlderHistory || status.value !== 'connected' || loadingOlder.value || !history.value.hasOlder) return;
+    const epoch = selectionEpoch;
+    loadingOlder.value = true;
+    historyFailed.value = false;
+    try {
+      const page = await active.loadOlderHistory(id);
+      if (epoch !== selectionEpoch || active !== session) return;
+      if (page.frame.agentId !== id || page.frame.backend !== agent.value?.backend) throw new Error('Conversation identity mismatch.');
+      conversation.value = page.frame;
+      hasOlder.value = page.hasOlder;
+    } catch {
+      if (epoch === selectionEpoch && active === session) historyFailed.value = true;
+    } finally {
+      if (epoch === selectionEpoch && active === session) loadingOlder.value = false;
     }
   }
   async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[] }) {
@@ -268,6 +302,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { status, error, laptopId, teamId, agentId, workspace, conversation, loading, agents, agent,
-    draft, deliveryUnknown, canSend, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

@@ -6,7 +6,7 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, PrivateKey, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionProtocol, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { relayAddress, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import type { CompanionGateway } from './gateway';
@@ -91,8 +91,8 @@ export class CompanionOutboundConnector {
     this.timer.unref();
   }
   private async serve(stream: Stream, peerId: string) {
-    stream.maxReadBufferLength = 4 * 1024 * 1024 + 4;
-    stream.maxWriteBufferLength = 4 * 1024 * 1024 + 4;
+    stream.maxReadBufferLength = companionFrameLimit + 4;
+    stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = 30_000;
     const decoder = new CompanionFrameDecoder();
     try {
@@ -102,10 +102,10 @@ export class CompanionOutboundConnector {
         if (frames.length !== 1) throw new Error('One request per stream.');
         const request = requestSchema.parse(frames[0]);
         let response;
-        try { response = { v: 1, id: request.id, result: await this.gateway.request(peerId, request.method, request.args) }; }
-        catch { response = { v: 1, id: request.id, error: 'Operation denied or unavailable.' }; }
+        try { response = encodeCompanionFrame({ v: 1, id: request.id, result: await this.gateway.request(peerId, request.method, request.args) }, companionResponseLimit); }
+        catch { response = encodeCompanionFrame({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
         if (stream.status !== 'open') return;
-        if (!stream.send(encodeCompanionFrame(response))) {
+        if (!stream.send(response)) {
           await new Promise<void>((resolve, reject) => {
             const close = () => { cleanup(); reject(new Error('Closed.')); };
             const drain = () => { cleanup(); resolve(); };

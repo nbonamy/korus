@@ -12,9 +12,12 @@ export type CompanionPromptOptions = { model?: string | null; reasoningEffort?: 
 export type CompanionReviewInput = { scope: { type: 'uncommitted' } | { type: 'branch'; baseRef: string }; threadMode: 'current' | 'independent'; instructions?: string };
 /** A file travelling with a prompt, already reduced to fit one relay frame. */
 export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: string; data: string };
+export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
+export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
   getWorkspace(): Promise<CompanionWorkspace>;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
+  loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
