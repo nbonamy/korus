@@ -55,7 +55,7 @@ final class AppModel {
 
     init() {
         engine.onState = { [weak self] state in self?.apply(state) }
-        engine.onConversation = { [weak self] json in self?.transcript.setConversation(json) }
+        engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRendered = { [weak self] id in
@@ -77,47 +77,53 @@ final class AppModel {
 
     // MARK: Engine
 
+    /// The engine repeats its whole state on every change. Writing an unchanged value still wakes every view that read it,
+    /// so each property is written only when it differs.
+    private func set<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<AppModel, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+    }
+
     private func apply(_ state: EngineState) {
-        startup = state.startup
+        set(\.startup, state.startup)
         conversationLoading.update(fetching: state.loading, failed: !state.error.isEmpty, hasAgent: !state.agentId.isEmpty)
-        requests = state.requests ?? []
-        respondingRequest = state.respondingRequest
-        failedRequest = state.failedRequest
+        set(\.requests, state.requests ?? [])
+        set(\.respondingRequest, state.respondingRequest)
+        set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
-        connection = state.connection
-        laptops = state.laptops
-        pairing = state.pairing
-        pairingError = state.pairingError
-        teams = state.teams
-        teamID = state.teamId
+        set(\.connection, state.connection)
+        set(\.laptops, state.laptops)
+        set(\.pairing, state.pairing)
+        set(\.pairingError, state.pairingError)
+        set(\.teams, state.teams)
+        set(\.teamID, state.teamId)
         let created = chatCreation == .creating && state.chatCreation == .idle
-        chatCreation = state.chatCreation
-        if state.chatCreation != .creating { creatingChatGroupID = nil }
-        backends = state.backends
+        set(\.chatCreation, state.chatCreation)
+        if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
+        set(\.backends, state.backends)
         if created { newWorktreeGroup = nil; drawerOpen = false }
-        groups = state.groups.map { group in
+        set(\.groups, state.groups.map { group in
             SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
                          sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type) },
                          repositoryId: group.repositoryRoot)
-        }
+        })
         let nextAgentID = state.agentId.isEmpty ? nil : state.agentId
         if activeAgentID != nextAgentID { dictation.cancel() }
-        activeAgentID = nextAgentID
-        header = state.header.map {
+        set(\.activeAgentID, nextAgentID)
+        set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
-        }
-        models = state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts) }
-        selectedModelID = state.composer.modelId
-        selectedEffort = state.composer.effort
-        planMode = state.composer.planMode
-        approvalPreset = state.permissions.approvalPreset
-        approvalPresets = state.permissions.presets
-        canSend = state.canSend
-        canInterrupt = state.capabilities.interrupt
-        sessionAction = state.sessionAction
-        sessionActionFailed = state.sessionActionFailed
-        closePreview = state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil
+        })
+        set(\.models, state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts) })
+        set(\.selectedModelID, state.composer.modelId)
+        set(\.selectedEffort, state.composer.effort)
+        set(\.planMode, state.composer.planMode)
+        set(\.approvalPreset, state.permissions.approvalPreset)
+        set(\.approvalPresets, state.permissions.presets)
+        set(\.canSend, state.canSend)
+        set(\.canInterrupt, state.capabilities.interrupt)
+        set(\.sessionAction, state.sessionAction)
+        set(\.sessionActionFailed, state.sessionActionFailed)
+        set(\.closePreview, state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil)
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {

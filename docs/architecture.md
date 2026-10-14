@@ -72,6 +72,17 @@ the TypeScript engine; a separate WKWebView renders authoritative provider snaps
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
 control. History requests route through the owning daemon to provider-owned paging.
+A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
+rather than per-update: the engine sends the transcript once per change of its own
+content, capped at ten transfers per second during streaming (the provider replica
+has already applied every event), and changes around it (agent status, names, history, engine
+choice) travel as a small context message that never resends the transcript.
+Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+The native side routes on an event type without parsing the transcript payload, hands
+the page one message at a time, and replaces anything that piled up with the newest.
+Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
+events: those projections are absent from the mobile workspace, and conversation
+content travels through the subscribed provider stream.
 Mobile prompts start a turn when idle and steer active work, without entering the
 prompt queue. The owning daemon decides at admission time; durable companion receipts
 also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.

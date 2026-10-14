@@ -7,7 +7,7 @@ import WebKit
 final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
     let webView: WKWebView
     var onState: ((EngineState) -> Void)?
-    var onConversation: ((String) -> Void)?
+    var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
     private var isReady = false
     private var pending: [[String: Any]] = []
 
@@ -51,9 +51,13 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
 
     // MARK: Events from the engine
 
+    /// The engine page tags each event with its type and sends the serialized event as a string, so a conversation
+    /// is never parsed here: it goes to the transcript as it came.
+    private struct StateEvent: Decodable { let state: EngineState }
+
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let text = message.body as? String, let data = text.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = object["type"] as? String else { return }
+        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        let json = body["json"] as? String
         switch type {
         case "ready":
             isReady = true
@@ -61,10 +65,9 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             for command in pending { dispatch(command) }
             pending.removeAll()
         case "state":
-            if let state = object["state"], let stateData = try? JSONSerialization.data(withJSONObject: state),
-               let decoded = try? JSONDecoder().decode(EngineState.self, from: stateData) { onState?(decoded) }
-        case "conversation":
-            onConversation?(text)
+            if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(StateEvent.self, from: data) { onState?(decoded.state) }
+        case "conversation": if let json { onTranscript?(.conversation, json) }
+        case "conversationContext": if let json { onTranscript?(.context, json) }
         default: break
         }
     }

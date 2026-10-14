@@ -72,20 +72,34 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
+type Context = { agentId: string; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+// The pane only needs the names of the agents a message may mention.
+const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
+let currentAgentId = '';
+function applyContext(message: Context) {
+  agent.value = message.agent; agents.value = peerAgents(message.peers);
+  ready.value = message.ready ?? false; engines.value = message.engines ?? null;
+  history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
+}
+
 let presentation = 0;
 window.companionTranscript = {
   async setConversation(json) {
     const revision = ++presentation;
-    const message = JSON.parse(json) as { frame: CompanionConversation | null; ready?: boolean; agent: Agent | null; agents: Agent[]; history?: CompanionHistoryState; engines?: { current: string; choices: string[] } | null };
-    frame.value = message.frame; agent.value = message.agent; agents.value = message.agents;
-    ready.value = message.ready ?? false;
-    engines.value = message.engines ?? null;
-    history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
+    const message = JSON.parse(json) as Context & { frame: CompanionConversation | null };
+    currentAgentId = message.agentId ?? message.agent?.id ?? '';
+    frame.value = message.frame;
+    applyContext(message);
     if ((!message.frame && !message.ready) || !message.agent) return null;
     await nextTick();
     // Let the updated pane paint before the native shell removes its loading overlay.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     return revision === presentation ? message.agent.id : null;
+  },
+  /** The chat's surroundings changed, not its conversation: a small update, applied only to the chat it was made for. */
+  setContext(json) {
+    const message = JSON.parse(json) as Context;
+    if (message.agentId === currentAgentId) applyContext(message);
   },
   setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
 };

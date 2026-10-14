@@ -4,7 +4,7 @@ declare global {
   interface Window {
     webkit?: { messageHandlers: Record<string, Handler | undefined> };
     companionEngine?: { dispatch(command: string): Promise<void>; start(): Promise<void> };
-    companionTranscript?: { setConversation(json: string): Promise<string | null>; setInsets(top: number, bottom: number): void };
+    companionTranscript?: { setConversation(json: string): Promise<string | null>; setContext(json: string): void; setInsets(top: number, bottom: number): void };
   }
 }
 export function handler(name: string): Handler {

@@ -39,7 +39,13 @@ export class CompanionSubscription {
           if (entry.buffered.length >= 256) { this.close(); fail(); return; }
           entry.buffered.push(frame);
         } else this.deliver(entry, frame);
-      } else this.refreshSoon();
+      } else if (event.type !== 'conversation.contextUsageUpdated'
+        && event.type !== 'conversation.turnDiffUpdated'
+        && event.type !== 'workspace.fileActivityDetected') {
+        // These high-frequency projections have no fields in the companion workspace.
+        // The subscribed provider stream already carries the conversation's content.
+        this.refreshSoon();
+      }
     });
   }
   async request(method: string, args: unknown): Promise<unknown> {

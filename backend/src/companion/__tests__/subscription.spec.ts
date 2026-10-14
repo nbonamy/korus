@@ -16,6 +16,27 @@ function fixture() {
   return { subscription, emit, failed, unlisten, request, event: (event: AppBackendEvent) => listener?.(event), revoke: () => { allowed = false; }, workspace: (next: CompanionWorkspace) => { current = next; } };
 }
 describe('companion event subscriptions', () => {
+  it('ignores transcript-side metrics and file activity while still refreshing status and approvals', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.subscription.request('snapshot.get', {});
+      for (let index = 0; index < 20; index++) {
+        f.event({ type: 'conversation.contextUsageUpdated', agentId: 'agent', backend: 'codex', payload: { contextUsage: {} } } as AppBackendEvent);
+        f.event({ type: 'conversation.turnDiffUpdated', agentId: 'agent', turnId: 'turn', payload: { addedLines: 1, removedLines: 0 } } as AppBackendEvent);
+        f.event({ type: 'workspace.fileActivityDetected', agentId: 'agent', turnId: 'turn', payload: {} } as AppBackendEvent);
+        await vi.advanceTimersByTimeAsync(60);
+      }
+      expect(f.request).toHaveBeenCalledTimes(1);
+      const next = workspace(); next.agents[0]!.status = { type: 'working' };
+      f.workspace(next);
+      f.event({ type: 'agent.statusChanged', agentId: 'agent', payload: { type: 'working' } } as AppBackendEvent);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(f.emit).toHaveBeenLastCalledWith({ type: 'workspace', workspace: next });
+      f.event({ type: 'agentRequest.created', agentId: 'agent', payload: {} } as AppBackendEvent);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(f.request).toHaveBeenCalledTimes(3);
+    } finally { f.subscription.close(); }
+  });
   it('buffers events during the reset and streams only newer selected-agent frames without app-private envelopes', async () => {
     const f = fixture();
     try {

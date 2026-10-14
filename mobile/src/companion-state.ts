@@ -5,6 +5,7 @@ import { companionTarget, companionSessionId, type CompanionRequestReply, type C
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
+import { reconcileWorkspace } from './workspace-reconcile';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
@@ -102,7 +103,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (session === active && epoch === connectionEpoch) {
         failedRequest.value = pending.key;
         // Reconcile an answer handled on desktop or whose acknowledgment was lost. Never replay it.
-        try { const next = await active.getWorkspace(); if (session === active && epoch === connectionEpoch) workspace.value = next; } catch { /* Keep the request and draft available for an explicit retry. */ }
+        try { const next = await active.getWorkspace(); if (session === active && epoch === connectionEpoch) workspace.value = reconcileWorkspace(workspace.value, next); } catch { /* Keep the request and draft available for an explicit retry. */ }
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
@@ -166,7 +167,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const nextWorkspace = await opened.getWorkspace();
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
-      workspace.value = nextWorkspace;
+      workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
       const removeDisconnect = session.onDisconnect(() => {
         if (epoch !== connectionEpoch) return;
         ++selectionEpoch;
@@ -177,7 +178,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       });
       const removeUpdates = session.onUpdate?.((nextWorkspace, frame) => {
         if (epoch !== connectionEpoch) return;
-        workspace.value = nextWorkspace;
+        workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
         if (frame && frame.agentId === agentId.value && frame.backend === agent.value?.backend) {
           conversation.value = frame; conversationReady.value = true;
           if (error.value === 'mobile.errors.loadConversation') error.value = '';
@@ -259,7 +260,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       else throw new Error('Session action unavailable.');
       const next = await active.getWorkspace();
       if (active !== session) return;
-      workspace.value = next;
+      workspace.value = reconcileWorkspace(workspace.value, next);
       if (epoch !== selectionEpoch) return;
       if (action !== 'interrupt') {
         conversation.value = null; selectedConversationKey = '';
@@ -396,7 +397,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (!created) throw new Error('Chat creation unavailable.');
       const next = await active.getWorkspace();
       if (active !== session) return;
-      workspace.value = next;
+      workspace.value = reconcileWorkspace(workspace.value, next);
       chatCreation.value = 'idle';
       if (epoch === selectionEpoch) await selectAgent(created);
     } catch {
@@ -413,7 +414,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       await active.setBackend(id, backend);
       const next = await active.getWorkspace();
       if (active !== session) return;
-      workspace.value = next;
+      workspace.value = reconcileWorkspace(workspace.value, next);
       if (epoch === selectionEpoch) await selectAgent(id);
     } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
   }

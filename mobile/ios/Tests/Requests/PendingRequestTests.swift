@@ -2,6 +2,13 @@ import XCTest
 @testable import CompanionRequests
 
 final class PendingRequestTests: XCTestCase {
+    func testChangedApprovalDetailsAreNotDeduplicatedByRequestIdentity() throws {
+        let json = #"{"key":"key","target":{"hostId":"host","locationId":"local","teamId":"team","agentId":"agent"},"request":{"id":"request","conversationId":"conversation","kind":"approval","approval":{"title":"Run command?","command":"pwd"}}}"#
+        let decode = { (value: String) in try JSONDecoder().decode(PendingRequest.self, from: Data(value.utf8)) }
+        let original = try decode(json)
+        XCTAssertEqual(original, try decode(json))
+        XCTAssertNotEqual(original, try decode(json.replacingOccurrences(of: "pwd", with: "ls")))
+    }
     private func question(_ id: String, multi: Bool = false) -> PendingRequest.Question {
         .init(id: id, header: "Choice", question: "Which?", isSecret: false, multiSelect: multi,
               options: [.init(label: "One", description: ""), .init(label: "Two", description: "")])

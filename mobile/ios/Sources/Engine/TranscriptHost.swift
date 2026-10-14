@@ -10,7 +10,9 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     var onRendered: ((String) -> Void)?
     private var presentation = 0
     private var isReady = false
-    private var conversation: String?
+    private var queue = TranscriptRenderQueue()
+    private var latestConversation: String?
+    private var latestContext: String?
     private var insets: (top: Double, bottom: Double) = (0, 0)
 
     override init() {
@@ -28,15 +30,23 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
         webView.load(URLRequest(url: WebAssets.url("transcript.html")))
     }
 
-    func setConversation(_ json: String) {
-        presentation += 1
-        let revision = presentation
-        conversation = json
+    /// The conversation, or just its surroundings. The page draws one message at a time; whatever arrives while it does is folded into the newest.
+    func submit(_ kind: TranscriptRenderQueue.Kind, _ json: String) {
+        switch kind {
+        case .conversation: presentation += 1; latestConversation = json; latestContext = nil
+        case .context: latestContext = json
+        }
         guard isReady else { return }
-        webView.callAsyncJavaScript("return await window.companionTranscript.setConversation(json)", arguments: ["json": json], in: nil, in: .page) { [weak self] result in
-            guard let self, self.presentation == revision,
-                  case .success(let value) = result, let agentID = value as? String else { return }
-            self.onRendered?(agentID)
+        if let job = queue.enqueue(kind, json) { run(job) }
+    }
+
+    private func run(_ job: TranscriptRenderQueue.Job) {
+        let revision = presentation
+        let script = job.kind == .conversation ? "return await window.companionTranscript.setConversation(json)" : "window.companionTranscript.setContext(json); return null"
+        webView.callAsyncJavaScript(script, arguments: ["json": job.json], in: nil, in: .page) { [weak self] result in
+            guard let self else { return }
+            if job.kind == .conversation, self.presentation == revision, case .success(let value) = result, let agentID = value as? String { self.onRendered?(agentID) }
+            if let next = self.queue.finish() { self.run(next) }
         }
     }
 
@@ -63,6 +73,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
         guard event["type"] as? String == "ready" else { return }
         isReady = true
         setInsets(top: insets.top, bottom: insets.bottom)
-        if let conversation { setConversation(conversation) }
+        if let latestConversation, let job = queue.enqueue(.conversation, latestConversation) { run(job) }
+        if let latestContext, let job = queue.enqueue(.context, latestContext) { run(job) }
     }
 }

@@ -5,6 +5,14 @@ import { createEngine, type EngineEvent, type EngineState, type EnginePort } fro
 import { createSelectionStore } from '../selection-store';
 import type { CompanionHistoryPage } from '../companion-port';
 
+/** What the transcript page shows: the last conversation it was sent, with the context updates that followed applied to it. */
+function shown(events: readonly EngineEvent[]) {
+  let index = events.length - 1;
+  while (index >= 0 && events[index]!.type !== 'conversation') index--;
+  if (index < 0) return undefined;
+  const base = events[index] as Extract<EngineEvent, { type: 'conversation' }>;
+  return events.slice(index + 1).reduce<typeof base>((view, event) => event.type === 'conversationContext' && event.agentId === view.agentId ? { ...view, ...event, type: 'conversation' } : view, base);
+}
 const unpaired = () => { const connector = createDemoConnector(); Object.defineProperty(connector, 'laptops', { value: [] }); return connector; };
 function open(connector = createDemoConnector(), selectionStore?: EnginePort['selectionStore']) {
   const events: EngineEvent[] = [];
@@ -100,7 +108,7 @@ describe('companion engine', () => {
       expect(restartSession).toHaveBeenCalledExactlyOnceWith('demo-agent');
       finish(); await restarting;
       expect(latest()).toMatchObject({ agentId: 'demo-agent', sessionAction: null, sessionActionFailed: false, draft: 'Keep my draft', canSend: true });
-      expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ frame: null, ready: true });
+      expect(shown(events)).toMatchObject({ frame: null, ready: true });
     } finally { engine.dispose(); }
   });
   function selectionStorage() {
@@ -206,7 +214,7 @@ describe('companion engine', () => {
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
+      expect(shown(events)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
     } finally { engine.dispose(); }
   });
   it('keeps startup loading through saved-pairing restoration and connection', async () => {
@@ -285,13 +293,13 @@ describe('companion engine', () => {
     const loadOlderHistory = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ frame: earlier, hasOlder: false });
     connector.connect = async (id) => ({ ...await connect(id), loadOlderHistory });
     const { engine, events } = open(connector);
-    const conversation = () => events.filter((event) => event.type === 'conversation').at(-1)!;
+    const conversation = () => shown(events)!;
     await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
     const original = conversation().frame;
     await engine.dispatch({ type: 'loadOlder', agentId: 'demo-agent' });
-    expect(conversation()).toMatchObject({ frame: original, history: { hasOlder: true, loadingOlder: false, failed: true } });
+    await vi.waitFor(() => expect(conversation()).toMatchObject({ frame: original, history: { hasOlder: true, loadingOlder: false, failed: true } }));
     await engine.dispatch({ type: 'loadOlder', agentId: 'demo-agent' });
-    expect(conversation()).toMatchObject({ frame: earlier, history: { hasOlder: false, loadingOlder: false, failed: false } });
+    await vi.waitFor(() => expect(conversation()).toMatchObject({ frame: earlier, history: { hasOlder: false, loadingOlder: false, failed: false } }));
     await engine.dispatch({ type: 'loadOlder', agentId: 'demo-agent' });
     expect(loadOlderHistory).toHaveBeenCalledTimes(2);
     engine.dispose();
@@ -472,7 +480,7 @@ describe('companion engine', () => {
       expect(latest()).toMatchObject({ backend: 'claude', agentId: 'demo-agent' });
       // The old engine's models must not stay selectable for the new one.
       await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
-      expect([...events].reverse().find((event) => event.type === 'conversation')).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
+      expect(shown(events)).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
       engine.dispose();
     });
     it('ignores a model list that arrives late from the engine it replaced', async () => {

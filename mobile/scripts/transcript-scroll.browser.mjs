@@ -140,3 +140,44 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     await server.close();
   }
 });
+
+test('a context update changes the chat around the transcript without redrawing it, and only for the chat it was made for', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen();
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => { window.webkit = { messageHandlers: { transcript: { postMessage() {} } } }; });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    const result = await page.evaluate(async () => {
+      const agent = { id: 'a', teamId: 't', name: 'First', folder: null, backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+      const messages = Array.from({ length: 200 }, (_, index) => ({ id: `m${index}`, role: index % 2 ? 'assistant' : 'user', status: 'complete', createdAt: '2026-01-01', parts: [{ type: 'text', text: `message ${index} ${'x'.repeat(900)}` }] }));
+      const full = { agentId: 'a', ready: true, agent, peers: [{ id: 'a', label: 'First' }], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
+        frame: { agentId: 'a', backend: 'codex', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
+      let started = performance.now();
+      await window.companionTranscript.setConversation(JSON.stringify(full));
+      const conversationMs = performance.now() - started;
+      const last = [...document.querySelectorAll('p, div, span')].reverse().find((element) => element.children.length === 0 && element.textContent.includes('message 199'));
+      const rendered = Boolean(last);
+      const { frame: _frame, ...context } = full;
+      started = performance.now();
+      window.companionTranscript.setContext(JSON.stringify({ ...context, agent: { ...agent, statusText: 'Working' } }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const contextMs = performance.now() - started;
+      // The same element, not a redrawn copy of it.
+      const stillThere = document.body.textContent.includes('message 199') && last.isConnected;
+      const elementKept = last.isConnected;
+      // A context for another chat must not touch this one.
+      window.companionTranscript.setContext(JSON.stringify({ ...context, agentId: 'other', agent: { ...agent, id: 'other', name: 'Other' } }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return { rendered, stillThere, elementKept, conversationMs: Math.round(conversationMs), contextMs: Math.round(contextMs), hasOther: document.body.textContent.includes('Other') };
+    });
+    console.info(`[page] 200 x 1KB messages, each including a ~32 ms two-frame wait: full conversation ${result.conversationMs} ms, context update ${result.contextMs} ms`);
+    assert.equal(result.rendered, true);
+    assert.equal(result.stillThere, true);
+    assert.equal(result.elementKept, true);
+    assert.equal(result.hasOther, false);
+  } finally { await browser?.close(); await server.close(); }
+});

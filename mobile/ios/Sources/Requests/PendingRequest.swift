@@ -1,15 +1,15 @@
 import Foundation
 
 /// App-owned request data. No provider protocol or transcript parsing in the native shell.
-struct PendingRequest: Decodable, Identifiable {
-    struct Target: Codable {
+struct PendingRequest: Decodable, Identifiable, Equatable {
+    struct Target: Codable, Equatable {
         let hostId: String
         let locationId: String
         let teamId: String
         let agentId: String
         let sessionId: String?
     }
-    struct Request: Decodable {
+    struct Request: Decodable, Equatable {
         let id: String
         let conversationId: String
         let kind: String
@@ -17,9 +17,9 @@ struct PendingRequest: Decodable, Identifiable {
         let approval: Approval?
         let confirmation: Confirmation?
     }
-    struct QuestionGroup: Decodable { let questions: [Question]; let blocking: Bool }
-    struct Question: Decodable, Identifiable {
-        struct Option: Decodable { let label: String; let description: String }
+    struct QuestionGroup: Decodable, Equatable { let questions: [Question]; let blocking: Bool }
+    struct Question: Decodable, Identifiable, Equatable {
+        struct Option: Decodable, Equatable { let label: String; let description: String }
         let id: String
         let header: String
         let question: String
@@ -27,8 +27,8 @@ struct PendingRequest: Decodable, Identifiable {
         let multiSelect: Bool?
         let options: [Option]?
     }
-    struct Approval: Decodable {
-        struct Permission: Decodable {
+    struct Approval: Decodable, Equatable {
+        struct Permission: Decodable, Equatable {
             let kind: String
             let access: String?
             let path: String?
@@ -44,7 +44,7 @@ struct PendingRequest: Decodable, Identifiable {
         let canDeny: Bool?
         let requestedPermissions: [Permission]?
     }
-    struct Confirmation: Decodable {
+    struct Confirmation: Decodable, Equatable {
         let integrationName: String
         let toolName: String
         let summary: String
@@ -65,7 +65,6 @@ struct PendingRequest: Decodable, Identifiable {
         return ["target": targetJSON, "id": request.id, "conversationId": request.conversationId, "outcome": outcome]
     }
 }
-
 struct RequestDraft {
     var selections: [String: Set<String>] = [:]
     var text: [String: String] = [:]

@@ -31,8 +31,8 @@ struct EngineState: Decodable {
     struct Mode: Decodable, Hashable { let id: String; let label: String }
     struct Permissions: Decodable { let approvalPreset: String?; let permissionMode: String?; let presets: [String]; let modes: [Mode] }
     struct Capabilities: Decodable { let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
-    struct ClosePreview: Decodable, Identifiable {
-        struct Target: Decodable { let agentId: String }
+    struct ClosePreview: Decodable, Identifiable, Equatable {
+        struct Target: Decodable, Equatable { let agentId: String }
         let target: Target
         let isLinkedWorktree: Bool
         let branch: String?

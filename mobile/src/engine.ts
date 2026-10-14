@@ -1,6 +1,7 @@
-import { watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
@@ -48,9 +49,16 @@ export type EngineState = {
 export type EngineEvent =
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
-  | { type: 'conversation'; agentId: string; ready: boolean; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState;
-    /** What an empty chat offers: its engine and the ones it may switch to. */
-    engines: { current: string; choices: string[] } | null };
+  | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
+  /** Everything around the open conversation changed but the conversation itself did not: small, and never resends the transcript. */
+  | ({ type: 'conversationContext'; agentId: string } & TranscriptContext);
+
+/** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
+export type TranscriptContext = {
+  ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
+  /** An empty chat's engine and the ones it may switch to. */
+  engines: { current: string; choices: string[] } | null;
+};
 
 export type EngineCommand =
   | { type: 'respondRequest'; reply: CompanionRequestReply }
@@ -80,12 +88,13 @@ const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEffort
 
 export function createEngine(port: EnginePort) {
   const state = createCompanionState(port.connector, undefined);
-  let startup: EngineState['startup'] = 'loading';
-  let pairing: EngineState['pairing'] = 'idle';
-  let pairingError = '';
-  let laptops = [...port.connector.laptops];
+  const startup = ref<EngineState['startup']>('loading');
+  const pairing = ref<EngineState['pairing']>('idle');
+  const pairingError = ref('');
+  const laptops = ref([...port.connector.laptops]);
   let disposed = false;
   let scheduled = false;
+  let lastState = '';
   let selectionEpoch = 0;
   const backendChoices = () => state.workspace.value.backends?.[state.teamId.value] ?? [];
   const engines = () => { const agent = state.agent.value; return agent && backendChoices().length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices: backendChoices() } : null; };
@@ -111,6 +120,8 @@ export function createEngine(port: EnginePort) {
     if (!disposed && epoch === selectionEpoch) await rememberSelection();
   }
 
+  // Only whether a conversation is open matters here: its content changing must not rebuild the state.
+  const hasConversation = computed(() => Boolean(state.conversation.value));
   function snapshot(): EngineState {
     const agent = state.agent.value;
     const groups = projectMobileGroups(state.agents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons);
@@ -120,12 +131,12 @@ export function createEngine(port: EnginePort) {
     const permissions = state.permissions.value;
     return {
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
-      startup, connection: state.status.value, error: state.error.value, laptops, pairing, pairingError,
+      startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
-      loading: state.loading.value && !state.conversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
       closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(),
       backend: agent?.backend ?? null,
@@ -139,21 +150,30 @@ export function createEngine(port: EnginePort) {
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }
-  // Many refs change together; one state event per turn of the event loop is enough.
+  // Derived once per change, shared by the watcher and by whoever asks, and only sent when it differs from what the shell has.
+  const view = computed(snapshot);
   function publish() {
     if (scheduled || disposed) return;
     scheduled = true;
-    queueMicrotask(() => { scheduled = false; if (!disposed) port.post({ type: 'state', state: snapshot() }); });
+    queueMicrotask(() => {
+      scheduled = false;
+      if (disposed) return;
+      const next = view.value; const json = JSON.stringify(next);
+      if (json === lastState) return;
+      lastState = json;
+      port.post({ type: 'state', state: next });
+    });
   }
-  watch(snapshot, publish, { deep: true, flush: 'sync' });
+  watch(view, publish, { flush: 'sync' });
   // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
   // Until the real message arrives, the transcript shows the prompt as sent.
   const pending: { id: string; agentId: string; text: string; baseline: number; expires: number; createdAt: string }[] = [];
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
     .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
-  function withPending(frame: CompanionConversation | null): CompanionConversation | null {
-    if (!frame || frame.backend === 'codex') return frame;
+  /** The frame with the prompts still waiting for the laptop's confirmation, and which prompts those are. */
+  function withPending(frame: CompanionConversation | null): { frame: CompanionConversation | null; key: string } {
+    if (!frame || frame.backend === 'codex') return { frame, key: '' };
     const now = Date.now();
     const sent = new Map<string, number>();
     const shown = pending.filter((entry) => {
@@ -161,22 +181,47 @@ export function createEngine(port: EnginePort) {
       sent.set(entry.text, seen);
       return entry.agentId === frame.agentId && entry.expires > now && userTexts(frame, entry.text) < entry.baseline + seen;
     });
-    if (!shown.length) return frame;
+    if (!shown.length) return { frame, key: '' };
     const snapshot = frame.payload.snapshot;
     const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], createdAt: entry.createdAt }))];
-    return { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation;
+    return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
+  const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
+  const contextNow = (): TranscriptContext => ({ ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+
+  // A conversation crosses the bridge whole, so it crosses once per change of its own content and no faster than the page can
+  // draw it: updates in between are folded into the latest. The provider's replica has already applied every one of them.
+  const transcriptInterval = 100;
+  let sent: { agentId: string; frame: CompanionConversation | null; overlay: string; context: string } | null = null;
+  let sentAt = 0;
+  let trailing: ReturnType<typeof setTimeout> | undefined;
   function postConversation() {
     if (disposed) return;
     const now = Date.now();
     for (let index = pending.length - 1; index >= 0; index--) if (pending[index]!.expires <= now) pending.splice(index, 1);
     clearTimeout(expiry);
     if (pending.length) expiry = setTimeout(postConversation, Math.max(0, Math.min(...pending.map((entry) => entry.expires)) - now) + 1);
-    port.post({ type: 'conversation', agentId: state.agentId.value, ready: state.conversationReady.value, frame: withPending(state.conversation.value), agent: state.agent.value, agents: state.agents.value, history: state.history.value, engines: engines() });
+    const agentId = state.agentId.value; const raw = state.conversation.value;
+    const overlaid = withPending(raw);
+    const changed = !sent || sent.agentId !== agentId || sent.frame !== raw || sent.overlay !== overlaid.key;
+    if (changed) {
+      // Opening another chat, or a conversation appearing or going, is shown at once; streaming within one is paced.
+      const paced = Boolean(sent) && sent!.agentId === agentId && Boolean(sent!.frame) === Boolean(raw) && sent!.overlay === overlaid.key && now - sentAt < transcriptInterval;
+      if (paced) { trailing ??= setTimeout(() => { trailing = undefined; postConversation(); }, transcriptInterval - (now - sentAt)); return; }
+      clearTimeout(trailing); trailing = undefined;
+      const context = contextNow();
+      sent = { agentId, frame: raw, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
+      port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
+      return;
+    }
+    const context = contextNow(); const json = JSON.stringify(context);
+    if (json === sent!.context) return;
+    sent!.context = json;
+    port.post({ type: 'conversationContext', agentId, ...context });
   }
   // Selection changes identity, cached frame and readiness together. Never send an intermediate
   // pairing (new transcript / old agent) across the native bridge.
-  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value, state.workspace.value] as const, postConversation, { flush: 'post' });
+  watch(() => [state.conversation.value, state.agentId.value, state.agent.value, peers.value, state.history.value, state.conversationReady.value, state.workspace.value] as const, postConversation, { flush: 'post' });
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const frame = state.conversation.value;
@@ -189,15 +234,15 @@ export function createEngine(port: EnginePort) {
   }
 
   async function pair(code: string, deviceName: string) {
-    if (!port.connector.pair || pairing !== 'idle') return;
-    pairing = 'working'; pairingError = ''; publish();
+    if (!port.connector.pair || pairing.value !== 'idle') return;
+    pairing.value = 'working'; pairingError.value = ''; publish();
     try {
-      const id = await port.connector.pair(code, deviceName, () => { pairing = 'awaitingApproval'; publish(); });
-      laptops = [...port.connector.laptops];
-      pairing = 'idle'; publish();
+      const id = await port.connector.pair(code, deviceName, () => { pairing.value = 'awaitingApproval'; publish(); });
+      laptops.value = [...port.connector.laptops];
+      pairing.value = 'idle'; publish();
       await connect(id);
     } catch (error) {
-      pairing = 'idle'; pairingError = error instanceof Error ? error.message : 'mobile.errors.pairing'; publish();
+      pairing.value = 'idle'; pairingError.value = error instanceof Error ? error.message : 'mobile.errors.pairing'; publish();
     }
   }
 
@@ -217,7 +262,7 @@ export function createEngine(port: EnginePort) {
         const laptopId = state.laptopId.value;
         await state.revoke();
         await port.selectionStore?.remove(laptopId).catch(() => {});
-        laptops = [...port.connector.laptops]; return publish();
+        laptops.value = [...port.connector.laptops]; return publish();
       }
       case 'selectTeam': ++selectionEpoch; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
@@ -249,18 +294,18 @@ export function createEngine(port: EnginePort) {
 
   /** Opens the saved pairing when there is exactly one; with several, the person chooses. */
   async function start() {
-    startup = 'loading'; publish();
+    startup.value = 'loading'; publish();
     try {
       await port.connector.initialize?.();
-      laptops = [...port.connector.laptops];
+      laptops.value = [...port.connector.laptops];
       publish();
-      if (laptops.length === 1) await connect(laptops[0]!.id);
-      startup = 'ready';
-    } catch { startup = 'error'; }
+      if (laptops.value.length === 1) await connect(laptops.value[0]!.id);
+      startup.value = 'ready';
+    } catch { startup.value = 'error'; }
     publish();
   }
 
-  return { dispatch, start, snapshot, dispose() { disposed = true; clearTimeout(expiry); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }
 
 export type { CompanionPromptOptions };

@@ -14,10 +14,12 @@ const vault: ProtectedVault = {
 const relay = await request<RelayConfig | null>({ type: 'relay' });
 const connector = createRelayConnector(vault, relay);
 const events = handler('engine');
-const engine = createEngine({ connector, selectionStore: createSelectionStore(vault), post: (event: EngineEvent) => { void events.postMessage(JSON.stringify(event)); } });
+// The native side routes on `type` alone: an event is serialized once, here, and handed on untouched.
+const post = (event: EngineEvent) => { void events.postMessage({ type: event.type, json: JSON.stringify(event) }); };
+const engine = createEngine({ connector, selectionStore: createSelectionStore(vault), post });
 
 window.companionEngine = {
   dispatch: (command) => engine.dispatch(JSON.parse(command) as EngineCommand),
   start: () => engine.start(),
 };
-void events.postMessage(JSON.stringify({ type: 'ready' }));
+void events.postMessage({ type: 'ready' });
