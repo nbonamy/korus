@@ -17,26 +17,50 @@ struct SystemAuthenticator: DeviceOwnerAuthenticating {
     }
 }
 
-/// The app opens locked, and locks again after being away for longer than a short grace period.
-/// The laptop pairing stays usable: this only decides whether the screen may be seen.
+/// When turned on, the app opens locked and locks again after being away for longer than a short grace period.
+/// The laptop pairing stays usable: this only decides whether the screen may be seen. It is off until the person turns it on.
 @MainActor
 @Observable
 final class AppLock {
+    static let defaultsKey = "appLock.enabled"
+
     private(set) var isLocked: Bool
     private(set) var isAuthenticating = false
-    /// Whether this phone can lock the app at all.
-    let isProtecting: Bool
+    private(set) var isEnabled: Bool
     private let authenticator: DeviceOwnerAuthenticating
+    private let defaults: UserDefaults
     private let gracePeriod: TimeInterval
     private let now: () -> Date
     private var leftAt: Date?
 
-    init(authenticator: DeviceOwnerAuthenticating = SystemAuthenticator(), gracePeriod: TimeInterval = 30, now: @escaping () -> Date = Date.init) {
+    init(authenticator: DeviceOwnerAuthenticating = SystemAuthenticator(), defaults: UserDefaults = .standard,
+         gracePeriod: TimeInterval = 30, now: @escaping () -> Date = Date.init) {
         self.authenticator = authenticator
+        self.defaults = defaults
         self.gracePeriod = gracePeriod
         self.now = now
-        isProtecting = authenticator.isAvailable
-        isLocked = isProtecting
+        let enabled = defaults.bool(forKey: Self.defaultsKey)
+        isEnabled = enabled
+        isLocked = enabled && authenticator.isAvailable
+    }
+
+    /// Whether the lock is doing anything right now: turned on, and the phone can prove its owner.
+    var isProtecting: Bool { isEnabled && authenticator.isAvailable }
+    /// Whether the phone can lock at all: it needs a passcode.
+    var canProtect: Bool { authenticator.isAvailable }
+
+    /// Turning it on asks for Face ID once, so the lock is known to work before it can shut the person out.
+    func setEnabled(_ on: Bool) async {
+        if on {
+            guard canProtect, !isAuthenticating else { return }
+            isAuthenticating = true
+            let verified = await authenticator.authenticate(reason: "Turn on the lock.")
+            isAuthenticating = false
+            guard verified else { return }
+        }
+        isEnabled = on
+        defaults.set(on, forKey: Self.defaultsKey)
+        isLocked = false
     }
 
     /// The app went to the background. (Briefly inactive, such as the system's own Face ID sheet, is not leaving.)

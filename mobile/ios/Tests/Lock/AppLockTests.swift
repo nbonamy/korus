@@ -16,10 +16,15 @@ final class AppLockTests: XCTestCase {
     }
     private final class Clock { var date = Date(timeIntervalSince1970: 1_000); func advance(_ seconds: TimeInterval) { date.addTimeInterval(seconds) } }
 
-    private func make(available: Bool = true, verdict: Bool = true) -> (AppLock, Authenticator, Clock) {
+    private func defaults(enabled: Bool) -> UserDefaults {
+        let store = UserDefaults(suiteName: "lock-tests-\(UUID().uuidString)")!
+        store.set(enabled, forKey: AppLock.defaultsKey)
+        return store
+    }
+    private func make(available: Bool = true, verdict: Bool = true, enabled: Bool = true, store: UserDefaults? = nil) -> (AppLock, Authenticator, Clock) {
         let authenticator = Authenticator(); authenticator.isAvailable = available; authenticator.verdict = verdict
         let clock = Clock()
-        return (AppLock(authenticator: authenticator, gracePeriod: 30, now: { clock.date }), authenticator, clock)
+        return (AppLock(authenticator: authenticator, defaults: store ?? defaults(enabled: enabled), gracePeriod: 30, now: { clock.date }), authenticator, clock)
     }
     /// Lets the authenticator's pending answer through.
     private func answer(_ authenticator: Authenticator) async {
@@ -82,5 +87,48 @@ final class AppLockTests: XCTestCase {
         await answer(authenticator); await opening.value
         clock.advance(3_600); lock.didReturn()
         XCTAssertFalse(lock.isLocked)
+    }
+
+    func testItIsOffUntilThePersonTurnsItOn() {
+        let (lock, _, clock) = make(enabled: false)
+        XCTAssertFalse(lock.isEnabled); XCTAssertFalse(lock.isLocked); XCTAssertFalse(lock.isProtecting)
+        lock.didLeave(); clock.advance(3_600); lock.didReturn()
+        XCTAssertFalse(lock.isLocked)
+    }
+
+    func testTurningItOnAsksForTheOwnerOnceAndKeepsTheChoiceAcrossLaunches() async {
+        let store = defaults(enabled: false)
+        let (lock, authenticator, _) = make(store: store)
+        let turningOn = Task { await lock.setEnabled(true) }
+        await answer(authenticator); await turningOn.value
+        XCTAssertTrue(lock.isEnabled)
+        XCTAssertFalse(lock.isLocked) // already proven: the person is inside
+        XCTAssertEqual(authenticator.calls, 1)
+        let (relaunched, _, _) = make(store: store)
+        XCTAssertTrue(relaunched.isLocked)
+    }
+
+    func testAFailedCheckLeavesItOff() async {
+        let (lock, authenticator, _) = make(verdict: false, enabled: false)
+        let turningOn = Task { await lock.setEnabled(true) }
+        await answer(authenticator); await turningOn.value
+        XCTAssertFalse(lock.isEnabled)
+    }
+
+    func testAPhoneWithoutAPasscodeCannotTurnItOn() async {
+        let (lock, authenticator, _) = make(available: false, enabled: false)
+        await lock.setEnabled(true)
+        XCTAssertFalse(lock.isEnabled)
+        XCTAssertFalse(lock.canProtect)
+        XCTAssertEqual(authenticator.calls, 0)
+    }
+
+    func testTurningItOffUnlocksAtOnceAndStaysOffAfterRestart() async {
+        let store = defaults(enabled: true)
+        let (lock, _, _) = make(store: store)
+        XCTAssertTrue(lock.isLocked)
+        await lock.setEnabled(false)
+        XCTAssertFalse(lock.isEnabled); XCTAssertFalse(lock.isLocked)
+        XCTAssertFalse(make(store: store).0.isLocked)
     }
 }

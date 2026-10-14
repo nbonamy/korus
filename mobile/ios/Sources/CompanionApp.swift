@@ -11,6 +11,7 @@ struct CompanionApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(lock)
                 .overlay {
                     // Locked, or not in front: the conversations are never visible behind a lock or in the app switcher.
                     if lock.isProtecting && (lock.isLocked || scenePhase != .active) {

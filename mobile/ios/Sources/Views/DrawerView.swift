@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
+    @State private var showingSettings = false
     private static let mark = Bundle.main.url(forResource: "icon", withExtension: "png")
         .flatMap { UIImage(contentsOfFile: $0.path) }
 
@@ -39,6 +40,7 @@ struct DrawerView: View {
             footer
         }
         .background(Color(.systemBackground))
+        .sheet(isPresented: $showingSettings) { SettingsView() }
         .sheet(item: Binding(get: { model.newWorktreeGroup }, set: { if $0 == nil { model.closeWorktreeSheet() } })) { group in
             NewWorktreeSheet(group: group)
         }
@@ -114,20 +116,18 @@ struct DrawerView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Circle().fill(model.connection.color).frame(width: 9, height: 9)
-            Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
+            // Said only when something is wrong; a healthy link needs no words.
+            if model.connection != .connected {
+                Circle().fill(model.connection.color).frame(width: 9, height: 9)
+                Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
+            }
             Spacer()
-            Menu {
-                Button(model.push.status, systemImage: "bell.badge") { Task { await model.push.enable() } }
-                if model.pushRegistrationFailed {
-                    Button("Retry notification setup", systemImage: "arrow.clockwise") { Task { await model.push.refresh() } }
-                }
-                Divider()
-                Button("Forget laptop", systemImage: "trash", role: .destructive) { model.forget() }
-            } label: {
-                Image(systemName: "ellipsis").font(.body.weight(.semibold)).frame(width: 40, height: 40)
+            Button { showingSettings = true } label: {
+                Image(systemName: "gearshape").font(.body.weight(.semibold)).frame(width: 40, height: 40)
                     .glassEffect(.regular.interactive(), in: .circle)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
