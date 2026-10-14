@@ -36,6 +36,11 @@ async function fixture() {
       snapshot.agents.push({ id: 'new-chat', teamId: input.teamId, name: 'New', backend: input.backend, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
       return snapshot as Result;
     }
+    if (method === backendMethods.agentQuickChatCreate) {
+      const { input } = params as { input: { teamId: string; backend: 'codex' | 'claude' } };
+      snapshot.agents.push({ id: 'quick-chat', teamId: input.teamId, name: null, backend: input.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
+      return snapshot as Result;
+    }
     if (method === backendMethods.agentUpdate) {
       const { input } = params as { input: { id: string; backend: 'codex' | 'claude' } };
       snapshot.agents.find((agent) => agent.id === input.id)!.backend = input.backend;
@@ -61,7 +66,15 @@ async function fixture() {
       return result;
     });
   }
-  return { calls, create, gateway, snapshot };
+  async function quickChat(backend = 'claude') {
+    const { creationId } = await gateway.request('phone', 'agent.quickChat.create', { teamId: 'team-test', backend }) as { creationId: string };
+    return vi.waitFor(async () => {
+      const result = await gateway.request('phone', 'agent.create.status', { creationId }) as { state: string };
+      if (result.state === 'running') throw new Error('still running');
+      return result;
+    });
+  }
+  return { calls, create, quickChat, gateway, snapshot };
 }
 
 describe('mobile chat creation', () => {
@@ -87,5 +100,10 @@ describe('mobile chat creation', () => {
     await f.gateway.request('phone', 'agent.backend.set', { agentId: 'existing', backend: 'claude' });
     expect(f.calls.find((call) => call.method === backendMethods.agentUpdate)?.params).toMatchObject({ input: { id: 'existing', backend: 'claude' } });
     expect(f.snapshot.agents[0]!.backend).toBe('claude');
+  });
+  it('starts a quick chat in the team and finds the agent it made', async () => {
+    const f = await fixture();
+    expect(await f.quickChat()).toStrictEqual({ state: 'success', agentId: 'quick-chat' });
+    expect(f.calls.find((call) => call.method === backendMethods.agentQuickChatCreate)?.params).toMatchObject({ input: { teamId: 'team-test', backend: 'claude' } });
   });
 });

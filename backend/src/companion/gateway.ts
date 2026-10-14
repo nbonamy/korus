@@ -51,6 +51,7 @@ export type GatewayPort = {
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
   createChat(request: NewChatRequest): Promise<string>;
+  createQuickChat(request: { teamId: string; backend: AgentBackend }): Promise<string>;
   setBackend(agentId: string, backend: AgentBackend): Promise<void>;
   closePreview(agentId: string): Promise<Omit<CompanionClosePreview, 'target'>>;
   close(agentId: string, input?: CompanionCloseOptions): Promise<void>;
@@ -277,6 +278,14 @@ export class CompanionGateway {
         repositoryName: repository.repositoryName, repositoryRoot: repository.primaryWorktreeRoot, ...(repository.defaultBranch ? { defaultBranch: repository.defaultBranch } : {}),
         ...(input.worktree ? { worktree: input.worktree } : {}) };
       return { creationId: this.creations.start(peerId, () => this.port.createChat(request)) };
+    }
+    if (method === 'agent.quickChat.create') {
+      const input = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
+      const workspace = await this.port.workspace();
+      this.requireGrant(peerId, grant);
+      if (!workspace.teams.some((team) => team.id === input.teamId)) throw new Error('Team not found.');
+      if (workspace.backends && !workspace.backends[input.teamId]?.includes(input.backend)) throw new Error('That engine is not available.');
+      return { creationId: this.creations.start(peerId, () => this.port.createQuickChat(input)) };
     }
     if (method === 'agent.backend.set') {
       const { agentId, backend } = z.object({ agentId: identity, backend: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);

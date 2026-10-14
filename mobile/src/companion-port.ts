@@ -32,6 +32,7 @@ export type CompanionSession = {
   closeSession?(target: CompanionTarget, input?: CompanionCloseOptions): Promise<void>;
   /** Resolves with the new agent once the laptop has made the worktree, if any, and the chat. */
   createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
+  createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
   setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
   startReview?(agentId: string, input: CompanionReviewInput): Promise<void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;

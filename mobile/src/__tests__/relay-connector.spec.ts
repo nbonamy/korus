@@ -283,6 +283,15 @@ describe('native relay host adapter', () => {
       await vi.advanceTimersByTimeAsync(1000);
       await failed;
     } finally { vi.useRealTimers(); }
+    answers.push({ state: 'success', agentId: 'quick-chat' });
+    transport.response = (method) => method === 'agent.quickChat.create' ? { creationId: 'quick' } : method === 'agent.create.status' ? answers.shift() : {};
+    vi.useFakeTimers();
+    try {
+      const quick = session.createQuickChat!({ teamId: 'team', backend: 'claude' });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await quick).toBe('quick-chat');
+    } finally { vi.useRealTimers(); }
+    expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
     await session.setBackend!('new-chat', 'claude');
     expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ agentId: 'new-chat', backend: 'claude' });
     await connector.dispose!();

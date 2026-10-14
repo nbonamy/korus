@@ -386,13 +386,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       sending[draftKey] = false;
     }
   }
-  /** Starts a chat in a repository and opens it once the laptop has it ready. */
-  async function createChat(chat: Omit<CompanionNewChat, 'teamId'>) {
+  /** Starts a chat and opens it once the laptop has it ready. */
+  async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined) {
     const active = session; const team = teamId.value; const epoch = selectionEpoch;
-    if (!active?.createChat || !team || status.value !== 'connected' || chatCreation.value === 'creating') return;
+    if (!active || !team || status.value !== 'connected' || chatCreation.value === 'creating') return;
     chatCreation.value = 'creating';
     try {
-      const created = await active.createChat({ ...chat, teamId: team });
+      const created = await start(active, team);
+      if (!created) throw new Error('Chat creation unavailable.');
       const next = await active.getWorkspace();
       if (active !== session) return;
       workspace.value = next;
@@ -402,6 +403,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (active === session) chatCreation.value = 'failed';
     }
   }
+  const createChat = (chat: Omit<CompanionNewChat, 'teamId'>) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }));
+  const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
   /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
   async function selectBackend(backend: AgentBackend) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
@@ -430,7 +433,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
   }
-  return { selectBackend, chatCreation, createChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

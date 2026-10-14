@@ -26,7 +26,7 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now);
@@ -395,6 +395,33 @@ describe('companion authorization gateway', () => {
     it('needs a paired phone', async () => {
       const f = fixture();
       await expect(f.gateway.request('stranger', 'agent.backend.set', { agentId: 'agent', backend: 'claude' })).rejects.toThrow('authorized');
+    });
+  });
+  describe('starting a quick chat', () => {
+    async function ready() {
+      const f = fixture(); await f.pair();
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] } });
+      return f;
+    }
+    it('creates one for a team and reports it like any other new chat', async () => {
+      const f = await ready();
+      const { creationId } = await f.gateway.request('phone', 'agent.quickChat.create', { teamId: 'team', backend: 'claude' }) as { creationId: string };
+      expect(f.port.createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'team', backend: 'claude' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'quick' });
+    });
+    it.each([
+      ['an unknown team', { teamId: 'ghost', backend: 'claude' }],
+      ['an engine the team cannot use', { teamId: 'remote-team', backend: 'codex' }],
+      ['an unsupported engine', { teamId: 'team', backend: 'other' }],
+      ['an extra field', { teamId: 'team', backend: 'claude', folder: '/etc' }],
+    ])('refuses %s', async (_name, input) => {
+      const f = await ready();
+      await expect(f.gateway.request('phone', 'agent.quickChat.create', input)).rejects.toThrow();
+      expect(f.port.createQuickChat).not.toHaveBeenCalled();
+    });
+    it('needs a paired phone', async () => {
+      await expect(fixture().gateway.request('stranger', 'agent.quickChat.create', { teamId: 'team', backend: 'claude' })).rejects.toThrow('authorized');
     });
   });
 });

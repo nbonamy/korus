@@ -180,6 +180,20 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }, failed);
       const close = () => { closed = true; channel.close(); cache.close(); sessions.delete(handle); };
       const handle = { laptopId, close }; sessions.add(handle);
+      const pinned = host;
+      async function created(creationId: string, signal?: AbortSignal): Promise<string> {
+        let failures = 0;
+        for (const deadline = Date.now() + 600_000; Date.now() < deadline;) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+          if (closed || signal?.aborted) throw new Error('Disconnected.');
+          const result = await request<CompanionChatCreation>(pinned, 'agent.create.status', { creationId }).catch((error: unknown) => { if (++failures > 3) throw error; return null; });
+          if (!result) continue;
+          failures = 0;
+          if (result.state === 'success') return result.agentId;
+          if (result.state === 'error') throw new Error(result.error);
+        }
+        throw new Error('Creating the chat took too long.');
+      }
       const session: CompanionSession = {
         getWorkspace: read,
         async respondRequest(reply) { await request(host, 'agent.request.respond', reply); },
@@ -198,21 +212,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },
-        async createChat(chat, signal) {
-          const { creationId } = await request<{ creationId: string }>(host, 'agent.create', chat);
-          // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
-          let failures = 0;
-          for (const deadline = Date.now() + 600_000; Date.now() < deadline;) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-            if (closed || signal?.aborted) throw new Error('Disconnected.');
-            const result = await request<CompanionChatCreation>(host, 'agent.create.status', { creationId }).catch((error: unknown) => { if (++failures > 3) throw error; return null; });
-            if (!result) continue;
-            failures = 0;
-            if (result.state === 'success') return result.agentId;
-            if (result.state === 'error') throw new Error(result.error);
-          }
-          throw new Error('Creating the chat took too long.');
-        },
+        // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
+        async createChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.create', chat)).creationId, signal); },
+        async createQuickChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.quickChat.create', chat)).creationId, signal); },
         async setBackend(agentId, backend) { await request(host, 'agent.backend.set', { agentId, backend }); },
         async startReview(agentId, input) { await request(host, 'agent.review.start', { agentId, input }); },
         async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },

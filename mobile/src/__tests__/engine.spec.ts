@@ -427,6 +427,16 @@ describe('companion engine', () => {
       expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
       engine.dispose();
     });
+    it('starts a quick chat in the open team and opens it', async () => {
+      const connector = createDemoConnector(); const original = connector.connect; const createQuickChat = vi.fn(async () => 'demo-reviewer');
+      connector.connect = async (id) => ({ ...await original(id), createQuickChat });
+      const { engine, latest } = open(connector);
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'newQuickChat', backend: 'claude' });
+      expect(createQuickChat).toHaveBeenCalledWith({ teamId: 'demo-team', backend: 'claude' });
+      expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
+      engine.dispose();
+    });
     it('uses the default checkout without a branch, reports a failure and lets it be dismissed', async () => {
       const createChat = vi.fn<Parameters<typeof withCreation>[0]>().mockRejectedValueOnce(new Error('Branch exists'));
       const { engine, latest } = await opened(createChat);

@@ -7,6 +7,7 @@ struct DrawerView: View {
         VStack(spacing: 0) {
             header
             teams
+            newChatButton
             List {
                 ForEach(model.groups) { group in
                     Section {
@@ -71,6 +72,27 @@ struct DrawerView: View {
         .padding(.bottom, 8)
     }
 
+    /// The one entry point for a conversation that isn't about a repository: a plain link, like a row in the list.
+    private var newChatButton: some View {
+        Button { model.startQuickChat() } label: {
+            HStack(spacing: 12) {
+                Group {
+                    if model.creatingChatGroupID == AppModel.quickChatID { ProgressView().controlSize(.small) }
+                    else { Image(systemName: "square.and.pencil").font(.system(size: 17, weight: .medium)) }
+                }
+                .frame(width: 22)
+                Text("New Chat").font(.body.weight(.medium))
+                Spacer()
+            }
+            .padding(.horizontal, 22).frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .disabled(!model.canStartChat || model.chatCreation == .creating)
+        .opacity(model.canStartChat ? 1 : 0.4)
+    }
+
     private var footer: some View {
         HStack(spacing: 10) {
             Circle().fill(model.connection.color).frame(width: 9, height: 9)
@@ -104,9 +126,7 @@ private struct GroupHeader: View {
                 .foregroundStyle(.secondary)
                 .textCase(nil)
             Spacer(minLength: 8)
-            if group.repositoryId != nil, !model.backends.isEmpty, model.connection == .connected {
-                newChatMenu
-            }
+            if group.repositoryId != nil, model.canStartChat { newChatMenu }
         }
         .padding(.leading, 10)
     }

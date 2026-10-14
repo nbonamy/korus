@@ -68,7 +68,7 @@ export type EngineCommand =
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
-  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
+  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string } | { type: 'newQuickChat'; backend: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
   | { type: 'composer'; change: ComposerChange }
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
@@ -235,6 +235,7 @@ export function createEngine(port: EnginePort) {
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
       case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
       case 'backend': return state.selectBackend(command.backend);
+      case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();
       case 'cancelCloseSession': return state.cancelCloseSession();
       case 'dismissSessionError': return state.dismissSessionError();

@@ -169,6 +169,14 @@ final class AppModel {
         creatingChatGroupID = group.id
         command("newChat", ["repositoryId": repositoryId, "backend": backend].merging(branchName.map { ["branchName": $0] } ?? [:]) { _, new in new })
     }
+    /// A conversation with no repository: one tap, the engine chosen in the empty chat.
+    static let quickChatID = "quick-chat"
+    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty }
+    func startQuickChat() {
+        guard let backend = newChatBackend, chatCreation != .creating else { return }
+        creatingChatGroupID = Self.quickChatID
+        command("newQuickChat", ["backend": backend])
+    }
     func closeWorktreeSheet() { if chatCreation != .creating { newWorktreeGroup = nil; dismissChatFailure() } }
     func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }

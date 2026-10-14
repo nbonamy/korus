@@ -145,6 +145,13 @@ export class CompanionManager {
         if (!created) throw new Error('The chat was not created.');
         return created.id;
       },
+      createQuickChat: async ({ teamId, backend }) => {
+        const known = new Set((await this.workspace()).agents.map((agent) => agent.id));
+        await this.backend.request(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, _clientId: 'companion-write' });
+        const created = (await this.workspace()).agents.find((agent) => !known.has(agent.id) && agent.teamId === teamId && agent.sessionKind === 'quickChat');
+        if (!created) throw new Error('The chat was not created.');
+        return created.id;
+      },
       setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },
       closePreview: async (agentId) => {
         const workspace = await this.workspace();

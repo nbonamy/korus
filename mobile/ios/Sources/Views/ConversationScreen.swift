@@ -57,6 +57,14 @@ struct ConversationScreen: View {
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button { model.startQuickChat() } label: {
+                        if model.creatingChatGroupID == AppModel.quickChatID { ProgressView() } else { Image(systemName: "square.and.pencil") }
+                    }
+                    .buttonBorderShape(.circle)
+                    .disabled(!model.canStartChat || model.chatCreation == .creating)
+                    .accessibilityLabel("New chat")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                             .disabled(!model.canManageSession || model.isWorking)
