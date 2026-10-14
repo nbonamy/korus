@@ -124,11 +124,15 @@ private struct GroupHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            GroupIcon(group: group)
-            Text(group.label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(nil)
+            HStack(spacing: 8) {
+                GroupIcon(group: group)
+                Text(group.label)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
+            }
+            // Compensate optically for the bubble's smaller visible bounds.
+            .offset(y: group.kind == .quickChats ? 3 : 0)
             Spacer(minLength: 8)
             if model.canStartChat {
                 if group.hasQuickChats {
@@ -174,8 +178,13 @@ struct GroupIcon: View {
             if let icon = group.icon, !icon.isEmpty {
                 Text(icon).font(.system(size: 15, weight: group.usesIconBadge ? .semibold : .regular))
                     .frame(width: 24, height: 24)
+            } else if group.kind == .quickChats {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 17))
+                    .frame(width: 24, height: 24)
+                    .foregroundStyle(.secondary)
             } else {
-                Image(systemName: group.kind == .quickChats ? "bubble.left" : "folder")
+                Image(systemName: "folder")
                     .font(.system(size: 14))
                     .frame(width: 24, height: 24)
                     .foregroundStyle(.secondary)
