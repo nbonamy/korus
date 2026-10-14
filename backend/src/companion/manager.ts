@@ -6,13 +6,15 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AppSnapshot } from '@workspace/core/contracts';
-import type { CompanionControl, CompanionControlResult, CompanionReset, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { AgentGitWorkflow, AppSnapshot } from '@workspace/core/contracts';
+import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
 import { CompanionOutboundConnector } from './connector';
+import { ConversationSource } from './conversation-source';
+import { warnMain } from '../log';
 import { storePromptUploads } from './uploads';
 
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
@@ -43,7 +45,7 @@ export class CompanionManager {
   private writes = Promise.resolve();
   private controls = Promise.resolve();
   private ready: Promise<void> | null = null;
-  private readonly frames = new Map<string, CompanionReset>();
+  private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
   constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, env: NodeJS.ProcessEnv = process.env) {
     this.environment = relayFromEnvironment(env);
@@ -54,7 +56,7 @@ export class CompanionManager {
     return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : null;
   }
   event(event: AppBackendEvent) {
-    if (event.type === 'codex.conversationSnapshotChanged' || event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') this.frames.set(event.agentId, event);
+    this.conversations.observe(event);
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
     const action = controlSchema.parse(input);
@@ -114,11 +116,8 @@ export class CompanionManager {
       workspace: () => this.workspace(),
       loadOlderHistory: (agentId) => this.backend.request<{ hasOlder: boolean }>(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       conversation: async (agentId) => {
-        this.frames.delete(agentId);
-        await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });
-        const frame = this.frames.get(agentId);
-        if (!frame) throw new Error('Authoritative conversation is unavailable.');
-        return frame;
+        try { return await this.conversations.read(agentId); }
+        catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }
       },
       submit: async (agentId, prompt, clientId, options, uploads) => {
         const attachments = uploads ? await storePromptUploads(this.directory, uploads) : undefined;
@@ -127,6 +126,20 @@ export class CompanionManager {
       },
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
       interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
+      restart: async (agentId) => { await this.backend.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
+      closePreview: async (agentId) => {
+        const workspace = await this.workspace();
+        const agent = workspace.agents.find((agent) => agent.id === agentId);
+        const location = (teamId: string | undefined) => workspace.teams.find((team) => team.id === teamId)?.remoteConnectionId ?? 'local';
+        const plain = { isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false };
+        if (!agent) throw new Error('Agent not found.');
+        if (agent.folder && workspace.agents.some((other) => other.id !== agentId && other.folder === agent.folder && location(other.teamId) === location(agent.teamId))) return plain;
+        try {
+          const workflow = await this.backend.request<AgentGitWorkflow>(backendMethods.agentGitWorkflowGet, { agentId, _clientId: 'companion-read' });
+          return { isLinkedWorktree: workflow.isLinkedWorktree, branch: workflow.branch ?? null, upstream: workflow.upstream ?? null, hasChanges: workflow.files.length > 0 };
+        } catch { return plain; } // Non-Git or unavailable workspaces can still close while keeping all files.
+      },
+      close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
       startReview: async (agentId, input) => { await this.backend.request(backendMethods.agentCodeReviewStart, { agentId, input, _clientId: 'companion-write' }); },
@@ -138,6 +151,9 @@ export class CompanionManager {
     await this.persist();
     const relay = this.relay;
     if (saved.enabled && relay) await this.connector.start(relay.origin, relay.peerId);
+  }
+  private async loadConversation(agentId: string): Promise<void> {
+    await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });
   }
   private async workspace(): Promise<CompanionWorkspace> {
     const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });

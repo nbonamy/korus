@@ -25,7 +25,8 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
@@ -37,6 +38,33 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('authorizes session actions against the selected session and requires explicit worktree deletion consent', async () => {
+    const f = fixture();
+    await expect(f.gateway.request('phone', 'agent.close.preview', target)).rejects.toThrow('authorized');
+    await f.pair();
+    expect(await f.gateway.request('phone', 'agent.close.preview', target)).toStrictEqual({ target, isLinkedWorktree: true, branch: 'feature', upstream: 'origin/feature', hasChanges: true });
+    await f.gateway.request('phone', 'agent.restart', target);
+    expect(f.port.restart).toHaveBeenCalledExactlyOnceWith('agent');
+    await f.gateway.request('phone', 'agent.close', { target });
+    expect(f.port.close).toHaveBeenLastCalledWith('agent', undefined);
+    const input = { deleteWorktree: true, deleteRemoteBranch: false, discardChanges: true, confirmed: true };
+    for (const invalid of [{ ...input, confirmed: false }, { ...input, confirmed: undefined }, { ...input, deleteRemoteBranch: 'yes' }, { ...input, path: '/arbitrary' }]) {
+      await expect(f.gateway.request('phone', 'agent.close', { target, input: invalid })).rejects.toThrow();
+    }
+    expect(f.port.close).toHaveBeenCalledTimes(1);
+    await f.gateway.request('phone', 'agent.close', { target, input });
+    expect(f.port.close).toHaveBeenLastCalledWith('agent', input);
+    for (const method of ['agent.restart', 'agent.close.preview', 'agent.close']) {
+      const stale = { ...target, sessionId: 'another-session' };
+      await expect(f.gateway.request('phone', method, method === 'agent.close' ? { target: stale, input } : stale)).rejects.toThrow('stale');
+    }
+    f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, status: { type: 'working' } }] });
+    await expect(f.gateway.request('phone', 'agent.restart', target)).rejects.toThrow('Stop');
+    expect(f.port.restart).toHaveBeenCalledTimes(1);
+    await f.gateway.revoke('phone');
+    await expect(f.gateway.request('phone', 'agent.close', { target, input })).rejects.toThrow('authorized');
+    expect(f.port.close).toHaveBeenCalledTimes(2);
+  });
   it('loads earlier history only for an approved current target and returns the authoritative conversation', async () => {
     const f = fixture();
     const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', payload: { snapshot: { messages: [] } } };
@@ -214,6 +242,16 @@ describe('companion authorization gateway', () => {
     f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [{ ...workspace.agents[0]!, backendSession: { kind: 'codex', threadId: 'current-thread' } }] });
     f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'other-thread', payload: { snapshot: {} } });
     await expect(f.gateway.request('phone', 'conversation.subscribe', { ...target, sessionId: JSON.stringify({ kind: 'codex', threadId: 'current-thread' }) })).rejects.toThrow('session mismatch');
+  });
+  it('serves a Claude conversation whose session id was rebound mid-conversation', async () => {
+    const f = fixture(); await f.pair();
+    const claude = { ...workspace.agents[1]!, backendSession: { kind: 'claude', sessionId: 'resumed-session' } } as unknown as typeof workspace.agents[number];
+    f.port.workspace.mockResolvedValue({ teams: workspace.teams, agents: [workspace.agents[0]!, claude] });
+    f.port.conversation.mockResolvedValue({ type: 'claude.conversationSnapshotChanged', agentId: 'remote-agent', backend: 'claude', payload: { revision: 4, snapshot: { sessionId: 'forked-session', messages: [] } } });
+    const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: JSON.stringify({ kind: 'claude', sessionId: 'resumed-session' }) };
+    expect(await f.gateway.request('phone', 'conversation.subscribe', remote)).toMatchObject({ payload: { revision: 4 } });
+    f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', agentId: 'remote-agent', backend: 'claude', payload: { revision: 5, snapshot: {} } });
+    await expect(f.gateway.request('phone', 'conversation.subscribe', remote)).rejects.toThrow('session mismatch');
   });
   it('admits concurrent retries once and reconciles accepted delivery across process restart', async () => {
     const f = fixture(); await f.pair();

@@ -115,9 +115,12 @@ prompt admission to existing app-owned handlers, including remote-team routing.
 Its protected state owns a stable Noise identity, device grants and a command
 receipt ledger. Serialized atomic writes precede grants and prompt dispatch. An
 interrupted admission stays unresolved; reconnect reads its receipt instead of
-repeating the provider operation. Conversation reads capture provider-native resets
-from the owning handler. The gateway exposes no generic RPC, filesystem or shell
-forwarding.
+repeating the provider operation. Conversation reads serve the provider's own replica:
+Codex is asked each time (it republishes its whole snapshot), while Claude and
+Antigravity are followed from their reset and revisioned updates, because asking again
+re-reads the transcript from disk and can discard the turn in flight. A revision gap, or
+a copy that has gone quiet for 30 seconds, sends the read back to the provider. The
+gateway exposes no generic RPC, filesystem or shell forwarding.
 
 The separate relay executable uses operator-provided TLS certificates and a
 persistent pinned identity. Only configured laptop peers can reserve circuits or

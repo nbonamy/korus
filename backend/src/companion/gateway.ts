@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import type { CompanionUpload } from './uploads';
@@ -8,6 +8,7 @@ import { createPairingExchange, generatePairingCode, normalizePairingCode, pairi
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
+const closeSchema = z.object({ target: targetSchema, input: z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict().optional() }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.object({
   model: z.string().min(1).max(200).nullable().optional(), reasoningEffort: z.string().min(1).max(40).nullable().optional(),
@@ -30,6 +31,9 @@ export type GatewayPort = {
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
   interrupt(agentId: string): Promise<void>;
+  restart(agentId: string): Promise<void>;
+  closePreview(agentId: string): Promise<Omit<CompanionClosePreview, 'target'>>;
+  close(agentId: string, input?: CompanionCloseOptions): Promise<void>;
   setApprovalPreset(agentId: string, preset: string): Promise<void>;
   setPermissionMode(agentId: string, mode: string): Promise<void>;
   startReview(agentId: string, input: z.infer<typeof reviewSchema>['input']): Promise<void>;
@@ -145,9 +149,10 @@ export class CompanionGateway {
       const current = await this.validateTarget(target);
       this.requireGrant(peerId, grant);
       const session = current.backendSession;
+      // Claude and Antigravity can rebind a session id mid-conversation; their frame is already this agent's own replica.
       if (frame.backend !== current.backend || (session?.kind === 'codex' && (frame.type !== 'codex.conversationSnapshotChanged' || frame.threadId !== session.threadId))
-        || (session?.kind === 'claude' && (frame.type !== 'claude.conversationSnapshotChanged' || frame.payload.snapshot.sessionId !== session.sessionId))
-        || (session?.kind === 'antigravity' && (frame.type !== 'antigravity.conversationSnapshotChanged' || frame.payload.snapshot.sessionId !== session.sessionId))) throw new Error('Conversation session mismatch.');
+        || (session?.kind === 'claude' && frame.type !== 'claude.conversationSnapshotChanged')
+        || (session?.kind === 'antigravity' && frame.type !== 'antigravity.conversationSnapshotChanged')) throw new Error('Conversation session mismatch.');
       if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
       return page ? { frame, hasOlder: page.hasOlder } : frame;
     }
@@ -192,6 +197,29 @@ export class CompanionGateway {
       await this.requireAgent(agentId);
       this.requireGrant(peerId, grant);
       await this.port.selectModel(agentId, selection);
+      return {};
+    }
+    if (method === 'agent.close.preview') {
+      const target = targetSchema.parse(args);
+      await this.validateTarget(target);
+      const preview = await this.port.closePreview(target.agentId);
+      await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      return { ...preview, target };
+    }
+    if (method === 'agent.close') {
+      const { target, input } = closeSchema.parse(args);
+      await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      await this.port.close(target.agentId, input);
+      return {};
+    }
+    if (method === 'agent.restart') {
+      const target = targetSchema.parse(args);
+      const agent = await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') throw new Error('Stop the agent before restarting.');
+      await this.port.restart(target.agentId);
       return {};
     }
     if (method === 'agent.interrupt') {

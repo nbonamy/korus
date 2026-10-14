@@ -44,7 +44,7 @@ describe('encrypted companion circuit', () => {
     const gateway = new CompanionGateway(hostId, { grants: [], commands: {} }, {
       workspace: async () => ({ teams: [{ id: 'team', name: 'Actual gateway team', agentIds: [] }], agents: [] }),
       loadOlderHistory: async () => ({ hasOlder: false }),
-      conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, models: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {},
+      conversation: async () => { throw new Error('No agent'); }, submit: async () => {}, models: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {},
       revoked: (peer) => connectorRef.current?.revoke(peer),
     });
     const connector = new CompanionOutboundConnector(hostKey, gateway); connectorRef.current = connector;
