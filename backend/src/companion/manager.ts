@@ -94,7 +94,7 @@ export class CompanionManager {
         case 'resume':
           await this.resume(); break;
         case 'disable':
-          await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); break;
+          await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); this.conversations.clear(); break;
         case 'invite':
           await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');
@@ -122,6 +122,7 @@ export class CompanionManager {
   async stop() {
     await this.ready?.catch(() => {});
     await this.connector?.stop();
+    this.conversations.clear();
     this.backend.onAccessChanged?.(false);
   }
   private status() {
@@ -155,10 +156,10 @@ export class CompanionManager {
         try { return await this.conversations.read(agentId); }
         catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }
       },
-      submit: async (agentId, prompt, clientId, options, uploads) => {
+      submit: async (target, prompt, clientId, options, uploads) => {
         const attachments = uploads ? await storePromptUploads(this.directory, uploads).catch(() => { throw new PromptRejectedError('Attachments could not be stored.'); }) : undefined;
         const promptOptions = options || attachments ? { ...options, ...(attachments ? { attachments } : {}) } : undefined;
-        await this.backend.request(backendMethods.agentPromptSteer, { agentId, prompt, startIfIdle: true, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
+        await this.backend.request(backendMethods.agentPromptSteer, { agentId: target.agentId, expectedSessionId: target.sessionId, prompt, startIfIdle: true, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
       },
       respondRequest: async (response) => { await this.backend.request(backendMethods.agentRequestRespond, { response, _clientId: 'companion-write' }); },
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
@@ -187,16 +188,14 @@ export class CompanionManager {
             ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}), ...remote }, _clientId: 'companion-write' });
           folder = worktree.path;
         }
-        const known = new Set((await this.workspace()).agents.map((agent) => agent.id));
-        await this.backend.request(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, _clientId: 'companion-write' });
-        const created = (await this.workspace()).agents.find((agent) => !known.has(agent.id) && agent.folder === folder);
+        const result = await this.backend.request<AppSnapshot>(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, _clientId: 'companion-write' });
+        const created = result.agents.find((agent) => agent.id === result.activeAgentId && agent.teamId === chat.teamId && agent.folder === folder);
         if (!created) throw new Error('The chat was not created.');
         return created.id;
       },
       createQuickChat: async ({ teamId, backend }) => {
-        const known = new Set((await this.workspace()).agents.map((agent) => agent.id));
-        await this.backend.request(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, _clientId: 'companion-write' });
-        const created = (await this.workspace()).agents.find((agent) => !known.has(agent.id) && agent.teamId === teamId && agent.sessionKind === 'quickChat');
+        const result = await this.backend.request<AppSnapshot>(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, _clientId: 'companion-write' });
+        const created = result.agents.find((agent) => agent.id === result.activeAgentId && agent.teamId === teamId && agent.sessionKind === 'quickChat');
         if (!created) throw new Error('The chat was not created.');
         return created.id;
       },

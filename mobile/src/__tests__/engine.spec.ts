@@ -23,6 +23,19 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('restores pairing while locked without connecting or reading until the screen is unlocked', async () => {
+    const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
+    const engine = createEngine({ connector, initialActive: false, post: () => {} });
+    try {
+      await engine.start();
+      expect(engine.snapshot().startup).toBe('ready');
+      expect(connect).not.toHaveBeenCalled();
+      expect(engine.snapshot().canSend).toBe(false);
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
+      expect(engine.snapshot().connection).toBe('connected');
+    } finally { engine.dispose(); }
+  });
   it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };

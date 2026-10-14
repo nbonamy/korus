@@ -192,7 +192,9 @@ struct GroupIcon: View {
 
     var body: some View {
         Group {
-            if let icon = group.icon, !icon.isEmpty {
+            if let data = group.imageIconData, let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFit().frame(width: 24, height: 24)
+            } else if let icon = group.icon, !icon.isEmpty, !icon.hasPrefix("data:image/") {
                 Text(icon).font(.system(size: 15, weight: group.usesIconBadge ? .semibold : .regular))
                     .frame(width: 24, height: 24)
             } else if group.kind == .quickChats {

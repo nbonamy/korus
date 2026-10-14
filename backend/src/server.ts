@@ -1,4 +1,5 @@
-import { requirePromptText } from './prompt-input';
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
+import { PromptRejectedError } from './agents/prompt-rejected';
 import { isBankedResets, isBankedResetResult, isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { saveMarkdownFile } from './document-files';
@@ -293,7 +294,7 @@ export class AppBackendServer {
     this.agentPrompts = new AgentPromptManager({
       isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
       getSnapshot: () => this.snapshot,
-      driverForAgent: (agent) => this.backendDriverForAgent(agent),
+      driverForAgent: (agent, expectedSessionId) => this.backendDriverForAgent(agent, expectedSessionId),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
@@ -1877,14 +1878,17 @@ export class AppBackendServer {
         const options = params.options as SendPromptOptions | undefined;
         if (params.startIfIdle !== undefined && typeof params.startIfIdle !== 'boolean') throw new Error('Invalid startIfIdle.');
         const startIfIdle = params.startIfIdle === true;
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options, ...(startIfIdle ? { startIfIdle } : {}) }, async (agent) => {
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options, ...expectation, ...(startIfIdle ? { startIfIdle } : {}) }, async (agent) => {
+          assertPromptSession(agent, expectedSessionId);
           if (!prompt && !options?.attachments?.length) {
             return this.snapshot;
           }
           // Decide at the owning daemon, never from a phone's potentially stale snapshot.
           // Receipt-based admission starts immediately or rejects; it cannot enqueue.
           if (startIfIdle && this.agentPrompts.canStart(agent)) {
-            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options);
+            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId);
             this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return this.snapshot;
@@ -1896,7 +1900,7 @@ export class AppBackendServer {
           const controls = options?.delegation !== undefined ? captureUserDelegationOverrides(agent, options.delegation) : previousControls;
           let result: BackendSendResult;
           try {
-            result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options }) as BackendSendResult;
+            result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation }) as BackendSendResult;
             if (options?.delegation !== undefined) bindUserDelegationOverrides(agent, controls, result);
           } catch (error) {
             if (options?.delegation !== undefined && agent.userDelegationOverrides === controls) agent.userDelegationOverrides = previousControls;
@@ -1906,6 +1910,9 @@ export class AppBackendServer {
           this.clearTurnSuggestionsForNewPrompt(agent);
           await this.persistSnapshotOnly();
           return this.snapshot;
+        }).catch(error => {
+          if (error instanceof PromptRejectedError) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error.message);
+          throw error;
         });
       }
       case backendMethods.agentQueuedPromptDelete: {
@@ -3018,7 +3025,7 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(event);
   }
 
-  private backendDriverForAgent(agent: Agent): AgentBackendDriver {
+  private backendDriverForAgent(agent: Agent, expectedSessionId?: string | null): AgentBackendDriver {
     return {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
@@ -3028,7 +3035,7 @@ export class AppBackendServer {
       ),
       preparePromptOptions: (_currentAgent, options) => options,
       sendPrompt: async (currentAgent, prompt, options) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options }) as BackendSendResult
+        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
       ),
       interrupt: async (currentAgent) => (
         await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult

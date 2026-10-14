@@ -85,7 +85,7 @@ the page one message at a time, and replaces anything that piled up with the new
 Unread activity belongs to the owning daemon and persists with each agent. Clients
 acknowledge the attention revision they displayed; older acknowledgments cannot
 clear newer activity. Desktop and companion indicators consume the same metadata.
-The phone acknowledges only its rendered foreground conversation with the drawer
+The phone acknowledges only its rendered, unlocked foreground conversation with the drawer
 closed; cached subscriptions and background updates never count as reading.
 
 Mobile attention alerts originate from live completed-turn and normalized request
@@ -129,7 +129,9 @@ the connected workspace and falls back in desktop team/agent order. The engine's
 optional protected draft store persists prompt intent
 and delivery uncertainty by laptop and agent; its native host keeps composer text
 and selected attachment bytes in memory, keyed by the full laptop/conversation target.
-Native pickers and explicit clipboard paste supply bounded bytes, never device paths.
+Pending first-send drafts follow initialization of their empty provider session;
+established-session replacements keep separate drafts. Native pickers and explicit
+clipboard paste supply bounded bytes, never device paths.
 Goal mode is a native draft choice; setting and clearing use target-bound companion
 commands routed to the same daemon goal operations as desktop. The native goal bar
 reads the daemon's goal projection, and uncertain delivery retains the objective

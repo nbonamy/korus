@@ -63,7 +63,7 @@ export type GatewayPort = {
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
-  submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
+  submit(target: CompanionTarget, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
   plugins?(agentId: string): Promise<BackendPluginSummary[]>;
   skills(agentId: string): Promise<BackendSkillSummary[]>;
@@ -302,7 +302,7 @@ export class CompanionGateway {
         await this.port.save(next); this.state = next;
         const run = (async (): Promise<StoredCommand> => {
           let state: 'accepted' | 'rejected' | 'unresolved' = 'unresolved';
-          try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch (error) { if (error instanceof PromptRejectedError) state = 'rejected'; }
+          try { await (uploads ? this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch (error) { if (error instanceof PromptRejectedError) state = 'rejected'; }
           const completed = { ...pending, state };
           // A device revoked during admission has no ledger left to complete.
           if (this.state.commands[ledgerKey]) await this.mutate(async () => {

@@ -60,7 +60,7 @@ final class ComposerDrafts {
         var sending: String?
         var error: String?
     }
-    private struct Pending { let submission: Submission; let ids: Set<UUID> }
+    private struct Pending { let submission: Submission; let ids: Set<UUID>; var owner: ComposerTarget }
     private var draft = Draft()
     private var retained: [ComposerTarget: Draft] = [:]
     private var pending: [String: Pending] = [:]
@@ -86,6 +86,17 @@ final class ComposerDrafts {
         guard next != target else { return }
         if let target { retained[target] = draft }
         target = next
+        // A first prompt creates its session. Keep that in-flight or uncertain draft reachable,
+        // including if navigation happened while initialization was being reported.
+        if let next, next.sessionId != nil, retained[next] == nil,
+           let source = retained.keys.first(where: { old in
+               old.sessionId == nil && old.hostId == next.hostId && old.locationId == next.locationId
+                   && old.teamId == next.teamId && old.agentId == next.agentId
+                   && pending.values.contains(where: { $0.owner == old && !$0.submission.goalMode })
+           }) {
+            retained[next] = retained.removeValue(forKey: source)
+            for id in Array(pending.keys) where pending[id]?.owner == source { pending[id]?.owner = next }
+        }
         draft = next.flatMap { retained.removeValue(forKey: $0) } ?? Draft()
     }
 
@@ -120,15 +131,15 @@ final class ComposerDrafts {
         })
         draft.sending = request.requestId
         draft.error = nil
-        pending = pending.filter { $0.value.submission.target != target }
-        pending[request.requestId] = Pending(submission: request, ids: Set(items.map(\.id)))
+        pending = pending.filter { $0.value.owner != target }
+        pending[request.requestId] = Pending(submission: request, ids: Set(items.map(\.id)), owner: target)
         return request
     }
 
     func completeSend(_ result: ComposerSendResult) {
         guard let sent = pending[result.requestId] else { return }
         if result.status != .unknown { pending.removeValue(forKey: result.requestId) }
-        change(sent.submission.target) { draft in
+        change(sent.owner) { draft in
             guard draft.sending == result.requestId || draft.sending == nil else { return }
             draft.sending = nil
             switch result.status {

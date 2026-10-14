@@ -1,4 +1,4 @@
-import { requirePromptText } from './prompt-input';
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
@@ -296,6 +296,7 @@ export class BackendDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
+        assertPromptSession(agent, requireExpectedSessionId(record));
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
@@ -487,6 +488,7 @@ export class BackendDriverRpc {
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
+        assertPromptSession(agent, requireExpectedSessionId(record));
         const driver = this.requireDriver(agent.backend);
         if (!driver.steerPrompt) {
           throw unsupportedBackendFeature(agent, 'prompt steering');

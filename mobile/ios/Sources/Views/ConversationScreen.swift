@@ -15,7 +15,13 @@ struct ConversationScreen: View {
                     }
             }
             .overlay {
-                if model.loadingConversation {
+                if model.conversationLoadFailed {
+                    ContentUnavailableView {
+                        Label("Couldn’t load this conversation", systemImage: "exclamationmark.bubble")
+                    } description: { Text("Try again to reconnect to this conversation.") }
+                    actions: { Button("Retry") { model.retryConversation() }.disabled(model.connection != .connected) }
+                    .background(Color(.systemBackground).ignoresSafeArea())
+                } else if model.loadingConversation {
                     // Keep the WebView painting underneath until it acknowledges the selected frame.
                     ZStack {
                         Color(.systemBackground).ignoresSafeArea()

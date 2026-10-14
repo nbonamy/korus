@@ -2,6 +2,14 @@ import XCTest
 @testable import CompanionSidebar
 
 final class SidebarPresentationTests: XCTestCase {
+    func testRepositoryImageIconsSupplyImageBytesInsteadOfDataURLText() {
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aCYsAAAAASUVORK5CYII=")!
+        let group = SidebarGroup(id: "repo", kind: .repository, label: "Repo", icon: "data:image/png;base64," + png.base64EncodedString(), sessions: [])
+        XCTAssertEqual(group.imageIconData, png)
+        for icon in ["K", "🦞", "data:image/png;base64,!", "data:text/plain;base64,aGk="] {
+            XCTAssertNil(SidebarGroup(id: "repo", kind: .repository, label: "Repo", icon: icon, sessions: []).imageIconData)
+        }
+    }
     func testQuickChatActionMovesToHeaderOnlyWhenQuickChatsExist() {
         let session = SidebarSession(agentId: "chat", title: "A chat", kind: .folder, status: .idle)
         var group = SidebarGroup(id: "chats", kind: .quickChats, label: "Chats", sessions: [])

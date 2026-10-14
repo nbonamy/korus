@@ -7,7 +7,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 
 export type AgentPromptManagerOptions = {
   getSnapshot: () => AppSnapshot;
-  driverForAgent: (agent: Agent) => AgentBackendDriver;
+  driverForAgent: (agent: Agent, expectedSessionId?: string | null) => AgentBackendDriver;
   applyEvent: (event: BackendEvent) => void;
   persistSnapshot: () => Promise<unknown>;
   setNewConversationTitle: (agentId: string, wasNewSession: boolean) => void;
@@ -26,14 +26,14 @@ export class AgentPromptManager {
     return canStartPrompt(agent);
   }
 
-  sendAndWaitForAcceptance(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<void> {
-    return this.sendWithReceipt(agent, prompt, options).then(() => undefined);
+  sendAndWaitForAcceptance(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null): Promise<void> {
+    return this.sendWithReceipt(agent, prompt, options, expectedSessionId).then(() => undefined);
   }
 
-  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult> {
+  sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions, expectedSessionId?: string | null): Promise<BackendSendResult> {
     if (!canStartPrompt(agent)) return Promise.reject(new PromptRejectedError('Agent is busy. Try the review decision again when idle.'));
     return new Promise((resolve, reject) => {
-      this.start(agent, prompt, options, undefined, { resolve, reject });
+      this.start(agent, prompt, options, undefined, { resolve, reject, expectedSessionId });
     });
   }
 
@@ -97,7 +97,7 @@ export class AgentPromptManager {
     this.inFlightQueuedPrompts.clear();
   }
 
-  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void }): AppSnapshot {
+  private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void; expectedSessionId?: string | null }): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     if (this.options.isEngineConnected?.(agent) === false) {
       acceptance?.reject(new PromptRejectedError('Engine is not connected. Reconnect in Settings.'));
@@ -115,7 +115,7 @@ export class AgentPromptManager {
     try {
       return sendAgentPrompt(
         snapshot,
-        this.options.driverForAgent(agent),
+        acceptance?.expectedSessionId !== undefined ? this.options.driverForAgent(agent, acceptance.expectedSessionId) : this.options.driverForAgent(agent),
         agent.id,
         prompt,
         promptOptions,

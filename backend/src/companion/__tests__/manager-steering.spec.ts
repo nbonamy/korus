@@ -3,6 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PromptRejectedError } from '../../agents/prompt-rejected';
+import { appRpcErrorCodes } from '@workspace/core/backend-protocol/rpc';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import type { Agent } from '@workspace/core/contracts';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import { codexBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { companionTarget } from '@workspace/core/companion-protocol';
@@ -23,7 +27,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 
-async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer = false) {
+async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer = false, beforeDispatch?: (agent: Agent) => void) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-steering-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
@@ -49,7 +53,9 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   cleanup.push(() => server.close());
   const backend: CompanionBackendPort = {
     async request<Result>(method: string, params?: unknown): Promise<Result> {
+      if (method === backendMethods.agentPromptSteer) beforeDispatch?.(agent);
       const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
+      if (response && 'error' in response && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError(response.error.message);
       if (!response || !('result' in response)) throw new Error('Backend request failed');
       return response.result as Result;
     },
@@ -69,6 +75,14 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it.each(['idle', 'working'] as const)('rejects a session replaced after gateway admission without dispatching (%s)', async status => {
+    const f = await fixture(status, false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    const command = { ...f.command, attachments: [{ type: 'file', name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('note').toString('base64') }] };
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'rejected' });
+  });
   it('records an engine-disconnected rejection without dispatching or locking the command as uncertain', async () => {
     const f = await fixture('idle');
     f.snapshot.providerConnections = [];

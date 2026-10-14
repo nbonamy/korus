@@ -49,6 +49,12 @@ struct SidebarGroup: Identifiable, Hashable, Codable, Sendable {
 
     var hasQuickChats: Bool { kind == .quickChats && !sessions.isEmpty }
 
+    var imageIconData: Data? {
+        guard let icon, icon.hasPrefix("data:image/"), let comma = icon.firstIndex(of: ","),
+              icon[..<comma].hasSuffix(";base64"), icon.utf8.count <= 4 * 1024 * 1024 else { return nil }
+        return Data(base64Encoded: String(icon[icon.index(after: comma)...]))
+    }
+
     /// Custom letters get a badge; default folders and pictographs stand alone.
     var usesIconBadge: Bool {
         guard kind != .quickChats else { return false }

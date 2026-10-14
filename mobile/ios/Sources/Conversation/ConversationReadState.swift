@@ -7,8 +7,8 @@ struct ConversationReadState {
         rendered = .init(agentId: agentId, revision: revision)
     }
 
-    func acknowledgement(activeAgentId: String?, foreground: Bool, drawerOpen: Bool, reviewOpen: Bool, imageOpen: Bool = false) -> Acknowledgement? {
-        guard foreground, !drawerOpen, !reviewOpen, !imageOpen, let rendered, rendered.agentId == activeAgentId else { return nil }
+    func acknowledgement(activeAgentId: String?, foreground: Bool, drawerOpen: Bool, reviewOpen: Bool, imageOpen: Bool = false, unlocked: Bool = true) -> Acknowledgement? {
+        guard unlocked, foreground, !drawerOpen, !reviewOpen, !imageOpen, let rendered, rendered.agentId == activeAgentId else { return nil }
         return rendered
     }
 }

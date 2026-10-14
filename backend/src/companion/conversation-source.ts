@@ -7,6 +7,7 @@ type Followed = { revision: number; touchedAt: number; apply(event: unknown): vo
 
 /** A tracked copy is trusted this long without news; after that the provider is asked again. */
 const maxAgeMs = 30_000;
+const maxConversations = 64;
 
 /**
  * The authoritative conversation for each agent, as the provider publishes it. Codex re-publishes its whole
@@ -21,10 +22,15 @@ export class ConversationSource {
   constructor(private readonly load: (agentId: string) => Promise<void>, private readonly now: () => number = Date.now) {}
 
   observe(event: AppBackendEvent): void {
+    if (event.type === 'snapshot.updated') {
+      const agents = new Set(event.payload.agents.map(agent => agent.id));
+      for (const id of this.frames.keys()) if (!agents.has(id)) this.forget(id);
+      return;
+    }
     if (event.type === 'codex.conversationSnapshotChanged') {
-      this.frames.set(event.agentId, event); this.followed.delete(event.agentId);
+      this.retain(event); this.followed.delete(event.agentId);
     } else if (event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') {
-      this.frames.set(event.agentId, event);
+      this.retain(event);
       const replica = event.type === 'claude.conversationSnapshotChanged'
         ? createClaudeConversationReplica(event.payload.snapshot)
         : createAntigravityConversationReplica(event.payload.snapshot);
@@ -36,6 +42,18 @@ export class ConversationSource {
       try { entry.apply(event.payload.event); entry.revision = event.payload.revision; entry.touchedAt = this.now(); }
       catch { this.followed.delete(event.agentId); }
     }
+  }
+
+  clear(): void { this.frames.clear(); this.followed.clear(); }
+
+  private forget(agentId: string): void { this.frames.delete(agentId); this.followed.delete(agentId); }
+
+  private retain(event: CompanionReset): void {
+    // Provider routing data only: daemon app snapshots must not stay alive with the transcript.
+    const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
+    this.frames.delete(agentId);
+    this.frames.set(agentId, { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as CompanionReset);
+    while (this.frames.size > maxConversations) this.forget(this.frames.keys().next().value!);
   }
 
   async read(agentId: string): Promise<CompanionReset> {

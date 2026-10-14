@@ -119,8 +119,13 @@ repeating the provider operation. Conversation reads serve the provider's own re
 Codex is asked each time (it republishes its whole snapshot), while Claude and
 Antigravity are followed from their reset and revisioned updates, because asking again
 re-reads the transcript from disk and can discard the turn in flight. A revision gap, or
-a copy that has gone quiet for 30 seconds, sends the read back to the provider. The
-gateway exposes no generic RPC, filesystem or shell forwarding.
+a copy that has gone quiet for 30 seconds, sends the read back to the provider.
+Retained conversation routing data excludes app snapshots, is capped at 64 agents,
+and is pruned against workspace membership; disabling access or stopping the service
+clears it. The gateway exposes no generic RPC, filesystem or shell forwarding.
+Prompt admission carries the captured session identity through remote routing and
+provider preflight. The owning daemon checks it before dispatch; a stale session is
+a confirmed rejection rather than a prompt in a replacement conversation.
 
 The desktop's remote-access keep-awake preference covers both Codex remote access
 and Korus mobile access. The companion publishes durable access enablement into

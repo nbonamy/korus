@@ -27,13 +27,15 @@ struct CompanionApp: App {
                         model.setActive(false)
                     case .active:
                         lock.didReturn()
-                        if lock.isLocked { Task { await lock.unlock() } } else { model.setActive(true) }
+                        model.setUnlocked(!lock.isLocked)
+                        model.setActive(true)
+                        if lock.isLocked { Task { await lock.unlock() } }
                     default: break
                     }
                 }
                 // The link to the laptop is held only while the screen can be seen.
-                .onChange(of: lock.isLocked) { _, locked in
-                    if !locked && scenePhase == .active { model.setActive(true) }
+                .onChange(of: lock.isLocked, initial: true) { _, locked in
+                    model.setUnlocked(!locked)
                 }
         }
     }

@@ -169,7 +169,7 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { skills: [{ ...skill, path: '/private/other.md' }] } })).rejects.toThrow('Skill');
     expect(f.port.submit).not.toHaveBeenCalled();
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', '$review', 'mobile:phone', command.options);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, '$review', 'mobile:phone', command.options);
     f.port.skills.mockResolvedValue([{ ...skill, enabled: false }]);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID() })).rejects.toThrow('Skill');
     // A receipt lookup stays idempotent even if the skill has since been disabled.
@@ -375,14 +375,14 @@ describe('companion authorization gateway', () => {
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };
     await f.gateway.request('phone', 'prompt.submit', { target, text: '/delegate', clientCommandId: randomUUID(), options: { delegation } });
-    expect(f.port.submit).toHaveBeenLastCalledWith('agent', '/delegate', 'mobile:phone', { delegation });
+    expect(f.port.submit).toHaveBeenLastCalledWith(target, '/delegate', 'mobile:phone', { delegation });
     await expect(f.gateway.request('phone', 'prompt.submit', { target, text: '/delegate', clientCommandId: randomUUID(), options: { delegation: { startingContext: 'copy' } } })).rejects.toThrow();
   });
   it('forwards composer options with a prompt and treats different options as a different command', async () => {
     const f = fixture(); await f.pair();
     const command = { target, text: 'Plan it', clientCommandId: randomUUID(), options: { model: 'gpt', reasoningEffort: 'high', serviceTier: null, planMode: true } };
     await f.gateway.request('phone', 'prompt.submit', command);
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', 'Plan it', 'mobile:phone', command.options);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, 'Plan it', 'mobile:phone', command.options);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, planMode: false } })).rejects.toThrow('reused');
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), options: { cwd: '/etc' } })).rejects.toThrow();
   });
@@ -391,7 +391,7 @@ describe('companion authorization gateway', () => {
     const photo = { type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: Buffer.from('jpeg').toString('base64') };
     const command = { target, text: '', clientCommandId: randomUUID(), attachments: [photo] };
     expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', '', 'mobile:phone', undefined, [{ ...photo, data: Buffer.from('jpeg') }]);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, '', 'mobile:phone', undefined, [{ ...photo, data: Buffer.from('jpeg') }]);
     // The ledger keeps a fingerprint, never the bytes.
     expect(JSON.stringify(f.saved())).not.toContain(photo.data);
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), text: '', attachments: [] })).rejects.toThrow('text or an attachment');
@@ -423,7 +423,7 @@ describe('companion authorization gateway', () => {
     const command = { target, text: 'Reply once', clientCommandId: randomUUID() };
     const results = await Promise.all([f.gateway.request('phone', 'prompt.submit', command), f.gateway.request('phone', 'prompt.submit', command)]);
     expect(results).toEqual([expect.objectContaining({ state: 'accepted' }), expect.objectContaining({ state: 'accepted' })]);
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', 'Reply once', 'mobile:phone', undefined);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(target, 'Reply once', 'mobile:phone', undefined);
     const restored = new CompanionGateway('host', f.saved(), f.port);
     expect(await restored.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'accepted' });
     await restored.request('phone', 'prompt.submit', command);
@@ -472,7 +472,7 @@ describe('companion authorization gateway', () => {
     const f = fixture(); await f.pair();
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
     await f.gateway.request('phone', 'prompt.submit', { target: remote, text: 'Remote prompt', clientCommandId: randomUUID() });
-    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('remote-agent', 'Remote prompt', 'mobile:phone', undefined);
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith(remote, 'Remote prompt', 'mobile:phone', undefined);
   });
   describe('starting a chat in a repository', () => {
     const repository = { kind: 'git' as const, folder: '/code/repo', repositoryName: 'repo', repositoryRoot: '/code/repo', primaryWorktreeRoot: '/code/repo', branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: '' };

@@ -3,16 +3,19 @@
 struct ConversationLoadingState {
     private var fetching = false
     private var awaitingTranscript = false
+    private(set) var failed = false
     var isLoading: Bool { fetching || awaitingTranscript }
 
     mutating func select() {
         fetching = false
         awaitingTranscript = false
+        failed = false
     }
 
     mutating func update(fetching: Bool, failed: Bool, hasAgent: Bool) {
         if fetching && !self.fetching { awaitingTranscript = true }
         self.fetching = fetching
+        self.failed = failed && hasAgent && !fetching
         if !fetching && (failed || !hasAgent) { awaitingTranscript = false }
     }
 

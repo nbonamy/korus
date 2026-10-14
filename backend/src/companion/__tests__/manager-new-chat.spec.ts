@@ -18,7 +18,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 
-async function fixture() {
+async function fixture(beforeCreationReturns: (id: string) => Promise<void> = async () => {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-new-chat-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
@@ -32,6 +32,7 @@ async function fixture() {
     { name: 'feature/available', isDefault: false },
   ];
   const calls: { method: string; params: unknown }[] = [];
+  let chatCount = 0; let quickCount = 0;
   const backend = { async request<Result>(method: string, params?: unknown): Promise<Result> {
     calls.push({ method, params });
     if (method === backendMethods.snapshotGet) return { snapshot } as Result;
@@ -39,13 +40,17 @@ async function fixture() {
     if (method === backendMethods.sourceWorktreeCreate) return { name: 'feature', path: '/code/repo-feature' } as Result;
     if (method === backendMethods.agentCreate) {
       const { input } = params as { input: { folder: string; backend: 'codex' | 'claude'; teamId: string } };
-      snapshot.agents.push({ id: 'new-chat', teamId: input.teamId, name: 'New', backend: input.backend, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
-      return snapshot as Result;
+      const id = ++chatCount === 1 ? 'new-chat' : `new-chat-${chatCount}`;
+      snapshot.agents.push({ id, teamId: input.teamId, name: 'New', backend: input.backend, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
+      await beforeCreationReturns(id);
+      return { ...snapshot, activeAgentId: id } as Result;
     }
     if (method === backendMethods.agentQuickChatCreate) {
       const { input } = params as { input: { teamId: string; backend: 'codex' | 'claude' } };
-      snapshot.agents.push({ id: 'quick-chat', teamId: input.teamId, name: null, backend: input.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
-      return snapshot as Result;
+      const id = ++quickCount === 1 ? 'quick-chat' : `quick-chat-${quickCount}`;
+      snapshot.agents.push({ id, teamId: input.teamId, name: null, backend: input.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
+      await beforeCreationReturns(id);
+      return { ...snapshot, activeAgentId: id } as Result;
     }
     if (method === backendMethods.agentUpdate) {
       const { input } = params as { input: { id: string; backend: 'codex' | 'claude' } };
@@ -84,6 +89,15 @@ async function fixture() {
 }
 
 describe('mobile chat creation', () => {
+  it.each(['repository', 'quick'] as const)('returns each concurrent %s creation to the phone that requested it', async kind => {
+    let arrived = 0; let release!: () => void;
+    const barrier = new Promise<void>(resolve => { release = resolve; });
+    const f = await fixture(async () => { if (++arrived === 2) release(); await barrier; });
+    const results = await Promise.all(kind === 'repository' ? [f.create({}), f.create({})] : [f.quickChat(), f.quickChat()]);
+    expect(results).toStrictEqual(kind === 'repository'
+      ? [{ state: 'success', agentId: 'new-chat' }, { state: 'success', agentId: 'new-chat-2' }]
+      : [{ state: 'success', agentId: 'quick-chat' }, { state: 'success', agentId: 'quick-chat-2' }]);
+  });
   it('lists the desktop branch catalog without exposing checkout paths, routed to the owning host', async () => {
     const f = await fixture();
     f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';

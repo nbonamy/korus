@@ -491,7 +491,7 @@ describe('AppBackendServer', () => {
 
   it.each([
     { method: 'agent/prompt/send', delivery: {} },
-    { method: 'agent/prompt/steer', delivery: { startIfIdle: true } },
+    { method: 'agent/prompt/steer', delivery: { startIfIdle: true, expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
   ])('routes remote agent prompts to the owning remote daemon ($method)', async ({ method, delivery }) => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];

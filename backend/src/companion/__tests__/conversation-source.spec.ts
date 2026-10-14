@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { ConversationSource } from '../conversation-source';
+import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 
 const snapshot = (sessionId = 'session', messages: unknown[] = []) => ({ agentId: 'agent', sessionId, activeTurnId: null, turnIds: [], turns: [], messages, answeredClientRequestIds: [],
   busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null });
@@ -11,6 +12,22 @@ const userMessage = (id: string, text: string) => ({ id, agentId: 'agent', role:
 const messages = (frame: { payload: { snapshot: unknown } }) => (frame.payload.snapshot as { messages: { id: string }[] }).messages.map((message) => message.id);
 
 describe('conversation source', () => {
+  it('forgets removed agents and bounds inactive conversations without retaining app snapshots', async () => {
+    let source!: ConversationSource;
+    const load = vi.fn(async (id: string) => { source.observe(reset(1, snapshot(), 'claude.conversationSnapshotChanged', id)); });
+    source = new ConversationSource(load);
+    const app = createTestSnapshot();
+    source.observe({ ...reset(1), snapshot: app } as AppBackendEvent);
+    expect(await source.read('agent')).not.toHaveProperty('snapshot');
+    source.observe({ type: 'snapshot.updated', payload: app, seq: 2, occurredAt: 'now' });
+    await source.read('agent');
+    expect(load).toHaveBeenCalledExactlyOnceWith('agent');
+    for (let i = 0; i < 65; i++) source.observe(reset(1, snapshot(), 'claude.conversationSnapshotChanged', `chat-${i}`));
+    await source.read('chat-64');
+    expect(load).toHaveBeenCalledTimes(1);
+    await source.read('chat-0');
+    expect(load).toHaveBeenLastCalledWith('chat-0');
+  });
   it('rehydrates a bounded provider window instead of replaying accumulated history on reconnect', async () => {
     let source!: ConversationSource;
     const recent = snapshot('session', [userMessage('recent', 'last')]);

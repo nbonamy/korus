@@ -8,6 +8,37 @@ final class ComposerDraftTests: XCTestCase {
     private let second = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "b", sessionId: "two")
     private func photo(_ count: Int = 10) -> ComposerAttachment { .init(name: "Photo.jpg", mimeType: "image/jpeg", type: .image, data: Data(repeating: 1, count: count)) }
 
+    func testFirstSendKeepsItsDraftAndLateReceiptWhenTheSessionInitializes() throws {
+        let drafts = ComposerDrafts()
+        let empty = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "a", sessionId: nil)
+        drafts.select(empty); drafts.text = "Inspect this"
+        drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])
+        let send = try XCTUnwrap(drafts.beginSend())
+        drafts.select(second)
+        drafts.select(first)
+        drafts.completeSend(.init(requestId: send.requestId, status: .unknown))
+        XCTAssertEqual(drafts.text, "Inspect this")
+        XCTAssertEqual(drafts.items.count, 1)
+        XCTAssertNotNil(drafts.error)
+        drafts.completeSend(.init(requestId: send.requestId, status: .accepted))
+        XCTAssertEqual(drafts.text, "")
+        XCTAssertTrue(drafts.items.isEmpty)
+        XCTAssertNil(drafts.error)
+    }
+
+    func testAnEstablishedSessionReplacementNeverInheritsAnUncertainSend() throws {
+        let drafts = ComposerDrafts(); drafts.select(first); drafts.text = "Old conversation"
+        let send = try XCTUnwrap(drafts.beginSend())
+        let replacement = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "a", sessionId: "replacement")
+        drafts.select(replacement)
+        drafts.completeSend(.init(requestId: send.requestId, status: .unknown))
+        XCTAssertEqual(drafts.text, "")
+        XCTAssertNil(drafts.error)
+        drafts.select(first)
+        XCTAssertEqual(drafts.text, "Old conversation")
+        XCTAssertNotNil(drafts.error)
+    }
+
     func testLateAcceptanceClearsOnlyOriginalAttachmentAndPreservesEditedDraft() throws {
         let drafts = ComposerDrafts(); drafts.select(first); drafts.text = "Original"
         drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])

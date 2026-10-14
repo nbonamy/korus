@@ -13,6 +13,16 @@ import { CodexBackendDriver } from '../codex/codex-driver';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 describe('BackendDriverRpc', () => {
+  it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
+    const agent = { ...createAgent(), backendSession: { kind: 'codex' as const, threadId: 'original' } };
+    const sendPrompt = vi.fn(); const steerPrompt = vi.fn();
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]), undefined,
+      async () => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    try {
+      await expect(rpc.handle(method, { agent, prompt: 'Keep this in the original chat', expectedSessionId: JSON.stringify({ kind: 'codex', threadId: 'original' }) })).rejects.toThrow('stale');
+      expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
+    } finally { await rpc.close(); }
+  });
   it('routes bounded content reads through the owning driver and rejects invalid offsets', async () => {
     const snapshot = createTestSnapshot(); const agent = { ...createAgent(), backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
     snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];

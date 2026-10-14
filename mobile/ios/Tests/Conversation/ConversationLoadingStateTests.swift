@@ -2,6 +2,20 @@ import XCTest
 @testable import CompanionConversation
 
 final class ConversationLoadingStateTests: XCTestCase {
+    func testLoadFailureIsVisibleUntilRetryAndSuccessfulRendering() {
+        var state = ConversationLoadingState()
+        state.update(fetching: true, failed: false, hasAgent: true)
+        state.update(fetching: false, failed: true, hasAgent: true)
+        XCTAssertTrue(state.failed)
+        XCTAssertFalse(state.isLoading)
+        state.select()
+        XCTAssertFalse(state.failed)
+        state.update(fetching: true, failed: false, hasAgent: true)
+        state.update(fetching: false, failed: false, hasAgent: true)
+        state.rendered()
+        XCTAssertFalse(state.failed)
+        XCTAssertFalse(state.isLoading)
+    }
     func testCachedSelectionDoesNotShowLoadingWhileTheWebViewSwapsFrames() {
         var state = ConversationLoadingState()
         state.select()

@@ -110,7 +110,7 @@ export type EngineCommand =
   | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
-export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; post(event: EngineEvent): void };
+export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; post(event: EngineEvent): void };
 
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
@@ -121,7 +121,7 @@ export function createEngine(port: EnginePort) {
   const pairingError = ref('');
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
-  let foreground = true;
+  let foreground = port.initialActive ?? true;
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
@@ -338,7 +338,11 @@ export function createEngine(port: EnginePort) {
       }
       case 'activity':
         foreground = command.active;
-        if (command.active) { await port.connector.resume?.(); return state.reconnect(); }
+        if (command.active) {
+          await port.connector.resume?.();
+          if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) return connect(laptops.value[0]!.id);
+          return state.reconnect();
+        }
         state.disconnect(); return port.connector.suspend?.();
       case 'reconnect': return state.reconnect();
       case 'forget': {
@@ -401,7 +405,7 @@ export function createEngine(port: EnginePort) {
       await port.connector.initialize?.();
       laptops.value = [...port.connector.laptops];
       publish();
-      if (laptops.value.length === 1) await connect(laptops.value[0]!.id);
+      if (foreground && laptops.value.length === 1) await connect(laptops.value[0]!.id);
       startup.value = 'ready';
     } catch { startup.value = 'error'; }
     publish();

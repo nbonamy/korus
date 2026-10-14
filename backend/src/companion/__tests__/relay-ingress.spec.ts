@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { createCompanionRelay } from '../relay';
@@ -7,20 +7,21 @@ import { createCompanionRelay } from '../relay';
 /** Real WebSocket upgrade and multistream negotiation; stop before Noise/provider traffic. */
 function negotiate(port: number, source?: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
+    let admitted = false;
+    const error = (cause: NodeJS.ErrnoException) => cause.code === 'ECONNRESET' ? resolve(admitted) : reject(cause);
     const req = request({ host: '127.0.0.1', port, headers: { Connection: 'Upgrade', Upgrade: 'websocket',
       'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
       ...(source ? { 'X-Real-IP': source } : {}) } });
-    req.on('error', reject);
+    req.on('error', error);
     req.on('response', response => { response.resume(); resolve(false); });
     req.on('upgrade', (_response, socket, head) => {
-      let admitted = false;
       socket.setTimeout(2000, () => socket.destroy(new Error('Negotiation timed out')));
-      socket.on('error', reject);
+      socket.on('error', error);
       socket.on('end', () => socket.destroy());
       const receive = (data: Buffer) => { admitted = (data[0]! & 0x0f) === 2; socket.destroy(); };
       socket.on('data', receive);
-      if (head.length) receive(head);
       socket.on('close', () => resolve(admitted));
+      if (head.length) { receive(head); return; }
       const payload = Buffer.from('\x13/multistream/1.0.0\n\x07/noise\n');
       const mask = randomBytes(4);
       socket.write(Buffer.concat([Buffer.from([0x82, 0x80 | payload.length]), mask, Buffer.from(payload.map((byte, i) => byte ^ mask[i % 4]!))]));
@@ -29,6 +30,13 @@ function negotiate(port: number, source?: string): Promise<boolean> {
   });
 }
 describe('relay source admission through WebSocket upgrades', () => {
+  it('treats a reset upgrade socket as denied rather than a test failure', async () => {
+    const server = createServer();
+    server.on('upgrade', (_request, socket) => { (socket as import('node:net').Socket).resetAndDestroy(); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try { expect(await negotiate((server.address() as import('node:net').AddressInfo).port)).toBe(false); }
+    finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+  });
   it('limits each trusted proxy source independently and rejects missing or forged address lists', async () => {
     const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', trustedProxy: true });
     const port = Number(relay.getMultiaddrs()[0]!.getComponents().find(part => part.name === 'tcp')!.value);

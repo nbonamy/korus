@@ -2,6 +2,7 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
+import { requestCompanionStream } from './companion-request';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
@@ -12,7 +13,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
@@ -90,20 +91,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     return stream;
   }
   async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
-    const stream = await openStream(host, companionProtocol);
-    stream.maxReadBufferLength = companionResponseLimit + 4; stream.maxWriteBufferLength = 1024 * 1024; stream.inactivityTimeout = 20_000;
-    const id = crypto.randomUUID(); const decoder = new CompanionFrameDecoder(companionResponseLimit);
-    try {
-      stream.send(encodeCompanionFrame({ v: 1, id, method, args }));
-      await stream.close({ signal: AbortSignal.timeout(5000) });
-      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
-        if (!value || typeof value !== 'object' || !('v' in value) || value.v !== 1 || !('id' in value) || value.id !== id) throw new Error('Invalid companion response.');
-        if ('error' in value) throw new Error('Laptop denied the operation or is unavailable.');
-        if (!('result' in value)) throw new Error('Invalid companion result.');
-        return value.result as Result;
-      }
-      throw new Error('Connection closed without a receipt.');
-    } finally { stream.abort(new Error('Request complete.')); }
+    return requestCompanionStream<Result>(await openStream(host, companionProtocol), method, args);
   }
   /** Trust the pinned relay for introduction, then authenticate this laptop identity through Noise. */
   async function resolve(networkNode: Libp2p, config: RelayConfig, code: string): Promise<string> {

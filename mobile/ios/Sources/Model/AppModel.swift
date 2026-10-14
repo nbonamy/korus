@@ -12,9 +12,11 @@ final class AppModel {
     var pushRegistrationFailed = false
     private var pendingNotification: ChatNotification?
     private var foreground = true
+    private var screenUnlocked = false
     var startup: EngineState.Startup = .loading
     private var conversationLoading = ConversationLoadingState()
     var loadingConversation: Bool { conversationLoading.isLoading }
+    var conversationLoadFailed: Bool { conversationLoading.failed }
     var connection: ConnectionState = .unpaired
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -132,7 +134,7 @@ final class AppModel {
     private func apply(_ state: EngineState) {
         set(\.startup, state.startup)
         set(\.pushRegistrationFailed, state.pushRegistrationFailed ?? false)
-        conversationLoading.update(fetching: state.loading, failed: !state.error.isEmpty, hasAgent: !state.agentId.isEmpty)
+        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty)
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
         set(\.failedRequest, state.failedRequest)
@@ -207,6 +209,13 @@ final class AppModel {
     }
 
     func select(team id: String) { dictation.cancel(); command("selectTeam", ["id": id]) }
+
+    func retryConversation() {
+        guard let id = activeAgentID, connection == .connected else { return }
+        conversationLoading.select()
+        transcript.beginSelection()
+        command("selectAgent", ["id": id])
+    }
 
     func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
 
@@ -310,12 +319,12 @@ final class AppModel {
     func forget() { command("forget") }
     private func acknowledgeRead() {
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
-            foreground: UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen, imageOpen: presentedImage != nil) else { return }
+            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
         command("read", ["agentId": read.agentId, "revision": read.revision])
     }
 
     private var visibleNotificationTarget: ChatNotification.Target? {
-        guard foreground, !drawerOpen, !reviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
+        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
         return .init(hostId: target.hostId, locationId: target.locationId, teamId: target.teamId, agentId: target.agentId, sessionId: target.sessionId)
     }
     func receive(_ notification: ChatNotification) {
@@ -335,7 +344,13 @@ final class AppModel {
         foreground = active
         if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
-        command("activity", ["active": active])
+        command("activity", ["active": active && screenUnlocked])
+    }
+    func setUnlocked(_ unlocked: Bool) {
+        screenUnlocked = unlocked
+        if !unlocked { dictation.cancel(); notifications.clear() }
+        command("activity", ["active": unlocked && foreground])
+        if unlocked { acknowledgeRead() }
     }
 }
 
