@@ -3,9 +3,12 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import type { AgentBackend } from '@workspace/core/contracts';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId } from '@workspace/core/companion-protocol';
-import { projectCompanionWorkspace } from '@workspace/core/companion-projection';
+import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
+import { ChatCreations } from './chat-creations';
 import type { CompanionUpload } from './uploads';
 import { createPairingExchange, generatePairingCode, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 
@@ -25,6 +28,11 @@ const promptOptionsSchema = z.object({
 }).strict();
 const reviewSchema = z.object({ agentId: identity, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
   threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional() }).strict() }).strict();
+/** A branch name git accepts and no option or path trick can hide in. */
+const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
+const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), worktree: z.object({ branchName }).strict().optional() }).strict();
+/** A new chat as the laptop runs it: the paths are real, resolved from what the phone named. */
+type NewChatRequest = { teamId: string; remoteConnectionId?: string; backend: AgentBackend; repositoryName: string; repositoryRoot: string; defaultBranch?: string; worktree?: { branchName: string } };
 type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
 const maxUploadBytes = 2_500_000;
 const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string().min(1).max(200), mimeType: z.string().max(120), data: z.string().max(Math.ceil(maxUploadBytes * 4 / 3) + 4).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict();
@@ -42,6 +50,8 @@ export type GatewayPort = {
   models(agentId: string): Promise<unknown[]>;
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
+  createChat(request: NewChatRequest): Promise<string>;
+  setBackend(agentId: string, backend: AgentBackend): Promise<void>;
   closePreview(agentId: string): Promise<Omit<CompanionClosePreview, 'target'>>;
   close(agentId: string, input?: CompanionCloseOptions): Promise<void>;
   setApprovalPreset(agentId: string, preset: string): Promise<void>;
@@ -58,6 +68,7 @@ export class CompanionGateway {
   private readonly invitations = new Map<string, { code: string; expiresAt: number; attempts: number; sessions: Map<string, { confirm: Uint8Array; name: string }>; pendingId?: string }>();
   private readonly pending = new Map<string, CompanionPending & { channel: string }>();
   private mutations = Promise.resolve();
+  private readonly creations = new ChatCreations();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
   get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ channel: _channel, ...pending }) => pending); }
@@ -252,6 +263,35 @@ export class CompanionGateway {
       if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') throw new Error('Stop the agent before restarting.');
       await this.port.restart(target.agentId);
       return {};
+    }
+    if (method === 'agent.create') {
+      const input = newChatSchema.parse(args);
+      const workspace = await this.port.workspace();
+      this.requireGrant(peerId, grant);
+      const team = workspace.teams.find((candidate) => candidate.id === input.teamId);
+      if (!team) throw new Error('Team not found.');
+      if (workspace.backends && !workspace.backends[team.id]?.includes(input.backend)) throw new Error('That engine is not available.');
+      const repository = workspace.agents.flatMap((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot) === input.repositoryId ? [agent.workspace] : [])[0];
+      if (!repository) throw new Error('Repository not found.');
+      const request: NewChatRequest = { teamId: team.id, ...(team.remoteConnectionId ? { remoteConnectionId: team.remoteConnectionId } : {}), backend: input.backend,
+        repositoryName: repository.repositoryName, repositoryRoot: repository.primaryWorktreeRoot, ...(repository.defaultBranch ? { defaultBranch: repository.defaultBranch } : {}),
+        ...(input.worktree ? { worktree: input.worktree } : {}) };
+      return { creationId: this.creations.start(peerId, () => this.port.createChat(request)) };
+    }
+    if (method === 'agent.backend.set') {
+      const { agentId, backend } = z.object({ agentId: identity, backend: z.enum(['codex', 'claude', 'antigravity']) }).strict().parse(args);
+      const workspace = await this.port.workspace();
+      this.requireGrant(peerId, grant);
+      const agent = workspace.agents.find((candidate) => candidate.id === agentId);
+      if (!agent) throw new Error('Agent not found.');
+      if (!canSelectAgentBackend(agent)) throw new Error('The engine can only change before the first prompt.');
+      if (workspace.backends && !workspace.backends[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+      await this.port.setBackend(agentId, backend);
+      return {};
+    }
+    if (method === 'agent.create.status') {
+      const { creationId } = z.object({ creationId: z.string().uuid() }).strict().parse(args);
+      return this.creations.status(peerId, creationId);
     }
     if (method === 'agent.interrupt') {
       const { agentId } = z.object({ agentId: identity }).strict().parse(args);

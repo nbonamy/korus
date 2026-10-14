@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { CompanionGateway, type GatewayState } from '../gateway';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { opaquePath } from '@workspace/core/companion-projection';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
   teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'ssh-host' }],
@@ -25,7 +26,7 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now);
@@ -314,5 +315,86 @@ describe('companion authorization gateway', () => {
     const remote = { hostId: 'host', locationId: 'ssh-host', teamId: 'remote-team', agentId: 'remote-agent', sessionId: null };
     await f.gateway.request('phone', 'prompt.submit', { target: remote, text: 'Remote prompt', clientCommandId: randomUUID() });
     expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('remote-agent', 'Remote prompt', 'mobile:phone', undefined);
+  });
+  describe('starting a chat in a repository', () => {
+    const repository = { kind: 'git' as const, folder: '/code/repo', repositoryName: 'repo', repositoryRoot: '/code/repo', primaryWorktreeRoot: '/code/repo', branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: '' };
+    const repositoryId = opaquePath('/code/repo');
+    async function ready() {
+      const f = fixture(); await f.pair();
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'], 'remote-team': ['claude'] },
+        agents: [{ ...workspace.agents[0]!, workspace: repository }, { ...workspace.agents[1]!, workspace: { ...repository, repositoryRoot: '/srv/remote', primaryWorktreeRoot: '/srv/remote', repositoryName: 'remote-repo' } }] });
+      return f;
+    }
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+    it('creates in the default checkout or in a new worktree, with real paths the phone never saw', async () => {
+      const f = await ready();
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
+      expect(f.port.createChat).toHaveBeenCalledWith({ teamId: 'team', backend: 'claude', repositoryName: 'repo', repositoryRoot: '/code/repo', defaultBranch: 'main' });
+      await settled();
+      expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'created' });
+      await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'codex', worktree: { branchName: 'feature/login' } });
+      expect(f.port.createChat).toHaveBeenLastCalledWith(expect.objectContaining({ backend: 'codex', worktree: { branchName: 'feature/login' } }));
+    });
+    it('places a chat of a remote team on its own laptop', async () => {
+      const f = await ready();
+      await f.gateway.request('phone', 'agent.create', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), backend: 'claude' });
+      expect(f.port.createChat).toHaveBeenCalledWith(expect.objectContaining({ remoteConnectionId: 'ssh-host', repositoryRoot: '/srv/remote' }));
+    });
+    it.each([
+      ['an unknown repository', { repositoryId: 'nope' }],
+      ['a repository of another team', { teamId: 'remote-team' }],
+      ['an unknown team', { teamId: 'ghost' }],
+      ['an engine the team cannot use', { teamId: 'remote-team', repositoryId: opaquePath('/srv/remote'), backend: 'codex' }],
+      ['an unsupported engine', { backend: 'other' }],
+      ...['', '-rf', '../x', 'a..b', 'a b', 'a/', 'x.lock', 'a//b', '/abs'].map((branchName): [string, object] => [`the branch ${JSON.stringify(branchName)}`, { worktree: { branchName } }]),
+      ['an extra field', { folder: '/etc' }],
+    ] satisfies [string, object][])('rejects %s', async (_name: string, change: object) => {
+      const f = await ready();
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude', ...change })).rejects.toThrow();
+      expect(f.port.createChat).not.toHaveBeenCalled();
+    });
+    it('needs a paired phone, reports a failure, and answers only the phone that started it', async () => {
+      const f = await ready();
+      await expect(f.gateway.request('stranger', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' })).rejects.toThrow('authorized');
+      f.port.createChat.mockRejectedValueOnce(new Error('Branch exists'));
+      const { creationId } = await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' }) as { creationId: string };
+      await settled();
+      expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'error', error: 'Branch exists' });
+      await expect(f.gateway.request('stranger', 'agent.create.status', { creationId })).rejects.toThrow('authorized');
+      await expect(f.gateway.request('phone', 'agent.create.status', { creationId: randomUUID() })).rejects.toThrow('not found');
+    });
+    it('caps the creations a phone runs at once', async () => {
+      const f = await ready();
+      f.port.createChat.mockImplementation(() => new Promise(() => {}));
+      for (let index = 0; index < 3; index++) await f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' });
+      await expect(f.gateway.request('phone', 'agent.create', { teamId: 'team', repositoryId, backend: 'claude' })).rejects.toThrow('Too many');
+    });
+  });
+  describe('choosing the engine of an empty chat', () => {
+    async function ready(change: object = {}) {
+      const f = fixture(); await f.pair();
+      f.port.workspace.mockResolvedValue({ ...workspace, backends: { team: ['codex', 'claude'] }, agents: [{ ...workspace.agents[0]!, ...change }, workspace.agents[1]!] });
+      return f;
+    }
+    it('switches an agent that has not started yet', async () => {
+      const f = await ready();
+      await f.gateway.request('phone', 'agent.backend.set', { agentId: 'agent', backend: 'claude' });
+      expect(f.port.setBackend).toHaveBeenCalledExactlyOnceWith('agent', 'claude');
+    });
+    it.each([
+      ['a chat that already has a conversation', { backendSession: { kind: 'codex', threadId: 'thread' } }, 'claude'],
+      ['a chat that has sent a prompt', { hasSubmittedPrompt: true }, 'claude'],
+      ['a chat that is working', { status: { type: 'working' } }, 'claude'],
+      ['an engine the laptop cannot use', {}, 'antigravity'],
+    ])('refuses %s', async (_name, change, backend) => {
+      const f = await ready(change);
+      await expect(f.gateway.request('phone', 'agent.backend.set', { agentId: 'agent', backend })).rejects.toThrow();
+      await expect(f.gateway.request('phone', 'agent.backend.set', { agentId: 'ghost', backend: 'claude' })).rejects.toThrow('not found');
+      expect(f.port.setBackend).not.toHaveBeenCalled();
+    });
+    it('needs a paired phone', async () => {
+      const f = fixture();
+      await expect(f.gateway.request('stranger', 'agent.backend.set', { agentId: 'agent', backend: 'claude' })).rejects.toThrow('authorized');
+    });
   });
 });

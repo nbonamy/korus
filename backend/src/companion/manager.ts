@@ -6,7 +6,7 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AgentGitWorkflow, AppSnapshot } from '@workspace/core/contracts';
+import type { AgentGitWorkflow, AppSnapshot, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -131,6 +131,21 @@ export class CompanionManager {
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
       interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
       restart: async (agentId) => { await this.backend.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
+      createChat: async (chat) => {
+        const remote = chat.remoteConnectionId ? { remoteConnectionId: chat.remoteConnectionId } : {};
+        let folder = chat.repositoryRoot;
+        if (chat.worktree) {
+          const worktree = await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: { repoPath: chat.repositoryRoot, branchName: chat.worktree.branchName,
+            ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}), ...remote }, _clientId: 'companion-write' });
+          folder = worktree.path;
+        }
+        const known = new Set((await this.workspace()).agents.map((agent) => agent.id));
+        await this.backend.request(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, _clientId: 'companion-write' });
+        const created = (await this.workspace()).agents.find((agent) => !known.has(agent.id) && agent.folder === folder);
+        if (!created) throw new Error('The chat was not created.');
+        return created.id;
+      },
+      setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },
       closePreview: async (agentId) => {
         const workspace = await this.workspace();
         const agent = workspace.agents.find((agent) => agent.id === agentId);

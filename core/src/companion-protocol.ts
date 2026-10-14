@@ -1,5 +1,5 @@
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { Agent, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
+import type { Agent, AgentBackend, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
@@ -13,7 +13,11 @@ export type CompanionRequestReply = { target: CompanionTarget; id: string; conve
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
 export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree: boolean; branch: string | null; upstream: string | null; hasChanges: boolean };
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; agentRequests?: Record<string, AgentRequest[]> };
+/** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]> };
+/** A new chat in a repository the phone already lists: its default checkout, or a worktree on a new branch. */
+export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; worktree?: { branchName: string } };
+export type CompanionChatCreation = { state: 'running' } | { state: 'success'; agentId: string } | { state: 'error'; error: string };
 /** Shown on the laptop: the phone already knows the relay, so the code is all it needs. */
 export type CompanionInvitation = { code: string; expiresAt: number };
 /** A paired phone. Approval grants everything: every team, reading and sending. */

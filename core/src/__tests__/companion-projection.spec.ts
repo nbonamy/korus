@@ -68,7 +68,7 @@ describe('companion workspace projection', () => {
   it('keeps only presentation fields', () => {
     const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
     expect(first).not.toHaveProperty('mcpSessionId');
-    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults'];
+    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt'];
     expect(Object.keys(first!).every((key) => allowed.includes(key))).toBe(true);
   });
 
@@ -78,5 +78,16 @@ describe('companion workspace projection', () => {
     expect(workspace.agents.map((candidate) => candidate.id)).toStrictEqual(['keep']);
     expect(workspace.repositoryIcons).toStrictEqual({ a: 'b' });
     expect(companionWorkspaceOf({ teams, agents: [agent('keep', {})], general: { repositoryIcons: {} } as unknown as AppSnapshot['general'] }).agents).toHaveLength(1);
+  });
+  it('lists, per team, the engines its laptop can start work with', () => {
+    const connection = (backend: string, connected = true) => ({ backend, installed: true, connected });
+    const workspace = companionWorkspaceOf({
+      teams: [{ id: 'local', name: 'Local', agentIds: [] }, { id: 'remote', name: 'Remote', agentIds: [], remoteConnectionId: 'box' }, { id: 'down', name: 'Down', agentIds: [], remoteConnectionId: 'off' }],
+      agents: [], general: { repositoryIcons: {}, modelFavorites: [] } as unknown as AppSnapshot['general'],
+      providerConnections: [connection('codex'), connection('claude', false)] as unknown as AppSnapshot['providerConnections'],
+      remoteConnections: { connections: [{ id: 'box', status: 'ready', providerConnections: [connection('claude')] }, { id: 'off', status: 'error' }] } as unknown as AppSnapshot['remoteConnections'],
+    });
+    expect(workspace.backends).toStrictEqual({ local: ['codex'], remote: ['claude'], down: [] });
+    expect(projectCompanionWorkspace({ ...workspace, agents: [] }).backends).toStrictEqual(workspace.backends);
   });
 });

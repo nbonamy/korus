@@ -2,11 +2,12 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, BackendDefaults, Team } from './contracts';
 import type { CompanionWorkspace } from './companion-protocol';
+import { enabledAgentBackends, providerConnectionsForTeam } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
 
 const encoder = new TextEncoder();
 /** Stable per path, reveals no directory names, and ends with the folder name so label fallbacks keep working. */
-function opaquePath(value: string): string {
+export function opaquePath(value: string): string {
   const name = value.replace(/\\/gu, '/').split('/').filter(Boolean).at(-1) ?? '';
   return `/${bytesToHex(sha256(encoder.encode(value))).slice(0, 16)}/${name}`;
 }
@@ -40,17 +41,18 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
     const workspace = agent.workspace ? projectWorkspace(agent.workspace) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
-    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, backendDefaults } = agent;
+    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
     return { id, teamId, name, avatar, backend,
       backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
-      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
+      status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   });
-  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], agentRequests: Object.fromEntries(agents.map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])) };
+  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], backends: source.backends ?? {}, agentRequests: Object.fromEntries(agents.map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])) };
 }
 
 /** The laptop's workspace as the desktop sidebar lists it: mission-owned workers stay out of the agent list. */
-export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & Partial<Pick<AppSnapshot, 'missions' | 'agentRequests'>>): CompanionWorkspace {
+export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & Partial<Pick<AppSnapshot, 'missions' | 'providerConnections' | 'remoteConnections' | 'activeTeamId' | 'agentRequests'>>): CompanionWorkspace {
   const workerIds = new Set((snapshot.missions ?? []).flatMap((mission) => mission.execution?.runs.flatMap((run) => run.workerId ? [run.workerId] : []) ?? []));
-  return { agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites };
+  return { agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
+    backends: Object.fromEntries(snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: providerConnectionsForTeam({ ...snapshot, remoteConnections: snapshot.remoteConnections ?? { connections: [] } } as AppSnapshot, team.id) })])) };
 }
