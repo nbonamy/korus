@@ -22,6 +22,20 @@
             />
           </template>
         </FormRow>
+        <FormRow
+          v-if="status.enabled"
+          as="label"
+          :title="$t('surface.settingsDevicePairingSection.keepThisMacAwake')"
+          :description="$t('surface.settingsMobileSection.keepAwakeHint')"
+        >
+          <template #control>
+            <el-switch
+              :model-value="settings.preventSleepWhenRemoteAccessEnabled"
+              :aria-label="$t('surface.settingsDevicePairingSection.keepThisMacAwake')"
+              @update:model-value="updateKeepAwake"
+            />
+          </template>
+        </FormRow>
         <FormRow v-if="status.enabled" :title="$t('surface.settingsMobileSection.pairedDevices')" :description="status.devices.length ? '' : $t('surface.settingsMobileSection.noDevices')">
           <template #control>
             <el-button text size="small" :disabled="busy || !status.connected" @click="pair">{{ $t('surface.settingsMobileSection.addDevice') }}</el-button>
@@ -54,14 +68,26 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import QRCode from 'qrcode';
 import type { CompanionControl, CompanionControlResult, CompanionInvitation, CompanionStatus } from '@workspace/core/companion-protocol';
+import type { UpdateSettingsInput } from '@workspace/core/contracts';
 import { translate } from '../i18n';
 import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
-const props = defineProps<{ control(input: CompanionControl): Promise<CompanionControlResult> }>();
+const props = withDefaults(defineProps<{
+  control(input: CompanionControl): Promise<CompanionControlResult>;
+  settings?: { preventSleepWhenRemoteAccessEnabled: boolean };
+  updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
+}>(), {
+  settings: () => ({ preventSleepWhenRemoteAccessEnabled: true }),
+  updateSettings: async () => undefined,
+});
 const status = ref<CompanionStatus | null>(null);
 const invitation = ref<CompanionInvitation | null>(null);
 const qr = ref(''); const now = ref(Date.now()); const error = ref(''); const busy = ref(false);
 let disposed = false; let polling = false; let timer: ReturnType<typeof setInterval>;
+async function updateKeepAwake(value: boolean | string | number) {
+  try { await props.updateSettings({ general: { preventSleepWhenRemoteAccessEnabled: value === true } }); }
+  catch (cause) { if (!disposed) error.value = cause instanceof Error && cause.message ? cause.message : translate('surface.settingsMobileSection.operationFailed'); }
+}
 async function refresh() {
   if (polling || busy.value || disposed) return;
   polling = true;

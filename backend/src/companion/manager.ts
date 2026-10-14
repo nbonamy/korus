@@ -27,7 +27,10 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('disable') }).strict(), z.object({ action: z.literal('invite') }).strict(),
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
-export type CompanionBackendPort = { request<Result>(method: string, params?: unknown): Promise<Result> };
+export type CompanionBackendPort = {
+  request<Result>(method: string, params?: unknown): Promise<Result>;
+  onAccessChanged?: (enabled: boolean) => void;
+};
 type Relay = { origin: string; peerId: string };
 
 /** The relay is deployment configuration: the operator sets it once and users only pair phones. */
@@ -112,7 +115,11 @@ export class CompanionManager {
     await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: origin, relayPeerId: peerId }));
     await this.connector.start(origin, peerId);
   }
-  async stop() { await this.ready?.catch(() => {}); await this.connector?.stop(); }
+  async stop() {
+    await this.ready?.catch(() => {});
+    await this.connector?.stop();
+    this.backend.onAccessChanged?.(false);
+  }
   private status() {
     return { configured: Boolean(this.relay), enabled: this.saved.enabled, connected: this.connector.connected, hostId: this.gateway.hostId,
       relayOrigin: this.relay?.origin ?? '', devices: this.gateway.grants, pending: this.gateway.pendingRequests,
@@ -217,6 +224,7 @@ export class CompanionManager {
     this.connector = new CompanionOutboundConnector(this.key, this.gateway);
     await this.persist();
     const relay = this.relay;
+    this.backend.onAccessChanged?.(saved.enabled && Boolean(relay));
     if (saved.enabled && relay) await this.connector.start(relay.origin, relay.peerId);
   }
   private async loadConversation(agentId: string): Promise<void> {
@@ -239,7 +247,9 @@ export class CompanionManager {
           const directory = await open(this.directory, 'r');
           try { await directory.sync(); } finally { await directory.close(); }
         }
+        const accessChanged = this.saved.enabled !== next.enabled;
         this.saved = next;
+        if (accessChanged) this.backend.onAccessChanged?.(next.enabled && Boolean(this.relay));
       } finally { await unlink(temporary).catch(() => {}); }
     });
     this.writes = write.catch(() => {});

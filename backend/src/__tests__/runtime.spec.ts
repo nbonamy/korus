@@ -163,6 +163,7 @@ vi.mock('../scheduling/runtime-scheduler', () => ({
 vi.mock('../server', () => ({
   AppBackendServer: class {
     initialize = vi.fn().mockResolvedValue(undefined);
+    setCompanionAccessEnabled = vi.fn();
     requireConnectedEngine = vi.fn(async (backend: string) => backend);
     constructor(options: unknown) { mocks.serverOptions.push(options); }
     emitEvent = mocks.serverEmitEvent;

@@ -13,14 +13,49 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
 import { CompanionManager } from '../manager';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
+import { AppBackendServer } from '../../server';
+import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); vi.clearAllMocks(); });
-async function fixture() {
+async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
-  const manager = new CompanionManager(directory, { request: vi.fn() }, {});
+  const manager = new CompanionManager(directory, { request: vi.fn(), onAccessChanged }, {});
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
+  it('publishes mobile keep-awake policy through enablement, relay failure, preference changes, restart and disable', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
+    const onEvent = vi.fn();
+    const snapshot = createTestSnapshot();
+    const server = new AppBackendServer({ version: 'test', snapshot, onEvent });
+    const port = { request: vi.fn(), onAccessChanged: (enabled: boolean) => server.setCompanionAccessEnabled(enabled) };
+    let manager = new CompanionManager(directory, port, {});
+    const expectPolicy = async (enabled: boolean) => {
+      const clientState = { sourceFolderPath: '', shouldPreventDisplaySleep: false, shouldPreventDisplaySleepForRemoteAccess: enabled };
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'state', method: 'client/state/get' })).resolves.toStrictEqual({ jsonrpc: '2.0', id: 'state', result: clientState });
+      expect(onEvent.mock.lastCall?.[0].clientState).toStrictEqual(clientState);
+    };
+    try {
+      await manager.control({ action: 'status' });
+      transport.start.mockRejectedValueOnce(new Error('Relay unavailable'));
+      await expect(manager.control({ action: 'resume' })).rejects.toThrow('Relay unavailable');
+      await expectPolicy(true);
+      for (const enabled of [false, true]) {
+        await server.handleMessage({ jsonrpc: '2.0', id: 'settings', method: 'settings/update', params: { input: { general: { preventSleepWhenRemoteAccessEnabled: enabled } } } });
+        await expectPolicy(enabled);
+      }
+      await manager.stop();
+      await expectPolicy(false);
+      manager = new CompanionManager(directory, port, {});
+      await manager.control({ action: 'status' });
+      await expectPolicy(true);
+      await manager.control({ action: 'disable' });
+      await expectPolicy(false);
+    } finally {
+      await manager.stop();
+      await server.close();
+    }
+  });
   it('keeps a protected stable host identity across daemon restart and refuses corrupt identity replacement', async () => {
     const { directory, manager } = await fixture(); const first = await manager.control({ action: 'status' });
     expect((await stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600);
@@ -33,12 +68,14 @@ describe('daemon companion persistence', () => {
     expect(await readFile(path.join(directory, 'state.json'), 'utf8')).toBe('{broken');
   });
   it('does not enable access or mutate saved settings when the durable write fails', async () => {
-    const { directory, manager } = await fixture(); await manager.control({ action: 'status' });
+    const onAccessChanged = vi.fn();
+    const { directory, manager } = await fixture(onAccessChanged); await manager.control({ action: 'status' });
     await rm(path.join(directory, 'state.json')); await mkdir(path.join(directory, 'state.json'));
     const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
     await expect(manager.control({ action: 'enable', relayOrigin: 'wss://relay.example', relayPeerId })).rejects.toThrow();
     expect((await manager.control({ action: 'status' })).status).toMatchObject({ enabled: false, connected: false, relayOrigin: 'wss://relay.meetkorus.dev' });
     expect(transport.start).not.toHaveBeenCalled();
+    expect(onAccessChanged).not.toHaveBeenCalledWith(true);
     await expect((await import('node:fs/promises')).readdir(directory)).resolves.toEqual(['state.json']);
     await manager.stop();
   });

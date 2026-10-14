@@ -11,13 +11,18 @@ final class SidebarPresentationTests: XCTestCase {
         XCTAssertFalse(SidebarGroup(id: "repo", kind: .repository, label: "Repo", sessions: [session]).hasQuickChats)
     }
 
-    func testLettersAndFallbackIconsHaveBadgesButPictographsAndImagesDoNot() {
-        for icon in [nil, "", "K", "é", "7"] as [String?] {
+    func testOnlyCustomLetterIconsHaveBadges() {
+        for icon in ["K", "é", "7"] {
             XCTAssertTrue(SidebarGroup(id: "repo", kind: .repository, label: "Repo", icon: icon, sessions: []).usesIconBadge)
         }
         for icon in ["🦞", "⚙️", "⚙", "data:image/png;base64,fixture"] {
             XCTAssertFalse(SidebarGroup(id: "repo", kind: .repository, label: "Repo", icon: icon, sessions: []).usesIconBadge)
         }
         XCTAssertFalse(SidebarGroup(id: "chats", kind: .quickChats, label: "Chats", sessions: []).usesIconBadge)
+        for kind in [GroupKind.repository, .folder] {
+            for icon in [nil, ""] as [String?] {
+                XCTAssertFalse(SidebarGroup(id: "group", kind: kind, label: "Folder", icon: icon, sessions: []).usesIconBadge)
+            }
+        }
     }
 }

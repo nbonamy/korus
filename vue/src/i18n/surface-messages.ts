@@ -854,6 +854,7 @@ export const surfaceMessages = {
     "relayNotConfiguredHint": "Set APP_COMPANION_RELAY_URL and APP_COMPANION_RELAY_PEER_ID, then restart.",
     "allowConnections": "Allow connections",
     "allowConnectionsHint": "Let paired devices connect to this laptop.",
+    "keepAwakeHint": "Prevent sleep when this Mac is plugged in and mobile access is enabled.",
     "pairedDevices": "Paired devices",
     "noDevices": "No paired devices",
     "addDevice": "Add device",

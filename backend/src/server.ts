@@ -167,6 +167,7 @@ export class AppBackendServer {
   private readonly missionArtifacts: MissionArtifactStorage;
   private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
   private remoteControlStatusLoaded = false;
+  private companionAccessEnabled = false;
   private readonly driverRpc?: BackendDriverRpc;
   private readonly onEvent?: (event: AppBackendEvent) => void;
   private readonly onBackendEventApplied?: (event: BackendPublishedEvent) => void;
@@ -2761,6 +2762,12 @@ export class AppBackendServer {
     this.handleBackendEvent(event);
   }
 
+  setCompanionAccessEnabled(enabled: boolean): void {
+    if (this.companionAccessEnabled === enabled) return;
+    this.companionAccessEnabled = enabled;
+    this.emitSnapshotUpdated(this.remoteTeams.clientSnapshotFromKnownRemotes());
+  }
+
   private requireWorkIntegrations(): WorkIntegrationManager {
     if (!this.workIntegrations) {
       throw new Error('Work integrations are not configured.');
@@ -3227,7 +3234,7 @@ export class AppBackendServer {
   }
 
   private clientStateFromSnapshot(snapshot: AppSnapshot): ClientState {
-    return clientStateFromSnapshot(snapshot, this.remoteControlStatus);
+    return clientStateFromSnapshot(snapshot, this.remoteControlStatus, this.companionAccessEnabled);
   }
 
   private async ensureRemoteControlStatus(): Promise<void> {
@@ -3992,13 +3999,13 @@ function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
     (view.payload.toolPart.kind === 'command' || view.payload.toolPart.kind === 'fileChange');
 }
 
-function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus): ClientState {
+function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {
   return {
     sourceFolderPath: snapshot.sourceFolder.path,
     shouldPreventDisplaySleep: snapshot.general.preventSleepWhenAgentsRun &&
       snapshot.agents.some((agent) => isActiveAgentStatus(agent.status)),
     shouldPreventDisplaySleepForRemoteAccess: snapshot.general.preventSleepWhenRemoteAccessEnabled !== false &&
-      remoteControlStatus.status === 'connected',
+      (remoteControlStatus.status === 'connected' || companionAccessEnabled),
   };
 }
 

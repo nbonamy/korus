@@ -49,10 +49,10 @@ struct SidebarGroup: Identifiable, Hashable, Codable, Sendable {
 
     var hasQuickChats: Bool { kind == .quickChats && !sessions.isEmpty }
 
-    /// Match the desktop: letters and fallbacks get a badge; pictographs stand alone.
+    /// Custom letters get a badge; default folders and pictographs stand alone.
     var usesIconBadge: Bool {
         guard kind != .quickChats else { return false }
-        guard let icon, !icon.isEmpty else { return true }
+        guard let icon, !icon.isEmpty else { return false }
         return !icon.hasPrefix("data:image/") && icon.range(of: "\\p{Extended_Pictographic}", options: .regularExpression) == nil
     }
 }

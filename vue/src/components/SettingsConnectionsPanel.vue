@@ -115,7 +115,7 @@
       </article>
     </FormSection>
 
-    <SettingsMobileSection v-if="companionControl" :control="companionControl" />
+    <SettingsMobileSection v-if="companionControl" :control="companionControl" :settings="settings" :update-settings="updateSettings" />
 
     <SettingsDevicePairingSection
       :settings="settings"

@@ -259,6 +259,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => pullRequestMonitor.check(),
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+    onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
       if (!response || 'error' in response) throw new Error('Owning daemon operation failed.');

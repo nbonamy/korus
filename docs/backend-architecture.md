@@ -122,6 +122,11 @@ re-reads the transcript from disk and can discard the turn in flight. A revision
 a copy that has gone quiet for 30 seconds, sends the read back to the provider. The
 gateway exposes no generic RPC, filesystem or shell forwarding.
 
+The desktop's remote-access keep-awake preference covers both Codex remote access
+and Korus mobile access. The companion publishes durable access enablement into
+daemon client state, including after restart; relay reconnects do not release it.
+Electron applies the policy only on AC power and owns the native sleep blocker.
+
 Mobile updates use one authenticated duplex stream per phone. A workspace reset
 and a subscribe-before-read conversation barrier precede ordered provider-native
 deltas. The phone uses the existing provider replicas, never a second transcript

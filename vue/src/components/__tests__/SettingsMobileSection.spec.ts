@@ -6,6 +6,19 @@ vi.mock('qrcode', () => ({ default: { toDataURL: async () => 'data:image/png;bas
 function state(): CompanionStatus { return { configured: true, enabled: false, connected: false, hostId: 'host', relayOrigin: '', devices: [], pending: [] }; }
 function button(wrapper: Pick<ReturnType<typeof mount>, 'findAll'>, text: string) { return wrapper.findAll('button').find((button) => button.text() === text)!; }
 describe('desktop mobile access controls', () => {
+  it('reports a failed keep-awake update', async () => {
+    const control = vi.fn(async () => ({ status: { ...state(), enabled: true } }));
+    const wrapper = mount(SettingsMobileSection, { props: {
+      control,
+      settings: { preventSleepWhenRemoteAccessEnabled: true },
+      updateSettings: vi.fn().mockRejectedValue(new Error('Settings could not be saved.')),
+    } });
+    await flushPromises();
+    await wrapper.get('[role="switch"][aria-label="Keep this Mac awake"]').setValue(false);
+    await flushPromises();
+    expect(wrapper.text()).toContain('Settings could not be saved.');
+    wrapper.unmount();
+  });
   it('approves a pending phone with everything granted, sending only structured-cloneable data', async () => {
     const status = { ...state(), enabled: true, connected: true, pending: ['first', 'second'].map((id) => ({ id, peerId: id, name: `Phone ${id}`, expiresAt: Date.now() + 300_000 })) };
     // The desktop reaches the daemon through Electron IPC, which structured-clones arguments.
