@@ -54,7 +54,35 @@ describe('daemon companion persistence', () => {
       const { manager } = await fixture();
       expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: false, enabled: false, relayOrigin: '' });
       await expect(manager.control({ action: 'invite' })).rejects.toThrow('not configured');
+      await expect(manager.control({ action: 'resume' })).rejects.toThrow('not configured');
       expect(transport.start).not.toHaveBeenCalled();
+    });
+    it('disables and resumes existing grants across restarts without creating a new invitation', async () => {
+      const { directory, manager, relayPeerId } = await configured();
+      await manager.control({ action: 'status' });
+      await manager.stop();
+      const file = path.join(directory, 'state.json');
+      const saved = JSON.parse(await readFile(file, 'utf8'));
+      const grant = { peerId: peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString(), name: 'My phone', createdAt: 1 };
+      saved.gateway.grants = [grant];
+      await writeFile(file, JSON.stringify(saved));
+      const env = { APP_COMPANION_RELAY_URL: 'wss://relay.example', APP_COMPANION_RELAY_PEER_ID: relayPeerId };
+      const current = new CompanionManager(directory, { request: vi.fn() }, env);
+      const resumed = await current.control({ action: 'resume' });
+      expect(resumed.invitation).toBeUndefined();
+      expect(resumed.status).toMatchObject({ enabled: true, connected: true, devices: [grant], pending: [] });
+      const starts = transport.start.mock.calls.length;
+      await current.control({ action: 'resume' });
+      expect(transport.start).toHaveBeenCalledTimes(starts);
+      const disabled = await current.control({ action: 'disable' });
+      expect(disabled.status).toMatchObject({ enabled: false, connected: false, devices: [grant] });
+      await current.stop();
+      const restored = new CompanionManager(directory, { request: vi.fn() }, env);
+      expect((await restored.control({ action: 'status' })).status).toMatchObject({ enabled: false, connected: false, devices: [grant] });
+      expect(transport.start).toHaveBeenCalledTimes(starts);
+      expect((await restored.control({ action: 'resume' })).status).toMatchObject({ enabled: true, connected: true, devices: [grant] });
+      expect(transport.start).toHaveBeenLastCalledWith('wss://relay.example', relayPeerId);
+      await restored.stop();
     });
     it('turns mobile access on when the first invitation is requested', async () => {
       const { manager, relayPeerId } = await configured();

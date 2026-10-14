@@ -21,6 +21,7 @@ import { readReviewSetup } from './review-setup';
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
   z.object({ action: z.literal('enable'), relayOrigin: z.string().max(500), relayPeerId: z.string().min(32).max(128) }).strict(),
+  z.object({ action: z.literal('resume') }).strict(),
   z.object({ action: z.literal('disable') }).strict(), z.object({ action: z.literal('invite') }).strict(),
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
@@ -74,15 +75,12 @@ export class CompanionManager {
           await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: action.relayOrigin, relayPeerId: action.relayPeerId }));
           await this.connector.start(action.relayOrigin, action.relayPeerId);
           break;
+        case 'resume':
+          await this.resume(); break;
         case 'disable':
           await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); break;
         case 'invite':
-          if (!this.relay) throw new Error('Mobile access is not configured.');
-          if (!this.saved.enabled) {
-            const { origin, peerId } = this.relay;
-            await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: origin, relayPeerId: peerId }));
-            await this.connector.start(origin, peerId);
-          }
+          await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');
           invitation = this.gateway.invite();
           await this.connector.advertise(invitation.expiresAt);
@@ -94,6 +92,13 @@ export class CompanionManager {
     });
     this.controls = result.then(() => {}, () => {});
     return result;
+  }
+  private async resume() {
+    if (!this.relay) throw new Error('Mobile access is not configured.');
+    if (this.saved.enabled) return;
+    const { origin, peerId } = this.relay;
+    await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: origin, relayPeerId: peerId }));
+    await this.connector.start(origin, peerId);
   }
   async stop() { await this.ready?.catch(() => {}); await this.connector?.stop(); }
   private status() {

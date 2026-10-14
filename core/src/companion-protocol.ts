@@ -31,6 +31,7 @@ export type CompanionCommandReceipt = { clientCommandId: string; state: 'pending
 export type CompanionStatus = { configured: boolean; enabled: boolean; connected: boolean; hostId: string; relayOrigin: string; devices: CompanionGrant[]; pending: CompanionPending[]; error?: string };
 export type CompanionControl =
   | { action: 'status' }
+  | { action: 'resume' }
   | { action: 'enable'; relayOrigin: string; relayPeerId: string }
   | { action: 'disable' }
   | { action: 'invite' }
