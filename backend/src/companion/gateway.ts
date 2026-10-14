@@ -93,6 +93,7 @@ export class CompanionGateway {
   private readonly notifications = new Set<(notification: CompanionNotification) => void>();
   private mutations = Promise.resolve();
   private readonly creations = new ChatCreations();
+  private readonly admissions = new Map<string, Promise<StoredCommand>>();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
   get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ code: _code, ...pending }) => pending); }
@@ -274,13 +275,14 @@ export class CompanionGateway {
       const existing = this.state.commands[ledgerKey];
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error('Command identity was reused.');
-        return receipt(existing);
+        return receipt(await this.settled(ledgerKey, existing));
       }
-      return this.mutate(async () => {
+      // Admission can wait on the provider, so it runs outside the serialized mutation boundary: revoking or approving a device must never queue behind it.
+      const admitted = await this.mutate(async (): Promise<{ done: StoredCommand } | { run: Promise<StoredCommand> }> => {
         // Recheck inside the serialized admission boundary, including revocation and concurrent retries.
         if (!this.state.grants.some((item) => item.peerId === peerId)) throw new Error('Device is not authorized.');
         const duplicate = this.state.commands[ledgerKey];
-        if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return receipt(duplicate); }
+        if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return { done: duplicate }; }
         const { backend, folder } = await this.validateTarget(command.target);
         if (command.options?.skills?.length) {
           const catalog = await this.port.skills(command.target.agentId);
@@ -297,13 +299,22 @@ export class CompanionGateway {
         const pending: StoredCommand = { clientCommandId: command.clientCommandId, state: 'pending', target: command.target, fingerprint, createdAt: this.now() };
         const next = { ...this.state, commands: { ...commands, [ledgerKey]: pending } };
         await this.port.save(next); this.state = next;
-        let state: 'accepted' | 'unresolved' = 'unresolved';
-        try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
-        const completed = { ...pending, state };
-        const saved = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: completed } };
-        await this.port.save(saved); this.state = saved;
-        return receipt(completed);
+        const run = (async (): Promise<StoredCommand> => {
+          let state: 'accepted' | 'unresolved' = 'unresolved';
+          try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
+          const completed = { ...pending, state };
+          // A device revoked during admission has no ledger left to complete.
+          if (this.state.commands[ledgerKey]) await this.mutate(async () => {
+            if (!this.state.commands[ledgerKey]) return;
+            const saved = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: completed } };
+            await this.port.save(saved); this.state = saved;
+          }).catch(() => { /* The in-memory outcome below still answers this request. */ });
+          return completed;
+        })().finally(() => { this.admissions.delete(ledgerKey); });
+        this.admissions.set(ledgerKey, run);
+        return { run };
       });
+      return receipt('done' in admitted ? await this.settled(ledgerKey, admitted.done) : await admitted.run);
     }
     if (method === 'skills.list' || method === 'plugins.list') {
       const target = targetSchema.parse(args);
@@ -444,6 +455,10 @@ export class CompanionGateway {
     }
     if (method === 'device.forget') { z.object({}).strict().parse(args); await this.revoke(peerId); return {}; }
     throw new Error('Companion operation is not supported.');
+  }
+  /** A receipt that is still pending is awaiting the provider in this process: wait for its outcome instead of reporting it unresolved. */
+  private async settled(ledgerKey: string, stored: StoredCommand): Promise<StoredCommand> {
+    return stored.state === 'pending' ? await this.admissions.get(ledgerKey) ?? stored : stored;
   }
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);

@@ -23,7 +23,9 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         super.init()
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "native")
         configuration.userContentController.add(self, name: "engine")
+        #if DEBUG
         webView.isInspectable = true
+        #endif
         webView.load(URLRequest(url: WebAssets.url("engine.html")))
     }
 

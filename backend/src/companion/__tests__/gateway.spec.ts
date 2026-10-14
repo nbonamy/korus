@@ -50,6 +50,36 @@ describe('companion authorization gateway', () => {
     expect(f.saved().push?.phone).toBeUndefined();
   });
 
+  it('revokes a device while its prompt is still waiting on the provider, and answers a retry with the final outcome', async () => {
+    const f = fixture();
+    await f.pair();
+    let admit!: () => void;
+    f.port.submit.mockImplementationOnce(() => new Promise<void>((resolve) => { admit = resolve; }));
+    const command = { target, text: 'hello', clientCommandId: randomUUID() };
+    const first = f.gateway.request('phone', 'prompt.submit', command);
+    await vi.waitFor(() => expect(f.port.submit).toHaveBeenCalled());
+    await f.gateway.revoke('phone');
+    expect(f.port.revoked).toHaveBeenCalledWith('phone');
+    admit();
+    expect(await first).toMatchObject({ state: 'accepted' });
+    expect(f.saved().commands).toStrictEqual({});
+  });
+
+  it('lets a retry wait for an in-flight prompt instead of reporting it unresolved', async () => {
+    const f = fixture();
+    await f.pair();
+    let admit!: () => void;
+    f.port.submit.mockImplementationOnce(() => new Promise<void>((resolve) => { admit = resolve; }));
+    const command = { target, text: 'hello', clientCommandId: randomUUID() };
+    const first = f.gateway.request('phone', 'prompt.submit', command);
+    await vi.waitFor(() => expect(f.port.submit).toHaveBeenCalled());
+    const retry = f.gateway.request('phone', 'prompt.submit', command);
+    admit();
+    expect(await retry).toMatchObject({ state: 'accepted' });
+    expect(await first).toMatchObject({ state: 'accepted' });
+    expect(f.port.submit).toHaveBeenCalledTimes(1);
+  });
+
   it('requires an authorized current target and a supported provider for goal mutations', async () => {
     const f = fixture();
     await expect(f.gateway.request('stranger', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('authorized');

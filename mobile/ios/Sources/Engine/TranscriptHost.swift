@@ -29,7 +29,9 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
+        #if DEBUG
         webView.isInspectable = true
+        #endif
         webView.load(URLRequest(url: WebAssets.url("transcript.html")))
     }
 
