@@ -178,9 +178,12 @@ describe('native relay host adapter', () => {
   });
   it('lists models, saves a model choice and sends composer options with a prompt', async () => {
     const connector = connect(); await pairWith(connector);
-    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : method === 'models.list' ? { models: [{ id: 'm', model: 'm', displayName: 'M' }] } : { state: 'accepted' };
+    const skill = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
+    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : method === 'models.list' ? { models: [{ id: 'm', model: 'm', displayName: 'M' }] } : method === 'skills.list' ? { skills: [skill] } : { state: 'accepted' };
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     expect(await session.listModels!('agent')).toStrictEqual([{ id: 'm', model: 'm', displayName: 'M' }]);
+    expect(await session.listSkills!('agent')).toStrictEqual([skill]);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'skills.list', args: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } });
     await session.selectModel!('agent', { model: 'm', reasoningEffort: 'high', serviceTier: null });
     await session.sendPrompt('agent', 'Go', randomUUID(), { model: 'm', planMode: true }, [{ type: 'image', name: 'photo.jpg', mimeType: 'image/jpeg', data: 'AAAA' }]);
     expect(transport.requests.find((request) => request.method === 'agent.model.select')?.args).toStrictEqual({ agentId: 'agent', model: 'm', reasoningEffort: 'high', serviceTier: null });

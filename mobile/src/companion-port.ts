@@ -1,4 +1,4 @@
-import type { AgentBackend, AgentModelSelection, BackendModelOption, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
@@ -8,7 +8,7 @@ export type CompanionConversation = Extract<ProviderConversationFrame, {
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
-export type CompanionPromptOptions = { model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
+export type CompanionPromptOptions = { skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
   delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
 /** Where and how a review of an agent's changes starts. */
 export type CompanionReviewInput = { scope: { type: 'uncommitted' } | { type: 'branch'; baseRef: string }; threadMode: 'current' | 'independent'; instructions?: string };
@@ -25,6 +25,7 @@ export type CompanionSession = {
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
   listModels?(agentId: string): Promise<BackendModelOption[]>;
+  listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
   selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
   interrupt?(agentId: string): Promise<void>;
   restartSession?(agentId: string): Promise<void>;

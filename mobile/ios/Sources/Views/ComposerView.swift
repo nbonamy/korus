@@ -3,21 +3,50 @@ import SwiftUI
 /// One quiet row until editing; the full composer stays open while it holds a draft.
 struct ComposerView: View {
     @Environment(AppModel.self) private var model
-    @FocusState private var focused: Bool
+    @State private var focused = false
+    @State private var selection: NSRange?
+    @State private var activeQuery: SkillQuery?
+    @State private var dismissedQuery: SkillQuery?
 
     private var expanded: Bool { focused || !model.composerText.isEmpty || model.dictation.active }
     private var stopping: Bool { model.isWorking && model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
+        VStack(spacing: 6) {
+            if showSuggestions, let query = activeQuery {
+                SkillSuggestionsView(catalog: model.skills, query: query, select: { skill in
+                    guard let result = query.inserting(skill, into: model.composerText) else { return }
+                    model.composerText = result.text
+                    selection = NSRange(location: result.caret, length: 0)
+                    activeQuery = nil
+                    focused = true
+                }, dismiss: { dismissedQuery = query }, retry: { model.command("loadSkills") })
+                .padding(.horizontal, 12)
+            }
+            composer
+        }
+        .onChange(of: showSuggestions) { _, visible in if visible { model.command("loadSkills") } }
+        .onChange(of: model.skills.status) { _, status in
+            if status == .idle && showSuggestions { model.command("loadSkills") }
+        }
+        .onChange(of: activeQuery) { _, _ in dismissedQuery = nil }
+        .onChange(of: model.activeAgentID) { _, _ in selection = nil; activeQuery = nil; dismissedQuery = nil }
+        .onChange(of: model.composerText) { _, text in if text.isEmpty { activeQuery = nil; selection = nil } }
+    }
+
+    private var showSuggestions: Bool {
+        focused && !model.drawerOpen && !model.dictation.active && model.connection == .connected
+            && model.activeAgentID != nil && activeQuery != nil && activeQuery != dismissedQuery
+    }
+
+    private var composer: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 if !expanded { attachMenu }
-                TextField("Message", text: $model.composerText, axis: .vertical)
-                    .lineLimit(1...(expanded ? 8 : 1))
-                    .focused($focused)
-                    .disabled(model.dictation.active)
-                    .font(.body)
+                SkillComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
+                    query: $activeQuery, skills: model.skills.items, editable: !model.dictation.active,
+                    maxLines: expanded ? 8 : 1)
                     .padding(.horizontal, 6)
                     .padding(.top, expanded ? 6 : 0)
                 if !expanded {

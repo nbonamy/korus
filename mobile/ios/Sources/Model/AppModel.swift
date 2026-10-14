@@ -46,6 +46,7 @@ final class AppModel {
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     var composerText = ""
+    var skills = EngineState.Skills()
     var drawerOpen = false
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
@@ -114,6 +115,7 @@ final class AppModel {
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
         })
         set(\.models, state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts) })
+        set(\.skills, state.skills ?? EngineState.Skills())
         set(\.selectedModelID, state.composer.modelId)
         set(\.selectedEffort, state.composer.effort)
         set(\.planMode, state.composer.planMode)

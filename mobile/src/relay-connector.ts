@@ -11,7 +11,7 @@ import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
 import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
-import type { BackendModelOption } from '@workspace/core/contracts';
+import type { BackendModelOption, BackendSkillSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
@@ -207,6 +207,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
         },
         async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', { agentId })).models; },
+        async listSkills(agentId) { return (await request<{ skills: BackendSkillSummary[] }>(host, 'skills.list', target(agentId))).skills; },
         async selectModel(agentId, selection) { await request(host, 'agent.model.select', { agentId, ...selection }); },
         async interrupt(agentId) { await request(host, 'agent.interrupt', { agentId }); },
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },

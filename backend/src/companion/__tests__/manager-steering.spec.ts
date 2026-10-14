@@ -40,6 +40,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   const driver: AgentBackendDriver = {
     backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
     getCapabilities: () => codexBackendCapabilities, sendPrompt, steerPrompt,
+    listSkills: async () => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }],
     interrupt: async () => result, respondToAgentRequest: async () => undefined,
     onEvent: () => () => undefined, close: async () => undefined,
   };
@@ -67,6 +68,15 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it('routes the companion skill catalog and a selected skill to the owning provider', async () => {
+    const f = await fixture('idle');
+    const skill = { name: 'review', path: '/skills/review/SKILL.md' };
+    expect(await f.gateway.request('phone', 'skills.list', f.command.target)).toStrictEqual({ skills: [{ ...skill, enabled: true }] });
+    const options = { ...f.command.options, skills: [skill] };
+    expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text: '$review', options })).toMatchObject({ state: 'accepted' });
+    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), '$review', expect.objectContaining(options));
+  });
+
   it.each(['idle', 'working', 'awaitingInput'] as const)('starts idle work or steers active work without queuing (%s)', async (status) => {
     const f = await fixture(status);
     expect(await f.gateway.request('phone', 'prompt.submit', f.command)).toMatchObject({ state: 'accepted' });

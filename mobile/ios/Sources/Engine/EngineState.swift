@@ -28,6 +28,11 @@ struct EngineState: Decodable {
     struct Model: Decodable { let id: String; let name: String; let efforts: [String]; let tiers: [Tier] }
     struct Tier: Decodable, Hashable { let id: String; let name: String }
     struct Composer: Decodable { let modelId: String?; let effort: String?; let serviceTier: String?; let planMode: Bool }
+    struct Skills: Decodable, Equatable {
+        enum Status: String, Decodable { case idle, loading, loaded, failed }
+        var status: Status = .idle
+        var items: [ComposerSkill] = []
+    }
     struct Mode: Decodable, Hashable { let id: String; let label: String }
     struct Permissions: Decodable { let approvalPreset: String?; let permissionMode: String?; let presets: [String]; let modes: [Mode] }
     struct Capabilities: Decodable { let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
@@ -69,6 +74,7 @@ struct EngineState: Decodable {
     let draft: String
     let models: [Model]
     let composer: Composer
+    let skills: Skills?
     let permissions: Permissions
     let capabilities: Capabilities
 }

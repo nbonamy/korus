@@ -129,6 +129,7 @@ export class CompanionManager {
       },
       respondRequest: async (response) => { await this.backend.request(backendMethods.agentRequestRespond, { response, _clientId: 'companion-write' }); },
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
+      skills: (agentId) => this.backend.request(backendMethods.agentSkillsList, { agentId, _clientId: 'companion-read' }),
       interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
       restart: async (agentId) => { await this.backend.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
       createChat: async (chat) => {

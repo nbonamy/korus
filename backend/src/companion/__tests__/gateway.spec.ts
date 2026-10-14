@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { CompanionGateway, type GatewayState } from '../gateway';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
@@ -26,6 +27,7 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
+    skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
@@ -39,6 +41,28 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('lists skills for the current target and admits only enabled catalog references with prompts', async () => {
+    const f = fixture();
+    const skill = { name: 'review', path: '/skills/review/SKILL.md' };
+    await expect(f.gateway.request('phone', 'skills.list', target)).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'skills.list', { ...target, sessionId: 'old' })).rejects.toThrow('stale');
+    expect(await f.gateway.request('phone', 'skills.list', target)).toStrictEqual({ skills: [{ ...skill, enabled: true }] });
+    expect(f.port.skills).toHaveBeenCalledExactlyOnceWith('agent');
+    const command = { target, text: '$review', clientCommandId: randomUUID(), options: { skills: [skill] } };
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { skills: [{ ...skill, path: '/private/other.md' }] } })).rejects.toThrow('Skill');
+    expect(f.port.submit).not.toHaveBeenCalled();
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
+    expect(f.port.submit).toHaveBeenCalledExactlyOnceWith('agent', '$review', 'mobile:phone', command.options);
+    f.port.skills.mockResolvedValue([{ ...skill, enabled: false }]);
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID() })).rejects.toThrow('Skill');
+    // A receipt lookup stays idempotent even if the skill has since been disabled.
+    await f.gateway.request('phone', 'prompt.submit', command);
+    expect(f.port.submit).toHaveBeenCalledTimes(1);
+    f.port.skills.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return [{ ...skill, enabled: true }]; });
+    await expect(f.gateway.request('phone', 'skills.list', target)).rejects.toThrow('authorized');
+  });
+
   it('routes answers only to the paired, current session and pending request identity', async () => {
     const f = fixture();
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };

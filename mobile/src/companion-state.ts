@@ -1,5 +1,6 @@
-import { computed, reactive, ref, shallowRef } from 'vue';
-import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts';
+import { computed, reactive, ref, shallowRef, watch } from 'vue';
+import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
+import type { AgentBackend, BackendModelOption, BackendSkillSummary } from '@workspace/core/contracts';
 import type { CompanionNewChat } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -76,6 +77,28 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  const skills = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendSkillSummary[] }>({ status: 'idle', items: [] });
+  const skillContext = computed(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value && companionSessionId(agent.value)]));
+  let skillRequest: Promise<void> | undefined;
+  let skillEpoch = 0;
+  const stopSkills = watch(skillContext, () => {
+    ++skillEpoch; skillRequest = undefined; skills.value = { status: 'idle', items: [] };
+  }, { flush: 'sync' });
+  function loadSkills(): Promise<void> {
+    if (skillRequest) return skillRequest;
+    if (skills.value.status === 'loaded' || status.value !== 'connected' || !agent.value) return Promise.resolve();
+    const active = session; const id = agent.value.id; const epoch = skillEpoch;
+    if (!active?.listSkills || !defaultBackendCapabilities(agent.value.backend).skills) {
+      skills.value = { status: 'loaded', items: [] }; return Promise.resolve();
+    }
+    skills.value = { status: 'loading', items: [] };
+    skillRequest = active.listSkills(id).then((items) => {
+      if (epoch === skillEpoch && session === active) skills.value = { status: 'loaded', items: items.filter((skill) => skill.enabled) };
+    }).catch(() => {
+      if (epoch === skillEpoch && session === active) skills.value = { status: 'failed', items: [] };
+    }).finally(() => { if (epoch === skillEpoch) skillRequest = undefined; });
+    return skillRequest;
+  }
   const requests = computed(() => {
     const owner = agent.value;
     const team = workspace.value.teams.find((team) => team.id === owner?.teamId);
@@ -359,6 +382,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const draftKey = key();
     const capturedSession = session;
     const epoch = selectionEpoch;
+    const catalogEpoch = skillEpoch;
+    // Resolve the same typed skill aliases as the desktop, including pasted mentions.
+    if (/[$/][A-Za-z0-9_.-]+/.test(prompt)) {
+      await loadSkills();
+      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillEpoch || !canSend.value) return;
+    }
+    const selectedSkills = promptSkillInputsFromText(prompt, skills.value.items);
     const sentDraft = draft.value.text ? { ...draft.value } : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length };
     // The SDK clears before dispatch; retain the submitted text until admission succeeds.
     if (!drafts[draftKey]?.text) drafts[draftKey] = sentDraft;
@@ -373,7 +403,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { uncertain[draftKey] = false; sending[draftKey] = false; return; }
     try {
       const settings = composerSettings.value;
-      const options = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
+      const composerOptions = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
+      const options = selectedSkills.length ? { ...composerOptions, skills: selectedSkills } : composerOptions;
       await (uploads.length ? capturedSession.sendPrompt(target, prompt, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, prompt, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
       uncertain[draftKey] = false;
@@ -435,6 +466,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { error.value = 'mobile.errors.revoke'; }
   }
   return { selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
-    draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
+    draft, deliveryUnknown, canSend, history, loadOlder, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; } };
 }

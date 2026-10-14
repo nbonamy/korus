@@ -5,6 +5,8 @@ let package = Package(
     name: "CompanionDictation",
     platforms: [.macOS(.v14), .iOS("26.0")],
     targets: [
+        .target(name: "CompanionComposer", path: "Sources/Composer"),
+        .testTarget(name: "CompanionComposerTests", dependencies: ["CompanionComposer"], path: "Tests/Composer"),
         .target(name: "CompanionSidebar", path: "Sources/Model", exclude: ["AppModel.swift", "Fixtures.swift"], sources: ["ViewModels.swift"]),
         .testTarget(name: "CompanionSidebarTests", dependencies: ["CompanionSidebar"], path: "Tests/Sidebar"),
         .target(name: "CompanionRequests", path: "Sources/Requests"),

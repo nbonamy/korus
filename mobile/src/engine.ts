@@ -1,4 +1,5 @@
 import { computed, ref, watch } from 'vue';
+import { skillDescription, skillDisplayName, skillInsertText } from '@codex-app-sdk/vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -39,6 +40,7 @@ export type EngineState = {
   backend: string | null;
   canSelectBackend: boolean;
   draft: string;
+  skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
   permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
@@ -71,6 +73,7 @@ export type EngineCommand =
   | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
+  | { type: 'loadSkills' }
   | { type: 'send'; text: string; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
@@ -137,6 +140,7 @@ export function createEngine(port: EnginePort) {
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
       closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(),
       backend: agent?.backend ?? null,
@@ -276,6 +280,7 @@ export function createEngine(port: EnginePort) {
       }
       case 'loadOlder': return state.loadOlder(command.agentId);
       case 'draft': return state.updateDraft({ text: command.text, selectionStart: command.text.length, selectionEnd: command.text.length });
+      case 'loadSkills': return state.loadSkills();
       case 'send': return send(command);
       case 'interrupt': return state.interrupt();
       case 'restartSession': await state.restartSession(); return rememberSelection();

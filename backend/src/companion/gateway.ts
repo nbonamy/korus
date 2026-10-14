@@ -3,7 +3,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AgentBackend } from '@workspace/core/contracts';
+import type { AgentBackend, BackendSkillSummary } from '@workspace/core/contracts';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
@@ -22,6 +22,7 @@ const requestReplySchema = z.object({ target: targetSchema, id: identity, conver
 const closeSchema = z.object({ target: targetSchema, input: z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict().optional() }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.object({
+  skills: z.array(z.object({ name: z.string().min(1).max(500), path: z.string().min(1).max(4096) }).strict()).max(100).optional(),
   model: z.string().min(1).max(200).nullable().optional(), reasoningEffort: z.string().min(1).max(40).nullable().optional(),
   serviceTier: z.string().min(1).max(80).nullable().optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
   delegation: z.object({ startingContext: z.enum(['conversation', 'handoff']), instructions: z.string().max(100_000).optional() }).strict().optional(),
@@ -48,6 +49,7 @@ export type GatewayPort = {
   loadOlderHistory(agentId: string): Promise<{ hasOlder: boolean }>;
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
+  skills(agentId: string): Promise<BackendSkillSummary[]>;
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
   createChat(request: NewChatRequest): Promise<string>;
@@ -213,7 +215,14 @@ export class CompanionGateway {
         if (!this.state.grants.some((item) => item.peerId === peerId)) throw new Error('Device is not authorized.');
         const duplicate = this.state.commands[ledgerKey];
         if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return receipt(duplicate); }
-        await this.validateTarget(command.target);
+        const { backend, folder } = await this.validateTarget(command.target);
+        if (command.options?.skills?.length) {
+          const catalog = await this.port.skills(command.target.agentId);
+          if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
+          const current = await this.validateTarget(command.target);
+          if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
+          this.requireGrant(peerId, grant);
+        }
         const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
         if (uploads?.some((upload) => upload.data.byteLength > maxUploadBytes)) throw new Error('Attachment too large.');
         if (Object.keys(this.state.commands).length >= 10_000) throw new Error('Command receipt storage is full.');
@@ -227,6 +236,15 @@ export class CompanionGateway {
         await this.port.save(saved); this.state = saved;
         return receipt(completed);
       });
+    }
+    if (method === 'skills.list') {
+      const target = targetSchema.parse(args);
+      const { backend, folder } = await this.validateTarget(target);
+      const skills = await this.port.skills(target.agentId);
+      const current = await this.validateTarget(target);
+      this.requireGrant(peerId, grant);
+      if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
+      return { skills };
     }
     if (method === 'models.list') {
       const { agentId } = z.object({ agentId: identity }).strict().parse(args);
