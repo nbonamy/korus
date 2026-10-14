@@ -82,6 +82,12 @@ choice) travel as a small context message that never resends the transcript.
 Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
 The native side routes on an event type without parsing the transcript payload, hands
 the page one message at a time, and replaces anything that piled up with the newest.
+Unread activity belongs to the owning daemon and persists with each agent. Clients
+acknowledge the attention revision they displayed; older acknowledgments cannot
+clear newer activity. Desktop and companion indicators consume the same metadata.
+The phone acknowledges only its rendered foreground conversation with the drawer
+closed; cached subscriptions and background updates never count as reading.
+
 Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
 events: those projections are absent from the mobile workspace, and conversation
 content travels through the subscribed provider stream.
@@ -101,12 +107,21 @@ optional protected draft store persists prompt intent
 and delivery uncertainty by laptop and agent; its native host keeps composer text
 and selected attachment bytes in memory, keyed by the full laptop/conversation target.
 Native pickers and explicit clipboard paste supply bounded bytes, never device paths.
+Review initialization reads the desktop's Git scope and reviewer model catalog through
+a target-bound companion request. Native choices use the existing review-start input;
+the daemon remains the owner of review execution and findings. Opening setup does not
+start a review, and automatic fixes and local commits require explicit selection.
 The companion engine validates the target before submission and reports admission
 back to the native draft; only accepted sends clear their captured text and attachments.
 The laptop stores uploads privately and passes ordinary provider attachment paths
 through its existing prompt route. Nested remote teams remain text-only until their
 owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
+
+Repository branch selection uses the desktop branch catalog on the repository’s
+owning host. The phone receives names and checkout status, never checkout paths;
+chat creation resolves the branch again and reuses its checkout or creates a
+worktree on that existing branch.
 
 Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
 protocol runs through an outbound WebSocket circuit relay, with Noise authenticating

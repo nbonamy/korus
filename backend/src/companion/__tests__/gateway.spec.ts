@@ -25,10 +25,11 @@ async function claim(gateway: CompanionGateway, peerId: string, shown: string, n
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now);
@@ -41,6 +42,27 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('binds review setup and launch to the original conversation and rechecks a revoked grant after discovery', async () => {
+    const f = fixture(); await f.pair();
+    const setup = { target, branch: null, baseRef: null, uncommitted: true, branchChanges: false, currentThread: false, activeReview: false, reviewerAgentId: null,
+      agentBackend: 'codex' as const, backend: 'codex' as const, backends: ['codex' as const], models: [] };
+    f.port.reviewSetup.mockResolvedValue(setup);
+    expect(await f.gateway.request('phone', 'agent.review.setup', { target })).toStrictEqual(setup);
+    await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', target: { ...target, sessionId: 'old' }, input: { scope: { type: 'uncommitted' }, threadMode: 'independent' } })).rejects.toThrow('stale');
+    expect(f.port.startReview).not.toHaveBeenCalled();
+    f.port.reviewSetup.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return setup; });
+    await expect(f.gateway.request('phone', 'agent.review.setup', { target })).rejects.toThrow('authorized');
+  });
+  it('accepts read receipts only from an approved device for its current target', async () => {
+    const f = fixture();
+    await expect(f.gateway.request('phone', 'conversation.read', { target, revision: 2 })).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'conversation.read', { target: { ...target, sessionId: 'old' }, revision: 2 })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'conversation.read', { target, revision: -1 })).rejects.toThrow();
+    expect(f.port.markRead).not.toHaveBeenCalled();
+    await f.gateway.request('phone', 'conversation.read', { target, revision: 2 });
+    expect(f.port.markRead).toHaveBeenCalledExactlyOnceWith('agent', 2);
+  });
   it('returns a Claude page directly and checks content reads again after revocation or session changes', async () => {
     const f = fixture();
     const backendSession = { kind: 'claude' as const, sessionId: 'claude-session', transport: 'stdio' as const };
@@ -276,12 +298,12 @@ describe('companion authorization gateway', () => {
   });
   it('starts a review for a shown agent with a validated scope, and passes delegation choices with a prompt', async () => {
     const f = fixture(); await f.pair();
-    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security' };
+    const input = { scope: { type: 'branch', baseRef: 'main' }, threadMode: 'independent', instructions: 'Focus on security', backend: 'claude', model: 'review-model', reasoningEffort: 'high', automation: { enabled: true, maxPriority: 'p2', maxRounds: 3, autoCommit: false } };
     await f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input });
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'unknown', input })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.review.start', { agentId: 'agent', input })).rejects.toThrow('authorized');
-    for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'claude' }]) {
+    for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
       await expect(f.gateway.request('phone', 'agent.review.start', { agentId: 'agent', input: bad })).rejects.toThrow();
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };

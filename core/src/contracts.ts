@@ -368,6 +368,7 @@ export type Agent = {
   backendSession?: BackendSession;
   /** Locks provider choice as soon as the first prompt is admitted. */
   hasSubmittedPrompt?: boolean;
+  readState?: import('./agent-read-state').AgentReadState;
   backendDefaults?: BackendDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: AgentGitDiffTarget;
@@ -945,6 +946,7 @@ export type AppApi = {
   readConversationContent(agentId: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   closeAgent(agentId: string, input?: AgentCloseInput): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
+  markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;

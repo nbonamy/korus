@@ -8,7 +8,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     var onLoadOlder: ((String) -> Void)?
     var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
-    var onRendered: ((String) -> Void)?
+    var onRendered: ((String, Int) -> Void)?
     private var presentation = 0
     private var isReady = false
     private var queue = TranscriptRenderQueue()
@@ -43,10 +43,12 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
 
     private func run(_ job: TranscriptRenderQueue.Job) {
         let revision = presentation
-        let script = job.kind == .conversation ? "return await window.companionTranscript.setConversation(json)" : "window.companionTranscript.setContext(json); return null"
+        let script = job.kind == .conversation ? "return await window.companionTranscript.setConversation(json)" : "return await window.companionTranscript.setContext(json)"
         webView.callAsyncJavaScript(script, arguments: ["json": job.json], in: nil, in: .page) { [weak self] result in
             guard let self else { return }
-            if job.kind == .conversation, self.presentation == revision, case .success(let value) = result, let agentID = value as? String { self.onRendered?(agentID) }
+            if self.presentation == revision, case .success(let value) = result,
+               let receipt = value as? [String: Any], let agentID = receipt["agentId"] as? String,
+               let readRevision = receipt["revision"] as? Int { self.onRendered?(agentID, readRevision) }
             if let next = self.queue.finish() { self.run(next) }
         }
     }

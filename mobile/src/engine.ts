@@ -1,10 +1,11 @@
 import { computed, ref, watch } from 'vue';
+import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText } from '@codex-app-sdk/vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { companionTarget, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
@@ -25,7 +26,7 @@ export type EngineState = {
   laptops: { id: string; name: string }[];
   pairing: 'idle' | 'working' | 'awaitingApproval';
   pairingError: string;
-  teams: { id: string; name: string; avatar?: string }[];
+  teams: { id: string; name: string; avatar?: string; isUnread: boolean }[];
   teamId: string;
   groups: MobileSidebarGroup[];
   agentId: string;
@@ -33,12 +34,14 @@ export type EngineState = {
   loading: boolean;
   canSend: boolean;
   composerTarget: CompanionTarget | null;
+  review: ReturnType<typeof createCompanionState>['review']['value'];
   sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
+  branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
   /** The engine of the open chat, and whether it may still be changed: only before the first prompt. */
   backend: string | null;
   canSelectBackend: boolean;
@@ -76,6 +79,7 @@ export type EngineCommand =
   | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
   /** The app moved to the foreground or background: the link is held only while it is visible. */
   | { type: 'activity'; active: boolean }
+  | { type: 'read'; agentId: string; revision: number }
   | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
@@ -85,11 +89,13 @@ export type EngineCommand =
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
-  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string } | { type: 'newQuickChat'; backend: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
+  | { type: 'loadBranches'; repositoryId: string } | { type: 'dismissBranches' }
+  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string; existingBranch?: string } | { type: 'newQuickChat'; backend: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
   | { type: 'composer'; change: ComposerChange }
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
-  | { type: 'review'; input: CompanionReviewInput };
+  | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
+  | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
 export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; post(event: EngineEvent): void };
 
@@ -102,6 +108,8 @@ export function createEngine(port: EnginePort) {
   const pairingError = ref('');
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
+  let foreground = true;
+  const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
   let selectionEpoch = 0;
@@ -142,15 +150,16 @@ export function createEngine(port: EnginePort) {
     return {
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
-      teams: state.workspace.value.teams.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
+      teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
+      review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(),
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
@@ -278,7 +287,20 @@ export function createEngine(port: EnginePort) {
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': return connect(command.laptopId);
       case 'disconnect': ++selectionEpoch; return state.disconnect();
+      case 'read': {
+        if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value) return;
+        const read = state.agent.value?.readState;
+        if (!read || command.revision <= read.readRevision || command.revision > read.revision) return;
+        const key = `${state.laptopId.value}/${command.agentId}/${command.revision}`;
+        if (reading.has(key)) return;
+        reading.add(key);
+        try { await state.markRead(command.agentId, command.revision); }
+        catch { /* A later render or reconnect retries the visible revision. */ }
+        finally { reading.delete(key); }
+        return;
+      }
       case 'activity':
+        foreground = command.active;
         if (command.active) { await port.connector.resume?.(); return state.reconnect(); }
         state.disconnect(); return port.connector.suspend?.();
       case 'reconnect': return state.reconnect();
@@ -312,7 +334,9 @@ export function createEngine(port: EnginePort) {
       case 'restartSession': await state.restartSession(); return rememberSelection();
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
+      case 'loadBranches': return state.loadBranches(command.repositoryId);
+      case 'dismissBranches': return state.dismissBranches();
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
       case 'backend': return state.selectBackend(command.backend);
       case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();
@@ -322,7 +346,9 @@ export function createEngine(port: EnginePort) {
       case 'approvalPreset': return state.setApprovalPreset(command.preset);
       case 'permissionMode': return state.setPermissionMode(command.mode);
       case 'delegate': return state.delegate({ startingContext: command.startingContext, ...(command.instructions ? { instructions: command.instructions } : {}) });
-      case 'review': return state.startReview(command.input);
+      case 'loadReview': return state.loadReview(command.backend);
+      case 'dismissReview': return state.dismissReview();
+      case 'review': await state.startReview(command.input, command.target); return rememberSelection();
     }
   }
 

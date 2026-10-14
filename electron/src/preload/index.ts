@@ -129,6 +129,7 @@ const api: AppApi = {
   loadOlderAgentHistory: (agentId: string) => ipc.invoke(ipcChannels.loadOlderAgentHistory, agentId),
   readConversationContent: (agentId, input) => ipc.invoke(ipcChannels.readConversationContent, agentId, input),
   closeAgent: (agentId: string, input) => ipc.invoke(ipcChannels.closeAgent, agentId, input),
+  markAgentRead: (agentId: string, revision: number) => ipc.invoke(ipcChannels.markAgentRead, agentId, revision),
   selectAgent: (agentId: string) => ipc.invoke(ipcChannels.selectAgent, agentId),
   updateSettings: (input: UpdateSettingsInput) => ipc.invoke(ipcChannels.updateSettings, input),
   readEngineInstructions: (engine) => ipc.invoke(ipcChannels.readEngineInstructions, engine),

@@ -17,8 +17,10 @@ export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree:
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
 export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]> };
-/** A new chat in a repository the phone already lists: its default checkout, or a worktree on a new branch. */
-export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; worktree?: { branchName: string } };
+/** A branch choice without host filesystem paths. */
+export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
+/** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
+export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
 export type CompanionChatCreation = { state: 'running' } | { state: 'success'; agentId: string } | { state: 'error'; error: string };
 /** Shown on the laptop: the phone already knows the relay, so the code is all it needs. */
 export type CompanionInvitation = { code: string; expiresAt: number };

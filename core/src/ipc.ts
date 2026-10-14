@@ -130,6 +130,7 @@ export const ipcChannels = {
   readConversationContent: 'agent:conversation:content:read',
   closeAgent: 'agent:close',
   selectAgent: 'agent:select',
+  markAgentRead: 'agent:read',
   updateSettings: 'settings:update',
   previewSpokenAnnouncementVoice: 'settings:spoken-announcement-voice:preview',
   getCodexResourceSharingStatus: 'settings:codex-resource-sharing:get',

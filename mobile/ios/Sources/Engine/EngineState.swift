@@ -8,6 +8,7 @@ struct EngineState: Decodable {
         let agentId: String
         let displayTitle: String
         let kind: SessionKind
+        let isUnread: Bool?
         let status: Status
     }
     struct Group: Decodable {
@@ -66,11 +67,13 @@ struct EngineState: Decodable {
     let header: Header?
     let loading: Bool
     let composerTarget: ComposerTarget?
+    let review: ReviewState?
     let canSend: Bool
     let sessionAction: String?
     let sessionActionFailed: Bool
     let closePreview: ClosePreview?
     let chatCreation: ChatCreation
+    let branches: RepositoryBranches?
     let backends: [String]
     let draft: String
     let models: [Model]

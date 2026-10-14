@@ -16,6 +16,11 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('includes the same read revision used by the desktop', () => {
+    const readState = { revision: 7, readRevision: 5 };
+    const projected = projectCompanionWorkspace({ teams, agents: [agent('readable', { readState })] });
+    expect(projected.agents[0]!.readState).toStrictEqual(readState);
+  });
   it('includes pending requests only for agents visible to the phone', () => {
     const request = { id: 'approval', conversationId: 'thread', kind: 'approval' as const,
       approval: { id: 'approval', conversationId: 'thread', itemId: 'command', kind: 'command' as const, title: 'Run command', command: 'git status', allowedScopes: ['once' as const] } };

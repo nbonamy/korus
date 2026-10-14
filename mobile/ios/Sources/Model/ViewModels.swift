@@ -21,6 +21,7 @@ struct Team: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let name: String
     var avatar: String?
+    var isUnread: Bool? = nil
 }
 
 struct SidebarSession: Identifiable, Hashable, Codable, Sendable {
@@ -28,6 +29,7 @@ struct SidebarSession: Identifiable, Hashable, Codable, Sendable {
     let title: String
     let kind: SessionKind
     let status: AgentStatus
+    var isUnread = false
     var id: String { agentId }
 }
 
@@ -64,4 +66,23 @@ struct ModelChoice: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let name: String
     var efforts: [String] = []
+}
+
+/// Repository-scoped branch choices from the laptop, without filesystem paths.
+struct RepositoryBranches: Decodable, Equatable {
+    enum Status: String, Decodable { case idle, loading, loaded, failed }
+    struct Branch: Decodable, Equatable, Identifiable {
+        let name: String
+        let isDefault: Bool
+        let isCheckedOut: Bool
+        var id: String { name }
+    }
+    var repositoryId: String? = nil
+    var status: Status = .idle
+    var items: [Branch] = []
+
+    func matching(_ query: String) -> [Branch] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? items : items.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
 }

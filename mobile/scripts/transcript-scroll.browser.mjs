@@ -64,7 +64,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     // The native loading overlay must outlive both data delivery and Vue's DOM update.
     // A superseded selection must never reveal the wrong/empty transcript.
     const presentation = await page.evaluate(async () => {
-      const agent = { id: 'presentation-agent', teamId: 'scroll-team', name: 'Presentation test', folder: null,
+      const agent = { id: 'presentation-agent', teamId: 'scroll-team', name: 'Presentation test', folder: null, readState: { revision: 3, readRevision: 1 },
         backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
       const conversation = { agent, agents: [agent], frame: { payload: { snapshot: {
         messages: [{ id: 'presentation-message', role: 'assistant', status: 'complete', createdAt: '2026-01-01',
@@ -87,7 +87,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       }));
       return { before, ready, after, superseded, empty, newThread };
     });
-    assert.deepEqual(presentation, { before: false, ready: 'presentation-agent', after: true, superseded: null, empty: null, newThread: 'presentation-agent' });
+    assert.deepEqual(presentation, { before: false, ready: { agentId: 'presentation-agent', revision: 3 }, after: true, superseded: null, empty: null, newThread: { agentId: 'presentation-agent', revision: 3 } });
     assert.ok(await page.locator('.conversation-pane__empty h1').isVisible(), 'the empty quick chat shows its welcome headline');
     assert.equal(await page.getByRole('radio', { name: 'Codex', exact: true }).getAttribute('aria-checked'), 'true');
     await page.getByRole('radio', { name: 'Claude', exact: true }).click();

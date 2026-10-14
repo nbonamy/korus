@@ -27,6 +27,15 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it('retains read revisions across a fresh store restart', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.readState = { revision: 7, readRevision: 5 };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.agents[0]!.readState).toStrictEqual({ revision: 7, readRevision: 5 });
+    expect(isAppSnapshot(restored)).toBe(true);
+  });
   it.each([true, false])('retains interactive Plan-mode preference after a host restart: %s', async useInteractivePlans => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();

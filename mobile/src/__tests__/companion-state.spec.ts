@@ -356,10 +356,10 @@ describe('companion state', () => {
       expect(interrupt).toHaveBeenCalledExactlyOnceWith('demo-agent');
     } finally { state.dispose(); }
   });
-  it('runs Delegate and Review without touching the draft, and reports a refused command', async () => {
+  it('runs Delegate without touching the draft and reports a refused command', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
-    const sendPrompt = vi.fn(async () => {}); const startReview = vi.fn(async () => { throw new Error('refused'); });
-    connector.connect = async (id) => ({ ...await original(id), sendPrompt, startReview });
+    const sendPrompt = vi.fn(async () => {});
+    connector.connect = async (id) => ({ ...await original(id), sendPrompt });
     const state = createCompanionState(connector);
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
@@ -367,8 +367,8 @@ describe('companion state', () => {
       await state.delegate({ startingContext: 'handoff', instructions: 'Run tests' });
       expect(sendPrompt).toHaveBeenCalledExactlyOnceWith('demo-agent', '/delegate', expect.any(String), { delegation: { startingContext: 'handoff', instructions: 'Run tests' } });
       expect(state.draft.value.text).toBe('half-written thought'); expect(state.error.value).toBe('');
-      await state.startReview({ scope: { type: 'uncommitted' }, threadMode: 'independent' });
-      expect(startReview).toHaveBeenCalledWith('demo-agent', { scope: { type: 'uncommitted' }, threadMode: 'independent' });
+      sendPrompt.mockRejectedValueOnce(new Error('refused'));
+      await state.delegate({ startingContext: 'handoff' });
       expect(state.error.value).toBe('mobile.errors.commandFailed');
     } finally { state.dispose(); }
   });

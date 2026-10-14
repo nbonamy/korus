@@ -1,5 +1,5 @@
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
-import type { CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
+import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
@@ -12,12 +12,14 @@ import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 export type CompanionPromptOptions = { skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
   delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
 /** Where and how a review of an agent's changes starts. */
-export type CompanionReviewInput = { scope: { type: 'uncommitted' } | { type: 'branch'; baseRef: string }; threadMode: 'current' | 'independent'; instructions?: string };
+export type { CompanionReviewInput } from '@workspace/core/companion-review';
+import type { CompanionReviewInput, CompanionReviewSetup } from '@workspace/core/companion-review';
 /** A file travelling with a prompt, already reduced to fit one relay frame. */
 export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: string; data: string };
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
+  markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(reply: CompanionRequestReply): Promise<void>;
   getWorkspace(): Promise<CompanionWorkspace>;
   deselectConversation?(): void;
@@ -33,11 +35,13 @@ export type CompanionSession = {
   restartSession?(agentId: string): Promise<void>;
   previewCloseSession?(agentId: string): Promise<CompanionClosePreview>;
   closeSession?(target: CompanionTarget, input?: CompanionCloseOptions): Promise<void>;
+  listBranches?(teamId: string, repositoryId: string): Promise<CompanionBranch[]>;
   /** Resolves with the new agent once the laptop has made the worktree, if any, and the chat. */
   createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
   createQuickChat?(chat: { teamId: string; backend: AgentBackend }, signal?: AbortSignal): Promise<string>;
   setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
-  startReview?(agentId: string, input: CompanionReviewInput): Promise<void>;
+  reviewSetup?(agentId: string, backend?: AgentBackend): Promise<CompanionReviewSetup>;
+  startReview?(agentId: string, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'accepted' | 'unresolved' | 'notReceived'>;

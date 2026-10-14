@@ -126,8 +126,12 @@ struct ComposerView: View {
                 }
             }
             Section {
-                Button("Review", systemImage: "checklist") {}
-                Button("Delegate", systemImage: "arrow.triangle.branch") {}
+                Button("Review", systemImage: "checklist") { focused = false; model.openReview() }
+                    .disabled(!model.canManageSession)
+                Button("Delegate", systemImage: "arrow.triangle.branch") {
+                    focused = false
+                    model.command("delegate", ["startingContext": "handoff"])
+                }.disabled(!model.canSend || model.composerDrafts.sending || model.composerDrafts.importing || model.dictation.active)
             }
         } label: {
             Image(systemName: "plus")

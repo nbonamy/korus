@@ -2,10 +2,11 @@ import SwiftUI
 
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
+    private static let mark = Bundle.main.url(forResource: "icon", withExtension: "png")
+        .flatMap { UIImage(contentsOfFile: $0.path) }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             teams
             if !model.groups.contains(where: \.hasQuickChats) { newChatButton }
             List {
@@ -40,40 +41,52 @@ struct DrawerView: View {
         .sheet(item: Binding(get: { model.newWorktreeGroup }, set: { if $0 == nil { model.closeWorktreeSheet() } })) { group in
             NewWorktreeSheet(group: group)
         }
-        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
+        .sheet(item: Binding(get: { model.existingBranchGroup }, set: { if $0 == nil { model.closeBranchSheet() } })) { group in
+            ExistingBranchSheet(group: group)
+        }
+        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil && model.existingBranchGroup == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check the connection and try again.")
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text(model.productName)
-                .font(.title2.weight(.bold))
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-    }
-
     private var teams: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    ForEach(model.teams) { team in
-                        Button(team.name) { model.select(team: team.id) }
+        HStack(spacing: 12) {
+            if let mark = Self.mark {
+                Image(uiImage: mark)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                    .clipShape(.rect(cornerRadius: 7, style: .continuous))
+                    .accessibilityLabel(model.productName)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ForEach(model.teams) { team in
+                            Button { model.select(team: team.id) } label: {
+                                HStack(spacing: 6) {
+                                    Text(team.name)
+                                    if team.isUnread == true && team.id != model.teamID { UnreadDot() }
+                                }
+                            }
+                            .accessibilityLabel(team.name + (team.isUnread == true ? ", unread activity" : ""))
                             .font(.subheadline.weight(.medium))
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .foregroundStyle(team.id == model.teamID ? Color.white : Color.primary)
                             .glassEffect(team.id == model.teamID ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+                        }
                     }
+                    .padding(.leading, 4).padding(.trailing, 20)
+                    // Keep the glass inside the viewport vertically while clipping scrolled pills beside the fixed logo.
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 20)
             }
         }
-        .scrollClipDisabled()
+        .padding(.leading, 20)
+        .padding(.top, 2)
         .padding(.bottom, 4)
     }
 
@@ -157,10 +170,11 @@ private struct GroupHeader: View {
     private var newChatMenu: some View {
         Menu {
             Button("Default Branch", systemImage: "arrow.triangle.merge") { model.startChat(in: group) }
-            Button("New Worktree…", systemImage: "arrow.triangle.branch") { model.newWorktreeGroup = group }
+            Button("Existing Branch…", systemImage: "arrow.triangle.branch") { model.existingBranchGroup = group }
+            Button("New Worktree…", systemImage: "plus.square.on.square") { model.newWorktreeGroup = group }
         } label: {
             Group {
-                if model.creatingChatGroupID == group.id && model.newWorktreeGroup == nil { ProgressView().controlSize(.small) }
+                if model.creatingChatGroupID == group.id && model.newWorktreeGroup == nil && model.existingBranchGroup == nil { ProgressView().controlSize(.small) }
                 else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
             }
             .frame(width: 44, height: 44).contentShape(Rectangle())
@@ -221,6 +235,7 @@ private struct SessionRow: View {
                 .font(.body)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if session.isUnread { UnreadDot() }
             StatusDot(status: session.status)
         }
         .padding(.horizontal, 12)
@@ -230,6 +245,12 @@ private struct SessionRow: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemFill))
             }
         }
+    }
+}
+
+private struct UnreadDot: View {
+    var body: some View {
+        Circle().fill(Color.red).frame(width: 8, height: 8).accessibilityLabel("Unread activity")
     }
 }
 

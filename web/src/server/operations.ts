@@ -120,6 +120,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   loadOlderAgentHistory: [backendMethods.agentConversationHistoryLoadOlder, named('agentId')],
   readConversationContent: [backendMethods.agentConversationContentRead, named('agentId', 'input')],
   closeAgent: [backendMethods.agentDelete, namedOptional('agentId', 'input')],
+  markAgentRead: [backendMethods.agentMarkRead, named('agentId', 'revision')],
   selectAgent: [backendMethods.clientNavigationSelectAgent, named('agentId')],
   readEngineInstructions: [backendMethods.engineInstructionsRead, named('engine')],
   saveEngineInstructions: [backendMethods.engineInstructionsSave, named('input')],

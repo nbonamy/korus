@@ -71,6 +71,9 @@ struct ConversationScreen: View {
                 }
             }
             .toolbarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: Binding(get: { model.reviewOpen }, set: { model.reviewOpen = $0; if !$0 { model.command("dismissReview") } })) {
+                ReviewSetupView()
+            }
             .sheet(item: Binding(get: { model.presentedRequest }, set: { model.presentedRequest = $0 })) { request in
                 RequestSheet(pending: request)
             }

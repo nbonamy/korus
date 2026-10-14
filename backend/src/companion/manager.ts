@@ -6,7 +6,7 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AgentGitWorkflow, AppSnapshot, SourceWorktree } from '@workspace/core/contracts';
+import type { AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -16,6 +16,7 @@ import { CompanionOutboundConnector } from './connector';
 import { ConversationSource } from './conversation-source';
 import { warnMain } from '../log';
 import { storePromptUploads } from './uploads';
+import { readReviewSetup } from './review-setup';
 
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
@@ -117,6 +118,7 @@ export class CompanionManager {
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
+      markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
       loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
       conversation: async (agentId) => {
@@ -133,10 +135,19 @@ export class CompanionManager {
       skills: (agentId) => this.backend.request(backendMethods.agentSkillsList, { agentId, _clientId: 'companion-read' }),
       interrupt: async (agentId) => { await this.backend.request(backendMethods.agentInterrupt, { agentId, _clientId: 'companion-write' }); },
       restart: async (agentId) => { await this.backend.request(backendMethods.agentConversationReset, { agentId, _clientId: 'companion-write' }); },
+      branches: (repoPath, remoteConnectionId) => this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath, ...(remoteConnectionId ? { remoteConnectionId } : {}), _clientId: 'companion-read' }),
       createChat: async (chat) => {
         const remote = chat.remoteConnectionId ? { remoteConnectionId: chat.remoteConnectionId } : {};
         let folder = chat.repositoryRoot;
-        if (chat.worktree) {
+        if (chat.existingBranch) {
+          // Resolve again at creation: a checkout may have moved or the branch may have been deleted.
+          const branches = await this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' });
+          const branch = branches.find((candidate) => candidate.name === chat.existingBranch);
+          if (!branch) throw new Error('Branch not found. Refresh the branch list.');
+          folder = branch.worktreePath ?? (await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, {
+            input: { repoPath: chat.repositoryRoot, branchName: branch.name, ...remote }, _clientId: 'companion-write',
+          })).path;
+        } else if (chat.worktree) {
           const worktree = await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: { repoPath: chat.repositoryRoot, branchName: chat.worktree.branchName,
             ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}), ...remote }, _clientId: 'companion-write' });
           folder = worktree.path;
@@ -170,7 +181,11 @@ export class CompanionManager {
       close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
-      startReview: async (agentId, input) => { await this.backend.request(backendMethods.agentCodeReviewStart, { agentId, input, _clientId: 'companion-write' }); },
+      startReview: async (agentId, input) => {
+        const snapshot = await this.backend.request<AppSnapshot>(backendMethods.agentCodeReviewStart, { agentId, input, _clientId: 'companion-write' });
+        return snapshot.agents.find(agent => agent.codeReview?.targetAgentId === agentId && agent.codeReview.status !== 'finished')?.codeReview?.reviewerAgentId;
+      },
+      reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
       selectModel: async (agentId, modelSelection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, modelSelection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),

@@ -150,6 +150,7 @@ export function createClientApiMock(
     loadOlderAgentHistory: unscripted('loadOlderAgentHistory'),
     readConversationContent: unscripted('readConversationContent'),
     closeAgent: unscripted('closeAgent'),
+    markAgentRead: vi.fn().mockResolvedValue(undefined),
     selectAgent: unscripted('selectAgent'),
     updateSettings: unscripted('updateSettings'),
     readEngineInstructions: unscripted('readEngineInstructions'),

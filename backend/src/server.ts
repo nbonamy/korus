@@ -763,6 +763,20 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.agentMarkRead: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        const revision = params.revision;
+        if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid read revision.');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, revision }, async (agent) => {
+          const current = agent.readState ?? { revision: 0, readRevision: 0 };
+          if (revision > current.revision) throw new Error('Unknown read revision.');
+          if (revision <= current.readRevision) return null;
+          this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId, payload: { id: agentId, readState: { ...current, readRevision: revision } } });
+          await this.persistSnapshotOnly();
+          return null;
+        });
+      }
       case backendMethods.backendHealthGet:
         return createAppRpcResult(message.id, {
           ok: true,
@@ -3240,6 +3254,14 @@ export class AppBackendServer {
 
   private emitDerivedDomainEvents(event: BackendPublishedEvent): void {
     this.emitPlanReadyForReview(event);
+    const type = providerConversationEventView(event).type;
+    if (!event.agentId || !['turn.completed', 'approval.requested', 'agentRequest.created', 'toolInput.requested', 'error'].includes(type)) return;
+    const agent = this.snapshot.agents.find((agent) => agent.id === event.agentId);
+    if (!agent) return;
+    const previous = agent.readState ?? { revision: 0, readRevision: 0 };
+    this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId: agent.id,
+      payload: { id: agent.id, readState: { revision: previous.revision + 1, readRevision: previous.readRevision } } });
+    void this.persistSnapshotOnly().catch(error => warnMain('state', 'failed to persist read state', { message: String(error) }));
   }
 
   private emitPlanReadyForReview(event: BackendPublishedEvent): void {

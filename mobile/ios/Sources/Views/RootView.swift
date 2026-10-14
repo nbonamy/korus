@@ -49,6 +49,7 @@ struct RootView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { if model.drawerOpen { setDrawer(false) } }
                             .gesture(drawerGesture)
+                            .allowsHitTesting(!model.reviewOpen)
                     }
                     .offset(x: reveal)
             }

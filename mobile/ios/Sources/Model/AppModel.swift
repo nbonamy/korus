@@ -37,6 +37,8 @@ final class AppModel {
     var backends: [String] = []
     /// The repository a worktree is being named for; the sheet shows while it is set.
     var newWorktreeGroup: SidebarGroup?
+    var existingBranchGroup: SidebarGroup?
+    var branches = RepositoryBranches()
     var creatingChatGroupID: String?
     /// The engine new chats start with, remembered between launches; unavailable ones fall back to the first the laptop offers.
     var preferredBackend = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
@@ -48,8 +50,11 @@ final class AppModel {
     let composerDrafts = ComposerDrafts()
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
+    var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
+    var reviewState = ReviewState()
     var skills = EngineState.Skills()
-    var drawerOpen = false
+    private var conversationRead = ConversationReadState()
+    var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead() } } }
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
 
@@ -64,9 +69,11 @@ final class AppModel {
         transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
-        transcript.onRendered = { [weak self] id in
+        transcript.onRendered = { [weak self] id, revision in
             guard let self, id == self.activeAgentID else { return }
             self.conversationLoading.rendered()
+            self.conversationRead.didRender(agentId: id, revision: revision)
+            self.acknowledgeRead()
         }
         isLive = true
     }
@@ -101,20 +108,24 @@ final class AppModel {
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
         set(\.teams, state.teams)
+        if teamID != state.teamId { existingBranchGroup = nil }
         set(\.teamID, state.teamId)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
-        if created { newWorktreeGroup = nil; drawerOpen = false }
+        if created { newWorktreeGroup = nil; existingBranchGroup = nil; drawerOpen = false }
+        set(\.branches, state.branches ?? RepositoryBranches())
         set(\.groups, state.groups.map { group in
             SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
-                         sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type) },
+                         sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type, isUnread: $0.isUnread ?? false) },
                          repositoryId: group.repositoryRoot)
         })
         let nextAgentID = state.agentId.isEmpty ? nil : state.agentId
-        if activeAgentID != nextAgentID { dictation.cancel() }
+        let agentChanged = activeAgentID != nextAgentID
+        if agentChanged { dictation.cancel() }
         set(\.activeAgentID, nextAgentID)
+        if agentChanged { reviewOpen = false }
         set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -126,7 +137,10 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
+        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false }
         composerDrafts.select(state.composerTarget)
+        set(\.reviewState, state.review ?? ReviewState())
+        if state.review?.status == .started { reviewOpen = false }
         set(\.supportsAttachments, state.capabilities.attachments)
         set(\.canSend, state.canSend)
         set(\.canInterrupt, state.capabilities.interrupt)
@@ -165,6 +179,22 @@ final class AppModel {
         } catch { composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected)) }
     }
 
+    func openReview() {
+        guard canManageSession else { return }
+        dictation.cancel()
+        reviewOpen = true
+        command("loadReview")
+    }
+
+    func startReview(_ choices: ReviewChoices) {
+        guard canSend, reviewState.status == .ready, let setup = reviewState.setup, let input = choices.input(setup),
+              let data = try? JSONEncoder().encode(input),
+              let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let targetData = try? JSONEncoder().encode(setup.target),
+              let target = try? JSONSerialization.jsonObject(with: targetData) else { return }
+        command("review", ["input": fields, "target": target])
+    }
+
     func chooseModel(_ id: String) { command("composer", ["change": ["modelId": id]]) }
     func chooseEffort(_ effort: String) { command("composer", ["change": ["reasoningEffort": effort.lowercased()]]) }
     func setPlanMode(_ on: Bool) { command("composer", ["change": ["planMode": on]]) }
@@ -182,10 +212,13 @@ final class AppModel {
         preferredBackend = backend
         command("backend", ["backend": backend])
     }
-    func startChat(in group: SidebarGroup, branchName: String? = nil) {
-        guard let repositoryId = group.repositoryId, let backend = newChatBackend, chatCreation != .creating else { return }
+    func startChat(in group: SidebarGroup, branchName: String? = nil, existingBranch: String? = nil) {
+        guard canStartChat, let repositoryId = group.repositoryId, let backend = newChatBackend, chatCreation != .creating else { return }
         creatingChatGroupID = group.id
-        command("newChat", ["repositoryId": repositoryId, "backend": backend].merging(branchName.map { ["branchName": $0] } ?? [:]) { _, new in new })
+        var fields: [String: Any] = ["repositoryId": repositoryId, "backend": backend]
+        if let existingBranch { fields["existingBranch"] = existingBranch }
+        else if let branchName { fields["branchName"] = branchName }
+        command("newChat", fields)
     }
     /// A conversation with no repository: one tap, the engine chosen in the empty chat.
     static let quickChatID = "quick-chat"
@@ -195,11 +228,30 @@ final class AppModel {
         creatingChatGroupID = Self.quickChatID
         command("newQuickChat", ["backend": backend])
     }
+    func loadBranches(in group: SidebarGroup) {
+        guard let repositoryId = group.repositoryId else { return }
+        branches = RepositoryBranches(repositoryId: repositoryId, status: .loading)
+        dismissChatFailure()
+        command("loadBranches", ["repositoryId": repositoryId])
+    }
+    func closeBranchSheet() {
+        guard chatCreation != .creating else { return }
+        existingBranchGroup = nil
+        branches = RepositoryBranches()
+        command("dismissBranches")
+        dismissChatFailure()
+    }
     func closeWorktreeSheet() { if chatCreation != .creating { newWorktreeGroup = nil; dismissChatFailure() } }
     func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
     func forget() { command("forget") }
+    private func acknowledgeRead() {
+        guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
+            foreground: UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen) else { return }
+        command("read", ["agentId": read.agentId, "revision": read.revision])
+    }
+
     func setActive(_ active: Bool) {
         if !active { dictation.cancel() }
         command("activity", ["active": active])

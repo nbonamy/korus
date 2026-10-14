@@ -278,6 +278,15 @@ describe('native relay host adapter', () => {
     expect(transport.requests.some((request) => request.method === 'device.forget')).toBe(true);
     await connector.dispose!(); expect(transport.stop).toHaveBeenCalledOnce();
   });
+  it('loads branch choices for the requested team and repository over the paired connection', async () => {
+    const connector = connect(vault()); await pairWith(connector);
+    const branches = [{ name: 'feature', isDefault: false, isCheckedOut: true }];
+    transport.response = (method) => method === 'repository.branches' ? branches : {};
+    const session = await connector.connect(host.hostId);
+    expect(await session.listBranches!('team', 'repo')).toStrictEqual(branches);
+    expect(transport.requests.find((request) => request.method === 'repository.branches')?.args).toStrictEqual({ teamId: 'team', repositoryId: 'repo' });
+    await connector.dispose!();
+  });
   it('asks the laptop how a new chat is going until it is ready, reports why it failed and changes its engine', async () => {
     const connector = connect(vault()); await pairWith(connector);
     const answers: unknown[] = [{ state: 'running' }, { state: 'running' }, { state: 'success', agentId: 'new-chat' }];

@@ -65,6 +65,7 @@ export const backendMethods = {
   agentGitUpdateFromBase: 'agent/git/base/update',
   agentGoalClear: 'agent/goal/clear',
   agentGoalUpdate: 'agent/goal/update',
+  agentMarkRead: 'agent/read',
   agentConversationLoad: 'agent/conversation/load',
   agentConversationHistoryLoadOlder: 'agent/conversation/history/loadOlder',
   agentConversationContentRead: 'agent/conversation/content/read',

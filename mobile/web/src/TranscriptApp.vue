@@ -114,12 +114,18 @@ window.companionTranscript = {
     await nextTick();
     // Let the updated pane paint before the native shell removes its loading overlay.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    return revision === presentation ? message.agent.id : null;
+    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0 } : null;
   },
   /** The chat's surroundings changed, not its conversation: a small update, applied only to the chat it was made for. */
-  setContext(json) {
+  async setContext(json) {
     const message = JSON.parse(json) as Context;
-    if (message.agentId === currentAgentId) applyContext(message);
+    if (message.agentId !== currentAgentId) return null;
+    const revision = presentation;
+    applyContext(message);
+    if (!message.ready || !message.agent) return null;
+    await nextTick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0 } : null;
   },
   setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
 };

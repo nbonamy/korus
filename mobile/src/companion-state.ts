@@ -1,13 +1,14 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, BackendSkillSummary } from '@workspace/core/contracts';
-import type { CompanionNewChat } from '@workspace/core/companion-protocol';
+import type { CompanionBranch, CompanionNewChat } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 import { reconcileWorkspace } from './workspace-reconcile';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
+import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
@@ -67,6 +68,22 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
+  const branches = shallowRef<{ repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] }>({ repositoryId: null, status: 'idle', items: [] });
+  let branchEpoch = 0;
+  function dismissBranches() { ++branchEpoch; branches.value = { repositoryId: null, status: 'idle', items: [] }; }
+  const stopBranches = watch([laptopId, teamId, status], dismissBranches, { flush: 'sync' });
+  async function loadBranches(repositoryId: string) {
+    const active = session; const team = teamId.value; const epoch = ++branchEpoch;
+    branches.value = { repositoryId, status: 'loading', items: [] };
+    try {
+      if (!active?.listBranches || !team || status.value !== 'connected') throw new Error('Branch list unavailable.');
+      const items = await active.listBranches(team, repositoryId);
+      if (epoch === branchEpoch && active === session) branches.value = { repositoryId, status: 'loaded', items };
+    } catch {
+      if (epoch === branchEpoch) branches.value = { repositoryId, status: 'failed', items: [] };
+    }
+  }
+
   const modelCatalog = shallowRef<Record<string, BackendModelOption[]>>({});
   const composerChoices = reactive<Record<string, ComposerChoice>>({});
   const permissionChoices = reactive<Record<string, { approvalPreset?: string; permissionMode?: string }>>({});
@@ -78,6 +95,44 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
   const skills = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendSkillSummary[] }>({ status: 'idle', items: [] });
+  const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null }>({ status: 'idle', setup: null });
+  let reviewEpoch = 0;
+  function dismissReview() { ++reviewEpoch; review.value = { status: 'idle', setup: null }; }
+  const stopReview = watch(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value?.teamId,
+    workspace.value.teams.find(team => team.id === agent.value?.teamId)?.remoteConnectionId, agent.value && companionSessionId(agent.value)]), dismissReview, { flush: 'sync' });
+  async function loadReview(backend?: AgentBackend) {
+    const active = session; const id = agentId.value; const epoch = ++reviewEpoch;
+    review.value = { status: 'loading', setup: review.value.setup };
+    try {
+      if (!active?.reviewSetup || !id || status.value !== 'connected') throw new Error('Review unavailable.');
+      const setup = await active.reviewSetup(id, backend);
+      if (epoch === reviewEpoch && active === session) review.value = { status: 'ready', setup };
+    } catch { if (epoch === reviewEpoch) review.value = { status: 'failed', setup: review.value.setup }; }
+  }
+  async function startReview(input: CompanionReviewInput, target: import('@workspace/core/companion-protocol').CompanionTarget) {
+    const active = session; const setup = review.value.setup; const epoch = reviewEpoch;
+    if (review.value.status !== 'ready' || !setup || !active?.startReview || !canSend.value || setup.activeReview) return;
+    if (!target || (Object.keys(setup.target) as (keyof typeof target)[]).some(key => setup.target[key] !== target[key])) return;
+    if ((input.scope.type === 'branch' && (!setup.branchChanges || input.scope.baseRef !== setup.baseRef))
+      || (input.scope.type === 'uncommitted' && !setup.uncommitted)
+      || (input.threadMode === 'current' && (!setup.currentThread || input.automation?.enabled))
+      || (input.threadMode === 'independent' && input.backend !== setup.backend)) return;
+    review.value = { status: 'starting', setup };
+    try {
+      const reviewerId = await active.startReview(setup.target.agentId, input);
+      if (epoch !== reviewEpoch) return;
+      if (reviewerId && reviewerId !== agentId.value) {
+        // Discovery failure does not turn an acknowledged start into a retryable start.
+        try {
+          const next = await active.getWorkspace();
+          if (epoch !== reviewEpoch || active !== session) return;
+          workspace.value = reconcileWorkspace(workspace.value, next);
+          if (agents.value.some(agent => agent.id === reviewerId)) await selectAgent(reviewerId);
+        } catch { /* The reviewer remains available in the desktop-owned sidebar. */ }
+      }
+      if (epoch === reviewEpoch) review.value = { status: 'started', setup };
+    } catch { if (epoch === reviewEpoch) review.value = { status: 'unknown', setup }; }
+  }
   const skillContext = computed(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value && companionSessionId(agent.value)]));
   let skillRequest: Promise<void> | undefined;
   let skillEpoch = 0;
@@ -264,12 +319,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const setApprovalPreset = (preset: string) => changePermissions({ approvalPreset: preset }, (active, id) => active.setApprovalPreset?.(id, preset));
   const setPermissionMode = (mode: string) => changePermissions({ permissionMode: mode }, (active, id) => active.setPermissionMode?.(id, mode));
   /** A laptop-side command that is not the person's draft: sent once, the draft untouched. */
-  async function runCommand(command: () => Promise<void> | undefined) {
+  async function runCommand(command: () => Promise<unknown> | undefined) {
     error.value = '';
     try { await command(); } catch { error.value = 'mobile.errors.commandFailed'; }
   }
-  const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
-  const startReview = (input: CompanionReviewInput) => runCommand(() => agentId.value ? session?.startReview?.(agentId.value, input) : undefined);
+  const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => canSend.value && agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
   async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
     if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
@@ -477,7 +531,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
   }
-  return { selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  async function markRead(id: string, revision: number) {
+    if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
+    await session.markRead(id, revision);
+  }
+  return { review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; } };
+    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

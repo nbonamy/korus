@@ -196,6 +196,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }
       const session: CompanionSession = {
         getWorkspace: read,
+        async markRead(agentId, revision) { await request(host, 'conversation.read', { target: target(agentId), revision }); },
         async respondRequest(reply) { await request(host, 'agent.request.respond', reply); },
         deselectConversation() { void cache.select(null); },
         cachedConversation(agentId) { return cache.peek(target(agentId)); },
@@ -228,11 +229,16 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },
+        listBranches: (teamId, repositoryId) => request(host, 'repository.branches', { teamId, repositoryId }),
         // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
         async createChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.create', chat)).creationId, signal); },
         async createQuickChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.quickChat.create', chat)).creationId, signal); },
         async setBackend(agentId, backend) { await request(host, 'agent.backend.set', { agentId, backend }); },
-        async startReview(agentId, input) { await request(host, 'agent.review.start', { agentId, input }); },
+        reviewSetup: (agentId, backend) => request(host, 'agent.review.setup', { target: target(agentId), ...(backend ? { backend } : {}) }),
+        async startReview(agentId, input) {
+          const result = await request<{ reviewerAgentId?: string | null }>(host, 'agent.review.start', { agentId, target: target(agentId), input });
+          return result.reviewerAgentId ?? undefined;
+        },
         async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },
         async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },
         async commandStatus(clientCommandId) { return (await request<{ state: 'accepted' | 'unresolved' | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
