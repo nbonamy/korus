@@ -7,9 +7,8 @@ import UIKit
 @MainActor
 final class AppModel {
     var startup: EngineState.Startup = .loading
-    private var fetchingConversation = false
-    private var awaitingTranscript = false
-    var loadingConversation: Bool { fetchingConversation || awaitingTranscript }
+    private var conversationLoading = ConversationLoadingState()
+    var loadingConversation: Bool { conversationLoading.isLoading }
     var connection: ConnectionState = .unpaired
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -46,7 +45,7 @@ final class AppModel {
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRendered = { [weak self] id in
             guard let self, id == self.activeAgentID else { return }
-            self.awaitingTranscript = false
+            self.conversationLoading.rendered()
         }
         isLive = true
     }
@@ -65,9 +64,7 @@ final class AppModel {
 
     private func apply(_ state: EngineState) {
         startup = state.startup
-        if state.loading && !fetchingConversation { awaitingTranscript = true }
-        fetchingConversation = state.loading
-        if !state.loading && (!state.error.isEmpty || state.agentId.isEmpty) { awaitingTranscript = false }
+        conversationLoading.update(fetching: state.loading, failed: !state.error.isEmpty, hasAgent: !state.agentId.isEmpty)
         connection = state.connection
         laptops = state.laptops
         pairing = state.pairing
@@ -108,7 +105,7 @@ final class AppModel {
         drawerOpen = false
         guard id != activeAgentID else { return }
         dictation.cancel()
-        awaitingTranscript = true
+        conversationLoading.select()
         transcript.beginSelection()
         command("selectAgent", ["id": id])
     }
