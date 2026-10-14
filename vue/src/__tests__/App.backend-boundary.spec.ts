@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../App.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
@@ -10,6 +10,12 @@ import { clearFirstRunOnboardingStage } from '../onboarding-session';
 
 beforeEach(clearFirstRunOnboardingStage);
 afterEach(() => { delete window.app; });
+
+function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
+  const action = wrapper.get('.plan-review-footer').findAll('button').find(button => button.text() === label);
+  if (!action) throw new Error(`Missing plan action: ${label}`);
+  return action;
+}
 
 describe('Unified backend → mounted application', () => {
   it('shows and clears a finish-turn suggestion in the main composer through backend events', async () => {
@@ -262,9 +268,9 @@ describe('Unified backend → mounted application', () => {
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview = { id: reviewId, conversationId: null, turnId: 'turn', itemId: 'proposal', markdown: '# Review this', status: 'accept' };
     api.respondToPlanReview.mockResolvedValue(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept' });
+    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept', draftVersion: 0 });
     expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'turn', payload: { itemId: 'proposal', markdown: '# Review this' } });
@@ -281,13 +287,13 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Restored proposal');
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview!.status = 'accept';
     api.respondToPlanReview.mockResolvedValueOnce(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(api.respondToPlanReview).toHaveBeenCalledTimes(2);
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
@@ -306,9 +312,9 @@ describe('Unified backend → mounted application', () => {
     const cancelled = structuredClone(accepted);
     cancelled.agents[0]!.planReview = { id: cancelReviewId, conversationId: null, turnId: 'cancel-turn', itemId: 'cancel', markdown: '# Cancel this proposal', status: 'cancel' };
     api.respondToPlanReview.mockResolvedValueOnce(cancelled);
-    await wrapper.get('.plan-review-footer__button--cancel').trigger('click');
+    await planAction(wrapper, 'Cancel').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel' });
+    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel', draftVersion: 0 });
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     expect(api.sendPrompt).not.toHaveBeenCalled();
   });
