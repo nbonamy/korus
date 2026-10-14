@@ -25,7 +25,8 @@ async function open(options: { messages?: number } = {}) {
   frames.set('demo-agent', frameOf('demo-agent', history('demo-agent', options.messages ?? 200), 1));
   frames.set('demo-reviewer', frameOf('demo-reviewer', history('demo-reviewer', 20), 1));
   connector.connect = async (id) => {
-    const session = await original(id); workspace = await session.getWorkspace();
+    const session = await original(id); const initial = await session.getWorkspace();
+    workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: agent.id } })) };
     return { ...session, getWorkspace: async () => workspace, loadConversation: async (agentId) => frames.get(agentId) ?? null,
       onUpdate: (listener) => { deliver = listener; return () => { deliver = () => {}; }; } };
   };

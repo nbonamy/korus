@@ -175,11 +175,14 @@ export class CompanionManager {
       createChat: async (chat) => {
         const remote = chat.remoteConnectionId ? { remoteConnectionId: chat.remoteConnectionId } : {};
         let folder = chat.repositoryRoot;
-        if (chat.existingBranch) {
-          // Resolve again at creation: a checkout may have moved or the branch may have been deleted.
+        if (!chat.worktree) {
+          // Resolve both explicit and default branches at creation: primary worktrees
+          // can be on any branch, and checkouts can move after the menu was opened.
           const branches = await this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' });
-          const branch = branches.find((candidate) => candidate.name === chat.existingBranch);
-          if (!branch) throw new Error('Branch not found. Refresh the branch list.');
+          const branch = chat.existingBranch
+            ? branches.find(candidate => candidate.name === chat.existingBranch)
+            : branches.find(candidate => candidate.isDefault);
+          if (!branch) throw new Error(chat.existingBranch ? 'Branch not found. Refresh the branch list.' : 'Default branch not found. Refresh the branch list.');
           folder = branch.worktreePath ?? (await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, {
             input: { repoPath: chat.repositoryRoot, branchName: branch.name, ...remote }, _clientId: 'companion-write',
           })).path;

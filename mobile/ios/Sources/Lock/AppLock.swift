@@ -51,6 +51,7 @@ final class AppLock {
 
     /// Turning it on asks for Face ID once, so the lock is known to work before it can shut the person out.
     func setEnabled(_ on: Bool) async {
+        guard !isLocked else { return }
         if on {
             guard canProtect, !isAuthenticating else { return }
             isAuthenticating = true

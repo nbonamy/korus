@@ -143,6 +143,20 @@ describe('mobile chat creation', () => {
     await expect(f.create({ existingBranch: 'main', worktree: { branchName: 'new' } })).rejects.toThrow();
     expect(f.calls.map((call) => call.method)).not.toContain(backendMethods.agentCreate);
   });
+  it.each([true, false])('resolves the default branch instead of trusting the primary checkout (checked out: %s)', async checkedOut => {
+    const f = await fixture();
+    f.snapshot.agents[0]!.workspace = { ...f.snapshot.agents[0]!.workspace!, branch: 'feature' } as NonNullable<AppSnapshot['agents'][number]['workspace']>;
+    f.branches[0] = { name: 'main', isDefault: true, ...(checkedOut ? { worktreePath: '/code/main' } : {}) };
+    expect(await f.create({})).toStrictEqual({ state: 'success', agentId: 'new-chat' });
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: checkedOut ? '/code/main' : '/code/repo-feature' } });
+    expect(f.calls.filter(call => call.method === backendMethods.sourceWorktreeCreate)).toHaveLength(checkedOut ? 0 : 1);
+    if (!checkedOut) expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { branchName: 'main' } });
+  });
+  it('fails default-branch creation if the owning catalog cannot identify it', async () => {
+    const f = await fixture(); f.branches.forEach(branch => { branch.isDefault = false; });
+    expect(await f.create({})).toMatchObject({ state: 'error' });
+    expect(f.calls.some(call => call.method === backendMethods.agentCreate)).toBe(false);
+  });
   it('starts a chat in the repository checkout without making a worktree', async () => {
     const f = await fixture();
     expect(await f.create({})).toStrictEqual({ state: 'success', agentId: 'new-chat' });

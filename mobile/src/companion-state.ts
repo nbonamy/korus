@@ -106,6 +106,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const modelCatalog = shallowRef<Record<string, BackendModelOption[]>>({});
   const composerChoices = reactive<Record<string, ComposerChoice>>({});
   const permissionChoices = reactive<Record<string, { approvalPreset?: string; permissionMode?: string }>>({});
+  const permissionRequests = new Map<string, symbol>();
   // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
   const agents = computed(() => {
     const order = workspace.value.teams.find((team) => team.id === teamId.value)?.agentIds ?? [];
@@ -243,7 +244,29 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
     && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && (!deliveryUnknown.value || unresolvedReceipts[key()] === true));
 
+  function conversationIdentity(owner = agent.value): string {
+    const team = workspace.value.teams.find(team => team.id === owner?.teamId);
+    return owner && team ? JSON.stringify([companionTarget(laptopId.value, team, owner), owner.backend]) : '';
+  }
+  function matchesCurrentSession(frame: CompanionConversation): boolean {
+    const owner = agent.value;
+    if (!owner?.backendSession || frame.agentId !== owner.id || frame.backend !== owner.backend) return false;
+    if (frame.type === 'codex.conversationSnapshotChanged') return owner.backendSession.kind === 'codex' && frame.threadId === owner.backendSession.threadId;
+    return owner.backendSession.kind !== 'codex' && frame.payload.snapshot.sessionId === owner.backendSession.sessionId;
+  }
+  function applyWorkspace(next: CompanionWorkspace): boolean {
+    workspace.value = reconcileWorkspace(workspace.value, next);
+    if (agentId.value && selectedConversationKey !== conversationIdentity()) {
+      permissionRequests.delete(agentId.value); delete permissionChoices[agentId.value];
+      void selectAgent(agentId.value);
+      return true;
+    }
+    return false;
+  }
+
   function closeSession() {
+    permissionRequests.clear();
+    for (const id of Object.keys(permissionChoices)) delete permissionChoices[id];
     closePreview.value = null; chatCreation.value = 'idle';
     clearTimeout(receiptTimer); receiptTimer = undefined;
     clearTimeout(retryTimer);
@@ -297,8 +320,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       });
       const removeUpdates = session.onUpdate?.((nextWorkspace, frame) => {
         if (epoch !== connectionEpoch) return;
-        workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
-        if (frame && frame.agentId === agentId.value && frame.backend === agent.value?.backend) {
+        if (applyWorkspace(nextWorkspace)) return;
+        if (!loading.value && frame && matchesCurrentSession(frame)) {
           conversation.value = frame; conversationReady.value = true;
           if (error.value === 'mobile.errors.loadConversation') error.value = '';
         }
@@ -374,13 +397,22 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const settings = composerSettings.value;
     return settings ? { model: settings.model?.model ?? null, reasoningEffort: settings.reasoningEffort, serviceTier: settings.serviceTier, planMode: settings.planMode } : {};
   }
-  /** Remembers the choice at once and asks the laptop; the previous value returns if the laptop refuses. */
-  function changePermissions(change: { approvalPreset?: string; permissionMode?: string }, send: (active: CompanionSession, id: string) => Promise<void> | undefined) {
+  /** Optimistic only until the owning laptop answers; subsequent policy updates stay authoritative. */
+  async function changePermissions(change: { approvalPreset?: string; permissionMode?: string }, send: (active: CompanionSession, id: string) => Promise<void> | undefined) {
     const id = agentId.value; const active = session;
     if (!id || !active) return;
-    const previous = permissionChoices[id];
-    permissionChoices[id] = { ...previous, ...change };
-    void send(active, id)?.catch(() => { if (previous) permissionChoices[id] = previous; else delete permissionChoices[id]; });
+    const token = Symbol();
+    permissionRequests.set(id, token);
+    permissionChoices[id] = { ...permissionChoices[id], ...change };
+    try {
+      await send(active, id);
+      if (active !== session) return;
+      const next = await active.getWorkspace();
+      if (active === session) applyWorkspace(next);
+    } catch { /* Revert to the latest authoritative policy on rejection or transport failure. */ }
+    finally {
+      if (permissionRequests.get(id) === token) { permissionRequests.delete(id); delete permissionChoices[id]; }
+    }
   }
   const setApprovalPreset = (preset: string) => changePermissions({ approvalPreset: preset }, (active, id) => active.setApprovalPreset?.(id, preset));
   const setPermissionMode = (mode: string) => changePermissions({ permissionMode: mode }, (active, id) => active.setPermissionMode?.(id, mode));
@@ -401,7 +433,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       try { await active.changeGoal(target, objective === null ? null : objective.trim()); }
       catch {
-        if (epoch === selectionEpoch && active === session) goalError.value = true;
+        // Initializing an empty session reloads its transcript without navigating away
+        // from the goal's owner. Keep its uncertain result visible across that rebind.
+        const owner = agent.value;
+        const team = workspace.value.teams.find(team => team.id === owner?.teamId);
+        const current = owner && team ? companionTarget(laptopId.value, team, owner) : null;
+        if (active === session && owner?.backend === selected.backend && current
+          && (Object.keys(target) as (keyof CompanionTarget)[]).every(key => (key === 'sessionId' && target.sessionId === null) || target[key] === current[key])) goalError.value = true;
         return 'unknown';
       }
       // The command was accepted even if refreshing later loses the connection.
@@ -469,7 +507,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     sessionActionFailed.value = false;
     const epoch = ++selectionEpoch;
     const nextAgent = agents.value.find((a) => a.id === id);
-    const nextKey = nextAgent ? JSON.stringify([laptopId.value, id, companionSessionId(nextAgent)]) : '';
+    const nextKey = conversationIdentity(nextAgent ?? null);
     const cached = nextAgent && session && status.value === 'connected' ? session.cachedConversation?.(id) : undefined;
     const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;
     selectedConversationKey = nextKey;

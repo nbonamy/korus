@@ -2,8 +2,66 @@ import { PromptRejectedError } from '../companion-port';
 import { describe, expect, it, vi } from 'vitest';
 import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
+import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 
 describe('companion state', () => {
+  it.each(['replacement', 'reset', 'location'] as const)('clears the selected transcript and awaits the new identity after a %s update', async change => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
+    let workspace!: CompanionWorkspace;
+    let finish!: (frame: CompanionConversation | null) => void;
+    let delayed = false;
+    connector.connect = async id => {
+      const session = await connect(id);
+      const initial = await session.getWorkspace();
+      workspace = { ...initial, agents: initial.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex', threadId: agent.id } })) };
+      return { ...session, getWorkspace: async () => workspace,
+        onUpdate: listener => { update = listener; return () => {}; },
+        loadConversation: async agentId => delayed ? new Promise(resolve => { finish = resolve; }) : session.loadConversation(agentId) };
+    };
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      const old = state.conversation.value!;
+      delayed = true;
+      workspace = { ...workspace, teams: workspace.teams.map(team => change === 'location' ? { ...team, remoteConnectionId: 'new-host' } : team),
+        agents: workspace.agents.map(agent => agent.id !== 'demo-agent' || change === 'location' ? agent : { ...agent, backendSession: change === 'reset' ? undefined : { kind: 'codex', threadId: 'replacement' } }) };
+      update(workspace, null);
+      expect(state.conversation.value).toBeNull();
+      expect(state.canSend.value).toBe(false);
+      update(workspace, old);
+      expect(state.conversationReady.value).toBe(false);
+      const next = change === 'reset' ? null : { ...old, threadId: change === 'replacement' ? 'replacement' : old.threadId } as CompanionConversation;
+      finish(next);
+      await vi.waitFor(() => expect(state.conversationReady.value).toBe(true));
+      expect(state.conversation.value).toStrictEqual(next);
+      expect(state.canSend.value).toBe(true);
+      if (change === 'replacement') { update(workspace, old); expect(state.conversation.value).toStrictEqual(next); }
+    } finally { state.dispose(); }
+  });
+
+  it('retires optimistic permissions after acknowledgment and follows later laptop policy', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
+    let workspace!: CompanionWorkspace;
+    let accept!: () => void;
+    const setApprovalPreset = vi.fn(() => new Promise<void>(resolve => { accept = resolve; }));
+    connector.connect = async id => {
+      const session = await connect(id); workspace = await session.getWorkspace();
+      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, onUpdate: listener => { update = listener; return () => {}; } };
+    };
+    const state = createCompanionState(connector);
+    const policy = (preset: string) => ({ ...workspace, agents: workspace.agents.map(agent => ({ ...agent, backendDefaults: { kind: 'codex' as const, approvalPreset: preset as 'ask-for-approval' | 'full-access' } })) });
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      const changing = state.setApprovalPreset('ask-for-approval');
+      expect(state.permissions.value?.approvalPreset).toBe('ask-for-approval');
+      workspace = policy('ask-for-approval'); update(workspace, null); accept(); await changing;
+      workspace = policy('full-access'); update(workspace, null);
+      expect(state.permissions.value?.approvalPreset).toBe('full-access');
+    } finally { state.dispose(); }
+  });
+
   it('preserves a rejected draft and permits an explicit new send immediately', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const send = vi.fn().mockRejectedValueOnce(new PromptRejectedError()).mockResolvedValue(undefined);
@@ -393,8 +451,15 @@ describe('companion state', () => {
   });
   it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
-    const setApprovalPreset = vi.fn(async () => {}); const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
-    connector.connect = async (id) => ({ ...await original(id), setApprovalPreset, setPermissionMode, interrupt });
+    let workspace!: CompanionWorkspace;
+    const setApprovalPreset = vi.fn(async () => {
+      workspace = { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, backendDefaults: { kind: 'codex', approvalPreset: 'full-access' } } : agent) };
+    });
+    const setPermissionMode = vi.fn(async () => { throw new Error('refused'); }); const interrupt = vi.fn(async () => {});
+    connector.connect = async (id) => {
+      const session = await original(id); workspace = await session.getWorkspace();
+      return { ...session, getWorkspace: async () => workspace, setApprovalPreset, setPermissionMode, interrupt };
+    };
     const state = createCompanionState(connector);
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');

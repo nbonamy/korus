@@ -94,7 +94,7 @@ export class CompanionGateway {
   private readonly notifications = new Set<(notification: CompanionNotification) => void>();
   private mutations = Promise.resolve();
   private readonly creations = new ChatCreations();
-  private readonly admissions = new Map<string, Promise<StoredCommand>>();
+  private readonly admissions = new Map<string, { fingerprint: string; target: CompanionTarget; result: Promise<StoredCommand> }>();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
   get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ code: _code, ...pending }) => pending); }
@@ -273,49 +273,60 @@ export class CompanionGateway {
       const command = commandSchema.parse(args);
       const ledgerKey = `${peerId}:${command.clientCommandId}`;
       const fingerprint = createHash('sha256').update(JSON.stringify(command)).digest('hex');
+      const receiving = this.admissions.get(ledgerKey);
+      if (receiving) {
+        if (receiving.fingerprint !== fingerprint) throw new Error('Command identity was reused.');
+        return receipt(await receiving.result);
+      }
       const existing = this.state.commands[ledgerKey];
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error('Command identity was reused.');
         return receipt(await this.settled(ledgerKey, existing));
       }
       // Admission can wait on the provider, so it runs outside the serialized mutation boundary: revoking or approving a device must never queue behind it.
-      const admitted = await this.mutate(async (): Promise<{ done: StoredCommand } | { run: Promise<StoredCommand> }> => {
-        // Recheck inside the serialized admission boundary, including revocation and concurrent retries.
-        if (!this.state.grants.some((item) => item.peerId === peerId)) throw new Error('Device is not authorized.');
-        const duplicate = this.state.commands[ledgerKey];
-        if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return { done: duplicate }; }
-        const { backend, folder } = await this.validateTarget(command.target);
-        if (command.options?.skills?.length) {
-          const catalog = await this.port.skills(command.target.agentId);
-          if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
-          const current = await this.validateTarget(command.target);
-          if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
-          this.requireGrant(peerId, grant);
-        }
-        if (command.attachments?.length && command.target.locationId !== 'local') throw new Error('Remote attachments require a trusted file transfer.');
-        const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
-        if (uploads && (uploads.reduce((total, upload) => total + upload.data.byteLength, 0) > maxUploadBytes || uploads.some((upload, index) => upload.data.toString('base64') !== command.attachments![index]!.data))) throw new Error('Attachment too large.');
-        const commands = this.liveCommands();
-        if (Object.keys(commands).length >= 10_000) throw new Error('Command receipt storage is full.');
-        const pending: StoredCommand = { clientCommandId: command.clientCommandId, state: 'pending', target: command.target, fingerprint, createdAt: this.now() };
-        const next = { ...this.state, commands: { ...commands, [ledgerKey]: pending } };
-        await this.port.save(next); this.state = next;
-        const run = (async (): Promise<StoredCommand> => {
-          let state: 'accepted' | 'rejected' | 'unresolved' = 'unresolved';
-          try { await (uploads ? this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch (error) { if (error instanceof PromptRejectedError) state = 'rejected'; }
-          const completed = { ...pending, state };
-          // A device revoked during admission has no ledger left to complete.
-          if (this.state.commands[ledgerKey]) await this.mutate(async () => {
-            if (!this.state.commands[ledgerKey]) return;
-            const saved = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: completed } };
-            await this.port.save(saved); this.state = saved;
-          }).catch(() => { /* The in-memory outcome below still answers this request. */ });
-          return completed;
-        })().finally(() => { this.admissions.delete(ledgerKey); });
-        this.admissions.set(ledgerKey, run);
-        return { run };
-      });
-      return receipt('done' in admitted ? await this.settled(ledgerKey, admitted.done) : await admitted.run);
+      const admission = (async () => {
+        const admitted = await this.mutate(async (): Promise<{ done: StoredCommand } | { run: Promise<StoredCommand> }> => {
+          // Recheck inside the serialized admission boundary, including revocation and concurrent retries.
+          if (!this.state.grants.some((item) => item.peerId === peerId)) throw new Error('Device is not authorized.');
+          const duplicate = this.state.commands[ledgerKey];
+          if (duplicate) { if (duplicate.fingerprint !== fingerprint) throw new Error('Command identity was reused.'); return { done: duplicate }; }
+          const { backend, folder } = await this.validateTarget(command.target);
+          if (command.options?.skills?.length) {
+            const catalog = await this.port.skills(command.target.agentId);
+            if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
+            const current = await this.validateTarget(command.target);
+            if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
+            this.requireGrant(peerId, grant);
+          }
+          if (command.attachments?.length && command.target.locationId !== 'local') throw new Error('Remote attachments require a trusted file transfer.');
+          const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
+          if (uploads && (uploads.reduce((total, upload) => total + upload.data.byteLength, 0) > maxUploadBytes || uploads.some((upload, index) => upload.data.toString('base64') !== command.attachments![index]!.data))) throw new Error('Attachment too large.');
+          const commands = this.liveCommands();
+          if (Object.keys(commands).length >= 10_000) throw new Error('Command receipt storage is full.');
+          const pending: StoredCommand = { clientCommandId: command.clientCommandId, state: 'pending', target: command.target, fingerprint, createdAt: this.now() };
+          const next = { ...this.state, commands: { ...commands, [ledgerKey]: pending } };
+          await this.port.save(next); this.state = next;
+          const run = (async (): Promise<StoredCommand> => {
+            let state: 'accepted' | 'rejected' | 'unresolved' = 'unresolved';
+            try { await (uploads ? this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch (error) { if (error instanceof PromptRejectedError) state = 'rejected'; }
+            const completed = { ...pending, state };
+            // A device revoked during admission has no ledger left to complete.
+            if (this.state.commands[ledgerKey]) await this.mutate(async () => {
+              if (!this.state.commands[ledgerKey]) return;
+              const saved = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: completed } };
+              await this.port.save(saved); this.state = saved;
+            }).catch(() => { /* The in-memory outcome below still answers this request. */ });
+            return completed;
+          })();
+          return { run };
+        });
+        return 'done' in admitted ? admitted.done : await admitted.run;
+      })();
+      // Publish identity before queued validation or storage can yield. A status read must
+      // never declare absence while this request can still reach the provider.
+      this.admissions.set(ledgerKey, { fingerprint, target: command.target, result: admission });
+      try { return receipt(await admission); }
+      finally { this.admissions.delete(ledgerKey); }
     }
     if (method === 'skills.list' || method === 'plugins.list') {
       const target = targetSchema.parse(args);
@@ -451,15 +462,19 @@ export class CompanionGateway {
     }
     if (method === 'command.status') {
       const { clientCommandId } = z.object({ clientCommandId: z.string().uuid() }).strict().parse(args);
-      const stored = this.state.commands[`${peerId}:${clientCommandId}`];
-      return stored ? receipt(stored, this.admissions.has(`${peerId}:${clientCommandId}`)) : { clientCommandId, state: 'notReceived' };
+      const key = `${peerId}:${clientCommandId}`;
+      const stored = this.state.commands[key];
+      const admission = this.admissions.get(key);
+      return stored ? receipt(stored, Boolean(admission)) : admission
+        ? { clientCommandId, target: admission.target, state: 'pending' }
+        : { clientCommandId, state: 'notReceived' };
     }
     if (method === 'device.forget') { z.object({}).strict().parse(args); await this.revoke(peerId); return {}; }
     throw new Error('Companion operation is not supported.');
   }
   /** A receipt that is still pending is awaiting the provider in this process: wait for its outcome instead of reporting it unresolved. */
   private async settled(ledgerKey: string, stored: StoredCommand): Promise<StoredCommand> {
-    return stored.state === 'pending' ? await this.admissions.get(ledgerKey) ?? stored : stored;
+    return stored.state === 'pending' ? await this.admissions.get(ledgerKey)?.result ?? stored : stored;
   }
   private repository(workspace: CompanionWorkspace, input: { teamId: string; repositoryId: string }) {
     const team = workspace.teams.find((candidate) => candidate.id === input.teamId);

@@ -35,6 +35,44 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it.each(['validation', 'saving', 'queued'] as const)('reports pending before admission finishes %s and deduplicates retries', async phase => {
+    const f = fixture(); await f.pair();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let entered = false;
+    let blocking: Promise<unknown> | undefined;
+    if (phase === 'validation') f.port.workspace.mockImplementationOnce(async () => { entered = true; await gate; return workspace; });
+    else f.port.save.mockImplementationOnce(async () => { entered = true; await gate; });
+    if (phase === 'queued') {
+      blocking = f.gateway.request('phone', 'notifications.register', null);
+      await vi.waitFor(() => expect(entered).toBe(true));
+    }
+    const command = { target, text: 'Only once', clientCommandId: randomUUID() };
+    const first = f.gateway.request('phone', 'prompt.submit', command);
+    const retry = f.gateway.request('phone', 'prompt.submit', command);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId }))
+        .toStrictEqual({ target, clientCommandId: command.clientCommandId, state: 'pending' });
+      await expect(f.gateway.request('phone', 'prompt.submit', { ...command, text: 'Changed' })).rejects.toThrow('reused');
+    } finally { release(); await blocking; await Promise.all([first, retry]); }
+    expect(f.port.submit).toHaveBeenCalledTimes(1);
+    expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId }))
+      .toStrictEqual({ target, clientCommandId: command.clientCommandId, state: 'accepted' });
+  });
+
+  it('retires pre-dispatch admission tracking after a failed receipt save', async () => {
+    const f = fixture(); await f.pair();
+    f.port.save.mockRejectedValueOnce(new Error('Disk unavailable'));
+    const command = { target, text: 'Not sent', clientCommandId: randomUUID() };
+    await expect(f.gateway.request('phone', 'prompt.submit', command)).rejects.toThrow('Disk unavailable');
+    expect(f.port.submit).not.toHaveBeenCalled();
+    expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId }))
+      .toStrictEqual({ clientCommandId: command.clientCommandId, state: 'notReceived' });
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
+    expect(f.port.submit).toHaveBeenCalledTimes(1);
+  });
+
   it('persists push registration only for its authenticated phone and revokes both delivery paths', async () => {
     const f = fixture();
     const registration = { token: 'ab'.repeat(32), environment: 'development' };

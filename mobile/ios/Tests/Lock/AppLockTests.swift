@@ -123,10 +123,18 @@ final class AppLockTests: XCTestCase {
         XCTAssertEqual(authenticator.calls, 0)
     }
 
+    func testALockedPresentationCannotDisableProtection() async {
+        let (lock, _, _) = make()
+        await lock.setEnabled(false)
+        XCTAssertTrue(lock.isEnabled)
+        XCTAssertTrue(lock.isLocked)
+    }
+
     func testTurningItOffUnlocksAtOnceAndStaysOffAfterRestart() async {
         let store = defaults(enabled: true)
-        let (lock, _, _) = make(store: store)
-        XCTAssertTrue(lock.isLocked)
+        let (lock, authenticator, _) = make(store: store)
+        let unlocking = Task { await lock.unlock() }
+        await answer(authenticator); await unlocking.value
         await lock.setEnabled(false)
         XCTAssertFalse(lock.isEnabled); XCTAssertFalse(lock.isLocked)
         XCTAssertFalse(make(store: store).0.isLocked)

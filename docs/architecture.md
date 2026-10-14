@@ -69,7 +69,9 @@ Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
 The mobile companion engine is a narrow workspace/read/send port over the companion
-protocol. SwiftUI owns navigation and the composer. A background WKWebView hosts
+protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
+window above native sheets and full-screen presentations while locked or inactive;
+locked settings cannot disable protection. A background WKWebView hosts
 the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom

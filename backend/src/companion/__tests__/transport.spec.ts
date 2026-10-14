@@ -22,6 +22,18 @@ import type { Libp2p } from '@libp2p/interface';
 const stops: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
 describe('encrypted companion circuit', () => {
+  it('rejects oversized rendezvous headers before reading their body', async () => {
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws' });
+    stops.push(() => relay.stop());
+    const phone = await createLibp2p({ transports: [webSockets()], connectionEncrypters: [noise()], streamMuxers: [yamux()] });
+    stops.push(() => phone.stop());
+    const stream = await phone.dialProtocol(relay.getMultiaddrs()[0]!, companionRendezvousProtocol);
+    stops.push(() => { stream.abort(new Error('Test complete')); });
+    const header = new Uint8Array(4); new DataView(header.buffer).setUint32(0, 16_385);
+    stream.send(header);
+    await expect.poll(() => stream.status, { timeout: 1000 }).not.toBe('open');
+  });
+
   it('delivers push metadata over an authenticated host-to-relay stream and rejects revoked devices', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const phoneKey = await generateKeyPair('Ed25519');

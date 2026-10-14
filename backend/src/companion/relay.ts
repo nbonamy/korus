@@ -141,7 +141,7 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
 }
 async function readOne(stream: Stream): Promise<unknown> {
   stream.maxReadBufferLength = 16_384; stream.maxWriteBufferLength = 16_384; stream.inactivityTimeout = 10_000;
-  const decoder = new CompanionFrameDecoder();
+  const decoder = new CompanionFrameDecoder(16_384);
   for await (const chunk of stream) {
     const frames = decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray());
     if (frames.length) { if (frames.length !== 1) throw new Error('One admission per stream.'); return frames[0]; }

@@ -12,13 +12,11 @@ struct CompanionApp: App {
             RootView()
                 .environment(model)
                 .environment(lock)
-                .overlay {
-                    // Locked, or not in front: the conversations are never visible behind a lock or in the app switcher.
-                    if lock.isProtecting && (lock.isLocked || scenePhase != .active) {
-                        LockView(lock: lock, showsUnlock: lock.isLocked).environment(model).transition(.opacity)
-                    }
+                .background {
+                    AppLockCover(visible: lock.isProtecting && (lock.isLocked || scenePhase != .active),
+                                 content: LockView(lock: lock, showsUnlock: lock.isLocked).environment(model))
+                        .allowsHitTesting(false)
                 }
-                .animation(.easeOut(duration: 0.15), value: lock.isLocked)
                 .task { await lock.unlock() }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
