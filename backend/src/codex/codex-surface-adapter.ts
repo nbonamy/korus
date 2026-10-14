@@ -150,7 +150,7 @@ export class CodexSurfaceAgentAdapter {
         throw new Error('Banked reset account changed');
       }
       const nextTokens = new Map<string, { token: string; idempotencyKey?: string; uncertain?: boolean }>();
-      const result = bankedResetsFromSurface(limits, surface.consumeRateLimitResetCredit ? id => {
+      const result = bankedResetsFromSurface(limits, typeof surface.consumeRateLimitResetCredit === 'function' ? id => {
         const entry = this.resetCreditTokens.get(id) ?? { token: randomUUID() };
         nextTokens.set(id, entry);
         return entry.token;
