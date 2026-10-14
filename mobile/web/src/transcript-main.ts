@@ -11,7 +11,7 @@ import TranscriptApp from './TranscriptApp.vue';
 import { handler } from './native';
 
 document.documentElement.dataset.platform = 'other';
-applyAppTheme({ id: 'app-light', mode: 'system', uiFontSize: 15, chatFontSize: 20, codeFontSize: 13 });
+applyAppTheme({ id: 'app-light', mode: 'system', uiFontSize: 17, chatFontSize: 19, codeFontSize: 15 });
 subscribeToSystemAppearance();
 createApp(TranscriptApp).use(ElementPlus).use(i18n).mount('#app');
 void handler('transcript').postMessage(JSON.stringify({ type: 'ready' }));

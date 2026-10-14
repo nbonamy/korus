@@ -114,6 +114,7 @@ struct ComposerView: View {
         let empty = model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return Button {
             model.send()
+            focused = false
         } label: {
             Image(systemName: "arrow.up")
                 .font(.system(size: 16, weight: .bold))

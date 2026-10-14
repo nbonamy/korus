@@ -77,6 +77,15 @@ window.companionTranscript = {
 <style>
 html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
 .transcript { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
+/* Keep secondary transcript text legible at a phone's viewing distance. */
+.transcript, .transcript :where(.codex-chat-theme) {
+  --font-size-12: 14px;
+  --font-size-13: 15px;
+  --font-size-13-5: 15.5px;
+  --font-size-14: 16px;
+  --font-size-15: 17px;
+  --line-height-20: 24px;
+}
 .transcript .codex-workbench-layout__footer { display: none; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */
 .transcript .codex-conversation-pane__messages { --codex-scroll-to-bottom-offset: var(--space-12); }
