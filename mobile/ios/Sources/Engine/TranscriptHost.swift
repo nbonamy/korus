@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import UIKit
 
 /// The conversation itself: the shared Vue pane, read-only, in a web view. Everything around it is native.
 @MainActor
@@ -70,6 +71,11 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let text = message.body as? String, let data = text.data(using: .utf8),
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if event["type"] as? String == "openExternal", message.frameInfo.isMainFrame,
+           let value = event["url"] as? String, let url = ExternalLink.url(value) {
+            UIApplication.shared.open(url)
+            return
+        }
         if event["type"] as? String == "loadOlder", let agentID = event["agentId"] as? String {
             onLoadOlder?(agentID)
             return

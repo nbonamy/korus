@@ -70,7 +70,12 @@ const controller = createCodexConversationPaneController({
       policy: { attachEnabled: false, canDeleteTurn: false, canEditTurn: false, canForkTurn: false, canRetryTurn: false, actionsDisabled: true, followUpsDisabled: true },
     };
   }),
-  actions: { loadOlderHistory: loadOlder },
+  actions: {
+    loadOlderHistory: loadOlder,
+    openLink(link) {
+      if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
+    },
+  },
 });
 
 const engineNames: Record<string, string> = { codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity' };

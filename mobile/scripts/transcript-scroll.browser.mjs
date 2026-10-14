@@ -258,3 +258,35 @@ test('a context update changes the chat around the transcript without redrawing 
     assert.equal(result.hasOther, false);
   } finally { await browser?.close(); await server.close(); }
 });
+
+test('transcript links ask iOS to open external destinations without navigating or opening a web popup', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => {
+      window.nativeEvents = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) { window.nativeEvents.push(JSON.parse(json)); } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = { id: 'links', name: 'Links', folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const message = { id: 'links-message', role: 'assistant', status: 'complete', createdAt: '', parts: [{ type: 'text', text: '[Website](https://example.com/docs?q=hello#section) [Email](mailto:hello@example.com) [File](/workspace/readme.md)' }] };
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
+        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [message], turns: [], activeTurnId: null, busy: false } } } }));
+    });
+    const original = page.url();
+    await page.getByRole('link', { name: 'Website', exact: true }).click();
+    await page.getByRole('link', { name: 'Email', exact: true }).click();
+    await page.getByRole('link', { name: 'File', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.nativeEvents.filter(event => event.type === 'openExternal')), [
+      { type: 'openExternal', url: 'https://example.com/docs?q=hello#section' },
+      { type: 'openExternal', url: 'mailto:hello@example.com' },
+    ]);
+    assert.equal(page.url(), original);
+    assert.equal(page.context().pages().length, 1);
+    assert.ok(await page.getByRole('link', { name: 'Website', exact: true }).isVisible());
+  } finally { await browser?.close(); await server.close(); }
+});
