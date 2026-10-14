@@ -14,10 +14,10 @@ function setup(overrides: Partial<Parameters<typeof commandPaletteActions>[0]> =
     shortcuts: { platform: 'mac', desktop: true, workspace: true, agent: true, agentCount: 2, teamCount: 2, browser: true, idleSession: true },
     agent: { ...snapshot.agents[0]!, backendSession: { kind: 'codex', threadId: 'test-thread' } },
     team: snapshot.teams[0]!, connected: true, hostConnected: true, engineConnected: true, canCreateAgent: true,
-    capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, ...overrides,
+    capabilities: { ...defaultBackendCapabilities('codex') }, gitAvailable: true, gitActions: [], planAvailable: false, simulatorAvailable: true, ...overrides,
   });
   const command = vi.fn();
-  const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
+  const actions = { command, settings: vi.fn(), cockpit: vi.fn(), backlog: vi.fn(), automations: vi.fn(), quickChat: vi.fn(), newAgent: vi.fn(), files: vi.fn(), filesPane: vi.fn(), codeReview: vi.fn(), simulator: vi.fn(), visualize: vi.fn(), plan: vi.fn() };
   const wrapper = mount(defineComponent({
     components: { CommandPalette },
     setup() {
@@ -57,7 +57,7 @@ describe('CommandPalette', () => {
         expect(agentLabels).toContain('close agent');
         expect(agentLabels.filter(label => menuLabels.includes(label))).toStrictEqual(menuLabels.filter(label => agentLabels.includes(label)));
         expect(agentLabels.at(-1)).toBe('close agent');
-        expect(agentLabels).toContain('open code review');
+        expect(agentLabels).not.toContain('open code review');
         expect(agentLabels).not.toContain('saved drafts');
         expect(agentLabels).not.toContain('close team');
       }
@@ -71,7 +71,7 @@ describe('CommandPalette', () => {
   });
   it('keeps artifact panes in workspace-menu order and puts file search in navigation', () => {
     const { wrapper } = setup({ planAvailable: true });
-    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open Visualize', 'Open changes', 'Open browser', 'Open files', 'Open plan']);
+    expect(sectionRows(wrapper, 'Workspace')).toStrictEqual(['Open code review', 'Open Visualize', 'Open changes', 'Open simulator', 'Open browser', 'Open files', 'Open plan']);
     expect(sectionRows(wrapper, 'Navigation')).toContain('Go to file');
     wrapper.unmount();
   });
@@ -88,6 +88,34 @@ describe('CommandPalette', () => {
     await wrapper.get('input').setValue('settings font');
     expect(wrapper.get('button').text()).toBe('Appearance');
     expect(wrapper.get('button .quick-open-dialog__icon').attributes('aria-hidden')).toBe('true');
+    wrapper.unmount();
+  });
+  it('opens reviews without requiring an idle agent or a review-capable connected engine', async () => {
+    const { wrapper, context, actions } = setup({ engineConnected: false });
+    context.agent!.status = { type: 'working' };
+    context.capabilities.codeReview = false;
+    await wrapper.get('input').setValue('reviews');
+    expect(wrapper.get('button').text()).toBe('Open code review');
+    expect(wrapper.get('button').attributes('disabled')).toBeUndefined();
+    expect(sectionRows(wrapper, 'Workspace')).toContain('Open code review');
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.codeReview).toHaveBeenCalledExactlyOnceWith();
+    wrapper.unmount();
+  });
+  it('exposes simulator search only on supporting hosts and blocks disconnected dispatch', async () => {
+    const { wrapper, context, actions } = setup({ simulatorAvailable: false, hostConnected: false, engineConnected: false });
+    await wrapper.get('input').setValue('ios emulator');
+    expect(wrapper.get('[role="status"]').text()).toBe('No matching commands.');
+    context.simulatorAvailable = true;
+    await nextTick();
+    expect(wrapper.get('button').text()).toContain('Open simulator');
+    expect(wrapper.get('button').attributes('disabled')).toBeDefined();
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.simulator).not.toHaveBeenCalled();
+    context.hostConnected = true;
+    await nextTick();
+    await wrapper.get('input').trigger('keydown.enter');
+    expect(actions.simulator).toHaveBeenCalledExactlyOnceWith();
     wrapper.unmount();
   });
   it('prioritizes named commands over settings aliases for action searches', async () => {
@@ -193,7 +221,7 @@ describe('CommandPalette', () => {
     context.capabilities.codeReview = false;
     context.capabilities.conversationFork = false;
     await wrapper.get('input').setValue('');
-    expect(wrapper.text()).not.toContain('Open code review');
+    expect(wrapper.text()).toContain('Open code review');
     expect(wrapper.text()).not.toContain('Fork conversation');
     expect(wrapper.text()).not.toContain('Open plan');
     context.planAvailable = true;
@@ -220,7 +248,7 @@ describe('CommandPalette', () => {
     expect(wrapper.findAll('kbd')).toHaveLength(0);
     context.agent = null;
     await wrapper.get('input').setValue('');
-    expect(wrapper.text()).not.toMatch(/Edit agent|Open files|Quit/);
+    expect(wrapper.text()).not.toMatch(/Edit agent|Open files|Open simulator|Open code review|Quit/);
     expect(wrapper.text()).toContain('New agent');
     context.shortcuts.onboarding = true;
     await nextTick();

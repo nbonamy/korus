@@ -4,6 +4,41 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.34.0] - 2026-10-13
+
+### New features
+
+- Find contextual actions in the command palette with Cmd/Ctrl+Shift+P,
+  and browse a searchable keyboard shortcut reference from the View menu.
+- Branch current changes into a new worktree with an idle agent, preserving
+  staged and unstaged work and moving untracked files without creating a commit.
+- Favorite GitHub repositories and Linear sources in Backlog, with saved
+  per-provider ordering and drag-and-drop reordering.
+- Choose a fresh handoff or a native Codex/Claude conversation fork when
+  delegating work, with reusable instructions and per-task overrides.
+- Review plans with inline choices and section comments. Confirm your answers,
+  request revisions, and approve implementation with feedback preserved on reload.
+- Switch automatic reviews to manual while the current turn continues, or
+  stop a review while keeping its findings for later.
+- Save, search, rename, and reopen named bookmarks in the built-in browser.
+- Navigate Markdown documents with an optional heading outline.
+- Install the Antigravity runtime directly from provider setup.
+- View Codex credits and banked resets in Settings, and redeem an available
+  reset with explicit confirmation.
+
+### Improvements and fixes
+
+- Simulator video reconnects automatically after pauses without losing the
+  device attachment or replaying interrupted gestures.
+- Merge cleanup is enabled by default and remembers your worktree and branch
+  deletion choices.
+- Additional fields in saved workspace data no longer prevent startup.
+- Delegation instructions stay attached to the correct turn when queued or
+  overlapping turns complete. Favorites saves preserve other providers' ordering.
+- Selected review findings and delegated tasks use concise visible prompts,
+  keeping supporting context out of the conversation's main text.
+- Workflow guidance loads on demand to keep agent context smaller.
+
 ## [0.33.0] - 2026-10-09
 
 ### New features

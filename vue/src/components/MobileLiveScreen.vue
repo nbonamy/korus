@@ -2,7 +2,7 @@
   <div class="mobile-live-screen">
     <p v-if="error" class="mobile-live-screen__error" role="alert">
       {{ error }}
-      <button type="button" @click="connect">
+      <button type="button" @click="connect()">
         {{ $t('surface.mobileSimulator.retry') }}
       </button>
     </p>
@@ -32,7 +32,7 @@
         :alt="$t('surface.mobileSimulator.screen')"
         tabindex="0"
         draggable="false"
-        @load="loaded?.()"
+        @load="imageLoaded"
         @error="imageFailed"
         @pointerdown="pointerDown"
         @pointermove="pointerMove"
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { MobileViewRequest, MobileViewResult } from '@workspace/core/mobile-simulator';
 import { appApi } from '../platform-api';
 const props = withDefaults(
@@ -104,6 +104,9 @@ const hardwareButtons = computed(() =>
   }),
 );
 let generation = 0;
+let recoveryAvailable = true;
+let resumeOnVisible = false;
+let lastReadAt = 0;
 let width = 0,
   height = 0;
 let geometry = 0;
@@ -142,17 +145,31 @@ function stop() {
   source.value = '';
 }
 function fail(cause: unknown) {
-  stop();
   const message = cause instanceof Error ? cause.message : String(cause);
-  error.value = message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
+  const detail = message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
+  if (recoveryAvailable && detail === 'Simulator view expired. Reconnect the view.') {
+    recoveryAvailable = false;
+    void connect(true);
+    return;
+  }
+  stop();
+  error.value = detail;
 }
-function imageFailed() {
-  fail(new Error('Could not display simulator video.'));
+function imageLoaded(event: Event) {
+  if ((event.target as HTMLImageElement).getAttribute('src') === source.value) loaded?.();
 }
-async function connect() {
+function imageFailed(event: Event) {
+  if ((event.target as HTMLImageElement).getAttribute('src') === source.value) {
+    fail(new Error('Could not display simulator video.'));
+  }
+}
+async function connect(recovering = false) {
   stop();
   error.value = '';
   ended.value = false;
+  if (!recovering) recoveryAvailable = true;
+  resumeOnVisible = document.visibilityState === 'hidden';
+  if (resumeOnVisible) return;
   const identity = generation;
   const agentId = props.agentId,
     attachmentId = props.attachmentId;
@@ -180,6 +197,7 @@ async function connect() {
     stopView = dispose;
     send = request;
     while (identity === generation) {
+      lastReadAt = Date.now();
       const result = await request({ action: 'frame' });
       if (identity !== generation) return;
       if (result.viewId !== viewId) throw new Error('Invalid simulator video frame.');
@@ -201,6 +219,7 @@ async function connect() {
       );
       await displayed;
       if (identity === generation) {
+        recoveryAvailable = true;
         geometry = result.frame.geometry;
         width = result.frame.width;
         height = result.frame.height;
@@ -290,7 +309,30 @@ watch(
   () => void connect(),
   { immediate: true },
 );
-onBeforeUnmount(stop);
+function resumeAfterPause() {
+  // The host reclaims unread video after 15s. Focus also covers sleep or a stalled image load.
+  if (document.visibilityState !== 'hidden' && send && recoveryAvailable && Date.now() - lastReadAt >= 15_000) {
+    recoveryAvailable = false;
+    void connect(true);
+  }
+}
+function visibilityChanged() {
+  if (document.visibilityState === 'hidden') {
+    resumeOnVisible = !error.value && !ended.value;
+    stop();
+  } else if (resumeOnVisible) {
+    void connect();
+  }
+}
+onMounted(() => {
+  window.addEventListener('focus', resumeAfterPause);
+  document.addEventListener('visibilitychange', visibilityChanged);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', resumeAfterPause);
+  document.removeEventListener('visibilitychange', visibilityChanged);
+  stop();
+});
 </script>
 
 <style scoped>

@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.33.0",
+  "currentVersion": "0.34.0",
   "releases": [
+    {
+      "version": "0.34.0",
+      "releasedAt": "2026-10-13",
+      "sourceSha256": "38aef8b95d247a4dd23649911674f59432c981aca497a6f07f1d6ee45782025c",
+      "markdown": "### New features\n\n- Find contextual actions in the command palette with Cmd/Ctrl+Shift+P,\n  and browse a searchable keyboard shortcut reference from the View menu.\n- Branch current changes into a new worktree with an idle agent, preserving\n  staged and unstaged work and moving untracked files without creating a commit.\n- Favorite GitHub repositories and Linear sources in Backlog, with saved\n  per-provider ordering and drag-and-drop reordering.\n- Choose a fresh handoff or a native Codex/Claude conversation fork when\n  delegating work, with reusable instructions and per-task overrides.\n- Review plans with inline choices and section comments. Confirm your answers,\n  request revisions, and approve implementation with feedback preserved on reload.\n- Switch automatic reviews to manual while the current turn continues, or\n  stop a review while keeping its findings for later.\n- Save, search, rename, and reopen named bookmarks in the built-in browser.\n- Navigate Markdown documents with an optional heading outline.\n- Install the Antigravity runtime directly from provider setup.\n- View Codex credits and banked resets in Settings, and redeem an available\n  reset with explicit confirmation.\n\n### Improvements and fixes\n\n- Simulator video reconnects automatically after pauses without losing the\n  device attachment or replaying interrupted gestures.\n- Merge cleanup is enabled by default and remembers your worktree and branch\n  deletion choices.\n- Additional fields in saved workspace data no longer prevent startup.\n- Delegation instructions stay attached to the correct turn when queued or\n  overlapping turns complete. Favorites saves preserve other providers' ordering.\n- Selected review findings and delegated tasks use concise visible prompts,\n  keeping supporting context out of the conversation's main text.\n- Workflow guidance loads on demand to keep agent context smaller."
+    },
     {
       "version": "0.33.0",
       "releasedAt": "2026-10-09",

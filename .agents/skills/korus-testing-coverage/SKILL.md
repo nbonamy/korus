@@ -53,8 +53,9 @@ owning public seam, the test does not belong.
   functions without blocking thresholds. Preserve the measured surface.
 - Coverage complements mandatory meaningful behavioral/regression tests and
   owning-boundary verification; it cannot replace them.
-- Release validation runs in GitHub CI against installed SDK packages; follow
-  `prepare-release` for the local/CI split rather than duplicating its gates.
+- Quality CI owns coverage on every push. Release CI independently runs ordinary
+  tests without coverage against installed SDK packages; follow
+  `prepare-release` rather than duplicating its gates locally.
 
 ## Standard Gates
 

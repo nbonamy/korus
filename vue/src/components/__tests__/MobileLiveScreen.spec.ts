@@ -25,9 +25,9 @@ function setup(startResult: MobileViewResult = { viewId: 'view' }) {
   const wrapper = mount(MobileLiveScreen, {
     props: { agentId: 'a', attachmentId: 'device-session', disabled: false },
   });
-  async function frame(rotation?: 0 | 1 | 2 | 3) {
+  async function frame(rotation?: 0 | 1 | 2 | 3, viewId = 'view') {
     readers.shift()!.resolve({
-      viewId: 'view',
+      viewId,
       frame: {
         mimeType: 'image/jpeg',
         geometry: 0,
@@ -43,10 +43,11 @@ function setup(startResult: MobileViewResult = { viewId: 'view' }) {
   }
   return { wrapper, mobileSimulatorView, readers, frame };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('MobileLiveScreen', () => {
   it('ends a closed stream without showing an error or requesting another frame', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     const { wrapper, mobileSimulatorView, readers, frame } = setup();
     try {
       await flushPromises();
@@ -58,7 +59,15 @@ describe('MobileLiveScreen', () => {
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(wrapper.text()).not.toContain('Reading');
       expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'frame')).toHaveLength(readCount);
-    } finally { wrapper.unmount(); }
+      // Pause recovery must not reopen an attachment that has ended normally.
+      visibility.mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      visibility.mockReturnValue('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+      await flushPromises();
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(1);
+    } finally { wrapper.unmount(); visibility.mockRestore(); }
   });
 
   it('does not poll a view whose attachment ended while connecting', async () => {
@@ -69,6 +78,103 @@ describe('MobileLiveScreen', () => {
       expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       expect(wrapper.text()).not.toContain('Reading');
     } finally { wrapper.unmount(); }
+  });
+
+  it('reconnects expired video to the same attachment without replaying a held gesture', async () => {
+    const { wrapper, mobileSimulatorView, readers, frame } = setup();
+    try {
+      await flushPromises();
+      await frame();
+      const image = wrapper.get('img');
+      vi.spyOn(image.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 300, height: 600 } as DOMRect);
+      image.element.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 10, clientY: 20, bubbles: true }));
+      await flushPromises();
+      const touchCount = mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'touch').length;
+      expect(touchCount).toBe(1);
+      mobileSimulatorView.mockImplementationOnce(async () => ({ viewId: 'view' })); // old view cleanup
+      mobileSimulatorView.mockImplementationOnce(async () => ({ viewId: 'recovered' }));
+      readers.shift()!.reject(new Error("Error invoking remote method 'mobile:view': Error: Simulator view expired. Reconnect the view."));
+      await flushPromises();
+      expect(mobileSimulatorView).toHaveBeenLastCalledWith('a', { action: 'frame', attachmentId: 'device-session', viewId: 'recovered' });
+      await frame(undefined, 'recovered');
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.get('img').attributes('src')).toBe('blob:frame-2');
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'touch')).toHaveLength(touchCount);
+      // A later, independent pause is recoverable too, after healthy video resumed.
+      readers.shift()!.reject(new Error('Simulator view expired. Reconnect the view.'));
+      await flushPromises();
+      await frame();
+      expect(wrapper.get('img').attributes('src')).toBe('blob:frame-3');
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(3);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('bounds recovery attempts and leaves persistent failures recoverable through Retry', async () => {
+    const { wrapper, mobileSimulatorView, readers, frame } = setup();
+    try {
+      await flushPromises();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect(readers).toHaveLength(1);
+        readers.shift()!.reject(new Error('Simulator view expired. Reconnect the view.'));
+        await flushPromises();
+      }
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(2);
+      expect(wrapper.get('[role="alert"]').text()).toContain('expired');
+      await wrapper.get('[role="alert"] button').trigger('click');
+      await flushPromises();
+      await frame();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it.each(['frame read', 'image load'])('resumes a paused %s on focus and ignores superseded work', async (phase) => {
+    vi.useFakeTimers();
+    const { wrapper, mobileSimulatorView, readers, frame } = setup();
+    try {
+      await flushPromises();
+      const paused = readers.shift()!;
+      let oldImage: ReturnType<typeof wrapper.get> | undefined;
+      if (phase === 'image load') {
+        paused.resolve({ viewId: 'view', frame: { mimeType: 'image/jpeg', geometry: 0, data: new Uint8Array([1]), width: 1200, height: 2400 } });
+        await flushPromises(); // Intentionally no image load event before the pause.
+        oldImage = wrapper.get('img');
+      }
+      await vi.advanceTimersByTimeAsync(16_000);
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus')); // no overlapping recovery
+      await flushPromises();
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(2);
+      if (phase === 'frame read') paused.reject(new Error('Simulator view expired. Reconnect the view.'));
+      await flushPromises();
+      await frame();
+      await oldImage?.trigger('error');
+      await flushPromises();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(wrapper.get('img').attributes('src')).toBe(phase === 'frame read' ? 'blob:frame-1' : 'blob:frame-2');
+    } finally { wrapper.unmount(); }
+    window.dispatchEvent(new Event('focus'));
+    expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(2);
+  });
+
+  it('stops hidden video and resumes the same attachment without displaying stale failures', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const { wrapper, mobileSimulatorView, readers, frame } = setup();
+    try {
+      await flushPromises();
+      const paused = readers.shift()!;
+      visibility.mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flushPromises();
+      expect(mobileSimulatorView).toHaveBeenLastCalledWith('a', { action: 'stop', attachmentId: 'device-session', viewId: 'view' });
+      visibility.mockReturnValue('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flushPromises();
+      paused.reject(new Error('Simulator view expired. Reconnect the view.'));
+      await flushPromises();
+      await frame();
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(2);
+    } finally { wrapper.unmount(); visibility.mockRestore(); }
   });
 
   it('puts working buttons on the frame, separate volume keys, following the device as it turns', async () => {
@@ -273,6 +379,7 @@ describe('MobileLiveScreen', () => {
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('Simulator disconnected');
     expect(wrapper.find('img').exists()).toBe(false);
+    expect(mobileSimulatorView.mock.calls.filter(([, input]) => input.action === 'start')).toHaveLength(2);
     await wrapper.get('[role="alert"] button').trigger('click');
     await flushPromises();
     await frame();

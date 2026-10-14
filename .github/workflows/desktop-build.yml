@@ -42,8 +42,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node node_modules/electron/install.js
       - run: npm run release-notes:check
-      - run: npm run lint
-      - run: npm run test:coverage
+      - run: npm run test --workspaces -- --maxWorkers=2
       - run: npm run test:scripts
 
   build:

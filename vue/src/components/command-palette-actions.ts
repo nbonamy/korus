@@ -32,6 +32,7 @@ type Context = {
   capabilities: BackendCapabilities;
   gitAvailable: boolean;
   planAvailable: boolean;
+  simulatorAvailable: boolean;
   gitActions: CommandPaletteAction[];
 };
 type Actions = {
@@ -45,6 +46,7 @@ type Actions = {
   files: () => void;
   filesPane: () => void;
   codeReview: () => void | Promise<void>;
+  simulator: () => void;
   visualize: () => void | Promise<void>;
   plan: () => void;
 };
@@ -90,10 +92,9 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   if (context.team) result.push({ id: 'newAgent', section: 'agent', label: translate('commands.newAgent'), aliases: 'create teammate', scope: context.team.id, disabledReason: disconnected ?? (!context.canCreateAgent ? translate('commands.engineUnavailable') : undefined), run: actions.newAgent });
   if (context.shortcuts.workspace && context.team && (context.shortcuts.teamCount > 1 || context.team.remoteConnectionId)) addShortcut('closeTeam', 'team', disconnected, context.team.id);
   if (!context.shortcuts.workspace || !context.agent) return groupedActions(result);
-  // Keep the existing agent-menu sequence, with review before session/lifecycle actions.
+  // Keep the existing agent-menu sequence.
   for (const id of ['edit', 'duplicate']) addShortcut(id, 'agent', disconnected, agentScope);
   if (context.agent.backendSession && context.capabilities.conversationFork) result.push({ id: 'fork', section: 'agent', label: translate('commands.fork'), aliases: 'branch conversation', scope: agentScope, disabledReason: engineUnavailable ?? idleUnavailable, run: () => actions.command({ type: 'fork-active-agent' }) });
-  if (context.agent.folder && context.capabilities.codeReview) result.push({ id: 'codeReview', section: 'agent', label: translate('commands.codeReview'), aliases: 'review findings', scope: agentScope, disabledReason: engineUnavailable ?? busy, run: actions.codeReview });
   if (context.agent.backendSession && defaultBackendCommands(context.agent.backend).some(command => command.slashName === 'compact')) addShortcut('compact', 'agent', engineUnavailable ?? idleUnavailable, agentScope);
   if (context.capabilities.conversationResume) result.push({ id: 'resume', section: 'agent', label: translate('commands.resume'), aliases: 'history conversation', scope: agentScope, disabledReason: engineUnavailable ?? busy, run: () => actions.command({ type: 'resume-active-session' }) });
   addShortcut('restart', 'agent', engineUnavailable ?? busy, agentScope);
@@ -102,8 +103,10 @@ export function commandPaletteActions(context: Context, actions: Actions): Comma
   addShortcut('drafts', 'conversation', undefined, agentScope);
 
   // Artifact panes follow the workspace menu; file search belongs to navigation.
+  result.push({ id: 'codeReview', section: 'workspace', label: translate('commands.codeReview'), aliases: 'review reviews findings inspection', scope: agentScope, disabledReason: disconnected, run: actions.codeReview });
   result.push({ id: 'visualize', section: 'workspace', label: translate('commands.visualize'), aliases: 'diagram canvas artifact', scope: agentScope, disabledReason: disconnected, run: actions.visualize });
   if (context.agent.folder && context.gitAvailable) addShortcut('review', 'workspace', disconnected, agentScope);
+  if (context.simulatorAvailable) result.push({ id: 'simulator', section: 'workspace', label: translate('commands.simulator'), aliases: 'mobile device ios android emulator', scope: agentScope, disabledReason: disconnected, run: actions.simulator });
   if (context.shortcuts.browser) addShortcut('browser', 'workspace', disconnected, agentScope);
   if (context.agent.folder) result.push({ id: 'filesPane', section: 'workspace', label: translate('commands.filesPane'), aliases: 'repository tree artifact', scope: agentScope, disabledReason: disconnected, run: actions.filesPane });
   if (context.planAvailable) result.push({ id: 'plan', section: 'workspace', label: translate('commands.plan'), aliases: 'artifact execution', scope: agentScope, run: actions.plan });
