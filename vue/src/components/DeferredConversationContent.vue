@@ -1,18 +1,14 @@
 <template>
-  <span>
-    <button class="app-button app-button--tertiary" type="button" :disabled="loading" @click="load">
-      {{ loading ? t('chat.contentLoading') : t('chat.contentLoad') }}
-    </button>
-    <span v-if="failed" role="alert">{{ t('chat.contentFailed') }}</span>
-  </span>
+  <!-- Nothing to see or press: a cut row fills in by itself, or stays as its preview. -->
+  <span hidden />
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { RendererMessage } from '@workspace/core/contracts';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import { appApi } from '../platform-api';
+import { acquireContentRead, releaseContentRead } from './deferred-content-queue';
 
 const props = defineProps<{
   agentId: string;
@@ -20,13 +16,17 @@ const props = defineProps<{
   messageId: string;
   content: NonNullable<RendererMessage['deferredContent']>;
   read?: (agentId: string, input: ConversationContentInput) => Promise<ConversationContentChunk>;
+  /** Rows up to this size are read as soon as they appear; larger ones keep their preview. */
+  automaticBytes?: number;
 }>();
 const emit = defineEmits<{ loaded: [contentId: string, message: RendererMessage] }>();
-const { t } = useI18n();
+// A cut row is read in the background as soon as it is on screen. Past this size it is not worth the trip: the cut parts of such a row
+// are screenshots and dumps, and the preview already shows how they start.
+const automatic = computed(() => props.content.byteLength <= (props.automaticBytes ?? 4 * 1024 * 1024));
 const loading = ref(false);
-const failed = ref(false);
 let generation = 0;
-watch(() => [props.agentId, props.sessionId, props.messageId, props.content.contentId], () => { generation++; loading.value = false; failed.value = false; });
+watch(() => [props.agentId, props.sessionId, props.messageId, props.content.contentId], () => { generation++; loading.value = false; if (automatic.value) void load(); });
+onMounted(() => { if (automatic.value) void load(); });
 onBeforeUnmount(() => { generation++; });
 
 async function load() {
@@ -34,9 +34,11 @@ async function load() {
   const token = ++generation;
   const { agentId, sessionId, messageId, content } = props;
   const read = props.read ?? appApi?.readConversationContent;
-  loading.value = true; failed.value = false;
+  if (!read) return;
+  loading.value = true;
+  await acquireContentRead();
   try {
-    if (!read) throw new Error('Content is unavailable.');
+    if (token !== generation) return;
     const chunks: Uint8Array[] = [];
     let offset = 0;
     while (true) {
@@ -55,7 +57,7 @@ async function load() {
     const message = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as RendererMessage;
     if (message.id !== messageId || message.agentId !== agentId || !Array.isArray(message.parts)) throw new Error('Conversation content identity mismatch.');
     emit('loaded', content.contentId, message);
-  } catch { if (token === generation) failed.value = true; }
-  finally { if (token === generation) loading.value = false; }
+  } catch { /* The preview stays; there is nothing to press. */ }
+  finally { releaseContentRead(); if (token === generation) loading.value = false; }
 }
 </script>

@@ -61,18 +61,36 @@ const executionPlan: ThreadPlan = {
 };
 
 describe('ConversationPane', () => {
-  it('renders deferred Claude content through the SDK only after its explicit load action', async () => {
+  const claudeAgent = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+  it('reads the full content of a cut row by itself, with nothing to click', async () => {
     const full = { ...messages[1]!, parts: [{ type: 'text' as const, text: 'The full result is visible.' }] };
     const bytes = Buffer.from(JSON.stringify(full));
     const preview = { ...messages[1]!, deferredContent: { contentId: 'content', byteLength: bytes.length } };
     const readConversationContent = vi.fn(async () => ({ data: bytes.toString('base64'), totalBytes: bytes.length, nextOffset: null }));
-    const wrapper = mountPane({ controller: controllerFor([preview]), agent: { ...agent, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session', transport: 'stdio' } }, readConversationContent });
-    expect(readConversationContent).not.toHaveBeenCalled();
-    const button = wrapper.findAll('button').find((button) => button.text() === 'Load full content');
-    expect(button).toBeDefined();
-    await button!.trigger('click'); await flushPromises();
+    const wrapper = mountPane({ controller: controllerFor([preview]), agent: claudeAgent, readConversationContent });
+    await flushPromises();
+    expect(readConversationContent).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).not.toContain('Load full content');
     expect(wrapper.text()).toContain('The full result is visible.');
     expect(wrapper.text()).not.toContain('Looking now.');
+    wrapper.unmount();
+  });
+  it('leaves a very large cut row as its preview, with nothing to press', async () => {
+    const preview = { ...messages[1]!, deferredContent: { contentId: 'huge', byteLength: 20 * 1024 * 1024 } };
+    const readConversationContent = vi.fn();
+    const wrapper = mountPane({ controller: controllerFor([preview]), agent: claudeAgent, readConversationContent });
+    await flushPromises();
+    expect(readConversationContent).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain('Load full content');
+    expect(wrapper.text()).toContain('Looking now.');
+    wrapper.unmount();
+  });
+  it('shows a cut row as it is, without a button, where full content cannot be read', async () => {
+    const preview = { ...messages[1]!, deferredContent: { contentId: 'content', byteLength: 1000 } };
+    const wrapper = mountPane({ controller: controllerFor([preview]), agent: claudeAgent });
+    await flushPromises();
+    expect(wrapper.findAll('button').find((candidate) => candidate.text() === 'Load full content')).toBeUndefined();
+    expect(wrapper.text()).toContain('Looking now.');
     wrapper.unmount();
   });
   it('renders the conversation without a delegation context banner', () => {

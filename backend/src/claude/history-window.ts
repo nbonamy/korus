@@ -3,9 +3,15 @@ import type { RendererMessage, RendererMessagePart } from '@workspace/core/contr
 import type { ConversationContentChunk, ConversationContentInput } from '@workspace/core/contracts/conversation';
 
 // Leave room for routing envelopes and snapshot state under the 4 MiB event limit.
-const pageBytes = 512 * 1024;
-const messageBytes = 16 * 1024;
+const pageBytes = 1024 * 1024;
 const pageCount = 50;
+// A row is shown whole. Only a part of it that is huge on its own (a screenshot, a file dump) is cut, so a long turn with
+// many ordinary tool results is never reduced; a row that still would not fit a page is cut part by part, smallest cut first.
+const partBytes = 256 * 1024;
+const partTiers = [partBytes, 64 * 1024, 16 * 1024, 4 * 1024, 1024];
+const messageBytes = 1536 * 1024;
+const bodyHead = 8 * 1024;
+const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const chunkBytes = 64 * 1024;
 
 /** One immutable history read, with cursors independent of transcript appends. */
@@ -69,30 +75,33 @@ export class ClaudeHistoryWindow {
     return page;
   }
 
+  /** The row as it travels: unchanged unless a part of it is too big, in which case only those parts are cut and the full row stays readable by content ID. */
   project(message: RendererMessage): RendererMessage {
-    const json = JSON.stringify(message);
-    if (Buffer.byteLength(json) <= messageBytes) {
+    let parts = message.parts;
+    let cut = false;
+    for (const limit of partTiers) {
+      parts = message.parts.map((part) => shrinkPart(part, limit));
+      cut = parts.some((part, index) => part !== message.parts[index]);
+      if (size(parts) <= messageBytes) break;
+    }
+    if (size(parts) > messageBytes) {
+      // Thousands of small rows: keep what fits, in order, and say the rest is elsewhere.
+      let used = 2;
+      const fit = parts.filter((part) => (used += size(part) + 1) <= messageBytes - 1024);
+      parts = [...fit, { type: 'status', text: 'More rows are not shown here' }];
+      cut = true;
+    }
+    if (!cut) {
       const previous = this.contentByMessage.get(message.id);
       if (previous && !message.deferredContent) { this.content.delete(previous); this.contentByMessage.delete(message.id); }
       return message;
     }
-    const bytes = Buffer.from(json);
+    const bytes = Buffer.from(JSON.stringify(message));
     const contentId = createHash('sha256').update(bytes).digest('hex');
     const previous = this.contentByMessage.get(message.id);
     if (previous && previous !== contentId) this.content.delete(previous);
     this.contentByMessage.set(message.id, contentId);
     this.content.set(contentId, bytes);
-    // These are previews. The exact original row remains available by content ID.
-    let parts: RendererMessagePart[] = message.parts.map((part) => {
-      if (Buffer.byteLength(JSON.stringify(part)) < 4096) return part;
-      if (part.type === 'tool') return { type: 'tool', id: part.id, kind: part.kind, title: part.title.slice(0, 256), status: part.status,
-        ...(part.input !== undefined && Buffer.byteLength(JSON.stringify(part.input)) < 2048 ? { input: part.input } : {}),
-        ...(part.statusText && part.statusText.length < 1024 ? { statusText: part.statusText } : {}),
-        ...(part.metadata && Buffer.byteLength(JSON.stringify(part.metadata)) < 1024 ? { metadata: part.metadata } : {}) };
-      if (part.type === 'text') return { ...part, text: part.text.slice(0, 512) };
-      return { type: 'status', text: 'Content available on demand' };
-    });
-    if (Buffer.byteLength(JSON.stringify(parts)) > 12 * 1024) parts = parts.slice(0, 2);
     return { ...message, parts, deferredContent: { contentId, byteLength: bytes.length } };
   }
 
@@ -103,4 +112,21 @@ export class ClaudeHistoryWindow {
     const end = Math.min(input.offset + chunkBytes, bytes.length);
     return { data: bytes.subarray(input.offset, end).toString('base64'), nextOffset: end < bytes.length ? end : null, totalBytes: bytes.length };
   }
+}
+
+/** One part cut to a preview when it is larger than `limit`; every smaller part is returned as it is. */
+function shrinkPart(part: RendererMessagePart, limit: number): RendererMessagePart {
+  if (size(part) <= limit) return part;
+  const head = (text: string, keep: number) => `${text.slice(0, keep)}\n… ${(text.length - keep).toLocaleString('en-US')} more characters not shown`;
+  if (part.type === 'tool') {
+    const full = part.body ?? (part.output === undefined ? '' : typeof part.output === 'string' ? part.output : JSON.stringify(part.output));
+    const keep = Math.min(bodyHead, Math.max(256, Math.floor(limit / 2)));
+    return { type: 'tool', id: part.id, kind: part.kind, title: part.title.slice(0, 256), status: part.status,
+      ...(full ? { body: head(full, keep) } : {}),
+      ...(part.input !== undefined && size(part.input) < Math.min(2048, limit / 4) ? { input: part.input } : {}),
+      ...(part.statusText && part.statusText.length < 1024 ? { statusText: part.statusText } : {}),
+      ...(part.metadata && size(part.metadata) < 1024 ? { metadata: part.metadata } : {}) };
+  }
+  if (part.type === 'text') return { ...part, text: head(part.text, Math.max(512, Math.floor(limit / 2))) };
+  return { type: 'status', text: 'Content available on demand' };
 }

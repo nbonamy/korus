@@ -20,7 +20,7 @@ function transcript(turns: number, output: string) {
 
 describe('Claude history paging', () => {
   it('prepends bounded pages without gaps or duplicate identities and exhausts idempotently', async () => {
-    const messages: RendererMessage[] = Array.from({ length: 150 }, (_, i) => ({ id: `message-${i}`, agentId: agent.id, turnId: `turn-${i}`, role: 'user', status: 'complete', createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text', text: 'x'.repeat(14_000) }] }));
+    const messages: RendererMessage[] = Array.from({ length: 150 }, (_, i) => ({ id: `message-${i}`, agentId: agent.id, turnId: `turn-${i}`, role: 'user', status: 'complete', createdAt: '2026-01-01T00:00:00Z', parts: [{ type: 'text', text: 'x'.repeat(40_000) }] }));
     const driver = new ClaudeBackendDriver({ startTurn: vi.fn(), close: async () => {} }, async () => ({ backendSession: session, messages }));
     let replica!: ClaudeConversationReplica;
     const frames: BackendEvent[] = [];
@@ -41,7 +41,7 @@ describe('Claude history paging', () => {
       expect(replica.getSnapshot().messages).toStrictEqual(messages);
       await driver.loadOlderHistory(agent);
       expect(replica.getSnapshot().messages).toStrictEqual(messages);
-      expect(frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 768 * 1024)).toBe(true);
+      expect(frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 1.5 * 1024 * 1024)).toBe(true);
     } finally { await driver.close(); }
   });
 
@@ -125,7 +125,7 @@ describe('Claude history paging', () => {
       }
       expect(JSON.parse(Buffer.concat(chunks).toString('utf8'))).toStrictEqual(live);
       expect(live.status).toBe('complete');
-      expect(frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 768 * 1024)).toBe(true);
+      expect(frames.every((frame) => Buffer.byteLength(JSON.stringify(frame)) < 1.5 * 1024 * 1024)).toBe(true);
     } finally { await driver.close(); }
   });
 
@@ -138,9 +138,44 @@ describe('Claude history paging', () => {
     try {
       await driver.loadConversation(agent);
       const frame = frames.find((event) => event.type === 'claude.conversationSnapshotChanged');
-      expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThan(1024 * 1024);
+      expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThan(1.5 * 1024 * 1024);
       expect(frame).toMatchObject({ payload: { snapshot: { historyState: { hasOlder: true, loadingOlder: false },
         messages: expect.arrayContaining([expect.objectContaining({ id: messages.at(-1)!.id, turnId: messages.at(-1)!.turnId })]) } } });
+    } finally { await driver.close(); }
+  });
+
+  it('shows a long turn with many ordinary tool results whole, with nothing to click', async () => {
+    const parts = Array.from({ length: 40 }, (_, i) => ({ type: 'tool' as const, id: `tool-${i}`, kind: 'command', title: `Ran command ${i}`, status: 'completed' as const, body: `output ${i} `.repeat(500) }));
+    const message: RendererMessage = { id: 'long-turn', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'complete', createdAt: '2026-01-01T00:00:00Z', parts };
+    expect(Buffer.byteLength(JSON.stringify(message))).toBeGreaterThan(100 * 1024);
+    const driver = new ClaudeBackendDriver({ startTurn: vi.fn(), close: async () => {} }, async () => ({ backendSession: session, messages: [message] }));
+    let snapshot!: import('@workspace/core/contracts').ClaudeConversationSnapshot;
+    driver.onEvent((frame) => { if (frame.type === 'claude.conversationSnapshotChanged') snapshot = frame.payload.snapshot; });
+    try {
+      await driver.loadConversation(agent);
+      expect(snapshot.messages).toStrictEqual([message]);
+      expect(snapshot.messages[0]!.deferredContent).toBeUndefined();
+    } finally { await driver.close(); }
+  });
+
+  it('cuts only the one huge tool result of a turn and keeps every row of it', async () => {
+    const ordinary = (i: number) => ({ type: 'tool' as const, id: `tool-${i}`, kind: 'command', title: `Ran command ${i}`, status: 'completed' as const, body: `output ${i}` });
+    const huge = { type: 'tool' as const, id: 'huge', kind: 'mcp', title: 'Screenshot', status: 'completed' as const, body: 'x'.repeat(300_000), output: [{ type: 'text', text: 'x'.repeat(300_000) }] };
+    const message: RendererMessage = { id: 'mixed', agentId: agent.id, turnId: 'turn', role: 'assistant', status: 'complete', createdAt: '2026-01-01T00:00:00Z',
+      parts: [{ type: 'text', text: 'Looking at it' }, ordinary(1), huge, ordinary(2)] };
+    const driver = new ClaudeBackendDriver({ startTurn: vi.fn(), close: async () => {} }, async () => ({ backendSession: session, messages: [message] }));
+    let snapshot!: import('@workspace/core/contracts').ClaudeConversationSnapshot;
+    driver.onEvent((frame) => { if (frame.type === 'claude.conversationSnapshotChanged') snapshot = frame.payload.snapshot; });
+    try {
+      await driver.loadConversation(agent);
+      const shown = snapshot.messages[0]!;
+      expect(shown.parts).toHaveLength(4);
+      expect(shown.parts[0]).toStrictEqual(message.parts[0]);
+      expect(shown.parts[1]).toStrictEqual(message.parts[1]);
+      expect(shown.parts[3]).toStrictEqual(message.parts[3]);
+      expect(shown.parts[2]).toMatchObject({ id: 'huge', kind: 'mcp', title: 'Screenshot', status: 'completed' });
+      expect(Buffer.byteLength(JSON.stringify(shown.parts[2]))).toBeLessThan(16 * 1024);
+      expect(shown.deferredContent).toBeDefined();
     } finally { await driver.close(); }
   });
 });

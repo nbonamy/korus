@@ -115,6 +115,15 @@ contain a bounded recent window rather than accumulated scroll-back pages; the
 companion forwards older-page frames directly and rechecks authorization after
 content reads.
 
+A long conversation never travels whole: the daemon opens the most recent rows within a
+byte budget (so one event stays far under the 4 MiB limit and a phone never receives a
+frame it cannot take) and prepends older pages on demand. A row is shown as it is. Only a
+part that is huge on its own (a screenshot, a file dump) is cut to a preview, and a row
+that would still not fit is cut part by part, never dropped. The exact row stays readable
+by content ID in bounded chunks. The desktop pane reads a cut row in the background as it
+appears and shows nothing to press: a row too large to be worth reading keeps its preview,
+as does a client that cannot read content, such as the phone.
+
 **Canonical cwd gotcha:** Claude stores the resolved path (`/tmp` is
 `/private/tmp` on macOS), so history and Resume discovery check both the logical
 and the resolved path, dedupe session IDs, and keep reads working for removed
