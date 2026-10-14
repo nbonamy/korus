@@ -645,11 +645,7 @@ export const messages = {
       instructions: 'Delegation instructions',
       instructionsDescription: 'Used for worktree assignments. Your per-task instructions take priority.',
       instructionsPlaceholder: 'e.g. Run focused tests before handing work back',
-      submit: 'Delegate to a worktree',
       agentUnavailable: 'The source agent is unavailable. Reopen the conversation to delegate.',
-      taskInstructions: 'Task-specific instructions',
-      taskInstructionsDescription: 'Optional directions for this assignment. They take precedence over saved delegation preferences.',
-      taskInstructionsPlaceholder: 'Add directions for this assignment…',
     },
     agentCreationProgress: {
       eyebrow: 'Delegating work',
