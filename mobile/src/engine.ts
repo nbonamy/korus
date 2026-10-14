@@ -1,8 +1,9 @@
 import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
-import { skillDescription, skillDisplayName, skillInsertText } from '@codex-app-sdk/vue';
+import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
@@ -49,6 +50,7 @@ export type EngineState = {
   backend: string | null;
   canSelectBackend: boolean;
   draft: string;
+  mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; description: string }[] };
   skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
@@ -87,6 +89,7 @@ export type EngineCommand =
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
+  | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
   | { type: 'send'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
@@ -163,6 +166,13 @@ export function createEngine(port: EnginePort) {
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
+        ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
+          id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, description: '',
+        })),
+        ...state.plugins.value.items.map(plugin => ({ id: `plugin:${plugin.id}`, kind: 'plugin' as const,
+          name: pluginDisplayName(plugin), insertText: pluginInsertText(plugin), description: pluginDescription(plugin) })),
+      ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
       closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(), branches: state.branches.value,
@@ -326,6 +336,7 @@ export function createEngine(port: EnginePort) {
       }
       case 'loadOlder': return state.loadOlder(command.agentId);
       case 'draft': return state.updateDraft({ text: command.text, selectionStart: command.text.length, selectionEnd: command.text.length });
+      case 'loadMentions': return state.loadPlugins();
       case 'loadSkills': return state.loadSkills();
       case 'clearGoal': await state.changeGoal(command.target, null); return;
       case 'send': {

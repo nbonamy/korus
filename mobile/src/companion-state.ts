@@ -1,6 +1,6 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
-import type { AgentBackend, BackendModelOption, BackendSkillSummary } from '@workspace/core/contracts';
+import type { AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -99,6 +99,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  const plugins = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendPluginSummary[] }>({ status: 'idle', items: [] });
   const skills = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendSkillSummary[] }>({ status: 'idle', items: [] });
   const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null }>({ status: 'idle', setup: null });
   let reviewEpoch = 0;
@@ -158,6 +159,26 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === skillEpoch && session === active) skills.value = { status: 'failed', items: [] };
     }).finally(() => { if (epoch === skillEpoch) skillRequest = undefined; });
     return skillRequest;
+  }
+  let pluginRequest: Promise<void> | undefined;
+  let pluginEpoch = 0;
+  const stopPlugins = watch(skillContext, () => {
+    ++pluginEpoch; pluginRequest = undefined; plugins.value = { status: 'idle', items: [] };
+  }, { flush: 'sync' });
+  function loadPlugins(): Promise<void> {
+    if (pluginRequest) return pluginRequest;
+    if (plugins.value.status === 'loaded' || status.value !== 'connected' || !agent.value) return Promise.resolve();
+    const active = session; const id = agent.value.id; const epoch = pluginEpoch;
+    if (!active?.listPlugins || !defaultBackendCapabilities(agent.value.backend).plugins) {
+      plugins.value = { status: 'loaded', items: [] }; return Promise.resolve();
+    }
+    plugins.value = { status: 'loading', items: [] };
+    pluginRequest = active.listPlugins(id).then((items) => {
+      if (epoch === pluginEpoch && session === active) plugins.value = { status: 'loaded', items: items.filter((plugin) => plugin.enabled) };
+    }).catch(() => {
+      if (epoch === pluginEpoch && session === active) plugins.value = { status: 'failed', items: [] };
+    }).finally(() => { if (epoch === pluginEpoch) pluginRequest = undefined; });
+    return pluginRequest;
   }
   const requests = computed(() => {
     const owner = agent.value;
@@ -567,6 +588,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     await session.markRead(id, revision);
   }
   return { changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
-    draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

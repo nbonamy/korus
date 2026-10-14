@@ -57,7 +57,8 @@ final class AppModel {
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
     var reviewState = ReviewState()
-    var skills = EngineState.Skills()
+    var mentions = EngineState.Suggestions()
+    var skills = EngineState.Suggestions()
     private var conversationRead = ConversationReadState()
     var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead() } } }
     let dictation = DictationController(capture: AppleDictationCapture())
@@ -136,7 +137,8 @@ final class AppModel {
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
         })
         set(\.models, state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts) })
-        set(\.skills, state.skills ?? EngineState.Skills())
+        set(\.mentions, state.mentions ?? EngineState.Suggestions())
+        set(\.skills, state.skills ?? EngineState.Suggestions())
         set(\.selectedModelID, state.composer.modelId)
         set(\.selectedEffort, state.composer.effort)
         set(\.planMode, state.composer.planMode)

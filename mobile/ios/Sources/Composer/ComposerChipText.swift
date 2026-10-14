@@ -1,10 +1,10 @@
 import Foundation
 
-/// Prompt text stays canonical. Only the editor collapses known skill mentions to one character.
-struct SkillChipText {
+/// Prompt text stays canonical. Only the editor collapses known mentions to one character.
+struct ComposerChipText {
     struct Chip: Equatable {
         let range: NSRange
-        let skill: ComposerSkill
+        let item: ComposerSuggestion
     }
 
     let text: String
@@ -16,14 +16,15 @@ struct SkillChipText {
         self.chips = chips
     }
 
-    init(text: String, skills: [ComposerSkill]) {
+    init(text: String, suggestions: [ComposerSuggestion]) {
         self.text = text
         chips = Self.tokens.matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).compactMap { match in
-            guard match.range(at: 2).location != NSNotFound else { return nil }
-            let alias = (text as NSString).substring(with: match.range(at: 2))
-            guard let skill = skills.first(where: { $0.insertText.caseInsensitiveCompare(alias) == .orderedSame }) else { return nil }
-            let range = NSRange(location: match.range(at: 2).location - 1, length: match.range(at: 2).length + 1)
-            return Chip(range: range, skill: skill)
+            guard match.range(at: 3).location != NSNotFound else { return nil }
+            let alias = (text as NSString).substring(with: match.range(at: 3))
+            let trigger = (text as NSString).substring(with: match.range(at: 2))
+            guard let item = suggestions.first(where: { $0.kind.trigger == trigger && $0.insertText.caseInsensitiveCompare(alias) == .orderedSame }) else { return nil }
+            let range = NSRange(location: match.range(at: 2).location, length: match.range(at: 3).length + 1)
+            return Chip(range: range, item: item)
         }
     }
 
@@ -61,5 +62,5 @@ struct SkillChipText {
     }
 
     // Match the SDK editor's token boundaries and preserve inline code as ordinary text.
-    private static let tokens = try! NSRegularExpression(pattern: #"(`[^`]+`)|(?<![\w.%+\-$])\$([^\s@$]+)"#)
+    private static let tokens = try! NSRegularExpression(pattern: #"(`[^`]+`)|(?<![\w.%+/\-$@])([@$])([^\s@$]+)"#)
 }

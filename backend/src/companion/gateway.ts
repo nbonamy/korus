@@ -5,7 +5,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AgentBackend, BackendSkillSummary, SourceBranch } from '@workspace/core/contracts';
+import type { AgentBackend, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
@@ -59,6 +59,7 @@ export type GatewayPort = {
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
+  plugins?(agentId: string): Promise<BackendPluginSummary[]>;
   skills(agentId: string): Promise<BackendSkillSummary[]>;
   changeGoal?(agentId: string, objective: string | null): Promise<void>;
   interrupt(agentId: string): Promise<void>;
@@ -275,14 +276,14 @@ export class CompanionGateway {
         return receipt(completed);
       });
     }
-    if (method === 'skills.list') {
+    if (method === 'skills.list' || method === 'plugins.list') {
       const target = targetSchema.parse(args);
       const { backend, folder } = await this.validateTarget(target);
-      const skills = await this.port.skills(target.agentId);
+      const items = method === 'skills.list' ? await this.port.skills(target.agentId) : await this.port.plugins?.(target.agentId) ?? [];
       const current = await this.validateTarget(target);
       this.requireGrant(peerId, grant);
       if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
-      return { skills };
+      return method === 'skills.list' ? { skills: items } : { plugins: items };
     }
     if (method === 'models.list') {
       const { agentId } = z.object({ agentId: identity }).strict().parse(args);

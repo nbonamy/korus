@@ -40,6 +40,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   const driver: AgentBackendDriver = {
     backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
     getCapabilities: () => codexBackendCapabilities, sendPrompt, steerPrompt,
+    listPlugins: async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }],
     listSkills: async () => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }],
     interrupt: async () => result, respondToAgentRequest: async () => undefined,
     onEvent: () => () => undefined, close: async () => undefined,
@@ -79,6 +80,14 @@ describe('mobile prompt admission', () => {
     const options = (operation.mock.calls[0] as unknown as [unknown, string, { attachments: { type: string; name: string; path: string; mimeType: string }[] }])[2];
     expect(options.attachments.map(({ path: _path, ...metadata }) => metadata)).toStrictEqual(uploads.map(({ data: _data, ...metadata }) => metadata));
     expect(await Promise.all(options.attachments.map((item) => readFile(item.path, 'utf8')))).toStrictEqual(['photo bytes', 'file bytes']);
+  });
+
+  it('routes plugin discovery and canonical mentions through the owning provider', async () => {
+    const f = await fixture('idle');
+    expect(await f.gateway.request('phone', 'plugins.list', f.command.target)).toStrictEqual({ plugins: [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }] });
+    const text = 'Use @github with @agent:agent-phone';
+    expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text })).toMatchObject({ state: 'accepted' });
+    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), text, expect.any(Object));
   });
 
   it('routes the companion skill catalog and a selected skill to the owning provider', async () => {

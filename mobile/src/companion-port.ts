@@ -1,4 +1,4 @@
-import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 
@@ -29,6 +29,7 @@ export type CompanionSession = {
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;
   listModels?(agentId: string): Promise<BackendModelOption[]>;
+  listPlugins?(agentId: string): Promise<BackendPluginSummary[]>;
   listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
   selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
   changeGoal?(target: CompanionTarget, objective: string | null): Promise<void>;

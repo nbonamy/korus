@@ -6,8 +6,8 @@ struct ComposerView: View {
     @Environment(AppModel.self) private var model
     @State private var focused = false
     @State private var selection: NSRange?
-    @State private var activeQuery: SkillQuery?
-    @State private var dismissedQuery: SkillQuery?
+    @State private var activeQuery: ComposerQuery?
+    @State private var dismissedQuery: ComposerQuery?
     private struct PickerRequest: Identifiable {
         let token: ComposerDrafts.Import
         let source: AttachmentPicker.Source
@@ -31,13 +31,13 @@ struct ComposerView: View {
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 22)
             }
             if showSuggestions, let query = activeQuery {
-                SkillSuggestionsView(catalog: model.skills, query: query, select: { skill in
+                ComposerSuggestionsView(catalog: query.isSkill ? model.skills : model.mentions, query: query, select: { skill in
                     guard let result = query.inserting(skill, into: model.composerText) else { return }
                     model.composerText = result.text
                     selection = NSRange(location: result.caret, length: 0)
                     activeQuery = nil
                     focused = true
-                }, dismiss: { dismissedQuery = query }, retry: { model.command("loadSkills") })
+                }, dismiss: { dismissedQuery = query }, retry: { loadSuggestions() })
                 .padding(.horizontal, 12)
             }
             composer
@@ -54,13 +54,24 @@ struct ComposerView: View {
                     loadFiles(urls, request: request.token)
                 })
         }
-        .onChange(of: showSuggestions) { _, visible in if visible { model.command("loadSkills") } }
+        .onChange(of: showSuggestions) { _, visible in if visible { loadSuggestions() } }
         .onChange(of: model.skills.status) { _, status in
-            if status == .idle && showSuggestions { model.command("loadSkills") }
+            if status == .idle && activeQuery?.isSkill == true && showSuggestions { loadSuggestions() }
         }
-        .onChange(of: activeQuery) { _, _ in dismissedQuery = nil }
+        .onChange(of: model.mentions.status) { _, status in
+            if status == .idle && activeQuery?.isSkill == false && showSuggestions { loadSuggestions() }
+        }
+        .onChange(of: activeQuery) { _, _ in
+            dismissedQuery = nil
+            if showSuggestions { loadSuggestions() }
+        }
         .onChange(of: model.activeAgentID) { _, _ in selection = nil; activeQuery = nil; dismissedQuery = nil }
         .onChange(of: model.composerText) { _, text in if text.isEmpty { activeQuery = nil; selection = nil } }
+    }
+
+    private func loadSuggestions() {
+        guard let query = activeQuery else { return }
+        model.command(query.isSkill ? "loadSkills" : "loadMentions")
     }
 
     private var showSuggestions: Bool {
@@ -82,8 +93,8 @@ struct ComposerView: View {
             ComposerAttachmentsView(drafts: model.composerDrafts)
             HStack(spacing: 6) {
                 if !expanded { attachMenu }
-                SkillComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
-                    query: $activeQuery, skills: model.skills.items, editable: !model.dictation.active && !model.composerDrafts.sending,
+                ComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
+                    query: $activeQuery, suggestions: model.skills.items + model.mentions.items, editable: !model.dictation.active && !model.composerDrafts.sending,
                     maxLines: expanded ? 8 : 1,
                     placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : "Message",
                     pastePhotos: canAttach ? { providers in

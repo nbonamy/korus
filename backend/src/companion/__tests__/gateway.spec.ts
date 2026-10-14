@@ -27,6 +27,7 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
+    plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
@@ -101,6 +102,23 @@ describe('companion authorization gateway', () => {
     f.port.readConversationContent.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return { data: 'e30=', totalBytes: 2, nextOffset: null }; });
     await expect(f.gateway.request('phone', 'conversation.content.read', { target: currentTarget, input })).rejects.toThrow('authorized');
   });
+  it('lists plugins only for the paired current target and rechecks identity after lookup', async () => {
+    const f = fixture();
+    await expect(f.gateway.request('phone', 'plugins.list', target)).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'plugins.list', { ...target, sessionId: 'old' })).rejects.toThrow('stale');
+    expect(await f.gateway.request('phone', 'plugins.list', target)).toStrictEqual({ plugins: [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }] });
+    expect(f.port.plugins).toHaveBeenCalledExactlyOnceWith('agent');
+    f.port.plugins.mockImplementationOnce(async () => {
+      f.port.workspace.mockResolvedValue({ ...workspace, agents: [{ ...workspace.agents[0]!, folder: '/changed' }] });
+      return [];
+    });
+    await expect(f.gateway.request('phone', 'plugins.list', target)).rejects.toThrow('stale');
+    f.port.workspace.mockResolvedValue(workspace);
+    f.port.plugins.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return []; });
+    await expect(f.gateway.request('phone', 'plugins.list', target)).rejects.toThrow('authorized');
+  });
+
   it('lists skills for the current target and admits only enabled catalog references with prompts', async () => {
     const f = fixture();
     const skill = { name: 'review', path: '/skills/review/SKILL.md' };
