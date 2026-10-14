@@ -1,3 +1,4 @@
+import { codexConversationSnapshot, codexTextMessage } from '../../../vue/src/test/codex-conversation-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompanionReset, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
@@ -15,6 +16,27 @@ function fixture() {
   return { cache, request, changed, failed };
 }
 describe('recent mobile conversations', () => {
+  it('rehydrates an unsupported provider event without publishing an invalid snapshot or poisoning cached selection', async () => {
+    const changed = vi.fn(); const failed = vi.fn();
+    const selected = { ...target('a'), sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) };
+    const frame = (revision: number): CompanionReset => ({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'a', threadId: 'thread', seq: revision, occurredAt: 'now',
+      payload: { revision, snapshot: codexConversationSnapshot([codexTextMessage('answer', 'assistant', 'Authoritative answer')], { activeConversationId: 'thread' }) } });
+    let reads = 0;
+    const request = vi.fn(async () => { cache.receive(frame(++reads)); });
+    const cache = new ConversationCache(request, changed, failed);
+    try {
+      await cache.select(selected);
+      cache.receive({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'a', threadId: 'thread', seq: 2, occurredAt: 'now', payload: {
+        revision: 2, event: { type: 'conversation.futureEvent', conversationId: 'thread', seq: 2, payload: {} },
+      } } as unknown as ProviderConversationFrame);
+      await Promise.resolve(); await Promise.resolve();
+      expect(changed.mock.calls.every(([next]) => next.payload.snapshot?.messages?.length === 1)).toBe(true);
+      expect(request).toHaveBeenCalledTimes(2);
+      expect((await cache.select(selected))?.payload.snapshot.messages[0]?.id).toBe('answer');
+      expect(failed).not.toHaveBeenCalled();
+    } finally { cache.close(); }
+  });
+
   it('keeps hidden chats live for five minutes, counts from last visibility, and reloads expired chats', async () => {
     vi.useFakeTimers(); const f = fixture();
     try {

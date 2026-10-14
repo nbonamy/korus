@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
 import { createEngine, type EngineEvent, type EngineState, type EnginePort } from '../engine';
@@ -14,6 +15,28 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('publishes each cached selection with its own transcript, never the previous agent identity', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async (id) => {
+      const session = await connect(id);
+      const frames = new Map(await Promise.all(['demo-agent', 'demo-reviewer'].map(async (id) => [id, await session.loadConversation(id)] as const)));
+      return { ...session, cachedConversation: (id) => frames.get(id), loadConversation: async (id) => frames.get(id) ?? null };
+    };
+    const { engine, events } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      events.length = 0;
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      const conversations = events.filter((event) => event.type === 'conversation');
+      expect(conversations.length).toBeGreaterThan(0);
+      for (const event of conversations) {
+        expect(event.agent?.id).toBe('demo-reviewer');
+        expect(event.frame?.agentId).toBe('demo-reviewer');
+      }
+    } finally { engine.dispose(); }
+  });
+
   it('keeps failed answers available, prevents double responses, and never retargets a response after navigation', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const question = { id: 'same-id', conversationId: 'conversation', kind: 'question' as const,
@@ -232,6 +255,7 @@ describe('companion engine', () => {
     expect(latest()).toMatchObject({ loading: false, canSend: true });
     fail = true;
     const second = engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    await nextTick();
     expect(latest()).toMatchObject({ loading: true, canSend: false, agentId: 'demo-reviewer' });
     expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ frame: null, agentId: 'demo-reviewer' });
     complete(); await second;

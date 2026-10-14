@@ -160,7 +160,9 @@ export function createEngine(port: EnginePort) {
     if (pending.length) expiry = setTimeout(postConversation, Math.max(0, Math.min(...pending.map((entry) => entry.expires)) - now) + 1);
     port.post({ type: 'conversation', agentId: state.agentId.value, ready: state.conversationReady.value, frame: withPending(state.conversation.value), agent: state.agent.value, agents: state.agents.value, history: state.history.value });
   }
-  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, postConversation, { flush: 'sync' });
+  // Selection changes identity, cached frame and readiness together. Never send an intermediate
+  // pairing (new transcript / old agent) across the native bridge.
+  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, postConversation, { flush: 'post' });
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const frame = state.conversation.value;

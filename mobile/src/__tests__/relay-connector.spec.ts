@@ -140,6 +140,32 @@ describe('native relay host adapter', () => {
       stop(); await connector.suspend!();
     } finally { await connector.dispose!(); vi.useRealTimers(); }
   });
+  it('finishes a streamed Claude turn and keeps the completed reply when selected again', async () => {
+    const connector = connect();
+    try {
+      await pairWith(connector);
+      const claude = { ...agent, backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session' } };
+      const snapshot = { agentId: agent.id, sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false,
+        historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
+      const frame = { type: 'claude.conversationSnapshotChanged', agentId: agent.id, backend: 'claude', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot } };
+      transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] } : frame;
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
+      const update = vi.fn(); const disconnected = vi.fn(); session.onUpdate!(update); session.onDisconnect(disconnected);
+      await session.loadConversation('agent');
+      for (const [index, event] of [
+        { type: 'turn.started', payload: { turn: { id: 'turn', backend: 'claude' } } },
+        { type: 'message.delta', payload: { itemId: 'answer', delta: 'The completed Claude answer.' } },
+        { type: 'turn.completed', payload: { turn: { id: 'turn', status: 'completed' } } },
+      ].entries()) transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: index + 2, payload: {
+        revision: index + 2, event: { ...event, agentId: 'agent', backend: 'claude', backendSessionId: 'session', turnId: 'turn', seq: index + 2, occurredAt: '2026-10-14T00:00:01Z' },
+      } } });
+      await vi.waitFor(() => expect(update.mock.calls.at(-1)?.[1]?.payload.revision).toBe(4));
+      expect(disconnected).not.toHaveBeenCalled();
+      session.deselectConversation!();
+      const completed = await session.loadConversation('agent');
+      expect(completed?.payload.snapshot).toMatchObject({ busy: false, activeTurnId: null, messages: [expect.objectContaining({ status: 'complete', parts: [{ type: 'text', itemId: 'answer', text: 'The completed Claude answer.' }] })] });
+    } finally { await connector.dispose!(); }
+  });
   it('keeps repository icons across workspace updates and asks the laptop for them only when its copy is stale', async () => {
     const connector = connect(); await pairWith(connector);
     const session = await connector.connect(host.hostId);

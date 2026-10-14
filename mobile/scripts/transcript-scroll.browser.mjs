@@ -47,6 +47,19 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       return { before, ready, after, superseded, empty, newThread };
     });
     assert.deepEqual(presentation, { before: false, ready: 'presentation-agent', after: true, superseded: null, empty: null, newThread: 'presentation-agent' });
+    // Cached switches reuse the mounted pane and may arrive while the previous paint is pending.
+    for (let index = 0; index < 6; index++) {
+      const expected = `Cached chat ${index}`;
+      await page.evaluate(async ({ index, expected }) => {
+        const id = `cached-${index % 2}`;
+        const agent = { id, teamId: 'scroll-team', name: expected, folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+        const message = { agent, agents: [agent], ready: true, frame: { agentId: id, backend: 'claude', payload: { snapshot: {
+          messages: [{ id: 'shared-message-id', role: 'assistant', status: 'complete', createdAt: '2026-01-01', parts: [{ type: 'text', text: expected }] }], turns: [], activeTurnId: null, busy: false,
+        } } } };
+        await window.companionTranscript.setConversation(JSON.stringify(message));
+      }, { index, expected });
+      assert.ok(await page.getByText(expected, { exact: true }).isVisible(), `one selection must show ${expected}`);
+    }
     const initialConversation = await page.evaluate(() => {
       const agent = { id: 'scroll-agent', teamId: 'scroll-team', name: 'Scroll test', folder: null,
         backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };

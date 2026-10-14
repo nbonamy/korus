@@ -50,7 +50,11 @@ export class ConversationCache {
       if (!current || !entry.replica || frame.payload.revision !== current.payload.revision + 1) { void this.load(entry).catch(this.failed); return; }
       try {
         entry.replica.apply(frame.payload.event as never);
-        entry.frame = { ...current, payload: { revision: frame.payload.revision, snapshot: entry.replica.getSnapshot() } } as CompanionReset;
+        const snapshot = entry.replica.getSnapshot();
+        // A peer can run a newer SDK. Some replicas return undefined for an unknown
+        // event; recover from its authoritative reset before touching renderer state.
+        if (!snapshot) throw new Error('Provider event did not produce a snapshot.');
+        entry.frame = { ...current, payload: { revision: frame.payload.revision, snapshot } } as CompanionReset;
         this.changed(entry.frame); return;
       } catch { void this.load(entry).catch(this.failed); return; }
     }
