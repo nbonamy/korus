@@ -410,6 +410,24 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'snapshot.get', {})).rejects.toThrow('authorized');
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID() })).rejects.toThrow('authorized');
   });
+  it('expires old command receipts so mobile sending never fills up, and forgets them when a device is revoked', async () => {
+    const f = fixture(); await f.pair();
+    const stale = Object.fromEntries(Array.from({ length: 10_000 }, (_, index) => [`phone:${randomUUID()}`, { clientCommandId: randomUUID(), state: 'accepted' as const, target, fingerprint: 'x', createdAt: index }]));
+    const full = new CompanionGateway('host', { ...f.saved(), commands: stale }, f.port, () => 8 * 86_400_000);
+    const fresh = { target, text: 'Still works', clientCommandId: randomUUID() };
+    expect(await full.request('phone', 'prompt.submit', fresh)).toMatchObject({ state: 'accepted' });
+    expect(Object.keys(f.saved().commands)).toEqual([`phone:${fresh.clientCommandId}`]);
+    expect(await full.request('phone', 'command.status', { clientCommandId: fresh.clientCommandId })).not.toHaveProperty('createdAt');
+    await full.revoke('phone');
+    expect(f.saved().commands).toEqual({});
+  });
+  it('keeps receipts from before timestamps existed until they age out', async () => {
+    const f = fixture(); await f.pair();
+    const legacy = { clientCommandId: randomUUID(), state: 'accepted' as const, target, fingerprint: 'x' };
+    const gateway = new CompanionGateway('host', { ...f.saved(), commands: { [`phone:${legacy.clientCommandId}`]: legacy } }, f.port, () => 5);
+    await gateway.request('phone', 'prompt.submit', { target, text: 'Next', clientCommandId: randomUUID() });
+    expect(f.saved().commands[`phone:${legacy.clientCommandId}`]).toMatchObject({ createdAt: 5 });
+  });
   it('does not grant or dispatch if durable storage rejects the write', async () => {
     const f = fixture(); f.port.save.mockRejectedValue(new Error('disk full'));
     await expect(f.pair()).rejects.toThrow('disk full');

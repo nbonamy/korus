@@ -49,7 +49,10 @@ const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string(
 const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(companionMaxUploads).optional() }).strict()
   .refine((command) => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, 'A prompt needs text or an attachment.');
 const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
-export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
+/** Receipts only dedupe phone retries, so they expire; entries saved before timestamps existed start their clock when first pruned. */
+export type StoredCommand = CompanionCommandReceipt & { fingerprint: string; createdAt?: number };
+export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
+const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
@@ -141,7 +144,8 @@ export class CompanionGateway {
   async revoke(peerId: string) {
     return this.mutate(async () => {
       const push = { ...this.state.push }; delete push[peerId];
-      const next = { ...this.state, push, grants: this.state.grants.filter((grant) => grant.peerId !== peerId) };
+      const commands = Object.fromEntries(Object.entries(this.state.commands).filter(([key]) => !key.startsWith(`${peerId}:`)));
+      const next = { ...this.state, push, commands, grants: this.state.grants.filter((grant) => grant.peerId !== peerId) };
       await this.port.save(next); this.state = next;
       this.port.revoked(peerId);
     });
@@ -288,9 +292,10 @@ export class CompanionGateway {
         if (command.attachments?.length && command.target.locationId !== 'local') throw new Error('Remote attachments require a trusted file transfer.');
         const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
         if (uploads && (uploads.reduce((total, upload) => total + upload.data.byteLength, 0) > maxUploadBytes || uploads.some((upload, index) => upload.data.toString('base64') !== command.attachments![index]!.data))) throw new Error('Attachment too large.');
-        if (Object.keys(this.state.commands).length >= 10_000) throw new Error('Command receipt storage is full.');
-        const pending = { clientCommandId: command.clientCommandId, state: 'pending' as const, target: command.target, fingerprint };
-        const next = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: pending } };
+        const commands = this.liveCommands();
+        if (Object.keys(commands).length >= 10_000) throw new Error('Command receipt storage is full.');
+        const pending: StoredCommand = { clientCommandId: command.clientCommandId, state: 'pending', target: command.target, fingerprint, createdAt: this.now() };
+        const next = { ...this.state, commands: { ...commands, [ledgerKey]: pending } };
         await this.port.save(next); this.state = next;
         let state: 'accepted' | 'unresolved' = 'unresolved';
         try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
@@ -461,6 +466,17 @@ export class CompanionGateway {
       || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return agent;
   }
+  /** Drops expired receipts and those of devices that are no longer paired. */
+  private liveCommands(): GatewayState['commands'] {
+    const now = this.now();
+    const live: GatewayState['commands'] = {};
+    for (const [key, command] of Object.entries(this.state.commands)) {
+      const createdAt = command.createdAt ?? now;
+      if (now - createdAt > commandRetentionMs || !this.state.grants.some((grant) => key.startsWith(`${grant.peerId}:`))) continue;
+      live[key] = command.createdAt === undefined ? { ...command, createdAt } : command;
+    }
+    return live;
+  }
   private mutate<Result>(action: () => Promise<Result>): Promise<Result> {
     const pending = this.mutations.then(action);
     this.mutations = pending.then(() => {}, () => {});
@@ -473,7 +489,7 @@ export class CompanionGateway {
     }
   }
 }
-function receipt({ fingerprint: _fingerprint, ...receipt }: GatewayState['commands'][string]): CompanionCommandReceipt {
+function receipt({ fingerprint: _fingerprint, createdAt: _createdAt, ...receipt }: StoredCommand): CompanionCommandReceipt {
   // Persisted pending entries can mean a killed process after provider admission.
   return { ...receipt, state: receipt.state === 'pending' ? 'unresolved' : receipt.state };
 }

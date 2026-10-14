@@ -76,6 +76,12 @@ describe('trusted companion rendezvous', () => {
     policy.register(host, [], [invite(now + 1000, 'ABCDEFGH')]);
     expect(policy.resolve(phone, 'ABCDEFGH')).toBe(host);
   });
+  it('lets an honest phone pair while throwaway identities flood lookups', () => {
+    const policy = new CompanionRelayPolicy(new Set([host]), () => 1);
+    policy.register(host, [], [invite()]);
+    for (let n = 0; n < 500; n++) expect(policy.resolve(`flood${n}`, 'AAAAAAAA')).toBeNull();
+    expect(policy.resolve(phone, invite().code)).toBe(host);
+  });
   it('bounds host capacity and rejects unadmitted hosts, malformed codes and excessive TTLs', () => {
     let now = 1; const automatic = new CompanionRelayPolicy(undefined, () => now);
     for (let i = 0; i < 1000; i++) expect(automatic.reserve(`host${i}`)).toBe(true);

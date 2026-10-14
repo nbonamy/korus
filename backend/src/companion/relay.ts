@@ -60,7 +60,8 @@ export class CompanionRelayPolicy {
   resolve(source: string, code: string) {
     this.prune();
     for (const [id, lookup] of this.lookups) if (lookup.expiresAt <= this.now()) this.lookups.delete(id);
-    if (this.lookups.size >= 200 && !this.lookups.has(source)) return null;
+    // Throwaway identities must not be able to lock honest phones out: make room by dropping the oldest guess counter.
+    if (this.lookups.size >= 200 && !this.lookups.has(source)) this.lookups.delete(this.lookups.keys().next().value!);
     const lookup = this.lookups.get(source) ?? { count: 0, expiresAt: this.now() + pairingLifetimeMs };
     this.lookups.set(source, lookup);
     if (++lookup.count > 10) return null;
