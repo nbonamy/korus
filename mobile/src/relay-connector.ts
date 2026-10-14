@@ -12,7 +12,7 @@ import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
 import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption } from '@workspace/core/contracts';
-import type { CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionHistoryPage, type CompanionSession } from './companion-port';
@@ -198,6 +198,22 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },
+        async createChat(chat, signal) {
+          const { creationId } = await request<{ creationId: string }>(host, 'agent.create', chat);
+          // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
+          let failures = 0;
+          for (const deadline = Date.now() + 600_000; Date.now() < deadline;) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+            if (closed || signal?.aborted) throw new Error('Disconnected.');
+            const result = await request<CompanionChatCreation>(host, 'agent.create.status', { creationId }).catch((error: unknown) => { if (++failures > 3) throw error; return null; });
+            if (!result) continue;
+            failures = 0;
+            if (result.state === 'success') return result.agentId;
+            if (result.state === 'error') throw new Error(result.error);
+          }
+          throw new Error('Creating the chat took too long.');
+        },
+        async setBackend(agentId, backend) { await request(host, 'agent.backend.set', { agentId, backend }); },
         async startReview(agentId, input) { await request(host, 'agent.review.start', { agentId, input }); },
         async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },
         async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },

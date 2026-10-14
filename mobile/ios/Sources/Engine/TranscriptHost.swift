@@ -6,6 +6,7 @@ import WebKit
 final class TranscriptHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
     var onLoadOlder: ((String) -> Void)?
+    var onChooseBackend: ((String) -> Void)?
     var onRendered: ((String) -> Void)?
     private var presentation = 0
     private var isReady = false
@@ -53,6 +54,10 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if event["type"] as? String == "loadOlder", let agentID = event["agentId"] as? String {
             onLoadOlder?(agentID)
+            return
+        }
+        if event["type"] as? String == "backend", let backend = event["backend"] as? String {
+            onChooseBackend?(backend)
             return
         }
         guard event["type"] as? String == "ready" else { return }

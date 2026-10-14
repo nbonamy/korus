@@ -33,6 +33,16 @@ final class AppModel {
     var respondingRequest: String?
     var failedRequest: String?
     var closePreview: EngineState.ClosePreview?
+    var chatCreation: EngineState.ChatCreation = .idle
+    var backends: [String] = []
+    /// The repository a worktree is being named for; the sheet shows while it is set.
+    var newWorktreeGroup: SidebarGroup?
+    var creatingChatGroupID: String?
+    /// The engine new chats start with, remembered between launches; unavailable ones fall back to the first the laptop offers.
+    var preferredBackend = UserDefaults.standard.string(forKey: "newChat.backend") ?? "" {
+        didSet { UserDefaults.standard.set(preferredBackend, forKey: "newChat.backend") }
+    }
+    var newChatBackend: String? { backends.contains(preferredBackend) ? preferredBackend : backends.first }
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     var composerText = ""
@@ -46,6 +56,7 @@ final class AppModel {
     init() {
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onConversation = { [weak self] json in self?.transcript.setConversation(json) }
+        transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
         transcript.onRendered = { [weak self] id in
             guard let self, id == self.activeAgentID else { return }
@@ -79,9 +90,15 @@ final class AppModel {
         pairingError = state.pairingError
         teams = state.teams
         teamID = state.teamId
+        let created = chatCreation == .creating && state.chatCreation == .idle
+        chatCreation = state.chatCreation
+        if state.chatCreation != .creating { creatingChatGroupID = nil }
+        backends = state.backends
+        if created { newWorktreeGroup = nil; drawerOpen = false }
         groups = state.groups.map { group in
             SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
-                         sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type) })
+                         sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type) },
+                         repositoryId: group.repositoryRoot)
         }
         let nextAgentID = state.agentId.isEmpty ? nil : state.agentId
         if activeAgentID != nextAgentID { dictation.cancel() }
@@ -142,6 +159,18 @@ final class AppModel {
     }
     func cancelCloseSession() { if sessionAction == nil { closePreview = nil; command("cancelCloseSession") } }
     func dismissSessionError() { sessionActionFailed = false; command("dismissSessionError") }
+    /// An empty chat takes another engine, and later new chats start with the one chosen last.
+    func chooseBackend(_ backend: String) {
+        preferredBackend = backend
+        command("backend", ["backend": backend])
+    }
+    func startChat(in group: SidebarGroup, branchName: String? = nil) {
+        guard let repositoryId = group.repositoryId, let backend = newChatBackend, chatCreation != .creating else { return }
+        creatingChatGroupID = group.id
+        command("newChat", ["repositoryId": repositoryId, "backend": backend].merging(branchName.map { ["branchName": $0] } ?? [:]) { _, new in new })
+    }
+    func closeWorktreeSheet() { if chatCreation != .creating { newWorktreeGroup = nil; dismissChatFailure() } }
+    func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
     func forget() { command("forget") }

@@ -404,6 +404,99 @@ describe('companion engine', () => {
       } finally { vi.useRealTimers(); }
     });
   });
+  describe('starting a chat in a repository', () => {
+    function withCreation(createChat: NonNullable<Awaited<ReturnType<ReturnType<typeof createDemoConnector>['connect']>>['createChat']>) {
+      const connector = createDemoConnector(); const original = connector.connect;
+      connector.connect = async (id) => {
+        const session = await original(id);
+        return { ...session, createChat, getWorkspace: async () => ({ ...await session.getWorkspace(), backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] } }) };
+      };
+      return connector;
+    }
+    async function opened(createChat: Parameters<typeof withCreation>[0]) {
+      const harness = open(withCreation(createChat));
+      await harness.engine.start(); await harness.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      return harness;
+    }
+    it('offers the team\'s engines, then opens the chat the laptop made', async () => {
+      const createChat = vi.fn(async () => 'demo-reviewer');
+      const { engine, latest } = await opened(createChat);
+      expect(latest()).toMatchObject({ backends: ['codex', 'claude'], chatCreation: 'idle' });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'claude', branchName: 'feature' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'claude', worktree: { branchName: 'feature' } });
+      expect(latest()).toMatchObject({ agentId: 'demo-reviewer', chatCreation: 'idle' });
+      engine.dispose();
+    });
+    it('uses the default checkout without a branch, reports a failure and lets it be dismissed', async () => {
+      const createChat = vi.fn<Parameters<typeof withCreation>[0]>().mockRejectedValueOnce(new Error('Branch exists'));
+      const { engine, latest } = await opened(createChat);
+      const before = latest().agentId;
+      await engine.dispatch({ type: 'newChat', repositoryId: '/abc/repo', backend: 'codex' });
+      expect(createChat).toHaveBeenCalledWith({ teamId: 'demo-team', repositoryId: '/abc/repo', backend: 'codex' });
+      expect(latest()).toMatchObject({ chatCreation: 'failed', agentId: before });
+      await engine.dispatch({ type: 'dismissNewChat' });
+      expect(latest().chatCreation).toBe('idle');
+      engine.dispose();
+    });
+  });
+  describe('choosing the engine of an empty chat', () => {
+    function withBackends(setBackend: (agentId: string, backend: string) => Promise<void>, started = false) {
+      const connector = createDemoConnector(); const original = connector.connect; let backend = 'codex';
+      connector.connect = async (id) => {
+        const session = await original(id);
+        return { ...session, loadConversation: async () => null, setBackend: async (agentId, next) => { await setBackend(agentId, next); backend = next; },
+          listModels: async () => [{ id: `${backend}-model`, model: `${backend}-model`, displayName: `${backend} model`, isDefault: true, hidden: false, supportedReasoningEfforts: [] } as never],
+          getWorkspace: async () => { const workspace = await session.getWorkspace();
+            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] },
+              agents: workspace.agents.map((agent) => ({ ...agent, backend: backend as 'codex' | 'claude', ...(started ? { hasSubmittedPrompt: true } : {}) })) }; } };
+      };
+      return connector;
+    }
+    it('offers the choice before the first prompt and applies it', async () => {
+      const setBackend = vi.fn(async () => {});
+      const { engine, latest, events } = open(withBackends(setBackend));
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(latest()).toMatchObject({ backend: 'codex', canSelectBackend: true });
+      await engine.dispatch({ type: 'backend', backend: 'claude' });
+      expect(setBackend).toHaveBeenCalledWith('demo-agent', 'claude');
+      expect(latest()).toMatchObject({ backend: 'claude', agentId: 'demo-agent' });
+      // The old engine's models must not stay selectable for the new one.
+      await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
+      expect([...events].reverse().find((event) => event.type === 'conversation')).toMatchObject({ engines: { current: 'claude', choices: ['codex', 'claude'] } });
+      engine.dispose();
+    });
+    it('ignores a model list that arrives late from the engine it replaced', async () => {
+      const connector = createDemoConnector(); const original = connector.connect; let backend = 'codex'; let release = () => {};
+      connector.connect = async (id) => {
+        const session = await original(id); let first = true;
+        return { ...session, loadConversation: async () => null, setBackend: async (_agent, next) => { backend = next; },
+          listModels: async () => { const asked = backend; const model = { id: `${asked}-model`, model: `${asked}-model`, displayName: asked, isDefault: true, hidden: false, supportedReasoningEfforts: [] } as never;
+            if (first) { first = false; await new Promise<void>((resolve) => { release = resolve; }); }
+            return [model]; },
+          getWorkspace: async () => { const workspace = await session.getWorkspace();
+            return { ...workspace, backends: { 'demo-team': ['codex', 'claude'] as ('codex' | 'claude')[] }, agents: workspace.agents.map((agent) => ({ ...agent, backend: backend as 'codex' | 'claude' })) }; } };
+      };
+      const { engine, latest } = open(connector);
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await engine.dispatch({ type: 'backend', backend: 'claude' });
+      await vi.waitFor(() => expect(latest().models.map((model) => model.id)).toEqual(['claude-model']));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(latest().models.map((model) => model.id)).toEqual(['claude-model']);
+      engine.dispose();
+    });
+    it('hides the choice once a prompt was sent, and reports a refusal', async () => {
+      const started = open(withBackends(async () => {}, true));
+      await started.engine.start(); await started.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await started.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(started.latest().canSelectBackend).toBe(false);
+      started.engine.dispose();
+      const refused = open(withBackends(async () => { throw new Error('no'); }));
+      await refused.engine.start(); await refused.engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await refused.engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await refused.engine.dispatch({ type: 'backend', backend: 'claude' });
+      expect(refused.latest()).toMatchObject({ backend: 'codex', error: 'mobile.errors.commandFailed' });
+      refused.engine.dispose();
+    });
+  });
   it('forgets a laptop and reflects the empty list', async () => {
     const { engine, latest } = open();
     await engine.start();

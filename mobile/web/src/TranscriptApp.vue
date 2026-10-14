@@ -10,7 +10,16 @@
       :plan-visible="false"
       :history-loading="false"
       :has-visible-messages="messages.length > 0"
-    />
+      empty-subhead=""
+    >
+      <template v-if="engines" #empty-actions>
+        <div class="engine-picker" role="radiogroup" aria-label="Engine">
+          <button v-for="choice in engines.choices" :key="choice" type="button" role="radio" class="engine-picker__option"
+            :class="{ 'engine-picker__option--selected': choice === engines.current }" :aria-checked="choice === engines.current"
+            @click="chooseEngine(choice)">{{ engineName(choice) }}</button>
+        </div>
+      </template>
+    </ConversationPane>
   </div>
 </template>
 
@@ -27,6 +36,7 @@ const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
+const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
 const insets = reactive({ top: 0, bottom: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
@@ -50,6 +60,12 @@ const controller = createCodexConversationPaneController({
   actions: { loadOlderHistory: loadOlder },
 });
 
+const engineNames: Record<string, string> = { codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity' };
+const engineName = (id: string) => engineNames[id] ?? id;
+function chooseEngine(backend: string) {
+  if (backend !== engines.value?.current) void handler('transcript').postMessage(JSON.stringify({ type: 'backend', backend }));
+}
+
 function loadOlder() {
   if (!agent.value || history.value.loadingOlder || !history.value.hasOlder) return;
   history.value = { ...history.value, loadingOlder: true, failed: false };
@@ -60,9 +76,10 @@ let presentation = 0;
 window.companionTranscript = {
   async setConversation(json) {
     const revision = ++presentation;
-    const message = JSON.parse(json) as { frame: CompanionConversation | null; ready?: boolean; agent: Agent | null; agents: Agent[]; history?: CompanionHistoryState };
+    const message = JSON.parse(json) as { frame: CompanionConversation | null; ready?: boolean; agent: Agent | null; agents: Agent[]; history?: CompanionHistoryState; engines?: { current: string; choices: string[] } | null };
     frame.value = message.frame; agent.value = message.agent; agents.value = message.agents;
     ready.value = message.ready ?? false;
+    engines.value = message.engines ?? null;
     history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
     if ((!message.frame && !message.ready) || !message.agent) return null;
     await nextTick();
@@ -89,4 +106,10 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
 .transcript .codex-workbench-layout__footer { display: none; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */
 .transcript .codex-conversation-pane__messages { --codex-scroll-to-bottom-offset: var(--space-12); }
+/* The shared empty state frames its actions as a card; the engine control stands on its own. */
+.transcript .conversation-pane__empty-actions { width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+/* A segmented control under the empty chat's title: the selected engine is raised, the others recede. */
+.engine-picker { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--color-surface-base); }
+.engine-picker__option { appearance: none; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: 15px; font-weight: 500; padding: 8px 16px; border-radius: 999px; transition: background 0.15s, color 0.15s; -webkit-tap-highlight-color: transparent; }
+.engine-picker__option--selected { background: var(--color-surface-lowest); color: var(--color-text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14); }
 </style>

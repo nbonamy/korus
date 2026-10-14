@@ -264,4 +264,27 @@ describe('native relay host adapter', () => {
     expect(transport.requests.some((request) => request.method === 'device.forget')).toBe(true);
     await connector.dispose!(); expect(transport.stop).toHaveBeenCalledOnce();
   });
+  it('asks the laptop how a new chat is going until it is ready, reports why it failed and changes its engine', async () => {
+    const connector = connect(vault()); await pairWith(connector);
+    const answers: unknown[] = [{ state: 'running' }, { state: 'running' }, { state: 'success', agentId: 'new-chat' }];
+    transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: [] }], agents: [] }
+      : method === 'agent.create' ? { creationId: 'creation' } : method === 'agent.create.status' ? answers.shift() : {};
+    const session = await connector.connect(host.hostId); await session.getWorkspace();
+    vi.useFakeTimers();
+    try {
+      const chat = { teamId: 'team', repositoryId: 'repo', backend: 'claude' as const, worktree: { branchName: 'feature' } };
+      const created = session.createChat!(chat);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await created).toBe('new-chat');
+      expect(transport.requests.find((request) => request.method === 'agent.create')?.args).toStrictEqual(chat);
+      expect(transport.requests.filter((request) => request.method === 'agent.create.status')).toHaveLength(3);
+      answers.push({ state: 'error', error: 'Branch exists' });
+      const failed = expect(session.createChat!(chat)).rejects.toThrow('Branch exists');
+      await vi.advanceTimersByTimeAsync(1000);
+      await failed;
+    } finally { vi.useRealTimers(); }
+    await session.setBackend!('new-chat', 'claude');
+    expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ agentId: 'new-chat', backend: 'claude' });
+    await connector.dispose!();
+  });
 });

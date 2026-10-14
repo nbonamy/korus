@@ -38,6 +38,8 @@ struct SidebarGroup: Identifiable, Hashable, Codable, Sendable {
     /// An emoji or image data URL chosen on the desktop.
     var icon: String?
     var sessions: [SidebarSession]
+    /// Names the repository to the laptop when a chat starts in it; folders and quick chats have none.
+    var repositoryId: String? = nil
 }
 
 /// What the header shows for the open conversation.

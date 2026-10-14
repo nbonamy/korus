@@ -32,6 +32,14 @@ struct DrawerView: View {
             footer
         }
         .background(Color(.systemBackground))
+        .sheet(item: Binding(get: { model.newWorktreeGroup }, set: { if $0 == nil { model.closeWorktreeSheet() } })) { group in
+            NewWorktreeSheet(group: group)
+        }
+        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check the connection and try again.")
+        }
     }
 
     private var header: some View {
@@ -85,6 +93,7 @@ struct DrawerView: View {
 }
 
 private struct GroupHeader: View {
+    @Environment(AppModel.self) private var model
     let group: SidebarGroup
 
     var body: some View {
@@ -94,8 +103,28 @@ private struct GroupHeader: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(nil)
+            Spacer(minLength: 8)
+            if group.repositoryId != nil, !model.backends.isEmpty, model.connection == .connected {
+                newChatMenu
+            }
         }
         .padding(.leading, 10)
+    }
+
+    private var newChatMenu: some View {
+        Menu {
+            Button("Default Branch", systemImage: "arrow.triangle.merge") { model.startChat(in: group) }
+            Button("New Worktree…", systemImage: "arrow.triangle.branch") { model.newWorktreeGroup = group }
+        } label: {
+            Group {
+                if model.creatingChatGroupID == group.id && model.newWorktreeGroup == nil { ProgressView().controlSize(.small) }
+                else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
+            }
+            .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .foregroundStyle(.secondary)
+        .disabled(model.chatCreation == .creating)
+        .accessibilityLabel("New chat in \(group.label)")
     }
 }
 

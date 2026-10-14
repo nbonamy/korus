@@ -1,5 +1,6 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
-import type { BackendModelOption } from '@workspace/core/contracts';
+import type { AgentBackend, BackendModelOption } from '@workspace/core/contracts';
+import type { CompanionNewChat } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -13,6 +14,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const failedRequest = ref<string | null>(null);
   const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
   const sessionActionFailed = ref(false);
+  const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
   const closePreview = shallowRef<CompanionClosePreview | null>(null);
   const laptopId = ref('');
   const teamId = ref('');
@@ -104,8 +106,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
-  const models = computed(() => modelCatalog.value[agentId.value] ?? []);
-  const composerSettings = computed(() => agent.value ? resolveComposerSettings(agent.value, models.value, composerChoices[agentId.value]) : null);
+  /** Models and the person's choice belong to a chat under one engine: another engine has its own. */
+  const modelKey = (id: string, backend: string | undefined) => `${id}:${backend ?? ''}`;
+  const currentModelKey = () => modelKey(agentId.value, agent.value?.backend);
+  const models = computed(() => modelCatalog.value[currentModelKey()] ?? []);
+  const composerSettings = computed(() => agent.value ? resolveComposerSettings(agent.value, models.value, composerChoices[currentModelKey()]) : null);
   /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
   const permissions = computed(() => {
     const current = agent.value; if (!current) return null;
@@ -120,7 +125,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     && storageReady.value && !loading.value && !sessionAction.value && !sending[key()] && !deliveryUnknown.value);
 
   function closeSession() {
-    closePreview.value = null;
+    closePreview.value = null; chatCreation.value = 'idle';
     clearTimeout(retryTimer);
     retryTimer = undefined;
     ++connectionEpoch;
@@ -202,18 +207,22 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     await selectAgent('');
   }
   async function loadModels(id: string, capturedSession: CompanionSession) {
-    if (!capturedSession.listModels || modelCatalog.value[id]) return;
+    const backendOf = () => workspace.value.agents.find((candidate) => candidate.id === id)?.backend;
+    const requested = backendOf(); const key = modelKey(id, requested);
+    if (!capturedSession.listModels || modelCatalog.value[key]) return;
     try {
       const list = await capturedSession.listModels(id);
-      if (session === capturedSession) modelCatalog.value = { ...modelCatalog.value, [id]: list };
+      // A list asked for under another engine is not this engine's list.
+      if (session === capturedSession && backendOf() === requested) modelCatalog.value = { ...modelCatalog.value, [key]: list };
     } catch { /* Without a catalog the model menu simply stays hidden. */ }
   }
   /** One change from the model menu: remembered here, and saved on the laptop like the desktop does. */
   function updateComposerSettings(change: ComposerChange) {
     const id = agentId.value; const active = session;
     if (!id || !active || !agent.value) return;
-    const { choice, save } = applyComposerChoice(models.value, composerChoices[id] ?? currentChoice(), change);
-    composerChoices[id] = choice;
+    const key = currentModelKey();
+    const { choice, save } = applyComposerChoice(models.value, composerChoices[key] ?? currentChoice(), change);
+    composerChoices[key] = choice;
     if (save && active.selectModel) void active.selectModel(id, save).catch(() => {});
   }
   function currentChoice(): ComposerChoice {
@@ -377,6 +386,35 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       sending[draftKey] = false;
     }
   }
+  /** Starts a chat in a repository and opens it once the laptop has it ready. */
+  async function createChat(chat: Omit<CompanionNewChat, 'teamId'>) {
+    const active = session; const team = teamId.value; const epoch = selectionEpoch;
+    if (!active?.createChat || !team || status.value !== 'connected' || chatCreation.value === 'creating') return;
+    chatCreation.value = 'creating';
+    try {
+      const created = await active.createChat({ ...chat, teamId: team });
+      const next = await active.getWorkspace();
+      if (active !== session) return;
+      workspace.value = next;
+      chatCreation.value = 'idle';
+      if (epoch === selectionEpoch) await selectAgent(created);
+    } catch {
+      if (active === session) chatCreation.value = 'failed';
+    }
+  }
+  /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
+  async function selectBackend(backend: AgentBackend) {
+    const id = agentId.value; const active = session; const epoch = selectionEpoch;
+    if (!id || !active?.setBackend || status.value !== 'connected' || agent.value?.backend === backend) return;
+    try {
+      await active.setBackend(id, backend);
+      const next = await active.getWorkspace();
+      if (active !== session) return;
+      workspace.value = next;
+      if (epoch === selectionEpoch) await selectAgent(id);
+    } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
+  }
+  const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
   function disconnect() { reconnectWanted = false; closeSession(); status.value = 'disconnected'; }
   async function reconnect() {
     if (laptopId.value && ['disconnected', 'error'].includes(status.value)) await connect(laptopId.value, true);
@@ -392,7 +430,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
   }
-  return { requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { selectBackend, chatCreation, createChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

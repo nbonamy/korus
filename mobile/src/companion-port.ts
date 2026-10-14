@@ -1,5 +1,5 @@
-import type { AgentModelSelection, BackendModelOption, ProviderConversationFrame } from '@workspace/core/contracts';
-import type { CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
+import type { AgentBackend, AgentModelSelection, BackendModelOption, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
@@ -30,6 +30,9 @@ export type CompanionSession = {
   restartSession?(agentId: string): Promise<void>;
   previewCloseSession?(agentId: string): Promise<CompanionClosePreview>;
   closeSession?(target: CompanionTarget, input?: CompanionCloseOptions): Promise<void>;
+  /** Resolves with the new agent once the laptop has made the worktree, if any, and the chat. */
+  createChat?(chat: CompanionNewChat, signal?: AbortSignal): Promise<string>;
+  setBackend?(agentId: string, backend: AgentBackend): Promise<void>;
   startReview?(agentId: string, input: CompanionReviewInput): Promise<void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;

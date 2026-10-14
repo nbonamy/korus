@@ -1,5 +1,6 @@
 import { watch } from 'vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
+import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
@@ -30,6 +31,12 @@ export type EngineState = {
   sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
+  chatCreation: 'idle' | 'creating' | 'failed';
+  /** The engines the open team's laptop can start a chat with. */
+  backends: string[];
+  /** The engine of the open chat, and whether it may still be changed: only before the first prompt. */
+  backend: string | null;
+  canSelectBackend: boolean;
   draft: string;
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
@@ -41,7 +48,9 @@ export type EngineState = {
 export type EngineEvent =
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
-  | { type: 'conversation'; agentId: string; ready: boolean; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState };
+  | { type: 'conversation'; agentId: string; ready: boolean; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState;
+    /** What an empty chat offers: its engine and the ones it may switch to. */
+    engines: { current: string; choices: string[] } | null };
 
 export type EngineCommand =
   | { type: 'respondRequest'; reply: CompanionRequestReply }
@@ -59,6 +68,7 @@ export type EngineCommand =
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
+  | { type: 'newChat'; repositoryId: string; backend: 'codex' | 'claude' | 'antigravity'; branchName?: string } | { type: 'dismissNewChat' } | { type: 'backend'; backend: 'codex' | 'claude' | 'antigravity' }
   | { type: 'composer'; change: ComposerChange }
   | { type: 'approvalPreset'; preset: string } | { type: 'permissionMode'; mode: string }
   | { type: 'delegate'; startingContext: 'conversation' | 'handoff'; instructions?: string }
@@ -77,6 +87,8 @@ export function createEngine(port: EnginePort) {
   let disposed = false;
   let scheduled = false;
   let selectionEpoch = 0;
+  const backendChoices = () => state.workspace.value.backends?.[state.teamId.value] ?? [];
+  const engines = () => { const agent = state.agent.value; return agent && backendChoices().length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices: backendChoices() } : null; };
 
   async function rememberSelection() {
     if (!state.laptopId.value || !port.selectionStore) return;
@@ -115,7 +127,9 @@ export function createEngine(port: EnginePort) {
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       loading: state.loading.value && !state.conversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(),
+      backend: agent?.backend ?? null,
+      canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
@@ -158,11 +172,11 @@ export function createEngine(port: EnginePort) {
     for (let index = pending.length - 1; index >= 0; index--) if (pending[index]!.expires <= now) pending.splice(index, 1);
     clearTimeout(expiry);
     if (pending.length) expiry = setTimeout(postConversation, Math.max(0, Math.min(...pending.map((entry) => entry.expires)) - now) + 1);
-    port.post({ type: 'conversation', agentId: state.agentId.value, ready: state.conversationReady.value, frame: withPending(state.conversation.value), agent: state.agent.value, agents: state.agents.value, history: state.history.value });
+    port.post({ type: 'conversation', agentId: state.agentId.value, ready: state.conversationReady.value, frame: withPending(state.conversation.value), agent: state.agent.value, agents: state.agents.value, history: state.history.value, engines: engines() });
   }
   // Selection changes identity, cached frame and readiness together. Never send an intermediate
   // pairing (new transcript / old agent) across the native bridge.
-  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, postConversation, { flush: 'post' });
+  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value, state.workspace.value] as const, postConversation, { flush: 'post' });
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const frame = state.conversation.value;
@@ -219,6 +233,9 @@ export function createEngine(port: EnginePort) {
       case 'restartSession': await state.restartSession(); return rememberSelection();
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
+      case 'backend': return state.selectBackend(command.backend);
+      case 'dismissNewChat': return state.dismissChatCreation();
       case 'cancelCloseSession': return state.cancelCloseSession();
       case 'dismissSessionError': return state.dismissSessionError();
       case 'composer': return state.updateComposerSettings(command.change);

@@ -15,6 +15,7 @@ struct EngineState: Decodable {
         let kind: GroupKind
         let label: String
         let icon: String?
+        let repositoryRoot: String?
         let sessions: [Session]
     }
     struct Header: Decodable {
@@ -39,6 +40,7 @@ struct EngineState: Decodable {
         let hasChanges: Bool
         var id: String { target.agentId }
     }
+    enum ChatCreation: String, Decodable { case idle, creating, failed }
     enum Pairing: String, Decodable { case idle, working, awaitingApproval }
 
     enum Startup: String, Decodable { case loading, ready, error }
@@ -62,6 +64,8 @@ struct EngineState: Decodable {
     let sessionAction: String?
     let sessionActionFailed: Bool
     let closePreview: ClosePreview?
+    let chatCreation: ChatCreation
+    let backends: [String]
     let draft: String
     let models: [Model]
     let composer: Composer
