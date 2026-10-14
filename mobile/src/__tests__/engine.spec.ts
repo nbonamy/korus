@@ -1,18 +1,91 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
-import { createEngine, type EngineEvent, type EngineState } from '../engine';
+import { createEngine, type EngineEvent, type EngineState, type EnginePort } from '../engine';
+import { createSelectionStore } from '../selection-store';
 import type { CompanionHistoryPage } from '../companion-port';
 
 const unpaired = () => { const connector = createDemoConnector(); Object.defineProperty(connector, 'laptops', { value: [] }); return connector; };
-function open(connector = createDemoConnector()) {
+function open(connector = createDemoConnector(), selectionStore?: EnginePort['selectionStore']) {
   const events: EngineEvent[] = [];
-  const engine = createEngine({ connector, post: (event) => events.push(event) });
+  const engine = createEngine({ connector, selectionStore, post: (event) => events.push(event) });
   const states = () => events.flatMap((event) => event.type === 'state' ? [event.state] : []);
   const latest = (): EngineState => engine.snapshot();
   return { engine, events, states, latest };
 }
 
 describe('companion engine', () => {
+  function selectionStorage() {
+    const values = new Map<string, string>();
+    return createSelectionStore({
+      read: async ({ key }) => ({ value: values.get(key) ?? null }),
+      write: async ({ key, value }) => { values.set(key, value); },
+      remove: async ({ key }) => { values.delete(key); },
+    });
+  }
+  it('restores the last opened team and agent after restarting, separately for each laptop', async () => {
+    const store = selectionStorage();
+    await store.write('another-laptop', { teamId: 'other-team', agentId: 'other-agent' });
+    const first = open(createDemoConnector(), store);
+    await first.engine.start();
+    expect(first.latest()).toMatchObject({ teamId: 'demo-team', agentId: 'demo-agent' });
+    await first.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    first.engine.dispose();
+    const restored = open(createDemoConnector(), store);
+    try {
+      await restored.engine.start();
+      expect(restored.latest()).toMatchObject({ teamId: 'demo-team', agentId: 'demo-reviewer', canSend: true });
+      expect(await store.read('another-laptop')).toEqual({ teamId: 'other-team', agentId: 'other-agent' });
+      await restored.engine.dispatch({ type: 'forget' });
+      expect(await store.read('demo-laptop')).toBeNull();
+    } finally { restored.engine.dispose(); }
+  });
+  it.each([
+    { name: 'missing agent', saved: { teamId: 'second-team', agentId: 'gone' }, teamId: 'second-team', agentId: 'second-agent' },
+    { name: 'agent moved to another team', saved: { teamId: 'demo-team', agentId: 'second-agent' }, teamId: 'demo-team', agentId: 'demo-reviewer' },
+    { name: 'missing team', saved: { teamId: 'gone', agentId: 'demo-agent' }, teamId: 'demo-team', agentId: 'demo-reviewer' },
+    { name: 'empty team', saved: { teamId: 'empty-team', agentId: 'gone' }, teamId: 'empty-team', agentId: '' },
+  ])('restores the correct fallback for $name in desktop order', async ({ saved, teamId, agentId }) => {
+    const store = selectionStorage(); await store.write('demo-laptop', saved);
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async (id) => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      return { ...session, loadConversation: async () => null, getWorkspace: async () => ({
+        teams: [{ ...workspace.teams[0]!, agentIds: ['demo-reviewer', 'demo-agent'] },
+          { id: 'second-team', name: 'Second', agentIds: ['second-agent'] }, { id: 'empty-team', name: 'Empty', agentIds: [] }],
+        agents: [...workspace.agents, { ...workspace.agents[0]!, id: 'second-agent', teamId: 'second-team' }],
+      }) };
+    };
+    const { engine, latest } = open(connector, store);
+    try {
+      await engine.start();
+      expect(latest()).toMatchObject({ teamId, agentId });
+      expect(await store.read('demo-laptop')).toEqual({ teamId, agentId });
+    } finally { engine.dispose(); }
+  });
+  it('does not replace a user selection when a slow saved-selection read completes', async () => {
+    const store = selectionStorage();
+    let finish!: (selection: { teamId: string; agentId: string }) => void;
+    store.read = () => new Promise((resolve) => { finish = resolve; });
+    const { engine, latest } = open(createDemoConnector(), store);
+    try {
+      const starting = engine.start();
+      await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      finish({ teamId: 'demo-team', agentId: 'demo-agent' }); await starting;
+      expect(latest()).toMatchObject({ teamId: 'demo-team', agentId: 'demo-reviewer' });
+    } finally { engine.dispose(); }
+  });
+  it('opens an empty workspace without a stale selection', async () => {
+    const store = selectionStorage(); await store.write('demo-laptop', { teamId: 'gone', agentId: 'gone' });
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async (id) => ({ ...await connect(id), getWorkspace: async () => ({ teams: [], agents: [] }) });
+    const { engine, latest } = open(connector, store);
+    try {
+      await engine.start();
+      expect(latest()).toMatchObject({ startup: 'ready', teamId: '', agentId: '', canSend: false });
+    } finally { engine.dispose(); }
+  });
   it('keeps an already displayed conversation visible while reconnecting', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let finish!: () => void;

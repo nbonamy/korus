@@ -73,8 +73,10 @@ through the shared Vue conversation pane without a transcript reducer. Native sa
 area insets reserve the header and composer space, including the scroll-to-bottom
 control. History requests route through the owning daemon to provider-owned paging.
 
-Pairing identities and laptop records use device-only Keychain entries accessible
-while unlocked. The engine's optional protected draft store persists prompt intent
+Pairing identities, laptop records, and each laptop's last-opened team and agent use
+device-only Keychain entries accessible while unlocked. Selection restoration checks
+the connected workspace and falls back in desktop team/agent order. The engine's
+optional protected draft store persists prompt intent
 and delivery uncertainty by laptop and agent; its native host keeps composer text
 in memory. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
