@@ -1,3 +1,4 @@
+import { isAgentReadState } from '../agent-read-state';
 import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isThreadFlags } from '../thread-flags';
@@ -266,6 +267,7 @@ function expectAgentUpdate(value: unknown, path: string): void {
   expectOptional(value, 'plan', path, expectPlan);
   expectOptional(value, 'goal', path, expectGoal);
   expectOptional(value, 'threadFlags', path, (candidate, candidatePath) => expectNullable(candidate, candidatePath, (flagValue, flagPath) => expectKnownShape(flagValue, flagPath, isThreadFlags, 'thread flags')));
+  expectOptional(value, 'readState', path, (value, path) => expectKnownShape(value, path, isAgentReadState, 'agent read state'));
   expectOptional(value, 'isRegistered', path, expectBoolean);
   expectOptional(value, 'status', path, expectAgentStatus);
 }

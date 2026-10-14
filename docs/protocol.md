@@ -18,7 +18,8 @@ renderer-local). This document records the conventions behind them.
   Renames have no aliases: stale local or remote daemons must be restarted or
   synced.
 - State-mutating methods return the authoritative `AppSnapshot`. Mutations persist
-  before `snapshot.updated` is published.
+  before `snapshot.updated` is published. Read acknowledgments use a bounded agent
+  metadata event instead of resending the workspace and complete after persistence.
 - Scope prefixes matter: `client/*` methods mutate one client's profile
   (navigation, ordering, preferences) and never another client's; the rest are
   backend-scoped. `_clientId` request metadata selects the profile and is stripped

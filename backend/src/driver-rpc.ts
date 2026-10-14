@@ -1,3 +1,4 @@
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
@@ -295,7 +296,8 @@ export class BackendDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
-        const rawPrompt = requireString(record.prompt, 'prompt');
+        assertPromptSession(agent, requireExpectedSessionId(record));
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
@@ -420,6 +422,14 @@ export class BackendDriverRpc {
         }
         return driver.loadOlderHistory(agent);
       }
+      case backendMethods.driverConversationContentRead: {
+        const { agent } = requireAgentParams(params);
+        const input = requireRecord(requireRecord(params).input);
+        if (typeof input.sessionId !== 'string' || typeof input.contentId !== 'string' || !Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error('Invalid conversation content request.');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.readConversationContent) throw unsupportedBackendFeature(agent, 'conversation content');
+        return driver.readConversationContent(agent, { sessionId: input.sessionId, contentId: input.contentId, offset: input.offset as number });
+      }
       case backendMethods.driverConversationsList: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
@@ -478,11 +488,12 @@ export class BackendDriverRpc {
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
+        assertPromptSession(agent, requireExpectedSessionId(record));
         const driver = this.requireDriver(agent.backend);
         if (!driver.steerPrompt) {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
-        const rawPrompt = requireString(record.prompt, 'prompt');
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options

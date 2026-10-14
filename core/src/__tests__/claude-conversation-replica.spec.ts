@@ -3,6 +3,17 @@ import { createClaudeConversationReplica } from '../claude-conversation-replica'
 import type { ClaudeConversationEvent, ClaudeConversationSnapshot } from '../contracts';
 
 describe('Claude conversation replica', () => {
+  it('prepends history without replacing live rows and ignores pages from another session', () => {
+    const live = { id: 'live', agentId: 'agent-1', turnId: 'turn', role: 'assistant' as const, status: 'streaming' as const, createdAt: '', parts: [{ type: 'text' as const, text: 'Authoritative live text' }] };
+    const older = { ...live, id: 'older', status: 'complete' as const, parts: [{ type: 'text' as const, text: 'Older text' }] };
+    const initial = { ...emptySnapshot(), sessionId: 'session', messages: [live], busy: true, activeTurnId: 'turn' };
+    const replica = createClaudeConversationReplica(initial);
+    const page = event({ type: 'history.prepended', backendSessionId: 'session', payload: { messages: [older, older, { ...live, parts: [] }], hasOlder: false } });
+    replica.apply({ ...page, backendSessionId: 'other' });
+    expect(replica.getSnapshot()).toStrictEqual(initial);
+    replica.apply(page); replica.apply(page);
+    expect(replica.getSnapshot()).toStrictEqual({ ...initial, messages: [older, live], historyState: { hasOlder: false, loadingOlder: false } });
+  });
   it('keeps a steering message between the answers received before and after it', () => {
     const replica = createClaudeConversationReplica(emptySnapshot());
     replica.apply(event({ type: 'turn.started', turnId: 'turn-1', payload: { turn: { id: 'turn-1', backend: 'claude' } } }));

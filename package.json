@@ -10,6 +10,8 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",
+    "@libp2p/crypto": "5.1.24",
+    "@libp2p/peer-id": "6.0.16",
     "@lyliya/stylelint-value-no-unknown-custom-properties": "^6.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
@@ -29,7 +31,8 @@
     "backend",
     "vue",
     "electron",
-    "web"
+    "web",
+    "mobile"
   ],
   "scripts": {
     "build": "npm run build:electron",
@@ -50,6 +53,7 @@
     "dev:backend:run": "npm run dev:run -w @workspace/backend",
     "dev:backend:serve": "npm run serve -w @workspace/backend",
     "dev:electron": "node scripts/dev.mjs",
+    "dev:relay": "node scripts/dev-relay.mjs",
     "dev:web": "node scripts/dev-web.mjs",
     "docs:dev": "vitepress dev website/docs --host 127.0.0.1",
     "docs:build": "vitepress build website/docs",

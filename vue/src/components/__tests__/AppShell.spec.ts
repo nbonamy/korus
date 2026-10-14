@@ -1165,12 +1165,15 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it.each(['Review', 'Delegate', 'Visualize'])('opens %s from the composer menu without consuming the draft or attachments', async label => {
+  it.each(['Review', 'Delegate', 'Visualize'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const startVisualize = vi.fn().mockResolvedValue(createInitialSnapshot());
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: CodexNativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
-    const wrapper = mountRealShell({ realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
+    const snapshot = createInitialSnapshot();
+    snapshot.general.worktreeDelegationStartingContext = 'conversation';
+    snapshot.general.worktreeDelegationInstructions = 'Keep the API stable';
+    const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
     await wrapper.setProps({ backendCapabilities: codexBackendCapabilities, backendCommands: defaultBackendCommands('codex'), approvalPreset: 'ask-for-approval' });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     if (label === 'Review') {
@@ -1186,11 +1189,8 @@ describe('AppShell authentication and conversation', () => {
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
     if (label === 'Delegate') {
-      expect(sendPromptAction).not.toHaveBeenCalled();
-      await wrapper.get('[aria-label="Task-specific instructions"]').setValue('Keep the API stable');
-      await wrapper.get('.app-form-dialog__footer .app-button--primary').trigger('click');
-      await flushPromises();
-      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate', { delegation: { startingContext: 'handoff', instructions: 'Keep the API stable' } });
+      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate');
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     }
     else expect(sendPromptAction).not.toHaveBeenCalled();
     expect(wrapper.get('[role="textbox"][contenteditable]').text()).toBe(draft.text);
@@ -1198,7 +1198,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('update:composerAttachments')).toBeUndefined();
   });
 
-  it.each(['/review', '/reviewer focus on retries'])('intercepts only the exact /review command: %s', async prompt => {
+  it.each(['/review', '/reviewer focus on retries', '/delegate Keep the API stable\nRun focused tests'])('intercepts only the exact /review command: %s', async prompt => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountRealShell({ realConversationPane: true, sendPromptAction });
     const editor = wrapper.get('[role="textbox"][contenteditable]');

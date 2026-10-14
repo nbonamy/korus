@@ -58,6 +58,12 @@ export class MobileSimulatorService {
   /** Separate from the command queue: video must continue during an agent swipe or launch. */
   async view(agentId: string, input: MobileViewRequest): Promise<MobileViewResult> {
     const current = this.attachments.get(agentId);
+    // Cleanup can arrive after detach or after a newer view has replaced this one.
+    if (input?.action === 'stop') {
+      if (current?.id === input.attachmentId && this.views.get(agentId)?.id === input.viewId)
+        this.closeView(agentId);
+      return { viewId: input.viewId, ended: true };
+    }
     if (!input || !current || current.id !== input.attachmentId)
       throw new Error('No matching attachment. Attach again.');
     if (input.action === 'start') {
@@ -68,12 +74,16 @@ export class MobileSimulatorService {
       try {
         const screen = await this.adapter.screen(current.device);
         if (this.attachments.get(agentId) !== current || this.viewStarts.get(agentId) !== token)
-          throw new Error('Simulator session ended.');
+          return { viewId: randomUUID(), ended: true };
         const view = new MobileLiveView(screen.width, screen.height);
         view.displayRotation = await this.adapter.displayRotation(current.device);
+        if (this.attachments.get(agentId) !== current || this.viewStarts.get(agentId) !== token) {
+          view.close();
+          return { viewId: view.id, ended: true };
+        }
         this.views.set(agentId, view);
         await view.connect((frame, error) => this.adapter.startView!(current.device, screen, frame, error));
-        if (this.views.get(agentId) !== view) throw new Error('Simulator session ended.');
+        if (this.views.get(agentId) !== view) return { viewId: view.id, ended: true };
         return { viewId: view.id };
       } finally {
         if (this.viewStarts.get(agentId) === token) this.viewStarts.delete(agentId);
@@ -83,7 +93,6 @@ export class MobileSimulatorService {
     if (!view || view.id !== input.viewId) throw new Error('No matching simulator view. Reconnect the view.');
     switch (input.action) {
       case 'frame': return view.next();
-      case 'stop': this.closeView(agentId); return { viewId: view.id };
       case 'touch':
         if (this.inputInFlight && input.phase === 'down') throw new Error('Simulator is busy. Try again.');
         await view.touch(input.phase, input.x, input.y, input.geometry);

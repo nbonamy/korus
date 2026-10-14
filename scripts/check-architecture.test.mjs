@@ -14,6 +14,7 @@ const directories = [
   "backend/src",
   "electron/src/main",
   "electron/src/preload",
+  "mobile/src",
 ];
 
 async function checkFixture(files) {
@@ -84,5 +85,31 @@ test("architecture lint rejects imports across owned process boundaries", async 
   ]) {
     assert.ok(result.stderr.includes(file), `${file}: ${result.stderr}`);
     assert.ok(result.stderr.includes(reason), `${file}: ${result.stderr}`);
+  }
+});
+
+test("mobile code only receives app-owned contracts and browser-safe UI", async () => {
+  const accepted = await checkFixture({
+    "mobile/src/host.ts":
+      "import { App } from '@capacitor/app';\nimport type { Agent } from '@workspace/core/contracts';\n",
+    "mobile/src/conversation.ts":
+      "import { createCodexConversationPaneController } from '@codex-app-sdk/vue';\n",
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "mobile/src/desktop.ts": "import type { BrowserWindow } from 'electron';\n",
+    "mobile/src/files.ts": "import fs from 'node:fs';\n",
+    "mobile/src/driver.ts": "import { driver } from '@workspace/backend';\n",
+    "mobile/src/relative.ts":
+      "import { driver } from '../../backend/src/server';\n",
+    "mobile/src/web.ts":
+      "import { createAppBrowserClient } from '@workspace/web';\n",
+  });
+  assert.equal(rejected.status, 1, rejected.stderr);
+  for (const file of ["desktop", "files", "driver", "relative", "web"]) {
+    assert.ok(
+      rejected.stderr.includes(`mobile/src/${file}.ts`),
+      rejected.stderr,
+    );
   }
 });

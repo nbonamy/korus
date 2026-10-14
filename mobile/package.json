@@ -1,0 +1,47 @@
+{
+  "name": "@workspace/mobile",
+  "version": "0.34.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit && vue-tsc --noEmit -p web/tsconfig.json",
+    "lint": "npm run typecheck",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:native:crypto": "APPLE_CRYPTO_NATIVE_TEST=1 vitest run src/__tests__/apple-crypto.spec.ts native/build.spec.ts --maxWorkers=2",
+    "test:native": "swift test --package-path ios --scratch-path .native-build/dictation-tests --jobs 2",
+    "test:scroll": "node --test scripts/transcript-scroll.browser.mjs",
+    "build:web": "vite build --config web/vite.config.ts"
+  },
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "17.0.0",
+    "@chainsafe/libp2p-yamux": "8.0.1",
+    "@codex-app-sdk/core": "0.16.0",
+    "@codex-app-sdk/vue": "0.16.0",
+    "@libp2p/circuit-relay-v2": "4.2.14",
+    "@libp2p/crypto": "5.1.24",
+    "@libp2p/identify": "4.1.15",
+    "@libp2p/interface": "3.3.1",
+    "@libp2p/peer-id": "6.0.16",
+    "@libp2p/utils": "7.4.2",
+    "@libp2p/websockets": "10.1.22",
+    "@multiformats/multiaddr": "13.0.3",
+    "@workspace/core": "0.34.0",
+    "@workspace/vue": "0.34.0",
+    "element-plus": "^2.13.6",
+    "libp2p": "3.3.12",
+    "multiformats": "14.0.5",
+    "uint8arraylist": "2.4.9",
+    "uint8arrays": "5.1.1",
+    "vue": "^3.5.35"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "4.1.8",
+    "rolldown": "1.0.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.3.3"
+  }
+}

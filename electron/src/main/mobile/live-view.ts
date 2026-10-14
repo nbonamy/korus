@@ -15,6 +15,7 @@ export class MobileLiveView {
   private rotation = 0;
   private inputPending = false;
   private failure?: Error;
+  private closed = false;
   private waiting?: { resolve(value: MobileViewResult): void; reject(error: Error): void };
   private lease?: ReturnType<typeof setTimeout>;
   private readTimeout?: ReturnType<typeof setTimeout>;
@@ -35,6 +36,7 @@ export class MobileLiveView {
     try {
       this.device = await start(
         (data, mimeType = 'image/jpeg', geometry) => {
+          if (this.closed) return;
           if (
             geometry &&
             (geometry.width !== this.width ||
@@ -50,7 +52,6 @@ export class MobileLiveView {
             this.rotation = geometry.rotation;
             this.geometry++;
           }
-          if (this.failure) return;
           this.receivedFrame = true;
           this.latest = { data, mimeType };
           if (this.waiting) {
@@ -62,7 +63,7 @@ export class MobileLiveView {
         },
         (error) => this.close(error),
       );
-      if (this.failure) this.device.stop();
+      if (this.closed) this.device.stop();
     } catch (error) {
       this.close(error instanceof Error ? error : new Error('Live view failed.'));
       throw error;
@@ -71,6 +72,7 @@ export class MobileLiveView {
 
   next(): Promise<MobileViewResult> {
     if (this.failure) return Promise.reject(this.failure);
+    if (this.closed) return Promise.resolve({ viewId: this.id, ended: true });
     if (this.waiting) return Promise.reject(new Error('A video frame read is already pending.'));
     this.renew();
     if (this.latest) return Promise.resolve(this.take());
@@ -88,6 +90,7 @@ export class MobileLiveView {
 
   async touch(phase: 'down' | 'move' | 'up', x: number, y: number, geometry: number): Promise<void> {
     if (this.failure) throw this.failure;
+    if (this.closed) throw new Error('Simulator view ended.');
     if (geometry !== this.geometry)
       throw new Error('Display changed. Wait for a fresh frame before touching.');
     if (this.inputPending) throw new Error('A touch request is already pending.');
@@ -108,6 +111,7 @@ export class MobileLiveView {
     try {
       await this.device!.touch(phase, x, y);
       if (this.failure) throw this.failure;
+      if (this.closed) return;
       this.touching = phase !== 'up';
     } catch (error) {
       this.close(error instanceof Error ? error : new Error('Simulator input failed.'));
@@ -117,13 +121,15 @@ export class MobileLiveView {
     }
   }
 
-  close(error = new Error('Simulator view ended.')): void {
-    if (this.failure) return;
+  close(error?: Error): void {
+    if (this.closed) return;
+    this.closed = true;
     this.failure = error;
     clearTimeout(this.lease);
     clearTimeout(this.readTimeout);
     this.latest = undefined;
-    this.waiting?.reject(error);
+    if (error) this.waiting?.reject(error);
+    else this.waiting?.resolve({ viewId: this.id, ended: true });
     this.waiting = undefined;
     this.touching = false;
     this.device?.stop();

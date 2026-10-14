@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import { builtinModules } from "node:module";
 
 const root = process.cwd();
 const areas = [
@@ -8,6 +9,7 @@ const areas = [
   ["backend/src", "backend"],
   ["electron/src/main", "electron-main"],
   ["electron/src/preload", "preload"],
+  ["mobile/src", "mobile"],
 ];
 
 const violations = [];
@@ -91,6 +93,33 @@ function moduleSpecifiers(source) {
 }
 
 function forbiddenImport(area, file, specifier) {
+  if (area === "mobile") {
+    const forbiddenPackages = [
+      "electron",
+      "@workspace/backend",
+      "@workspace/electron",
+      "@workspace/web",
+      "@codex-app-sdk/backend",
+      "@codex-app-sdk/electron",
+      "@anthropic-ai/claude-agent-sdk",
+    ];
+    const forbiddenSource =
+      specifier.startsWith(".") &&
+      ["backend", "electron", "web"].some((directory) =>
+        isWithin(
+          path.join(root, directory),
+          path.resolve(path.dirname(file), specifier),
+        ),
+      );
+    if (
+      specifier.startsWith("node:") ||
+      builtinModules.includes(specifier) ||
+      forbiddenSource ||
+      forbiddenPackages.some((name) => isPackage(specifier, name))
+    ) {
+      return "mobile must use app-owned contracts and browser-safe UI, not desktop, daemon or unauthenticated web transports";
+    }
+  }
   if (area === "core") {
     if (
       [

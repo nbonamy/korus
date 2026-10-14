@@ -25,6 +25,7 @@ const agentFieldPolicy = {
   backend: 'persisted',
   backendSession: 'persisted',
   hasSubmittedPrompt: 'persisted',
+  readState: 'persisted',
   backendDefaults: 'persisted',
   openInApplication: 'persisted',
   gitDiffTarget: 'persisted',

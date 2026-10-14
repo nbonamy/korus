@@ -129,23 +129,26 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
 
+    let rejectSend!: (error: Error) => void;
+    api.sendPrompt.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
+    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    await flushPromises();
     await wrapper.get('.thread-flag-affordance__action').trigger('click');
     await flushPromises();
     expect(api.respondToThreadFlag).not.toHaveBeenCalled();
-    expect(wrapper.get('[role="dialog"]').text()).toContain('Starting context');
-    expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
-    api.sendPrompt.mockRejectedValueOnce(new Error('backend unavailable'));
-    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
+    expect(api.sendPrompt).toHaveBeenCalledExactlyOnceWith(agent.id, '/delegate');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    rejectSend(new Error('backend unavailable'));
     await flushPromises();
-    expect(wrapper.get('[role="alert"]').text()).toContain('backend unavailable');
+    expect(document.body.textContent).toContain('backend unavailable');
     expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
 
     const cleared = structuredClone(snapshot);
     delete cleared.agents[0]!.threadFlags;
     api.sendPrompt.mockResolvedValueOnce(cleared);
-    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
+    await wrapper.get('.thread-flag-affordance__action').trigger('click');
     await flushPromises();
-    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate', { delegation: { startingContext: 'handoff' } });
+    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate');
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
@@ -323,19 +326,23 @@ describe('Unified backend → mounted application', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
+    // Other mounted workspaces must not determine which agent receives the review.
+    snapshot.agents.reverse();
     const { api } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.findAll('.right-workspace-panel__launcher button')
+    const targetWorkspace = wrapper.findAllComponents({ name: 'RightWorkspacePanel' })
+      .find(panel => panel.props('agent').id === agent.id)!;
+    await targetWorkspace.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Review'))!
       .trigger('click');
     await flushPromises();
-    expect(wrapper.get('.code-review-panel').text()).toContain('Start a review');
+    expect(targetWorkspace.get('.code-review-panel').text()).toContain('Start a review');
 
     const ready = structuredClone(snapshot);
     const reviewer = {
-      ...structuredClone(ready.agents[0]!),
+      ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
       backendSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
@@ -361,7 +368,7 @@ describe('Unified backend → mounted application', () => {
     ready.teams[0]!.activeAgentId = reviewer.id;
     ready.activeAgentId = reviewer.id;
     api.startCodeReview.mockResolvedValueOnce(ready);
-    await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
+    await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
