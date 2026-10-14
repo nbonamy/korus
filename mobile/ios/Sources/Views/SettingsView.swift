@@ -51,12 +51,12 @@ struct SettingsView: View {
                             Text(model.connection.label)
                         }
                     }
-                    if model.connection == .connected {
-                        Button("Disconnect", systemImage: "wifi.slash") { model.disconnect() }
-                    } else if model.connection != .revoked && model.connection != .unpaired {
+                    if model.connection != .connected && model.connection != .revoked && model.connection != .unpaired {
                         Button("Reconnect", systemImage: "arrow.clockwise") { model.reconnect() }
                     }
-                    Button("Forget this laptop", systemImage: "trash", role: .destructive) { confirmingForget = true }
+                    Button(role: .destructive) { confirmingForget = true } label: {
+                        Label { Text("Forget this laptop") } icon: { Image(systemName: "trash").foregroundStyle(.red) }
+                    }
                 } header: {
                     Text("Laptop")
                 }
