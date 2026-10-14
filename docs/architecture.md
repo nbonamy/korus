@@ -72,6 +72,11 @@ the TypeScript engine; a separate WKWebView renders authoritative provider snaps
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
 control. History requests route through the owning daemon to provider-owned paging.
+The composer microphone uses Apple's Speech framework with on-device recognition
+required and native microphone permissions. Audio stays on the phone; partial and
+final transcripts update only the active draft. Sending, navigation, and backgrounding
+stop capture and invalidate late recognition callbacks. Keyboard dictation remains
+available through the system text field.
 
 Pairing identities, laptop records, and each laptop's last-opened team and agent use
 device-only Keychain entries accessible while unlocked. Selection restoration checks

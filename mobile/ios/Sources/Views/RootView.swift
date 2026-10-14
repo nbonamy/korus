@@ -82,7 +82,7 @@ struct RootView: View {
 
     private func setDrawer(_ open: Bool) {
         // Commit both values together so settling begins at the finger's current offset.
-        withAnimation(.smooth(duration: 0.32)) {
+        withAnimation(.smooth(duration: open ? 0.32 : 0.2)) {
             model.drawerOpen = open
             drag = 0
         }

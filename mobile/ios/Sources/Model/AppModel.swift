@@ -28,7 +28,7 @@ final class AppModel {
     var canSend = false
     var composerText = ""
     var drawerOpen = false
-    var isDictating = false
+    let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
 
     let engine = EngineHost()
@@ -72,7 +72,9 @@ final class AppModel {
             SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
                          sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type) })
         }
-        activeAgentID = state.agentId.isEmpty ? nil : state.agentId
+        let nextAgentID = state.agentId.isEmpty ? nil : state.agentId
+        if activeAgentID != nextAgentID { dictation.cancel() }
+        activeAgentID = nextAgentID
         header = state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -94,16 +96,19 @@ final class AppModel {
 
     func select(agent id: String) {
         drawerOpen = false
+        guard id != activeAgentID else { return }
+        dictation.cancel()
         awaitingTranscript = true
         transcript.beginSelection()
         command("selectAgent", ["id": id])
     }
 
-    func select(team id: String) { command("selectTeam", ["id": id]) }
+    func select(team id: String) { dictation.cancel(); command("selectTeam", ["id": id]) }
 
     func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
 
     func send() {
+        dictation.cancel()
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         composerText = ""
@@ -118,7 +123,10 @@ final class AppModel {
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
     func forget() { command("forget") }
-    func setActive(_ active: Bool) { command("activity", ["active": active]) }
+    func setActive(_ active: Bool) {
+        if !active { dictation.cancel() }
+        command("activity", ["active": active])
+    }
 }
 
 extension AgentStatus {

@@ -1,1 +1,3 @@
 .native-build/
+ios/.build/
+ios/.swiftpm/

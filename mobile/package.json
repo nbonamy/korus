@@ -8,6 +8,7 @@
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:native": "swift test --package-path ios --scratch-path .native-build/dictation-tests --jobs 2",
     "test:scroll": "node --test scripts/transcript-scroll.browser.mjs",
     "build:web": "vite build --config web/vite.config.ts"
   },

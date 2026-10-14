@@ -16,7 +16,11 @@ struct DrawerView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                                 .contentShape(Rectangle())
-                                .onTapGesture { model.select(agent: session.agentId) }
+                                .onTapGesture {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        model.select(agent: session.agentId)
+                                    }
+                                }
                         }
                     } header: {
                         GroupHeader(group: group)
@@ -103,12 +107,17 @@ struct GroupIcon: View {
             if let icon = group.icon, !icon.isEmpty {
                 Text(icon).font(.system(size: 15))
                     .frame(width: 24, height: 24)
-                    .background(.quaternary, in: .circle)
             } else {
                 Image(systemName: group.kind == .quickChats ? "bubble.left" : "folder")
                     .font(.system(size: 14))
                     .frame(width: 24, height: 24)
                     .foregroundStyle(.secondary)
+                    .background {
+                        if group.kind != .quickChats {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(.quaternary)
+                        }
+                    }
             }
         }
     }

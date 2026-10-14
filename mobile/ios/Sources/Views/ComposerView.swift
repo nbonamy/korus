@@ -5,7 +5,7 @@ struct ComposerView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
 
-    private var expanded: Bool { focused || !model.composerText.isEmpty }
+    private var expanded: Bool { focused || !model.composerText.isEmpty || model.dictation.active }
 
     var body: some View {
         @Bindable var model = model
@@ -15,6 +15,7 @@ struct ComposerView: View {
                 TextField("Message", text: $model.composerText, axis: .vertical)
                     .lineLimit(1...(expanded ? 8 : 1))
                     .focused($focused)
+                    .disabled(model.dictation.active)
                     .font(.body)
                     .padding(.horizontal, 6)
                     .padding(.top, expanded ? 6 : 0)
@@ -35,6 +36,10 @@ struct ComposerView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .animation(.smooth(duration: 0.2), value: expanded)
+        .alert("Dictation unavailable", isPresented: Binding(get: { model.dictation.error != nil }, set: { if !$0 { model.dictation.error = nil } })) {
+            Button("OK", role: .cancel) { model.dictation.error = nil }
+        } message: { Text(model.dictation.error ?? "") }
+        .onDisappear { model.dictation.cancel() }
     }
 
     private var attachMenu: some View {
@@ -98,16 +103,24 @@ struct ComposerView: View {
 
     private var micButton: some View {
         Button {
-            model.isDictating.toggle()
+            if model.dictation.active { model.dictation.finish() }
+            else {
+                focused = false
+                Task { await model.dictation.start(text: model.composerText) { model.composerText = $0 } }
+            }
         } label: {
-            Image(systemName: model.isDictating ? "waveform" : "mic")
+            Image(systemName: model.dictation.phase == .recording ? "stop.fill" : "mic")
                 .font(.system(size: 22))
-                .symbolEffect(.variableColor.iterative, isActive: model.isDictating)
-                .foregroundStyle(model.isDictating ? Color.accentColor : .primary)
+                .foregroundStyle(model.dictation.active ? Color.accentColor : .primary)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
+                .overlay {
+                    if model.dictation.phase == .requesting || model.dictation.phase == .finishing {
+                        ProgressView().controlSize(.mini).offset(x: 16, y: -16)
+                    }
+                }
         }
-        .accessibilityLabel("Dictate")
+        .accessibilityLabel(model.dictation.active ? "Stop dictation" : "Dictate")
     }
 
     private var sendButton: some View {
