@@ -17,7 +17,7 @@ export function generatedConfig(product, env, dotenv) {
   const relayPeer = overridePeer || product.companionRelay?.peerId || '';
   // `//` starts a comment in an xcconfig; `$()` keeps the URL intact.
   const escaped = relayUrl.replace('//', '/$()/');
-  return [`COMPANION_BUNDLE_ID = ${product.appId}`, `COMPANION_DISPLAY_NAME = ${product.name}`,
+  return [`COMPANION_BUNDLE_ID = ${product.appId}`, `COMPANION_DISPLAY_NAME = ${product.companionName ?? product.name}`,
     `COMPANION_RELAY_URL = ${escaped}`, `COMPANION_RELAY_PEER_ID = ${relayPeer}`, ''].join('\n');
 }
 

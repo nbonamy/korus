@@ -1,5 +1,6 @@
 {
   "name": "Korus",
+  "companionName": "Korus Mobile",
   "defaultTeamName": "Korus",
   "slug": "korus",
   "daemonName": "korusd",
