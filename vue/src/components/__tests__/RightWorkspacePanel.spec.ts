@@ -571,7 +571,7 @@ describe('RightWorkspacePanel', () => {
     expect(outsideWrapper.find('[aria-label="Open in VS Code"]').exists()).toBe(false);
   });
 
-  it('renders Plan Review as a normal tab beside existing workspace tabs', async () => {
+  it('renders a plan document as a normal tab beside existing workspace tabs', async () => {
     const wrapper = mountPanel(['browser', 'plan'], 'plan', {}, {
       kind: 'markdown',
       purpose: 'plan',
@@ -582,7 +582,8 @@ describe('RightWorkspacePanel', () => {
     });
 
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Browser', 'Implementation plan']);
-    expect(wrapper.get('.plan-review-panel').text()).toContain('Keep Browser available.');
+    expect(wrapper.get('.markdown-panel').text()).toContain('Keep Browser available.');
+    expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
 
     await wrapper.findAll('[role="tab"]')[0]?.trigger('click');
     await wrapper.get('[aria-label="Close Implementation plan tab"]').trigger('click');

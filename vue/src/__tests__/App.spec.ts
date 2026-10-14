@@ -33,7 +33,7 @@ describe('App', () => {
 
     expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Domain review');
     expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Build the unified backend.');
-    expect(wrapper.find('.plan-review-footer__button--primary').exists()).toBe(true);
+    expect(wrapper.find('.plan-review-footer .app-button--primary').exists()).toBe(true);
   });
 
   it('loads the main-process snapshot on mount', async () => {

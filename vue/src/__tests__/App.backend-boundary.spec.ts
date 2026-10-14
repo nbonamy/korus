@@ -262,9 +262,9 @@ describe('Unified backend → mounted application', () => {
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview = { id: reviewId, conversationId: null, turnId: 'turn', itemId: 'proposal', markdown: '# Review this', status: 'accept' };
     api.respondToPlanReview.mockResolvedValue(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept' });
+    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept', draftVersion: 0 });
     expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'turn', payload: { itemId: 'proposal', markdown: '# Review this' } });
@@ -281,13 +281,13 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Restored proposal');
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview!.status = 'accept';
     api.respondToPlanReview.mockResolvedValueOnce(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
     expect(api.respondToPlanReview).toHaveBeenCalledTimes(2);
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
@@ -306,9 +306,9 @@ describe('Unified backend → mounted application', () => {
     const cancelled = structuredClone(accepted);
     cancelled.agents[0]!.planReview = { id: cancelReviewId, conversationId: null, turnId: 'cancel-turn', itemId: 'cancel', markdown: '# Cancel this proposal', status: 'cancel' };
     api.respondToPlanReview.mockResolvedValueOnce(cancelled);
-    await wrapper.get('.plan-review-footer__button--cancel').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--tertiary').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel' });
+    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel', draftVersion: 0 });
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     expect(api.sendPrompt).not.toHaveBeenCalled();
   });
@@ -317,19 +317,23 @@ describe('Unified backend → mounted application', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
+    // Other mounted workspaces must not determine which agent receives the review.
+    snapshot.agents.reverse();
     const { api } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.findAll('.right-workspace-panel__launcher button')
+    const targetWorkspace = wrapper.findAllComponents({ name: 'RightWorkspacePanel' })
+      .find(panel => panel.props('agent').id === agent.id)!;
+    await targetWorkspace.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Review'))!
       .trigger('click');
     await flushPromises();
-    expect(wrapper.get('.code-review-panel').text()).toContain('Start a review');
+    expect(targetWorkspace.get('.code-review-panel').text()).toContain('Start a review');
 
     const ready = structuredClone(snapshot);
     const reviewer = {
-      ...structuredClone(ready.agents[0]!),
+      ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
       backendSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
@@ -355,7 +359,7 @@ describe('Unified backend → mounted application', () => {
     ready.teams[0]!.activeAgentId = reviewer.id;
     ready.activeAgentId = reviewer.id;
     api.startCodeReview.mockResolvedValueOnce(ready);
-    await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
+    await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {
