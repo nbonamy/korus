@@ -28,6 +28,8 @@
 	<string>Turn your dictation into text on this device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Attach photos to a prompt.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock to see your conversations.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connect to the relay you selected.</string>
 	<key>CompanionPushEnvironment</key>

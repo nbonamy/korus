@@ -124,8 +124,6 @@ struct DrawerView: View {
                 }
                 Divider()
                 Button("Forget laptop", systemImage: "trash", role: .destructive) { model.forget() }
-                Divider()
-                Button("Debug", systemImage: "ladybug") {}
             } label: {
                 Image(systemName: "ellipsis").font(.body.weight(.semibold)).frame(width: 40, height: 40)
                     .glassEffect(.regular.interactive(), in: .circle)
