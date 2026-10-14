@@ -36,7 +36,8 @@ struct EngineState: Decodable {
     }
     struct Mode: Decodable, Hashable { let id: String; let label: String }
     struct Permissions: Decodable { let approvalPreset: String?; let permissionMode: String?; let presets: [String]; let modes: [Mode] }
-    struct Capabilities: Decodable { let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
+    struct Goal: Decodable, Equatable { let objective: String; let status: String }
+    struct Capabilities: Decodable { let goals: Bool?; let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
     struct ClosePreview: Decodable, Identifiable, Equatable {
         struct Target: Decodable, Equatable { let agentId: String }
         let target: Target
@@ -67,6 +68,9 @@ struct EngineState: Decodable {
     let header: Header?
     let loading: Bool
     let composerTarget: ComposerTarget?
+    let goal: Goal?
+    let goalBusy: Bool?
+    let goalError: Bool?
     let review: ReviewState?
     let canSend: Bool
     let sessionAction: String?

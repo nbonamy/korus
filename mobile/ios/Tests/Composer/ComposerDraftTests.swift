@@ -8,6 +8,34 @@ final class ComposerDraftTests: XCTestCase {
     private let second = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "b", sessionId: "two")
     private func photo(_ count: Int = 10) -> ComposerAttachment { .init(name: "Photo.jpg", mimeType: "image/jpeg", type: .image, data: Data(repeating: 1, count: count)) }
 
+    func testGoalDraftSurvivesNavigationAndFailureAndExitsModeOnlyOnAcceptance() throws {
+        let drafts = ComposerDrafts(); drafts.select(first)
+        drafts.setGoalMode(true); drafts.text = "Ship the feature"
+        XCTAssertNil(drafts.beginImport())
+        let request = try XCTUnwrap(drafts.beginSend())
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        XCTAssertEqual(payload["goalMode"] as? Bool, true)
+        drafts.completeSend(.init(requestId: request.requestId, status: .unknown))
+        XCTAssertTrue(drafts.goalMode)
+        XCTAssertEqual(drafts.text, "Ship the feature")
+        XCTAssertNotNil(drafts.error)
+        let retry = try XCTUnwrap(drafts.beginSend())
+        drafts.select(second)
+        XCTAssertFalse(drafts.goalMode)
+        drafts.completeSend(.init(requestId: retry.requestId, status: .accepted))
+        drafts.select(first)
+        XCTAssertFalse(drafts.goalMode)
+        XCTAssertEqual(drafts.text, "")
+    }
+
+    func testGoalModeCannotSilentlyDiscardAttachments() throws {
+        let drafts = ComposerDrafts(); drafts.select(first)
+        drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])
+        drafts.setGoalMode(true)
+        XCTAssertFalse(drafts.goalMode)
+        XCTAssertEqual(drafts.items.count, 1)
+    }
+
     func testTextOnlySendToNewChatEncodesTheNullSessionRequiredByTheEngine() throws {
         let drafts = ComposerDrafts()
         drafts.select(ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "new", sessionId: nil))

@@ -44,6 +44,7 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
     const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
     return { id, teamId, name, avatar, backend,
       backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
+      ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),
       status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };

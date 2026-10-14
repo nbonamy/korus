@@ -16,15 +16,20 @@ struct ComposerView: View {
     @State private var picker: PickerRequest?
     @State private var pickerImport: ComposerDrafts.Import?
     private var canAttach: Bool {
-        model.supportsAttachments && model.composerDrafts.target != nil && !model.composerDrafts.importing
+        !model.goalMode && model.supportsAttachments && model.composerDrafts.target != nil && !model.composerDrafts.importing
             && !model.composerDrafts.sending && model.composerDrafts.items.count < ComposerDrafts.maxCount && !model.dictation.active
     }
 
-    private var expanded: Bool { focused || !model.composerDrafts.empty || model.dictation.active || model.composerDrafts.importing || model.composerDrafts.error != nil }
-    private var stopping: Bool { model.isWorking && model.composerDrafts.empty }
+    private var expanded: Bool { focused || model.goalMode || model.planMode || !model.composerDrafts.empty || model.dictation.active || model.composerDrafts.importing || model.composerDrafts.error != nil }
+    private var stopping: Bool { model.isWorking && model.composerDrafts.empty && !model.goalMode }
 
     var body: some View {
         VStack(spacing: 6) {
+            if let goal = model.goal, goal.status != "complete" { goalBar(goal.objective) }
+            if model.goalError {
+                Text("Goal change couldn’t be confirmed. Check its status before trying again.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 22)
+            }
             if showSuggestions, let query = activeQuery {
                 SkillSuggestionsView(catalog: model.skills, query: query, select: { skill in
                     guard let result = query.inserting(skill, into: model.composerText) else { return }
@@ -66,12 +71,21 @@ struct ComposerView: View {
     private var composer: some View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: 4) {
+            if model.goalMode || model.planMode {
+                HStack(spacing: 6) {
+                    Label(model.goalMode ? "Goal" : "Plan", systemImage: model.goalMode ? "target" : "list.bullet.rectangle").font(.footnote.weight(.medium))
+                    Spacer()
+                    Button { if model.goalMode { model.setGoalMode(false) } else { model.setPlanMode(false) } } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(model.goalMode ? "Exit goal mode" : "Exit plan mode").disabled(model.composerDrafts.sending || model.goalBusy)
+                }.padding(.horizontal, 10).padding(.top, 4)
+            }
             ComposerAttachmentsView(drafts: model.composerDrafts)
             HStack(spacing: 6) {
                 if !expanded { attachMenu }
                 SkillComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
                     query: $activeQuery, skills: model.skills.items, editable: !model.dictation.active && !model.composerDrafts.sending,
                     maxLines: expanded ? 8 : 1,
+                    placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : "Message",
                     pastePhotos: canAttach ? { providers in
                         guard let request = model.composerDrafts.beginImport() else { return }
                         loadPhotos(providers, request: request)
@@ -114,7 +128,15 @@ struct ComposerView: View {
                 Button("Add Files", systemImage: "paperclip") { openPicker(.files) }.disabled(!canAttach)
             }
             Section {
+                if model.supportsGoals {
+                    Toggle("Goal mode", systemImage: "target", isOn: Binding(get: { model.goalMode }, set: {
+                        model.setGoalMode($0)
+                        if model.goalMode { focused = true }
+                    }))
+                    .disabled(!model.canSend || !model.composerDrafts.items.isEmpty || model.composerDrafts.importing || model.composerDrafts.sending || model.dictation.active)
+                }
                 Toggle("Plan mode", systemImage: "list.bullet.rectangle", isOn: Binding(get: { model.planMode }, set: { model.setPlanMode($0) }))
+                    .disabled(model.composerDrafts.sending || model.goalBusy)
                 if !model.approvalPresets.isEmpty {
                     Menu("Permissions", systemImage: "shield") {
                         ForEach(model.approvalPresets, id: \.self) { preset in
@@ -142,6 +164,22 @@ struct ComposerView: View {
         }
         .tint(.primary)
         .accessibilityLabel("Add")
+    }
+
+    private func goalBar(_ objective: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "target").foregroundStyle(.secondary)
+            Text(objective).font(.footnote).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            if model.goalBusy { ProgressView().controlSize(.small) }
+            Button { model.editGoal(); focused = true } label: { Image(systemName: "pencil").frame(width: 32, height: 36) }
+                .accessibilityLabel("Edit goal")
+                .disabled(!model.canSend || model.composerDrafts.sending || model.composerDrafts.importing || !model.composerDrafts.items.isEmpty)
+            Button { model.clearGoal() } label: { Image(systemName: "xmark").frame(width: 32, height: 36) }
+                .accessibilityLabel("Clear goal").disabled(!model.canSend || model.goalBusy)
+        }
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Current goal")
     }
 
     private var modelMenu: some View {
@@ -239,6 +277,6 @@ struct ComposerView: View {
         }
         .disabled(disabled)
         .animation(.smooth(duration: 0.2), value: stopping)
-        .accessibilityLabel(stopping ? "Stop" : "Send")
+        .accessibilityLabel(stopping ? "Stop" : model.goalMode ? "Set goal" : "Send")
     }
 }

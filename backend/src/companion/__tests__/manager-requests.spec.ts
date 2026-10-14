@@ -55,7 +55,7 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
   cleanup.push(() => manager!.stop());
   await manager.control({ action: 'status' });
   const gateway = transport.gateway!;
-  return { server, snapshot, events, gateway,
+  return { server, snapshot, events, gateway, hostId: host.hostId,
     workspace: () => gateway.request('phone', 'snapshot.get', {}) as Promise<CompanionWorkspace>,
     async answer(answers: Record<string, { answers: string[] }>) {
       const workspace = await gateway.request('phone', 'snapshot.get', {}) as CompanionWorkspace;
@@ -69,7 +69,27 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
   };
 }
 
-describe('mobile question response across the owning daemon', () => {
+describe('mobile requests across the owning daemon', () => {
+  it('sets, edits and clears the same provider goal exposed to desktop and the phone', async () => {
+    const sdk = codexSdkFixture();
+    const agent = { ...sdkAgent(), teamId: 'team-test' };
+    const f = await fixture(sdk.driver, agent);
+    const session = sdk.conversation('conversation-a');
+    const target = companionTarget(f.hostId, f.snapshot.teams[0]!, agent);
+    const goal = { threadId: 'conversation-a', objective: 'Ship', status: 'active' as const, tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 };
+    for (const objective of ['Ship', 'Ship and verify']) {
+      session.setSnapshot({ goal: { ...goal, objective } });
+      await f.gateway.request('phone', 'agent.goal.set', { target, objective });
+      expect(session.handle.setGoal).toHaveBeenLastCalledWith(objective, undefined);
+      expect((await f.workspace()).agents[0]!.goal).toStrictEqual({ ...goal, objective });
+      expect(f.snapshot.agents[0]!.goal?.objective).toBe(objective);
+    }
+    await f.gateway.request('phone', 'agent.goal.set', { target, objective: null });
+    expect(session.handle.clearGoal).toHaveBeenCalledOnce();
+    expect((await f.workspace()).agents[0]!.goal).toBeUndefined();
+    expect(f.snapshot.agents[0]!.goal).toBeUndefined();
+  });
+
   it('releases a waiting Claude SDK tool and clears the desktop and phone request', async () => {
     const sdk = createQueryHarness();
     const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));

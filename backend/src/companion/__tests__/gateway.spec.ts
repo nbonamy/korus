@@ -25,7 +25,7 @@ async function claim(gateway: CompanionGateway, peerId: string, shown: string, n
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
@@ -42,6 +42,20 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('requires an authorized current target and a supported provider for goal mutations', async () => {
+    const f = fixture();
+    await expect(f.gateway.request('stranger', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'agent.goal.set', { target: { ...target, sessionId: 'stale' }, objective: null })).rejects.toThrow('stale');
+    await expect(f.gateway.request('phone', 'agent.goal.set', { target, objective: '  ' })).rejects.toThrow();
+    f.port.workspace.mockResolvedValueOnce({ ...workspace, agents: [{ ...workspace.agents[0]!, backend: 'antigravity' }] });
+    await expect(f.gateway.request('phone', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('unavailable');
+    expect(f.port.changeGoal).not.toHaveBeenCalled();
+    f.port.workspace.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return workspace; });
+    await expect(f.gateway.request('phone', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('authorized');
+    expect(f.port.changeGoal).not.toHaveBeenCalled();
+  });
+
   it('binds review setup and launch to the original conversation and rechecks a revoked grant after discovery', async () => {
     const f = fixture(); await f.pair();
     const setup = { target, branch: null, baseRef: null, uncommitted: true, branchChanges: false, currentThread: false, activeReview: false, reviewerAgentId: null,

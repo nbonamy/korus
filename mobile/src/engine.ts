@@ -34,6 +34,9 @@ export type EngineState = {
   loading: boolean;
   canSend: boolean;
   composerTarget: CompanionTarget | null;
+  goal: { objective: string; status: string } | null;
+  goalBusy: boolean;
+  goalError: boolean;
   review: ReturnType<typeof createCompanionState>['review']['value'];
   sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
   sessionActionFailed: boolean;
@@ -50,7 +53,7 @@ export type EngineState = {
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
   permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
-  capabilities: { models: boolean; reasoningEffort: boolean; serviceTier: boolean; planMode: boolean; interrupt: boolean; attachments: boolean };
+  capabilities: { goals: boolean; models: boolean; reasoningEffort: boolean; serviceTier: boolean; planMode: boolean; interrupt: boolean; attachments: boolean };
   favorites: { modelId: string; reasoningEffort: string | null; serviceTier: string | null }[];
 };
 
@@ -84,7 +87,8 @@ export type EngineCommand =
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
-  | { type: 'send'; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
+  | { type: 'clearGoal'; target: CompanionTarget }
+  | { type: 'send'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
@@ -155,6 +159,8 @@ export function createEngine(port: EnginePort) {
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
+      goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
+      goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
@@ -166,7 +172,7 @@ export function createEngine(port: EnginePort) {
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
         modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
-      capabilities: { models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
+      capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
         planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt, attachments: capabilities.attachments && !team?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
@@ -321,12 +327,16 @@ export function createEngine(port: EnginePort) {
       case 'loadOlder': return state.loadOlder(command.agentId);
       case 'draft': return state.updateDraft({ text: command.text, selectionStart: command.text.length, selectionEnd: command.text.length });
       case 'loadSkills': return state.loadSkills();
+      case 'clearGoal': await state.changeGoal(command.target, null); return;
       case 'send': {
         const current = snapshot().composerTarget;
         const targetMatches = command.target && current && (Object.keys(current) as (keyof CompanionTarget)[]).every((key) => current[key] === command.target![key]);
         const valid = (!command.requestId || targetMatches) && validPromptUploads(command.uploads ?? [])
           && (!command.uploads?.length || snapshot().capabilities.attachments);
-        const status = valid ? await send(command) : 'rejected';
+        const status = !valid ? 'rejected' : command.goalMode
+          ? targetMatches && !command.uploads?.length && !command.options?.attachments?.length
+            ? await state.changeGoal(command.target!, command.text) : 'rejected'
+          : await send(command);
         if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status });
         return;
       }

@@ -31,6 +31,7 @@ export type CompanionSession = {
   listModels?(agentId: string): Promise<BackendModelOption[]>;
   listSkills?(agentId: string): Promise<BackendSkillSummary[]>;
   selectModel?(agentId: string, selection: AgentModelSelection): Promise<void>;
+  changeGoal?(target: CompanionTarget, objective: string | null): Promise<void>;
   interrupt?(agentId: string): Promise<void>;
   restartSession?(agentId: string): Promise<void>;
   previewCloseSession?(agentId: string): Promise<CompanionClosePreview>;

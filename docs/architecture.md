@@ -107,6 +107,10 @@ optional protected draft store persists prompt intent
 and delivery uncertainty by laptop and agent; its native host keeps composer text
 and selected attachment bytes in memory, keyed by the full laptop/conversation target.
 Native pickers and explicit clipboard paste supply bounded bytes, never device paths.
+Goal mode is a native draft choice; setting and clearing use target-bound companion
+commands routed to the same daemon goal operations as desktop. The native goal bar
+reads the daemon's goal projection, and uncertain delivery retains the objective
+without replaying the mutation.
 Review initialization reads the desktop's Git scope and reviewer model catalog through
 a target-bound companion request. Native choices use the existing review-start input;
 the daemon remains the owner of review execution and findings. Opening setup does not

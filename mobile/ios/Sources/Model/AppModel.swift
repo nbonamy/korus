@@ -22,6 +22,11 @@ final class AppModel {
     var selectedModelID: String?
     var selectedEffort: String?
     var planMode = false
+    var supportsGoals = false
+    var goal: EngineState.Goal?
+    var goalBusy = false
+    var goalError = false
+    var goalMode: Bool { composerDrafts.goalMode }
     var approvalPreset: String?
     var approvalPresets: [String] = []
     var canSend = false
@@ -139,6 +144,11 @@ final class AppModel {
         set(\.approvalPresets, state.permissions.presets)
         if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false }
         composerDrafts.select(state.composerTarget)
+        set(\.supportsGoals, state.capabilities.goals ?? false)
+        set(\.goal, state.goal)
+        set(\.goalBusy, state.goalBusy ?? false)
+        set(\.goalError, state.goalError ?? false)
+        if !supportsGoals || planMode { composerDrafts.setGoalMode(false) }
         set(\.reviewState, state.review ?? ReviewState())
         if state.review?.status == .started { reviewOpen = false }
         set(\.supportsAttachments, state.capabilities.attachments)
@@ -169,7 +179,7 @@ final class AppModel {
     func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
 
     func send() {
-        guard canSend, supportsAttachments || composerDrafts.items.isEmpty else { return }
+        guard canSend, !goalMode || supportsGoals, supportsAttachments || composerDrafts.items.isEmpty else { return }
         dictation.cancel()
         guard let request = composerDrafts.beginSend() else { return }
         do {
@@ -197,7 +207,27 @@ final class AppModel {
 
     func chooseModel(_ id: String) { command("composer", ["change": ["modelId": id]]) }
     func chooseEffort(_ effort: String) { command("composer", ["change": ["reasoningEffort": effort.lowercased()]]) }
-    func setPlanMode(_ on: Bool) { command("composer", ["change": ["planMode": on]]) }
+    func setPlanMode(_ on: Bool) {
+        if on { composerDrafts.setGoalMode(false) }
+        planMode = on
+        command("composer", ["change": ["planMode": on]])
+    }
+    func setGoalMode(_ on: Bool) {
+        guard supportsGoals else { return }
+        composerDrafts.setGoalMode(on)
+        if composerDrafts.goalMode { setPlanMode(false) }
+    }
+    func editGoal() {
+        guard let goal, canSend, composerDrafts.items.isEmpty, !composerDrafts.importing, !composerDrafts.sending else { return }
+        dictation.cancel()
+        setGoalMode(true)
+        composerText = goal.objective
+    }
+    func clearGoal() {
+        guard canSend, supportsGoals, !goalBusy, let target = composerDrafts.target,
+              let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        command("clearGoal", ["target": fields])
+    }
     func setApprovalPreset(_ preset: String) { command("approvalPreset", ["preset": preset]) }
     func interrupt() { command("interrupt") }
     func restartSession() { dictation.cancel(); command("restartSession") }

@@ -10,6 +10,7 @@ struct SkillComposerEditor: UIViewRepresentable {
     let skills: [ComposerSkill]
     let editable: Bool
     let maxLines: Int
+    var placeholder = "Message"
     var pastePhotos: (([NSItemProvider]) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -46,6 +47,8 @@ struct SkillComposerEditor: UIViewRepresentable {
         } else if let selection, view.document.canonicalRange(view.selectedRange) != selection, view.markedTextRange == nil {
             view.selectedRange = view.document.renderedRange(selection)
         }
+        view.placeholder.text = placeholder
+        view.accessibilityLabel = placeholder
         view.pastePhotos = pastePhotos
         view.isEditable = editable
         view.placeholder.isHidden = !text.isEmpty

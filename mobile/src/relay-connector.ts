@@ -225,6 +225,10 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', { agentId })).models; },
         async listSkills(agentId) { return (await request<{ skills: BackendSkillSummary[] }>(host, 'skills.list', target(agentId))).skills; },
         async selectModel(agentId, selection) { await request(host, 'agent.model.select', { agentId, ...selection }); },
+        async changeGoal(target, objective) {
+          if (closed) throw new Error('Disconnected.');
+          await request(host, 'agent.goal.set', { target, objective });
+        },
         async interrupt(agentId) { await request(host, 'agent.interrupt', { agentId }); },
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },

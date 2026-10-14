@@ -48,10 +48,12 @@ final class ComposerDrafts {
         let requestId: String
         let target: ComposerTarget
         let text: String
+        let goalMode: Bool
         let uploads: [Upload]
     }
     private struct Draft {
         var text = ""
+        var goalMode = false
         var items: [ComposerAttachment] = []
         var loading: Import?
         var sending: String?
@@ -63,6 +65,11 @@ final class ComposerDrafts {
     private var pending: [String: Pending] = [:]
     private(set) var target: ComposerTarget?
     var text: String { get { draft.text } set { draft.text = newValue } }
+    var goalMode: Bool { draft.goalMode }
+    func setGoalMode(_ on: Bool) {
+        guard !sending, !importing, !on || items.isEmpty else { return }
+        draft.goalMode = on
+    }
     var items: [ComposerAttachment] { draft.items }
     var importing: Bool { draft.loading != nil }
     var sending: Bool { draft.sending != nil }
@@ -77,7 +84,7 @@ final class ComposerDrafts {
     }
 
     func beginImport() -> Import? {
-        guard let target, !importing, !sending else { return nil }
+        guard let target, !goalMode, !importing, !sending else { return nil }
         let request = Import(target: target)
         draft.loading = request
         draft.error = nil
@@ -101,8 +108,8 @@ final class ComposerDrafts {
     func dismissError() { draft.error = nil }
 
     func beginSend() -> Submission? {
-        guard let target, !empty, !importing, !sending else { return nil }
-        let request = Submission(requestId: UUID().uuidString, target: target, text: text.trimmingCharacters(in: .whitespacesAndNewlines), uploads: items.map {
+        guard let target, !empty, !importing, !sending, !goalMode || items.isEmpty else { return nil }
+        let request = Submission(requestId: UUID().uuidString, target: target, text: text.trimmingCharacters(in: .whitespacesAndNewlines), goalMode: goalMode, uploads: items.map {
             .init(type: $0.type, name: $0.name, mimeType: $0.mimeType, data: $0.data.base64EncodedString())
         })
         draft.sending = request.requestId
@@ -118,6 +125,7 @@ final class ComposerDrafts {
             draft.sending = nil
             switch result.status {
             case .accepted:
+                if sent.submission.goalMode { draft.goalMode = false }
                 draft.items.removeAll { sent.ids.contains($0.id) }
                 if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == sent.submission.text { draft.text = "" }
             case .rejected: draft.error = "Couldn’t send. Your draft and attachments are still here."

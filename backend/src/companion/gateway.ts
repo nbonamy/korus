@@ -9,6 +9,7 @@ import type { AgentBackend, BackendSkillSummary, SourceBranch } from '@workspace
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
@@ -59,6 +60,7 @@ export type GatewayPort = {
   submit(agentId: string, text: string, clientId: string, options?: CompanionPromptOptions, uploads?: CompanionUpload[]): Promise<void>;
   models(agentId: string): Promise<unknown[]>;
   skills(agentId: string): Promise<BackendSkillSummary[]>;
+  changeGoal?(agentId: string, objective: string | null): Promise<void>;
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
   branches(repositoryRoot: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
@@ -378,6 +380,13 @@ export class CompanionGateway {
       const { agentId, mode } = z.object({ agentId: identity, mode: z.string().min(1).max(80) }).strict().parse(args);
       await this.requireAgent(agentId); this.requireGrant(peerId, grant);
       await this.port.setPermissionMode(agentId, mode);
+      return {};
+    }
+    if (method === 'agent.goal.set') {
+      const { target, objective } = z.object({ target: targetSchema, objective: z.string().trim().min(1).max(100_000).nullable() }).strict().parse(args);
+      const agent = await this.validateTarget(target); this.requireGrant(peerId, grant);
+      if (!defaultBackendCapabilities(agent.backend).goals || !this.port.changeGoal) throw new Error('Goals unavailable.');
+      await this.port.changeGoal(agent.id, objective);
       return {};
     }
     if (method === 'agent.review.setup') {

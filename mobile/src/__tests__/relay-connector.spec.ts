@@ -278,6 +278,20 @@ describe('native relay host adapter', () => {
     expect(transport.requests.some((request) => request.method === 'device.forget')).toBe(true);
     await connector.dispose!(); expect(transport.stop).toHaveBeenCalledOnce();
   });
+  it('preserves the captured goal target rather than retargeting to a changed session', async () => {
+    const connector = connect(); await pairWith(connector);
+    try {
+      const session = await connector.connect(host.hostId);
+      const target = { hostId: host.hostId, locationId: 'remote', teamId: 'team', agentId: 'agent', sessionId: 'original' };
+      await session.changeGoal!(target, 'Ship');
+      await session.changeGoal!(target, null);
+      expect(transport.requests.filter(call => call.method === 'agent.goal.set').map(call => call.args)).toStrictEqual([
+        { target, objective: 'Ship' }, { target, objective: null },
+      ]);
+      session.close();
+      await expect(session.changeGoal!(target, 'Again')).rejects.toThrow('Disconnected');
+    } finally { await connector.dispose!(); }
+  });
   it('loads branch choices for the requested team and repository over the paired connection', async () => {
     const connector = connect(vault()); await pairWith(connector);
     const branches = [{ name: 'feature', isDefault: false, isCheckedOut: true }];

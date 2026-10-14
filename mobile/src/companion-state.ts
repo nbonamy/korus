@@ -2,7 +2,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, BackendSkillSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat } from '@workspace/core/companion-protocol';
-import { companionTarget, companionSessionId, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
@@ -17,6 +17,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const failedRequest = ref<string | null>(null);
   const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
   const sessionActionFailed = ref(false);
+  const pendingGoals = reactive(new Set<string>());
+  const goalError = ref(false);
+  const goalKey = () => JSON.stringify([laptopId.value, agentId.value]);
+  const goalBusy = computed(() => pendingGoals.has(goalKey()));
+
   const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
   const closePreview = shallowRef<CompanionClosePreview | null>(null);
   const laptopId = ref('');
@@ -201,7 +206,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
-    && storageReady.value && !loading.value && !sessionAction.value && !sending[key()] && !deliveryUnknown.value);
+    && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && !deliveryUnknown.value);
 
   function closeSession() {
     closePreview.value = null; chatCreation.value = 'idle';
@@ -323,6 +328,31 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     error.value = '';
     try { await command(); } catch { error.value = 'mobile.errors.commandFailed'; }
   }
+  async function changeGoal(target: CompanionTarget, objective: string | null): Promise<'accepted' | 'rejected' | 'unknown'> {
+    const active = session; const selected = agent.value;
+    const team = workspace.value.teams.find(team => team.id === selected?.teamId);
+    const current = selected && team ? companionTarget(laptopId.value, team, selected) : null;
+    if (!canSend.value || !active?.changeGoal || !selected || !defaultBackendCapabilities(selected.backend).goals
+      || !current || !(Object.keys(current) as (keyof CompanionTarget)[]).every(key => current[key] === target[key])
+      || (objective !== null && (!objective.trim() || objective.trim().length > 100_000))) return 'rejected';
+    const key = goalKey(); const epoch = selectionEpoch;
+    pendingGoals.add(key); goalError.value = false;
+    try {
+      try { await active.changeGoal(target, objective === null ? null : objective.trim()); }
+      catch {
+        if (epoch === selectionEpoch && active === session) goalError.value = true;
+        return 'unknown';
+      }
+      // The command was accepted even if refreshing later loses the connection.
+      try {
+        const next = await active.getWorkspace();
+        if (active === session) workspace.value = reconcileWorkspace(workspace.value, next);
+        if (active === session && epoch === selectionEpoch) await selectAgent(target.agentId);
+      } catch { /* Subscriptions/reconnect will restore authoritative goal state. */ }
+      return 'accepted';
+    } finally { pendingGoals.delete(key); }
+  }
+
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => canSend.value && agentId.value ? session?.sendPrompt(agentId.value, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined);
   async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
@@ -373,6 +403,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
   const dismissSessionError = () => { sessionActionFailed.value = false; };
   async function selectAgent(id: string) {
+    goalError.value = false;
     closePreview.value = null;
     sessionActionFailed.value = false;
     const epoch = ++selectionEpoch;
@@ -535,7 +566,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }
