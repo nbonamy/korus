@@ -44,7 +44,7 @@
       />
       </div>
     </div>
-    <span v-else-if="!error">{{ $t('surface.mobileSimulator.reading') }}</span>
+    <span v-else-if="!error && !ended">{{ $t('surface.mobileSimulator.reading') }}</span>
   </div>
 </template>
 
@@ -81,6 +81,7 @@ const phoneButtons: Record<'ios' | 'android', { id: HardwareButton; edge: Edge; 
 };
 const source = ref('');
 const error = ref('');
+const ended = ref(false);
 const aspectRatio = ref(402 / 874);
 /** Clockwise quarter turns applied to the framebuffer (iOS draws a rotated UI inside a portrait buffer). */
 const rotation = ref<0 | 1 | 2 | 3>(0);
@@ -151,6 +152,7 @@ function imageFailed() {
 async function connect() {
   stop();
   error.value = '';
+  ended.value = false;
   const identity = generation;
   const agentId = props.agentId,
     attachmentId = props.attachmentId;
@@ -160,7 +162,12 @@ async function connect() {
     return;
   }
   try {
-    const { viewId } = await api(agentId, { action: 'start', attachmentId });
+    const started = await api(agentId, { action: 'start', attachmentId });
+    const { viewId } = started;
+    if (started.ended) {
+      if (identity === generation) ended.value = true;
+      return;
+    }
     const request = (input: Omit<MobileViewRequest, 'attachmentId' | 'viewId'>) =>
       api(agentId, { ...input, attachmentId, viewId } as MobileViewRequest);
     const dispose = () => {
@@ -176,6 +183,11 @@ async function connect() {
       const result = await request({ action: 'frame' });
       if (identity !== generation) return;
       if (result.viewId !== viewId) throw new Error('Invalid simulator video frame.');
+      if (result.ended) {
+        stop();
+        ended.value = true;
+        return;
+      }
       if (!result.frame) continue; // Native Android streams remain silent on an unchanged screen.
       rotation.value = result.frame.rotation ?? 0;
       aspectRatio.value =
