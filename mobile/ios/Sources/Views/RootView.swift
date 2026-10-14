@@ -35,7 +35,11 @@ struct RootView: View {
                     .accessibilityHidden(!model.drawerOpen)
 
                 ConversationScreen()
-                    .clipShape(.rect(cornerRadius: reveal > 1 ? 32 : 0, style: .continuous))
+                    .mask {
+                        // Navigation chrome extends beyond the safe-area layout bounds.
+                        RoundedRectangle(cornerRadius: reveal > 1 ? 32 : 0, style: .continuous)
+                            .ignoresSafeArea()
+                    }
                     .shadow(color: .black.opacity(0.12 * Double(reveal / drawerWidth)), radius: 24)
                     .overlay(alignment: .leading) {
                         // Capture the screen edge above the web view's scroll recognizers.

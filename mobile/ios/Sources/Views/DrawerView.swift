@@ -73,6 +73,7 @@ struct DrawerView: View {
                 .padding(.horizontal, 20)
             }
         }
+        .scrollClipDisabled()
         .padding(.bottom, 4)
     }
 
