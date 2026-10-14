@@ -166,11 +166,14 @@ commands (`test:electron`, `typecheck:web`, …). For visual changes add a local
 app/screenshot check when the app can boot; for protocol or persistence changes run
 the touched module's tests plus the full coverage gate.
 
-Before release CI runs `npm run test:coverage` then `npm run test:scripts`
-(coverage already executes every workspace suite, and lint already covers
-typechecks). A failed test or any workspace below 85% statements blocks release. Run
-against the installed SDK package boundary; source aliases do not substitute for
-package verification. Desktop smoke (boot, create or select an agent, pick a folder,
-send, stream, interrupt or approve, restore after reload) and screenshot checks for
-shell, sidebars, composer, artifact panes, diffs and theme switching apply once the
+The independent Quality workflow runs on every push, PR and manual dispatch. It
+owns lint/typechecks, the full suite under coverage, script tests, and retained
+coverage reports. The release workflow runs ordinary workspace and script tests,
+without coverage, before builds and publication. The workflows are independent:
+Quality failures do not block releases; release test failures do. Run against the
+installed SDK package boundary; source aliases do not substitute for package
+verification. Desktop smoke (boot, create or
+select an agent, pick a folder, send, stream, interrupt or approve, restore after
+reload) and screenshot checks for shell, sidebars, composer, artifact panes, diffs
+and theme switching apply once the
 chosen desktop tool is configured.
