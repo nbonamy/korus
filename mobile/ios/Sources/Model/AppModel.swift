@@ -45,7 +45,9 @@ final class AppModel {
     var newChatBackend: String? { backends.contains(preferredBackend) ? preferredBackend : backends.first }
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
-    var composerText = ""
+    let composerDrafts = ComposerDrafts()
+    var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
+    var supportsAttachments = false
     var skills = EngineState.Skills()
     var drawerOpen = false
     let dictation = DictationController(capture: AppleDictationCapture())
@@ -55,6 +57,7 @@ final class AppModel {
     let transcript = TranscriptHost()
 
     init() {
+        engine.onSendResult = { [weak self] result in self?.composerDrafts.completeSend(result) }
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
         engine.onContent = { [weak self] json in self?.transcript.receiveContent(json) }
@@ -123,6 +126,8 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
+        composerDrafts.select(state.composerTarget)
+        set(\.supportsAttachments, state.capabilities.attachments)
         set(\.canSend, state.canSend)
         set(\.canInterrupt, state.capabilities.interrupt)
         set(\.sessionAction, state.sessionAction)
@@ -150,11 +155,14 @@ final class AppModel {
     func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
 
     func send() {
+        guard canSend, supportsAttachments || composerDrafts.items.isEmpty else { return }
         dictation.cancel()
-        let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        composerText = ""
-        command("send", ["text": text])
+        guard let request = composerDrafts.beginSend() else { return }
+        do {
+            let data = try JSONEncoder().encode(request)
+            guard let command = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.coderInvalidValue) }
+            engine.dispatch(command)
+        } catch { composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected)) }
     }
 
     func chooseModel(_ id: String) { command("composer", ["change": ["modelId": id]]) }

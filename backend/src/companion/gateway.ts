@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AgentBackend, BackendSkillSummary } from '@workspace/core/contracts';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionSessionId } from '@workspace/core/companion-protocol';
+import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
@@ -37,9 +37,9 @@ const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backe
 /** A new chat as the laptop runs it: the paths are real, resolved from what the phone named. */
 type NewChatRequest = { teamId: string; remoteConnectionId?: string; backend: AgentBackend; repositoryName: string; repositoryRoot: string; defaultBranch?: string; worktree?: { branchName: string } };
 type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
-const maxUploadBytes = 2_500_000;
+const maxUploadBytes = companionMaxUploadBytes;
 const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string().min(1).max(200), mimeType: z.string().max(120), data: z.string().max(Math.ceil(maxUploadBytes * 4 / 3) + 4).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict();
-const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(5).optional() }).strict()
+const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(companionMaxUploads).optional() }).strict()
   .refine((command) => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, 'A prompt needs text or an attachment.');
 const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
 export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
@@ -244,8 +244,9 @@ export class CompanionGateway {
           if (current.backend !== backend || current.folder !== folder) throw new Error('Target is stale.');
           this.requireGrant(peerId, grant);
         }
+        if (command.attachments?.length && command.target.locationId !== 'local') throw new Error('Remote attachments require a trusted file transfer.');
         const uploads = command.attachments?.length ? command.attachments.map((upload) => ({ ...upload, data: Buffer.from(upload.data, 'base64') })) : undefined;
-        if (uploads?.some((upload) => upload.data.byteLength > maxUploadBytes)) throw new Error('Attachment too large.');
+        if (uploads && (uploads.reduce((total, upload) => total + upload.data.byteLength, 0) > maxUploadBytes || uploads.some((upload, index) => upload.data.toString('base64') !== command.attachments![index]!.data))) throw new Error('Attachment too large.');
         if (Object.keys(this.state.commands).length >= 10_000) throw new Error('Command receipt storage is full.');
         const pending = { clientCommandId: command.clientCommandId, state: 'pending' as const, target: command.target, fingerprint };
         const next = { ...this.state, commands: { ...this.state.commands, [ledgerKey]: pending } };

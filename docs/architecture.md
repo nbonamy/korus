@@ -99,7 +99,13 @@ device-only Keychain entries accessible while unlocked. Selection restoration ch
 the connected workspace and falls back in desktop team/agent order. The engine's
 optional protected draft store persists prompt intent
 and delivery uncertainty by laptop and agent; its native host keeps composer text
-in memory. Reconnect reconciles available command receipts without replaying prompts
+and selected attachment bytes in memory, keyed by the full laptop/conversation target.
+Native pickers and explicit clipboard paste supply bounded bytes, never device paths.
+The companion engine validates the target before submission and reports admission
+back to the native draft; only accepted sends clear their captured text and attachments.
+The laptop stores uploads privately and passes ordinary provider attachment paths
+through its existing prompt route. Nested remote teams remain text-only until their
+owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
 and retains the last loaded snapshot while rehydrating the same provider session.
 
 Mobile access belongs to the existing owning daemon. A dedicated libp2p companion

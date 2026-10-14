@@ -65,6 +65,7 @@ struct EngineState: Decodable {
     let agentId: String
     let header: Header?
     let loading: Bool
+    let composerTarget: ComposerTarget?
     let canSend: Bool
     let sessionAction: String?
     let sessionActionFailed: Bool

@@ -4,7 +4,9 @@ import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
+import { companionTarget, type CompanionTarget } from '@workspace/core/companion-protocol';
+import { validPromptUploads } from './prompt-uploads';
+import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
 import type { ComposerChange } from './composer-settings';
 import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './workspace-groups';
@@ -30,6 +32,7 @@ export type EngineState = {
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   canSend: boolean;
+  composerTarget: CompanionTarget | null;
   sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
@@ -49,6 +52,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'sendResult'; requestId: string; status: 'accepted' | 'rejected' | 'unknown' }
   | { type: 'conversationContent'; requestId: string; agentId: string; sessionId: string; chunk?: import('@workspace/core/contracts/conversation').ConversationContentChunk; error?: string }
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
@@ -76,7 +80,7 @@ export type EngineCommand =
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
-  | { type: 'send'; text: string; options?: { attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
@@ -129,6 +133,7 @@ export function createEngine(port: EnginePort) {
   const hasConversation = computed(() => Boolean(state.conversation.value));
   function snapshot(): EngineState {
     const agent = state.agent.value;
+    const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = projectMobileGroups(state.agents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons);
     const active = activeSession(groups);
     const capabilities = defaultBackendCapabilities(agent?.backend ?? 'codex');
@@ -141,6 +146,7 @@ export function createEngine(port: EnginePort) {
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
+      composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
@@ -152,7 +158,7 @@ export function createEngine(port: EnginePort) {
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
         modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
       capabilities: { models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
-        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt, attachments: capabilities.attachments },
+        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt, attachments: capabilities.attachments && !team?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }
@@ -234,12 +240,13 @@ export function createEngine(port: EnginePort) {
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const frame = state.conversation.value;
-    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, command.options);
+    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, uploads: command.uploads });
     const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
-    await state.submit(command.text, command.options);
-    if (state.error.value) { pending.splice(pending.indexOf(entry), 1); postConversation(); }
+    const result = await state.submit(command.text, { ...command.options, uploads: command.uploads });
+    if (state.error.value || result !== 'accepted') { pending.splice(pending.indexOf(entry), 1); postConversation(); }
+    return result;
   }
 
   async function pair(code: string, deviceName: string) {
@@ -292,7 +299,15 @@ export function createEngine(port: EnginePort) {
       case 'loadOlder': return state.loadOlder(command.agentId);
       case 'draft': return state.updateDraft({ text: command.text, selectionStart: command.text.length, selectionEnd: command.text.length });
       case 'loadSkills': return state.loadSkills();
-      case 'send': return send(command);
+      case 'send': {
+        const current = snapshot().composerTarget;
+        const targetMatches = command.target && current && (Object.keys(current) as (keyof CompanionTarget)[]).every((key) => current[key] === command.target![key]);
+        const valid = (!command.requestId || targetMatches) && validPromptUploads(command.uploads ?? [])
+          && (!command.uploads?.length || snapshot().capabilities.attachments);
+        const status = valid ? await send(command) : 'rejected';
+        if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status });
+        return;
+      }
       case 'interrupt': return state.interrupt();
       case 'restartSession': await state.restartSession(); return rememberSelection();
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();

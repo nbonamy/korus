@@ -309,6 +309,9 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: 'not base64!' }] })).rejects.toThrow();
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: Buffer.alloc(2_600_000).toString('base64') }] })).rejects.toThrow();
     await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: Array(6).fill(photo) })).rejects.toThrow();
+    const large = { ...photo, data: Buffer.alloc(1_300_000).toString('base64') };
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [large, large] })).rejects.toThrow('Attachment too large');
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, clientCommandId: randomUUID(), attachments: [{ ...photo, data: 'AA=' }] })).rejects.toThrow();
   });
   it('rejects a provider reset for another live session, even if it has the selected agent ID', async () => {
     const f = fixture(); await f.pair();

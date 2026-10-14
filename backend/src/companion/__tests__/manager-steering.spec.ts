@@ -68,6 +68,19 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it.each(['idle', 'working'] as const)('delivers phone image and file bytes through provider attachments (%s)', async (status) => {
+    const f = await fixture(status);
+    const uploads = [
+      { type: 'image', name: 'Photo.jpg', mimeType: 'image/jpeg', data: Buffer.from('photo bytes').toString('base64') },
+      { type: 'file', name: 'notes.txt', mimeType: 'text/plain', data: Buffer.from('file bytes').toString('base64') },
+    ];
+    expect(await f.gateway.request('phone', 'prompt.submit', { ...f.command, text: '', attachments: uploads })).toMatchObject({ state: 'accepted' });
+    const operation = status === 'idle' ? f.sendPrompt : f.steerPrompt;
+    const options = (operation.mock.calls[0] as unknown as [unknown, string, { attachments: { type: string; name: string; path: string; mimeType: string }[] }])[2];
+    expect(options.attachments.map(({ path: _path, ...metadata }) => metadata)).toStrictEqual(uploads.map(({ data: _data, ...metadata }) => metadata));
+    expect(await Promise.all(options.attachments.map((item) => readFile(item.path, 'utf8')))).toStrictEqual(['photo bytes', 'file bytes']);
+  });
+
   it('routes the companion skill catalog and a selected skill to the owning provider', async () => {
     const f = await fixture('idle');
     const skill = { name: 'review', path: '/skills/review/SKILL.md' };

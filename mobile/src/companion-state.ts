@@ -385,9 +385,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === selectionEpoch && active === session) loadingOlder.value = false;
     }
   }
-  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[] }) {
-    const uploads = resolveUploads?.(sendOptions?.attachments) ?? [];
-    if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session) return;
+  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[] }): Promise<'accepted' | 'rejected' | 'unknown'> {
+    const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
+    if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
     const target = agentId.value;
     const draftKey = key();
     const capturedSession = session;
@@ -396,7 +396,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // Resolve the same typed skill aliases as the desktop, including pasted mentions.
     if (/[$/][A-Za-z0-9_.-]+/.test(prompt)) {
       await loadSkills();
-      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillEpoch || !canSend.value) return;
+      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillEpoch || !canSend.value) return 'rejected';
     }
     const selectedSkills = promptSkillInputsFromText(prompt, skills.value.items);
     const sentDraft = draft.value.text ? { ...draft.value } : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length };
@@ -410,7 +410,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     commandIds[draftKey] = clientCommandId;
     submittedTexts[draftKey] = sentDraft.text;
     try { await persist(); }
-    catch { uncertain[draftKey] = false; sending[draftKey] = false; return; }
+    catch { uncertain[draftKey] = false; sending[draftKey] = false; return 'rejected'; }
     try {
       const settings = composerSettings.value;
       const composerOptions = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
@@ -420,10 +420,12 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       uncertain[draftKey] = false;
       await persist();
       if (epoch === selectionEpoch) await selectAgent(target);
+      return 'accepted';
     } catch {
       uncertain[draftKey] = true;
       if (epoch === selectionEpoch) error.value = storageFailed ? 'mobile.errors.storage' : 'mobile.errors.deliveryUnknown';
       await persist().catch(() => {});
+      return 'unknown';
     } finally {
       sending[draftKey] = false;
     }

@@ -1,3 +1,4 @@
+import { requirePromptText } from './prompt-input';
 import { isBankedResets, isBankedResetResult, isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { saveMarkdownFile } from './document-files';
@@ -1835,7 +1836,7 @@ export class AppBackendServer {
       case backendMethods.agentPromptSend: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
-        const prompt = requireString(params.prompt, 'prompt');
+        const prompt = requirePromptText(params.prompt, params.options as SendPromptOptions | undefined);
         return this.routeAgentSnapshotRequest(
           message.id,
           agentId,
@@ -1857,7 +1858,7 @@ export class AppBackendServer {
       case backendMethods.agentPromptSteer: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
-        const prompt = requireString(params.prompt, 'prompt').trim();
+        const prompt = requirePromptText(params.prompt, params.options as SendPromptOptions | undefined).trim();
         const options = params.options as SendPromptOptions | undefined;
         if (params.startIfIdle !== undefined && typeof params.startIfIdle !== 'boolean') throw new Error('Invalid startIfIdle.');
         const startIfIdle = params.startIfIdle === true;

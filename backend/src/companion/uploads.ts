@@ -14,6 +14,7 @@ export async function storePromptUploads(directory: string, uploads: readonly Co
   if (uploads.length === 0) return [];
   const root = path.join(directory, 'uploads');
   await mkdir(root, { recursive: true, mode: 0o700 });
+  await chmod(root, 0o700);
   for (const entry of await readdir(root)) {
     const folder = path.join(root, entry);
     if (now - (await stat(folder)).mtimeMs > retentionMs) await rm(folder, { recursive: true, force: true });
@@ -23,8 +24,8 @@ export async function storePromptUploads(directory: string, uploads: readonly Co
   const attachments: PromptAttachment[] = [];
   for (const [index, upload] of uploads.entries()) {
     const name = path.basename(upload.name.replace(/\\/g, '/')).replace(/[^\w. -]/g, '_').slice(0, 120) || `attachment-${index + 1}`;
-    const file = path.join(folder, uploads.some((other, other_index) => other_index < index && path.basename(other.name) === upload.name) ? `${index + 1}-${name}` : name);
-    await writeFile(file, upload.data, { mode: 0o600 });
+    const file = path.join(folder, `${index + 1}-${name}`);
+    await writeFile(file, upload.data, { mode: 0o600, flag: 'wx' });
     await chmod(file, 0o600);
     attachments.push({ type: upload.type, path: file, name: upload.name, mimeType: upload.mimeType } as PromptAttachment);
   }

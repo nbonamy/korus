@@ -4,6 +4,8 @@ import type { Agent, AgentBackend, ModelFavorite, ProviderConversationFrame, Tea
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
 export type CompanionUpdate = { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
+export const companionMaxUploadBytes = 2_500_000;
+export const companionMaxUploads = 5;
 export const companionFrameLimit = 4 * 1024 * 1024;
 // Authoritative provider snapshots grow as history pages are loaded. Requests keep
 // the smaller limit; only responses from the paired laptop use this bound.

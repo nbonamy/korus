@@ -14,14 +14,17 @@ describe('phone attachments on the laptop', () => {
     const attachments = await storePromptUploads(directory, [
       { type: 'image', name: 'Photo 1.jpg', mimeType: 'image/jpeg', data: Buffer.from('jpeg-bytes') },
       { type: 'file', name: '../../etc/passwd', mimeType: 'text/plain', data: Buffer.from('notes') },
+      { type: 'file', name: 'Photo 1.jpg', mimeType: 'application/octet-stream', data: Buffer.from('different bytes') },
     ]);
-    expect(attachments).toHaveLength(2);
+    expect(attachments).toHaveLength(3);
     expect(attachments[0]).toMatchObject({ type: 'image', name: 'Photo 1.jpg', mimeType: 'image/jpeg' });
     expect(await readFile(attachments[0]!.path, 'utf8')).toBe('jpeg-bytes');
     // A hostile name can never leave the upload directory.
     expect(path.dirname(path.dirname(attachments[1]!.path))).toBe(path.join(directory, 'uploads'));
-    expect(path.basename(attachments[1]!.path)).toBe('passwd');
+    expect(path.basename(attachments[1]!.path)).toBe('2-passwd');
     expect((await stat(attachments[0]!.path)).mode & 0o777).toBe(0o600);
+    expect(await readFile(attachments[2]!.path, 'utf8')).toBe('different bytes');
+    expect(new Set(attachments.map((item) => item.path)).size).toBe(3);
   });
   it('removes uploads older than a day the next time one is stored', async () => {
     const directory = await fresh();

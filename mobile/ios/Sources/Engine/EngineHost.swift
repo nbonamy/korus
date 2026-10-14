@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
     let webView: WKWebView
+    var onSendResult: ((ComposerSendResult) -> Void)?
     var onState: ((EngineState) -> Void)?
     var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
@@ -27,7 +28,11 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     func dispatch(_ command: [String: Any]) {
         guard isReady else { pending.append(command); return }
         guard let data = try? JSONSerialization.data(withJSONObject: command), let json = String(data: data, encoding: .utf8) else { return }
-        webView.callAsyncJavaScript("await window.companionEngine.dispatch(command)", arguments: ["command": json], in: nil, in: .page) { _ in }
+        webView.callAsyncJavaScript("await window.companionEngine.dispatch(command)", arguments: ["command": json], in: nil, in: .page) { [weak self] result in
+            if case .failure = result, let id = command["requestId"] as? String {
+                self?.onSendResult?(ComposerSendResult(requestId: id, status: .unknown))
+            }
+        }
     }
 
     // MARK: Requests the engine page makes of the app
@@ -65,6 +70,8 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             webView.callAsyncJavaScript("await window.companionEngine.start()", arguments: [:], in: nil, in: .page) { _ in }
             for command in pending { dispatch(command) }
             pending.removeAll()
+        case "sendResult":
+            if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(ComposerSendResult.self, from: data) { onSendResult?(decoded) }
         case "state":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(StateEvent.self, from: data) { onState?(decoded.state) }
         case "conversation": if let json { onTranscript?(.conversation, json) }

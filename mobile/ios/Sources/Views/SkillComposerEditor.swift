@@ -10,6 +10,7 @@ struct SkillComposerEditor: UIViewRepresentable {
     let skills: [ComposerSkill]
     let editable: Bool
     let maxLines: Int
+    var pastePhotos: (([NSItemProvider]) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -45,6 +46,7 @@ struct SkillComposerEditor: UIViewRepresentable {
         } else if let selection, view.document.canonicalRange(view.selectedRange) != selection, view.markedTextRange == nil {
             view.selectedRange = view.document.renderedRange(selection)
         }
+        view.pastePhotos = pastePhotos
         view.isEditable = editable
         view.placeholder.isHidden = !text.isEmpty
         view.placeholder.font = font
@@ -103,6 +105,7 @@ struct SkillComposerEditor: UIViewRepresentable {
 
 final class SkillTextView: UITextView {
     let placeholder = UILabel()
+    var pastePhotos: (([NSItemProvider]) -> Void)?
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -167,8 +170,18 @@ final class SkillTextView: UITextView {
         insertText("")
     }
 
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), UIPasteboard.general.hasImages { return isEditable && pastePhotos != nil }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
     override func paste(_ sender: Any?) {
-        guard isEditable, let text = UIPasteboard.general.string else { return }
+        guard isEditable else { return }
+        if UIPasteboard.general.hasImages {
+            pastePhotos?(UIPasteboard.general.itemProviders)
+            return
+        }
+        guard let text = UIPasteboard.general.string else { return }
         insertText(text)
     }
 }
