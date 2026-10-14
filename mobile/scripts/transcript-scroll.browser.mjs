@@ -150,6 +150,12 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       return conversation;
     });
     await page.getByText('Message 29:', { exact: false }).waitFor();
+    const bubblePadding = await page.locator('.chat-user-text').last().evaluate(element => {
+      const style = getComputedStyle(element);
+      return [parseFloat(style.paddingTop), parseFloat(style.paddingBottom)];
+    });
+    assert.ok(bubblePadding.every(value => value >= 8 && value <= 12), 'mobile user bubbles need modest vertical breathing room');
+    if (process.env.BUBBLE_SCREENSHOT) await page.screenshot({ path: process.env.BUBBLE_SCREENSHOT });
     const metrics = () => page.evaluate(() => {
       const scroller = [...document.querySelectorAll('.transcript *')].find((element) =>
         /auto|scroll/.test(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight + 20);

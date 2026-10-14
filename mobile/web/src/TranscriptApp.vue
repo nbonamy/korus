@@ -151,6 +151,8 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
   --line-height-20: 24px;
 }
 .transcript .codex-workbench-layout__footer { display: none; }
+/* Give the larger mobile text room without widening user bubbles. */
+.transcript .codex-markdown.chat-user-text { padding-block: 10px; }
 /* Native insets already reserve the composer; the hidden web footer has no height. */
 .transcript .codex-conversation-pane__messages { --codex-scroll-to-bottom-offset: var(--space-12); }
 /* The shared empty state frames its actions as a card; the engine control stands on its own. */
