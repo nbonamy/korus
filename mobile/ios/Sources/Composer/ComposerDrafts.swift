@@ -41,7 +41,7 @@ struct ComposerSendResult: Decodable {
 final class ComposerDrafts {
     static let maxCount = 5
     static let maxBytes = 2_500_000
-    struct Import: Equatable { let id = UUID(); let target: ComposerTarget }
+    struct Import: Identifiable, Equatable { let id = UUID(); let target: ComposerTarget }
     struct Submission: Encodable {
         struct Upload: Encodable { let type: ComposerAttachment.Kind; let name: String; let mimeType: String; let data: String }
         let type = "send"

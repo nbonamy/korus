@@ -21,7 +21,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan the pairing code on your laptop.</string>
+	<string>Take photos to attach to messages and scan the pairing code on your laptop.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Dictate prompts with your voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ComposerAttachmentsView: View {
     let drafts: ComposerDrafts
+    let openImage: (ComposerAttachment) -> Void
 
     var body: some View {
         if !drafts.items.isEmpty {
@@ -10,7 +11,9 @@ struct ComposerAttachmentsView: View {
                     ForEach(drafts.items) { item in
                         HStack(spacing: 6) {
                             if item.type == .image, let image = UIImage(data: item.data) {
-                                Image(uiImage: image).resizable().scaledToFill().frame(width: 44, height: 44).clipped().clipShape(.rect(cornerRadius: 6))
+                                Button { openImage(item) } label: {
+                                    Image(uiImage: image).resizable().scaledToFill().frame(width: 44, height: 44).clipped().clipShape(.rect(cornerRadius: 6))
+                                }.buttonStyle(.plain).accessibilityLabel("View \(item.name)")
                             } else { Image(systemName: "doc").font(.title3).frame(width: 32, height: 44) }
                             Text(item.name).font(.caption).lineLimit(2).frame(maxWidth: 130, alignment: .leading)
                             Button { drafts.remove(item.id) } label: {

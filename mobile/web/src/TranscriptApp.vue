@@ -75,6 +75,28 @@ const controller = createCodexConversationPaneController({
     openLink(link) {
       if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
     },
+    async openImage(image) {
+      const agentId = agent.value?.id;
+      let src = /^(https?:|data:image\/)/i.test(image.src) ? image.src : '';
+      // Blob URLs belong to this WebView; pass their displayed bytes rather than a device-local URL.
+      if (image.src.startsWith('blob:')) {
+        try {
+          const blob = await (await fetch(image.src)).blob();
+          if (blob.size <= 20_000_000 && blob.type.startsWith('image/')) {
+            src = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result));
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+          }
+        } catch { /* The native viewer shows an unavailable state. */ }
+      }
+      if (agentId && agentId === agent.value?.id) {
+        void handler('transcript').postMessage(JSON.stringify({ type: 'openImage', agentId, title: image.title || image.name || image.alt || 'Image', src }));
+      }
+      return true;
+    },
   },
 });
 

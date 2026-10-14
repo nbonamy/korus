@@ -66,6 +66,12 @@ nonisolated enum AttachmentLoader {
         return ComposerAttachment(name: String(url.lastPathComponent.prefix(100)), mimeType: type?.preferredMIMEType ?? "application/octet-stream", type: .file, data: data)
     }
 
+    static func cameraPhoto(_ image: UIImage) throws -> ComposerAttachment {
+        guard let data = image.jpegData(compressionQuality: 1),
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw Failure.unreadable }
+        return try photo(source, name: "Photo")
+    }
+
     static func photoProvider(_ provider: NSItemProvider) async throws -> ComposerAttachment {
         guard let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }) else { throw Failure.unreadable }
         let name = provider.suggestedName ?? "Photo"

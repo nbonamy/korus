@@ -82,6 +82,9 @@ struct ConversationScreen: View {
             .navigationDestination(isPresented: Binding(get: { model.reviewOpen }, set: { model.reviewOpen = $0; if !$0 { model.command("dismissReview") } })) {
                 ReviewSetupView()
             }
+            .fullScreenCover(item: Binding(get: { model.presentedImage }, set: { model.presentedImage = $0 })) { image in
+                ImageViewer(preview: image)
+            }
             .sheet(item: Binding(get: { model.presentedRequest }, set: { model.presentedRequest = $0 })) { request in
                 RequestSheet(pending: request)
             }

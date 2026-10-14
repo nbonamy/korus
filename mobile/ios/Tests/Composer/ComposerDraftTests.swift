@@ -66,6 +66,24 @@ final class ComposerDraftTests: XCTestCase {
         XCTAssertTrue(drafts.items.isEmpty)
     }
 
+    func testCancellingPhotoCaptureAfterNavigationReleasesOnlyItsOriginalDraft() throws {
+        let drafts = ComposerDrafts(); drafts.select(first)
+        drafts.text = "Keep this draft"
+        drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])
+        let capture = try XCTUnwrap(drafts.beginImport())
+        drafts.select(second)
+        drafts.text = "Other conversation"
+        drafts.finishImport(capture, attachments: [])
+        XCTAssertEqual(drafts.text, "Other conversation")
+        XCTAssertTrue(drafts.items.isEmpty)
+        drafts.select(first)
+        XCTAssertFalse(drafts.importing)
+        XCTAssertFalse(drafts.sending)
+        XCTAssertEqual(drafts.text, "Keep this draft")
+        XCTAssertEqual(drafts.items.count, 1)
+        XCTAssertNotNil(drafts.beginSend(), "Cancellation must not leave Submit blocked")
+    }
+
     func testAttachmentOnlySendRetainsBytesUntilAcceptedAndKeepsThemWhenDeliveryIsUnknown() throws {
         let drafts = ComposerDrafts(); drafts.select(first)
         drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])

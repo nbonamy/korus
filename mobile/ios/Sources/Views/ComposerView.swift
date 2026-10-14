@@ -15,6 +15,8 @@ struct ComposerView: View {
     }
     @State private var picker: PickerRequest?
     @State private var pickerImport: ComposerDrafts.Import?
+    @State private var camera: ComposerDrafts.Import?
+    @State private var cameraImport: ComposerDrafts.Import?
     private var canAttach: Bool {
         !model.goalMode && model.supportsAttachments && model.composerDrafts.target != nil && !model.composerDrafts.importing
             && !model.composerDrafts.sending && model.composerDrafts.items.count < ComposerDrafts.maxCount && !model.dictation.active
@@ -54,6 +56,20 @@ struct ComposerView: View {
                     loadFiles(urls, request: request.token)
                 })
         }
+        .fullScreenCover(item: $camera, onDismiss: {
+            if let request = cameraImport { model.composerDrafts.finishImport(request, attachments: []); cameraImport = nil }
+        }) { request in
+            CameraAttachmentView { image in
+                cameraImport = nil; camera = nil
+                guard let image else { model.composerDrafts.finishImport(request, attachments: []); return }
+                Task {
+                    do {
+                        let attachment = try await Task.detached(priority: .userInitiated) { try AttachmentLoader.cameraPhoto(image) }.value
+                        model.composerDrafts.finishImport(request, attachments: [attachment])
+                    } catch { model.composerDrafts.finishImport(request, attachments: [], error: error.localizedDescription) }
+                }
+            }
+        }
         .onChange(of: showSuggestions) { _, visible in if visible { loadSuggestions() } }
         .onChange(of: model.skills.status) { _, status in
             if status == .idle && activeQuery?.isSkill == true && showSuggestions { loadSuggestions() }
@@ -90,7 +106,10 @@ struct ComposerView: View {
                         .accessibilityLabel(model.goalMode ? "Exit goal mode" : "Exit plan mode").disabled(model.composerDrafts.sending || model.goalBusy)
                 }.padding(.horizontal, 10).padding(.top, 4)
             }
-            ComposerAttachmentsView(drafts: model.composerDrafts)
+            ComposerAttachmentsView(drafts: model.composerDrafts) { item in
+                focused = false
+                model.presentedImage = ImagePreview(title: item.name, source: .data(item.data))
+            }
             HStack(spacing: 6) {
                 if !expanded { attachMenu }
                 ComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
@@ -135,6 +154,7 @@ struct ComposerView: View {
         @Bindable var model = model
         return Menu {
             Section {
+                Button("Take Photo", systemImage: "camera") { openCamera() }.disabled(!canAttach)
                 Button("Add Photos", systemImage: "photo.on.rectangle") { openPicker(.photos) }.disabled(!canAttach)
                 Button("Add Files", systemImage: "paperclip") { openPicker(.files) }.disabled(!canAttach)
             }
@@ -238,6 +258,13 @@ struct ComposerView: View {
                 }
         }
         .accessibilityLabel(model.dictation.active ? "Stop dictation" : "Dictate")
+    }
+
+    private func openCamera() {
+        guard canAttach, let request = model.composerDrafts.beginImport() else { return }
+        focused = false
+        cameraImport = request
+        camera = request
     }
 
     private func openPicker(_ source: AttachmentPicker.Source) {

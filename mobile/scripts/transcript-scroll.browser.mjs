@@ -296,3 +296,41 @@ test('transcript links ask iOS to open external destinations without navigating 
     assert.ok(await page.getByRole('link', { name: 'Website', exact: true }).isVisible());
   } finally { await browser?.close(); await server.close(); }
 });
+
+test('conversation images open the native viewer through the SDK action without leaking laptop paths or moving the transcript', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => {
+      window.nativeEvents = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) { window.nativeEvents.push(JSON.parse(json)); } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    const src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=';
+    await page.evaluate(async src => {
+      const agent = { id: 'image-agent', name: 'Images', folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
+      const messages = [
+        { id: 'photo', role: 'user', parts: [{ type: 'attachment', attachment: { kind: 'image', name: 'Photo.jpg', path: '/private/laptop/Photo.jpg', url: src } }] },
+        { id: 'result', role: 'assistant', parts: [{ type: 'media', media: { title: 'Result', alt: 'Result', url: src } }] },
+      ];
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true,
+        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } }));
+    }, src);
+    const original = page.url();
+    for (const title of ['Photo.jpg', 'Result']) {
+      const button = page.getByRole('button', { name: `Open ${title}`, exact: true });
+      await button.scrollIntoViewIfNeeded();
+      const before = await button.boundingBox();
+      await button.click();
+      await page.waitForFunction(title => window.nativeEvents.some(event => event.type === 'openImage' && event.title === title), title);
+      assert.deepEqual((await page.evaluate(() => window.nativeEvents.filter(event => event.type === 'openImage'))).at(-1),
+        { type: 'openImage', agentId: 'image-agent', title, src });
+      assert.equal(await page.locator('.chat-image-lightbox').count(), 0, 'native viewer owns fullscreen');
+      assert.equal(page.url(), original);
+      assert.deepEqual(await button.boundingBox(), before, 'opening an image keeps the transcript in place');
+    }
+  } finally { await browser?.close(); await server.close(); }
+});

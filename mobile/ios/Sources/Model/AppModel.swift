@@ -56,6 +56,7 @@ final class AppModel {
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
+    var presentedImage: ImagePreview? { didSet { if presentedImage == nil { acknowledgeRead() } } }
     var reviewState = ReviewState()
     var mentions = EngineState.Suggestions()
     var skills = EngineState.Suggestions()
@@ -72,6 +73,11 @@ final class AppModel {
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
         engine.onContent = { [weak self] json in self?.transcript.receiveContent(json) }
+        transcript.onOpenImage = { [weak self] agentID, image in
+            guard let self, agentID == self.activeAgentID else { return }
+            self.dictation.cancel()
+            self.presentedImage = image
+        }
         transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
@@ -131,7 +137,7 @@ final class AppModel {
         let agentChanged = activeAgentID != nextAgentID
         if agentChanged { dictation.cancel() }
         set(\.activeAgentID, nextAgentID)
-        if agentChanged { reviewOpen = false }
+        if agentChanged { reviewOpen = false; presentedImage = nil }
         set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -144,7 +150,7 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
-        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false }
+        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil }
         composerDrafts.select(state.composerTarget)
         set(\.supportsGoals, state.capabilities.goals ?? false)
         set(\.goal, state.goal)
@@ -280,7 +286,7 @@ final class AppModel {
     func forget() { command("forget") }
     private func acknowledgeRead() {
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
-            foreground: UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen) else { return }
+            foreground: UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen, imageOpen: presentedImage != nil) else { return }
         command("read", ["agentId": read.agentId, "revision": read.revision])
     }
 

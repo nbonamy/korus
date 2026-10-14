@@ -6,6 +6,7 @@ import UIKit
 @MainActor
 final class TranscriptHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
+    var onOpenImage: ((String, ImagePreview) -> Void)?
     var onLoadOlder: ((String) -> Void)?
     var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
@@ -71,6 +72,11 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let text = message.body as? String, let data = text.data(using: .utf8),
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if event["type"] as? String == "openImage", message.frameInfo.isMainFrame,
+           let agentID = event["agentId"] as? String, let source = event["src"] as? String {
+            onOpenImage?(agentID, ImagePreview(title: event["title"] as? String ?? "Image", source: ImagePreview.Source(source)))
+            return
+        }
         if event["type"] as? String == "openExternal", message.frameInfo.isMainFrame,
            let value = event["url"] as? String, let url = ExternalLink.url(value) {
             UIApplication.shared.open(url)
