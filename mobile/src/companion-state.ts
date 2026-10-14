@@ -140,7 +140,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const removeUpdates = session.onUpdate?.((nextWorkspace, frame) => {
         if (epoch !== connectionEpoch) return;
         workspace.value = nextWorkspace;
-        if (frame && frame.agentId === agentId.value && frame.backend === agent.value?.backend) conversation.value = frame;
+        if (frame && frame.agentId === agentId.value && frame.backend === agent.value?.backend) {
+          conversation.value = frame; conversationReady.value = true;
+          if (error.value === 'mobile.errors.loadConversation') error.value = '';
+        }
       }) ?? (() => {});
       unsubscribe = () => { removeDisconnect(); removeUpdates(); };
       status.value = 'connected';
@@ -255,16 +258,18 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const epoch = ++selectionEpoch;
     const nextAgent = agents.value.find((a) => a.id === id);
     const nextKey = nextAgent ? JSON.stringify([laptopId.value, id, companionSessionId(nextAgent)]) : '';
+    const cached = nextAgent && session && status.value === 'connected' ? session.cachedConversation?.(id) : undefined;
     const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;
     selectedConversationKey = nextKey;
     loadingOlder.value = false;
-    if (!retaining) { historyFailed.value = false; hasOlder.value = null; conversation.value = null; }
+    if (!retaining) { historyFailed.value = false; hasOlder.value = null; conversation.value = cached ?? null; }
     agentId.value = nextAgent?.id ?? '';
-    conversationReady.value = false;
+    conversationReady.value = cached !== undefined;
     error.value = '';
     loading.value = false;
-    if (!agentId.value || !session || status.value !== 'connected') return;
-    loading.value = true;
+    if (!session || status.value !== 'connected') return;
+    if (!agentId.value) { session.deselectConversation?.(); return; }
+    loading.value = cached === undefined;
     const active = session;
     try {
       const frame = await active.loadConversation(id);

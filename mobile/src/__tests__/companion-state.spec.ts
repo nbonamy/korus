@@ -3,6 +3,26 @@ import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
 
 describe('companion state', () => {
+  it('shows a live cached conversation immediately when returning, without a loading or empty state', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    connector.connect = async (id) => {
+      const session = await original(id);
+      const frames = new Map<string, Awaited<ReturnType<typeof session.loadConversation>>>();
+      return { ...session, cachedConversation: (agentId) => frames.get(agentId), loadConversation: async (agentId) => {
+        const frame = frames.get(agentId) ?? await session.loadConversation(agentId); frames.set(agentId, frame); return frame;
+      } };
+    };
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      const first = state.conversation.value;
+      await state.selectAgent('demo-reviewer');
+      const returning = state.selectAgent('demo-agent');
+      expect(state.conversation.value).toBe(first);
+      expect(state.loading.value).toBe(false); expect(state.conversationReady.value).toBe(true);
+      await returning;
+    } finally { state.dispose(); }
+  });
   it.each([false, true])('waits for worktree confirmation, then closes only the previewed session (delete: %s)', async (deleting) => {
     const connector = createDemoConnector(); const original = connector.connect;
     const target = { hostId: 'laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null };

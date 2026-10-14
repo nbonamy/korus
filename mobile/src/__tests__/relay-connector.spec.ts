@@ -1,10 +1,11 @@
+import { codexConversationSnapshot, codexTextMessage } from '../../../vue/src/test/codex-conversation-fixtures';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
-import { CompanionFrameDecoder, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
-const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { channel: string }[], known: '', phone: '', response: (method: string, args: any): any => ({}) }));
+import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { channel: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop }; } }));
 import { createRelayConnector } from '../relay-connector';
 import { createPairingExchange, normalizePairingCode } from '@workspace/core/companion-pairing';
@@ -35,6 +36,22 @@ beforeEach(async () => {
     : method === 'pair.confirm' ? (host.confirmed(args.confirm) ? { pendingId: randomUUID(), state: 'awaitingApproval' } : (() => { throw new Error('denied'); })())
     : method === 'pair.status' ? { state: 'approved', grant: {} } : {};
   transport.dial.mockReset().mockImplementation(async (_address: unknown, protocol: string) => {
+    if (protocol === companionUpdatesProtocol) {
+      let done = false; let wake = () => {}; let seq = 0; const queued: Uint8Array[] = [];
+      const push = (value: unknown) => { queued.push(encodeCompanionFrame(value, companionResponseLimit)); wake(); };
+      transport.publish = (update) => push({ v: 1, seq: ++seq, update });
+      transport.endUpdates = () => { done = true; wake(); };
+      return { status: 'open', send(frame: Uint8Array) {
+        const call = new CompanionFrameDecoder().push(frame)[0] as { id: string; method: string; args: unknown };
+        transport.requests.push(call);
+        const result = transport.response(call.method, call.args);
+        if (call.method === 'conversation.subscribe') transport.publish({ type: 'conversation', frame: result });
+        if (call.method === 'snapshot.get') transport.publish({ type: 'workspace', workspace: result });
+        push({ v: 1, id: call.id, result: call.method === 'conversation.subscribe' ? {} : result }); return true;
+      }, abort() { done = true; wake(); }, async *[Symbol.asyncIterator]() {
+        while (!done) { while (queued.length) yield queued.shift()!; if (!done) await new Promise<void>((resolve) => { wake = resolve; }); }
+      } };
+    }
     let reply: unknown;
     return { status: 'open', send(frame: Uint8Array) {
       const request = new CompanionFrameDecoder().push(frame)[0] as { id: string; method: string; args: unknown };
@@ -99,26 +116,31 @@ describe('native relay host adapter', () => {
       expect(pending).toHaveBeenCalledOnce();
     } finally { await connector.dispose!(); }
   });
-  it('delivers authoritative updates while connected and reports transport loss without replaying prompts', async () => {
+  it('streams updates immediately without polling and reports transport loss without replaying prompts', async () => {
     vi.useFakeTimers();
     const connector = connect();
     try {
       await pairWith(connector);
-      const frame = { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', payload: { revision: 2, snapshot: { messages: [{ text: 'Live response' }] } } };
+      const frame = { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 2, snapshot: codexConversationSnapshot([codexTextMessage('response', 'assistant', 'Live response')], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } };
       transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [agent] } : frame;
-      const session = await connector.connect(host.hostId); await session.getWorkspace(); await session.loadConversation('agent');
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
       const update = vi.fn(); const disconnected = vi.fn();
       const stop = session.onUpdate!(update); session.onDisconnect(disconnected);
-      await vi.advanceTimersByTimeAsync(1200);
-      expect(update).toHaveBeenCalledWith(expect.objectContaining({ teams: [expect.objectContaining({ id: 'team' })] }), frame);
-      transport.dial.mockRejectedValueOnce(new Error('Relay unavailable'));
-      await vi.advanceTimersByTimeAsync(1200);
+      await session.loadConversation('agent');
+      const next = { ...frame, payload: { ...frame.payload, revision: 3 } };
+      transport.publish({ type: 'conversation', frame: next });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ teams: [expect.objectContaining({ id: 'team' })] }), next);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(transport.requests.filter((request) => request.method === 'snapshot.get')).toHaveLength(1);
+      expect(transport.requests.filter((request) => request.method === 'conversation.subscribe')).toHaveLength(1);
+      transport.endUpdates(); await vi.advanceTimersByTimeAsync(0);
       expect(disconnected).toHaveBeenCalledOnce();
       expect(transport.requests.some((request) => request.method === 'prompt.submit')).toBe(false);
       stop(); await connector.suspend!();
     } finally { await connector.dispose!(); vi.useRealTimers(); }
   });
-  it('keeps repository icons across polls and asks the laptop for them only when its copy is stale', async () => {
+  it('keeps repository icons across workspace updates and asks the laptop for them only when its copy is stale', async () => {
     const connector = connect(); await pairWith(connector);
     const session = await connector.connect(host.hostId);
     transport.response = () => ({ teams: [], agents: [], iconsVersion: 'v1', repositoryIcons: { '/r': 'GEAR' } });
@@ -161,7 +183,9 @@ describe('native relay host adapter', () => {
     expect(transport.dial).not.toHaveBeenCalled();
     await connector.resume!();
     transport.response = () => ({ teams: [], agents: [] });
-    expect(await session.getWorkspace()).toEqual({ teams: [], agents: [], repositoryIcons: {} });
+    const resumed = await connector.connect(host.hostId);
+    expect(await resumed.getWorkspace()).toEqual({ teams: [], agents: [], repositoryIcons: {} });
+    resumed.close();
     session.close(); await connector.dispose!();
   });
   it('keeps only the pinned laptop and relay identities, never the code, and restores them after restart', async () => {
@@ -199,7 +223,7 @@ describe('native relay host adapter', () => {
     const storage = vault(); const connector = connect(storage);
     await pairWith(connector);
     transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote-host' }], agents: [agent] }
-      : method === 'conversation.subscribe' ? { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', payload: { revision: 1, snapshot: { messages: [] } } }
+      : method === 'conversation.subscribe' ? { type: 'codex.conversationSnapshotChanged', agentId: 'agent', backend: 'codex', threadId: 'thread', seq: 1, occurredAt: '2026-10-14T00:00:00Z', payload: { revision: 1, snapshot: codexConversationSnapshot([], { activeConversationId: 'thread', historyState: { loadingStrategy: 'lazy', fullyLoaded: true, hasOlder: false, loadingOlder: false } }) } }
       : method === 'prompt.submit' || method === 'command.status' ? { state: 'accepted' } : {};
     const session = await connector.connect(host.hostId); await session.getWorkspace();
     await session.loadConversation('agent');

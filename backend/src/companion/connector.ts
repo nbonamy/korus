@@ -6,7 +6,7 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, PrivateKey, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { relayAddress, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import type { CompanionGateway } from './gateway';
@@ -41,6 +41,12 @@ export class CompanionOutboundConnector {
       streams.add(stream); this.active.set(peerId, streams);
       void this.serve(stream, peerId).finally(() => { streams.delete(stream); if (!streams.size) this.active.delete(peerId); });
     }, { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
+    await this.node.handle(companionUpdatesProtocol, (stream, connection) => {
+      const peerId = connection.remotePeer.toString();
+      const streams = this.active.get(peerId) ?? new Set<Stream>();
+      streams.add(stream); this.active.set(peerId, streams);
+      void this.serveUpdates(stream, peerId).finally(() => { streams.delete(stream); if (!streams.size) this.active.delete(peerId); });
+    }, { maxInboundStreams: 1, maxOutboundStreams: 1, runOnLimitedConnection: true });
     this.node.addEventListener('connection:close', () => {
       if (!this.node?.getConnections().some((connection) => connection.remotePeer.toString() === relayPeerId)) {
         this.connected = false; if (!this.reserving) this.schedule(address.toString());
@@ -89,6 +95,46 @@ export class CompanionOutboundConnector {
     const delay = Math.min(30_000, 1000 * 2 ** Math.min(this.attempts++, 5)) + Math.floor(Math.random() * 500);
     this.timer = setTimeout(() => { this.timer = undefined; void this.reserve(address); }, delay);
     this.timer.unref();
+  }
+  private async serveUpdates(stream: Stream, peerId: string) {
+    stream.maxReadBufferLength = companionFrameLimit + 4;
+    stream.maxWriteBufferLength = companionResponseLimit + 4;
+    stream.inactivityTimeout = 45_000;
+    const decoder = new CompanionFrameDecoder();
+    let sequence = 0; let queuedBytes = 0; let queuedFrames = 0; let closed = false;
+    let pending = Promise.resolve();
+    const fail = () => { closed = true; stream.abort(new Error('Companion update stream closed.')); };
+    const send = (value: unknown) => {
+      if (closed) return;
+      let bytes: Uint8Array;
+      try { bytes = encodeCompanionFrame(value, companionResponseLimit); } catch { fail(); return; }
+      queuedBytes += bytes.byteLength; queuedFrames++;
+      if (queuedBytes > companionResponseLimit * 2 || queuedFrames > 256) { fail(); return; }
+      pending = pending.then(async () => {
+        if (closed) return;
+        if (!stream.send(bytes)) await new Promise<void>((resolve, reject) => {
+          const cleanup = () => { stream.removeEventListener('close', close); stream.removeEventListener('drain', drain); };
+          const close = () => { cleanup(); reject(new Error('Closed.')); };
+          const drain = () => { cleanup(); resolve(); };
+          stream.addEventListener('close', close, { once: true }); stream.addEventListener('drain', drain, { once: true });
+        });
+        queuedBytes -= bytes.byteLength; queuedFrames--;
+      }).catch(fail);
+    };
+    let subscription: ReturnType<CompanionGateway['subscribe']> | undefined;
+    const cleanup = () => { closed = true; subscription?.close(); };
+    stream.addEventListener('close', cleanup, { once: true });
+    try {
+      subscription = this.gateway.subscribe(peerId, (update) => send({ v: 1, seq: ++sequence, update }), fail);
+      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+        const request = requestSchema.parse(value);
+        try {
+          const result = request.method === 'ping' ? {} : await subscription.request(request.method, request.args);
+          send({ v: 1, id: request.id, result });
+        } catch { send({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
+      }
+    } catch { fail(); }
+    finally { cleanup(); stream.removeEventListener('close', cleanup); stream.abort(new Error('Updates ended.')); }
   }
   private async serve(stream: Stream, peerId: string) {
     stream.maxReadBufferLength = companionFrameLimit + 4;

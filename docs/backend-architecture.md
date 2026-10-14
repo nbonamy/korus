@@ -122,6 +122,20 @@ re-reads the transcript from disk and can discard the turn in flight. A revision
 a copy that has gone quiet for 30 seconds, sends the read back to the provider. The
 gateway exposes no generic RPC, filesystem or shell forwarding.
 
+Mobile updates use one authenticated duplex stream per phone. A workspace reset
+and a subscribe-before-read conversation barrier precede ordered provider-native
+deltas. The phone uses the existing provider replicas, never a second transcript
+reducer. Workspace projections are sent on change; heartbeat messages carry no
+app state. Sequence gaps, provider revision gaps and reconnects rehydrate from the
+authoritative daemon. Stream queues and subscription counts are bounded; revocation
+and stream closure dispose listeners and buffered work.
+
+The visible conversation remains subscribed. Leaving it starts a five-minute
+expiry while its replica continues to receive events. Viewing it again cancels
+expiry; incoming events do not extend it. Expiry discards the replica and removes
+the subscription. Session changes invalidate the old replica, and app backgrounding
+closes the update stream and clears the subscription cache.
+
 The separate relay executable uses operator-provided TLS certificates and a
 persistent pinned identity. Only configured laptop peers can reserve circuits or
 update routing admission. Temporary pairing routes remain time/rate bounded;

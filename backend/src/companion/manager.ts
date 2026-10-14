@@ -55,8 +55,10 @@ export class CompanionManager {
     if (this.environment.relay) return this.environment.relay;
     return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : null;
   }
+  private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
   event(event: AppBackendEvent) {
     this.conversations.observe(event);
+    for (const listener of this.eventListeners) listener(event);
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
     const action = controlSchema.parse(input);
@@ -113,6 +115,7 @@ export class CompanionManager {
     }
     this.saved = saved;
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
       loadOlderHistory: (agentId) => this.backend.request<{ hasOlder: boolean }>(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       conversation: async (agentId) => {

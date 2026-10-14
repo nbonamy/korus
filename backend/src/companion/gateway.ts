@@ -1,3 +1,5 @@
+import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionCommandReceipt, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
@@ -25,6 +27,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
 export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
 export type GatewayPort = {
+  onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<{ hasOlder: boolean }>;
@@ -82,6 +85,15 @@ export class CompanionGateway {
       await this.port.save(next); this.state = next;
       this.port.revoked(peerId);
     });
+  }
+  subscribe(peerId: string, emit: ConstructorParameters<typeof CompanionSubscription>[1], fail: () => void) {
+    const grant = this.state.grants.find((grant) => grant.peerId === peerId);
+    if (!grant || !this.port.onEvent) throw new Error('Device is not authorized for updates.');
+    return new CompanionSubscription({
+      authorized: () => this.state.grants.includes(grant),
+      onEvent: (listener) => this.port.onEvent!(listener),
+      request: (method, args) => this.request(peerId, method, args),
+    }, emit, fail);
   }
   async request(peerId: string, method: string, args: unknown): Promise<unknown> {
     this.expire();

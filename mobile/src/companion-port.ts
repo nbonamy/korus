@@ -17,6 +17,8 @@ export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boo
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
   getWorkspace(): Promise<CompanionWorkspace>;
+  deselectConversation?(): void;
+  cachedConversation?(agentId: string): CompanionConversation | null | undefined;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
   sendPrompt(agentId: string, prompt: string, clientCommandId?: string, options?: CompanionPromptOptions, attachments?: CompanionUpload[]): Promise<void>;

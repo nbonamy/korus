@@ -1,3 +1,5 @@
+import { createCompanionStream } from './companion-stream';
+import { ConversationCache } from './conversation-cache';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
@@ -8,7 +10,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption } from '@workspace/core/contracts';
 import type { CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
@@ -64,7 +66,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       return node;
     })().finally(() => { opening = null; });
   }
-  async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
+  async function openStream(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, protocol: string): Promise<Stream> {
     const networkNode = await network();
     const address = `${addressFor(host.relayOrigin, host.relayPeerId)}/p2p-circuit/p2p/${host.hostId}`;
     // libp2p's dial queue excludes limited circuits from automatic reuse. Reuse the
@@ -72,8 +74,12 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     const options = { signal: AbortSignal.timeout(15_000), runOnLimitedConnection: true };
     const existing = networkNode.getConnections(peerIdFromString(host.hostId)).find((connection) => connection.status === 'open' && connection.remoteAddr.toString() === address);
     const stream: Stream = existing
-      ? await existing.newStream(companionProtocol, options)
-      : await networkNode.dialProtocol(multiaddr(address), companionProtocol, options);
+      ? await existing.newStream(protocol, options)
+      : await networkNode.dialProtocol(multiaddr(address), protocol, options);
+    return stream;
+  }
+  async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
+    const stream = await openStream(host, companionProtocol);
     stream.maxReadBufferLength = companionResponseLimit + 4; stream.maxWriteBufferLength = 1024 * 1024; stream.inactivityTimeout = 20_000;
     const id = crypto.randomUUID(); const decoder = new CompanionFrameDecoder(companionResponseLimit);
     try {
@@ -142,13 +148,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       await initialize();
       const host = records.find((record) => record.hostId === laptopId);
       if (!host) throw new Error('Pair the laptop first.');
-      let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] }; let selected = '';
+      let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] };
       const listeners = new Set<() => void>();
       const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
-      let timer: ReturnType<typeof setTimeout> | undefined;
+
       let icons: { version: string; value: Record<string, string> } = { version: '', value: {} };
       const read = async () => {
-        const { iconsVersion, repositoryIcons, ...rest } = await request<CompanionWorkspace & { iconsVersion?: string }>(host, 'snapshot.get', { iconsVersion: icons.version });
+        const { iconsVersion, repositoryIcons, ...rest } = await channel.request<CompanionWorkspace & { iconsVersion?: string }>('snapshot.get', { iconsVersion: icons.version });
         if (repositoryIcons) icons = { version: iconsVersion ?? '', value: repositoryIcons };
         workspace = { ...rest, repositoryIcons: icons.value };
         return workspace;
@@ -158,28 +164,28 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         if (!agent || !team) throw new Error('Agent is outside the paired scope.');
         return companionTarget(host.hostId, team, agent);
       };
-      const conversation = async (agentId: string) => {
-        const selectedTarget = target(agentId);
-        const agent = workspace.agents.find((agent) => agent.id === agentId);
-        if (!agent?.backendSession) return null;
-        return request<CompanionConversation>(host, 'conversation.subscribe', selectedTarget);
-      };
-      async function poll() {
-        if (closed) return;
-        try {
-          const nextWorkspace = await read();
-          const frame = selected ? await conversation(selected) : null;
-          if (closed) return;
-          for (const listener of updates) listener(nextWorkspace, frame);
-          timer = setTimeout(() => void poll(), 1200);
-        } catch { if (!closed) { close(); for (const listener of listeners) listener(); } }
-      }
-      const close = () => { closed = true; clearTimeout(timer); sessions.delete(handle); };
+      const notify = (frame: CompanionConversation | null = null) => { if (!closed) for (const listener of updates) listener(workspace, frame); };
+      const failed = () => { if (!closed) { close(); for (const listener of listeners) listener(); } };
+      const cache = new ConversationCache((method, target) => channel.request(method, target), (frame) => notify(frame), failed);
+      const channel = createCompanionStream(() => openStream(host, companionUpdatesProtocol), (update) => {
+        if (update.type === 'workspace') {
+          workspace = { ...update.workspace, repositoryIcons: update.workspace.repositoryIcons ?? icons.value };
+          if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
+          cache.reconcile(workspace.agents.flatMap((agent) => {
+            const team = workspace.teams.find((team) => team.id === agent.teamId);
+            return team ? [companionTarget(host.hostId, team, agent)] : [];
+          }));
+          notify();
+        } else cache.receive(update.frame);
+      }, failed);
+      const close = () => { closed = true; channel.close(); cache.close(); sessions.delete(handle); };
       const handle = { laptopId, close }; sessions.add(handle);
       const session: CompanionSession = {
         getWorkspace: read,
-        async loadConversation(agentId) { selected = agentId; return conversation(agentId); },
-        async loadOlderHistory(agentId) { return request<CompanionHistoryPage>(host, 'conversation.loadOlder', target(agentId)); },
+        deselectConversation() { void cache.select(null); },
+        cachedConversation(agentId) { return cache.peek(target(agentId)); },
+        async loadConversation(agentId) { return cache.select(agentId ? target(agentId) : null); },
+        async loadOlderHistory(agentId) { const page = await request<CompanionHistoryPage>(host, 'conversation.loadOlder', target(agentId)); cache.receive(page.frame); return { ...page, frame: cache.peek(target(agentId)) ?? page.frame }; },
         async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
           const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
@@ -196,7 +202,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },
         async commandStatus(clientCommandId) { return (await request<{ state: 'accepted' | 'unresolved' | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
         onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-        onUpdate(listener) { updates.add(listener); if (!timer) timer = setTimeout(() => void poll(), 1200); return () => updates.delete(listener); },
+        onUpdate(listener) { updates.add(listener); return () => updates.delete(listener); },
         close,
       };
       return session;
