@@ -10,7 +10,15 @@ struct RootView: View {
     var body: some View {
         @Bindable var model = model
         Group {
-            if model.needsPairing { PairingView() } else { shell }
+            if model.startup == .error {
+                VStack(spacing: 16) {
+                    Text("Couldn’t restore your connection.").foregroundStyle(.secondary)
+                    Button("Retry") { model.command("start") }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.startup == .loading || (model.teams.isEmpty && (model.connection == .connecting || model.connection == .reconnecting)) {
+                StartupView(productName: model.productName, connecting: !model.laptops.isEmpty)
+            } else if model.needsPairing { PairingView() } else { shell }
         }
         .background { EngineView(host: model.engine).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false) }
     }

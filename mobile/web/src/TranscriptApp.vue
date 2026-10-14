@@ -2,7 +2,7 @@
   <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px` }">
     <button v-if="history.failed" class="app-button app-button--tertiary" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <ConversationPane
-      v-if="agent"
+      v-if="agent && (frame || ready)"
       :controller="controller"
       :agent="agent"
       :agents="agents"
@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, provide, reactive, shallowRef } from 'vue';
+import { computed, nextTick, provide, reactive, shallowRef } from 'vue';
 import { createCodexConversationPaneController, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import type { Agent } from '@workspace/core/contracts';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
@@ -26,6 +26,7 @@ import { handler } from './native';
 const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
+const ready = shallowRef(false);
 const insets = reactive({ top: 0, bottom: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
@@ -55,11 +56,19 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
+let presentation = 0;
 window.companionTranscript = {
-  setConversation(json) {
-    const message = JSON.parse(json) as { frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history?: CompanionHistoryState };
+  async setConversation(json) {
+    const revision = ++presentation;
+    const message = JSON.parse(json) as { frame: CompanionConversation | null; ready?: boolean; agent: Agent | null; agents: Agent[]; history?: CompanionHistoryState };
     frame.value = message.frame; agent.value = message.agent; agents.value = message.agents;
+    ready.value = message.ready ?? false;
     history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
+    if ((!message.frame && !message.ready) || !message.agent) return null;
+    await nextTick();
+    // Let the updated pane paint before the native shell removes its loading overlay.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    return revision === presentation ? message.agent.id : null;
   },
   setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
 };

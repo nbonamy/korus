@@ -8,6 +8,7 @@ import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './w
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  startup: 'loading' | 'ready' | 'error';
   connection: string;
   /** A `mobile.errors.*` key the shell words itself. */
   error: string;
@@ -32,9 +33,10 @@ export type EngineState = {
 export type EngineEvent =
   | { type: 'state'; state: EngineState }
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
-  | { type: 'conversation'; agentId: string; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState };
+  | { type: 'conversation'; agentId: string; ready: boolean; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState };
 
 export type EngineCommand =
+  | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
   | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
@@ -56,6 +58,7 @@ const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEffort
 
 export function createEngine(port: EnginePort) {
   const state = createCompanionState(port.connector, undefined);
+  let startup: EngineState['startup'] = 'loading';
   let pairing: EngineState['pairing'] = 'idle';
   let pairingError = '';
   let laptops = [...port.connector.laptops];
@@ -70,12 +73,12 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
-      connection: state.status.value, error: state.error.value, laptops, pairing, pairingError,
+      startup, connection: state.status.value, error: state.error.value, laptops, pairing, pairingError,
       teams: state.workspace.value.teams.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
-      loading: state.loading.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      loading: state.loading.value && !state.conversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
       composer: { modelId: settings?.model?.id ?? null, effort: settings?.reasoningEffort ?? null, serviceTier: settings?.serviceTier ?? null, planMode: settings?.planMode ?? false },
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
@@ -92,8 +95,8 @@ export function createEngine(port: EnginePort) {
     queueMicrotask(() => { scheduled = false; if (!disposed) port.post({ type: 'state', state: snapshot() }); });
   }
   watch(snapshot, publish, { deep: true, flush: 'sync' });
-  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value] as const, ([frame, agent, agents, history]) => {
-    port.post({ type: 'conversation', agentId: state.agentId.value, frame, agent, agents, history });
+  watch(() => [state.conversation.value, state.agent.value, state.agents.value, state.history.value, state.conversationReady.value] as const, ([frame, agent, agents, history, ready]) => {
+    port.post({ type: 'conversation', agentId: state.agentId.value, ready, frame, agent, agents, history });
   }, { flush: 'sync' });
 
   async function pair(code: string, deviceName: string) {
@@ -111,6 +114,7 @@ export function createEngine(port: EnginePort) {
 
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
+      case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': return state.connect(command.laptopId);
       case 'disconnect': return state.disconnect();
@@ -135,10 +139,15 @@ export function createEngine(port: EnginePort) {
 
   /** Opens the saved pairing when there is exactly one; with several, the person chooses. */
   async function start() {
-    await port.connector.initialize?.();
-    laptops = [...port.connector.laptops];
+    startup = 'loading'; publish();
+    try {
+      await port.connector.initialize?.();
+      laptops = [...port.connector.laptops];
+      publish();
+      if (laptops.length === 1) await state.connect(laptops[0]!.id);
+      startup = 'ready';
+    } catch { startup = 'error'; }
     publish();
-    if (laptops.length === 1) await state.connect(laptops[0]!.id);
   }
 
   return { dispatch, start, snapshot, dispose() { disposed = true; state.dispose(); void port.connector.dispose?.(); } };

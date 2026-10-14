@@ -8,9 +8,20 @@ struct ConversationScreen: View {
             GeometryReader { proxy in
                 TranscriptView(host: model.transcript)
                     .ignoresSafeArea()
+                    .accessibilityHidden(model.loadingConversation)
+                    .allowsHitTesting(!model.loadingConversation)
                     .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
                         model.transcript.setInsets(top: insets.top, bottom: insets.bottom)
                     }
+            }
+            .overlay {
+                if model.loadingConversation {
+                    // Keep the WebView painting underneath until it acknowledges the selected frame.
+                    ZStack {
+                        Color(.systemBackground).ignoresSafeArea()
+                        ProgressView("Loading conversation…")
+                    }
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { ComposerView() }
             .toolbar {

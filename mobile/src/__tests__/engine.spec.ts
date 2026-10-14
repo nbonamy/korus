@@ -13,6 +13,92 @@ function open(connector = createDemoConnector()) {
 }
 
 describe('companion engine', () => {
+  it('keeps an already displayed conversation visible while reconnecting', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let finish!: () => void;
+    const { engine, latest, events } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const frame = events.filter((event) => event.type === 'conversation').at(-1)!.frame;
+      await engine.dispatch({ type: 'disconnect' });
+      connector.connect = async (id) => {
+        const session = await connect(id);
+        return { ...session, loadConversation: async (agentId) => {
+          await new Promise<void>((resolve) => { finish = resolve; });
+          return session.loadConversation(agentId);
+        } };
+      };
+      const reconnected = engine.dispatch({ type: 'reconnect' });
+      await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+      expect(latest()).toMatchObject({ loading: false, canSend: false });
+      expect(events.filter((event) => event.type === 'conversation').at(-1)!.frame).toEqual(frame);
+      finish(); await reconnected;
+      expect(latest()).toMatchObject({ loading: false, canSend: true });
+    } finally { engine.dispose(); }
+  });
+  it('marks a new conversation ready even before it has a provider session', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async (id) => ({ ...await connect(id), loadConversation: async () => null });
+    const { engine, events } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
+    } finally { engine.dispose(); }
+  });
+  it('keeps startup loading through saved-pairing restoration and connection', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let initialized!: () => void; let connected!: () => void;
+    connector.initialize = () => new Promise<void>((resolve) => { initialized = resolve; });
+    connector.connect = async (id) => { await new Promise<void>((resolve) => { connected = resolve; }); return connect(id); };
+    const { engine, latest, states } = open(connector);
+    expect(latest().startup).toBe('loading');
+    const starting = engine.start();
+    await Promise.resolve();
+    expect(latest().startup).toBe('loading');
+    initialized(); await vi.waitFor(() => expect(latest().connection).toBe('connecting'));
+    expect(latest().startup).toBe('loading');
+    connected(); await starting;
+    expect(latest()).toMatchObject({ startup: 'ready', connection: 'connected' });
+    expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    engine.dispose();
+  });
+  it('shows pairing only after checking storage, and permits retry after a storage failure', async () => {
+    const connector = unpaired();
+    connector.initialize = vi.fn().mockRejectedValueOnce(new Error('Keychain unavailable')).mockResolvedValue(undefined);
+    const { engine, latest } = open(connector);
+    await engine.start();
+    expect(latest().startup).toBe('error');
+    await engine.dispatch({ type: 'start' });
+    expect(latest()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
+    engine.dispose();
+  });
+  it('publishes conversation loading until the selected thread arrives and clears it on failure', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let complete!: () => void; let fail = false;
+    connector.connect = async (id) => {
+      const session = await connect(id);
+      return { ...session, loadConversation: async (agentId) => {
+        await new Promise<void>((resolve) => { complete = resolve; });
+        if (fail) throw new Error('Unavailable');
+        return session.loadConversation(agentId);
+      } };
+    };
+    const { engine, latest, events } = open(connector);
+    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+    const first = engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+    expect(latest()).toMatchObject({ loading: true, canSend: false, agentId: 'demo-agent' });
+    complete(); await first;
+    expect(latest()).toMatchObject({ loading: false, canSend: true });
+    fail = true;
+    const second = engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    expect(latest()).toMatchObject({ loading: true, canSend: false, agentId: 'demo-reviewer' });
+    expect(events.filter((event) => event.type === 'conversation').at(-1)).toMatchObject({ frame: null, agentId: 'demo-reviewer' });
+    complete(); await second;
+    expect(latest()).toMatchObject({ loading: false, canSend: false, error: 'mobile.errors.loadConversation' });
+    engine.dispose();
+  });
   it('deduplicates history loads and ignores a result after the selected agent changes', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let complete!: (value: CompanionHistoryPage) => void;

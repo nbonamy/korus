@@ -301,7 +301,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
   }
-  return { status, error, laptopId, teamId, agentId, workspace, conversation, loading, agents, agent,
+  return { status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

@@ -21,6 +21,32 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
+    // The native loading overlay must outlive both data delivery and Vue's DOM update.
+    // A superseded selection must never reveal the wrong/empty transcript.
+    const presentation = await page.evaluate(async () => {
+      const agent = { id: 'presentation-agent', teamId: 'scroll-team', name: 'Presentation test', folder: null,
+        backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
+      const conversation = { agent, agents: [agent], frame: { payload: { snapshot: {
+        messages: [{ id: 'presentation-message', role: 'assistant', status: 'complete', createdAt: '2026-01-01',
+          parts: [{ type: 'text', text: 'The selected conversation has rendered.' }] }], turns: [], activeTurnId: null, busy: false,
+      } } } };
+      let paintReached = false;
+      requestAnimationFrame(() => { paintReached = true; });
+      const pending = window.companionTranscript.setConversation(JSON.stringify(conversation));
+      const before = document.body.textContent.includes('The selected conversation has rendered.');
+      const ready = await pending;
+      const after = paintReached && document.body.textContent.includes('The selected conversation has rendered.');
+      const stale = window.companionTranscript.setConversation(JSON.stringify(conversation));
+      const cleared = window.companionTranscript.setConversation(JSON.stringify({ ...conversation, frame: null }));
+      const superseded = await stale;
+      const empty = await cleared;
+      // A genuinely empty, loaded thread is ready too; a null frame is not.
+      const newThread = await window.companionTranscript.setConversation(JSON.stringify({ ...conversation,
+        ready: true, frame: null,
+      }));
+      return { before, ready, after, superseded, empty, newThread };
+    });
+    assert.deepEqual(presentation, { before: false, ready: 'presentation-agent', after: true, superseded: null, empty: null, newThread: 'presentation-agent' });
     const initialConversation = await page.evaluate(() => {
       const agent = { id: 'scroll-agent', teamId: 'scroll-team', name: 'Scroll test', folder: null,
         backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };

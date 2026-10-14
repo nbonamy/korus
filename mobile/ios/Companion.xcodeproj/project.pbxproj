@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B0000001000000000000000B /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = B00000020000000000000005 /* icon.png */; };
 		B0000001000000000000000A /* Web in Resources */ = {isa = PBXBuildFile; fileRef = B00000020000000000000002 /* Web */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B00000020000000000000005 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = ../../electron/assets/icon.png; sourceTree = SOURCE_ROOT; };
 		B00000020000000000000001 /* Companion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Companion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000020000000000000002 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
 		B00000020000000000000003 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
@@ -40,6 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000030000000000000001 /* Sources */,
+				B00000020000000000000005 /* icon.png */,
 				B00000020000000000000002 /* Web */,
 				B00000050000000000000002 /* Config */,
 				B00000050000000000000003 /* Products */,
@@ -125,6 +128,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B0000001000000000000000A /* Web in Resources */,
+				B0000001000000000000000B /* icon.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

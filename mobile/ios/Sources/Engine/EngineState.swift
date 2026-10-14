@@ -32,6 +32,9 @@ struct EngineState: Decodable {
     struct Capabilities: Decodable { let models: Bool; let reasoningEffort: Bool; let serviceTier: Bool; let planMode: Bool; let interrupt: Bool; let attachments: Bool }
     enum Pairing: String, Decodable { case idle, working, awaitingApproval }
 
+    enum Startup: String, Decodable { case loading, ready, error }
+
+    let startup: Startup
     let connection: ConnectionState
     let error: String
     let laptops: [Laptop]

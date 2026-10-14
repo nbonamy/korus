@@ -6,6 +6,10 @@ import UIKit
 @Observable
 @MainActor
 final class AppModel {
+    var startup: EngineState.Startup = .loading
+    private var fetchingConversation = false
+    private var awaitingTranscript = false
+    var loadingConversation: Bool { fetchingConversation || awaitingTranscript }
     var connection: ConnectionState = .unpaired
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -34,6 +38,10 @@ final class AppModel {
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onConversation = { [weak self] json in self?.transcript.setConversation(json) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
+        transcript.onRendered = { [weak self] id in
+            guard let self, id == self.activeAgentID else { return }
+            self.awaitingTranscript = false
+        }
         isLive = true
     }
 
@@ -50,6 +58,10 @@ final class AppModel {
     // MARK: Engine
 
     private func apply(_ state: EngineState) {
+        startup = state.startup
+        if state.loading && !fetchingConversation { awaitingTranscript = true }
+        fetchingConversation = state.loading
+        if !state.loading && (!state.error.isEmpty || state.agentId.isEmpty) { awaitingTranscript = false }
         connection = state.connection
         laptops = state.laptops
         pairing = state.pairing
@@ -82,6 +94,8 @@ final class AppModel {
 
     func select(agent id: String) {
         drawerOpen = false
+        awaitingTranscript = true
+        transcript.beginSelection()
         command("selectAgent", ["id": id])
     }
 

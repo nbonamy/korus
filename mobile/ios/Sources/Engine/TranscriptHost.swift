@@ -6,6 +6,8 @@ import WebKit
 final class TranscriptHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
     var onLoadOlder: ((String) -> Void)?
+    var onRendered: ((String) -> Void)?
+    private var presentation = 0
     private var isReady = false
     private var conversation: String?
     private var insets: (top: Double, bottom: Double) = (0, 0)
@@ -26,10 +28,19 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
     }
 
     func setConversation(_ json: String) {
+        presentation += 1
+        let revision = presentation
         conversation = json
         guard isReady else { return }
-        webView.callAsyncJavaScript("window.companionTranscript.setConversation(json)", arguments: ["json": json], in: nil, in: .page) { _ in }
+        webView.callAsyncJavaScript("return await window.companionTranscript.setConversation(json)", arguments: ["json": json], in: nil, in: .page) { [weak self] result in
+            guard let self, self.presentation == revision,
+                  case .success(let value) = result, let agentID = value as? String else { return }
+            self.onRendered?(agentID)
+        }
     }
+
+    /// A new native selection invalidates acknowledgments already in flight.
+    func beginSelection() { presentation += 1 }
 
     func setInsets(top: Double, bottom: Double) {
         insets = (top, bottom)
