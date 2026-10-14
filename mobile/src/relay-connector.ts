@@ -18,11 +18,14 @@ import type { ProtectedVault } from './protected-storage';
 
 /** Both ends of a pairing are pinned by identity; the code that introduced them is never stored. */
 type PairedLaptop = { v: 1; relayOrigin: string; relayPeerId: string; hostId: string; name: string };
-type RelayConfig = { origin: string; peerId: string };
+export type RelayConfig = { origin: string; peerId: string; allowLocalDevelopment?: boolean };
 function bytes(value: string) { return Uint8Array.from(atob(value), (character) => character.charCodeAt(0)); }
 function base64(value: Uint8Array) { return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join('')); }
 /** The relay is deployment configuration baked into the build; the phone only needs a pairing code. */
 export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig | null): CompanionConnector {
+  // Saved pairings cannot grant a transport exception: only this build's configured relay can.
+  const addressFor = (origin: string, peerId: string) => relayAddress(origin, peerId,
+    relay?.allowLocalDevelopment === true && origin === relay.origin && peerId === relay.peerId);
   let records: PairedLaptop[] = [];
   let initialized: Promise<void> | null = null;
   let node: Libp2p | null = null;
@@ -38,7 +41,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         records = JSON.parse(stored.value) as PairedLaptop[];
         if (!Array.isArray(records) || records.length > 20) throw new Error('Invalid paired devices.');
         for (const record of records) {
-          relayAddress(record.relayOrigin, record.relayPeerId);
+          addressFor(record.relayOrigin, record.relayPeerId);
           try { peerIdFromString(record.hostId); } catch { throw new Error('Saved laptop identity is invalid.'); }
         }
       }
@@ -63,7 +66,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   }
   async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
     const networkNode = await network();
-    const address = `${relayAddress(host.relayOrigin, host.relayPeerId)}/p2p-circuit/p2p/${host.hostId}`;
+    const address = `${addressFor(host.relayOrigin, host.relayPeerId)}/p2p-circuit/p2p/${host.hostId}`;
     // libp2p's dial queue excludes limited circuits from automatic reuse. Reuse the
     // authenticated, pinned circuit explicitly so pairing polls do not exhaust admission quotas.
     const options = { signal: AbortSignal.timeout(15_000), runOnLimitedConnection: true };
@@ -87,7 +90,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   }
   /** Asks the relay which laptop is advertising this channel; trust comes from the end-to-end proof, not the relay's answer. */
   async function resolve(networkNode: Libp2p, config: RelayConfig, channel: string): Promise<string> {
-    const stream: Stream = await networkNode.dialProtocol(multiaddr(relayAddress(config.origin, config.peerId)), companionRendezvousProtocol, { signal: AbortSignal.timeout(15_000) });
+    const stream: Stream = await networkNode.dialProtocol(multiaddr(addressFor(config.origin, config.peerId)), companionRendezvousProtocol, { signal: AbortSignal.timeout(15_000) });
     stream.maxReadBufferLength = 4096; stream.maxWriteBufferLength = 4096; stream.inactivityTimeout = 15_000;
     const decoder = new CompanionFrameDecoder();
     try {

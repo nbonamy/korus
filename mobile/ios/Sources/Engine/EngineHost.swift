@@ -40,7 +40,11 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         case "relay":
             let origin = (Bundle.main.object(forInfoDictionaryKey: "CompanionRelayURL") as? String) ?? ""
             let peer = (Bundle.main.object(forInfoDictionaryKey: "CompanionRelayPeerID") as? String) ?? ""
-            replyHandler(origin.isEmpty || peer.isEmpty ? NSNull() : ["origin": origin, "peerId": peer], nil)
+            var config: [String: Any] = ["origin": origin, "peerId": peer]
+            #if DEBUG
+            config["allowLocalDevelopment"] = true
+            #endif
+            replyHandler(origin.isEmpty || peer.isEmpty ? NSNull() : config, nil)
         default: replyHandler(nil, "Unknown request.")
         }
     }

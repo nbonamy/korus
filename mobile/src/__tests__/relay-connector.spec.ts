@@ -48,6 +48,24 @@ beforeEach(async () => {
 const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7QD-M2XP') => connector.pair!(code, 'Phone', () => {});
 describe('native relay host adapter', () => {
   const connect = (storage = vault()) => createRelayConnector(storage, host.relay);
+  it('pairs and restores over local WS only for the native Debug relay configuration', async () => {
+    host.relay.origin = 'ws://laptop.local:47801';
+    const storage = vault();
+    const config = { ...host.relay, allowLocalDevelopment: true };
+    const connector = createRelayConnector(storage, config);
+    try {
+      expect(await pairWith(connector)).toBe(host.hostId);
+      expect(transport.dial.mock.calls[0]![0].toString()).toBe(`/dns4/laptop.local/tcp/47801/ws/p2p/${host.relay.peerId}`);
+      const restored = createRelayConnector(storage, config);
+      await restored.initialize!();
+      expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
+      await restored.dispose!();
+      for (const other of [host.relay, { ...config, origin: 'ws://other.local:47801' }, { ...config, peerId: host.hostId }, null]) {
+        await expect(createRelayConnector(storage, other).initialize!()).rejects.toThrow('Invalid secure relay configuration');
+      }
+      expect(storage.values.get('paired-hosts')).not.toContain('allowLocalDevelopment');
+    } finally { await connector.dispose!(); }
+  });
   const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);

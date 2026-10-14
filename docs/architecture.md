@@ -91,6 +91,9 @@ operator host allowlist, temporary pairing windows and traffic bounds constrain
 routing. Endpoint authorization constrains app methods and location/team/agent/session
 targets. Local revocation persists before closing device connections. The local web,
 MCP and daemon socket transports retain their existing exposure boundaries.
+Native Debug builds may use WS for their configured relay on local Wi-Fi without
+a TLS certificate; Noise and pairing still apply. Release builds require WSS
+outside loopback, and saved pairings cannot enable the development exception.
 
 ## Conversation Ownership
 

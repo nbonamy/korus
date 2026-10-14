@@ -1,5 +1,5 @@
 import { createEngine, type EngineCommand, type EngineEvent } from '../../src/engine';
-import { createRelayConnector } from '../../src/relay-connector';
+import { createRelayConnector, type RelayConfig } from '../../src/relay-connector';
 import { createSelectionStore } from '../../src/selection-store';
 import type { ProtectedVault } from '../../src/protected-storage';
 import { handler, request } from './native';
@@ -11,7 +11,7 @@ const vault: ProtectedVault = {
   remove: async ({ key }) => { await request({ type: 'vault.remove', key }); },
 };
 
-const relay = await request<{ origin: string; peerId: string } | null>({ type: 'relay' });
+const relay = await request<RelayConfig | null>({ type: 'relay' });
 const connector = createRelayConnector(vault, relay);
 const events = handler('engine');
 const engine = createEngine({ connector, selectionStore: createSelectionStore(vault), post: (event: EngineEvent) => { void events.postMessage(JSON.stringify(event)); } });
