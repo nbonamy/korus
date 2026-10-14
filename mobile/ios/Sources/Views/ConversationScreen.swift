@@ -51,9 +51,17 @@ struct ConversationScreen: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         withAnimation(.smooth(duration: 0.32)) { model.drawerOpen.toggle() }
-                    } label: { Image(systemName: "line.3.horizontal") }
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                            .overlay(alignment: .topTrailing) {
+                                if model.teams.hasUnreadActivity {
+                                    UnreadDot().offset(x: 5, y: -5).accessibilityHidden(true)
+                                }
+                            }
+                    }
                     .buttonBorderShape(.circle)
                     .accessibilityLabel("Agents")
+                    .accessibilityValue(model.teams.hasUnreadActivity ? "Unread activity" : "")
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {

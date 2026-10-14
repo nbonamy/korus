@@ -24,6 +24,10 @@ struct Team: Identifiable, Hashable, Codable, Sendable {
     var isUnread: Bool? = nil
 }
 
+extension Collection where Element == Team {
+    var hasUnreadActivity: Bool { contains { $0.isUnread == true } }
+}
+
 struct SidebarSession: Identifiable, Hashable, Codable, Sendable {
     let agentId: String
     let title: String

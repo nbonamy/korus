@@ -248,7 +248,7 @@ private struct SessionRow: View {
     }
 }
 
-private struct UnreadDot: View {
+struct UnreadDot: View {
     var body: some View {
         Circle().fill(Color.red).frame(width: 8, height: 8).accessibilityLabel("Unread activity")
     }
