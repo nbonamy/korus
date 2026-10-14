@@ -10,7 +10,7 @@ export const messages = {
       disconnected: 'Host disconnected', engineUnavailable: 'Connect an engine to continue', busy: 'Agent is busy', notIdle: 'Agent must be idle', gitBusy: 'Git operation in progress', gitUnavailable: 'Unavailable for this repository',
       groups: { navigation: 'Navigation', conversation: 'Conversation', team: 'Team', settings: 'Settings', agent: 'Agent', workspace: 'Workspace', git: 'Git', application: 'Application' },
       cockpit: 'Open Cockpit', backlog: 'Open Backlog', automations: 'Open Automations', quickChat: 'New Quick Chat',
-      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', gitAction: 'Git: {action}',
+      newAgent: 'New agent', fork: 'Fork conversation', resume: 'Resume conversation', visualize: 'Open Visualize', plan: 'Open plan', filesPane: 'Open files', codeReview: 'Open code review', simulator: 'Open simulator', gitAction: 'Git: {action}',
     },
     shortcuts: {
       title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',

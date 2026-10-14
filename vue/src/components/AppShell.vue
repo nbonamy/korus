@@ -2518,6 +2518,7 @@ const paletteActions = computed(() => {
     capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
+    simulatorAvailable: Boolean(appApi?.mobileSimulator),
     gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
   }, {
     command: executeAppCommand,
@@ -2530,6 +2531,7 @@ const paletteActions = computed(() => {
     files: () => { fileQuickOpenVisible.value = true; },
     filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
     codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
+    simulator: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'simulator'); },
     visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
     plan: () => openRightWorkspaceTab('plan', agent?.id),
   });
