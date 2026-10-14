@@ -28,6 +28,10 @@ final class AppModel {
     var canInterrupt = false
     var sessionAction: String?
     var sessionActionFailed = false
+    var requests: [PendingRequest] = []
+    var presentedRequest: PendingRequest?
+    var respondingRequest: String?
+    var failedRequest: String?
     var closePreview: EngineState.ClosePreview?
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
@@ -65,6 +69,10 @@ final class AppModel {
     private func apply(_ state: EngineState) {
         startup = state.startup
         conversationLoading.update(fetching: state.loading, failed: !state.error.isEmpty, hasAgent: !state.agentId.isEmpty)
+        requests = state.requests ?? []
+        respondingRequest = state.respondingRequest
+        failedRequest = state.failedRequest
+        if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         connection = state.connection
         laptops = state.laptops
         pairing = state.pairing

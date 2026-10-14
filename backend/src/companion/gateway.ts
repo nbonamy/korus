@@ -1,3 +1,4 @@
+import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
@@ -10,6 +11,11 @@ import { createPairingExchange, generatePairingCode, normalizePairingCode, pairi
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
+const requestReplySchema = z.object({ target: targetSchema, id: identity, conversationId: z.string().min(1).max(500), outcome: z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('answered'), answers: z.record(z.string().min(1).max(500), z.object({ answers: z.array(z.string().max(100_000)).max(100) }).strict()) }).strict(),
+  z.object({ kind: z.literal('decision'), decision: z.enum(['allow', 'allow_conversation', 'always_allow', 'deny']) }).strict(),
+  z.object({ kind: z.literal('cancelled') }).strict(),
+]) }).strict();
 const closeSchema = z.object({ target: targetSchema, input: z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict().optional() }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.object({
@@ -27,6 +33,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
 export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
 export type GatewayPort = {
+  respondRequest?(response: AgentRequestResponse): Promise<void>;
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
   conversation(agentId: string): Promise<CompanionReset>;
@@ -167,6 +174,18 @@ export class CompanionGateway {
         || (session?.kind === 'antigravity' && frame.type !== 'antigravity.conversationSnapshotChanged')) throw new Error('Conversation session mismatch.');
       if (frame.agentId !== target.agentId) throw new Error('Conversation identity mismatch.');
       return page ? { frame, hasOlder: page.hasOlder } : frame;
+    }
+    if (method === 'agent.request.respond') {
+      const reply = requestReplySchema.parse(args);
+      await this.validateTarget(reply.target);
+      const workspace = await this.port.workspace();
+      const pending = workspace.agentRequests?.[reply.target.agentId]?.find((request) => request.id === reply.id && request.conversationId === reply.conversationId);
+      if (!pending || !this.port.respondRequest) throw new Error('Request is no longer pending.');
+      await this.validateTarget(reply.target);
+      this.requireGrant(peerId, grant);
+      // The daemon request owner validates decision scopes and consumes the pending request.
+      await this.port.respondRequest({ agentId: reply.target.agentId, id: reply.id, outcome: reply.outcome });
+      return {};
     }
     if (method === 'prompt.submit') {
       const command = commandSchema.parse(args);

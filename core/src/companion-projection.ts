@@ -46,11 +46,11 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
       status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   });
-  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [] };
+  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], agentRequests: Object.fromEntries(agents.map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])) };
 }
 
 /** The laptop's workspace as the desktop sidebar lists it: mission-owned workers stay out of the agent list. */
-export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & { missions?: AppSnapshot['missions'] }): CompanionWorkspace {
+export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & Partial<Pick<AppSnapshot, 'missions' | 'agentRequests'>>): CompanionWorkspace {
   const workerIds = new Set((snapshot.missions ?? []).flatMap((mission) => mission.execution?.runs.flatMap((run) => run.workerId ? [run.workerId] : []) ?? []));
-  return { teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites };
+  return { agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites };
 }

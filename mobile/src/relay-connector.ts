@@ -182,6 +182,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const handle = { laptopId, close }; sessions.add(handle);
       const session: CompanionSession = {
         getWorkspace: read,
+        async respondRequest(reply) { await request(host, 'agent.request.respond', reply); },
         deselectConversation() { void cache.select(null); },
         cachedConversation(agentId) { return cache.peek(target(agentId)); },
         async loadConversation(agentId) { return cache.select(agentId ? target(agentId) : null); },

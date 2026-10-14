@@ -45,7 +45,10 @@ describe('encrypted companion circuit', () => {
     const events = new Set<(event: AppBackendEvent) => void>();
     const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: {} } } as CompanionReset;
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    workspace.agentRequests = { agent: [{ id: 'question', conversationId: 'thread', kind: 'question', question: { itemId: 'item', delivery: 'tool', blocking: true, questions: [] } }] };
+    const responses: unknown[] = [];
     const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      respondRequest: async (response) => { responses.push(response); workspace.agentRequests = { agent: [] }; for (const listener of events) listener({ type: 'agentRequest.resolved', agentId: 'agent', payload: { id: 'question' } } as AppBackendEvent); },
       onEvent: (listener) => { events.add(listener); return () => { events.delete(listener); }; },
       workspace: async () => workspace, conversation: async () => frame,
       loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: (peer) => connector.revoke(peer),
@@ -67,6 +70,10 @@ describe('encrypted companion circuit', () => {
     await expect.poll(() => received.some((item) => item.update?.frame?.payload.revision === 2)).toBe(true);
     expect(received.filter((item) => item.update).map((item) => item.seq)).toStrictEqual([1, 2, 3]);
     expect(received.at(-1).update.frame.payload).toStrictEqual(delta.payload);
+    const reply = { target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) }, id: 'question', conversationId: 'thread', outcome: { kind: 'answered', answers: { choice: { answers: ['Yes'] } } } };
+    expect(await rpc(phone, `${address}/p2p-circuit/p2p/${hostId}`, 'agent.request.respond', reply)).toMatchObject({ result: {} });
+    expect(responses).toStrictEqual([{ agentId: 'agent', id: 'question', outcome: reply.outcome }]);
+    await expect.poll(() => received.some((item) => item.update?.workspace?.agentRequests?.agent?.length === 0)).toBe(true);
     await gateway.revoke(phone.peerId.toString());
     await expect.poll(() => ended).toBe(true);
     await expect.poll(() => events.size).toBe(0);

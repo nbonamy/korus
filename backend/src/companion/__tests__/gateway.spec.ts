@@ -23,7 +23,7 @@ async function claim(gateway: CompanionGateway, peerId: string, shown: string, n
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
+  const port = { respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async () => ({ hasOlder: false })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
@@ -38,6 +38,30 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('routes answers only to the paired, current session and pending request identity', async () => {
+    const f = fixture();
+    const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
+    f.port.workspace.mockResolvedValue({ ...workspace, agentRequests: { agent: [question] } });
+    const reply = { target, id: 'q', conversationId: 'conversation', outcome: { kind: 'answered', answers: { choice: { answers: ['Keep the worktree'] } } } };
+    await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
+    await f.pair();
+    for (const invalid of [
+      { ...reply, target: { ...target, sessionId: 'old' } },
+      { ...reply, conversationId: 'old-conversation' },
+      { ...reply, id: 'missing' },
+      { ...reply, agentId: 'remote-agent' },
+      { ...reply, outcome: { kind: 'decision', decision: 'unrestricted' } },
+      { ...reply, outcome: { kind: 'answered', answers: { choice: { answers: [42] } } } },
+    ]) await expect(f.gateway.request('phone', 'agent.request.respond', invalid)).rejects.toThrow();
+    expect(f.port.respondRequest).not.toHaveBeenCalled();
+    await f.gateway.request('phone', 'agent.request.respond', reply);
+    expect(f.port.respondRequest).toHaveBeenCalledExactlyOnceWith({ agentId: 'agent', id: 'q', outcome: reply.outcome });
+    f.port.respondRequest.mockRejectedValueOnce(new Error('Already answered on desktop'));
+    await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('Already answered');
+    await f.gateway.revoke('phone');
+    await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
+  });
+
   it('authorizes session actions against the selected session and requires explicit worktree deletion consent', async () => {
     const f = fixture();
     await expect(f.gateway.request('phone', 'agent.close.preview', target)).rejects.toThrow('authorized');

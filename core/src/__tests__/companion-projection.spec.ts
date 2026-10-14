@@ -16,6 +16,15 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('includes pending requests only for agents visible to the phone', () => {
+    const request = { id: 'approval', conversationId: 'thread', kind: 'approval' as const,
+      approval: { id: 'approval', conversationId: 'thread', itemId: 'command', kind: 'command' as const, title: 'Run command', command: 'git status', allowedScopes: ['once' as const] } };
+    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})],
+      general: {} as AppSnapshot['general'], agentRequests: { keep: [request], worker: [request], missing: [request] },
+      missions: [{ execution: { runs: [{ workerId: 'worker' }] } }] as unknown as AppSnapshot['missions'] });
+    expect(projectCompanionWorkspace(workspace).agentRequests).toStrictEqual({ keep: [request] });
+  });
+
   const agents = [
     git('sdk', '/Users/me/src/codex-app-sdk-sdk', 'sdk', {}, true),
     git('builder', '/Users/me/src/codex-app-sdk-builder', 'app-builder', {}, true),

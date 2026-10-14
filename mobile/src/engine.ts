@@ -6,10 +6,13 @@ import { createCompanionState } from './companion-state';
 import type { ComposerChange } from './composer-settings';
 import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
-import type { CompanionClosePreview } from '@workspace/core/companion-protocol';
+import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  requests: ReturnType<typeof createCompanionState>['requests']['value'];
+  respondingRequest: string | null;
+  failedRequest: string | null;
   startup: 'loading' | 'ready' | 'error';
   connection: string;
   /** A `mobile.errors.*` key the shell words itself. */
@@ -41,6 +44,7 @@ export type EngineEvent =
   | { type: 'conversation'; agentId: string; ready: boolean; frame: CompanionConversation | null; agent: Agent | null; agents: Agent[]; history: CompanionHistoryState };
 
 export type EngineCommand =
+  | { type: 'respondRequest'; reply: CompanionRequestReply }
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
@@ -103,6 +107,7 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       startup, connection: state.status.value, error: state.error.value, laptops, pairing, pairingError,
       teams: state.workspace.value.teams.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
@@ -182,6 +187,7 @@ export function createEngine(port: EnginePort) {
 
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
+      case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': return connect(command.laptopId);

@@ -14,6 +14,44 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('keeps failed answers available, prevents double responses, and never retargets a response after navigation', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const question = { id: 'same-id', conversationId: 'conversation', kind: 'question' as const,
+      question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [{ id: 'q', header: 'Choice', question: 'Which?', isOther: true, isSecret: false, options: null }] } };
+    let reject!: (error: Error) => void;
+    const respondRequest = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
+    connector.connect = async (id) => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      return { ...session, getWorkspace: async () => ({ ...workspace, agentRequests: { 'demo-agent': [question], 'demo-reviewer': [question] } }), respondRequest };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const first = latest().requests[0]!;
+      const reply = { target: { sessionId: first.target.sessionId, agentId: first.target.agentId, teamId: first.target.teamId, locationId: first.target.locationId, hostId: first.target.hostId }, id: first.request.id, conversationId: first.request.conversationId,
+        outcome: { kind: 'answered' as const, answers: { q: { answers: ['My answer'] } } } };
+      const sending = engine.dispatch({ type: 'respondRequest', reply });
+      await engine.dispatch({ type: 'respondRequest', reply });
+      expect(respondRequest).toHaveBeenCalledExactlyOnceWith(reply);
+      expect(latest().respondingRequest).toBe(first.key);
+      reject(new Error('Network interrupted')); await sending;
+      expect(latest().failedRequest).toBe(first.key);
+      expect(latest().requests).toHaveLength(1);
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      await engine.dispatch({ type: 'respondRequest', reply });
+      expect(respondRequest).toHaveBeenCalledTimes(1);
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      respondRequest.mockResolvedValueOnce(undefined);
+      await engine.dispatch({ type: 'respondRequest', reply });
+      expect(latest().requests).toHaveLength(0);
+      expect(latest().failedRequest).toBeNull();
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(latest().requests[0]?.request.id).toBe('same-id');
+    } finally { engine.dispose(); }
+  });
+
   it('reports stop failures, prevents duplicate actions, and rehydrates an empty restarted session without losing the draft', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
     const interrupt = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(undefined);

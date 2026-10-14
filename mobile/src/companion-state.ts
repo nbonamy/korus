@@ -1,6 +1,6 @@
 import { computed, reactive, ref, shallowRef } from 'vue';
 import type { BackendModelOption } from '@workspace/core/contracts';
-import { companionSessionId, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionTarget, companionSessionId, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
@@ -9,6 +9,8 @@ import { restoreDraftRecord, type DraftState, type DraftStore } from './protecte
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
+  const respondingRequest = ref<string | null>(null);
+  const failedRequest = ref<string | null>(null);
   const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
   const sessionActionFailed = ref(false);
   const closePreview = shallowRef<CompanionClosePreview | null>(null);
@@ -71,6 +73,37 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  const requests = computed(() => {
+    const owner = agent.value;
+    const team = workspace.value.teams.find((team) => team.id === owner?.teamId);
+    if (!owner || !team) return [];
+    const target = companionTarget(laptopId.value, team, owner);
+    return (workspace.value.agentRequests?.[owner.id] ?? []).map((request) => ({
+      key: JSON.stringify([target, request.id, request.conversationId]), target, request,
+    }));
+  });
+  async function respondRequest(reply: CompanionRequestReply) {
+    const pending = requests.value.find((entry) => entry.request.id === reply.id && entry.request.conversationId === reply.conversationId
+      && entry.target.hostId === reply.target.hostId && entry.target.locationId === reply.target.locationId
+      && entry.target.teamId === reply.target.teamId && entry.target.agentId === reply.target.agentId && entry.target.sessionId === reply.target.sessionId);
+    if (!pending || respondingRequest.value || status.value !== 'connected' || !session?.respondRequest) return;
+    const active = session; const epoch = connectionEpoch;
+    respondingRequest.value = pending.key; failedRequest.value = null;
+    try {
+      await active.respondRequest!(reply);
+      // Acknowledged consumption is safe to hide while the authoritative update catches up.
+      if (session === active && epoch === connectionEpoch) {
+        workspace.value = { ...workspace.value, agentRequests: { ...workspace.value.agentRequests,
+          [reply.target.agentId]: (workspace.value.agentRequests?.[reply.target.agentId] ?? []).filter((request) => request.id !== reply.id || request.conversationId !== reply.conversationId) } };
+      }
+    } catch {
+      if (session === active && epoch === connectionEpoch) {
+        failedRequest.value = pending.key;
+        // Reconcile an answer handled on desktop or whose acknowledgment was lost. Never replay it.
+        try { const next = await active.getWorkspace(); if (session === active && epoch === connectionEpoch) workspace.value = next; } catch { /* Keep the request and draft available for an explicit retry. */ }
+      }
+    } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
+  }
   const models = computed(() => modelCatalog.value[agentId.value] ?? []);
   const composerSettings = computed(() => agent.value ? resolveComposerSettings(agent.value, models.value, composerChoices[agentId.value]) : null);
   /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
@@ -359,7 +392,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
   }
-  return { status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, models, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); } };
 }

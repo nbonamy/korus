@@ -130,6 +130,13 @@ app state. Sequence gaps, provider revision gaps and reconnects rehydrate from t
 authoritative daemon. Stream queues and subscription counts are bounded; revocation
 and stream closure dispose listeners and buffered work.
 
+Pending questions, tool confirmations and approvals travel in the workspace's
+app-owned request projection. Responses carry the owning host, team, agent,
+session and request conversation identity. The gateway checks that identity and
+the daemon request owner validates the decision scope and consumes the request.
+The native sheet retains entered answers on failure; a failed acknowledgment
+triggers reconciliation, never automatic replay or authorization.
+
 The visible conversation remains subscribed. Leaving it starts a five-minute
 expiry while its replica continues to receive events. Viewing it again cancels
 expiry; incoming events do not extend it. Expiry discards the replica and removes

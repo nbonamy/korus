@@ -1,11 +1,12 @@
-import type { Agent, AgentModelSelection, BackendModelOption, ModelFavorite, ProviderConversationFrame, Team } from '@workspace/core/contracts';
-import type { CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
+import type { AgentModelSelection, BackendModelOption, ProviderConversationFrame } from '@workspace/core/contracts';
+import type { CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
   type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged';
 }>;
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[] };
+export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
+import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
 export type CompanionPromptOptions = { model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
   delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
@@ -16,6 +17,7 @@ export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: 
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
+  respondRequest?(reply: CompanionRequestReply): Promise<void>;
   getWorkspace(): Promise<CompanionWorkspace>;
   deselectConversation?(): void;
   cachedConversation?(agentId: string): CompanionConversation | null | undefined;

@@ -23,7 +23,30 @@ struct ConversationScreen: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { ComposerView() }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    if let request = model.requests.first {
+                        Button {
+                            model.dictation.cancel()
+                            model.presentedRequest = request
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: request.request.kind == "question" ? "questionmark.bubble" : "hand.raised")
+                                Text(request.title).font(.subheadline.weight(.semibold))
+                                if model.requests.count > 1 { Text("(\(model.requests.count))") }
+                                Spacer()
+                                Text("Review").font(.subheadline)
+                                Image(systemName: "chevron.right").font(.caption)
+                            }
+                            .padding(.horizontal, 20).padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .background(.regularMaterial)
+                        .accessibilityLabel("Review request: \(request.title)")
+                    }
+                    ComposerView()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -48,6 +71,9 @@ struct ConversationScreen: View {
                 }
             }
             .toolbarTitleDisplayMode(.inline)
+            .sheet(item: Binding(get: { model.presentedRequest }, set: { model.presentedRequest = $0 })) { request in
+                RequestSheet(pending: request)
+            }
             .sheet(item: Binding(get: { model.closePreview }, set: { if $0 == nil { model.cancelCloseSession() } })) { preview in
                 CloseSessionSheet(preview: preview)
             }

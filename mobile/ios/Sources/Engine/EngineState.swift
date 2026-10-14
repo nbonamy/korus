@@ -43,6 +43,9 @@ struct EngineState: Decodable {
 
     enum Startup: String, Decodable { case loading, ready, error }
 
+    let requests: [PendingRequest]?
+    let respondingRequest: String?
+    let failedRequest: String?
     let startup: Startup
     let connection: ConnectionState
     let error: String
