@@ -4,8 +4,7 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>$(COMPANION_DISPLAY_NAME)</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<!-- Complete export compliance per build in App Store Connect, including distribution territories. -->
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIApplicationSceneManifest</key>

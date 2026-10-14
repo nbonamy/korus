@@ -5,7 +5,8 @@ import { generatedConfig } from '../mobile/scripts/ios.mjs';
 test('the native app uses the product bundle identity shared with its APNs topic', () => {
   const config = generatedConfig({ appId: 'com.example.app', name: 'Example', companionName: 'Example Mobile' }, {}, 'APP_COMPANION_RELAY_URL=wss://relay.example\nAPP_COMPANION_RELAY_PEER_ID=peer\n');
   assert.match(config, /^COMPANION_BUNDLE_ID = com\.example\.app$/m);
-  assert.match(config, /^COMPANION_DISPLAY_NAME = Example Mobile$/m);
+  assert.match(config, /^COMPANION_DISPLAY_NAME = Example$/m);
+  assert.match(config, /^COMPANION_PRODUCT_NAME = Example Mobile$/m);
   assert.match(config, /^COMPANION_RELAY_URL = wss:\/\$\(\)\/relay\.example$/m);
 });
 
