@@ -1,8 +1,62 @@
+import { PromptRejectedError } from '../companion-port';
 import { describe, expect, it, vi } from 'vitest';
 import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
 
 describe('companion state', () => {
+  it('preserves a rejected draft and permits an explicit new send immediately', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const send = vi.fn().mockRejectedValueOnce(new PromptRejectedError()).mockResolvedValue(undefined);
+    connector.connect = async id => ({ ...await connect(id), sendPrompt: send });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      state.updateDraft({ text: 'Try me', selectionStart: 6, selectionEnd: 6 });
+      expect(await state.submit('Try me')).toBe('rejected');
+      expect(state.canSend.value).toBe(true); expect(state.draft.value.text).toBe('Try me');
+      expect(await state.submit('Try me')).toBe('accepted');
+      expect(send.mock.calls[0]![2]).not.toBe(send.mock.calls[1]![2]);
+    } finally { state.dispose(); }
+  });
+  it('keeps an unresolved warning and draft but permits a deliberate new send after reconciliation', async () => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const send = vi.fn().mockRejectedValueOnce(new Error('Lost response')).mockResolvedValue(undefined);
+    connector.connect = async id => ({ ...await connect(id), sendPrompt: send, commandStatus: async () => 'unresolved' });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await state.submit('Check first');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(state.canSend.value).toBe(true); expect(state.deliveryUnknown.value).toBe(true);
+      expect(state.error.value).toBe('mobile.errors.deliveryUnknown'); expect(state.draft.value.text).toBe('Check first');
+      expect(send).toHaveBeenCalledOnce();
+      await state.submit('My deliberate next prompt'); expect(send).toHaveBeenCalledTimes(2);
+    } finally { state.dispose(); vi.useRealTimers(); }
+  });
+  it.each(['accepted', 'rejected'] as const)('reconciles slow admission to %s without reconnecting or replaying', async (outcome) => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const send = vi.fn().mockRejectedValue(new Error('Request timed out'));
+    const commandStatus = vi.fn().mockResolvedValueOnce('pending').mockResolvedValue(outcome);
+    connector.connect = async id => ({ ...await connect(id), sendPrompt: send, commandStatus });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      state.updateDraft({ text: 'Keep this', selectionStart: 9, selectionEnd: 9 });
+      await state.submit('Keep this');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(state.canSend.value).toBe(false);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(state.canSend.value).toBe(true);
+      expect(state.deliveryUnknown.value).toBe(false);
+      expect(state.draft.value.text).toBe(outcome === 'accepted' ? '' : 'Keep this');
+      expect(send).toHaveBeenCalledOnce();
+      state.dispose(); const checks = commandStatus.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60_000); expect(commandStatus).toHaveBeenCalledTimes(checks);
+    } finally { state.dispose(); vi.useRealTimers(); }
+  });
+
   it('shows a live cached conversation immediately when returning, without a loading or empty state', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
     connector.connect = async (id) => {

@@ -1,3 +1,4 @@
+import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import type { BackendHistoryLoadResult } from '@workspace/core/backend-driver';
@@ -300,8 +301,8 @@ export class CompanionGateway {
         const next = { ...this.state, commands: { ...commands, [ledgerKey]: pending } };
         await this.port.save(next); this.state = next;
         const run = (async (): Promise<StoredCommand> => {
-          let state: 'accepted' | 'unresolved' = 'unresolved';
-          try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch { /* Admission may have happened; never replay. */ }
+          let state: 'accepted' | 'rejected' | 'unresolved' = 'unresolved';
+          try { await (uploads ? this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options, uploads) : this.port.submit(command.target.agentId, command.text, `mobile:${peerId}`, command.options)); state = 'accepted'; } catch (error) { if (error instanceof PromptRejectedError) state = 'rejected'; }
           const completed = { ...pending, state };
           // A device revoked during admission has no ledger left to complete.
           if (this.state.commands[ledgerKey]) await this.mutate(async () => {
@@ -451,7 +452,7 @@ export class CompanionGateway {
     if (method === 'command.status') {
       const { clientCommandId } = z.object({ clientCommandId: z.string().uuid() }).strict().parse(args);
       const stored = this.state.commands[`${peerId}:${clientCommandId}`];
-      return stored ? receipt(stored) : { clientCommandId, state: 'notReceived' };
+      return stored ? receipt(stored, this.admissions.has(`${peerId}:${clientCommandId}`)) : { clientCommandId, state: 'notReceived' };
     }
     if (method === 'device.forget') { z.object({}).strict().parse(args); await this.revoke(peerId); return {}; }
     throw new Error('Companion operation is not supported.');
@@ -504,7 +505,7 @@ export class CompanionGateway {
     }
   }
 }
-function receipt({ fingerprint: _fingerprint, createdAt: _createdAt, ...receipt }: StoredCommand): CompanionCommandReceipt {
+function receipt({ fingerprint: _fingerprint, createdAt: _createdAt, ...receipt }: StoredCommand, inFlight = false): CompanionCommandReceipt {
   // Persisted pending entries can mean a killed process after provider admission.
-  return { ...receipt, state: receipt.state === 'pending' ? 'unresolved' : receipt.state };
+  return { ...receipt, state: receipt.state === 'pending' && !inFlight ? 'unresolved' : receipt.state };
 }

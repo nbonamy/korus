@@ -1,3 +1,4 @@
+import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
@@ -242,6 +243,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async sendPrompt(agentId, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
           const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target: target(agentId), text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
+          if (receipt.state === 'rejected') throw new PromptRejectedError('Prompt was rejected.');
           if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
         },
         async listModels(agentId) { return (await request<{ models: BackendModelOption[] }>(host, 'models.list', { agentId })).models; },
@@ -268,7 +270,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         },
         async setApprovalPreset(agentId, preset) { await request(host, 'agent.approvalPreset.set', { agentId, preset }); },
         async setPermissionMode(agentId, mode) { await request(host, 'agent.permissionMode.set', { agentId, mode }); },
-        async commandStatus(clientCommandId) { return (await request<{ state: 'accepted' | 'unresolved' | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
+        async commandStatus(clientCommandId) { return (await request<{ state: CompanionCommandReceipt['state'] | 'notReceived' }>(host, 'command.status', { clientCommandId })).state; },
         onDisconnect(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         onUpdate(listener) { updates.add(listener); return () => updates.delete(listener); },
         close,

@@ -1,3 +1,4 @@
+import { PromptRejectedError } from './companion-port';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -51,6 +52,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }));
   const drafts = reactive<Record<string, DraftState>>({});
   const uncertain = reactive<Record<string, boolean>>({});
+  const unresolvedReceipts = reactive<Record<string, boolean>>({});
+  const receiptCallbacks = new Map<string, (outcome: 'accepted' | 'rejected') => void>();
+  let receiptTimer: ReturnType<typeof setTimeout> | undefined;
   const sending = reactive<Record<string, boolean>>({});
   const commandIds = reactive<Record<string, string>>({});
   const submittedTexts = reactive<Record<string, string>>({});
@@ -237,10 +241,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
-    && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && !deliveryUnknown.value);
+    && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && (!deliveryUnknown.value || unresolvedReceipts[key()] === true));
 
   function closeSession() {
     closePreview.value = null; chatCreation.value = 'idle';
+    clearTimeout(receiptTimer); receiptTimer = undefined;
     clearTimeout(retryTimer);
     retryTimer = undefined;
     ++connectionEpoch;
@@ -302,22 +307,45 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';
-      if (session.commandStatus) for (const [draftKey, commandId] of Object.entries(commandIds)) {
-        if (!uncertain[draftKey] || JSON.parse(draftKey)[0] !== id) continue;
-        const receipt = await session.commandStatus(commandId);
-        if (epoch !== connectionEpoch) return;
-        if (receipt === 'accepted') {
-          uncertain[draftKey] = false;
-          if (drafts[draftKey]?.text === submittedTexts[draftKey]) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
-          await persist();
-        } else if (receipt === 'notReceived') { uncertain[draftKey] = false; await persist(); }
-      }
+      await reconcileReceipts();
       if (agentId.value) await selectAgent(agentId.value);
       if (epoch === connectionEpoch) retryCount = 0;
     } catch {
       opened?.close();
       if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
     }
+  }
+  /** Only receipt reads are retried. A timed-out prompt is never submitted again. */
+  async function reconcileReceipts() {
+    const active = session; const epoch = connectionEpoch;
+    if (!active?.commandStatus || status.value !== 'connected') return;
+    let retry = false;
+    for (const [draftKey, commandId] of Object.entries(commandIds)) {
+      if (!uncertain[draftKey] || JSON.parse(draftKey)[0] !== laptopId.value || unresolvedReceipts[draftKey]) continue;
+      try {
+        const receipt = await active.commandStatus(commandId);
+        if (active !== session || epoch !== connectionEpoch || disposed) return;
+        if (commandIds[draftKey] !== commandId) continue;
+        if (receipt === 'pending') { retry = true; continue; }
+        if (receipt === 'unresolved') {
+          // The daemon cannot prove delivery (e.g. it restarted during admission).
+          // Keep the warning and draft; a deliberate new Send remains available.
+          unresolvedReceipts[draftKey] = true;
+          continue;
+        }
+        uncertain[draftKey] = false;
+        receiptCallbacks.get(commandId)?.(receipt === 'accepted' ? 'accepted' : 'rejected');
+        receiptCallbacks.delete(commandId);
+        if (receipt === 'accepted' && drafts[draftKey]?.text === submittedTexts[draftKey]) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
+        if (draftKey === key() && error.value === 'mobile.errors.deliveryUnknown') error.value = receipt === 'accepted' ? '' : 'mobile.errors.commandFailed';
+        await persist();
+      } catch { retry = true; }
+    }
+    if (retry && active === session && !disposed) scheduleReceipts();
+  }
+  function scheduleReceipts() {
+    if (receiptTimer || disposed) return;
+    receiptTimer = setTimeout(() => { receiptTimer = undefined; void reconcileReceipts(); }, 2000);
   }
   async function selectTeam(id: string) {
     teamId.value = workspace.value.teams.some((team) => team.id === id) ? id : '';
@@ -503,7 +531,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === selectionEpoch && active === session) loadingOlder.value = false;
     }
   }
-  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[] }): Promise<'accepted' | 'rejected' | 'unknown'> {
+  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
     if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
     const target = agentId.value;
@@ -524,7 +552,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     error.value = '';
     // Persist the intent before dispatch. A killed process cannot silently replay an unknown send.
     uncertain[draftKey] = true;
+    unresolvedReceipts[draftKey] = false;
     const clientCommandId = crypto.randomUUID();
+    const prior = commandIds[draftKey];
+    if (prior) receiptCallbacks.delete(prior);
     commandIds[draftKey] = clientCommandId;
     submittedTexts[draftKey] = sentDraft.text;
     try { await persist(); }
@@ -539,8 +570,16 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       await persist();
       if (epoch === selectionEpoch) await selectAgent(target);
       return 'accepted';
-    } catch {
+    } catch (failure) {
+      if (failure instanceof PromptRejectedError) {
+        uncertain[draftKey] = false;
+        if (epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed';
+        await persist().catch(() => {});
+        return 'rejected';
+      }
       uncertain[draftKey] = true;
+      if (sendOptions?.onResolved) receiptCallbacks.set(clientCommandId, sendOptions.onResolved);
+      scheduleReceipts();
       if (epoch === selectionEpoch) error.value = storageFailed ? 'mobile.errors.storage' : 'mobile.errors.deliveryUnknown';
       await persist().catch(() => {});
       return 'unknown';
@@ -601,5 +640,5 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return { registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

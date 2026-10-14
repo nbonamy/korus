@@ -271,12 +271,13 @@ export function createEngine(port: EnginePort) {
   watch(() => [state.conversation.value, state.agentId.value, state.agent.value, peers.value, state.history.value, state.conversationReady.value, state.workspace.value] as const, postConversation, { flush: 'post' });
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
+    const onResolved = (status: 'accepted' | 'rejected') => { if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status }); };
     const frame = state.conversation.value;
-    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, uploads: command.uploads });
+    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, uploads: command.uploads, onResolved });
     const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
-    const result = await state.submit(command.text, { ...command.options, uploads: command.uploads });
+    const result = await state.submit(command.text, { ...command.options, uploads: command.uploads, onResolved });
     if (state.error.value || result !== 'accepted') { pending.splice(pending.indexOf(entry), 1); postConversation(); }
     return result;
   }

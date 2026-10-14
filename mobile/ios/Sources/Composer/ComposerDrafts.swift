@@ -120,17 +120,20 @@ final class ComposerDrafts {
         })
         draft.sending = request.requestId
         draft.error = nil
+        pending = pending.filter { $0.value.submission.target != target }
         pending[request.requestId] = Pending(submission: request, ids: Set(items.map(\.id)))
         return request
     }
 
     func completeSend(_ result: ComposerSendResult) {
-        guard let sent = pending.removeValue(forKey: result.requestId) else { return }
+        guard let sent = pending[result.requestId] else { return }
+        if result.status != .unknown { pending.removeValue(forKey: result.requestId) }
         change(sent.submission.target) { draft in
-            guard draft.sending == result.requestId else { return }
+            guard draft.sending == result.requestId || draft.sending == nil else { return }
             draft.sending = nil
             switch result.status {
             case .accepted:
+                draft.error = nil
                 if sent.submission.goalMode { draft.goalMode = false }
                 draft.items.removeAll { sent.ids.contains($0.id) }
                 if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == sent.submission.text { draft.text = "" }

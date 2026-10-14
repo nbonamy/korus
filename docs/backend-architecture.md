@@ -172,7 +172,12 @@ The host deployment templates under `backend/companion-relay/deploy` terminate T
 in nginx and keep relay and health listeners on loopback. Certbot uses the nginx
 ACME webroot and reloads nginx after successful renewal. Only published Cloudflare
 proxy ranges may supply the client address used for connection and request limits;
-direct clients retain their socket address. The systemd service runs without root,
+direct clients retain their socket address. nginx overwrites `X-Real-IP` and the
+relay accepts it only in explicit `trustedProxy` mode on a loopback listener.
+Connection rates, concurrent sockets and laptop leases are bounded per source,
+so rotating peer identities does not consume an unrelated client’s allowance.
+Circuit reservations and admission leases share a bounded lifetime.
+The systemd service runs without root,
 with bounded memory and a read-only system filesystem. Versioned bundles live under
 `/opt/companion-relay`; configuration and push keys belong under
 `/etc/companion-relay`. The private identity under `/var/lib/companion-relay` must

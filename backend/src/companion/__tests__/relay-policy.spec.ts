@@ -82,6 +82,19 @@ describe('trusted companion rendezvous', () => {
     for (let n = 0; n < 500; n++) expect(policy.resolve(`flood${n}`, 'AAAAAAAA')).toBeNull();
     expect(policy.resolve(phone, invite().code)).toBe(host);
   });
+  it('keeps unrelated laptops and pairing available when two sources rotate identities to exhaust leases', () => {
+    const policy = new CompanionRelayPolicy(undefined, () => 1);
+    for (const source of ['192.0.2.1', '192.0.2.2']) {
+      for (let i = 0; i < 20; i++) expect(policy.reserve(`${source}-${i}`, source)).toBe(true);
+      for (let i = 20; i < 1200; i++) expect(policy.reserve(`${source}-${i}`, source)).toBe(false);
+    }
+    expect(policy.reserve(host, '192.0.2.3')).toBe(true);
+    policy.register(host, [], [invite()], '192.0.2.3');
+    expect(policy.resolve(phone, invite().code)).toBe(host);
+    expect(policy.reserve(host, '192.0.2.3')).toBe(true);
+    policy.register(host, [phone], [], '192.0.2.3');
+    expect(policy.paired(host, phone)).toBe(true);
+  });
   it('bounds host capacity and rejects unadmitted hosts, malformed codes and excessive TTLs', () => {
     let now = 1; const automatic = new CompanionRelayPolicy(undefined, () => now);
     for (let i = 0; i < 1000; i++) expect(automatic.reserve(`host${i}`)).toBe(true);

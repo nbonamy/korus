@@ -1,3 +1,4 @@
+import { PromptRejectedError } from './prompt-rejected';
 import { sendAgentPrompt } from '@workspace/core/agent-chat-service';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from '@workspace/core/backend-driver';
 import type { Agent, AppSnapshot, SendPromptOptions } from '@workspace/core/contracts';
@@ -30,7 +31,7 @@ export class AgentPromptManager {
   }
 
   sendWithReceipt(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult> {
-    if (!canStartPrompt(agent)) return Promise.reject(new Error('Agent is busy. Try the review decision again when idle.'));
+    if (!canStartPrompt(agent)) return Promise.reject(new PromptRejectedError('Agent is busy. Try the review decision again when idle.'));
     return new Promise((resolve, reject) => {
       this.start(agent, prompt, options, undefined, { resolve, reject });
     });
@@ -99,7 +100,7 @@ export class AgentPromptManager {
   private start(agent: Agent, prompt: string, promptOptions?: SendPromptOptions, queuedPromptId?: string, acceptance?: { resolve: (receipt: BackendSendResult) => void; reject: (error: Error) => void }): AppSnapshot {
     const snapshot = this.options.getSnapshot();
     if (this.options.isEngineConnected?.(agent) === false) {
-      acceptance?.reject(new Error('Engine is not connected. Reconnect in Settings.'));
+      acceptance?.reject(new PromptRejectedError('Engine is not connected. Reconnect in Settings.'));
       return snapshot;
     }
     const inFlightKey = queuedPromptId ? queuedPromptKey(agent.id, queuedPromptId) : undefined;

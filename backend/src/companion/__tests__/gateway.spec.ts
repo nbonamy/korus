@@ -73,6 +73,7 @@ describe('companion authorization gateway', () => {
     const command = { target, text: 'hello', clientCommandId: randomUUID() };
     const first = f.gateway.request('phone', 'prompt.submit', command);
     await vi.waitFor(() => expect(f.port.submit).toHaveBeenCalled());
+    expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'pending' });
     const retry = f.gateway.request('phone', 'prompt.submit', command);
     admit();
     expect(await retry).toMatchObject({ state: 'accepted' });

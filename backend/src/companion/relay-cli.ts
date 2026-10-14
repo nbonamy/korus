@@ -10,11 +10,13 @@ import { RelayStartupError } from './relay-startup-error';
 const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
 const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
+  trustedProxy: z.boolean().optional(),
   hostIds: z.array(peerId).min(1).max(100).optional(),
   apns: z.object({ teamId: z.string().regex(/^[A-Z0-9]{10}$/), topic: z.string().min(1).max(200), development: apnsKey.optional(), production: apnsKey.optional() }).strict().refine(value => value.development || value.production).optional(),
   stateDirectory: z.string().min(1), certificateFile: z.string().min(1).optional(), privateKeyFile: z.string().min(1).optional(), healthPort: z.number().int().min(1024).max(65535).optional() }).strict()
   .superRefine((config, context) => {
     const secure = config.listen.endsWith('/tls/ws');
+    if (config.trustedProxy && !/^\/ip(4\/127\.0\.0\.1|6\/::1)\//.test(config.listen)) context.addIssue({ code: 'custom', message: 'A trusted proxy requires a loopback listener.' });
     // Plaintext listening exists for local development only; anything reachable needs TLS.
     if (secure && (!config.certificateFile || !config.privateKeyFile)) context.addIssue({ code: 'custom', message: 'A TLS listener needs certificateFile and privateKeyFile.' });
     if (!secure && !/^\/ip(4\/127\.0\.0\.1|6\/::1)\//.test(config.listen)) context.addIssue({ code: 'custom', message: 'A plaintext listener must be bound to loopback.' });
@@ -47,7 +49,7 @@ export async function runCompanionRelay(configFile: string) {
   }
   const push = config.apns ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
     senders[registration.environment]?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
-  const relay = await createCompanionRelay({ push, key: identity, listen: config.listen, hostIds: config.hostIds,
+  const relay = await createCompanionRelay({ push, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }

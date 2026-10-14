@@ -24,6 +24,10 @@ describe('relay operator configuration', () => {
     expect(() => parseRelayConfig(JSON.stringify({ ...base, listen: '/ip6/::1/tcp/47800/ws' }))).not.toThrow();
     expect(() => parseRelayConfig(JSON.stringify({ ...base, listen: '/ip4/0.0.0.0/tcp/47800/ws' }))).toThrow('loopback');
   });
+  it('accepts forwarded client addresses only with explicit loopback proxy configuration', () => {
+    expect(parseRelayConfig(JSON.stringify({ ...base, listen: '/ip4/127.0.0.1/tcp/47800/ws', trustedProxy: true })).trustedProxy).toBe(true);
+    expect(() => parseRelayConfig(JSON.stringify({ ...base, listen: '/ip4/0.0.0.0/tcp/443/tls/ws', certificateFile: 'c', privateKeyFile: 'k', trustedProxy: true }))).toThrow();
+  });
   it('allows public admission without an operator-maintained laptop list', () => {
     expect(parseRelayConfig(JSON.stringify({ stateDirectory: '/state', listen: '/ip4/127.0.0.1/tcp/47800/ws' })).hostIds).toBeUndefined();
   });

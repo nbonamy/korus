@@ -1,6 +1,7 @@
+import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
 import { CompanionManager } from './companion/manager';
-import { createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
+import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
@@ -262,6 +263,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
+      if (response && 'error' in response && method === backendMethods.agentPromptSteer && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError('Prompt was rejected before dispatch.');
       if (!response || 'error' in response) throw new Error('Owning daemon operation failed.');
       return response.result as Result;
     },

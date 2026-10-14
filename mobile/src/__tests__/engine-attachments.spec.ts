@@ -5,20 +5,36 @@ import { createDemoConnector } from '../demo-connector';
 const photo = { type: 'image' as const, name: 'Photo.jpg', mimeType: 'image/jpeg', data: 'aW1hZ2U=' };
 function fixture(remote = false) {
   const connector = createDemoConnector(); const connect = connector.connect;
-  const sendPrompt = vi.fn(async () => {}); const events: EngineEvent[] = [];
+  const sendPrompt = vi.fn(async () => {}); const commandStatus = vi.fn().mockResolvedValue('accepted'); const events: EngineEvent[] = [];
   connector.connect = async (id) => {
     const session = await connect(id);
-    return { ...session, sendPrompt, getWorkspace: async () => {
+    return { ...session, sendPrompt, commandStatus, getWorkspace: async () => {
       const workspace = await session.getWorkspace();
       return remote ? { ...workspace, teams: workspace.teams.map((team) => ({ ...team, remoteConnectionId: 'nested-host' })) } : workspace;
     } };
   };
   const engine = createEngine({ connector, post: (event) => events.push(event) });
   const open = async () => { await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' }); };
-  return { engine, open, sendPrompt, events };
+  return { engine, open, sendPrompt, commandStatus, events };
 }
 
 describe('native attachment submission', () => {
+  it('delivers a late final receipt to the original native submission without replaying its attachment', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.open();
+      f.sendPrompt.mockRejectedValueOnce(new Error('Timeout'));
+      f.commandStatus.mockResolvedValueOnce('pending');
+      await f.engine.dispatch({ type: 'send', requestId: 'slow', target: f.engine.snapshot().composerTarget!, text: '', uploads: [photo] });
+      await f.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(f.events.filter(event => event.type === 'sendResult')).toStrictEqual([
+        { type: 'sendResult', requestId: 'slow', status: 'unknown' },
+        { type: 'sendResult', requestId: 'slow', status: 'accepted' },
+      ]);
+      expect(f.sendPrompt).toHaveBeenCalledOnce();
+    } finally { f.engine.dispose(); vi.useRealTimers(); }
+  });
   it('accepts a native text-only send to a chat with no provider session', async () => {
     const f = fixture();
     try {

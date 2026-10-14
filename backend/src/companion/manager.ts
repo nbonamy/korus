@@ -1,3 +1,4 @@
+import { PromptRejectedError } from '../agents/prompt-rejected';
 import { product } from '@workspace/core/product';
 import { CompanionNotifications } from './notifications';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
@@ -155,7 +156,7 @@ export class CompanionManager {
         catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }
       },
       submit: async (agentId, prompt, clientId, options, uploads) => {
-        const attachments = uploads ? await storePromptUploads(this.directory, uploads) : undefined;
+        const attachments = uploads ? await storePromptUploads(this.directory, uploads).catch(() => { throw new PromptRejectedError('Attachments could not be stored.'); }) : undefined;
         const promptOptions = options || attachments ? { ...options, ...(attachments ? { attachments } : {}) } : undefined;
         await this.backend.request(backendMethods.agentPromptSteer, { agentId, prompt, startIfIdle: true, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
       },

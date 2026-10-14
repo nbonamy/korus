@@ -49,7 +49,7 @@ export type CompanionSession = {
   startReview?(agentId: string, input: CompanionReviewInput): Promise<string | void>;
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
-  commandStatus?(clientCommandId: string): Promise<'accepted' | 'unresolved' | 'notReceived'>;
+  commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
   onDisconnect(listener: () => void): () => void;
   close(): void;
@@ -69,3 +69,6 @@ export type CompanionConnector = {
 };
 /** A failure the person can act on; `message` is a `mobile.errors.*` catalog key. */
 export class PairingError extends Error {}
+
+/** A confirmed rejection preserves the draft and permits an explicit new send. */
+export class PromptRejectedError extends Error {}

@@ -69,6 +69,14 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it('records an engine-disconnected rejection without dispatching or locking the command as uncertain', async () => {
+    const f = await fixture('idle');
+    f.snapshot.providerConnections = [];
+    expect(await f.gateway.request('phone', 'prompt.submit', f.command)).toMatchObject({ state: 'rejected' });
+    expect(await f.gateway.request('phone', 'command.status', { clientCommandId: f.command.clientCommandId })).toMatchObject({ state: 'rejected' });
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+  });
+
   it.each(['idle', 'working'] as const)('delivers phone image and file bytes through provider attachments (%s)', async (status) => {
     const f = await fixture(status);
     const uploads = [

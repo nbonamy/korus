@@ -1,3 +1,4 @@
+import { RelayIngress } from './relay-ingress';
 import { companionPushProtocol } from '@workspace/core/companion-notification';
 import { CompanionPushRelay } from './push-relay';
 import type { ApnsSender } from './apns';
@@ -18,28 +19,30 @@ export class CompanionRelayPolicy {
   private readonly routes = new Map<string, Set<string>>();
   private readonly invitations = new Map<string, PairingInvitation & { host: string; claimant?: string; withdrawn: boolean }>();
   private readonly lookups = new Map<string, { expiresAt: number; count: number }>();
-  private readonly leases = new Map<string, number>();
+  private readonly leases = new Map<string, { until: number; source: string }>();
   constructor(private readonly hosts?: Set<string>, private readonly now = Date.now) {
     if (hosts && (!hosts.size || hosts.size > 100)) throw new Error('Configure between 1 and 100 admitted laptop identities.');
   }
   private prune() {
-    for (const [host, until] of this.leases) if (until <= this.now()) {
+    for (const [host, lease] of this.leases) if (lease.until <= this.now()) {
       this.leases.delete(host); this.routes.delete(host);
       for (const owner of this.invitations.values()) if (owner.host === host) owner.withdrawn = true;
     }
   }
   private admitted(host: string) { this.prune(); return this.hosts ? this.hosts.has(host) : this.leases.has(host); }
-  reserve(host: string) {
+  reserve(host: string, source = host) {
     if (this.hosts) return this.hosts.has(host);
     this.prune();
-    if (!this.leases.has(host) && this.leases.size >= 1000) return false;
-    this.leases.set(host, this.now() + 120_000);
+    const previous = this.leases.get(host);
+    if (previous?.source !== source && [...this.leases.values()].filter(lease => lease.source === source).length >= 20) return false;
+    if (!previous && this.leases.size >= 1000) return false;
+    this.leases.set(host, { until: this.now() + 120_000, source });
     return true;
   }
-  register(host: string, devices: string[], invitations: PairingInvitation[] = []) {
+  register(host: string, devices: string[], invitations: PairingInvitation[] = [], source = host) {
     this.prune();
     for (const [code, owner] of this.invitations) if (owner.expiresAt <= this.now()) this.invitations.delete(code);
-    if (!this.reserve(host) || devices.length > 20 || devices.some(id => !/^[a-zA-Z0-9]{32,128}$/.test(id))
+    if (!this.reserve(host, source) || devices.length > 20 || devices.some(id => !/^[a-zA-Z0-9]{32,128}$/.test(id))
       || invitations.length > 5 || invitations.some(invite => normalizePairingCode(invite.code) !== invite.code
         || !Number.isSafeInteger(invite.expiresAt) || invite.expiresAt > this.now() + pairingLifetimeMs)) throw new Error('Invalid relay admission.');
     const fresh = invitations.filter(invite => invite.expiresAt > this.now());
@@ -79,27 +82,37 @@ export class CompanionRelayPolicy {
       && !invite.withdrawn && invite.expiresAt > this.now());
   }
 }
-export async function createCompanionRelay(options: { key: PrivateKey; listen: string; hostIds?: string[]; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> }) {
+export async function createCompanionRelay(options: { key: PrivateKey; listen: string; trustedProxy?: boolean; hostIds?: string[]; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> }) {
+  const ingress = new RelayIngress(options.trustedProxy);
   const policy = new CompanionRelayPolicy(options.hostIds ? new Set(options.hostIds) : undefined);
-  let admissions = { until: 0, count: 0 };
   const relay = await createLibp2p({ privateKey: options.key, addresses: { listen: [options.listen] },
-    transports: [webSockets({ https: options.tls, maxBufferedAmount: 1024 * 1024 })], connectionEncrypters: [noise()], streamMuxers: [yamux()],
-    connectionManager: { maxConnections: 1000, maxParallelDials: 2, inboundConnectionThreshold: 200 },
+    transports: [webSockets({ http: { IncomingMessage: ingress.IncomingMessage }, https: options.tls ? { ...options.tls, IncomingMessage: ingress.IncomingMessage } : undefined, maxBufferedAmount: 1024 * 1024 })], connectionEncrypters: [noise()], streamMuxers: [yamux()],
+    // The transport socket address is nginx’s loopback address. RelayIngress owns real-source rate limits.
+    connectionManager: { maxConnections: 1000, maxParallelDials: 2, maxIncomingPendingConnections: 200, inboundConnectionThreshold: Number.MAX_SAFE_INTEGER },
     connectionGater: {
-      denyInboundConnection: () => { const now = Date.now(); if (admissions.until <= now) admissions = { until: now + 60_000, count: 0 }; return ++admissions.count > 600; },
-      denyInboundRelayReservation: (source) => !policy.reserve(source.toString()),
+      denyInboundConnection: connection => {
+        if (ingress.admit(connection.remoteAddr)) return false;
+        connection.abort(new Error('Relay source limit exceeded.'));
+        return true;
+      },
+      denyInboundRelayReservation: (peer): boolean => {
+        const connection = relay.getConnections(peer)[0];
+        const source = connection && ingress.source(connection.remoteAddr);
+        return !source || !policy.reserve(peer.toString(), source);
+      },
       denyOutboundRelayedConnection: (source, destination) => !policy.route(source.toString(), destination.toString()),
     },
     services: { identify: identify(), relay: circuitRelayServer({ hopTimeout: 10_000, maxInboundHopStreams: 10, maxOutboundHopStreams: 10, maxOutboundStopStreams: 20,
-      reservations: { maxReservations: 1000, reservationTtl: 3600_000, reservationClearInterval: 60_000,
+      reservations: { maxReservations: 1000, reservationTtl: 120_000, reservationClearInterval: 60_000,
         applyDefaultLimit: true, defaultDurationLimit: 600_000, defaultDataLimit: 64n * 1024n * 1024n } }) },
   });
   const request = z.object({ devices: z.array(z.string().min(32).max(128)).max(20), invitations: z.array(z.object({ code: z.string().length(8), expiresAt: z.number().int() }).strict()).max(5) }).strict();
   await relay.handle(companionAdmissionProtocol, async (stream, connection) => {
     try {
-      if (!policy.reserve(connection.remotePeer.toString())) throw new Error('Denied.');
+      const source = ingress.source(connection.remoteAddr);
+      if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
       const payload = request.parse(await readOne(stream));
-      policy.register(connection.remotePeer.toString(), payload.devices, payload.invitations);
+      policy.register(connection.remotePeer.toString(), payload.devices, payload.invitations, source);
       stream.send(encodeCompanionFrame({ ok: true }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Relay admission denied.')); }
@@ -117,7 +130,8 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
   const push = new CompanionPushRelay(relay.peerId.toString(), (host, device) => policy.paired(host, device), options.push);
   await relay.handle(companionPushProtocol, async (stream, connection) => {
     try {
-      if (!policy.reserve(connection.remotePeer.toString())) throw new Error('Denied.');
+      const source = ingress.source(connection.remoteAddr);
+      if (!source || !policy.reserve(connection.remotePeer.toString(), source)) throw new Error('Denied.');
       const result = await push.send(connection.remotePeer.toString(), await readOne(stream));
       stream.send(encodeCompanionFrame({ result }));
       await stream.close({ signal: AbortSignal.timeout(5000) });

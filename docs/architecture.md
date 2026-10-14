@@ -112,6 +112,11 @@ content travels through the subscribed provider stream.
 Mobile prompts start a turn when idle and steer active work, without entering the
 prompt queue. The owning daemon decides at admission time; durable companion receipts
 also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.
+Receipts distinguish active admission from a confirmed rejection and an unknown
+provider outcome. The phone reconciles timed-out admissions while connected,
+without replaying them; late acceptance clears only the captured native draft
+and attachments. An unresolved outcome keeps its warning and draft but permits
+an explicit new send after the user checks the conversation.
 The composer microphone uses Apple's Speech framework with on-device recognition
 required and native microphone permissions. Audio stays on the phone; partial and
 final transcripts update only the active draft. Sending, navigation, and backgrounding

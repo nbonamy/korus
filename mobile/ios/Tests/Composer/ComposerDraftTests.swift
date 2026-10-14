@@ -8,6 +8,21 @@ final class ComposerDraftTests: XCTestCase {
     private let second = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "b", sessionId: "two")
     private func photo(_ count: Int = 10) -> ComposerAttachment { .init(name: "Photo.jpg", mimeType: "image/jpeg", type: .image, data: Data(repeating: 1, count: count)) }
 
+    func testLateAcceptanceClearsOnlyOriginalAttachmentAndPreservesEditedDraft() throws {
+        let drafts = ComposerDrafts(); drafts.select(first); drafts.text = "Original"
+        drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])
+        let send = try XCTUnwrap(drafts.beginSend())
+        drafts.completeSend(.init(requestId: send.requestId, status: .unknown))
+        drafts.text = "Newer draft"
+        drafts.finishImport(try XCTUnwrap(drafts.beginImport()), attachments: [photo()])
+        drafts.select(second)
+        drafts.completeSend(.init(requestId: send.requestId, status: .accepted))
+        drafts.select(first)
+        XCTAssertEqual(drafts.text, "Newer draft")
+        XCTAssertEqual(drafts.items.count, 1)
+        XCTAssertNil(drafts.error)
+    }
+
     func testGoalDraftSurvivesNavigationAndFailureAndExitsModeOnlyOnAcceptance() throws {
         let drafts = ComposerDrafts(); drafts.select(first)
         drafts.setGoalMode(true); drafts.text = "Ship the feature"

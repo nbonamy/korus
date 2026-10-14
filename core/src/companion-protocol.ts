@@ -28,7 +28,7 @@ export type CompanionInvitation = { code: string; expiresAt: number };
 /** A paired phone. Approval grants everything: every team, reading and sending. */
 export type CompanionGrant = { peerId: string; name: string; createdAt: number };
 export type CompanionPending = { id: string; peerId: string; name: string; expiresAt: number };
-export type CompanionCommandReceipt = { clientCommandId: string; state: 'pending' | 'accepted' | 'unresolved'; target: CompanionTarget };
+export type CompanionCommandReceipt = { clientCommandId: string; state: 'pending' | 'accepted' | 'rejected' | 'unresolved'; target: CompanionTarget };
 export type CompanionStatus = { configured: boolean; enabled: boolean; connected: boolean; hostId: string; relayOrigin: string; devices: CompanionGrant[]; pending: CompanionPending[]; error?: string };
 export type CompanionControl =
   | { action: 'status' }
