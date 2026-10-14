@@ -33,6 +33,7 @@ struct DrawerView: View {
                 }
             }
             .listStyle(.plain)
+            .listRowSpacing(4)
             .environment(\.defaultMinListRowHeight, 44)
             .scrollContentBackground(.hidden)
             footer
