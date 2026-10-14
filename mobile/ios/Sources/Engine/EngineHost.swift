@@ -12,6 +12,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     var onState: ((EngineState) -> Void)?
     var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
+    private let crypto = AppleCryptoService(scriptURL: Bundle.main.url(forResource: "noise-session", withExtension: "js", subdirectory: "Web"))
     private var isReady = false
     private var pending: [[String: Any]] = []
 
@@ -40,8 +41,20 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     // MARK: Requests the engine page makes of the app
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { replyHandler(nil, "Invalid request."); return }
+        guard message.frameInfo.isMainFrame, message.webView === webView,
+              message.frameInfo.request.url == WebAssets.url("engine.html"),
+              let body = message.body as? [String: Any], let type = body["type"] as? String else { replyHandler(nil, "Invalid request."); return }
         switch type {
+        case "crypto":
+            guard let command = body["command"] as? [String: Any] else { replyHandler(nil, "Invalid crypto request."); return }
+            crypto.execute(command) { result in
+                Task { @MainActor in
+                    switch result {
+                    case .success(let value): replyHandler(value, nil)
+                    case .failure: replyHandler(nil, "Apple cryptography unavailable.")
+                    }
+                }
+            }
         case "vault.read": replyHandler(["value": Keychain.read(body["key"] as? String ?? "") as Any? ?? NSNull()], nil)
         case "vault.write": replyHandler(Keychain.write(body["key"] as? String ?? "", body["value"] as? String ?? ""), nil)
         case "vault.remove": Keychain.remove(body["key"] as? String ?? ""); replyHandler(true, nil)

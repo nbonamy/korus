@@ -179,17 +179,40 @@ with bounded memory and a read-only system filesystem. Versioned bundles live un
 survive service and bundle replacements: changing it invalidates installed peer
 pins. Container deployments can instead provide TLS directly to the executable.
 
-Pairing uses a short code (`XXXX-XXXX`, 40 bits) instead of a credential-bearing
-invitation. Its first half is a public rendezvous channel: the laptop advertises the
-channels of its live invitations to the relay, and a phone resolves one to the
-laptop's identity through a separate relay protocol (rate-limited per source; the
-first laptop to hold a channel keeps it, and a collision fails safe at the proof
-below). The whole code is the password of a CPace-style PAKE run over the
-Noise-authenticated circuit with both peer identities in the transcript, so neither
-the relay nor a relayed exchange can complete it, and the code cannot be tested
-offline. The laptop counts every start as an attempt and burns the invitation after
-three or on a wrong confirmation; the phone checks the laptop's confirmation before
-revealing its own. Desktop approval gates every new device and grants it everything; revoking removes it.
+Pairing uses a short code (`XXXX-XXXX`, 40 bits) with a five-minute lifetime.
+The laptop advertises each full code and its original expiry over its authenticated
+connection to the pinned relay. The relay is trusted for the initial introduction:
+resolving a code atomically binds it to one authenticated phone and returns the
+laptop identity. Repeated lookups by that phone recover a lost reply; another phone
+cannot claim it. Advertisements cannot extend expiry or rearm withdrawn codes.
+Lookup attempts, invitations and temporary routes are bounded.
+
+The phone pins the introduced laptop identity when establishing its Noise circuit.
+The laptop independently consumes the invitation for that authenticated phone and
+requires explicit desktop approval before granting app access. Approval persists the
+phone identity; the phone stores the laptop and relay identities in protected storage,
+never the code. Rejection, expiry and daemon restart invalidate pending invitations.
+Relay restarts cannot bypass the laptop's single-use claim. Subsequent reconnects
+use saved pins without another introduction. A compromised relay during initial
+pairing could substitute identities; after correct pairing it can disrupt delivery
+but cannot impersonate either pinned endpoint or decrypt conversations.
+
+Admission and rendezvous use version 2 and do not downgrade to another pairing
+scheme. Relay, desktop and mobile must support that version for new pairing;
+persisted identities and device grants retain their format. Existing companion
+conversation and push protocols keep their authenticated, encrypted boundaries.
+
+The iOS engine uses CryptoKit for X25519, Ed25519, SHA-256, HKDF and
+ChaCha20-Poly1305. The pinned upstream Noise XX/cipher state machine runs in a
+private JavaScriptCore context on a serial worker, supplied with synchronous Apple
+primitives. Bounded, ordered record batches cross the asynchronous WebView bridge;
+backpressure preserves ordering without running cryptography on the UI thread.
+The same adapter secures both the relay connection and the inner laptop circuit.
+Ed25519 protobuf serialization preserves existing device identities and Keychain
+pairings. Unsupported key types or an unavailable native service fail closed.
+The iOS build rejects bundled third-party cryptographic implementations, including
+transitive fallbacks; upstream Noise upgrades require interoperability revalidation.
+Desktop and relay use their existing libp2p implementations.
 
 ### Background daemon (macOS)
 

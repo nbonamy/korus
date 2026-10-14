@@ -15,7 +15,7 @@ import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
 import type { CompanionUpload } from './uploads';
-import { createPairingExchange, generatePairingCode, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
+import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -83,25 +83,33 @@ export type GatewayPort = {
 
 /** Peer identity is supplied exclusively by the authenticated Noise connection. */
 export class CompanionGateway {
-  /** Keyed by the public rendezvous channel (first half of the code); the whole code is the PAKE password. */
-  private readonly invitations = new Map<string, { code: string; expiresAt: number; attempts: number; sessions: Map<string, { confirm: Uint8Array; name: string }>; pendingId?: string }>();
-  private readonly pending = new Map<string, CompanionPending & { channel: string }>();
+  /** Full codes are temporary invitations, never durable credentials or encryption keys. */
+  private readonly invitations = new Map<string, { code: string; expiresAt: number; pendingId?: string }>();
+  private readonly pairingAttempts = new Map<string, { count: number; expiresAt: number }>();
+  private readonly pending = new Map<string, CompanionPending & { code: string }>();
   private readonly notifications = new Set<(notification: CompanionNotification) => void>();
   private mutations = Promise.resolve();
   private readonly creations = new ChatCreations();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
-  get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ channel: _channel, ...pending }) => pending); }
-  /** Channels of live invitations, advertised to the relay so a phone can find this laptop from its code. */
-  pairChannels() { this.expire(); return [...this.invitations.keys()]; }
+  get pendingRequests() { this.expire(); return [...this.pending.values()].map(({ code: _code, ...pending }) => pending); }
+  /** Advertise each original expiry; refreshing the relay never extends an invitation. */
+  pairingInvitations() { this.expire(); return [...this.invitations.values()].map(({ code, expiresAt }) => ({ code, expiresAt })); }
   invite() {
     this.expire();
     if (this.invitations.size >= 5) throw new Error('Too many active invitations.');
     let code = generatePairingCode();
-    while (this.invitations.has(pairingChannel(normalizePairingCode(code)!))) code = generatePairingCode();
-    const expiresAt = this.now() + 300_000;
-    this.invitations.set(pairingChannel(normalizePairingCode(code)!), { code: normalizePairingCode(code)!, expiresAt, attempts: 0, sessions: new Map() });
+    while (this.invitations.has(normalizePairingCode(code)!)) code = generatePairingCode();
+    const expiresAt = this.now() + pairingLifetimeMs;
+    this.invitations.set(normalizePairingCode(code)!, { code: normalizePairingCode(code)!, expiresAt });
     return { code, expiresAt };
+  }
+  discardInvitation(shown: string) {
+    const code = normalizePairingCode(shown);
+    if (!code) return;
+    const invitation = this.invitations.get(code);
+    if (invitation?.pendingId) this.pending.delete(invitation.pendingId);
+    this.invitations.delete(code);
   }
   /** Approval grants everything: every team, reading and sending. The desktop decides per device, not per scope. */
   async decide(id: string, approve: boolean) {
@@ -114,7 +122,7 @@ export class CompanionGateway {
       if (approve) next.grants.push({ peerId: pending.peerId, name: pending.name, createdAt: this.now() });
       await this.port.save(next);
       this.state = next;
-      this.pending.delete(id); this.invitations.delete(pending.channel);
+      this.pending.delete(id); this.invitations.delete(pending.code);
     });
   }
   async notify(notification: CompanionNotification) {
@@ -150,40 +158,28 @@ export class CompanionGateway {
   }
   async request(peerId: string, method: string, args: unknown): Promise<unknown> {
     this.expire();
-    if (method === 'pair.start') {
-      const request = z.object({ channel: z.string().length(4), message: z.string().min(40).max(48), name: z.string().trim().min(1).max(80) }).strict().parse(args);
-      const invitation = this.invitations.get(request.channel);
+    if (method === 'pair.claim') {
+      const request = z.object({ code: z.string().length(8), name: z.string().trim().min(1).max(80) }).strict().parse(args);
+      for (const [peer, attempt] of this.pairingAttempts) if (attempt.expiresAt <= this.now()) this.pairingAttempts.delete(peer);
+      if (this.pairingAttempts.size >= 200 && !this.pairingAttempts.has(peerId)) throw new Error('Too many pairing attempts.');
+      const attempt = this.pairingAttempts.get(peerId) ?? { count: 0, expiresAt: this.now() + pairingLifetimeMs };
+      this.pairingAttempts.set(peerId, attempt);
+      if (++attempt.count > 10) throw new Error('Too many pairing attempts.');
+      const invitation = this.invitations.get(request.code);
       if (!invitation) throw new Error('Invalid or expired invitation.');
-      // Online guessing is the only way to test a code, so each start is an attempt and three burn the invitation.
-      if (++invitation.attempts > 3) { this.invitations.delete(request.channel); throw new Error('Invalid or expired invitation.'); }
-      const exchange = createPairingExchange({ role: 'responder', code: invitation.code, initiatorId: peerId, responderId: this.hostId });
-      const confirmations = exchange.finish(new Uint8Array(Buffer.from(request.message, 'base64')));
-      invitation.sessions.set(peerId, { confirm: confirmations.initiatorConfirm, name: request.name });
-      return { message: Buffer.from(exchange.message).toString('base64'), confirm: Buffer.from(confirmations.responderConfirm).toString('base64') };
-    }
-    if (method === 'pair.confirm') {
-      const request = z.object({ channel: z.string().length(4), confirm: z.string().min(40).max(48) }).strict().parse(args);
-      const invitation = this.invitations.get(request.channel);
-      const session = invitation?.sessions.get(peerId);
-      if (!invitation || !session) throw new Error('Invalid or expired invitation.');
-      if (!pairingConfirmationsMatch(session.confirm, new Uint8Array(Buffer.from(request.confirm, 'base64')))) {
-        this.invitations.delete(request.channel);
-        throw new Error('Invalid or expired invitation.');
-      }
-      if (this.state.grants.some((grant) => grant.peerId === peerId)) {
-        // An already approved device can recover a lost local pairing record without
-        // leaving a second approval request or changing its existing scope.
-        this.invitations.delete(request.channel);
-        return { pendingId: randomUUID(), state: 'approved' };
-      }
       if (invitation.pendingId) {
         const pending = this.pending.get(invitation.pendingId);
         if (pending?.peerId === peerId) return { pendingId: pending.id, state: 'awaitingApproval' };
         throw new Error('Invitation already claimed.');
       }
+      if (this.state.grants.some(grant => grant.peerId === peerId)) {
+        this.invitations.delete(request.code);
+        return { pendingId: randomUUID(), state: 'approved' };
+      }
+      // No await between checking and consuming: only this authenticated peer may await approval.
       const id = randomUUID();
-      this.pending.set(id, { id, peerId, name: session.name, channel: request.channel, expiresAt: invitation.expiresAt });
       invitation.pendingId = id;
+      this.pending.set(id, { id, peerId, name: request.name, code: request.code, expiresAt: invitation.expiresAt });
       return { pendingId: id, state: 'awaitingApproval' };
     }
     if (method === 'pair.status') {

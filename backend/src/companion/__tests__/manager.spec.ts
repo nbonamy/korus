@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-const transport = vi.hoisted(() => ({ start: vi.fn(async (..._args: unknown[]) => {}), stop: vi.fn(async () => {}) }));
+const transport = vi.hoisted(() => ({ start: vi.fn(async (..._args: unknown[]) => {}), stop: vi.fn(async () => {}), advertise: vi.fn(async () => true) }));
 vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   connected = false;
   async start(...args: unknown[]) { await transport.start(...args); this.connected = true; }
   async stop() { await transport.stop(); this.connected = false; }
-  async advertise() {}
+  async advertise() { return transport.advertise(); }
   revoke() {}
 } }));
 import { CompanionManager } from '../manager';
@@ -93,6 +93,15 @@ describe('daemon companion persistence', () => {
       expect(transport.start).not.toHaveBeenCalled();
       expect((await manager.control({ action: 'invite' })).invitation?.code).toBeTruthy();
       expect(transport.start).toHaveBeenCalledWith('wss://relay.meetkorus.dev', expect.any(String));
+      await manager.stop();
+    });
+    it('does not show a code the relay rejected and permits retry without exhausting invitations', async () => {
+      const { manager } = await fixture();
+      for (let attempt = 0; attempt < 6; attempt++) {
+        transport.advertise.mockResolvedValueOnce(false);
+        await expect(manager.control({ action: 'invite' })).rejects.toThrow('register the pairing code');
+      }
+      expect((await manager.control({ action: 'invite' })).invitation?.code).toBeTruthy();
       await manager.stop();
     });
     it('disables and resumes existing grants across restarts without creating a new invitation', async () => {

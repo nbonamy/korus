@@ -21,7 +21,6 @@ export class CompanionOutboundConnector {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private attempts = 0;
   private relay = '';
-  private pairUntil = 0;
   private admissionTimer: ReturnType<typeof setInterval> | undefined;
   private readonly active = new Map<string, Set<Stream>>();
   connected = false;
@@ -58,15 +57,18 @@ export class CompanionOutboundConnector {
     this.admissionTimer = setInterval(() => { void this.advertise(); }, 20_000);
     this.admissionTimer.unref();
   }
-  async advertise(pairUntil = this.pairUntil) {
-    this.pairUntil = pairUntil;
-    if (!this.node || !this.connected) return;
+  async advertise(): Promise<boolean> {
+    if (!this.node || !this.connected) return false;
     try {
       const stream = await this.node.dialProtocol(multiaddr(this.relay), companionAdmissionProtocol, { signal: AbortSignal.timeout(10_000) });
-      stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), pairUntil: Math.max(0, this.pairUntil), channels: this.gateway.pairChannels() }));
+      stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), invitations: this.gateway.pairingInvitations() }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
-      for await (const _chunk of stream) { /* Relay confirms admission without carrying app data. */ }
+      const decoder = new CompanionFrameDecoder();
+      for await (const chunk of stream) for (const frame of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+        return z.object({ ok: z.literal(true) }).strict().safeParse(frame).success;
+      }
     } catch { /* Endpoint grants remain authoritative during relay outages. */ }
+    return false;
   }
   async push(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
     if (!this.node || !this.connected || !this.gateway.grants.some(grant => grant.peerId === peerId)) return 'unavailable';

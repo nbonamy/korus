@@ -15,7 +15,7 @@ import { CompanionFrameDecoder, companionResponseLimit, companionProtocol, compa
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
-import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
+import { normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionSession } from './companion-port';
 import type { ProtectedVault } from './protected-storage';
 
@@ -104,19 +104,19 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       throw new Error('Connection closed without a receipt.');
     } finally { stream.abort(new Error('Request complete.')); }
   }
-  /** Asks the relay which laptop is advertising this channel; trust comes from the end-to-end proof, not the relay's answer. */
-  async function resolve(networkNode: Libp2p, config: RelayConfig, channel: string): Promise<string> {
+  /** Trust the pinned relay for introduction, then authenticate this laptop identity through Noise. */
+  async function resolve(networkNode: Libp2p, config: RelayConfig, code: string): Promise<string> {
     const stream: Stream = await networkNode.dialProtocol(multiaddr(addressFor(config.origin, config.peerId)), companionRendezvousProtocol, { signal: AbortSignal.timeout(15_000) });
     stream.maxReadBufferLength = 4096; stream.maxWriteBufferLength = 4096; stream.inactivityTimeout = 15_000;
     const decoder = new CompanionFrameDecoder();
     try {
-      stream.send(encodeCompanionFrame({ channel }));
+      stream.send(encodeCompanionFrame({ code }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
       for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
         const hostId = value && typeof value === 'object' && 'hostId' in value ? String(value.hostId) : '';
         try { peerIdFromString(hostId); return hostId; } catch { break; }
       }
-    } catch { /* The relay aborts unknown channels. */ } finally { stream.abort(new Error('Lookup complete.')); }
+    } catch { /* The relay aborts unavailable invitations. */ } finally { stream.abort(new Error('Lookup complete.')); }
     throw new PairingError('mobile.errors.noLaptop');
   }
   return {
@@ -128,18 +128,12 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       if (!relay) throw new PairingError('mobile.errors.noRelay');
       const code = normalizePairingCode(input);
       if (!code) throw new PairingError('mobile.errors.codeFormat');
-      const channel = pairingChannel(code);
       const networkNode = await network();
-      const hostId = await resolve(networkNode, relay, channel);
+      const hostId = await resolve(networkNode, relay, code);
       const laptop = { relayOrigin: relay.origin, relayPeerId: relay.peerId, hostId };
-      const exchange = createPairingExchange({ role: 'initiator', code, initiatorId: identity, responderId: hostId });
-      const started = await request<{ message: string; confirm: string }>(laptop, 'pair.start', { channel, message: base64(exchange.message), name });
-      const confirmations = exchange.finish(bytes(started.message));
-      // The laptop must prove it knows the code before this phone reveals anything further.
-      if (!pairingConfirmationsMatch(confirmations.responderConfirm, bytes(started.confirm))) throw new PairingError('mobile.errors.codeMismatch');
-      const result = await request<{ pendingId: string }>(laptop, 'pair.confirm', { channel, confirm: base64(confirmations.initiatorConfirm) });
+      const result = await request<{ pendingId: string }>(laptop, 'pair.claim', { code, name });
       pending();
-      const deadline = Date.now() + 300_000;
+      const deadline = Date.now() + pairingLifetimeMs;
       while (Date.now() < deadline) {
         if (disposed) throw new Error('Pairing cancelled.');
         const state = await request<{ state: string; grant?: unknown }>(laptop, 'pair.status', { pendingId: result.pendingId });

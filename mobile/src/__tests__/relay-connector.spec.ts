@@ -6,24 +6,16 @@ import { companionPushAuthorizationMessage } from '@workspace/core/companion-not
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
 import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
-const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { channel: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
+const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop }; } }));
 import { createRelayConnector } from '../relay-connector';
-import { createPairingExchange, normalizePairingCode } from '@workspace/core/companion-pairing';
+import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import type { ProtectedVault } from '../protected-storage';
-const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 const unb64 = (text: string) => new Uint8Array(Buffer.from(text, 'base64'));
-/** A laptop that follows the pairing exchange for one code; nothing else is simulated. */
+/** Identities introduced by the pinned relay; transport authenticity is tested with real Noise separately. */
 async function laptop(shown = 'K7QD-M2XP') {
   const host = await generateKeyPair('Ed25519'); const relayKey = await generateKeyPair('Ed25519');
-  const code = normalizePairingCode(shown)!; let responder: ReturnType<typeof createPairingExchange> | undefined; let confirmations: ReturnType<ReturnType<typeof createPairingExchange>['finish']> | undefined;
-  return { hostId: peerIdFromPrivateKey(host).toString(), relay: { origin: 'wss://relay.example', peerId: peerIdFromPrivateKey(relayKey).toString() }, code, shown,
-    start(peerId: string, message: string) {
-      responder = createPairingExchange({ role: 'responder', code, initiatorId: peerId, responderId: peerIdFromPrivateKey(host).toString() });
-      confirmations = responder.finish(unb64(message));
-      return { message: b64(responder.message), confirm: b64(confirmations.responderConfirm) };
-    },
-    confirmed(confirm: string) { return b64(confirmations!.initiatorConfirm) === confirm; } };
+  return { hostId: peerIdFromPrivateKey(host).toString(), relay: { origin: 'wss://relay.example', peerId: peerIdFromPrivateKey(relayKey).toString() }, code: normalizePairingCode(shown)!, shown };
 }
 function vault() {
   const values = new Map<string, string>();
@@ -33,8 +25,8 @@ let host: Awaited<ReturnType<typeof laptop>>;
 beforeEach(async () => {
   host = await laptop();
   transport.requests.length = 0; transport.connections.length = 0; transport.stop.mockClear(); transport.rendezvous.length = 0;
-  transport.response = (method, args) => method === 'pair.start' ? host.start(transport.phone, args.message)
-    : method === 'pair.confirm' ? (host.confirmed(args.confirm) ? { pendingId: randomUUID(), state: 'awaitingApproval' } : (() => { throw new Error('denied'); })())
+  transport.response = (method, args) => method === 'pair.claim'
+    ? (args.code === host.code ? { pendingId: randomUUID(), state: 'awaitingApproval' } : (() => { throw new Error('denied'); })())
     : method === 'pair.status' ? { state: 'approved', grant: {} } : {};
   transport.dial.mockReset().mockImplementation(async (_address: unknown, protocol: string) => {
     if (protocol === companionUpdatesProtocol) {
@@ -56,12 +48,12 @@ beforeEach(async () => {
     let reply: unknown;
     return { status: 'open', send(frame: Uint8Array) {
       const request = new CompanionFrameDecoder().push(frame)[0] as { id: string; method: string; args: unknown };
-      if (protocol === '/workspace/companion-rendezvous/1.0.0') { transport.rendezvous.push(request as never); reply = transport.known === (request as never as { channel: string }).channel ? { hostId: host.hostId } : undefined; return true; }
+      if (protocol === '/workspace/companion-rendezvous/2.0.0') { transport.rendezvous.push(request as never); reply = transport.known === (request as never as { code: string }).code ? { hostId: host.hostId } : undefined; return true; }
       transport.requests.push(request);
       reply = { v: 1, id: request.id, result: transport.response(request.method, request.args) }; return true;
     }, close: async () => {}, abort: () => {}, async *[Symbol.asyncIterator]() { if (reply) yield encodeCompanionFrame(reply, companionResponseLimit); } };
   });
-  transport.known = 'K7QD';
+  transport.known = 'K7QDM2XP';
 });
 const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7QD-M2XP') => connector.pair!(code, 'Phone', () => {});
 describe('native relay host adapter', () => {
@@ -154,7 +146,7 @@ describe('native relay host adapter', () => {
       await expect(session.loadOlderHistory!('unknown')).rejects.toThrow();
     } finally { await connector.dispose!(); }
   });
-  it('finds the laptop from the code, proves the code, and reuses the limited pinned circuit for approval polls', async () => {
+  it('pins the introduced laptop, claims the code, and reuses the limited pinned circuit for approval polls', async () => {
     const connector = connect();
     const address = `/dns4/relay.example/tcp/443/tls/ws/p2p/${host.relay.peerId}/p2p-circuit/p2p/${host.hostId}`;
     const streamFactory = transport.dial.getMockImplementation()!;
@@ -164,9 +156,9 @@ describe('native relay host adapter', () => {
     try {
       const pending = vi.fn();
       expect(await connector.pair!(' k7qd m2xp ', 'Phone', pending)).toBe(host.hostId);
-      expect(transport.rendezvous).toStrictEqual([{ channel: 'K7QD' }]);
-      expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.start', 'pair.confirm', 'pair.status']);
-      expect(reused).toHaveBeenCalledTimes(3);
+      expect(transport.rendezvous).toStrictEqual([{ code: 'K7QDM2XP' }]);
+      expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.claim', 'pair.status']);
+      expect(reused).toHaveBeenCalledTimes(2);
       expect(reused).toHaveBeenCalledWith('/workspace/companion/1.0.0', expect.objectContaining({ runOnLimitedConnection: true }));
       expect(wrongPath).not.toHaveBeenCalled(); expect(transport.dial).toHaveBeenCalledTimes(1);
       expect(pending).toHaveBeenCalledOnce();
@@ -297,18 +289,37 @@ describe('native relay host adapter', () => {
     expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
     await connector.dispose!(); await restored.dispose!();
   });
-  it('refuses a mistyped code, an unknown channel, a laptop that cannot prove the code and a build without a relay', async () => {
-    const connector = connect();
+  it('refuses malformed or unavailable codes and never saves a host before approval', async () => {
+    const storage = vault(); const connector = connect(storage);
     await expect(pairWith(connector, 'K7QD-M2X')).rejects.toThrow('codeFormat');
     expect(transport.dial).not.toHaveBeenCalled();
-    transport.known = 'ABCD';
+    transport.known = 'ABCDEFGH';
     await expect(pairWith(connector)).rejects.toThrow('noLaptop');
-    transport.known = 'K7QD';
-    const imposter = await laptop('K7QD-M2XQ'); host.start = imposter.start; host.confirmed = imposter.confirmed;
-    await expect(pairWith(connector)).rejects.toThrow('codeMismatch');
-    expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.start']);
+    transport.known = 'K7QDM2XP';
+    transport.response = () => { throw new Error('Pairing denied'); };
+    await expect(pairWith(connector)).rejects.toThrow('Pairing denied');
+    expect(transport.requests.map(request => request.method)).toStrictEqual(['pair.claim']);
+    expect(storage.values.get('paired-hosts')).toBeUndefined();
     await connector.dispose!();
     await expect(createRelayConnector(vault(), null).pair!('K7QD-M2XP', 'Phone', () => {})).rejects.toThrow('noRelay');
+  });
+  it('reconnects using the saved laptop pin without asking the relay for another identity', async () => {
+    const storage = vault(); const first = connect(storage);
+    const pinnedHost = host.hostId;
+    await pairWith(first); await first.dispose!();
+    host = await laptop(); // Even a changed relay introduction must not replace the saved laptop.
+    const saved = JSON.parse(storage.values.get('paired-hosts')!)[0];
+    const restored = createRelayConnector(storage, { origin: saved.relayOrigin, peerId: saved.relayPeerId });
+    const lookups = transport.rendezvous.length;
+    transport.response = () => ({ teams: [], agents: [] });
+    try {
+      const session = await restored.connect(pinnedHost);
+      await session.getWorkspace();
+      expect(transport.rendezvous).toHaveLength(lookups);
+      expect(transport.dial.mock.calls.at(-1)![0].toString()).toContain(`/p2p-circuit/p2p/${pinnedHost}`);
+      expect(storage.values.get('paired-hosts')).not.toContain('K7QD');
+      session.close();
+    } finally { await restored.dispose!(); }
   });
   it('rejects unpaired hosts and corrupt saved identities without dialing', async () => {
     const storage = vault(); const connector = connect(storage);

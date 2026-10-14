@@ -12,6 +12,6 @@ export function relayAddress(origin: string, peerId: string, allowLocalDevelopme
   const protocol = host.startsWith('[') ? 'ip6' : /^\d+\.\d+\.\d+\.\d+$/.test(host) ? 'ip4' : 'dns4';
   return `/${protocol}/${host.replace(/^\[|\]$/g, '')}/tcp/${url.port || 443}${url.protocol === 'wss:' ? '/tls' : ''}/ws/p2p/${peerId}`;
 }
-export const companionAdmissionProtocol = '/workspace/companion-admission/1.0.0';
-/** A phone resolves a pairing channel to the laptop advertising it; authentication is end to end. */
-export const companionRendezvousProtocol = '/workspace/companion-rendezvous/1.0.0';
+export const companionAdmissionProtocol = '/workspace/companion-admission/2.0.0';
+/** The pinned relay is trusted for the initial introduction; both endpoints pin the introduced peer identity. */
+export const companionRendezvousProtocol = '/workspace/companion-rendezvous/2.0.0';

@@ -98,7 +98,10 @@ export class CompanionManager {
           await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');
           invitation = this.gateway.invite();
-          await this.connector.advertise(invitation.expiresAt);
+          if (!await this.connector.advertise()) {
+            this.gateway.discardInvitation(invitation.code);
+            throw new Error('Could not register the pairing code. Check the relay connection and try again.');
+          }
           break;
         case 'decide': await this.gateway.decide(action.pendingId, action.approve); await this.connector.advertise(); break;
         case 'revoke': await this.gateway.revoke(action.peerId); await this.connector.advertise(); break;

@@ -148,11 +148,12 @@ worktree on that existing branch.
 Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
 protocol runs through an outbound WebSocket circuit relay, with Noise authenticating
 and encrypting the laptop-to-device channel. A phone pairs with a short code that
-expires after five minutes, is proven end to end with a password-authenticated key
-exchange, pins the laptop and relay identities, and still requires explicit desktop
-approval; an approved phone can read every team and send prompts. The relay carries
+expires after five minutes and is claimed by one authenticated phone. The pinned
+relay is trusted for this initial identity introduction; subsequent connections use
+the saved laptop and phone identity pins. Explicit desktop approval is required;
+an approved phone can read every team and send prompts. The relay carries
 conversation ciphertext, connection metadata and optional push attention metadata;
-its leased host registrations, temporary pairing windows and traffic bounds
+its leased host registrations, temporary claimed-device routes and traffic bounds
 constrain routing. Endpoint authorization constrains app methods and location/team/agent/session
 targets. Local revocation persists before closing device connections. The local web,
 MCP and daemon socket transports retain their existing exposure boundaries.

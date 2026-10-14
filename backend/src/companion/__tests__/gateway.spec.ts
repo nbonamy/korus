@@ -4,23 +4,15 @@ import { CompanionGateway, type GatewayState } from '../gateway';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { BackendSkillSummary } from '@workspace/core/contracts';
 import { opaquePath } from '@workspace/core/companion-projection';
-import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
+import { normalizePairingCode } from '@workspace/core/companion-pairing';
 const workspace: CompanionWorkspace = {
   teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }, { id: 'remote-team', name: 'Remote', agentIds: ['remote-agent'], remoteConnectionId: 'ssh-host' }],
   agents: [{ id: 'agent', name: 'Agent', teamId: 'team', folder: '/private', backend: 'codex', status: { type: 'idle' }, createdAt: '', updatedAt: '', mcpSessionId: 'private-session' },
     { id: 'remote-agent', name: 'Remote', teamId: 'remote-team', folder: '/private', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' }],
 };
 const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
-const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
-const unb64 = (text: string) => new Uint8Array(Buffer.from(text, 'base64'));
-/** The phone side of pairing: PAKE against the gateway, as the native connector performs it. */
-async function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone', typed = shown) {
-  const code = normalizePairingCode(typed)!; const channel = pairingChannel(code);
-  const exchange = createPairingExchange({ role: 'initiator', code, initiatorId: peerId, responderId: 'host' });
-  const started = await gateway.request(peerId, 'pair.start', { channel, message: b64(exchange.message), name }) as { message: string; confirm: string };
-  const confirmations = exchange.finish(unb64(started.message));
-  return { confirmations, host: unb64(started.confirm), channel,
-    confirm: () => gateway.request(peerId, 'pair.confirm', { channel, confirm: b64(confirmations.initiatorConfirm) }) as Promise<{ pendingId: string; state: string }> };
+function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
+  return gateway.request(peerId, 'pair.claim', { code: normalizePairingCode(shown)!, name }) as Promise<{ pendingId: string; state: string }>;
 }
 function fixture() {
   let now = 1;
@@ -37,7 +29,7 @@ function fixture() {
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
     async pair() {
       const invite = gateway.invite();
-      const result = await (await claim(gateway, 'phone', invite.code)).confirm();
+      const result = await claim(gateway, 'phone', invite.code);
       await gateway.decide(result.pendingId, true);
       return invite;
     } };
@@ -220,66 +212,63 @@ describe('companion authorization gateway', () => {
     f.port.loadOlderHistory.mockImplementationOnce(async () => { await f.gateway.revoke('phone'); return { hasOlder: true }; });
     await expect(f.gateway.request('phone', 'conversation.loadOlder', target)).rejects.toThrow('authorized');
   });
-  it('permits only pairing before explicit approval; rejects expiry, replay and a competing peer', async () => {
+  it('atomically claims a code for one peer, denies application reads until approval, and rejects reuse', async () => {
     const f = fixture(); const invite = f.gateway.invite();
     expect(invite.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    await expect(f.gateway.request('phone', 'snapshot.get', {})).rejects.toThrow('authorized');
-    const first = await claim(f.gateway, 'phone', invite.code);
-    expect(pairingConfirmationsMatch(first.confirmations.responderConfirm, first.host)).toBe(true);
-    const pending = await first.confirm();
+    const results = await Promise.allSettled([claim(f.gateway, 'phone', invite.code), claim(f.gateway, 'other-phone', invite.code)]);
+    expect(results.map(result => result.status)).toEqual(['fulfilled', 'rejected']);
+    const pending = await claim(f.gateway, 'phone', invite.code);
     expect(pending.state).toBe('awaitingApproval');
-    expect(await first.confirm()).toStrictEqual(pending);
-    const competing = await claim(f.gateway, 'other-phone', invite.code);
-    await expect(competing.confirm()).rejects.toThrow('claimed');
+    expect(f.gateway.pendingRequests).toEqual([expect.objectContaining({ id: pending.pendingId, peerId: 'phone', name: 'Phone' })]);
+    await expect(f.gateway.request('phone', 'snapshot.get', {})).rejects.toThrow('authorized');
     await expect(f.gateway.request('other-phone', 'pair.status', { pendingId: pending.pendingId })).rejects.toThrow();
     await f.gateway.decide(pending.pendingId, true);
     await expect(claim(f.gateway, 'other-phone', invite.code)).rejects.toThrow('expired');
+    await expect(claim(f.gateway, 'phone', invite.code)).rejects.toThrow('expired');
     expect(await f.gateway.request('phone', 'pair.status', { pendingId: pending.pendingId })).toMatchObject({ state: 'approved' });
     const expired = f.gateway.invite(); f.advance();
     await expect(claim(f.gateway, 'phone', expired.code)).rejects.toThrow('expired');
   });
-  it('lets a phone with the wrong code detect the mismatch itself and gives up after three attempts', async () => {
+  it('keeps a claimed code bound while approval persistence fails, then consumes it on rejection', async () => {
     const f = fixture(); const invite = f.gateway.invite();
-    const wrong = `${invite.code.slice(0, 5)}${invite.code.slice(5).split('').reverse().join('')}`;
-    const typo = wrong === invite.code ? `${invite.code.slice(0, 5)}AAAA` : wrong;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const mistaken = await claim(f.gateway, 'phone', invite.code, 'Phone', typo);
-      expect(pairingConfirmationsMatch(mistaken.confirmations.responderConfirm, mistaken.host)).toBe(false);
-    }
+    const pending = await claim(f.gateway, 'phone', invite.code);
+    f.port.save.mockRejectedValueOnce(new Error('disk full'));
+    await expect(f.gateway.decide(pending.pendingId, true)).rejects.toThrow('disk full');
+    await expect(claim(f.gateway, 'other-phone', invite.code)).rejects.toThrow('claimed');
+    expect(await claim(f.gateway, 'phone', invite.code)).toEqual(pending);
+    await f.gateway.decide(pending.pendingId, false);
     await expect(claim(f.gateway, 'phone', invite.code)).rejects.toThrow('expired');
-    expect(f.gateway.pairChannels()).toEqual([]);
+    await expect(f.gateway.request('phone', 'pair.status', { pendingId: pending.pendingId })).rejects.toThrow();
+    expect(f.saved().grants).toEqual([]);
   });
-  it('burns the invitation when a peer answers its challenge incorrectly', async () => {
+  it('rejects unknown codes and bounds guesses without consuming another phone’s invitation', async () => {
     const f = fixture(); const invite = f.gateway.invite();
-    const attempt = await claim(f.gateway, 'phone', invite.code);
-    await expect(f.gateway.request('phone', 'pair.confirm', { channel: attempt.channel, confirm: b64(new Uint8Array(32)) })).rejects.toThrow('expired');
-    expect(f.gateway.pairChannels()).toEqual([]);
-    await expect(attempt.confirm()).rejects.toThrow('expired');
-    expect(f.gateway.pendingRequests).toEqual([]);
+    const wrong = invite.code.startsWith('A') ? `B${invite.code.slice(1)}` : `A${invite.code.slice(1)}`;
+    for (let attempt = 0; attempt < 10; attempt++) await expect(claim(f.gateway, 'intruder', wrong)).rejects.toThrow('expired');
+    await expect(claim(f.gateway, 'intruder', invite.code)).rejects.toThrow('Too many');
+    expect((await claim(f.gateway, 'phone', invite.code)).state).toBe('awaitingApproval');
   });
-  it('refuses a confirmation that was not preceded by a start from the same peer', async () => {
-    const f = fixture(); const invite = f.gateway.invite();
-    const attempt = await claim(f.gateway, 'phone', invite.code);
-    await expect(f.gateway.request('intruder', 'pair.confirm', { channel: attempt.channel, confirm: b64(attempt.confirmations.initiatorConfirm) })).rejects.toThrow();
-    expect(f.gateway.pendingRequests).toEqual([]);
-  });
-  it('advertises only live invitation channels and limits concurrent invitations', async () => {
+  it('advertises each original deadline, limits invitations, and forgets pending claims on restart', async () => {
     const f = fixture(); const invites = Array.from({ length: 5 }, () => f.gateway.invite());
-    expect(f.gateway.pairChannels().sort()).toEqual(invites.map((invite) => invite.code.slice(0, 4)).sort());
+    expect(f.gateway.pairingInvitations()).toEqual(invites.map(invite => ({ ...invite, code: normalizePairingCode(invite.code) })));
     expect(() => f.gateway.invite()).toThrow('Too many');
-    f.advance(); expect(f.gateway.pairChannels()).toEqual([]);
+    await claim(f.gateway, 'phone', invites[0]!.code);
+    const restarted = new CompanionGateway('host', f.saved(), f.port);
+    await expect(claim(restarted, 'phone', invites[0]!.code)).rejects.toThrow('expired');
+    f.advance(); expect(f.gateway.pairingInvitations()).toEqual([]);
+    expect(f.gateway.pendingRequests).toEqual([]);
   });
   it('recovers an approved device pairing record without leaving a pending approval', async () => {
     const f = fixture(); await f.pair();
     const invite = f.gateway.invite();
-    const result = await (await claim(f.gateway, 'phone', invite.code, 'Recovered phone')).confirm();
+    const result = await claim(f.gateway, 'phone', invite.code, 'Recovered phone');
     expect(await f.gateway.request('phone', 'pair.status', { pendingId: result.pendingId })).toMatchObject({ state: 'approved' });
     expect(f.gateway.pendingRequests).toEqual([]);
     await expect(claim(f.gateway, 'other-phone', invite.code)).rejects.toThrow('expired');
   });
   it('expires an unapproved request together with its invitation', async () => {
     const f = fixture(); const invite = f.gateway.invite();
-    const { pendingId } = await (await claim(f.gateway, 'phone', invite.code)).confirm();
+    const { pendingId } = await claim(f.gateway, 'phone', invite.code);
     f.advance();
     await expect(f.gateway.decide(pendingId, true)).rejects.toThrow('expired');
     expect(f.port.save).not.toHaveBeenCalled();
