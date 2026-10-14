@@ -1,3 +1,4 @@
+import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
@@ -19,6 +20,8 @@ export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: 
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
+  registerPush?(registration: CompanionPushRegistration | null): Promise<void>;
+  onNotification?(listener: (notification: CompanionNotification) => void): () => void;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(reply: CompanionRequestReply): Promise<void>;
   getWorkspace(): Promise<CompanionWorkspace>;

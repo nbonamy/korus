@@ -1,6 +1,11 @@
+import { isCompanionNotification } from '@workspace/core/companion-notification';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import type { Stream } from '@libp2p/interface';
 import { CompanionFrameDecoder, companionResponseLimit, encodeCompanionFrame, type CompanionUpdate } from '@workspace/core/companion-protocol';
+
+export class CompanionOperationDenied extends Error {
+  constructor() { super('Laptop denied the operation or is unavailable.'); }
+}
 
 /** Ordered duplex RPC and notifications over the authenticated laptop circuit. */
 export function createCompanionStream(open: () => Promise<Stream>, update: (value: CompanionUpdate) => void, disconnected: () => void) {
@@ -38,7 +43,8 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
         if ('update' in raw) {
           if (!('seq' in raw) || raw.seq !== ++sequence) throw new Error('Update sequence gap.');
           const value = raw.update as CompanionUpdate;
-          if (!value || !['workspace', 'conversation'].includes(value.type)) throw new Error('Invalid update.');
+          if (!value || !['workspace', 'conversation', 'notification'].includes(value.type)) throw new Error('Invalid update.');
+          if (value.type === 'notification' && !isCompanionNotification(value.notification)) throw new Error('Invalid notification.');
           if (value.type === 'conversation') {
             const frame = decodeAppBackendEvent(value.frame);
             if (!/^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/.test(frame.type)) throw new Error('Invalid conversation frame.');
@@ -50,7 +56,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
           if (!call) throw new Error('Unmatched reply.');
           if (!('error' in raw) && !('result' in raw)) throw new Error('Invalid reply.');
           pending.delete(raw.id); clearTimeout(call.timer);
-          if ('error' in raw) call.reject(new Error('Laptop denied the operation or is unavailable.'));
+          if ('error' in raw) call.reject(new CompanionOperationDenied());
           else if ('result' in raw) call.resolve(raw.result);
           else throw new Error('Invalid reply.');
         }

@@ -10,11 +10,14 @@ const ios = path.join(root, 'mobile/ios');
 /** Product identity and the relay become build settings: nothing visible is hard-coded in the project. */
 export function generatedConfig(product, env, dotenv) {
   const file = parseEnv(dotenv);
-  const relayUrl = (env.APP_COMPANION_RELAY_URL ?? file.APP_COMPANION_RELAY_URL ?? '').trim();
-  const relayPeer = (env.APP_COMPANION_RELAY_PEER_ID ?? file.APP_COMPANION_RELAY_PEER_ID ?? '').trim();
+  const overrideUrl = (env.APP_COMPANION_RELAY_URL ?? file.APP_COMPANION_RELAY_URL ?? '').trim();
+  const overridePeer = (env.APP_COMPANION_RELAY_PEER_ID ?? file.APP_COMPANION_RELAY_PEER_ID ?? '').trim();
+  if (Boolean(overrideUrl) !== Boolean(overridePeer)) throw new Error('Set both APP_COMPANION_RELAY_URL and APP_COMPANION_RELAY_PEER_ID.');
+  const relayUrl = overrideUrl || product.companionRelay?.origin || '';
+  const relayPeer = overridePeer || product.companionRelay?.peerId || '';
   // `//` starts a comment in an xcconfig; `$()` keeps the URL intact.
   const escaped = relayUrl.replace('//', '/$()/');
-  return [`COMPANION_BUNDLE_ID = ${product.appId}.companion`, `COMPANION_DISPLAY_NAME = ${product.name}`,
+  return [`COMPANION_BUNDLE_ID = ${product.appId}`, `COMPANION_DISPLAY_NAME = ${product.name}`,
     `COMPANION_RELAY_URL = ${escaped}`, `COMPANION_RELAY_PEER_ID = ${relayPeer}`, ''].join('\n');
 }
 

@@ -1,9 +1,10 @@
+import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
 import type { Agent, AgentBackend, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
-export type CompanionUpdate = { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
+export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;
 export const companionFrameLimit = 4 * 1024 * 1024;

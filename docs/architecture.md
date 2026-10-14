@@ -88,6 +88,24 @@ clear newer activity. Desktop and companion indicators consume the same metadata
 The phone acknowledges only its rendered foreground conversation with the drawer
 closed; cached subscriptions and background updates never count as reading.
 
+Mobile attention alerts originate from live completed-turn and normalized request
+creation events in the owning daemon. Snapshots do not create alerts. An event ID
+binds the host, conversation and turn/request across the foreground stream and APNs;
+native presentation suppresses duplicates and the visible conversation. Banner
+dismissal does not acknowledge unread activity. Notification navigation validates
+the paired host and current full conversation target before opening it.
+Push device tokens belong to each authenticated pairing and are persisted privately
+with its grant; revocation removes them. The relay holds the APNs signing keys and
+accepts bounded, rate-limited notification requests only from admitted laptops for
+their registered phones, with phone-signed consent scoped to the relay, laptop,
+token, environment and expiration. Public relay admission needs no account or
+operator enrollment; pairing proof and desktop approval still gate access.
+APNs receives agent names, attention kinds and opaque navigation IDs, never
+conversation text, prompts, approvals or tool arguments.
+Foreground APNs delivery uses the same native banner path with system presentation
+suppressed; background delivery belongs to iOS. The native app bundle ID and APNs
+topic both use the product app ID. Sandbox and production credentials are separate.
+
 Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
 events: those projections are absent from the mobile workspace, and conversation
 content travels through the subscribed provider stream.
@@ -132,9 +150,10 @@ protocol runs through an outbound WebSocket circuit relay, with Noise authentica
 and encrypting the laptop-to-device channel. A phone pairs with a short code that
 expires after five minutes, is proven end to end with a password-authenticated key
 exchange, pins the laptop and relay identities, and still requires explicit desktop
-approval; an approved phone can read every team and send prompts. The relay carries ciphertext and connection metadata; its
-operator host allowlist, temporary pairing windows and traffic bounds constrain
-routing. Endpoint authorization constrains app methods and location/team/agent/session
+approval; an approved phone can read every team and send prompts. The relay carries
+conversation ciphertext, connection metadata and optional push attention metadata;
+its leased host registrations, temporary pairing windows and traffic bounds
+constrain routing. Endpoint authorization constrains app methods and location/team/agent/session
 targets. Local revocation persists before closing device connections. The local web,
 MCP and daemon socket transports retain their existing exposure boundaries.
 Native Debug builds may use WS for their configured relay on local Wi-Fi without

@@ -1,3 +1,4 @@
+import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
@@ -8,7 +9,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
-import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput } from './companion-port';
+import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
 import type { ComposerChange } from './composer-settings';
 import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './workspace-groups';
@@ -17,6 +18,7 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  pushRegistrationFailed: boolean;
   requests: ReturnType<typeof createCompanionState>['requests']['value'];
   respondingRequest: string | null;
   failedRequest: string | null;
@@ -60,6 +62,8 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'notification'; notification: CompanionNotification }
+  | { type: 'notificationOpenFailed' }
   | { type: 'sendResult'; requestId: string; status: 'accepted' | 'rejected' | 'unknown' }
   | { type: 'conversationContent'; requestId: string; agentId: string; sessionId: string; chunk?: import('@workspace/core/contracts/conversation').ConversationContentChunk; error?: string }
   | { type: 'state'; state: EngineState }
@@ -76,6 +80,8 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
+  | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
   | { type: 'start' }
@@ -109,7 +115,7 @@ export type EnginePort = { connector: CompanionConnector; selectionStore?: Selec
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
 export function createEngine(port: EnginePort) {
-  const state = createCompanionState(port.connector, undefined);
+  const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && foreground) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
   const pairing = ref<EngineState['pairing']>('idle');
   const pairingError = ref('');
@@ -155,6 +161,7 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
@@ -289,6 +296,19 @@ export function createEngine(port: EnginePort) {
 
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
+      case 'pushRegistration': return state.registerPush(command.registration);
+      case 'openNotification': {
+        const target = command.target;
+        if (!port.connector.laptops.some(laptop => laptop.id === target.hostId)) { port.post({ type: 'notificationOpenFailed' }); return; }
+        await port.connector.resume?.();
+        if (state.laptopId.value !== target.hostId || state.status.value !== 'connected') await connect(target.hostId);
+        const agent = state.workspace.value.agents.find(agent => agent.id === target.agentId);
+        const team = state.workspace.value.teams.find(team => team.id === target.teamId);
+        if (state.status.value !== 'connected' || !agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
+          port.post({ type: 'notificationOpenFailed' }); return;
+        }
+        await state.selectTeam(target.teamId); await state.selectAgent(target.agentId); return rememberSelection();
+      }
       case 'readConversationContent': {
         try {
           const chunk = await state.readConversationContent(command.agentId, command.input);
@@ -388,5 +408,3 @@ export function createEngine(port: EnginePort) {
 
   return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }
-
-export type { CompanionPromptOptions };

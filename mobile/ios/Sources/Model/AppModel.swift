@@ -6,6 +6,12 @@ import UIKit
 @Observable
 @MainActor
 final class AppModel {
+    let notifications = NotificationInbox()
+    let push = PushNotifications.shared
+    var notificationError: String?
+    var pushRegistrationFailed = false
+    private var pendingNotification: ChatNotification?
+    private var foreground = true
     var startup: EngineState.Startup = .loading
     private var conversationLoading = ConversationLoadingState()
     var loadingConversation: Bool { conversationLoading.isLoading }
@@ -56,12 +62,17 @@ final class AppModel {
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
-    var presentedImage: ImagePreview? { didSet { if presentedImage == nil { acknowledgeRead() } } }
+    var presentedImage: ImagePreview? {
+        didSet {
+            if presentedImage == nil { acknowledgeRead() }
+            notifications.visibleChanged(visibleNotificationTarget)
+        }
+    }
     var reviewState = ReviewState()
     var mentions = EngineState.Suggestions()
     var skills = EngineState.Suggestions()
     private var conversationRead = ConversationReadState()
-    var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead() } } }
+    var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead(); notifications.visibleChanged(visibleNotificationTarget) } } }
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
 
@@ -69,6 +80,16 @@ final class AppModel {
     let transcript = TranscriptHost()
 
     init() {
+        engine.onNotification = { [weak self] notification in self?.receive(notification) }
+        engine.onNotificationOpenFailed = { [weak self] in self?.notificationError = "This conversation is unavailable. Check the laptop connection and try again." }
+        push.onNotification = { [weak self] notification, tapped in
+            if tapped { self?.open(notification) } else { self?.receive(notification) }
+        }
+        push.onRegistration = { [weak self] registration in
+            self?.command("pushRegistration", ["registration": registration as Any? ?? NSNull()])
+        }
+        push.flush()
+
         engine.onSendResult = { [weak self] result in self?.composerDrafts.completeSend(result) }
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
@@ -110,6 +131,7 @@ final class AppModel {
 
     private func apply(_ state: EngineState) {
         set(\.startup, state.startup)
+        set(\.pushRegistrationFailed, state.pushRegistrationFailed ?? false)
         conversationLoading.update(fetching: state.loading, failed: !state.error.isEmpty, hasAgent: !state.agentId.isEmpty)
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
@@ -165,6 +187,8 @@ final class AppModel {
         set(\.sessionAction, state.sessionAction)
         set(\.sessionActionFailed, state.sessionActionFailed)
         set(\.closePreview, state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil)
+        notifications.visibleChanged(visibleNotificationTarget)
+        if startup == .ready, let notification = pendingNotification { pendingNotification = nil; open(notification) }
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {
@@ -290,7 +314,26 @@ final class AppModel {
         command("read", ["agentId": read.agentId, "revision": read.revision])
     }
 
+    private var visibleNotificationTarget: ChatNotification.Target? {
+        guard foreground, !drawerOpen, !reviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
+        return .init(hostId: target.hostId, locationId: target.locationId, teamId: target.teamId, agentId: target.agentId, sessionId: target.sessionId)
+    }
+    func receive(_ notification: ChatNotification) {
+        guard laptops.contains(where: { $0.id == notification.target.hostId }) else { return }
+        notifications.receive(notification, foreground: foreground, visible: visibleNotificationTarget)
+    }
+    func open(_ notification: ChatNotification) {
+        notifications.remember(notification.id)
+        notifications.dismiss(id: notification.id)
+        guard startup == .ready else { pendingNotification = notification; return }
+        drawerOpen = false; reviewOpen = false
+        let target = notification.target
+        command("openNotification", ["target": ["hostId": target.hostId, "locationId": target.locationId,
+            "teamId": target.teamId, "agentId": target.agentId, "sessionId": target.sessionId as Any? ?? NSNull()]])
+    }
     func setActive(_ active: Bool) {
+        foreground = active
+        if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
         command("activity", ["active": active])
     }

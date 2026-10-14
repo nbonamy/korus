@@ -118,6 +118,11 @@ struct DrawerView: View {
             Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
             Spacer()
             Menu {
+                Button(model.push.status, systemImage: "bell.badge") { Task { await model.push.enable() } }
+                if model.pushRegistrationFailed {
+                    Button("Retry notification setup", systemImage: "arrow.clockwise") { Task { await model.push.refresh() } }
+                }
+                Divider()
                 Button("Forget laptop", systemImage: "trash", role: .destructive) { model.forget() }
                 Divider()
                 Button("Debug", systemImage: "ladybug") {}

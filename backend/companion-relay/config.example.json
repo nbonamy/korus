@@ -1,8 +1,5 @@
 {
-  "listen": "/ip4/0.0.0.0/tcp/8443/tls/ws",
-  "hostIds": [],
+  "listen": "/ip4/127.0.0.1/tcp/47800/ws",
   "stateDirectory": "/var/lib/companion-relay",
-  "certificateFile": "/run/tls/fullchain.pem",
-  "privateKeyFile": "/run/tls/privkey.pem",
-  "healthPort": 8081
+  "healthPort": 47802
 }

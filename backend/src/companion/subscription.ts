@@ -1,8 +1,10 @@
+import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import { companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 
 export type SubscriptionPort = {
+  onNotification?(listener: (notification: CompanionNotification) => void): () => void;
   request(method: string, args: unknown): Promise<unknown>;
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
   authorized(): boolean;
@@ -19,7 +21,9 @@ const isConversation = (event: AppBackendEvent): event is ProviderConversationFr
 export class CompanionSubscription {
   private readonly watched = new Map<string, Watched>();
   private readonly unlisten: () => void;
+  private readonly unlistenNotifications: () => void;
   private closed = false;
+  private notificationsEnabled = false;
   private workspace: CompanionWorkspace | undefined;
   private workspaceJSON = '';
   private iconsVersion = '';
@@ -27,6 +31,9 @@ export class CompanionSubscription {
   private refreshing = false;
   private dirty = false;
   constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void, private readonly fail: () => void) {
+    this.unlistenNotifications = port.onNotification?.(notification => {
+      if (!this.closed && this.notificationsEnabled && port.authorized()) this.emit({ type: 'notification', notification });
+    }) ?? (() => {});
     this.unlisten = port.onEvent((event) => {
       if (this.closed) return;
       if (!port.authorized()) { this.close(); fail(); return; }
@@ -52,6 +59,7 @@ export class CompanionSubscription {
     if (this.closed || !this.port.authorized()) throw new Error('Subscription closed.');
     if (method === 'snapshot.get') {
       const result = await this.port.request(method, args) as CompanionWorkspace;
+      this.notificationsEnabled = (args as { notifications?: boolean })?.notifications === true;
       this.acceptWorkspace(result);
       return result;
     }
@@ -86,7 +94,7 @@ export class CompanionSubscription {
   }
   close() {
     if (this.closed) return;
-    this.closed = true; clearTimeout(this.refreshTimer); this.unlisten(); this.watched.clear();
+    this.closed = true; clearTimeout(this.refreshTimer); this.unlisten(); this.unlistenNotifications(); this.watched.clear();
   }
   private deliver(entry: Watched, frame: ProviderConversationFrame) {
     if (this.closed || !this.port.authorized()) return;
@@ -116,7 +124,7 @@ export class CompanionSubscription {
     if (this.refreshTimer || this.refreshing || this.closed) return;
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined; this.refreshing = true; this.dirty = false;
-      void this.port.request('snapshot.get', { iconsVersion: this.iconsVersion }).then((next) => this.acceptWorkspace(next as CompanionWorkspace))
+      void this.port.request('snapshot.get', { iconsVersion: this.iconsVersion, notifications: this.notificationsEnabled }).then((next) => this.acceptWorkspace(next as CompanionWorkspace))
         .catch(() => { this.close(); this.fail(); })
         .finally(() => { this.refreshing = false; if (this.dirty) this.refreshSoon(); });
     }, 50);

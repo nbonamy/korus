@@ -2,6 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { CompanionRelayPolicy } from '../relay';
 const host = '12D3KooW'.padEnd(52, 'h'); const phone = '12D3KooW'.padEnd(52, 'p');
 describe('opaque companion relay admission', () => {
+  it('admits new laptops automatically while requiring their live pairing or device grant for routing', () => {
+    let now = 1; const policy = new CompanionRelayPolicy(undefined, () => now);
+    expect(policy.route(phone, host)).toBe(false);
+    expect(policy.reserve(host)).toBe(true);
+    policy.register(host, [], now + 1000, ['K7QD']);
+    expect(policy.resolve(phone, 'K7QD')).toBe(host);
+    expect(policy.route(phone, host)).toBe(true);
+    now += 1001;
+    expect(policy.route(phone, host)).toBe(false);
+    policy.register(host, [phone], 0);
+    expect(policy.paired(host, phone)).toBe(true);
+    now += 120_001;
+    expect(policy.paired(host, phone)).toBe(false);
+    expect(policy.route(phone, host)).toBe(false);
+  });
+  it('bounds automatic host registrations and recovers capacity when advertisements expire', () => {
+    let now = 1; const policy = new CompanionRelayPolicy(undefined, () => now);
+    for (let i = 0; i < 1000; i++) expect(policy.reserve(`host${i}`)).toBe(true);
+    expect(policy.reserve('overflow')).toBe(false);
+    now += 120_001;
+    expect(policy.reserve('fresh')).toBe(true);
+  });
   it('admits only operator-configured laptops, bounds pairing attempts, and expires temporary routes', () => {
     let now = 1; const policy = new CompanionRelayPolicy(new Set([host]), () => now);
     expect(policy.reserve('unknown')).toBe(false); expect(policy.reserve(host)).toBe(true);

@@ -18,11 +18,13 @@ import { CompanionManager, type CompanionBackendPort } from '../manager';
 import type { CompanionGateway } from '../gateway';
 
 // Network admission has its own encrypted-circuit tests. Keep the entire daemon/provider path real.
-const transport = vi.hoisted(() => ({ gateway: null as CompanionGateway | null }));
+const transport = vi.hoisted(() => ({ gateway: null as CompanionGateway | null, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const) }));
 vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   connected = false;
   constructor(_key: unknown, gateway: CompanionGateway) { transport.gateway = gateway; }
-  async stop() {}
+  push = transport.push;
+  async start() { this.connected = true; }
+  async stop() { this.connected = false; }
 } }));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
@@ -49,6 +51,7 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
   const { status: host } = await initial.control({ action: 'status' }); await initial.stop();
   const file = path.join(directory, 'state.json');
   const saved = JSON.parse(await readFile(file, 'utf8'));
+  saved.enabled = true;
   saved.gateway.grants = [{ peerId: 'phone', name: 'Phone', createdAt: 1 }];
   await writeFile(file, JSON.stringify(saved));
   manager = new CompanionManager(directory, backend, {});
@@ -95,6 +98,12 @@ describe('mobile requests across the owning daemon', () => {
     const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
     const agent: Agent = { ...sdkAgent('claude-phone'), teamId: 'team-test', backend: 'claude', backendSession: undefined };
     const f = await fixture(driver, agent);
+    const updates = vi.fn(); const failed = vi.fn();
+    const subscription = f.gateway.subscribe('phone', updates, failed);
+    cleanup.push(async () => subscription.close());
+    await subscription.request('snapshot.get', { notifications: true });
+    await f.gateway.request('phone', 'notifications.register', { token: 'ab'.repeat(32), environment: 'development' });
+    transport.push.mockClear();
     const started = driver.sendPrompt(agent, 'Ask for a choice');
     await vi.waitFor(() => expect(sdk.options).toHaveLength(1));
     sdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-session' }); await started;
@@ -103,6 +112,10 @@ describe('mobile requests across the owning daemon', () => {
     }, { signal: new AbortController().signal, toolUseID: 'item', requestId: 'request' });
     await vi.waitFor(() => expect(f.snapshot.agentRequests?.[agent.id]).toHaveLength(1));
     expect(f.snapshot.agents[0]!.status.type).toBe('awaitingInput');
+    await vi.waitFor(() => expect(transport.push).toHaveBeenCalledTimes(1));
+    const notification = transport.push.mock.calls[0]![2];
+    expect(notification).toMatchObject({ kind: 'question', target: { hostId: f.hostId, agentId: agent.id } });
+    expect(updates).toHaveBeenCalledWith({ type: 'notification', notification });
     await f.answer({ 'Which option?': { answers: ['Second'] } });
     await expect(waiting).resolves.toMatchObject({ behavior: 'allow', updatedInput: { answers: { 'Which option?': 'Second' } } });
     expect(f.snapshot.agentRequests?.[agent.id]).toEqual([]);

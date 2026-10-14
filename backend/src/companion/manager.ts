@@ -1,3 +1,5 @@
+import { product } from '@workspace/core/product';
+import { CompanionNotifications } from './notifications';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -43,6 +45,8 @@ export class CompanionManager {
   private saved!: Saved;
   private key!: PrivateKey;
   private gateway!: CompanionGateway;
+  private notifications?: CompanionNotifications;
+  private notificationWork = Promise.resolve();
   private connector!: CompanionOutboundConnector;
   private writes = Promise.resolve();
   private controls = Promise.resolve();
@@ -52,14 +56,22 @@ export class CompanionManager {
   constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, env: NodeJS.ProcessEnv = process.env) {
     this.environment = relayFromEnvironment(env);
   }
-  /** The environment owns the relay when set; otherwise a relay saved by an explicit enable applies. */
+  /** Explicit deployment choices take precedence over the bundled public relay. */
   private get relay(): Relay | null {
+    if (this.environment.error) return null;
     if (this.environment.relay) return this.environment.relay;
-    return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : null;
+    return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : product.companionRelay;
   }
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
   event(event: AppBackendEvent) {
     this.conversations.observe(event);
+    if (this.saved?.enabled && this.notifications?.accepts(event)) {
+      this.notificationWork = this.notificationWork.then(async () => {
+        if (!this.saved.enabled) return;
+        const notification = this.notifications!.create(event, await this.workspace());
+        if (notification && this.saved.enabled) void this.gateway.notify(notification).catch(() => { warnMain('companion', 'push delivery unavailable'); });
+      }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
+    }
     for (const listener of this.eventListeners) listener(event);
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
@@ -120,7 +132,9 @@ export class CompanionManager {
       saved = { v: 1, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), enabled: false, relayOrigin: '', relayPeerId: '', gateway: { grants: [], commands: {} } };
     }
     this.saved = saved;
+    this.notifications = new CompanionNotifications(peerIdFromPrivateKey(this.key).toString());
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
       markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },

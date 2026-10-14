@@ -1,3 +1,4 @@
+import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
@@ -10,7 +11,16 @@ import { reconcileWorkspace } from './workspace-reconcile';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 
-export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[]) {
+export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[], onNotification?: (notification: CompanionNotification) => void) {
+  let pushRegistration: CompanionPushRegistration | null | undefined;
+  const pushRegistrationFailed = ref(false);
+  async function registerPush(registration: CompanionPushRegistration | null) {
+    pushRegistration = registration;
+    const current = session;
+    if (!current?.registerPush) return;
+    try { await current.registerPush(registration); if (current === session) pushRegistrationFailed.value = false; }
+    catch { if (current === session) pushRegistrationFailed.value = true; }
+  }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
   const respondingRequest = ref<string | null>(null);
@@ -288,7 +298,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
           if (error.value === 'mobile.errors.loadConversation') error.value = '';
         }
       }) ?? (() => {});
-      unsubscribe = () => { removeDisconnect(); removeUpdates(); };
+      const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) onNotification?.(notification); }) ?? (() => {});
+      unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
+      if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';
       if (session.commandStatus) for (const [draftKey, commandId] of Object.entries(commandIds)) {
         if (!uncertain[draftKey] || JSON.parse(draftKey)[0] !== id) continue;
@@ -587,7 +599,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

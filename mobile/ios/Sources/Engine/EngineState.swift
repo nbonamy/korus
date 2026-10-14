@@ -52,6 +52,7 @@ struct EngineState: Decodable {
 
     enum Startup: String, Decodable { case loading, ready, error }
 
+    let pushRegistrationFailed: Bool?
     let requests: [PendingRequest]?
     let respondingRequest: String?
     let failedRequest: String?

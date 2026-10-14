@@ -1,3 +1,4 @@
+import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
 import type { BackendHistoryLoadResult } from '@workspace/core/backend-driver';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
@@ -48,8 +49,9 @@ const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string(
 const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(companionMaxUploads).optional() }).strict()
   .refine((command) => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, 'A prompt needs text or an attachment.');
 const modelSelectionSchema = z.object({ agentId: identity, model: z.string().min(1).max(200), reasoningEffort: z.string().min(1).max(40).nullable(), serviceTier: z.string().min(1).max(80).nullable() }).strict();
-export type GatewayState = { grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
+export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, CompanionCommandReceipt & { fingerprint: string }> };
 export type GatewayPort = {
+  push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(response: AgentRequestResponse): Promise<void>;
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
@@ -84,6 +86,7 @@ export class CompanionGateway {
   /** Keyed by the public rendezvous channel (first half of the code); the whole code is the PAKE password. */
   private readonly invitations = new Map<string, { code: string; expiresAt: number; attempts: number; sessions: Map<string, { confirm: Uint8Array; name: string }>; pendingId?: string }>();
   private readonly pending = new Map<string, CompanionPending & { channel: string }>();
+  private readonly notifications = new Set<(notification: CompanionNotification) => void>();
   private mutations = Promise.resolve();
   private readonly creations = new ChatCreations();
   constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {}
@@ -114,9 +117,23 @@ export class CompanionGateway {
       this.pending.delete(id); this.invitations.delete(pending.channel);
     });
   }
+  async notify(notification: CompanionNotification) {
+    for (const listener of this.notifications) listener(notification);
+    await Promise.all(this.state.grants.map(async grant => {
+      const registration = this.state.push?.[grant.peerId];
+      if (!registration || !this.port.push) return;
+      const result = await this.port.push(grant.peerId, registration, notification).catch(() => 'unavailable');
+      if (result === 'invalid') await this.mutate(async () => {
+        if (this.state.push?.[grant.peerId] !== registration) return;
+        const push = { ...this.state.push }; delete push[grant.peerId];
+        const next = { ...this.state, push }; await this.port.save(next); this.state = next;
+      });
+    }));
+  }
   async revoke(peerId: string) {
     return this.mutate(async () => {
-      const next = { ...this.state, grants: this.state.grants.filter((grant) => grant.peerId !== peerId) };
+      const push = { ...this.state.push }; delete push[peerId];
+      const next = { ...this.state, push, grants: this.state.grants.filter((grant) => grant.peerId !== peerId) };
       await this.port.save(next); this.state = next;
       this.port.revoked(peerId);
     });
@@ -126,6 +143,7 @@ export class CompanionGateway {
     if (!grant || !this.port.onEvent) throw new Error('Device is not authorized for updates.');
     return new CompanionSubscription({
       authorized: () => this.state.grants.includes(grant),
+      onNotification: listener => { this.notifications.add(listener); return () => { this.notifications.delete(listener); }; },
       onEvent: (listener) => this.port.onEvent!(listener),
       request: (method, args) => this.request(peerId, method, args),
     }, emit, fail);
@@ -178,8 +196,18 @@ export class CompanionGateway {
     }
     const grant = this.state.grants.find((grant) => grant.peerId === peerId);
     if (!grant) throw new Error('Device is not authorized.');
+    if (method === 'notifications.register') {
+      const registration = z.object({ token: z.string().regex(/^[a-f0-9]{32,512}$/), environment: z.enum(['development', 'production']), authorization: z.object({ expiresAt: z.number().int().positive(), signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/) }).strict().optional() }).strict().nullable().parse(args);
+      await this.mutate(async () => {
+        this.requireGrant(peerId, grant);
+        const push = { ...this.state.push };
+        if (registration) push[peerId] = registration; else delete push[peerId];
+        const next = { ...this.state, push }; await this.port.save(next); this.state = next;
+      });
+      return {};
+    }
     if (method === 'snapshot.get') {
-      const { iconsVersion } = z.object({ iconsVersion: z.string().max(64).optional() }).strict().parse(args);
+      const { iconsVersion } = z.object({ iconsVersion: z.string().max(64).optional(), notifications: z.boolean().optional() }).strict().parse(args);
       const workspace = await this.port.workspace();
       this.requireGrant(peerId, grant);
       const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);

@@ -43,6 +43,21 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('persists push registration only for its authenticated phone and revokes both delivery paths', async () => {
+    const f = fixture();
+    const registration = { token: 'ab'.repeat(32), environment: 'development' };
+    await expect(f.gateway.request('phone', 'notifications.register', registration)).rejects.toThrow('authorized');
+    await f.pair();
+    await expect(f.gateway.request('phone', 'notifications.register', { ...registration, token: 'bad' })).rejects.toThrow();
+    await f.gateway.request('phone', 'notifications.register', registration);
+    expect(f.saved().push?.phone).toStrictEqual(registration);
+    await f.gateway.request('phone', 'notifications.register', null);
+    expect(f.saved().push?.phone).toBeUndefined();
+    await f.gateway.request('phone', 'notifications.register', registration);
+    await f.gateway.revoke('phone');
+    expect(f.saved().push?.phone).toBeUndefined();
+  });
+
   it('requires an authorized current target and a supported provider for goal mutations', async () => {
     const f = fixture();
     await expect(f.gateway.request('stranger', 'agent.goal.set', { target, objective: 'Ship' })).rejects.toThrow('authorized');

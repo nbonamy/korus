@@ -21,6 +21,16 @@ struct RootView: View {
                 StartupView(productName: model.productName, connecting: !model.laptops.isEmpty)
             } else if model.needsPairing { PairingView() } else { shell }
         }
+        .overlay(alignment: .top) {
+            if let notification = model.notifications.current {
+                NotificationBanner(notification: notification, open: { model.open(notification) }, dismiss: { model.notifications.dismiss(id: notification.id) })
+                    .id(notification.id)
+            }
+        }
+        .animation(.smooth(duration: 0.25), value: model.notifications.current?.id)
+        .alert("Notifications", isPresented: Binding(get: { model.notificationError != nil || model.push.error != nil }, set: { if !$0 { model.notificationError = nil; model.push.error = nil } })) {
+            Button("OK") { model.notificationError = nil; model.push.error = nil }
+        } message: { Text(model.notificationError ?? model.push.error ?? "") }
         .background { EngineView(host: model.engine).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false) }
     }
 

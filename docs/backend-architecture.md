@@ -143,21 +143,36 @@ expiry; incoming events do not extend it. Expiry discards the replica and remove
 the subscription. Session changes invalidate the old replica, and app backgrounding
 closes the update stream and clears the subscription cache.
 
-The separate relay executable uses operator-provided TLS certificates and a
-persistent pinned identity. Only configured laptop peers can reserve circuits or
-update routing admission. Temporary pairing routes remain time/rate bounded;
+The separate relay executable has a persistent pinned identity. Public admission
+accepts fresh laptop identities without accounts or operator enrollment. Short-lived,
+bounded host leases own routing state; the laptop refreshes its device grants and
+pairing windows while connected. Temporary pairing routes remain time/rate bounded;
 paired routes derive from daemon grants. Endpoints enforce companion methods after
 Noise authentication; the relay cannot inspect encrypted application frames. Circuit
 duration and data budgets force an explicit reconnect and authoritative rehydrate.
-Both endpoints initiate outbound WSS connections; deployment requires a reachable
-relay with a trusted certificate and an operator-maintained laptop allowlist.
+An optional nonempty `hostIds` configuration restricts a privately operated relay.
+Public admission never replaces pairing proof or explicit desktop approval.
 
-The relay is deployment configuration, not a user setting: `APP_COMPANION_RELAY_URL`
-and `APP_COMPANION_RELAY_PEER_ID` in the daemon's environment select and pin it, and
-override a relay saved by an explicit `enable` call. The phone build reads the same
-variables at build time, so a phone needs nothing but a pairing code. The first
-invitation turns mobile access on. An invalid or partial pair is reported through
-status and never connects.
+Both endpoints initiate outbound WSS connections. The product metadata supplies the
+public relay URL and pinned peer identity. `APP_COMPANION_RELAY_URL` and
+`APP_COMPANION_RELAY_PEER_ID` override these together; the daemon also honors a relay
+saved by an explicit `enable` call when no environment override exists. The phone
+build reads the same environment pair, so a phone needs only a pairing code.
+Changing the phone build's relay clears saved pairings for other relays; the phone
+pairs again instead of restoring a stale development connection. The first
+invitation turns mobile access on. An invalid or partial environment pair
+fails closed instead of silently selecting another relay.
+
+The host deployment templates under `backend/companion-relay/deploy` terminate TLS
+in nginx and keep relay and health listeners on loopback. Certbot uses the nginx
+ACME webroot and reloads nginx after successful renewal. Only published Cloudflare
+proxy ranges may supply the client address used for connection and request limits;
+direct clients retain their socket address. The systemd service runs without root,
+with bounded memory and a read-only system filesystem. Versioned bundles live under
+`/opt/companion-relay`; configuration and push keys belong under
+`/etc/companion-relay`. The private identity under `/var/lib/companion-relay` must
+survive service and bundle replacements: changing it invalidates installed peer
+pins. Container deployments can instead provide TLS directly to the executable.
 
 Pairing uses a short code (`XXXX-XXXX`, 40 bits) instead of a credential-bearing
 invitation. Its first half is a public rendezvous channel: the laptop advertises the
@@ -344,3 +359,25 @@ manage MCP tools: treat it as a privileged control plane.
 - Keep the Korus MCP server loopback-only.
 - Standalone `daemon` must not import Electron; secret storage sits behind an
   abstract token-store port.
+
+### Companion push delivery
+
+The relay's optional `apns` configuration supplies `teamId`, the product app ID as
+`topic`, and `development` and/or `production` entries containing `keyId` and
+`privateKeyFile`. Signing keys are read from operator-managed files; they never enter
+client bundles or source control. The Apple App ID must enable Push Notifications,
+and the installed app's signed `aps-environment` entitlement must match the key's
+environment. Device tokens are opaque and rotate; the phone registers at launch and
+forwards updates through its authenticated laptop session. The phone signs each
+registration with its pairing identity, binding the token, environment, laptop,
+relay and expiration. The relay verifies this consent and a current paired route
+before contacting Apple. Global, host and token budgets bound delivery even when
+clients rotate identities; concurrent duplicate notifications share one send.
+Apple invalid-token responses remove only the registration that produced the failure.
+
+`npm run dev:relay` reads `APP_COMPANION_APNS_KEY_ID`,
+`APP_COMPANION_APNS_TEAM_ID`, `APP_COMPANION_APNS_KEY_FILE` and
+`APP_COMPANION_APNS_ENVIRONMENT` (`development` or `production`) from the environment
+or ignored `.env`. Without APNs configuration the foreground notification stream
+remains available. An APNs acceptance response is not proof of OS delivery; verify
+background delivery and tap navigation on a signed device separately.

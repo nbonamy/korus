@@ -24,7 +24,10 @@ describe('relay operator configuration', () => {
     expect(() => parseRelayConfig(JSON.stringify({ ...base, listen: '/ip6/::1/tcp/47800/ws' }))).not.toThrow();
     expect(() => parseRelayConfig(JSON.stringify({ ...base, listen: '/ip4/0.0.0.0/tcp/47800/ws' }))).toThrow('loopback');
   });
-  it('requires at least one admitted laptop', () => {
+  it('allows public admission without an operator-maintained laptop list', () => {
+    expect(parseRelayConfig(JSON.stringify({ stateDirectory: '/state', listen: '/ip4/127.0.0.1/tcp/47800/ws' })).hostIds).toBeUndefined();
+  });
+  it('requires at least one admitted laptop when restricting admission', () => {
     expect(() => parseRelayConfig(JSON.stringify({ ...base, hostIds: [], listen: '/ip4/127.0.0.1/tcp/47800/ws' }))).toThrow();
   });
 });

@@ -30,6 +30,8 @@
 	<string>Attach photos to a prompt.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connect to the relay you selected.</string>
+	<key>CompanionPushEnvironment</key>
+	<string>$(COMPANION_PUSH_ENVIRONMENT)</string>
 	<key>CompanionRelayURL</key>
 	<string>$(COMPANION_RELAY_URL)</string>
 	<key>CompanionRelayPeerID</key>

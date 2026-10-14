@@ -2,7 +2,8 @@ import { codexConversationSnapshot, codexTextMessage } from '../../../vue/src/te
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
-import { peerIdFromPrivateKey } from '@libp2p/peer-id';
+import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
+import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
 import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { channel: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
@@ -46,8 +47,8 @@ beforeEach(async () => {
         transport.requests.push(call);
         const result = transport.response(call.method, call.args);
         if (call.method === 'conversation.subscribe') transport.publish({ type: 'conversation', frame: result });
-        if (call.method === 'snapshot.get') transport.publish({ type: 'workspace', workspace: result });
-        push({ v: 1, id: call.id, result: call.method === 'conversation.subscribe' ? {} : result }); return true;
+        if (call.method === 'snapshot.get' && !(result instanceof Error)) transport.publish({ type: 'workspace', workspace: result });
+        push(result instanceof Error ? { v: 1, id: call.id, error: result.message } : { v: 1, id: call.id, result: call.method === 'conversation.subscribe' ? {} : result }); return true;
       }, abort() { done = true; wake(); }, async *[Symbol.asyncIterator]() {
         while (!done) { while (queued.length) yield queued.shift()!; if (!done) await new Promise<void>((resolve) => { wake = resolve; }); }
       } };
@@ -64,6 +65,45 @@ beforeEach(async () => {
 });
 const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7QD-M2XP') => connector.pair!(code, 'Phone', () => {});
 describe('native relay host adapter', () => {
+  it('keeps chat connected to older laptops that reject notification subscription flags', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    transport.response = (_method, args) => args.notifications ? new Error('Unknown field') : { teams: [], agents: [] };
+    const session = await connector.connect(host.hostId);
+    try {
+      expect(await session.getWorkspace()).toMatchObject({ teams: [], agents: [] });
+      expect(await session.getWorkspace()).toMatchObject({ teams: [], agents: [] });
+      expect(transport.requests.filter(request => request.method === 'snapshot.get').map(request => request.args)).toStrictEqual([
+        { iconsVersion: '', notifications: true }, { iconsVersion: '' }, { iconsVersion: '' },
+      ]);
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
+  it('registers a phone token and accepts attention only from the paired laptop identity', async () => {
+    const connector = createRelayConnector(vault(), host.relay);
+    await pairWith(connector);
+    transport.response = () => ({ teams: [], agents: [] });
+    const session = await connector.connect(host.hostId);
+    try {
+      await session.getWorkspace();
+      const seen = vi.fn(); session.onNotification!(seen);
+      const registration = { token: 'ab'.repeat(32), environment: 'development' as const };
+      await session.registerPush!(registration);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'notifications.register', args: registration });
+      const signed = transport.requests.at(-1)!.args;
+      expect(signed.authorization.expiresAt).toBeGreaterThan(Date.now());
+      expect(await peerIdFromString(transport.phone).publicKey!.verify(companionPushAuthorizationMessage(
+        host.relay.peerId, host.hostId, transport.phone, signed, signed.authorization.expiresAt), unb64(signed.authorization.signature))).toBe(true);
+      await session.registerPush!(null);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'notifications.register', args: null });
+      const notification = { id: 'event', kind: 'approval', name: 'Builder', createdAt: Date.now(), target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null } };
+      transport.publish({ type: 'notification', notification });
+      await vi.waitFor(() => expect(seen).toHaveBeenCalledExactlyOnceWith(notification));
+      transport.publish({ type: 'notification', notification: { ...notification, target: { ...notification.target, hostId: 'other-host' } } });
+      await session.getWorkspace();
+      expect(seen).toHaveBeenCalledTimes(1);
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
   const connect = (storage = vault()) => createRelayConnector(storage, host.relay);
   it('pairs and restores over local WS only for the native Debug relay configuration', async () => {
     host.relay.origin = 'ws://laptop.local:47801';
@@ -77,10 +117,26 @@ describe('native relay host adapter', () => {
       await restored.initialize!();
       expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
       await restored.dispose!();
-      for (const other of [host.relay, { ...config, origin: 'ws://other.local:47801' }, { ...config, peerId: host.hostId }, null]) {
-        await expect(createRelayConnector(storage, other).initialize!()).rejects.toThrow('Invalid secure relay configuration');
+      const saved = storage.values.get('paired-hosts')!;
+      expect(saved).not.toContain('allowLocalDevelopment');
+      const production = { origin: 'wss://production.example', peerId: peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString() };
+      for (const other of [host.relay, { ...config, origin: 'ws://other.local:47801' }, { ...config, peerId: host.hostId }, null, production]) {
+        const resetStorage = vault(); resetStorage.values.set('paired-hosts', saved);
+        const reset = createRelayConnector(resetStorage, other);
+        transport.dial.mockClear();
+        try {
+          await reset.initialize!();
+          expect(reset.laptops).toStrictEqual([]);
+          expect(JSON.parse(resetStorage.values.get('paired-hosts')!)).toStrictEqual([]);
+          expect(transport.dial).not.toHaveBeenCalled();
+          if (other === production) {
+            expect(await pairWith(reset)).toBe(host.hostId);
+            expect(JSON.parse(resetStorage.values.get('paired-hosts')!)).toStrictEqual([
+              { v: 1, relayOrigin: production.origin, relayPeerId: production.peerId, hostId: host.hostId, name: 'Paired laptop' },
+            ]);
+          }
+        } finally { await reset.dispose!(); }
       }
-      expect(storage.values.get('paired-hosts')).not.toContain('allowLocalDevelopment');
     } finally { await connector.dispose!(); }
   });
   const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
@@ -184,7 +240,7 @@ describe('native relay host adapter', () => {
     expect(await session.getWorkspace()).toMatchObject({ repositoryIcons: { '/r': 'GEAR' } });
     transport.response = () => ({ teams: [], agents: [], iconsVersion: 'v1' });
     expect(await session.getWorkspace()).toMatchObject({ repositoryIcons: { '/r': 'GEAR' } });
-    expect(transport.requests.filter((request) => request.method === 'snapshot.get').map((request) => request.args)).toStrictEqual([{ iconsVersion: '' }, { iconsVersion: 'v1' }]);
+    expect(transport.requests.filter((request) => request.method === 'snapshot.get').map((request) => request.args)).toStrictEqual([{ iconsVersion: '', notifications: true }, { iconsVersion: 'v1', notifications: true }]);
     session.close(); await connector.dispose!();
   });
   it('lists models, saves a model choice and sends composer options with a prompt', async () => {

@@ -1,3 +1,4 @@
+import { ApnsSender } from './apns';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
@@ -6,9 +7,11 @@ import { z } from 'zod';
 import { startRelayHealth } from './relay-health';
 import { RelayStartupError } from './relay-startup-error';
 
+const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
 const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
-  hostIds: z.array(peerId).min(1).max(100),
+  hostIds: z.array(peerId).min(1).max(100).optional(),
+  apns: z.object({ teamId: z.string().regex(/^[A-Z0-9]{10}$/), topic: z.string().min(1).max(200), development: apnsKey.optional(), production: apnsKey.optional() }).strict().refine(value => value.development || value.production).optional(),
   stateDirectory: z.string().min(1), certificateFile: z.string().min(1).optional(), privateKeyFile: z.string().min(1).optional(), healthPort: z.number().int().min(1024).max(65535).optional() }).strict()
   .superRefine((config, context) => {
     const secure = config.listen.endsWith('/tls/ws');
@@ -19,7 +22,7 @@ const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d
 export function parseRelayConfig(source: string) {
   try { return configSchema.parse(JSON.parse(source)); }
   catch (cause) {
-    throw new RelayStartupError('Invalid operator configuration. Provide valid JSON with a listen address, admitted hostIds and stateDirectory; public listeners require TLS certificateFile and privateKeyFile, and plaintext listeners must use loopback.', { cause });
+    throw new RelayStartupError('Invalid operator configuration. Provide valid JSON with a listen address and stateDirectory (hostIds optionally restricts laptops); public listeners require TLS certificateFile and privateKeyFile, and plaintext listeners must use loopback.', { cause });
   }
 }
 export async function runCompanionRelay(configFile: string) {
@@ -37,7 +40,14 @@ export async function runCompanionRelay(configFile: string) {
     identity = await generateKeyPair('Ed25519');
     await writeFile(identityFile, privateKeyToProtobuf(identity), { flag: 'wx', mode: 0o600 });
   }
-  const relay = await createCompanionRelay({ key: identity, listen: config.listen, hostIds: config.hostIds,
+  const senders: Partial<Record<'development' | 'production', ApnsSender>> = {};
+  if (config.apns) for (const environment of ['development', 'production'] as const) {
+    const key = config.apns[environment];
+    if (key) senders[environment] = new ApnsSender({ ...key, teamId: config.apns.teamId, topic: config.apns.topic, environment, privateKey: await readFile(key.privateKeyFile, 'utf8') });
+  }
+  const push = config.apns ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
+    senders[registration.environment]?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
+  const relay = await createCompanionRelay({ push, key: identity, listen: config.listen, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }

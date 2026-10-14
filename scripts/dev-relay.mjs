@@ -25,6 +25,19 @@ export function relayEndpoint(env, dotenv) {
   return { origin: url.origin, port, peerId };
 }
 
+/** APNs secrets remain files on the relay; only their locations enter local configuration. */
+export function relayPushConfig(env, dotenv, product) {
+  const values = { ...parseEnv(dotenv), ...env };
+  const keyId = values.APP_COMPANION_APNS_KEY_ID?.trim();
+  const privateKeyFile = values.APP_COMPANION_APNS_KEY_FILE?.trim();
+  const teamId = values.APP_COMPANION_APNS_TEAM_ID?.trim();
+  if (!keyId && !privateKeyFile && !teamId) return undefined;
+  const environment = values.APP_COMPANION_APNS_ENVIRONMENT?.trim() || 'development';
+  if (!/^[A-Z0-9]{10}$/.test(keyId ?? '') || !/^[A-Z0-9]{10}$/.test(teamId ?? '') || !privateKeyFile
+    || !['development', 'production'].includes(environment)) throw new Error('Set APP_COMPANION_APNS_KEY_ID, APP_COMPANION_APNS_TEAM_ID, APP_COMPANION_APNS_KEY_FILE and APP_COMPANION_APNS_ENVIRONMENT (development or production).');
+  return { teamId, topic: product.appId, [environment]: { keyId, privateKeyFile } };
+}
+
 /** The laptops the relay admits: an explicit list, or the identity of the local daemon. */
 export async function relayHostIds(env, companionState) {
   const listed = (env.APP_COMPANION_RELAY_HOST_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
@@ -56,7 +69,7 @@ async function main() {
   const directory = path.join(root, '.app-dev/relay');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const configFile = path.join(directory, 'relay.json');
-  writeFileSync(configFile, JSON.stringify({ listen: `/ip4/127.0.0.1/tcp/${endpoint.port}/ws`, hostIds, stateDirectory: path.join(directory, 'identity') }), { mode: 0o600 });
+  writeFileSync(configFile, JSON.stringify({ listen: `/ip4/127.0.0.1/tcp/${endpoint.port}/ws`, hostIds, stateDirectory: path.join(directory, 'identity'), apns: relayPushConfig(process.env, readIfPresent(path.join(root, '.env')), product) }), { mode: 0o600 });
 
   const child = spawn(process.execPath, [bundle, configFile], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] });
   let announced = false;

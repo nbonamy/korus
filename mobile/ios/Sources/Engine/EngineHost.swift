@@ -7,6 +7,8 @@ import WebKit
 final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
     let webView: WKWebView
     var onSendResult: ((ComposerSendResult) -> Void)?
+    var onNotification: ((ChatNotification) -> Void)?
+    var onNotificationOpenFailed: (() -> Void)?
     var onState: ((EngineState) -> Void)?
     var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
@@ -59,6 +61,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
 
     /// The engine page tags each event with its type and sends the serialized event as a string, so a conversation
     /// is never parsed here: it goes to the transcript as it came.
+    private struct NotificationEvent: Decodable { let notification: ChatNotification }
     private struct StateEvent: Decodable { let state: EngineState }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -70,6 +73,9 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             webView.callAsyncJavaScript("await window.companionEngine.start()", arguments: [:], in: nil, in: .page) { _ in }
             for command in pending { dispatch(command) }
             pending.removeAll()
+        case "notification":
+            if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(NotificationEvent.self, from: data) { onNotification?(decoded.notification) }
+        case "notificationOpenFailed": onNotificationOpenFailed?()
         case "sendResult":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(ComposerSendResult.self, from: data) { onSendResult?(decoded) }
         case "state":

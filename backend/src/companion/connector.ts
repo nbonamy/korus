@@ -1,3 +1,5 @@
+import { companionPushProtocol, type CompanionNotification, type CompanionPushRegistration } from '@workspace/core/companion-notification';
+import type { PushResult } from './apns';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
@@ -65,6 +67,21 @@ export class CompanionOutboundConnector {
       await stream.close({ signal: AbortSignal.timeout(5000) });
       for await (const _chunk of stream) { /* Relay confirms admission without carrying app data. */ }
     } catch { /* Endpoint grants remain authoritative during relay outages. */ }
+  }
+  async push(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
+    if (!this.node || !this.connected || !this.gateway.grants.some(grant => grant.peerId === peerId)) return 'unavailable';
+    const stream = await this.node.dialProtocol(multiaddr(this.relay), companionPushProtocol, { signal: AbortSignal.timeout(10_000) });
+    try {
+      if (!this.gateway.grants.some(grant => grant.peerId === peerId)) return 'unavailable';
+      stream.maxReadBufferLength = 16_384; stream.inactivityTimeout = 15_000;
+      stream.send(encodeCompanionFrame({ peerId, registration, notification }));
+      await stream.close({ signal: AbortSignal.timeout(5000) });
+      const decoder = new CompanionFrameDecoder();
+      for await (const chunk of stream) for (const value of decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())) {
+        return z.object({ result: z.enum(['sent', 'invalid', 'unavailable']) }).strict().parse(value).result;
+      }
+      return 'unavailable';
+    } finally { stream.abort(new Error('Push request finished.')); }
   }
   revoke(peerId: string) {
     for (const stream of this.active.get(peerId) ?? []) stream.abort(new Error('Device revoked.'));

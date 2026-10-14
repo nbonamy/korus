@@ -1,6 +1,6 @@
 import type { ProtectedVault } from './protected-storage';
 
-export type SavedSelection = { teamId: string; agentId: string };
+type SavedSelection = { teamId: string; agentId: string };
 export type SelectionStore = {
   read(laptopId: string): Promise<SavedSelection | null>;
   write(laptopId: string, selection: SavedSelection): Promise<void>;

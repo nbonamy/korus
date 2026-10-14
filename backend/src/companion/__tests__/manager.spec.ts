@@ -37,7 +37,7 @@ describe('daemon companion persistence', () => {
     await rm(path.join(directory, 'state.json')); await mkdir(path.join(directory, 'state.json'));
     const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
     await expect(manager.control({ action: 'enable', relayOrigin: 'wss://relay.example', relayPeerId })).rejects.toThrow();
-    expect((await manager.control({ action: 'status' })).status).toMatchObject({ enabled: false, connected: false, relayOrigin: '' });
+    expect((await manager.control({ action: 'status' })).status).toMatchObject({ enabled: false, connected: false, relayOrigin: 'wss://relay.meetkorus.dev' });
     expect(transport.start).not.toHaveBeenCalled();
     await expect((await import('node:fs/promises')).readdir(directory)).resolves.toEqual(['state.json']);
     await manager.stop();
@@ -50,12 +50,13 @@ describe('daemon companion persistence', () => {
       const manager = new CompanionManager(directory, { request: vi.fn() }, { APP_COMPANION_RELAY_URL: 'wss://relay.example', APP_COMPANION_RELAY_PEER_ID: relayPeerId, ...env });
       return { directory, manager, relayPeerId };
     }
-    it('reports an unconfigured laptop and refuses to invite', async () => {
+    it('uses the bundled public relay for first-time pairing without operator configuration', async () => {
       const { manager } = await fixture();
-      expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: false, enabled: false, relayOrigin: '' });
-      await expect(manager.control({ action: 'invite' })).rejects.toThrow('not configured');
-      await expect(manager.control({ action: 'resume' })).rejects.toThrow('not configured');
+      expect((await manager.control({ action: 'status' })).status).toMatchObject({ configured: true, enabled: false, relayOrigin: 'wss://relay.meetkorus.dev' });
       expect(transport.start).not.toHaveBeenCalled();
+      expect((await manager.control({ action: 'invite' })).invitation?.code).toBeTruthy();
+      expect(transport.start).toHaveBeenCalledWith('wss://relay.meetkorus.dev', expect.any(String));
+      await manager.stop();
     });
     it('disables and resumes existing grants across restarts without creating a new invitation', async () => {
       const { directory, manager, relayPeerId } = await configured();

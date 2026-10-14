@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { createLibp2p } from 'libp2p';
@@ -10,6 +10,7 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomUUID } from 'node:crypto';
 import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
 import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { createPairingExchange, normalizePairingCode, pairingChannel, pairingConfirmationsMatch } from '@workspace/core/companion-pairing';
 import { createCompanionRelay } from '../relay';
@@ -21,6 +22,30 @@ import type { Libp2p } from '@libp2p/interface';
 const stops: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
 describe('encrypted companion circuit', () => {
+  it('delivers push metadata over an authenticated host-to-relay stream and rejects revoked devices', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const phoneKey = await generateKeyPair('Ed25519');
+    const phone = peerIdFromPrivateKey(phoneKey).toString();
+    const send = vi.fn(async () => 'sent' as const);
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', push: { send } });
+    stops.push(() => relay.stop());
+    const port = relay.getMultiaddrs()[0]!.toString().match(/\/tcp\/(\d+)/)![1];
+    const gateway = { grants: [{ peerId: phone }], pairChannels: () => [] } as unknown as CompanionGateway;
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const token = { token: 'ab'.repeat(32), environment: 'development' as const };
+    const expiresAt = Date.now() + 86400_000;
+    const registration = { ...token, authorization: { expiresAt, signature: Buffer.from(await phoneKey.sign(
+      companionPushAuthorizationMessage(relay.peerId.toString(), hostId, phone, token, expiresAt))).toString('base64') } };
+    const notification = { id: 'event', kind: 'completed' as const, name: 'Builder', createdAt: Date.now(), target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null } };
+    expect(await connector.push(phone, registration, notification)).toBe('sent');
+    expect(send).toHaveBeenCalledExactlyOnceWith(registration, notification);
+    gateway.grants.splice(0);
+    await connector.advertise();
+    expect(await connector.push(phone, registration, notification)).toBe('unavailable');
+    expect(send).toHaveBeenCalledTimes(1);
+  }, 15000);
+
   it('transfers a history response larger than four MiB over the encrypted circuit', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
@@ -82,7 +107,7 @@ describe('encrypted companion circuit', () => {
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relayKey = await generateKeyPair('Ed25519');
-    const relay = await createCompanionRelay({ key: relayKey, listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    const relay = await createCompanionRelay({ key: relayKey, listen: '/ip4/127.0.0.1/tcp/0/ws' });
     stops.push(() => relay.stop());
     const address = relay.getMultiaddrs()[0]!.toString();
     const port = address.match(/\/tcp\/(\d+)/)![1];
@@ -120,7 +145,7 @@ describe('encrypted companion circuit', () => {
     // a new outbound reservation and advertises its persisted device grant.
     await relay.stop();
     await expect.poll(() => connector.connected, { timeout: 3000 }).toBe(false);
-    const restarted = await createCompanionRelay({ key: relayKey, listen: `/ip4/127.0.0.1/tcp/${port}/ws`, hostIds: [hostId] });
+    const restarted = await createCompanionRelay({ key: relayKey, listen: `/ip4/127.0.0.1/tcp/${port}/ws` });
     stops.push(() => restarted.stop());
     await expect.poll(() => connector.connected, { timeout: 12_000 }).toBe(true);
     expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { teams: [{ name: 'Actual gateway team' }] } });

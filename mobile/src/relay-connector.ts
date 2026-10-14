@@ -1,4 +1,5 @@
-import { createCompanionStream } from './companion-stream';
+import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
+import { CompanionOperationDenied, createCompanionStream } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
@@ -32,6 +33,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   let initialized: Promise<void> | null = null;
   let node: Libp2p | null = null;
   let identity = '';
+  let signingKey: Awaited<ReturnType<typeof generateKeyPair>> | undefined;
   let disposed = false;
   let suspended = false;
   const sessions = new Set<{ laptopId: string; close(): void }>();
@@ -42,6 +44,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       if (stored.value) {
         records = JSON.parse(stored.value) as PairedLaptop[];
         if (!Array.isArray(records) || records.length > 20) throw new Error('Invalid paired devices.');
+        // A deployment change starts fresh; stale dev pairings must not block startup.
+        const current = records.filter(record => {
+          if (record.relayOrigin !== relay?.origin || record.relayPeerId !== relay?.peerId) return false;
+          try { addressFor(record.relayOrigin, record.relayPeerId); return true; } catch { return false; }
+        });
+        if (current.length !== records.length) await vault.write({ key: 'paired-hosts', value: JSON.stringify(current) });
+        records = current;
         for (const record of records) {
           addressFor(record.relayOrigin, record.relayPeerId);
           try { peerIdFromString(record.hostId); } catch { throw new Error('Saved laptop identity is invalid.'); }
@@ -57,6 +66,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const key = saved.value ? privateKeyFromProtobuf(bytes(saved.value)) : await generateKeyPair('Ed25519');
       if (!saved.value) await vault.write({ key: 'device-identity', value: base64(privateKeyToProtobuf(key)) });
       identity = peerIdFromPrivateKey(key).toString();
+      signingKey = key;
       node = await createLibp2p({ privateKey: key, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1 })],
         connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
         connectionManager: { maxConnections: 4, maxParallelDials: 2 },
@@ -150,11 +160,19 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       if (!host) throw new Error('Pair the laptop first.');
       let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] };
       const listeners = new Set<() => void>();
+      const notifications = new Set<(notification: CompanionNotification) => void>();
       const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
 
+      let supportsNotifications = true;
       let icons: { version: string; value: Record<string, string> } = { version: '', value: {} };
       const read = async () => {
-        const { iconsVersion, repositoryIcons, ...rest } = await channel.request<CompanionWorkspace & { iconsVersion?: string }>('snapshot.get', { iconsVersion: icons.version });
+        const snapshot = () => channel.request<CompanionWorkspace & { iconsVersion?: string }>('snapshot.get', { iconsVersion: icons.version, ...(supportsNotifications ? { notifications: true } : {}) });
+        const { iconsVersion, repositoryIcons, ...rest } = await snapshot().catch(error => {
+          if (!supportsNotifications || !(error instanceof CompanionOperationDenied)) throw error;
+          // Existing laptops reject unknown fields. Keep chat usable through rolling upgrades.
+          supportsNotifications = false;
+          return snapshot();
+        });
         if (repositoryIcons) icons = { version: iconsVersion ?? '', value: repositoryIcons };
         workspace = { ...rest, repositoryIcons: icons.value };
         return workspace;
@@ -176,6 +194,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
             return team ? [companionTarget(host.hostId, team, agent)] : [];
           }));
           notify();
+        } else if (update.type === 'notification') {
+          if (update.notification.target.hostId === host.hostId) for (const listener of notifications) listener(update.notification);
         } else cache.receive(update.frame);
       }, failed);
       const close = () => { closed = true; channel.close(); cache.close(); sessions.delete(handle); };
@@ -196,6 +216,14 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }
       const session: CompanionSession = {
         getWorkspace: read,
+        async registerPush(registration) {
+          if (!registration) { await request(host, 'notifications.register', null); return; }
+          await network();
+          const expiresAt = Date.now() + 30 * 86400_000;
+          const signature = base64(await signingKey!.sign(companionPushAuthorizationMessage(host.relayPeerId, host.hostId, identity, registration, expiresAt)));
+          await request(host, 'notifications.register', { ...registration, authorization: { expiresAt, signature } });
+        },
+        onNotification(listener) { notifications.add(listener); return () => { notifications.delete(listener); }; },
         async markRead(agentId, revision) { await request(host, 'conversation.read', { target: target(agentId), revision }); },
         async respondRequest(reply) { await request(host, 'agent.request.respond', reply); },
         deselectConversation() { void cache.select(null); },
