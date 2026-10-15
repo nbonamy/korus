@@ -189,10 +189,13 @@ relay guess counters only reduce noise. Availability under distributed abuse, an
 identity introduction by a compromised relay during pairing, are outside its guarantees.
 
 Both endpoints initiate outbound WSS connections. The product metadata supplies the
-public relay URL and pinned peer identity. `APP_COMPANION_RELAY_URL` and
-`APP_COMPANION_RELAY_PEER_ID` override these together; the daemon also honors a relay
-saved by an explicit `enable` call when no environment override exists. The phone
-build reads the same environment pair, so a phone needs only a pairing code.
+public relay URL and pinned peer identity. Desktop and phone builds carry only
+`APP_COMPANION_RELAY_URL` and `APP_COMPANION_RELAY_PEER_ID` from the build environment
+or `.env`, never the environment file or its credentials. A runtime environment
+pair takes precedence over the packaged pair; either overrides a relay saved by
+an explicit `enable` call. Without these deployment overrides, saved configuration
+precedes product metadata. A partial pair fails closed instead of mixing sources.
+A phone needs only a pairing code.
 Changing the phone build's relay clears saved pairings for other relays; the phone
 pairs again instead of restoring a stale development connection. The first
 invitation turns mobile access on. An invalid or partial environment pair

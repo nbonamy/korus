@@ -37,7 +37,12 @@ type Relay = { origin: string; peerId: string };
 
 /** The relay is deployment configuration: the operator sets it once and users only pair phones. */
 function relayFromEnvironment(env: NodeJS.ProcessEnv): { relay: Relay | null; error?: string } {
-  const origin = env.APP_COMPANION_RELAY_URL?.trim() ?? ''; const peerId = env.APP_COMPANION_RELAY_PEER_ID?.trim() ?? '';
+  const packaged = typeof __APP_COMPANION_RELAY__ === 'undefined' ? undefined : __APP_COMPANION_RELAY__;
+  const runtimeOrigin = env.APP_COMPANION_RELAY_URL?.trim() ?? '';
+  const runtimePeerId = env.APP_COMPANION_RELAY_PEER_ID?.trim() ?? '';
+  const hasRuntimeOverride = Boolean(runtimeOrigin || runtimePeerId);
+  const origin = hasRuntimeOverride ? runtimeOrigin : packaged?.origin.trim() ?? '';
+  const peerId = hasRuntimeOverride ? runtimePeerId : packaged?.peerId.trim() ?? '';
   if (!origin && !peerId) return { relay: null };
   try {
     relayAddress(origin, peerId);
@@ -89,7 +94,7 @@ export class CompanionManager {
       let invitation;
       switch (action.action) {
         case 'enable':
-          if (this.environment.relay) throw new Error('The relay is configured by the environment.');
+          if (this.environment.relay) throw new Error('The relay is configured by the build or environment.');
           relayAddress(action.relayOrigin, action.relayPeerId);
           await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: action.relayOrigin, relayPeerId: action.relayPeerId }));
           await this.connector.start(action.relayOrigin, action.relayPeerId);

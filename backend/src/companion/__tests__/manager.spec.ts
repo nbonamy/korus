@@ -16,7 +16,7 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { AppBackendServer } from '../../server';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); vi.clearAllMocks(); });
+afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
   const manager = new CompanionManager(directory, { request: vi.fn(), onAccessChanged }, {});
@@ -81,6 +81,42 @@ describe('daemon companion persistence', () => {
   });
 
   describe('environment relay', () => {
+    it.each([
+      { name: 'packaged relay', env: {}, expected: 'wss://packaged.example' },
+      { name: 'runtime override', env: { APP_COMPANION_RELAY_URL: 'wss://runtime.example' }, expected: 'wss://runtime.example' },
+    ])('prefers the $name to stale saved development settings without replacing identity or grants', async ({ env, expected }) => {
+      const { directory, manager } = await fixture();
+      const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+      const initial = await manager.control({ action: 'enable', relayOrigin: 'ws://localhost:47800', relayPeerId });
+      await manager.stop(); transport.start.mockClear();
+      const file = path.join(directory, 'state.json');
+      const saved = JSON.parse(await readFile(file, 'utf8'));
+      const grant = { peerId: peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString(), name: 'My phone', createdAt: 1 };
+      saved.gateway.grants = [grant];
+      await writeFile(file, JSON.stringify(saved));
+      vi.stubGlobal('__APP_COMPANION_RELAY__', { origin: 'wss://packaged.example', peerId: relayPeerId });
+      const runtime = 'APP_COMPANION_RELAY_URL' in env ? { ...env, APP_COMPANION_RELAY_PEER_ID: relayPeerId } : env;
+      const restored = new CompanionManager(directory, { request: vi.fn() }, runtime);
+      try {
+        const { status, invitation } = await restored.control({ action: 'invite' });
+        expect(status).toMatchObject({ configured: true, enabled: true, connected: true, relayOrigin: expected, hostId: initial.status.hostId, devices: [grant] });
+        expect(invitation?.code).toBeTruthy();
+        expect(transport.start).toHaveBeenCalledExactlyOnceWith(expected, relayPeerId);
+        expect(JSON.parse(await readFile(file, 'utf8')).identity).toBe(saved.identity);
+      } finally { await restored.stop(); }
+    });
+    it('does not combine a partial runtime override with a packaged relay', async () => {
+      const { directory, manager } = await fixture();
+      await manager.stop();
+      const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+      vi.stubGlobal('__APP_COMPANION_RELAY__', { origin: 'wss://packaged.example', peerId: relayPeerId });
+      const restored = new CompanionManager(directory, { request: vi.fn() }, { APP_COMPANION_RELAY_URL: 'wss://runtime.example' });
+      try {
+        expect((await restored.control({ action: 'status' })).status).toMatchObject({ configured: false, error: expect.any(String) });
+        await expect(restored.control({ action: 'invite' })).rejects.toThrow('not configured');
+        expect(transport.start).not.toHaveBeenCalled();
+      } finally { await restored.stop(); }
+    });
     async function configured(env: NodeJS.ProcessEnv = {}) {
       const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
       const relayPeerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();

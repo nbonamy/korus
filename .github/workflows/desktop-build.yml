@@ -66,6 +66,8 @@ jobs:
     env:
       APP_GITHUB_CLIENT_ID: ${{ secrets.APP_GITHUB_CLIENT_ID }}
       APP_LINEAR_CLIENT_ID: ${{ secrets.APP_LINEAR_CLIENT_ID }}
+      APP_COMPANION_RELAY_URL: ${{ secrets.APP_COMPANION_RELAY_URL }}
+      APP_COMPANION_RELAY_PEER_ID: ${{ secrets.APP_COMPANION_RELAY_PEER_ID }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
