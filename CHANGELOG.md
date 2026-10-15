@@ -4,6 +4,33 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.35.0] - 2026-10-14
+
+### New features
+
+- Pair Korus Mobile for iPhone from Settings → Connections to follow your
+  agents, send prompts, and respond to questions and approvals away from your
+  desktop, without a VPN or router configuration.
+- Manage paired phones individually and revoke access from the desktop.
+- Open Git log from the Git menu to browse the current branch's history,
+  search commit messages, and inspect changed files and historical diffs inline.
+
+### Improvements and fixes
+
+- The command palette includes simulator and review workspace actions.
+- Delegate from the composer's + menu immediately using saved settings;
+  add task details after `/delegate` when needed.
+- Clear an agent's name directly from its text field.
+- Long Claude conversations load in bounded pages, with oversized content
+  available on demand. Unread activity stays synchronized across desktop and phone.
+- Conversations keep their reading position while scrolling, and completed
+  tool-only replies show their message actions.
+- Simulator views recover cleanly when apps restart or a view ends.
+- Mobile conversations load large histories reliably, retain visible content
+  while reconnecting, and offer recovery when rendering fails.
+- The mobile unlock screen matches the connecting screen without layout jumps,
+  with a five-minute grace period when returning from another app.
+
 ## [0.34.0] - 2026-10-13
 
 ### New features
