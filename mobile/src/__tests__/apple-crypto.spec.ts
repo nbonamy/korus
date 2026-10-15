@@ -86,7 +86,8 @@ describe('Apple-backed encrypted transport', () => {
     const burst = new Uint8Array(1024 * 1024 - 65537).fill(7);
     const firstWire = encrypt(first), burstWire = encrypt(burst);
     const chunks: Uint8Array[] = [];
-    stream.addEventListener('message', event => chunks.push(event.data.subarray()));
+    let received = 0;
+    stream.addEventListener('message', event => { const bytes = event.data.subarray(); chunks.push(bytes); received += bytes.length; });
     const gates: (() => void)[] = [];
     let calls = 0; let completed = 0;
     const resumed = vi.fn(); transport.onResume = resumed;
@@ -114,7 +115,8 @@ describe('Apple-backed encrypted transport', () => {
       expect(resumed).toHaveBeenCalledTimes(1);
       expect(calls).toBe(2);
       gates.shift()!();
-      await vi.waitFor(() => expect(Buffer.concat(chunks)).toEqual(Buffer.concat([first, burst])));
+      await vi.waitFor(() => expect(received).toBe(first.length + burst.length));
+      expect(Buffer.concat(chunks).equals(Buffer.concat([first, burst]))).toBe(true);
     } finally {
       for (const release of gates) release();
       stream.abort(new Error('Test complete'));
@@ -140,7 +142,7 @@ describe('Apple-backed encrypted transport', () => {
       if (fragmented) { transport.onData(wire.subarray(0, 1)); transport.onData(wire.subarray(1, 1171)); transport.onData(wire.subarray(1171)); }
       else transport.onData(wire.subarray());
       await vi.waitFor(() => { expect(failure).toBeUndefined(); expect(received).toBe(payload.length); }, { timeout: 10000 });
-      expect(Buffer.concat(chunks)).toEqual(Buffer.from(payload));
+      expect(Buffer.concat(chunks).equals(Buffer.from(payload))).toBe(true);
     } finally {
       stream.abort(new Error('Test complete'));
       vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: ({ command }: any) => native.call(command) } } } });
@@ -225,7 +227,7 @@ describe('Apple-backed encrypted transport', () => {
       const chunks: Uint8Array[] = [];
       const reading = (async () => { for await (const part of stream) chunks.push(part.subarray()); })();
       stream.send(payload); await stream.close({ signal: AbortSignal.timeout(10000) }); await reading;
-      expect(Buffer.concat(chunks)).toEqual(Buffer.from(payload));
+      expect(Buffer.concat(chunks).equals(Buffer.from(payload))).toBe(true);
     } finally { await Promise.all([apple.stop(), node.stop()]); }
   }, 20000);
 });
