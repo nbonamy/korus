@@ -15,6 +15,11 @@
         <RefreshIcon :size="14" />{{ $t("telemetry.refresh") }}
       </button>
     </template>
+    <UsageActivity
+      v-if="data"
+      class="analytics-card analytics-header"
+      :days="activityDays"
+    />
     <div class="analytics-toolbar">
       <div class="analytics-tabs" role="tablist">
         <button
@@ -91,9 +96,6 @@
       class="analytics-content"
       :class="{ 'analytics-content--refreshing': busy }"
     >
-      <p v-if="!data.rows.length" class="analytics-note">
-        {{ $t("telemetry.empty") }}
-      </p>
       <template v-if="view === 'usage'">
         <div class="analytics-bento">
           <UsageTrend
@@ -377,6 +379,7 @@ import {
   averageTtftSeconds,
   sumSpeed,
   tokensPerSecond,
+  activityWindow,
   type UsageGrouping,
 } from "./usage-chart";
 import { RefreshIcon } from "../shared/icons/app-icons";
@@ -384,6 +387,7 @@ import SettingsPanelFrame from "./SettingsPanelFrame.vue";
 import UsageTrend from "./UsageTrend.vue";
 import UsageSparkline from "./UsageSparkline.vue";
 import UsageToggle from "./UsageToggle.vue";
+import UsageActivity from "./UsageActivity.vue";
 type Measure = "turns" | "total" | "input" | "output";
 type View = "usage" | "performance";
 type DailyRow = NonNullable<UsageSummary["daily"]>[number];
@@ -402,6 +406,7 @@ const projections = ref<{
   provider: UsageSummary;
   model: UsageSummary;
   previous: UsageSummary | null;
+  activity: UsageSummary | null;
 } | null>(null);
 const data = computed(
   () =>
@@ -499,6 +504,12 @@ const groupOptions = computed(() => [
   { value: "provider" as const, label: translate("telemetry.provider") },
   { value: "model" as const, label: translate("telemetry.model") },
 ]);
+const activityDays = computed(() =>
+  (projections.value?.activity?.daily ?? []).map((row) => ({
+    day: row.day,
+    tokens: row.tokens?.total ?? 0,
+  })),
+);
 const tabs = computed(() => [
   { name: "usage" as const, label: translate("analytics.usageOverview") },
   { name: "performance" as const, label: translate("analytics.performance") },
@@ -679,9 +690,19 @@ async function load(background = false): Promise<void> {
         : {}),
     };
     const days = periodDays.value;
-    const [provider, model, previous] = await Promise.all([
+    const [provider, model, activity, previous] = await Promise.all([
       appApi!.getUsage({ ...query, group: "provider" }),
       appApi!.getUsage({ ...query, group: "model" }),
+      // The activity grid always covers its own window, under the provider filter only.
+      appApi!
+        .getUsage({
+          ...activityWindow(),
+          ...(filter.value.provider
+            ? { provider: filter.value.provider as AgentBackend }
+            : {}),
+          group: "provider",
+        })
+        .catch(() => null),
       // The comparison period is context only; failing to read it never blocks the view.
       appApi!
         .getUsage({
@@ -698,6 +719,7 @@ async function load(background = false): Promise<void> {
     projections.value = {
       provider,
       model,
+      activity: activity?.available === false ? null : activity,
       previous: previous?.available === false ? null : previous,
     };
   } catch {
@@ -735,6 +757,9 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+}
+.analytics-header {
+  margin-bottom: var(--space-12);
 }
 .analytics-toolbar {
   display: flex;

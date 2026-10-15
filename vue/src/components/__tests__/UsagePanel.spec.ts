@@ -116,7 +116,7 @@ it("changes each chart breakdown independently and shares the selected token mea
       .findAll("circle")
       .filter((r) => r.attributes("aria-label")?.includes("sonnet")).length,
   ).toBe(1);
-  expect(getUsage).toHaveBeenCalledTimes(3); // Both projections and the comparison period load once; chart controls do not fetch or mix periods.
+  expect(getUsage).toHaveBeenCalledTimes(4); // Both projections, the activity window and the comparison period load once; chart controls do not fetch or mix periods.
   await wrapper
     .findAll('[role="tab"]')
     .find((t) => t.text() === "Model performance")!
@@ -155,13 +155,15 @@ it("ignores stale filter responses and clears previous statistics when a new que
       },
     ],
   });
-  pending[3]!(summary("claude"));
-  pending[4]!(summary("sonnet"));
-  pending[5]!(summary("claude"));
+  pending[4]!(summary("claude"));
+  pending[5]!(summary("sonnet"));
+  pending[6]!(summary("claude"));
+  pending[7]!(summary("claude"));
   await flushPromises();
   pending[0]!(summary("codex"));
   pending[1]!(summary("Unknown"));
   pending[2]!(summary("codex"));
+  pending[3]!(summary("codex"));
   await flushPromises();
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
     "Claude",
@@ -230,7 +232,10 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
     await clear().trigger("click");
     await flushPromises();
     expect(clearUsage).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("No recorded turns");
+    expect(
+      wrapper.find('[aria-label="Usage breakdown"] tbody tr').exists(),
+    ).toBe(false);
+    expect(wrapper.text()).not.toContain("No recorded turns");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   } finally {
     confirm.mockRestore();

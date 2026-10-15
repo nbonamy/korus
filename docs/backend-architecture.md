@@ -512,7 +512,7 @@ time at the first generated output. Speed is provider-reported output tokens ove
 working time after that first output; there is no character-based estimate, so a turn
 without provider tokens or a measured clock has no speed.
 Legacy usage statistics are imported once transactionally. Retention is bounded to
-90 days and 10,000 executions; failed storage leaves analytics unavailable without
+one year and 50,000 executions; failed storage leaves analytics unavailable without
 blocking provider work. App-owned usage queries supply grouped totals and daily
 series to the in-app Analytics screen.
 

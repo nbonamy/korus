@@ -14,7 +14,7 @@ import {
   type Consumption,
 } from "@workspace/core/usage";
 import { JsonStore } from "./json-store";
-const retention = 90 * 86400000;
+const retention = 365 * 86400000;
 type Bucket = UsageSummary["rows"][number];
 /** Statistics only. Provider conversation stores remain the sole owners of content. */
 export class UsageLedger {
@@ -178,7 +178,7 @@ export class UsageLedger {
       this.now() - retention,
     );
     this.db!.exec(
-      "DELETE FROM executions WHERE rowid IN (SELECT rowid FROM executions ORDER BY started_at DESC,rowid DESC LIMIT -1 OFFSET 10000)",
+      "DELETE FROM executions WHERE rowid IN (SELECT rowid FROM executions ORDER BY started_at DESC,rowid DESC LIMIT -1 OFFSET 50000)",
     );
   }
   async observe(

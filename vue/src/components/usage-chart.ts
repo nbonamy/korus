@@ -141,3 +141,14 @@ export const sumSpeed = (speeds: (Speed | undefined)[]): Speed | undefined =>
         : all,
     undefined,
   );
+/** The activity grid spans whole Monday-first weeks ending with the current one. */
+export const ACTIVITY_WEEKS = 53;
+const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
+export function activityWindow(now = Date.now()): { from: string; to: string } {
+  const today = Date.parse(utcDay(now));
+  const sinceMonday = (new Date(today).getUTCDay() + 6) % 7;
+  return {
+    from: utcDay(today - (sinceMonday + (ACTIVITY_WEEKS - 1) * 7) * 86400000),
+    to: utcDay(today),
+  };
+}

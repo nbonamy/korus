@@ -44,6 +44,7 @@ export {
   IconInfinity as InfinityIcon,
   IconInfoCircle as InfoCircleIcon,
   IconList as ListIcon,
+  IconChartBar as ChartBarIcon,
   IconListDetails as ListDetailsIcon,
   IconLogs as LogsIcon,
   IconMenu2 as MenuIcon,
