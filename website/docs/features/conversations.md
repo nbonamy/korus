@@ -48,6 +48,19 @@ a new one. Do not edit files until we agree on the approach.
 
 Review the proposed plan and answer any questions before asking the agent to implement it.
 
+### Review an interactive plan
+
+In **Settings → Workflows → Plan mode**, enable **Use interactive plans** to review choices and comment on individual sections of a plan.
+
+1. Read the plan in the workspace beside the conversation.
+2. Choose the answers you want and turn on **Confirmed** for each choice. An answer marked **proposed** is the agent's suggestion, not your confirmation.
+3. Use **Comment on this section** to request a specific change without retyping the section.
+4. Choose **Revise** to send the confirmed answers and comments back for a revised plan, or **Approve** to start implementation.
+
+Your draft feedback is saved as you work and remains available after reloading. If choices are unconfirmed, Korus warns before revision or approval. Go back to confirm them when they should guide the work; approving anyway authorizes implementation with those choices still open.
+
+Keep planning and implementation separate: **Revise** asks for another proposal; **Approve** authorizes the agent to implement the plan.
+
 ## Follow the evidence
 
 Korus renders messages, tool calls, command output, plans, approvals, and file changes. Use those details to check what the agent inspected and what it actually validated.
