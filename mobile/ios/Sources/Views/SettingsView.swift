@@ -24,6 +24,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Follow-up behavior", selection: Binding(get: { model.composerPreferences.followUpBehavior }, set: { model.composerPreferences.followUpBehavior = $0 })) {
+                        ForEach(ComposerSendMode.allCases, id: \.self) { mode in Text(mode.label).tag(mode) }
+                    }
+                } header: {
+                    Text("Messages")
+                } footer: {
+                    Text("Steer the current turn or queue the next. Hold Send to override.")
+                }
+
+                Section {
                     Toggle(isOn: Binding(get: { lock.isEnabled }, set: { on in Task { await lock.setEnabled(on) } })) {
                         Label("Lock with Face ID", systemImage: "faceid")
                     }

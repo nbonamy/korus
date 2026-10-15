@@ -185,10 +185,16 @@ export class CompanionManager {
       },
       submit: async (target, prompt, clientId, options, uploads) => {
         const attachments = uploads ? await storePromptUploads(this.directory, uploads).catch(() => { throw new PromptRejectedError('Attachments could not be stored.'); }) : undefined;
-        const promptOptions = options || attachments ? { ...options, ...(attachments ? { attachments } : {}) } : undefined;
-        await this.backend.request(backendMethods.agentPromptSteer, { agentId: target.agentId, expectedSessionId: target.sessionId, prompt, startIfIdle: true, ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
+        const { followUpBehavior = 'steer', ...composerOptions } = options ?? {};
+        const promptOptions = options || attachments ? { ...composerOptions, ...(attachments ? { attachments } : {}) } : undefined;
+        const method = followUpBehavior === 'queue' ? backendMethods.agentPromptSend : backendMethods.agentPromptSteer;
+        await this.backend.request(method, { agentId: target.agentId, expectedSessionId: target.sessionId, prompt, ...(followUpBehavior === 'steer' ? { startIfIdle: true } : {}), ...(promptOptions ? { options: promptOptions } : {}), _clientId: clientId });
       },
       respondRequest: async (response) => { await this.backend.request(backendMethods.agentRequestRespond, { response, _clientId: 'companion-write' }); },
+      updateQueuedPrompt: async (target, promptId, action) => {
+        await this.backend.request(action === 'steer' ? backendMethods.agentQueuedPromptSteer : backendMethods.agentQueuedPromptDelete,
+          { agentId: target.agentId, promptId, expectedSessionId: target.sessionId, _clientId: 'companion-write' });
+      },
       models: (agentId) => this.backend.request<unknown[]>(backendMethods.agentModelsList, { agentId, _clientId: 'companion-read' }),
       plugins: (agentId) => this.backend.request(backendMethods.agentPluginsList, { agentId, _clientId: 'companion-read' }),
       skills: (agentId) => this.backend.request(backendMethods.agentSkillsList, { agentId, _clientId: 'companion-read' }),

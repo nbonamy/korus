@@ -30,29 +30,52 @@ struct UsageView: View {
                         Text("No usage limits available.").foregroundStyle(.secondary)
                     }
                     ForEach(model.usage.visibleProviders) { provider in
-                        Section(provider.name) {
+                        Section {
                             if provider.failed {
                                 Text("Couldn’t load usage").foregroundStyle(.secondary)
                                 Button("Retry") { model.loadUsage() }
                             } else {
                                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                                    VStack(spacing: 16) {
+                                    VStack(spacing: 24) {
                                         ForEach(provider.rows) { row in
-                                            HStack {
-                                                VStack(alignment: .leading, spacing: 4) {
-                                                    Text(row.label)
-                                                    if let reset = row.reset(at: context.date) {
-                                                        Text("Resets in \(reset)").font(.caption).foregroundStyle(.secondary)
-                                                    }
+                                            VStack(alignment: .leading, spacing: 10) {
+                                                HStack {
+                                                    Text(row.label).fontWeight(.medium)
+                                                    Spacer()
+                                                    Text(row.remainingFraction == nil ? "Unavailable" : "\(row.remaining) left")
+                                                        .foregroundStyle(.secondary)
+                                                        .monospacedDigit()
                                                 }
-                                                Spacer()
-                                                Text("\(row.remaining) left").monospacedDigit()
+                                                if let remaining = row.remainingFraction {
+                                                    ProgressView(value: remaining)
+                                                        .tint(.accentColor)
+                                                        .accessibilityHidden(true)
+                                                }
+                                                if let reset = row.reset(at: context.date) {
+                                                    Text("Resets in \(reset)")
+                                                        .font(.subheadline)
+                                                        .foregroundStyle(.secondary)
+                                                }
                                             }
                                             .accessibilityElement(children: .combine)
                                         }
                                     }
+                                    .padding(.vertical, 8)
                                 }
                             }
+                        } header: {
+                            HStack(spacing: 8) {
+                                if ["codex", "claude"].contains(provider.backend) {
+                                    Image("provider-\(provider.backend)")
+                                        .resizable().scaledToFit()
+                                        .frame(width: 24, height: 24)
+                                        .accessibilityHidden(true)
+                                }
+                                Text(provider.name)
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .textCase(nil)
                         }
                     }
                 }

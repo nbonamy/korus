@@ -1,6 +1,24 @@
 import Foundation
 import Observation
 
+enum ComposerSendMode: String, Codable, CaseIterable {
+    case steer, queue
+    var label: String { self == .steer ? "Steer" : "Queue" }
+}
+
+@Observable
+@MainActor
+final class ComposerPreferences {
+    private let defaults: UserDefaults
+    var followUpBehavior: ComposerSendMode {
+        didSet { defaults.set(followUpBehavior.rawValue, forKey: "composer.followUpBehavior") }
+    }
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        followUpBehavior = ComposerSendMode(rawValue: defaults.string(forKey: "composer.followUpBehavior") ?? "") ?? .steer
+    }
+}
+
 struct ComposerTarget: Codable, Hashable, Sendable {
     let hostId: String
     let locationId: String
@@ -50,6 +68,7 @@ final class ComposerDrafts {
         let target: ComposerTarget
         let text: String
         let goalMode: Bool
+        let followUpBehavior: ComposerSendMode
         let uploads: [Upload]
     }
     private struct Draft {
@@ -124,9 +143,9 @@ final class ComposerDrafts {
     func remove(_ id: UUID) { if !sending { draft.items.removeAll { $0.id == id }; draft.error = nil } }
     func dismissError() { draft.error = nil }
 
-    func beginSend() -> Submission? {
+    func beginSend(mode: ComposerSendMode = .steer) -> Submission? {
         guard let target, !empty, !importing, !sending, !goalMode || items.isEmpty else { return nil }
-        let request = Submission(requestId: UUID().uuidString, target: target, text: text.trimmingCharacters(in: .whitespacesAndNewlines), goalMode: goalMode, uploads: items.map {
+        let request = Submission(requestId: UUID().uuidString, target: target, text: text.trimmingCharacters(in: .whitespacesAndNewlines), goalMode: goalMode, followUpBehavior: mode, uploads: items.map {
             .init(type: $0.type, name: $0.name, mimeType: $0.mimeType, data: $0.data.base64EncodedString())
         })
         draft.sending = request.requestId

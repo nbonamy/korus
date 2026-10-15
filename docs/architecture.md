@@ -122,9 +122,14 @@ topic both use the product app ID. Sandbox and production credentials are separa
 Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
 events: those projections are absent from the mobile workspace, and conversation
 content travels through the subscribed provider stream.
-Mobile prompts start a turn when idle and steer active work, without entering the
-prompt queue. The owning daemon decides at admission time; durable companion receipts
-also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.
+Mobile prompts start a turn when idle. For active work, the phone defaults to
+steering and supports a saved queue preference and per-message overrides. The owning
+daemon decides at admission time and owns the same queue shown by desktop and mobile;
+the phone receives queued text without host attachment paths or provider options.
+Queue steering and deletion name the captured conversation and queued prompt; the
+owning daemon applies the desktop queue operation and publishes the resulting queue.
+Durable companion receipts cover queue admission and steering, so reconnecting cannot
+replay an accepted or uncertain prompt.
 Receipts distinguish active admission from a confirmed rejection and an unknown
 provider outcome. The phone reconciles timed-out admissions while connected,
 without replaying them; late acceptance clears only the captured native draft
@@ -132,8 +137,11 @@ and attachments. An unresolved outcome keeps its warning and draft but permits
 an explicit new send after the user checks the conversation.
 The composer microphone uses Apple's Speech framework with on-device recognition
 required and native microphone permissions. Audio stays on the phone; partial and
-final transcripts update only the active draft. Sending, navigation, and backgrounding
-stop capture and invalidate late recognition callbacks. Keyboard dictation remains
+final transcripts update only the active draft. On-device results can reset after
+silence, so completed utterances are retained separately from the current hypothesis.
+Successful recognition rollover preserves the draft and keeps listening until stopped.
+Sending, navigation, and backgrounding stop capture and invalidate late recognition
+callbacks. Keyboard dictation remains
 available through the system text field.
 
 Pairing identities, laptop records, and each laptop's last-opened team and agent use

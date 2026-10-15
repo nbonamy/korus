@@ -19,7 +19,7 @@ export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: 
 export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree: boolean; branch: string | null; upstream: string | null; hasChanges: boolean };
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]> };
+export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
 export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */

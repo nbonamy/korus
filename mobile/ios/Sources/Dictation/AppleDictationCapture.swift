@@ -21,7 +21,7 @@ final class AppleDictationCapture: DictationCapture {
         guard microphone else { throw DictationFailure.microphonePermission }
     }
 
-    func start(update: @escaping @MainActor (String) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws {
+    func start(update: @escaping @MainActor (DictationResult) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws {
         cancel()
         guard let recognizer = SFSpeechRecognizer(locale: .current), recognizer.isAvailable,
               recognizer.supportsOnDeviceRecognition else { throw DictationFailure.unavailable }
@@ -46,10 +46,11 @@ final class AppleDictationCapture: DictationCapture {
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
         tapInstalled = true
         recognition = recognizer.recognitionTask(with: request) { result, error in
-            let text = result?.bestTranscription.formattedString
+            let transcript = result.map { DictationResult(text: $0.bestTranscription.formattedString,
+                finalizedUtteranceStart: $0.speechRecognitionMetadata?.speechStartTimestamp) }
             let final = result?.isFinal ?? false
             Task { @MainActor in
-                if let text { update(text) }
+                if let transcript { update(transcript) }
                 if final || error != nil { completion(error) }
             }
         }

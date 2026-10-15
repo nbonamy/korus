@@ -39,6 +39,8 @@ final class AppModel {
     var models: [ModelChoice] = []
     var selectedModelID: String?
     var selectedEffort: String?
+    var selectedServiceTier: String?
+    var supportsServiceTier = false
     var planMode = false
     var supportsGoals = false
     var goal: EngineState.Goal?
@@ -74,6 +76,10 @@ final class AppModel {
     var isWorking: Bool { header?.status == .working || header?.status == .awaitingInput }
     var canManageSession: Bool { activeAgentID != nil && connection == .connected && sessionAction == nil }
     let composerDrafts = ComposerDrafts()
+    let composerPreferences = ComposerPreferences()
+    var queuedPrompts: [EngineState.QueuedPrompt] = []
+    var queuedPromptPending: String?
+    var queuedPromptFailed = false
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
@@ -165,6 +171,9 @@ final class AppModel {
     }
 
     private func apply(_ state: EngineState) {
+        set(\.queuedPrompts, state.queuedPrompts ?? [])
+        set(\.queuedPromptPending, state.queuedPromptPending)
+        set(\.queuedPromptFailed, state.queuedPromptFailed ?? false)
         set(\.startup, state.startup)
         set(\.usage, state.usage ?? UsageState())
         set(\.projectBranches, state.projectBranches ?? EngineState.ProjectBranches())
@@ -207,11 +216,13 @@ final class AppModel {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
         })
-        set(\.models, state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts) })
+        set(\.models, state.models.map { ModelChoice(id: $0.id, name: $0.name, efforts: $0.efforts, tiers: $0.tiers) })
         set(\.mentions, state.mentions ?? EngineState.Suggestions())
         set(\.skills, state.skills ?? EngineState.Suggestions())
         set(\.selectedModelID, state.composer.modelId)
         set(\.selectedEffort, state.composer.effort)
+        set(\.selectedServiceTier, state.composer.serviceTier)
+        set(\.supportsServiceTier, state.capabilities.serviceTier)
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
@@ -260,15 +271,23 @@ final class AppModel {
 
     func pair(code: String) { command("pair", ["code": code, "deviceName": UIDevice.current.model]) }
 
-    func send() {
+    func send(mode: ComposerSendMode? = nil) {
         guard canSend, !goalMode || supportsGoals, supportsAttachments || composerDrafts.items.isEmpty else { return }
         dictation.cancel()
-        guard let request = composerDrafts.beginSend() else { return }
+        guard let request = composerDrafts.beginSend(mode: mode ?? composerPreferences.followUpBehavior) else { return }
         do {
             let data = try JSONEncoder().encode(request)
             guard let command = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.coderInvalidValue) }
             engine.dispatch(command)
         } catch { composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected)) }
+    }
+
+    func updateQueuedPrompt(_ id: String, steer: Bool) {
+        guard canManageSession, queuedPromptPending == nil, queuedPrompts.contains(where: { $0.id == id }),
+              let target = composerDrafts.target,
+              let data = try? JSONEncoder().encode(target),
+              let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        command("queuedPrompt", ["target": fields, "promptId": id, "action": steer ? "steer" : "delete"])
     }
 
     func openReview() {
@@ -289,6 +308,7 @@ final class AppModel {
 
     func chooseModel(_ id: String) { command("composer", ["change": ["modelId": id]]) }
     func chooseEffort(_ effort: String) { command("composer", ["change": ["reasoningEffort": effort.lowercased()]]) }
+    func chooseServiceTier(_ id: String?) { command("composer", ["change": ["serviceTier": id as Any? ?? NSNull()]]) }
     func setPlanMode(_ on: Bool) {
         if on { composerDrafts.setGoalMode(false) }
         planMode = on

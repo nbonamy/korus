@@ -40,9 +40,13 @@ struct UsageState: Decodable, Equatable {
             if duration == 10_080 { return "Weekly" }
             return duration % 60 == 0 ? "\(duration / 60)h" : "\(duration)m"
         }
+        var remainingFraction: Double? {
+            guard let used = window.usedPercent, used.isFinite else { return nil }
+            return min(1, max(0, (100 - used) / 100))
+        }
         var remaining: String {
-            guard let used = window.usedPercent, used.isFinite else { return "—" }
-            return "\(Int(min(100, max(0, (100 - used).rounded()))))%"
+            guard let fraction = remainingFraction else { return "—" }
+            return "\(Int((fraction * 100).rounded()))%"
         }
         func reset(at date: Date) -> String? {
             guard let reset = window.resetsAt, reset.isFinite else { return nil }

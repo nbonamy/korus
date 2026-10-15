@@ -2,6 +2,10 @@ import Foundation
 
 /// The engine's state as it arrives from JSON; `AppModel` maps it onto the view models the screens draw.
 struct EngineState: Decodable {
+    struct QueuedPrompt: Decodable, Identifiable, Equatable { let id: String; let text: String }
+    let queuedPrompts: [QueuedPrompt]?
+    let queuedPromptPending: String?
+    let queuedPromptFailed: Bool?
     struct Laptop: Decodable, Hashable { let id: String; let name: String }
     struct Session: Decodable {
         struct Status: Decodable { let type: AgentStatus }
@@ -26,8 +30,7 @@ struct EngineState: Decodable {
         let statusText: String
         let icon: String?
     }
-    struct Model: Decodable { let id: String; let name: String; let efforts: [String]; let tiers: [Tier] }
-    struct Tier: Decodable, Hashable { let id: String; let name: String }
+    struct Model: Decodable { let id: String; let name: String; let efforts: [String]; let tiers: [ModelChoice.Tier] }
     struct Composer: Decodable { let modelId: String?; let effort: String?; let serviceTier: String?; let planMode: Bool }
     struct Suggestions: Decodable, Equatable {
         enum Status: String, Decodable { case idle, loading, loaded, failed }

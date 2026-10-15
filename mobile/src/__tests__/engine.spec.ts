@@ -500,6 +500,28 @@ describe('companion engine', () => {
     expect(interrupt).toHaveBeenCalledWith('demo-agent');
     engine.dispose();
   });
+  it('exposes service tiers to native controls and saves Fast and Standard for subsequent prompts', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const selectModel = vi.fn(async () => {}); const sendPrompt = vi.fn(async () => {});
+    connector.connect = async id => ({ ...await original(id), selectModel, sendPrompt,
+      listModels: async () => [{ id: 'model', model: 'model', displayName: 'Model', isDefault: true,
+        defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: '' }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '' }], defaultServiceTier: null }],
+    });
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await vi.waitFor(() => expect(latest().models).toStrictEqual([{ id: 'model', name: 'Model', efforts: ['high'], tiers: [{ id: 'fast', name: 'Fast' }] }]));
+      expect(latest().capabilities.serviceTier).toBe(true);
+      for (const serviceTier of ['fast', null]) {
+        await engine.dispatch({ type: 'composer', change: { serviceTier } });
+        expect(latest().composer.serviceTier).toBe(serviceTier);
+        expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'model', reasoningEffort: 'high', serviceTier });
+        await engine.dispatch({ type: 'send', text: 'Continue' });
+        expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Continue', expect.any(String), expect.objectContaining({ serviceTier }));
+      }
+    } finally { engine.dispose(); }
+  });
   describe('a prompt Claude has not published yet', () => {
     // Claude publishes the prompt on the next read; the phone has to show it before that.
     function claude(published: { texts: string[] }, sendPrompt: () => Promise<void> = async () => {}) {

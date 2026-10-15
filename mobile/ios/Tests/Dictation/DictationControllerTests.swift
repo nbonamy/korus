@@ -3,6 +3,55 @@ import XCTest
 
 @MainActor
 final class DictationControllerTests: XCTestCase {
+    func testPausesKeepCompletedUtterancesWhileLaterWordsAreRevised() async {
+        let capture = Capture()
+        let controller = DictationController(capture: capture)
+        var draft = "My notes:"
+        await controller.start(text: draft) { draft = $0 }
+        capture.result?(DictationResult(text: "First thought"))
+        capture.result?(DictationResult(text: "First thought.", finalizedUtteranceStart: 0))
+        // On-device recognition starts a fresh partial result after silence.
+        capture.result?(DictationResult(text: ""))
+        XCTAssertEqual(draft, "My notes: First thought.")
+        capture.result?(DictationResult(text: "Another"))
+        capture.result?(DictationResult(text: "Another thought"))
+        XCTAssertEqual(draft, "My notes: First thought. Another thought")
+        capture.result?(DictationResult(text: "Another thought.", finalizedUtteranceStart: 8))
+        // A repeated final result revises that utterance; repeated speech is retained.
+        capture.result?(DictationResult(text: "Another thought!", finalizedUtteranceStart: 8))
+        capture.result?(DictationResult(text: "Another thought!", finalizedUtteranceStart: 16))
+        XCTAssertEqual(draft, "My notes: First thought. Another thought! Another thought!")
+        XCTAssertEqual(controller.phase, .recording)
+        controller.finish()
+        capture.result?(DictationResult(text: "First thought. Another thought! Another thought!", finalizedUtteranceStart: 0))
+        capture.completion?(nil)
+        XCTAssertEqual(draft, "My notes: First thought. Another thought! Another thought!")
+        XCTAssertFalse(controller.active)
+    }
+
+    func testRecognitionCanRestartAfterSilenceWithoutLosingWordsOrAcceptingOldCallbacks() async {
+        let capture = Capture()
+        let controller = DictationController(capture: capture)
+        var draft = ""
+        await controller.start(text: draft) { draft = $0 }
+        capture.update?("First thought.")
+        let previousUpdate = capture.update
+        let previousCompletion = capture.completion
+        capture.completion?(nil)
+        XCTAssertEqual(controller.phase, .recording)
+        XCTAssertEqual(capture.starts, 2)
+        capture.update?("After thinking.")
+        previousUpdate?("Late first result")
+        previousCompletion?(Failure.unavailable)
+        XCTAssertEqual(draft, "First thought. After thinking.")
+        XCTAssertEqual(controller.phase, .recording)
+        XCTAssertNil(controller.error)
+        controller.finish()
+        capture.completion?(nil)
+        XCTAssertEqual(capture.starts, 2)
+        XCTAssertFalse(controller.active)
+    }
+
     func testRecognitionRevisesOnlyTheDictatedSuffixAndRetainsFinalWords() async {
         let capture = Capture()
         let controller = DictationController(capture: capture)
@@ -59,18 +108,30 @@ final class DictationControllerTests: XCTestCase {
         }
     }
 
-    func testCancelWhilePermissionIsPendingNeverStartsMicrophone() async {
-        let capture = Capture()
-        capture.waitForPermission = true
-        let controller = DictationController(capture: capture)
-        let start = Task { await controller.start(text: "") { _ in XCTFail("Unexpected transcription") } }
-        while capture.permission == nil { await Task.yield() }
-        XCTAssertEqual(controller.phase, .requesting)
-        controller.cancel()
-        capture.permission?.resume()
-        await start.value
-        XCTAssertEqual(capture.starts, 0)
-        XCTAssertFalse(controller.active)
+    func testCancelledPermissionCannotStartOrCancelANewerRecording() async {
+        for denied in [false, true] {
+            let capture = Capture()
+            capture.waitForPermission = true
+            let controller = DictationController(capture: capture)
+            let start = Task { await controller.start(text: "") { _ in XCTFail("Unexpected transcription") } }
+            while capture.permission == nil { await Task.yield() }
+            XCTAssertEqual(controller.phase, .requesting)
+            controller.cancel()
+            XCTAssertEqual(capture.starts, 0)
+            XCTAssertFalse(controller.active)
+            capture.waitForPermission = false
+            var draft = "New draft"
+            await controller.start(text: draft) { draft = $0 }
+            if denied { capture.authorizationError = Failure.denied }
+            capture.permission?.resume()
+            await start.value
+            capture.update?("new words")
+            XCTAssertEqual(capture.starts, 1)
+            XCTAssertEqual(controller.phase, .recording)
+            XCTAssertEqual(draft, "New draft new words")
+            XCTAssertNil(controller.error)
+            controller.cancel()
+        }
     }
 
     func testRecognitionErrorStopsCaptureAndKeepsThePartialDraft() async {
@@ -91,7 +152,8 @@ private enum Failure: Error { case denied, unavailable }
 
 @MainActor
 private final class Capture: DictationCapture {
-    var update: (@MainActor (String) -> Void)?
+    var result: (@MainActor (DictationResult) -> Void)?
+    var update: (@MainActor (String) -> Void)? { result.map { result in { result(DictationResult(text: $0)) } } }
     var completion: (@MainActor (Error?) -> Void)?
     var authorizationError: Error?
     var startError: Error?
@@ -104,10 +166,10 @@ private final class Capture: DictationCapture {
         if waitForPermission { await withCheckedContinuation { permission = $0 } }
         if let authorizationError { throw authorizationError }
     }
-    func start(update: @escaping @MainActor (String) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws {
+    func start(update: @escaping @MainActor (DictationResult) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws {
         starts += 1
         if let startError { throw startError }
-        self.update = update
+        self.result = update
         self.completion = completion
     }
     func finish() { finished = true }

@@ -4,6 +4,28 @@ import XCTest
 
 @MainActor
 final class ComposerDraftTests: XCTestCase {
+    func testFollowUpPreferenceDefaultsToSteerPersistsAndAllowsOneMessageOverrides() throws {
+        let suite = "composer-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = ComposerPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.followUpBehavior, .steer)
+        preferences.followUpBehavior = .queue
+        XCTAssertEqual(ComposerPreferences(defaults: defaults).followUpBehavior, .queue)
+        let drafts = ComposerDrafts(); drafts.select(first); drafts.text = "After this turn"
+        let queued = try XCTUnwrap(drafts.beginSend(mode: preferences.followUpBehavior))
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(queued)) as? [String: Any])
+        XCTAssertEqual(payload["followUpBehavior"] as? String, "queue")
+        drafts.completeSend(.init(requestId: queued.requestId, status: .accepted))
+        drafts.text = "Change direction now"
+        let steer = try XCTUnwrap(drafts.beginSend(mode: .steer))
+        let override = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(steer)) as? [String: Any])
+        XCTAssertEqual(override["followUpBehavior"] as? String, "steer")
+        XCTAssertEqual(preferences.followUpBehavior, .queue)
+        defaults.set("invalid", forKey: "composer.followUpBehavior")
+        XCTAssertEqual(ComposerPreferences(defaults: defaults).followUpBehavior, .steer)
+    }
+
     private let first = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "a", sessionId: "one")
     private let second = ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "b", sessionId: "two")
     private func photo(_ count: Int = 10) -> ComposerAttachment { .init(name: "Photo.jpg", mimeType: "image/jpeg", type: .image, data: Data(repeating: 1, count: count)) }

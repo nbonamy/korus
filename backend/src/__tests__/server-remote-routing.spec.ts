@@ -506,6 +506,7 @@ describe('AppBackendServer', () => {
 
   it.each([
     { method: 'agent/prompt/send', delivery: {} },
+    { method: 'agent/prompt/send', delivery: { expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
     { method: 'agent/prompt/steer', delivery: { startIfIdle: true, expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
   ])('routes remote agent prompts to the owning remote daemon ($method)', async ({ method, delivery }) => {
     const snapshot = createTestSnapshot();
@@ -591,6 +592,21 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-remote', prompt: 'Inspect', options: { attachments: [{ type: 'file', path: '/local-only.pdf' }] } },
     })).rejects.toThrow('trusted file transfer');
     expect(remoteClients.request.mock.calls.length).toBe(dispatched);
+  });
+
+  it.each(['agent/queuedPrompt/steer', 'agent/queuedPrompt/delete'])('preserves the captured queue session when routing %s remotely', async method => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    snapshot.teams = [{ id: 'team-pointer', name: 'Remote', remoteConnectionId: connection.id, remoteTeamId: 'team-remote', agentIds: [] }];
+    const agent = createRemoteAgent();
+    const remote = createRemoteTeamSnapshot([agent]);
+    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote) };
+    const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+    try {
+      const params = { agentId: agent.id, promptId: 'queued-on-host', expectedSessionId: 'captured-session' };
+      await server.handleMessage({ jsonrpc: '2.0', id: 'queue', method, params });
+      expect(remoteClients.request).toHaveBeenNthCalledWith(2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+    } finally { await server.close(); }
   });
 
   it('rejects malformed remote snapshots without adopting them', async () => {

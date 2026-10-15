@@ -258,7 +258,10 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         },
         async sendPrompt(target, prompt, clientCommandId = crypto.randomUUID(), options, attachments) {
           if (closed) throw new Error('Disconnected.');
-          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target, text: prompt, clientCommandId, ...(options ? { options } : {}), ...(attachments?.length ? { attachments } : {}) });
+          // Steer is also the default on released desktops, whose strict schema predates this option.
+          const { followUpBehavior, ...composerOptions } = options ?? {};
+          const wireOptions = options ? { ...composerOptions, ...(followUpBehavior === 'queue' ? { followUpBehavior } : {}) } : undefined;
+          const receipt = await request<CompanionCommandReceipt>(host, 'prompt.submit', { target, text: prompt, clientCommandId, ...(wireOptions ? { options: wireOptions } : {}), ...(attachments?.length ? { attachments } : {}) });
           if (receipt.state === 'rejected') throw new PromptRejectedError('Prompt was rejected.');
           if (receipt.state !== 'accepted') throw new Error('Delivery is unresolved.');
         },
@@ -271,6 +274,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           await request(host, 'agent.goal.set', { target, objective });
         },
         async interrupt(agentId) { await request(host, 'agent.interrupt', target(agentId)); },
+        async updateQueuedPrompt(target, promptId, action) { await request(host, `agent.queuedPrompt.${action}`, { target, promptId }); },
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },

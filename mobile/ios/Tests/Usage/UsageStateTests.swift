@@ -15,6 +15,8 @@ final class UsageStateTests: XCTestCase {
         let rows = usage.providers[0].rows
         XCTAssertEqual(rows.map(\.label), ["5h", "Weekly"])
         XCTAssertEqual(rows.map(\.remaining), ["77%", "0%"])
+        XCTAssertEqual(rows[0].remainingFraction!, 0.766, accuracy: 0.0001)
+        XCTAssertEqual(rows[1].remainingFraction, 0)
         XCTAssertEqual(rows.map { $0.reset(at: Date(timeIntervalSince1970: 0)) }, ["2h 57m", "2d 2h"])
         XCTAssertTrue(usage.providers[1].failed)
     }
@@ -22,12 +24,22 @@ final class UsageStateTests: XCTestCase {
     func testUnknownAndExpiredLimitsRemainDistinctFromZeroUsage() {
         let unknown = UsageState.Row(id: "primary", window: .init(usedPercent: nil, windowDurationMins: nil, resetsAt: nil), fallback: "Usage")
         XCTAssertEqual(unknown.remaining, "—")
+        XCTAssertNil(unknown.remainingFraction)
         XCTAssertNil(unknown.reset(at: .now))
         XCTAssertEqual(unknown.label, "Usage")
         let expired = UsageState.Row(id: "primary", window: .init(usedPercent: -10, windowDurationMins: 30, resetsAt: 0), fallback: "Usage")
         XCTAssertEqual(expired.remaining, "100%")
+        XCTAssertEqual(expired.remainingFraction, 1)
         XCTAssertEqual(expired.reset(at: .now), "0m")
         XCTAssertEqual(expired.label, "30m")
         XCTAssertTrue(UsageState(status: .loaded, providers: [.init(backend: "codex", limits: nil, failed: false)]).visibleProviders.isEmpty)
+    }
+
+    func testNonFiniteUsageDoesNotBecomeAFullOrEmptyQuota() {
+        for percent in [Double.nan, .infinity, -.infinity] {
+            let row = UsageState.Row(id: "primary", window: .init(usedPercent: percent, windowDurationMins: 300, resetsAt: nil), fallback: "Usage")
+            XCTAssertNil(row.remainingFraction)
+            XCTAssertEqual(row.remaining, "—")
+        }
     }
 }
