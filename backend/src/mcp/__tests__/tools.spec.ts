@@ -100,6 +100,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'list-worktrees',
       'create-worktree',
       'create-agent',
+      'close-agent',
       'display-markdown',
     ]);
     expect(mocks.registerComputerUseTools).toHaveBeenCalledWith(server, computerUse);

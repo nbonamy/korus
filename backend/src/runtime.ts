@@ -158,6 +158,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentCreation,
     createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
+    closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })

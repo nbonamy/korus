@@ -50,6 +50,7 @@ const TOOL_KEYS: Record<string, string> = {
   'computer-use-stop': 'computerUseStop',
   'computer-use-type-text': 'computerUseTypeText',
   'create-agent': 'createAgent',
+  'close-agent': 'closeAgent',
   'create-automation': 'createAutomation',
   'create-project': 'createProject',
   'create-worktree': 'createWorktree',

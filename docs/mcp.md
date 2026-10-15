@@ -119,6 +119,12 @@ by mutating user-global tool config.
   retention are in [architecture.md](architecture.md#durable-delegated-tasks).
 - `create-project` exists only for Quick Chats and reuses the New Project service;
   a later failure leaves the created folder or agent for recovery.
+- Agent closure is authorized by the owning daemon against the authenticated
+  caller and the persisted `delegatedByAgentId` link, which follows parent handoff.
+  Only the creator can close an idle worker without pending prompts, requests or
+  unfinished durable tasks. The shared close lifecycle retires its conversation
+  and removes it from the roster; worktrees, branches and task records are retained.
+  User-initiated closure remains unrestricted by agent ownership.
 - `display-markdown` takes exactly one of `path` or `markdown`. Paths must resolve
   inside the caller's folder, be regular files and fit the preview limit (renderer
   previews, by contrast, accept paths outside the agent folder).

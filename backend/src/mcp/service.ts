@@ -72,6 +72,7 @@ export type AppMcpServiceOptions = {
   agentCreation?: AgentCreationService;
   createProject?: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
   startAutomaticReview?: StartAutomaticReview;
+  closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   toolModuleProviders?: readonly AppMcpToolModuleProvider[];
 };
 
@@ -134,6 +135,7 @@ export class AppMcpService {
       onListSourceWorktrees: (repoPath) => this.listSourceWorktrees(repoPath),
       onCreateSourceWorktree: (input) => this.createSourceWorktree(input),
       onCreateAgent: (agent, input) => this.createAgentFromMcp(agent, input),
+      onCloseAgent: options.closeAgent,
     });
     this.server = new AppMcpHttpServer({
       coordinator: this.coordinator,

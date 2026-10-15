@@ -34,6 +34,7 @@ describe(`${product.name} tool presentation`, () => {
   });
 
   it.each([
+    ['close-agent', UsersIcon, 'Closed agent'],
     ['wait-tasks', SquareCheck, 'Checked delegated tasks'],
     ['complete-task', SquareCheck, 'Submitted task result'],
     ['cancel-task', SquareCheck, 'Requested task cancellation'],

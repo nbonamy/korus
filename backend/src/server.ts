@@ -499,6 +499,24 @@ export class AppBackendServer {
     return this.missionExecution.submit(agentId, input);
   }
 
+  async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
+    const caller = this.snapshot.agents.find(agent => agent.id === callerAgentId);
+    const agent = this.snapshot.agents.find(agent => agent.id === agentId);
+    if (!caller || !agent || agent.id === caller.id || agent.delegatedByAgentId !== caller.id) {
+      throw new Error('Only the creator of an agent can close it.');
+    }
+    if (agent.status.type !== 'idle' || handoffInProgress(agent)
+      || this.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)
+      || this.snapshot.agentRequests?.[agentId]?.length) {
+      throw new Error('Wait for the agent to become idle and resolve pending prompts or requests before closing it.');
+    }
+    if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
+      throw new Error('Complete or cancel unfinished tasks before closing this agent.');
+    }
+    const response = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentDelete, params: { agentId } });
+    if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'Agent closing failed.');
+  }
+
   async startAutomaticReview(agentId: string, input: AutomaticReviewStartInput) {
     const agent = this.snapshot.agents.find(candidate => candidate.id === agentId);
     if (!agent) throw new Error('The review target is no longer available.');

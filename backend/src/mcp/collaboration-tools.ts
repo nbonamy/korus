@@ -197,6 +197,11 @@ function registerCollaborationTools(
     instructions,
   })));
 
+  server.registerTool('close-agent', {
+    description: 'Close an idle agent you created. Unfinished tasks must be completed or cancelled first. Preserves its worktree and branches.',
+    inputSchema: z.strictObject({ agentId: z.string().trim().min(1).describe('Exact ID of the agent to close.') }),
+  }, ({ agentId }) => loggedToolResult('close-agent', { callerAgentId, agentId }, () => coordinator.closeAgent(callerAgentId, agentId)));
+
   server.registerTool('display-markdown', {
     description: `Display Markdown in the ${product.name} side panel. Plan-mode proposals open automatically through native plan output; do not display a second copy here. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
     inputSchema: {

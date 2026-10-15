@@ -1363,6 +1363,11 @@ export const messages = {
               failed: 'Failed creating agent {target}',
               running: 'Creating agent {target}',
             },
+            closeAgent: {
+              completed: 'Closed agent',
+              failed: 'Could not close agent',
+              running: 'Closing agent',
+            },
             waitTasks: {
               running: 'Waiting for delegated tasks',
               completed: 'Checked delegated tasks',
