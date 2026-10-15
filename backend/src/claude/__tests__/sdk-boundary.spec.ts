@@ -9,6 +9,9 @@ import { createQueryHarness } from './sdk-query-fixture';
 import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import { UsageLedger } from '../../usage/usage-ledger';
+import { UsageService } from '../../usage/usage-service';
+import { TurnClock } from '../../usage/turn-clock';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
   resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }),
@@ -21,7 +24,7 @@ function agent(id = 'claude-a'): Agent {
 
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
-  function setup(withConnections = false) {
+  function setup(withConnections = false, usage?: UsageService) {
     const sdk = createQueryHarness();
     const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
     const snapshot = createTestSnapshot();
@@ -29,7 +32,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     snapshot.agents = [agent(), agent('claude-b')];
     snapshot.teams[0]!.agentIds = snapshot.agents.map((item) => item.id);
     const events: AppBackendEvent[] = [];
-    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, usage,
       driverRpc: new BackendDriverRpc(new Map([['claude', driver]])), onEvent: (event) => events.push(event),
       ...(withConnections ? { providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/app/claude' }] } as never } : {}),
     });
@@ -37,6 +40,38 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     return { sdk, driver, server, snapshot, events, send: (agentId: string, prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: `${agentId}-${prompt}`, method: 'agent/prompt/send', params: { agentId, prompt } }) };
   }
   afterEach(async () => { await Promise.all(servers.splice(0).map((server) => server.close())); });
+
+  it.each([false, true])('times live Claude output and excludes tools (tool first: %s)', async (toolFirst) => {
+    const ledger = new UsageLedger(':memory:');
+    await ledger.load();
+    let now = 1000;
+    const usage = new UsageService(ledger, () => undefined, new TurnClock(() => now), () => now);
+    const { sdk, driver, snapshot, events } = setup(false, usage);
+    const received = (type: string) => events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === type);
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Inspect the project');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'timing', model: 'sonnet' });
+    await sending;
+    if (!toolFirst) {
+      now = 2000;
+      sdk.emit({ type: 'assistant', session_id: 'timing', message: { content: [{ type: 'text', text: 'Checking' }] } });
+      await vi.waitFor(() => expect(received('message.delta')).toBe(true));
+    }
+    now = 3000;
+    sdk.emit({ type: 'assistant', session_id: 'timing', message: { content: [{ type: 'tool_use', id: 'tool', name: 'Bash', input: { command: 'sleep 10' } }] } });
+    await vi.waitFor(() => expect(received('item.started')).toBe(true));
+    now = 13000;
+    sdk.emit({ type: 'user', session_id: 'timing', message: { content: [{ type: 'tool_result', tool_use_id: 'tool', content: 'done' }] } });
+    await vi.waitFor(() => expect(received('item.updated')).toBe(true));
+    now = 16000;
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'timing', is_error: false, usage: { input_tokens: 10, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+    await vi.waitFor(() => expect(received('turn.completed')).toBe(true));
+    await usage.drain();
+    expect(ledger.query().rows[0]?.speed).toStrictEqual({
+      turns: 1, outputTokens: 40, generationMs: toolFirst ? 3000 : 4000,
+      ttftMs: toolFirst ? 2000 : 1000, ttftTurns: 1,
+    });
+  });
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
     const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));

@@ -48,7 +48,7 @@ function dailySeries(pick: (row: DailyRow) => number | null | undefined) {
   const values: number[] = [];
   for (
     let at = Date.parse(props.from);
-    at <= Date.parse(props.to) && values.length < 90;
+    at <= Date.parse(props.to);
     at += 86400000
   ) {
     const row = days.get(new Date(at).toISOString().slice(0, 10));

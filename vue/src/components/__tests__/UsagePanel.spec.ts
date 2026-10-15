@@ -3,6 +3,50 @@ import { it, expect, vi } from "vitest";
 import { setElectronTestClient } from "../../test/client";
 import UsagePanel from "../UsagePanel.vue";
 import { ElMessageBox } from "element-plus";
+import { activityWindow } from "../usage-chart";
+
+it.each(["unmeasured", "partial", "unavailable"])(
+  "keeps %s activity unavailable instead of displaying zero",
+  async (state) => {
+    const row = {
+      label: "claude",
+      started: 2,
+      completed: 2,
+      failed: 0,
+      interrupted: 0,
+      inProgress: 0,
+      measuredTurns: state === "partial" ? 1 : 0,
+      tokens:
+        state === "partial"
+          ? { input: 8, output: 2, total: 10, cacheRead: 0, cacheWrite: 0 }
+          : null,
+    };
+    const summary = {
+      recordedSince: 1,
+      retainedSince: 1,
+      rows: [row],
+      daily: [{ ...row, day: activityWindow().to, groups: [row] }],
+    };
+    setElectronTestClient({
+      getUsage: vi.fn(async (filter) => {
+        if (state === "unavailable" && filter?.from === activityWindow().from)
+          throw Error("unavailable");
+        return summary;
+      }),
+    });
+    const wrapper = mount(UsagePanel);
+    await flushPromises();
+    expect(
+      wrapper.findAll(".activity-totals dd").map((value) => value.text()),
+    ).toStrictEqual(["Unavailable", "Unavailable"]);
+    await wrapper
+      .findAll(".activity-cell:not(.activity-cell--future)")
+      .at(-1)!
+      .trigger("pointerenter");
+    expect(wrapper.get(".activity-tooltip strong").text()).toBe("Unavailable");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  },
+);
 const choose = async (
   wrapper: ReturnType<typeof mount>,
   group: string,
@@ -10,9 +54,10 @@ const choose = async (
 ) =>
   wrapper
     .get(group)
-    .findAll('[role="radio"]')
+    .findAll("label")
     .find((option) => option.text() === label)!
-    .trigger("click");
+    .get('input[type="radio"]')
+    .setValue();
 it("shows unknown consumption with measured denominators and filters the local owning API", async () => {
   const getUsage = vi.fn().mockResolvedValue({
     recordedSince: 1,

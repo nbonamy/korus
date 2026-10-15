@@ -1,6 +1,76 @@
 import { mount } from "@vue/test-utils";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import UsageTrend from "../UsageTrend.vue";
+
+const rangeProps = {
+  from: "2026-01-01",
+  to: "2026-06-30",
+  measure: "turns" as const,
+  series: [
+    {
+      key: "claude",
+      label: "Claude",
+      color: "blue",
+      value: 1,
+      turns: 1,
+      tokens: null,
+    },
+  ],
+  daily: [
+    {
+      day: "2026-06-30",
+      started: 1,
+      measuredTurns: 0,
+      tokens: null,
+      groups: [{ label: "claude", started: 1, measuredTurns: 0, tokens: null }],
+    },
+  ],
+};
+
+it("includes the end of a custom range longer than 90 days", async () => {
+  const wrapper = mount(UsageTrend, { props: rangeProps });
+  await wrapper.get('[aria-label="2026-06-30 · Claude: 1"]').trigger("focus");
+  expect(wrapper.get(".chart-tooltip").text()).toContain("Jun 30");
+});
+
+it("follows the current chart width after empty states and measure changes", async () => {
+  const targets = new Set<Element>();
+  let resize!: (width: number) => void;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resize = (width) =>
+          callback(
+            [...targets].map((target) => ({
+              target,
+              contentRect: { width },
+            })) as ResizeObserverEntry[],
+            this as unknown as ResizeObserver,
+          );
+      }
+      observe(target: Element) {
+        targets.add(target);
+      }
+      disconnect() {
+        targets.clear();
+      }
+    },
+  );
+  const wrapper = mount(UsageTrend, { props: { ...rangeProps, daily: [] } });
+  await wrapper.setProps({ daily: rangeProps.daily });
+  resize(280);
+  await wrapper.vm.$nextTick();
+  expect(wrapper.get("svg").attributes("width")).toBe("280");
+  await wrapper.setProps({ measure: "total" });
+  expect(wrapper.find("svg").exists()).toBe(false);
+  await wrapper.setProps({ measure: "turns" });
+  resize(420);
+  await wrapper.vm.$nextTick();
+  expect(wrapper.get("svg").attributes("width")).toBe("420");
+  wrapper.unmount();
+  expect(targets.size).toBe(0);
+});
 it("stacks only observed group contributions and leaves unsupported token series unavailable", async () => {
   const token = {
     input: 80,

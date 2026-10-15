@@ -81,11 +81,15 @@ export function useUsageAnalytics() {
   const shareSeries = computed(() =>
     chartSeries(shareData.value, measure.value, shareGroup.value),
   );
-  const activityDays = computed(() =>
-    (projections.value?.activity?.daily ?? []).map((row) => ({
-      day: row.day,
-      tokens: row.tokens?.total ?? 0,
-    })),
+  const activityDays = computed(
+    () =>
+      projections.value?.activity?.daily?.map((row) => ({
+        day: row.day,
+        tokens:
+          row.measuredTurns === row.started
+            ? (row.tokens?.total ?? null)
+            : null,
+      })) ?? null,
   );
 
   // A newer request, a clear or unmount makes older responses stale.

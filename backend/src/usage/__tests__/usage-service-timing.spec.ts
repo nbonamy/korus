@@ -47,7 +47,7 @@ it("records a turn's real working time from backend events, not from the provide
         event: { type: "message.delta", payload: {} },
       }),
     );
-    // Two tools in parallel, one surfaced by Codex events and one by a Claude message part.
+    // Two tools in parallel, including a status update on an existing tool.
     now = 33000;
     service.observeEvent(
       event("codex.conversationEventReceived", {
@@ -58,12 +58,10 @@ it("records a turn's real working time from backend events, not from the provide
       }),
     );
     service.observeEvent(
-      event("claude.conversationEventReceived", {
+      event("codex.conversationEventReceived", {
         event: {
-          type: "message.replaced",
-          payload: {
-            message: { parts: [{ type: "tool", id: "b", status: "running" }] },
-          },
+          type: "tool.started",
+          payload: { toolPart: { id: "b", status: "running" } },
         },
       }),
     );
@@ -78,14 +76,10 @@ it("records a turn's real working time from backend events, not from the provide
     );
     now = 38000;
     service.observeEvent(
-      event("claude.conversationEventReceived", {
+      event("codex.conversationEventReceived", {
         event: {
-          type: "message.replaced",
-          payload: {
-            message: {
-              parts: [{ type: "tool", id: "b", status: "completed" }],
-            },
-          },
+          type: "tool.updated",
+          payload: { update: { itemId: "b", status: "completed" } },
         },
       }),
     );

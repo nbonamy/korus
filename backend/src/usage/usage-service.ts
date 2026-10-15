@@ -16,10 +16,15 @@ function toolStates(view: {
     typeof part?.id === "string" && typeof part.status === "string"
       ? [[part.id, part.status === "running"]]
       : [];
-  if (view.type === "tool.started" || view.type === "tool.completed")
+  if (
+    view.type === "tool.started" ||
+    view.type === "tool.completed" ||
+    view.type === "item.started"
+  )
     return state(payload.toolPart ?? {});
-  if (view.type === "tool.updated") {
-    const update = payload.update ?? {};
+  if (view.type === "tool.updated" || view.type === "item.updated") {
+    const update =
+      view.type === "item.updated" ? payload : (payload.update ?? {});
     return typeof update.itemId === "string" &&
       typeof update.status === "string"
       ? [[update.itemId, update.status === "running"]]
@@ -55,7 +60,8 @@ export class UsageService {
     if (
       view.type === "message.delta" ||
       view.type === "plan.delta" ||
-      view.type === "tool.started"
+      view.type === "tool.started" ||
+      view.type === "item.started"
     )
       this.clock.output(agentId);
     for (const [id, running] of toolStates(view))

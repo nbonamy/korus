@@ -35,7 +35,7 @@ it("lays out whole weeks ending today and shades each day by its share of the re
   wrapper.unmount();
 });
 
-it("reports the lifetime total and the peak day beside the grid", () => {
+it("reports measured totals and keeps an empty activity window at zero", async () => {
   const wrapper = mount(UsageActivity, {
     props: {
       days: [
@@ -50,6 +50,10 @@ it("reports the lifetime total and the peak day beside the grid", () => {
   expect(totals).toContain("6K");
   expect(totals).toContain("Peak day");
   expect(totals).toContain("4K");
+  await wrapper.setProps({ days: [] });
+  expect(
+    wrapper.findAll(".activity-totals dd").map((value) => value.text()),
+  ).toStrictEqual(["0", "0"]);
   wrapper.unmount();
 });
 

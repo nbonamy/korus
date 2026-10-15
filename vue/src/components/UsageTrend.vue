@@ -144,7 +144,7 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId } from "vue";
+import { computed, ref, useId, watch } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import {
   chartValue,
@@ -173,16 +173,19 @@ const left = 44,
 const stage = ref<HTMLElement | null>(null);
 const width = ref(640);
 const active = ref<number | null>(null);
-let observer: ResizeObserver | undefined;
-onMounted(() => {
-  if (typeof ResizeObserver === "undefined") return;
-  observer = new ResizeObserver(([entry]) => {
-    const next = Math.floor(entry?.contentRect.width ?? 0);
-    if (next > 200) width.value = next;
-  });
-  if (stage.value) observer.observe(stage.value);
-});
-onBeforeUnmount(() => observer?.disconnect());
+watch(
+  stage,
+  (element, _previous, onCleanup) => {
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const next = Math.floor(entry?.contentRect.width ?? 0);
+      if (next > 200) width.value = next;
+    });
+    observer.observe(element);
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: "post" },
+);
 const observed = computed(() =>
   props.daily.some((row) =>
     row.groups?.some(
@@ -197,7 +200,7 @@ const values = computed(() => {
   const rows = [];
   for (
     let at = Date.parse(props.from);
-    at <= Date.parse(props.to) && rows.length < 90;
+    at <= Date.parse(props.to);
     at += 86400000
   ) {
     const day = new Date(at).toISOString().slice(0, 10),

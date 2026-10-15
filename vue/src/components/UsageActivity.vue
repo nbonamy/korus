@@ -13,7 +13,7 @@
           </div>
           <div>
             <dt>{{ $t("analytics.activityPeak") }}</dt>
-            <dd>{{ chartFormat(peak?.tokens ?? 0, true) }}</dd>
+            <dd>{{ chartFormat(peak, true) }}</dd>
           </div>
         </dl>
       </div>
@@ -61,7 +61,9 @@ import UsageCard from "./UsageCard.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { translate } from "../i18n";
 import { ACTIVITY_WEEKS, activityWindow, chartFormat } from "./usage-chart";
-const props = defineProps<{ days: { day: string; tokens: number }[] }>();
+const props = defineProps<{
+  days: { day: string; tokens: number | null }[] | null;
+}>();
 const MIN_CELL = 6,
   GAP = 3;
 const body = ref<HTMLElement | null>(null);
@@ -90,32 +92,34 @@ const hovered = ref<{
 const DAY = 86400000;
 const grid = computed(() => {
   const window = activityWindow();
-  const tokens = new Map(props.days.map((row) => [row.day, row.tokens]));
+  const tokens = new Map(props.days?.map((row) => [row.day, row.tokens]));
   const start = Date.parse(window.from),
     end = Date.parse(window.to);
   return Array.from({ length: ACTIVITY_WEEKS * 7 }, (_, i) => {
     const day = new Date(start + i * DAY).toISOString().slice(0, 10);
     return {
       day,
-      tokens: tokens.get(day) ?? 0,
+      tokens:
+        props.days === null ? null : tokens.has(day) ? tokens.get(day)! : 0,
       future: start + i * DAY > end,
       week: Math.floor(i / 7),
     };
   });
 });
 const lifetime = computed(() =>
-  grid.value.reduce((n, cell) => n + cell.tokens, 0),
+  grid.value.some((cell) => !cell.future && cell.tokens === null)
+    ? null
+    : grid.value.reduce((n, cell) => n + (cell.tokens ?? 0), 0),
 );
 const peak = computed(() =>
-  grid.value.reduce<(typeof grid.value)[number] | null>(
-    (best, cell) => (cell.tokens > (best?.tokens ?? 0) ? cell : best),
-    null,
-  ),
+  lifetime.value === null
+    ? null
+    : Math.max(0, ...grid.value.map((cell) => cell.tokens ?? 0)),
 );
 const cells = computed(() => {
   const positive = grid.value
     .map((cell) => cell.tokens)
-    .filter((value) => value > 0)
+    .filter((value): value is number => value !== null && value > 0)
     .sort((a, b) => a - b);
   const at = (q: number) =>
     positive[Math.floor(q * (positive.length - 1))] ?? 0;
@@ -127,17 +131,19 @@ const cells = computed(() => {
       ...cell,
       // The busiest day is always the darkest, even with nothing to compare it with.
       level:
-        cell.future || value <= 0
-          ? 0
-          : value >= max
-            ? 4
-            : value <= q1
-              ? 1
-              : value <= q2
-                ? 2
-                : value <= q3
-                  ? 3
-                  : 4,
+        value === null
+          ? null
+          : cell.future || value <= 0
+            ? 0
+            : value >= max
+              ? 4
+              : value <= q1
+                ? 1
+                : value <= q2
+                  ? 2
+                  : value <= q3
+                    ? 3
+                    : 4,
     };
   });
 });
@@ -165,9 +171,11 @@ const months = computed(() => {
   return labels;
 });
 const summary = computed(() =>
-  translate("analytics.activitySummary", {
-    tokens: chartFormat(lifetime.value, true),
-  }),
+  lifetime.value === null
+    ? translate("analytics.unknown")
+    : translate("analytics.activitySummary", {
+        tokens: chartFormat(lifetime.value, true),
+      }),
 );
 function show(cell: (typeof cells.value)[number], event: PointerEvent) {
   if (cell.future) return;
@@ -175,9 +183,12 @@ function show(cell: (typeof cells.value)[number], event: PointerEvent) {
   hovered.value = {
     x: target.offsetLeft + target.offsetWidth / 2,
     y: target.offsetTop - 8,
-    value: translate("analytics.tokensValue", {
-      count: chartFormat(cell.tokens, true),
-    }),
+    value:
+      cell.tokens === null
+        ? translate("analytics.unknown")
+        : translate("analytics.tokensValue", {
+            count: chartFormat(cell.tokens, true),
+          }),
     label: new Date(cell.day + "T00:00:00Z").toLocaleDateString(undefined, {
       weekday: "short",
       month: "short",
