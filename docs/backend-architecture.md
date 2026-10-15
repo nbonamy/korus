@@ -313,7 +313,10 @@ Codex tool IDs provide observed invocation counts; actual model attribution,
 response grouping and stream throughput remain unavailable. Ratios combine only
 matching released model/day numerators and denominators, with sample coverage.
 
-The telemetry service has its own TLS origin, database and operator secret. It has
+The hosted Korus API lives in `server/api`, with its private operator frontend in
+`server/web`. It is independent of the desktop daemon and companion relay; telemetry
+is one API domain. The server workspace gates on 85% statement coverage.
+The telemetry module has its own database and operator secret. It has
 no provider credentials, relay identity or execution authority. SQLite transactions
 couple batch dedupe and predefined aggregate increments. Daily buckets expire after
 90 days, monthly marginals after 12 months, batch IDs after 7 days. Backups must use
@@ -323,8 +326,8 @@ release suppressed cells. A rare category suppresses complementary marginals for
 the same day and metric, preventing subtraction across breakdowns. Report volume is not people. Public writers can poison
 aggregates; an embedded client secret would not establish authenticity.
 
-Build the isolated service with `npm run build:telemetry -w @workspace/backend`.
-Run its `start:telemetry` script with a private database location, an operator-token
+Build the hosted API with `npm run build:server`.
+Run `npm run start:server` with a private database location, an operator-token
 file containing at least 32 characters, and TLS key/certificate files configured
 through the `TELEMETRY_*` environment. Synthetic loopback testing can use
 `TELEMETRY_SYNTHETIC=1`; it cannot bypass TLS on a public interface. The operator

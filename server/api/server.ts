@@ -10,9 +10,9 @@ import {
   AggregateStore,
   operatorDimensions,
   type OperatorQuery,
-} from "./aggregate-store";
-import { operatorPage, operatorScript } from "./operator-page";
-export type TelemetryServiceConfig = {
+} from "./telemetry/aggregate-store";
+import { operatorPage, operatorScript } from "../web/operator-page";
+export type ApiServerConfig = {
   database: string;
   operatorToken: string;
   host: string;
@@ -21,8 +21,8 @@ export type TelemetryServiceConfig = {
   synthetic?: boolean;
   minimumReports?: number;
 };
-export async function startTelemetryService(
-  config: TelemetryServiceConfig,
+export async function startApiServer(
+  config: ApiServerConfig,
 ): Promise<{ url: string; close(): Promise<void> }> {
   if (
     config.operatorToken.length < 32 ||

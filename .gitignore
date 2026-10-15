@@ -32,3 +32,5 @@ electron/.mobile-simulator/
 electron/.mobile-simulator-artifacts/
 
 backend/dist-telemetry/
+server/dist/
+server/coverage/

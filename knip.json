@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreBinaries": ["shasum", "swift", "spctl"],
+  "ignoreBinaries": [
+    "shasum",
+    "swift",
+    "spctl"
+  ],
   "workspaces": {
     ".": {
       "entry": [
@@ -10,9 +14,15 @@
         "website/docs/.vitepress/theme/index.mts",
         "vite.sdk-aliases.ts"
       ],
-      "project": ["scripts/**/*.mjs", "website/**/*.{js,mjs,mts}", "*.ts"],
+      "project": [
+        "scripts/**/*.mjs",
+        "website/**/*.{js,mjs,mts}",
+        "*.ts"
+      ],
       "stylelint": {
-        "config": [".stylelintrc.json"]
+        "config": [
+          ".stylelintrc.json"
+        ]
       }
     },
     "electron": {
@@ -26,10 +36,25 @@
       ]
     },
     "web": {
-      "entry": ["src/server/index.ts"]
+      "entry": [
+        "src/server/index.ts"
+      ]
     },
     "backend": {
-      "entry": ["vite.*.config.ts", "src/daemon.ts", "src/telemetry/service-entry.ts"]
+      "entry": [
+        "vite.config.ts",
+        "src/daemon.ts"
+      ]
+    },
+    "server": {
+      "entry": [
+        "api/main.ts"
+      ],
+      "project": [
+        "api/**/*.ts",
+        "web/**/*.ts",
+        "*.ts"
+      ]
     }
   }
 }

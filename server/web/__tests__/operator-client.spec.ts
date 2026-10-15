@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { modelBehaviorMeasures, type ModelBehavior } from "../model-behavior";
+import { modelBehaviorMeasures, type ModelBehavior } from "../../api/telemetry/model-behavior";
 import { operatorPage, operatorScript } from "../operator-page";
 
 // Keep browser fixture types local: DOM ambient fetch types conflict with this Node workspace.

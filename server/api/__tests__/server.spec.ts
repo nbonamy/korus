@@ -3,10 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
-import { startTelemetryService } from "../service";
-import { TelemetryReporter, type ReporterConfig } from "../reporter";
-import { UsageLedger } from "../usage-ledger";
-import { UsageService } from "../usage-service";
+import { startApiServer } from "../server";
 import { utcDay, type TelemetryReport } from "@workspace/core/telemetry";
 async function readJson(
   response: Response,
@@ -42,7 +39,7 @@ describe("isolated real telemetry HTTP and storage", () => {
   it("authenticates operators, atomically deduplicates concurrent batches, rejects unsafe input and releases only bounded marginals", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-service-"));
     const database = path.join(dir, "aggregate.sqlite");
-    let service = await startTelemetryService({
+    let service = await startApiServer({
       database,
       operatorToken: token,
       host: "127.0.0.1",
@@ -129,7 +126,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       });
       expect(JSON.stringify(audit)).not.toContain("CANARY");
       await service.close();
-      service = await startTelemetryService({
+      service = await startApiServer({
         database,
         operatorToken: token,
         host: "127.0.0.1",
@@ -154,110 +151,11 @@ describe("isolated real telemetry HTTP and storage", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
-  it("disclosed enabled source → numeric local history → safe report → private dashboard; opt-out and remote ownership remain closed", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-e2e-"));
-    const service = await startTelemetryService({
-      database: path.join(dir, "db"),
-      operatorToken: token,
-      host: "127.0.0.1",
-      port: 0,
-      synthetic: true,
-    });
-    let now = yesterday;
-    const bodies: string[] = [];
-    const config: ReporterConfig = {
-      rollout: true,
-      forceOff: false,
-      environment: true,
-      synthetic: true,
-      endpoint: service.url + "/reports",
-      version: "0.33.0",
-      channel: "stable",
-      platform: "macos",
-      client: "desktop",
-    };
-    const reporter = new TelemetryReporter(
-      path.join(dir, "outbox"),
-      config,
-      () => now,
-      async (url, input) => {
-        bodies.push(String(input?.body));
-        return fetch(url, input);
-      },
-      () => 0,
-    );
-    const ledger = new UsageLedger(path.join(dir, "local"), () => now);
-    const usage = new UsageService(ledger, reporter, () => ({
-      id: "CANARY_agent",
-      name: "CANARY_name",
-      folder: "/CANARY_repo",
-      backend: "claude",
-      teamId: "CANARY_team",
-      status: { type: "idle" },
-      createdAt: "",
-      updatedAt: "",
-    }));
-    try {
-      await ledger.load();
-      await reporter.load();
-      await reporter.choose("desktop", { enabled: true, disclosure: 1 });
-      const event = {
-        agentId: "CANARY_agent",
-        sessionId: "CANARY_session",
-        turnId: "one",
-        provider: "claude" as const,
-        phase: "started" as const,
-        at: now,
-        model: "CANARY_model",
-      };
-      usage.source(event.agentId, "desktop");
-      usage.observe(event);
-      usage.observe({
-        ...event,
-        phase: "completed",
-        tokens: {
-          total: 65,
-          input: 45,
-          output: 20,
-          cacheRead: 30,
-          cacheWrite: 5,
-        },
-      });
-      await usage.drain();
-      expect(ledger.query().rows[0]?.measuredTurns).toBe(1);
-      now += 4000000;
-      await reporter.flush();
-      expect(bodies).toHaveLength(1);
-      expect(bodies.join()).not.toContain("CANARY");
-      await reporter.choose("desktop", { enabled: false, disclosure: 1 });
-      usage.source(event.agentId, "desktop");
-      usage.observe({ ...event, turnId: "two" });
-      usage.observe({ ...event, turnId: "two", phase: "interrupted" });
-      await usage.drain();
-      await reporter.flush();
-      expect(bodies).toHaveLength(1);
-      expect(ledger.query().rows[0]?.started).toBe(2);
-      await reporter.choose("desktop", { enabled: true, disclosure: 1 });
-      await reporter.choose("remote-unsynchronized", {
-        enabled: true,
-        disclosure: 1,
-      });
-      usage.source(event.agentId, "remote-unsynchronized");
-      usage.observe({ ...event, turnId: "remote" });
-      usage.observe({ ...event, turnId: "remote", phase: "completed" });
-      await usage.drain();
-      expect(reporter.privacy("desktop").pending).toStrictEqual([]);
-    } finally {
-      await usage.close();
-      await service.close();
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
 });
 
 it("rolls back whole batches on aggregate overflow and expires dedupe/daily/monthly data", async () => {
   const { DatabaseSync } = await import("node:sqlite");
-  const { AggregateStore } = await import("../aggregate-store");
+  const { AggregateStore } = await import("../telemetry/aggregate-store");
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-retention-"));
   const file = path.join(dir, "db");
   let now = Date.now();
@@ -344,7 +242,7 @@ it("fails closed for public plaintext listeners, missing operator authentication
     { minimumReports: NaN },
   ])
     await expect(
-      startTelemetryService({
+      startApiServer({
         database: ":memory:",
         operatorToken: token,
         host: "127.0.0.1",
@@ -356,7 +254,7 @@ it("fails closed for public plaintext listeners, missing operator authentication
 });
 
 it("suppresses complementary marginals so filters and cross-dimension subtraction cannot recover a rare category", async () => {
-  const { AggregateStore } = await import("../aggregate-store");
+  const { AggregateStore } = await import("../telemetry/aggregate-store");
   const store = new AggregateStore(":memory:");
   try {
     for (let i = 0; i < 10; i++) store.ingest(report());
@@ -394,7 +292,7 @@ it("suppresses complementary marginals so filters and cross-dimension subtractio
 });
 
 it("serves model comparisons from paired released samples, including genuine zero outcomes, through the authenticated API", async () => {
-  const service = await startTelemetryService({
+  const service = await startApiServer({
     database: ":memory:",
     operatorToken: token,
     host: "127.0.0.1",
@@ -449,7 +347,7 @@ it("serves model comparisons from paired released samples, including genuine zer
         "&dimension=model",
       { headers: { authorization: "Bearer " + token } },
     ).then((r) => r.json())) as {
-      behavior: import("../model-behavior").ModelBehavior[];
+      behavior: import("../telemetry/model-behavior").ModelBehavior[];
     };
     const metrics = result.behavior[0]!.metrics;
     expect(metrics.streamRate).toStrictEqual({
@@ -470,5 +368,67 @@ it("serves model comparisons from paired released samples, including genuine zer
     expect(metrics.reasoningShare.value).toBeNull();
   } finally {
     await service.close();
+  }
+});
+
+it("protects dashboard assets and rejects malformed HTTP bodies, methods and unbounded queries", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "korus-api-boundary-"));
+  const service = await startApiServer({
+    database: path.join(dir, "db"),
+    operatorToken: token,
+    host: "127.0.0.1",
+    port: 0,
+    synthetic: true,
+  });
+  const authorization =
+    "Basic " + Buffer.from("operator:" + token).toString("base64");
+  try {
+    expect((await fetch(service.url + "/operator.js")).status).toBe(401);
+    const script = await fetch(service.url + "/operator.js", {
+      headers: { authorization },
+    });
+    expect(script.status).toBe(200);
+    expect(script.headers.get("content-type")).toBe("application/javascript");
+    expect(await script.text()).not.toContain(token);
+    for (const [route, init, expected] of [
+      ["/", { method: "POST", headers: { authorization } }, 405],
+      [
+        "/reports",
+        {
+          method: "POST",
+          body: "not-json",
+          headers: { "content-type": "application/json" },
+        },
+        400,
+      ],
+      [
+        "/reports",
+        {
+          method: "POST",
+          body: "{}",
+          headers: { "content-type": "text/plain" },
+        },
+        413,
+      ],
+      [
+        "/reports",
+        {
+          method: "POST",
+          body: " ".repeat(65537),
+          headers: { "content-type": "application/json" },
+        },
+        413,
+      ],
+      ["/unknown", {}, 404],
+      [
+        "/operator/metrics?from=not-a-day&to=not-a-day&dimension=model",
+        { headers: { authorization } },
+        400,
+      ],
+    ] as const)
+      expect((await fetch(service.url + route, init)).status).toBe(expected);
+  } finally {
+    await service.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });

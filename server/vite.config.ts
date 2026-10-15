@@ -5,12 +5,12 @@ export default defineConfig({
     alias: { "@workspace/core": path.resolve(__dirname, "../core/src") },
   },
   build: {
-    ssr: path.resolve(__dirname, "src/telemetry/service-entry.ts"),
-    outDir: "dist-telemetry",
+    ssr: path.resolve(__dirname, "api/main.ts"),
+    outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
       external: [/^node:/],
-      output: { entryFileNames: "service.mjs", format: "es" },
+      output: { entryFileNames: "api.mjs", format: "es" },
     },
   },
 });

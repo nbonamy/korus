@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { startTelemetryService } from "./service";
+import { startApiServer } from "./server";
 const env = process.env;
 try {
   const token = (
@@ -12,7 +12,7 @@ try {
           cert: await readFile(env.TELEMETRY_TLS_CERT),
         }
       : undefined;
-  const service = await startTelemetryService({
+  const service = await startApiServer({
     database: env.TELEMETRY_DATABASE ?? "telemetry.sqlite",
     operatorToken: token,
     host: env.TELEMETRY_HOST ?? "127.0.0.1",
