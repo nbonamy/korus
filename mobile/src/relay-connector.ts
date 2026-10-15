@@ -20,6 +20,7 @@ import { companionRendezvousProtocol, relayAddress } from '@workspace/core/compa
 import { normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { PairingError, type CompanionConnector, type CompanionConversation, type CompanionSession } from './companion-port';
 import type { ProtectedVault } from './protected-storage';
+import { connectionDiagnostic, connectionError, connectionLogger } from './connection-diagnostics';
 
 /** Both ends of a pairing are pinned by identity; the code that introduced them is never stored. */
 type PairedLaptop = { v: 1; relayOrigin: string; relayPeerId: string; hostId: string; name: string };
@@ -69,28 +70,41 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       if (!saved.value) await vault.write({ key: 'device-identity', value: base64(privateKeyToProtobuf(key)) });
       identity = peerIdFromPrivateKey(key).toString();
       signingKey = key;
-      node = await createLibp2p({ privateKey: key, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1 })],
+      node = await createLibp2p({ privateKey: key, logger: connectionLogger, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1 })],
         // Native decryption is asynchronous. Outstanding receive credit must fit
         // the paused stream buffer, including at the relayed (inner Noise) layer.
         connectionEncrypters: [noise()], streamMuxers: [yamux({ streamOptions: { maxStreamWindowSize: 1024 * 1024 } })], services: { identify: identify() },
         connectionManager: { maxConnections: 4, maxParallelDials: 2 },
         connectionGater: { denyInboundConnection: () => true, denyDialMultiaddr: () => false },
       });
+      node.addEventListener('connection:close', event => {
+        connectionDiagnostic('transport.connection-close', { stage: event.detail.remotePeer.toString() === relay?.peerId ? 'relay' : 'host', connectionCount: node?.getConnections().length ?? 0,
+          connectionId: event.detail.id, remainingBytes: event.detail.limits?.bytes?.toString(), remainingSeconds: event.detail.limits?.seconds });
+      });
       if (disposed || suspended) { await node.stop(); node = null; throw new Error('Companion closed or paused.'); }
       return node;
     })().finally(() => { opening = null; });
   }
   async function openStream(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, protocol: string): Promise<Stream> {
+    const started = Date.now();
     const networkNode = await network();
     const address = `${addressFor(host.relayOrigin, host.relayPeerId)}/p2p-circuit/p2p/${host.hostId}`;
     // libp2p's dial queue excludes limited circuits from automatic reuse. Reuse the
     // authenticated, pinned circuit explicitly so pairing polls do not exhaust admission quotas.
     const options = { signal: AbortSignal.timeout(15_000), runOnLimitedConnection: true };
     const existing = networkNode.getConnections(peerIdFromString(host.hostId)).find((connection) => connection.status === 'open' && connection.remoteAddr.toString() === address);
-    const stream: Stream = existing
-      ? await existing.newStream(protocol, options)
-      : await networkNode.dialProtocol(multiaddr(address), protocol, options);
-    return stream;
+    try {
+      const stream: Stream = existing
+        ? await existing.newStream(protocol, options)
+        : await networkNode.dialProtocol(multiaddr(address), protocol, options);
+      const connection = existing ?? networkNode.getConnections(peerIdFromString(host.hostId)).find(candidate => candidate.remoteAddr.toString() === address);
+      connectionDiagnostic('transport.stream-open', { stage: protocol === companionUpdatesProtocol ? 'updates' : 'rpc', reused: Boolean(existing), elapsedMs: Date.now() - started, connectionCount: networkNode.getConnections().length,
+        connectionId: connection?.id, remainingBytes: connection?.limits?.bytes?.toString(), remainingSeconds: connection?.limits?.seconds });
+      return stream;
+    } catch (error) {
+      connectionDiagnostic('transport.open-error', { stage: protocol === companionUpdatesProtocol ? 'updates' : 'rpc', reused: Boolean(existing), elapsedMs: Date.now() - started, ...connectionError(error) });
+      throw error;
+    }
   }
   async function request<Result>(host: Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>, method: string, args: unknown): Promise<Result> {
     return requestCompanionStream<Result>(await openStream(host, companionProtocol), method, args);
@@ -139,6 +153,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       throw new PairingError('mobile.errors.pairingExpired');
     },
     async connect(laptopId) {
+      connectionDiagnostic('session.connect');
       await initialize();
       const host = records.find((record) => record.hostId === laptopId);
       if (!host) throw new Error('Pair the laptop first.');
@@ -148,9 +163,10 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
 
       let supportsNotifications = true;
+      let active = true;
       let icons: { version: string; value: Record<string, string> } = { version: '', value: {} };
       const read = async () => {
-        const snapshot = () => channel.request<CompanionWorkspace & { iconsVersion?: string }>('snapshot.get', { iconsVersion: icons.version, ...(supportsNotifications ? { notifications: true } : {}) });
+        const snapshot = () => channel.request<CompanionWorkspace & { iconsVersion?: string }>('snapshot.get', { iconsVersion: icons.version, ...(supportsNotifications ? { notifications: active } : {}) });
         const { iconsVersion, repositoryIcons, ...rest } = await snapshot().catch(error => {
           if (!supportsNotifications || !(error instanceof CompanionOperationDenied)) throw error;
           // Existing laptops reject unknown fields. Keep chat usable through rolling upgrades.
@@ -168,7 +184,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       };
       const notify = (frame: CompanionConversation | null = null) => { if (!closed) for (const listener of updates) listener(workspace, frame); };
       const failed = () => { if (!closed) { close(); for (const listener of listeners) listener(); } };
-      const cache = new ConversationCache((method, target) => channel.request(method, target), (frame) => notify(frame), failed);
+      const cache = new ConversationCache((method, target) => channel.request(method, target), (frame) => notify(frame), () => {
+        connectionDiagnostic('session.disconnect', { reason: 'conversation-cache' }); failed();
+      });
       const channel = createCompanionStream(() => openStream(host, companionUpdatesProtocol), (update) => {
         if (update.type === 'workspace') {
           workspace = { ...update.workspace, repositoryIcons: update.workspace.repositoryIcons ?? icons.value };
@@ -182,7 +200,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           if (update.notification.target.hostId === host.hostId) for (const listener of notifications) listener(update.notification);
         } else cache.receive(update.frame);
       }, failed);
-      const close = () => { closed = true; channel.close(); cache.close(); sessions.delete(handle); };
+      const close = () => { if (!closed) connectionDiagnostic('session.close'); closed = true; channel.close(); cache.close(); sessions.delete(handle); };
       const handle = { laptopId, close }; sessions.add(handle);
       const pinned = host;
       async function created(creationId: string, signal?: AbortSignal): Promise<string> {
@@ -199,6 +217,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         throw new Error('Creating the chat took too long.');
       }
       const session: CompanionSession = {
+        async setActive(next) {
+          active = next;
+          const liveness = channel.setActive(next);
+          // Retain the stream while allowing APNs immediately in the background.
+          const presence = supportsNotifications ? read() : Promise.resolve();
+          await Promise.all([liveness, presence]);
+        },
         getWorkspace: read,
         readImage: (agentId, path) => request(host, 'conversation.image.read', { target: target(agentId), path }),
         getUsage: () => request(host, 'usage.get', {}),

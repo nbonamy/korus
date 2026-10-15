@@ -120,11 +120,8 @@ struct DrawerView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Said only when something is wrong; a healthy link needs no words.
-            if model.connection != .connected {
-                HStack(spacing: 8) {
-                    Circle().fill(model.connection.color).frame(width: 9, height: 9)
-                    Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
-                }
+            if model.showConnectionLost {
+                ConnectionLostNotice(reconnect: model.reconnect)
             }
             HStack(spacing: 10) {
                 NewAgentMenu(enabled: model.canStartChat && model.chatCreation != .creating, select: model.openProject)
@@ -174,7 +171,7 @@ private struct GroupHeader: View {
                 } else if group.repositoryId != nil { newChatMenu }
             }
         }
-        .padding(.leading, 10)
+        .padding(.leading, 6)
     }
 
     private var newChatMenu: some View {
@@ -236,12 +233,12 @@ private struct SessionRow: View {
     let isActive: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             if group.kind == .repository {
                 Image(systemName: session.kind.symbol)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(session.kind.color)
-                    .frame(width: 22)
+                    .frame(width: 24)
             }
             Text(session.title)
                 .font(.body)
@@ -291,28 +288,6 @@ extension SessionKind {
         case .branch: .green
         case .worktree: .orange
         case .detached, .folder: .secondary
-        }
-    }
-}
-
-extension ConnectionState {
-    var label: String {
-        switch self {
-        case .unpaired: "Not connected"
-        case .connecting: "Connecting…"
-        case .connected: "Connected"
-        case .disconnected: "Disconnected"
-        case .reconnecting: "Reconnecting…"
-        case .revoked: "Laptop forgotten"
-        case .error: "Connection failed"
-        }
-    }
-    var color: Color {
-        switch self {
-        case .connected: .green
-        case .connecting, .reconnecting: .orange
-        case .error: .red
-        default: .secondary
         }
     }
 }

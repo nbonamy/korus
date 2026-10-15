@@ -3,6 +3,9 @@ import { createRelayConnector, type RelayConfig } from '../../src/relay-connecto
 import { createSelectionStore } from '../../src/selection-store';
 import { createNativeVault } from '../../src/native-vault';
 import { handler, request } from './native';
+import { setConnectionDiagnosticSink } from '../../src/connection-diagnostics';
+
+setConnectionDiagnosticSink(async record => { await request({ type: 'connection.diagnostic', record }); });
 
 // Credentials live in the iOS Keychain; this page only ever asks for them by key.
 const vault = createNativeVault(request);

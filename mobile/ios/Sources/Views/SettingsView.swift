@@ -51,14 +51,8 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("Status") {
-                        HStack(spacing: 8) {
-                            Circle().fill(model.connection.color).frame(width: 9, height: 9)
-                            Text(model.connection.label)
-                        }
-                    }
-                    if model.connection != .connected && model.connection != .revoked && model.connection != .unpaired {
-                        Button("Reconnect", systemImage: "arrow.clockwise") { model.reconnect() }
+                    if model.showConnectionLost {
+                        ConnectionLostNotice(reconnect: model.reconnect)
                     }
                     Button(role: .destructive) { confirmingForget = true } label: {
                         Label { Text("Forget this laptop") } icon: { Image(systemName: "trash").foregroundStyle(.red) }

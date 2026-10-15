@@ -104,6 +104,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
   let reconnectWanted = false;
+  let isForeground = true;
   let retryCount = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -333,11 +334,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     session = null;
   }
   function retryConnection() {
-    if (!reconnectWanted || disposed || retryTimer || !laptopId.value) return;
+    if (!reconnectWanted || !isForeground || disposed || retryTimer || !laptopId.value) return;
     const delay = Math.min(30_000, 1000 * 2 ** Math.min(retryCount++, 5)) * (0.8 + Math.random() * 0.4);
     retryTimer = setTimeout(() => {
       retryTimer = undefined;
-      if (reconnectWanted && !disposed) void connect(laptopId.value, true);
+      if (reconnectWanted && isForeground && !disposed) void connect(laptopId.value, true);
     }, delay);
   }
   async function connect(id: string, reconnecting = false) {
@@ -360,6 +361,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const nextWorkspace = await opened.getWorkspace();
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
+      if (!isForeground) void session.setActive?.(false).catch(() => {});
       workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
       const removeDisconnect = session.onDisconnect(() => {
         if (epoch !== connectionEpoch) return;
@@ -727,8 +729,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
   function disconnect() { reconnectWanted = false; closeSession(); status.value = 'disconnected'; }
-  async function reconnect() {
-    if (laptopId.value && ['disconnected', 'error'].includes(status.value)) await connect(laptopId.value, true);
+  async function setActive(active: boolean) {
+    if (isForeground === active) return;
+    isForeground = active;
+    if (!active) { clearTimeout(retryTimer); retryTimer = undefined; }
+    try { await session?.setActive?.(active); } catch { /* The channel reports transport loss through onDisconnect. */ }
+  }
+  async function reconnect(force = false) {
+    if (laptopId.value && (force || ['disconnected', 'error'].includes(status.value))) await connect(laptopId.value, true);
   }
   async function revoke() {
     reconnectWanted = false;
@@ -747,5 +755,5 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return { projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    setActive, disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

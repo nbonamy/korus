@@ -2,6 +2,7 @@ import type { CompanionNotification } from '@workspace/core/companion-notificati
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import { companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { warnMain } from '../log';
 
 export type SubscriptionPort = {
   onClose?(): void;
@@ -46,7 +47,7 @@ export class CompanionSubscription {
         // Never include the daemon's app snapshot/clientState on the mobile stream.
         const frame = cleanFrame(event);
         if (entry.pending) {
-          if (entry.buffered.length >= 256) { this.close(); fail(); return; }
+          if (entry.buffered.length >= 256) { warnMain('companion', 'subscription failed', { reason: 'conversation-buffer-limit', agentId: event.agentId }); this.close(); fail(); return; }
           entry.buffered.push(frame);
         } else this.deliver(entry, frame);
       } else if (event.type !== 'conversation.contextUsageUpdated'
@@ -130,7 +131,7 @@ export class CompanionSubscription {
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined; this.refreshing = true; this.dirty = false;
       void this.port.request('snapshot.get', { iconsVersion: this.iconsVersion, notifications: this.notificationsEnabled }).then((next) => this.acceptWorkspace(next as CompanionWorkspace))
-        .catch(() => { this.close(); this.fail(); })
+        .catch(() => { warnMain('companion', 'subscription failed', { reason: 'workspace-refresh' }); this.close(); this.fail(); })
         .finally(() => { this.refreshing = false; if (this.dirty) this.refreshSoon(); });
     }, 50);
   }

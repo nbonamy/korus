@@ -107,6 +107,9 @@ describe('native notification bridge', () => {
       f.notify(notification);
       await f.engine.dispatch({ type: 'activity', active: true });
       expect(f.events.filter(event => event.type === 'notification')).toHaveLength(1);
+      expect(f.registerPush).toHaveBeenCalledTimes(1); // Quick switches retain the existing session and registration.
+      await f.engine.dispatch({ type: 'disconnect' });
+      await f.engine.dispatch({ type: 'reconnect' });
       expect(f.registerPush).toHaveBeenCalledTimes(2);
       expect(f.registerPush).toHaveBeenLastCalledWith(registration);
       await f.engine.dispatch({ type: 'pushRegistration', registration: null });
