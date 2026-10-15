@@ -137,7 +137,10 @@ struct ComposerView: View {
             if expanded {
                 HStack(spacing: 6) {
                     attachMenu
-                    modelMenu
+                    HStack(spacing: 0) {
+                        serviceTierToggle
+                        modelMenu
+                    }
                     Spacer(minLength: 4)
                     micButton
                     sendButton
@@ -220,6 +223,25 @@ struct ComposerView: View {
         .accessibilityLabel("Current goal")
     }
 
+    @ViewBuilder
+    private var serviceTierToggle: some View {
+        if model.supportsServiceTier, let tier = model.selectedModel?.fastTier {
+            let enabled = model.selectedServiceTier == tier.id
+            Button { model.chooseServiceTier(enabled ? nil : tier.id) } label: {
+                Image(systemName: enabled ? "bolt.fill" : "bolt")
+                    .font(.system(size: 18, weight: .semibold))
+                    .scaleEffect(x: 1.15, y: 0.78)
+                    .foregroundStyle(enabled ? Color.primary : .secondary)
+                    .frame(width: 32, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Fast mode")
+            .accessibilityValue(enabled ? "On" : "Off")
+            .accessibilityHint(enabled ? "Switch to Standard service tier." : "Switch to Fast service tier.")
+        }
+    }
+
     private var modelMenu: some View {
         @Bindable var model = model
         return Menu {
@@ -239,7 +261,8 @@ struct ComposerView: View {
             }
             .font(.footnote.weight(.medium))
             .foregroundStyle(.primary)
-            .padding(.horizontal, 10).frame(height: 34)
+            .padding(.leading, model.supportsServiceTier && model.selectedModel?.fastTier != nil ? 0 : 10)
+            .padding(.trailing, 10).frame(height: 34)
             .contentShape(Capsule())
         }
         .tint(.primary)
