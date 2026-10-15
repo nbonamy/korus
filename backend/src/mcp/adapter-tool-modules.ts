@@ -1,3 +1,4 @@
+import type { FeatureReporter } from "../telemetry/feature-reporter";
 import { registerInAppBrowserTools, type InAppBrowserClient } from './browser-tools';
 import { registerComputerUseTools, type ComputerUseClient } from './computer-use-tools';
 import { registerReviewTools } from './review-tools';
@@ -7,12 +8,20 @@ import type { AppMcpToolModuleProvider } from './tool-modules';
 export function createComputerUseToolModuleProvider(
   client: ComputerUseClient | undefined,
   enabled: () => boolean,
+  featuresForAgent?: (agentId: string) => FeatureReporter,
 ): AppMcpToolModuleProvider {
   return {
     id: 'computer-use',
-    resolve: () => client && enabled() ? {
+    resolve: ({ agentId }) => client && enabled() ? {
       id: 'computer-use',
-      register: server => registerComputerUseTools(server, client),
+      register: server => registerComputerUseTools(server, featuresForAgent ? {
+        ...client,
+        execute: input => featuresForAgent(agentId).track('computer.use', () => client.execute(input), result => {
+          // Interpret only the helper's finite success discriminator; never its content/error text.
+          if (!result || typeof result !== 'object' || !('ok' in result)) return 'unavailable';
+          return result.ok === true ? 'succeeded' : result.ok === false ? 'failed' : 'unavailable';
+        }),
+      } : client),
     } : undefined,
   };
 }

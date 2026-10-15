@@ -42,7 +42,6 @@
     },
     "backend": {
       "entry": [
-        "vite.config.ts",
         "src/daemon.ts"
       ]
     },

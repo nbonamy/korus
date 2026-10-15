@@ -146,7 +146,7 @@ export class AppController {
     this.backendClient = backendClient ?? createRuntimeAppBackendClient({
       mobileSimulator: (agentId, input) => this.executeMobileSimulator(agentId, input),
       browserOpen: (agentId, browserId, url) => this.requestBrowserOpen(agentId, browserId, url),
-      browserExecute: (agentId, browserId, command, arguments_) => observeBrowserCommand(this.backendClient, command, () => this.browserPane.execute(agentId, browserId, command, arguments_)),
+      browserExecute: (agentId, browserId, command, arguments_) => observeBrowserCommand(this.backendClient, command, () => this.browserPane.execute(agentId, browserId, command, arguments_), agentId),
       spokenAnnouncements: this.policyAwareSpokenAnnouncements,
       spokenAnnouncementVoice: () => this.snapshot?.general.spokenAnnouncementVoice ?? 'af_heart',
     });
@@ -1279,7 +1279,7 @@ export class AppController {
     this.requireMobileAgent(agentId);
     const execute=()=>this.mobileSimulator.execute(agentId, input, userInitiated);
     const result = ['list','status','inspect'].includes(input.action) ? await execute()
-      : await observeUsageFeature(this.backendClient, 'simulator.execute', execute);
+      : await observeUsageFeature(this.backendClient, 'simulator.execute', execute, userInitiated ? undefined : agentId);
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       // The pane follows an agent's lifecycle; a user detaching or powering off in the pane keeps it open.
       if (input.action === 'attach') sendAppCommand(this.mainWindow.webContents, { type: 'open-simulator', agentId });
@@ -1298,7 +1298,7 @@ export class AppController {
       if (!agent) {
         throw new Error(`Agent not found: ${agentId}`);
       }
-      const state = await observeUsageFeature(this.backendClient, 'browser.open', () => this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId));
+      const state = await observeUsageFeature(this.backendClient, 'browser.open', () => this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId), this.pendingBrowserOpens.has(browserPaneKey(agentId, browserId)) ? agentId : undefined);
       this.resolvePendingBrowserOpen(agentId, browserId, url, state);
       return state;
     } catch (error) {

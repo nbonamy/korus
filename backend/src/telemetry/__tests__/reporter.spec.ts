@@ -591,3 +591,50 @@ it("keeps successful operations successful when reporting or outcome classificat
   await reporter.close();
   expect(reporter.privacy("desktop").pending).toStrictEqual([]);
 });
+
+it("binds native callbacks to the initiating source permission while allowing only the observing client to finish them", async () => {
+  const reporter = new TelemetryReporter(
+    await file("native-source"),
+    config,
+    () => event.at,
+  );
+  await reporter.load();
+  await reporter.choose("desktop", { enabled: true, disclosure: 2 });
+  await reporter.choose("mobile", { enabled: false, disclosure: 2 });
+  expect(
+    await reporter.beginFeature("desktop", "browser.open", null),
+  ).toBeNull();
+  expect(
+    await reporter.beginFeature("desktop", "browser.open", {
+      source: "mobile",
+      permission: null,
+    }),
+  ).toBeNull();
+  expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+  await reporter.choose("mobile", { enabled: true, disclosure: 2 });
+  const id = await reporter.beginFeature("desktop", "browser.open", {
+    source: "mobile",
+    permission: reporter.permission("mobile"),
+  });
+  expect(id).not.toBeNull();
+  await reporter.finishFeature("other-client", id!, "failed");
+  await reporter.finishFeature("desktop", id!, "succeeded");
+  expect(
+    reporter
+      .privacy("desktop")
+      .pending.flatMap((report) => report.rows)
+      .map((row) => [row.metric, row.value]),
+  ).toStrictEqual([
+    ["feature.attempted", 1],
+    ["feature.succeeded", 1],
+  ]);
+  const late = await reporter.beginFeature("desktop", "browser.capture", {
+    source: "mobile",
+    permission: reporter.permission("mobile"),
+  });
+  await reporter.choose("mobile", { enabled: false, disclosure: 2 });
+  await reporter.choose("mobile", { enabled: true, disclosure: 2 });
+  await reporter.finishFeature("desktop", late!, "succeeded");
+  expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+  await reporter.close();
+});

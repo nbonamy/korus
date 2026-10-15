@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
       },
     }],
     define: {
+      __APP_TELEMETRY_URL__: JSON.stringify(env.APP_TELEMETRY_URL ?? ''),
+      __APP_TELEMETRY_REVIEWED_ROLLOUT__: JSON.stringify(env.APP_TELEMETRY_REVIEWED_ROLLOUT === '1'),
       __APP_GITHUB_CLIENT_ID__: JSON.stringify(env.APP_GITHUB_CLIENT_ID ?? ''),
       __APP_LINEAR_CLIENT_ID__: JSON.stringify(env.APP_LINEAR_CLIENT_ID ?? ''),
     },

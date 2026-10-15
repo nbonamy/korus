@@ -25,13 +25,14 @@ it("loads private deployment configuration, answers health checks and closes its
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
   const port = (probe.address() as { port: number }).port;
   await new Promise<void>((resolve) => probe.close(() => resolve()));
-  vi.stubEnv("TELEMETRY_OPERATOR_TOKEN_FILE", token);
-  vi.stubEnv("TELEMETRY_DATABASE", path.join(dir, "db"));
-  vi.stubEnv("TELEMETRY_HOST", "127.0.0.1");
-  vi.stubEnv("TELEMETRY_PORT", String(port));
-  vi.stubEnv("TELEMETRY_SYNTHETIC", "1");
-  vi.stubEnv("TELEMETRY_TLS_KEY", "");
-  vi.stubEnv("TELEMETRY_TLS_CERT", "");
+  vi.stubEnv("API_OPERATOR_TOKEN_FILE", token);
+  vi.stubEnv("API_TELEMETRY_DATABASE", path.join(dir, "db"));
+  vi.stubEnv("API_HOST", "127.0.0.1");
+  vi.stubEnv("API_PORT", String(port));
+  vi.stubEnv("API_SYNTHETIC", "1");
+  vi.stubEnv("API_REVERSE_PROXY", "");
+  vi.stubEnv("API_TLS_KEY", "");
+  vi.stubEnv("API_TLS_CERT", "");
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation(() => undefined as never);
@@ -62,10 +63,7 @@ it("loads private deployment configuration, answers health checks and closes its
 });
 
 it("fails closed on unreadable secret files without logging paths or credentials", async () => {
-  vi.stubEnv(
-    "TELEMETRY_OPERATOR_TOKEN_FILE",
-    "/CANARY_PRIVATE_LOCATION/missing",
-  );
+  vi.stubEnv("API_OPERATOR_TOKEN_FILE", "/CANARY_PRIVATE_LOCATION/missing");
   const write = vi
     .spyOn(process.stderr, "write")
     .mockImplementation(() => true);
@@ -74,7 +72,7 @@ it("fails closed on unreadable secret files without logging paths or credentials
     await import("../main");
     expect(process.exitCode).toBe(1);
     expect(write).toHaveBeenCalledExactlyOnceWith(
-      "Telemetry service configuration or startup failed.\n",
+      "API server configuration or startup failed.\n",
     );
   } finally {
     process.exitCode = prior;

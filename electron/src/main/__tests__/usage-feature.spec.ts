@@ -117,3 +117,25 @@ it("observes named viewport/capture completions while excluding page interaction
   );
   expect(JSON.stringify(request.mock.calls)).not.toContain("CANARY");
 });
+
+it("keeps native agent operation ownership local to the daemon without copying operation content", async () => {
+  const { observeBrowserCommand } = await import("../usage-feature");
+  const request = vi.fn(async (method: string) =>
+    method === backendMethods.telemetryFeatureBegin ? null : undefined,
+  );
+  const backend = { request: request as never };
+  const result = { secret: "CANARY_SCREEN_CONTENT" };
+  expect(
+    await observeBrowserCommand(
+      backend,
+      "screenshot",
+      async () => result,
+      "local-agent",
+    ),
+  ).toBe(result);
+  expect(request).toHaveBeenCalledExactlyOnceWith(
+    backendMethods.telemetryFeatureBegin,
+    { feature: "browser.capture", agentId: "local-agent" },
+  );
+  expect(JSON.stringify(request.mock.calls)).not.toContain("CANARY");
+});

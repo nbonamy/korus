@@ -27,7 +27,7 @@ it("disclosed enabled source → numeric local history → safe report → priva
     forceOff: false,
     environment: true,
     synthetic: true,
-    endpoint: service.url + "/reports",
+    endpoint: service.url + "/v1/telemetry/reports",
     version: "0.33.0",
     channel: "stable",
     platform: "macos",

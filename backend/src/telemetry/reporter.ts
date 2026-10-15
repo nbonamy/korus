@@ -31,6 +31,8 @@ type State = {
   queue: Batch[];
   seen: { id: string; at: number }[];
 };
+/** Local ownership only; never serialized into a report. */
+export type ObservationOrigin = { source: string; permission: number | null };
 export type ReporterConfig = {
   rollout: boolean;
   forceOff: boolean;
@@ -54,7 +56,13 @@ export class TelemetryReporter {
   private eligible = new Map<string, string>();
   private operations = new Map<
     string,
-    { source: string; feature: ClientFeature; permission: number; at: number }
+    {
+      source: string;
+      reportingSource: string;
+      feature: ClientFeature;
+      permission: number;
+      at: number;
+    }
   >();
   private readonly store: JsonStore<State>;
   constructor(
@@ -381,17 +389,27 @@ export class TelemetryReporter {
   async beginFeature(
     source: string,
     feature: ClientFeature,
+    origin?: ObservationOrigin | null,
   ): Promise<string | null> {
     if (!clientFeatures.includes(feature)) throw new Error("Invalid feature.");
-    const permission = this.permission(source);
-    if (permission === null) return null;
+    if (origin === null) return null;
+    const reportingSource = origin?.source ?? source;
+    const permission = origin ? origin.permission : this.permission(source);
+    if (permission === null || permission !== this.permission(reportingSource))
+      return null;
     for (const [key, value] of this.operations)
       if (value.at < this.now() - 600000) this.operations.delete(key);
     if (this.operations.size >= 1000) return null;
     const id = randomUUID();
-    this.operations.set(id, { source, feature, permission, at: this.now() });
-    await this.feature(
+    this.operations.set(id, {
       source,
+      reportingSource,
+      feature,
+      permission,
+      at: this.now(),
+    });
+    await this.feature(
+      reportingSource,
       id + ":attempt",
       feature,
       "attempted",
@@ -411,7 +429,7 @@ export class TelemetryReporter {
     this.operations.delete(id);
     if (operation.at < this.now() - 600000) return;
     await this.feature(
-      source,
+      operation.reportingSource,
       id,
       operation.feature,
       outcome,

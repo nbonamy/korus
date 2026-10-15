@@ -72,6 +72,7 @@ export const telemetryFeatures = [
   "automation.run",
   "automation.finish",
   "artifact.open",
+  "computer.use",
   "browser.open",
   "browser.responsive",
   "browser.capture",

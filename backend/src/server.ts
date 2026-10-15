@@ -649,7 +649,7 @@ export class AppBackendServer {
     if ([backendMethods.usageGet,backendMethods.telemetryPrivacyGet,backendMethods.telemetryPrivacySet,backendMethods.telemetryFeatureBegin,backendMethods.telemetryFeatureFinish].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
-        if(message.method===backendMethods.telemetryFeatureBegin) return createAppRpcResult(message.id,await usage.telemetry.beginFeature(clientId,params?.feature as import('@workspace/core/telemetry').ClientFeature));
+        if(message.method===backendMethods.telemetryFeatureBegin) return createAppRpcResult(message.id,await usage.beginClientFeature(clientId,params?.feature as import('@workspace/core/telemetry').ClientFeature,params?.agentId===undefined?undefined:requireString(params.agentId,'agentId')));
         if(message.method===backendMethods.telemetryFeatureFinish) {await usage.telemetry.finishFeature(clientId,requireString(params?.operationId,'operationId'),params?.outcome as Exclude<import('@workspace/core/telemetry').FeatureOutcome,'attempted'>);return createAppRpcResult(message.id,null);}
         if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
         if(message.method===backendMethods.telemetryPrivacyGet) return createAppRpcResult(message.id,usage.telemetry.privacy(clientId));

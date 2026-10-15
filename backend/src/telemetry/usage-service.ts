@@ -1,7 +1,9 @@
 import type { Agent, AppSnapshot } from "@workspace/core/contracts";
 import type { ExecutionObservation } from "@workspace/core/usage";
-import { TelemetryReporter } from "./reporter";
+import { TelemetryReporter, type ObservationOrigin } from "./reporter";
+import type { ClientFeature } from "@workspace/core/telemetry";
 import { UsageLedger } from "./usage-ledger";
+import type { FeatureReporter } from "./feature-reporter";
 /** One owner records; observers and remote history never feed this service. */
 export class UsageService {
   private chain: Promise<void> = Promise.resolve();
@@ -11,7 +13,7 @@ export class UsageService {
   >();
   private executions = new Map<
     string,
-    { source: string; permission: number | null }
+    { source: string; permission: number | null; agentId: string }
   >();
   private outcomes = new Map<
     string,
@@ -116,15 +118,12 @@ export class UsageService {
     const key = JSON.stringify([event.provider, event.sessionId, event.turnId]);
     if (event.phase === "started" && !this.executions.has(key)) {
       const arm = this.sources.get(event.agentId);
-      this.executions.set(
-        key,
-        arm && arm.at > Date.now() - 60000
+      this.executions.set(key, {
+        ...(arm && arm.at > Date.now() - 60000
           ? arm
-          : {
-              source: "unknown",
-              permission: null,
-            },
-      );
+          : { source: "unknown", permission: null }),
+        agentId: event.agentId,
+      });
       this.sources.delete(event.agentId);
       while (this.executions.size > 10000)
         this.executions.delete(this.executions.keys().next().value!);
@@ -151,6 +150,34 @@ export class UsageService {
           );
       })
       .catch(() => undefined);
+  }
+  /** MCP operations inherit only an unambiguous live execution's originating permission. */
+  private executionOrigin(agentId: string): ObservationOrigin | null {
+    const owners = [...this.executions.values()].filter(
+      (execution) => execution.agentId === agentId,
+    );
+    const owner = owners.length === 1 ? owners[0] : undefined;
+    return owner &&
+      owner.permission !== null &&
+      owner.permission === this.telemetry.permission(owner.source)
+      ? owner
+      : null;
+  }
+  featuresForAgent(agentId: string): FeatureReporter {
+    return this.telemetry.forSource(
+      this.executionOrigin(agentId)?.source ?? "remote-unsynchronized",
+    );
+  }
+  beginClientFeature(
+    clientId: string,
+    feature: ClientFeature,
+    agentId?: string,
+  ): Promise<string | null> {
+    return this.telemetry.beginFeature(
+      clientId,
+      feature,
+      agentId === undefined ? undefined : this.executionOrigin(agentId),
+    );
   }
   async drain(): Promise<void> {
     await this.chain;

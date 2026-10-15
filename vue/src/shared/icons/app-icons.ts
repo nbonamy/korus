@@ -42,6 +42,7 @@ export {
   IconGitMerge as GitMergeIcon,
   IconCloudUpload as CloudUploadIcon,
   IconInfinity as InfinityIcon,
+  IconInfoCircle as InfoCircleIcon,
   IconList as ListIcon,
   IconListDetails as ListDetailsIcon,
   IconLogs as LogsIcon,

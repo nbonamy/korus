@@ -1,5 +1,4 @@
 <template>
-  <TelemetryDisclosure v-if="hasLoadedSnapshot" />
   <div class="window-edge" aria-hidden="true" />
   <AppShell
     v-if="hasLoadedSnapshot"
@@ -250,7 +249,6 @@
 </template>
 
 <script setup lang="ts">
-import TelemetryDisclosure from './components/TelemetryDisclosure.vue';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentGitWorkflow, DesktopUpdateStatus } from '@workspace/core/contracts';

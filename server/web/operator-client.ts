@@ -217,7 +217,7 @@ export const operatorScript = String.raw`
     status.classList.remove('error');status.textContent='Loading released aggregates…';trend.setAttribute('aria-busy','true');
     const params=new URLSearchParams(new FormData(form));if(view==='behavior')params.set('dimension','model');if(!params.get('value'))params.delete('value');
     try{
-      const response=await fetch('/operator/metrics?'+params,{credentials:'same-origin',signal:controller.signal});
+      const response=await fetch('/v1/telemetry/metrics?'+params,{credentials:'same-origin',signal:controller.signal});
       if(!response.ok)throw Error(response.status===401?'Operator authentication required.':'Could not load aggregates.');
       const data=await response.json();if(ownGeneration!==generation)return;
       current=data;document.querySelector('#coverage').textContent=data.coverage;

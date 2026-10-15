@@ -1,41 +1,52 @@
-import { product } from '@workspace/core/product';
-import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { clearConfetti, useConfetti } from '../../shared/confetti/use-confetti';
+import { setElectronTestClient } from '../../test/client';
 import OnboardingCompleteLanding from '../OnboardingCompleteLanding.vue';
-
-function mountLanding(props: Partial<InstanceType<typeof OnboardingCompleteLanding>['$props']> = {}) {
-  return mount(OnboardingCompleteLanding, {
-    props,
-  });
-}
-
-describe('OnboardingCompleteLanding', () => {
-  afterEach(() => {
-    clearConfetti();
-    vi.useRealTimers();
-  });
-
-  it('celebrates once and completes automatically', async () => {
-    vi.useFakeTimers();
-    const wrapper = mountLanding();
-
-    expect(wrapper.text()).toContain("You're all set.");
-    expect(wrapper.text()).toContain(`${product.name} is ready.`);
-    expect(useConfetti().bursts.value).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(wrapper.emitted('complete')).toStrictEqual([[]]);
-  });
-
-  it('can finish immediately without celebrating', async () => {
-    vi.useFakeTimers();
-    const wrapper = mountLanding({ celebrate: false });
-
-    expect(useConfetti().bursts.value).toHaveLength(0);
-    await wrapper.get('.onboarding-complete__action').trigger('click');
-
-    expect(wrapper.emitted('complete')).toStrictEqual([[]]);
-  });
+const save = vi.fn();
+beforeEach(() => {
+  save.mockReset().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'rollout', pending: [] });
+  setElectronTestClient({ getTelemetryPrivacy: vi.fn().mockResolvedValue({ choice: null, active: false, blocked: 'disclosure', pending: [] }), setTelemetryPrivacy: save });
+});
+afterEach(() => { clearConfetti(); vi.useRealTimers(); });
+it('keeps the final onboarding page open, defaults reporting on and saves the disclosed choice before continuing', async () => {
+  vi.useFakeTimers();
+  const wrapper = mount(OnboardingCompleteLanding);
+  await flushPromises();
+  expect(useConfetti().bursts.value).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(wrapper.emitted('complete')).toBeUndefined();
+  const control = wrapper.get('[role="switch"][aria-label="Share anonymous usage statistics"]');
+  expect(control.attributes('aria-checked')).toBe('true');
+  await wrapper.get('.onboarding-complete__action').trigger('click');
+  await flushPromises();
+  expect(save).toHaveBeenCalledExactlyOnceWith({ enabled: true, disclosure: 2 });
+  expect(wrapper.emitted('complete')).toStrictEqual([[]]);
+  wrapper.unmount();
+});
+it('allows disabling reporting before completion and never silently overwrites an earlier opt-out', async () => {
+  setElectronTestClient({ getTelemetryPrivacy: vi.fn().mockResolvedValue({ choice: { enabled: false, disclosure: 1 }, active: false, blocked: null, pending: [] }), setTelemetryPrivacy: save });
+  const wrapper = mount(OnboardingCompleteLanding, { props: { celebrate: false } });
+  await flushPromises();
+  expect(wrapper.get('[role="switch"][aria-label="Share anonymous usage statistics"]').attributes('aria-checked')).toBe('false');
+  await wrapper.get('.onboarding-complete__action').trigger('click');
+  await flushPromises();
+  expect(save).toHaveBeenCalledExactlyOnceWith({ enabled: false, disclosure: 2 });
+  expect(useConfetti().bursts.value).toHaveLength(0);
+  wrapper.unmount();
+});
+it('keeps the choice visible and offers retry if saving fails', async () => {
+  save.mockRejectedValueOnce(new Error('unavailable'));
+  const wrapper = mount(OnboardingCompleteLanding, { props: { celebrate: false } });
+  await flushPromises();
+  await wrapper.get('[role="switch"][aria-label="Share anonymous usage statistics"]').setValue(false);
+  await wrapper.get('.onboarding-complete__action').trigger('click');
+  await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  expect(wrapper.emitted('complete')).toBeUndefined();
+  await wrapper.get('.onboarding-complete__action').trigger('click');
+  await flushPromises();
+  expect(save).toHaveBeenLastCalledWith({ enabled: false, disclosure: 2 });
+  expect(wrapper.emitted('complete')).toStrictEqual([[]]);
+  wrapper.unmount();
 });

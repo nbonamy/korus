@@ -3,28 +3,29 @@ import { startApiServer } from "./server";
 const env = process.env;
 try {
   const token = (
-    await readFile(env.TELEMETRY_OPERATOR_TOKEN_FILE ?? "", "utf8")
+    await readFile(env.API_OPERATOR_TOKEN_FILE ?? "", "utf8")
   ).trim();
   const tls =
-    env.TELEMETRY_TLS_KEY && env.TELEMETRY_TLS_CERT
+    env.API_TLS_KEY && env.API_TLS_CERT
       ? {
-          key: await readFile(env.TELEMETRY_TLS_KEY),
-          cert: await readFile(env.TELEMETRY_TLS_CERT),
+          key: await readFile(env.API_TLS_KEY),
+          cert: await readFile(env.API_TLS_CERT),
         }
       : undefined;
   const service = await startApiServer({
-    database: env.TELEMETRY_DATABASE ?? "telemetry.sqlite",
+    database: env.API_TELEMETRY_DATABASE ?? "telemetry.sqlite",
     operatorToken: token,
-    host: env.TELEMETRY_HOST ?? "127.0.0.1",
-    port: Number(env.TELEMETRY_PORT ?? 8443),
+    host: env.API_HOST ?? "127.0.0.1",
+    port: Number(env.API_PORT ?? 8443),
     tls,
-    synthetic: env.TELEMETRY_SYNTHETIC === "1",
+    synthetic: env.API_SYNTHETIC === "1",
+    reverseProxy: env.API_REVERSE_PROXY === "1",
   });
   const shutdown = () => {
     void service.close().then(
       () => process.exit(0),
       () => {
-        process.stderr.write("Telemetry service shutdown failed.\n");
+        process.stderr.write("API server shutdown failed.\n");
         process.exit(1);
       },
     );
@@ -32,6 +33,6 @@ try {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 } catch {
-  process.stderr.write("Telemetry service configuration or startup failed.\n");
+  process.stderr.write("API server configuration or startup failed.\n");
   process.exitCode = 1;
 }

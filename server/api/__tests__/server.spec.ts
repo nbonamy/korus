@@ -49,10 +49,12 @@ describe("isolated real telemetry HTTP and storage", () => {
     const headers = { "content-type": "application/json" };
     try {
       expect((await fetch(service.url + "/")).status).toBe(401);
-      expect((await fetch(service.url + "/operator/metrics")).status).toBe(401);
+      expect((await fetch(service.url + "/v1/telemetry/metrics")).status).toBe(
+        401,
+      );
       expect(
         (
-          await fetch(service.url + "/reports", {
+          await fetch(service.url + "/v1/telemetry/reports", {
             method: "POST",
             headers,
             body: JSON.stringify({ ...report(), prompt: "CANARY_secret" }),
@@ -62,7 +64,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       const r = report();
       const responses = await Promise.all(
         Array.from({ length: 5 }, () =>
-          fetch(service.url + "/reports", {
+          fetch(service.url + "/v1/telemetry/reports", {
             method: "POST",
             headers,
             body: JSON.stringify(r),
@@ -72,7 +74,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       expect(responses.filter((r) => r.status === "accepted")).toHaveLength(1);
       expect(responses.filter((r) => r.status === "duplicate")).toHaveLength(4);
       const query =
-        "/operator/metrics?from=" +
+        "/v1/telemetry/metrics?from=" +
         utcDay(yesterday) +
         "&to=" +
         utcDay(yesterday) +
@@ -85,7 +87,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       for (let i = 0; i < 9; i++)
         expect(
           (
-            await fetch(service.url + "/reports", {
+            await fetch(service.url + "/v1/telemetry/reports", {
               method: "POST",
               headers,
               body: JSON.stringify(report()),
@@ -114,7 +116,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       );
       expect(page).toContain("Released metric cells");
       expect(page).not.toContain("CANARY");
-      const audit = await fetch(service.url + "/operator/status", {
+      const audit = await fetch(service.url + "/v1/telemetry/status", {
         headers: auth,
       }).then((r) => r.json());
       expect(audit).toMatchObject({
@@ -135,7 +137,7 @@ describe("isolated real telemetry HTTP and storage", () => {
       });
       expect(
         (
-          await fetch(service.url + "/reports", {
+          await fetch(service.url + "/v1/telemetry/reports", {
             method: "POST",
             headers,
             body: JSON.stringify(r),
@@ -330,7 +332,7 @@ it("serves model comparisons from paired released samples, including genuine zer
       };
       expect(
         (
-          await fetch(service.url + "/reports", {
+          await fetch(service.url + "/v1/telemetry/reports", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(payload),
@@ -340,7 +342,7 @@ it("serves model comparisons from paired released samples, including genuine zer
     }
     const result = (await fetch(
       service.url +
-        "/operator/metrics?from=" +
+        "/v1/telemetry/metrics?from=" +
         utcDay(yesterday) +
         "&to=" +
         utcDay(yesterday) +
@@ -383,8 +385,8 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
   const authorization =
     "Basic " + Buffer.from("operator:" + token).toString("base64");
   try {
-    expect((await fetch(service.url + "/operator.js")).status).toBe(401);
-    const script = await fetch(service.url + "/operator.js", {
+    expect((await fetch(service.url + "/assets/operator.js")).status).toBe(401);
+    const script = await fetch(service.url + "/assets/operator.js", {
       headers: { authorization },
     });
     expect(script.status).toBe(200);
@@ -393,7 +395,7 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
     for (const [route, init, expected] of [
       ["/", { method: "POST", headers: { authorization } }, 405],
       [
-        "/reports",
+        "/v1/telemetry/reports",
         {
           method: "POST",
           body: "not-json",
@@ -402,7 +404,7 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
         400,
       ],
       [
-        "/reports",
+        "/v1/telemetry/reports",
         {
           method: "POST",
           body: "{}",
@@ -411,7 +413,7 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
         413,
       ],
       [
-        "/reports",
+        "/v1/telemetry/reports",
         {
           method: "POST",
           body: " ".repeat(65537),
@@ -421,12 +423,67 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
       ],
       ["/unknown", {}, 404],
       [
-        "/operator/metrics?from=not-a-day&to=not-a-day&dimension=model",
+        "/v1/telemetry/metrics?from=not-a-day&to=not-a-day&dimension=model",
         { headers: { authorization } },
         400,
       ],
     ] as const)
       expect((await fetch(service.url + route, init)).status).toBe(expected);
+  } finally {
+    await service.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("allows a TLS-terminating proxy only on loopback and applies rate limits to its validated client address", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "korus-api-proxy-"));
+  await expect(
+    startApiServer({
+      database: path.join(dir, "bad"),
+      operatorToken: token,
+      host: "0.0.0.0",
+      port: 0,
+      reverseProxy: true,
+    }),
+  ).rejects.toThrow("TLS");
+  const service = await startApiServer({
+    database: path.join(dir, "db"),
+    operatorToken: token,
+    host: "127.0.0.1",
+    port: 0,
+    reverseProxy: true,
+  });
+  try {
+    for (let i = 0; i < 120; i++)
+      expect(
+        (
+          await fetch(service.url + "/health", {
+            headers: { "x-forwarded-for": "192.0.2.1" },
+          })
+        ).status,
+      ).toBe(200);
+    expect(
+      (
+        await fetch(service.url + "/health", {
+          headers: { "x-forwarded-for": "192.0.2.1" },
+        })
+      ).status,
+    ).toBe(429);
+    expect(
+      (
+        await fetch(service.url + "/health", {
+          headers: { "x-forwarded-for": "192.0.2.2" },
+        })
+      ).status,
+    ).toBe(200);
+    // A comma-separated chain is never trusted; the actual proxy address remains the fallback.
+    expect(
+      (
+        await fetch(service.url + "/health", {
+          headers: { "x-forwarded-for": "CANARY,192.0.2.1" },
+        })
+      ).status,
+    ).toBe(200);
   } finally {
     await service.close();
     await rm(dir, { recursive: true, force: true });

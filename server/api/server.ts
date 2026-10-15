@@ -5,6 +5,7 @@ import {
 } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { isTelemetryReport, telemetryLimits } from "@workspace/core/telemetry";
 import {
   AggregateStore,
@@ -19,6 +20,8 @@ export type ApiServerConfig = {
   port: number;
   tls?: { key: Buffer; cert: Buffer };
   synthetic?: boolean;
+  /** Plaintext is allowed only on loopback behind the TLS-terminating owned proxy. */
+  reverseProxy?: boolean;
   minimumReports?: number;
 };
 export async function startApiServer(
@@ -26,7 +29,11 @@ export async function startApiServer(
 ): Promise<{ url: string; close(): Promise<void> }> {
   if (
     config.operatorToken.length < 32 ||
-    (!config.tls && !(config.synthetic && config.host === "127.0.0.1"))
+    (!config.tls &&
+      !(
+        (config.synthetic || config.reverseProxy) &&
+        config.host === "127.0.0.1"
+      ))
   )
     throw new Error("TLS and operator authentication are required.");
   if (
@@ -84,7 +91,15 @@ export async function startApiServer(
     // Volatile abuse controls only; no access logs, identifiers or payload diagnostics.
     const now = Date.now();
     for (const [key, value] of rate) if (value.until < now) rate.delete(key);
-    const address = request.socket.remoteAddress ?? "unknown";
+    const forwarded = request.headers["x-forwarded-for"];
+    const peer = request.socket.remoteAddress;
+    const address =
+      config.reverseProxy &&
+      ["127.0.0.1", "::ffff:127.0.0.1"].includes(peer ?? "") &&
+      typeof forwarded === "string" &&
+      isIP(forwarded)
+        ? forwarded
+        : (peer ?? "unknown");
     const entry = rate.get(address) ?? { until: now + 60000, requests: 0 };
     entry.requests++;
     if (rate.size < 1000 || rate.has(address)) rate.set(address, entry);
@@ -106,7 +121,14 @@ export async function startApiServer(
         });
         return;
       }
-      if (url.pathname.startsWith("/operator") || url.pathname === "/") {
+      if (
+        [
+          "/",
+          "/assets/operator.js",
+          "/v1/telemetry/status",
+          "/v1/telemetry/metrics",
+        ].includes(url.pathname)
+      ) {
         if (!authenticated(request)) {
           audit.authorizationDenied = Math.min(
             1e9,
@@ -124,7 +146,7 @@ export async function startApiServer(
           return;
         }
         audit.operatorReads = Math.min(1e9, audit.operatorReads + 1);
-        if (url.pathname === "/operator/status") {
+        if (url.pathname === "/v1/telemetry/status") {
           send(200, audit);
           return;
         }
@@ -135,12 +157,12 @@ export async function startApiServer(
           response.end(operatorPage);
           return;
         }
-        if (url.pathname === "/operator.js") {
+        if (url.pathname === "/assets/operator.js") {
           response.writeHead(200, { "content-type": "application/javascript" });
           response.end(operatorScript);
           return;
         }
-        if (url.pathname === "/operator/metrics") {
+        if (url.pathname === "/v1/telemetry/metrics") {
           const params = Object.fromEntries(url.searchParams);
           if (
             url.searchParams.size > 4 ||
@@ -163,7 +185,7 @@ export async function startApiServer(
         }
       }
       if (
-        url.pathname !== "/reports" ||
+        url.pathname !== "/v1/telemetry/reports" ||
         request.method !== "POST" ||
         url.search
       ) {

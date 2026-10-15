@@ -7,13 +7,14 @@ export async function observeUsageFeature<T>(
   backend: BackendPort | null,
   feature: ClientFeature,
   execute: () => Promise<T>,
+  agentId?: string,
 ): Promise<T> {
   let id: string | null = null;
   try {
     id =
       (await backend?.request<string | null>(
         backendMethods.telemetryFeatureBegin,
-        { feature },
+        { feature, ...(agentId === undefined ? {} : { agentId }) },
       )) ?? null;
   } catch {
     /* Observation cannot prevent an operation. */
@@ -86,6 +87,7 @@ export function observeBrowserCommand<T>(
   backend: BackendPort | null,
   command: string,
   execute: () => Promise<T>,
+  agentId?: string,
 ): Promise<T> {
   const feature =
     command === "viewport"
@@ -93,5 +95,7 @@ export function observeBrowserCommand<T>(
       : command === "screenshot"
         ? "browser.capture"
         : null;
-  return feature ? observeUsageFeature(backend, feature, execute) : execute();
+  return feature
+    ? observeUsageFeature(backend, feature, execute, agentId)
+    : execute();
 }

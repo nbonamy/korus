@@ -49,6 +49,8 @@
       </FormRow>
     </FormSection>
 
+    <TelemetrySettingsSection />
+
     <FormSection
       v-if="appHostCapabilities.nativeFileDialogs && showSourceFolderSetting"
       :title="$t('surface.settingsGeneralPanel.sourceFolder')"
@@ -199,6 +201,7 @@ import { computed, onMounted, ref } from 'vue';
 import type { AppGeneralSettings, DaemonStatus, SourceFolderState, SystemPermissionsStatus, UpdateSettingsInput } from '@workspace/core/contracts';
 import { defaultSourceFolderState } from '@workspace/core/settings';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
+import TelemetrySettingsSection from './TelemetrySettingsSection.vue';
 import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import { Circle, ShieldCheckIcon } from '../shared/icons/app-icons';

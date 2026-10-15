@@ -148,7 +148,8 @@ describe('AppController', () => {
   });
 
   it('does not complete a model-requested URL from the browser pane blank startup', async () => {
-    const controller = new AppController(createInitialSnapshot(), null);
+    const request = vi.fn().mockResolvedValue(null);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }));
     setMainWindowSend(controller, vi.fn());
     const requestedUrl = 'http://127.0.0.1:4174/videos/visualize-film.html?t=25';
     const opened = requestBrowserOpen(controller, 'agent-dina', 'primary', requestedUrl);
@@ -161,6 +162,7 @@ describe('AppController', () => {
     void opened.then(settled);
 
     await openBrowser(controller, 'agent-dina', 'primary', '');
+    expect(request).toHaveBeenCalledWith(backendMethods.telemetryFeatureBegin, { feature: 'browser.open', agentId: 'agent-dina' });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
 
