@@ -231,10 +231,13 @@ describe('useAppState', () => {
     expect(state.selectedReasoningEffort.value).toBe('high');
   });
 
-  it('keeps a changed model and effort for the next prompt across old thread settings and reload', async () => {
+  it.each(['codex', 'claude'] as const)('keeps changed %s settings for the next prompt across old settings and reload', async backend => {
     const persisted = createInitialSnapshot();
-    persisted.agents[0]!.backendSession = { kind: 'codex', threadId: 'thread-1' };
-    persisted.agents[0]!.backendDefaults = { kind: 'codex', model: 'astra', reasoningEffort: 'medium' };
+    persisted.general.claudeCodeEnabled = true;
+    persisted.backendRuntimes = [{ backend, status: 'running', capabilities: { reasoningEffort: true, serviceTier: true } }];
+    persisted.agents[0]!.backend = backend;
+    persisted.agents[0]!.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'thread-1' } : { kind: 'claude', sessionId: 'thread-1', transport: 'stdio' };
+    persisted.agents[0]!.backendDefaults = { kind: backend, model: 'astra', reasoningEffort: 'medium' };
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     let releaseFirstSave = () => undefined;
     const updateAgent = vi.fn((input: UpdateAgentInput) => {
@@ -289,7 +292,7 @@ describe('useAppState', () => {
 
     releaseFirstSave();
     await vi.waitFor(() => expect(persisted.agents[0]!.backendDefaults).toStrictEqual({
-      kind: 'codex', model: 'sol', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true,
+      kind: backend, model: 'sol', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true,
     }));
 
     const reloaded = createAgentComposerState({ getSnapshot: () => persisted });

@@ -384,6 +384,11 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
   }
 
   private async submitTurn(session: ClaudeSdkSession, params: ClaudeTurnParams): Promise<void> {
+    if (params.fastMode) {
+      const init = await session.query.initializationResult();
+      if (!init.models.some(model => (model.value === params.model || model.resolvedModel === params.model) && model.supportsFastMode)) throw new Error('The selected Claude model does not support fast mode.');
+      if (init.fast_mode_state === 'off' && init.fast_mode_disabled_reason && init.fast_mode_disabled_reason !== 'pending') throw new Error(`Fast mode is unavailable for this Claude session (${init.fast_mode_disabled_reason}). Select normal speed or check your Claude account settings.`);
+    }
     const nextModel = params.model ?? null;
     if (session.model !== nextModel) {
       await session.query.setModel(nextModel ?? undefined);
@@ -621,6 +626,7 @@ function claudeQueryOptions(
     tools: { type: 'preset', preset: 'claude_code' },
     ...(params.mcpServerUrl ? { disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] } : {}),
     settingSources: ['user', 'project', 'local'],
+    settings: { fastMode: params.fastMode ?? false },
     includePartialMessages: true,
     extraArgs: { 'replay-user-messages': null },
     canUseTool,
@@ -664,6 +670,7 @@ function toClaudeAvailableModels(models: Awaited<ReturnType<Query['supportedMode
     ...(model.supportsEffort === undefined ? {} : { supportsEffort: model.supportsEffort }),
     ...(model.supportedEffortLevels ? { supportedEffortLevels: [...model.supportedEffortLevels] } : {}),
     ...(model.supportsAdaptiveThinking === undefined ? {} : { supportsAdaptiveThinking: model.supportsAdaptiveThinking }),
+    ...(model.supportsFastMode === undefined ? {} : { supportsFastMode: model.supportsFastMode }),
   }));
 }
 
@@ -697,6 +704,7 @@ function normalizedContextUsage(usage: Awaited<ReturnType<Query['getContextUsage
 function sessionConfigurationKey(params: ClaudeTurnParams): string {
   return JSON.stringify({
     ownerId: params.ownerId ?? null,
+    fastMode: params.fastMode ?? false,
     cwd: expandHome(params.cwd),
     appendSystemPrompt: params.appendSystemPrompt ?? null,
     mcpServerUrl: params.mcpServerUrl ?? null,

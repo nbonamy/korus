@@ -229,6 +229,7 @@ function isBackendDefaults(value: unknown): boolean {
     optional(value, 'model', isString) &&
     optional(value, 'userSelectedModel', isBoolean) &&
     optional(value, 'reasoningEffort', isString) &&
+    optional(value, 'serviceTier', isNullableString) &&
     optional(value, 'permissionMode', isString) &&
     optional(value, 'thinking', isThinkingDefaults);
 }

@@ -15,6 +15,7 @@ describe('phone composer settings', () => {
       .toMatchObject({ model: { id: 'gpt-deep' }, reasoningEffort: 'high', serviceTier: null, planMode: false });
     expect(resolveComposerSettings(agent(), models, undefined)).toMatchObject({ model: { id: 'gpt-fast' }, reasoningEffort: 'medium' });
     expect(resolveComposerSettings(agent(), [], undefined)).toMatchObject({ model: null, reasoningEffort: null });
+    expect(resolveComposerSettings(agent({ backend: 'claude', backendDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast' } }), [{ id: 'opus', model: 'opus', displayName: 'Opus' }], undefined).serviceTier).toBe('fast');
   });
   it('switching model adopts that model\'s own effort and tier defaults', () => {
     const next = applyComposerChoice(models, { model: 'gpt-fast', reasoningEffort: 'low', serviceTier: 'priority', planMode: true }, { modelId: 'gpt-deep' });

@@ -8,6 +8,7 @@ export type ClaudeTurnParams = {
   sessionId?: string;
   model?: string | null;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+  fastMode?: boolean;
   permissionMode?: string | null;
   appendSystemPrompt?: string | null;
   mcpServerUrl?: string | null;
@@ -24,6 +25,7 @@ export type ClaudeAvailableModel = {
   supportsEffort?: boolean;
   supportedEffortLevels?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
   supportsAdaptiveThinking?: boolean;
+  supportsFastMode?: boolean;
 };
 
 export type ClaudeModelDiscoveryParams = {

@@ -45,6 +45,7 @@ export type BackendDefaults =
     model?: string;
     userSelectedModel?: boolean;
     reasoningEffort?: ReasoningEffort;
+    serviceTier?: string | null;
     permissionMode?: string;
     thinking?: {
       type: 'enabled' | 'disabled';

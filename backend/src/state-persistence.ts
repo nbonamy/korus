@@ -1214,6 +1214,7 @@ function sanitizeBackendDefaults(value: unknown, expectedBackend: AgentBackend):
       ...(typeof value.model === 'string' ? { model: value.model } : {}),
       ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
       ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
+      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
       ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
       ...(thinking ? { thinking } : {}),
     } satisfies BackendDefaults;

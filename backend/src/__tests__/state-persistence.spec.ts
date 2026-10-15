@@ -233,13 +233,14 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.backend = 'claude';
     snapshot.agents[0]!.backendDefaults = {
-      kind: 'claude', model: 'opus', reasoningEffort: 'high', userSelectedModel: true,
+      kind: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true,
     };
 
     await persistence.save(snapshot);
     const restored = await persistence.load();
 
     expect(restored.agents[0]!.backendDefaults).toStrictEqual(snapshot.agents[0]!.backendDefaults);
+    expect(isAppSnapshot(restored)).toBe(true);
   });
 
   it('restores saved prompt drafts after a restart', async () => {

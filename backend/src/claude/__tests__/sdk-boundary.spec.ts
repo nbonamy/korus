@@ -24,8 +24,8 @@ function agent(id = 'claude-a'): Agent {
 
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
-  function setup(withConnections = false, usage?: UsageService) {
-    const sdk = createQueryHarness();
+  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = []) {
+    const sdk = createQueryHarness(models);
     const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
@@ -74,8 +74,8 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
   });
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
-    const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
-    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { reasoningEffort: 'high' });
+    const {sdk,driver,snapshot}=setup(false, undefined, [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' });
     await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
     sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});
@@ -88,6 +88,8 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(observations[1]?.tokens).toStrictEqual({input:45,output:20,cacheRead:30,cacheWrite:5,total:65});
     expect(observations[0]?.model).toBe('claude-sonnet-4-6');
     expect(observations[0]?.reasoningEffort).toBe('high');
+    expect(observations[0]?.serviceTier).toBe('fast');
+    expect(sdk.options[0]?.settings).toEqual({ fastMode: true });
     expect(observations[1]?.model).toBe('claude-sonnet-4-6');
   });
 
@@ -95,6 +97,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
     const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'behavior-session',model:'claude-sonnet-4-6'});await sending;
+    expect(observations[0]?.serviceTier).toBe('normal');
     sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-a',model:'claude-sonnet-4-6',content:[{type:'text',text:'CANARY'}]}});
     await driver.steerPrompt(snapshot.agents[0]!, 'steering');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(2));
     sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});

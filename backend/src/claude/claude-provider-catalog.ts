@@ -37,6 +37,7 @@ export class ClaudeProviderCatalog {
     return {
       ...claudeBackendCapabilities,
       reasoningEffort: this.modelCatalog.some((model) => (model.supportedReasoningEfforts?.length ?? 0) > 0),
+      serviceTier: this.modelCatalog.some((model) => (model.serviceTiers?.length ?? 0) > 0),
     };
   }
 

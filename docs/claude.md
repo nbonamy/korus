@@ -142,6 +142,11 @@ null folder reference.
   descriptions and supported efforts come from the SDK, so the effort selector
   appears only for models that advertise it. Effort is passed on the first turn and
   updated later via the runtime settings API.
+- **Speed:** models advertising native fast-mode support use the shared speed
+  selector. Speed changes resume the native session in a new query, since the SDK
+  requires launch-time opt-in. Managed/account restrictions remain authoritative;
+  explicit fast-mode unavailability fails before prompt submission. Usage stores the configured
+  tier, not a guarantee that every request avoids a provider cooldown.
 - **Permissions:** Claude's own modes (`default`, `acceptEdits`, `dontAsk`, `auto`,
   `bypassPermissions`) are exposed through a capability-driven submenu and routed
   as opaque mode IDs the driver validates against what it advertises;

@@ -1407,6 +1407,7 @@ describe('AppMcpService', () => {
       kind: 'claude',
       model: 'sonnet',
       reasoningEffort: 'medium',
+      serviceTier: null,
       userSelectedModel: true,
       permissionMode: 'auto',
     });

@@ -12,7 +12,7 @@ const matches = (model: BackendModelOption, selection: string | null | undefined
 export function resolveComposerSettings(agent: Agent, models: readonly BackendModelOption[], choice: ComposerChoice | undefined): ComposerSettings {
   const saved = agent.backendDefaults;
   const model = models.find((candidate) => matches(candidate, choice?.model ?? saved?.model)) ?? models.find((candidate) => candidate.isDefault) ?? models[0] ?? null;
-  const savedTier = saved?.kind === 'codex' ? saved.serviceTier : undefined;
+  const savedTier = saved && saved.kind !== 'antigravity' ? saved.serviceTier : undefined;
   return {
     model,
     reasoningEffort: choice?.reasoningEffort !== undefined ? choice.reasoningEffort : (saved?.reasoningEffort ?? (model ? defaultEffort(model) : null)),

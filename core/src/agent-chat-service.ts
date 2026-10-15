@@ -51,10 +51,10 @@ export function sendAgentPrompt(
     capabilities: backendDriver.getCapabilities(agent),
   }, emit, snapshot);
 
-  if (agent.backend === 'codex' && options?.serviceTier !== undefined) {
-    const defaults = agent.backendDefaults?.kind === 'codex'
+  if (agent.backend !== 'antigravity' && options?.serviceTier !== undefined) {
+    const defaults = agent.backendDefaults?.kind === agent.backend
       ? agent.backendDefaults
-      : { kind: 'codex' as const };
+      : { kind: agent.backend };
     agent.backendDefaults = { ...defaults, serviceTier: options.serviceTier };
   }
   const routedOptions = hooks?.appendUserMessage === false

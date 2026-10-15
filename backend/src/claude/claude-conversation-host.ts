@@ -83,6 +83,7 @@ type ActiveClaudeTurn = {
   transcriptFolder?: string;
   model: string | null;
   reasoningEffort: ClaudeTurnParams['effort'];
+  serviceTier: 'fast' | null;
   handle: ClaudeTurnHandle;
   planMode: boolean;
   completed: boolean;
@@ -380,6 +381,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         ...(agent.backendSession?.kind === 'claude' && agent.backendSession.transcriptFolder ? { transcriptFolder: agent.backendSession.transcriptFolder } : {}),
         model: turnParams.model ?? null,
         reasoningEffort: turnParams.effort ?? null,
+        serviceTier: turnParams.fastMode ? 'fast' : null,
         handle,
         planMode: Boolean(options.planMode),
         completed: false,
@@ -1425,6 +1427,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       payload: { settings: {
         ...(activeTurn.model ? { model: activeTurn.model } : {}),
         ...(activeTurn.reasoningEffort ? { reasoningEffort: activeTurn.reasoningEffort } : {}),
+        serviceTier: activeTurn.serviceTier,
       } },
     });
     if (!activeTurn.startResolved) {
@@ -1504,7 +1507,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
     if (!turn.observedAt || !turn.sessionId) return;
     const at=Date.now();
-    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,serviceTier:turn.serviceTier ?? 'normal',...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
   }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {
@@ -1722,6 +1725,8 @@ function claudeTurnParams(
 ): ClaudeTurnParams {
   const claudeOptions = options.backendOptions?.kind === 'claude' ? options.backendOptions : undefined;
   const defaults = agent.backendDefaults?.kind === 'claude' ? agent.backendDefaults : undefined;
+  const tier = options.serviceTier !== undefined ? options.serviceTier : defaults?.serviceTier;
+  if (tier != null && !['normal', 'default', 'fast'].includes(tier)) throw new Error('Unsupported Claude service tier.');
   const mcpServerUrl = appMcpServerUrl ? appMcpUrlForAgent(appMcpServerUrl, agent) : null;
   return {
     ownerId: agent.id,
@@ -1730,6 +1735,7 @@ function claudeTurnParams(
     sessionId: existingSessionId ?? undefined,
     model: options.model ?? defaults?.model ?? null,
     effort: claudeEffort(options.reasoningEffort ?? defaults?.reasoningEffort),
+    fastMode: tier === 'fast',
     permissionMode: options.planMode ? 'plan' : claudeOptions?.permissionMode ?? defaults?.permissionMode ?? null,
     appendSystemPrompt: appDeveloperInstructions(agent, pluginSettings, effects),
     mcpServerUrl,
