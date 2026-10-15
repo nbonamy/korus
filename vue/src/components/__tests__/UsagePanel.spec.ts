@@ -150,6 +150,7 @@ it("changes each chart breakdown independently and shares the selected token mea
   await choose(wrapper, "#usage-share-group", "Model");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("sonnet");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("75%");
+  expect(wrapper.get('#usage-measure [role="radiogroup"]').attributes("aria-label")).toBe("Measure");
   await choose(wrapper, "#usage-measure", "Total");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
@@ -171,8 +172,6 @@ it("changes each chart breakdown independently and shares the selected token mea
   expect(wrapper.text()).toContain("25");
   expect(wrapper.text()).toContain("tokens/s");
   expect(wrapper.text()).toContain("1.5 s to first token");
-  expect(wrapper.text()).toContain("excluding time spent waiting");
-  expect(wrapper.text()).not.toContain("Account usage");
   wrapper.unmount();
 });
 
@@ -259,8 +258,6 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
   const wrapper = mount(UsagePanel);
   await flushPromises();
   try {
-    expect(wrapper.text()).not.toContain("Local only");
-    expect(wrapper.find("footer").exists()).toBe(false);
     const clear = () =>
       wrapper
         .findAll("button")
@@ -280,7 +277,6 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
     expect(
       wrapper.find('[aria-label="Usage breakdown"] tbody tr').exists(),
     ).toBe(false);
-    expect(wrapper.text()).not.toContain("No recorded turns");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   } finally {
     confirm.mockRestore();

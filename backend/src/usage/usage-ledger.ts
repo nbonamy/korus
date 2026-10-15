@@ -1,6 +1,5 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { isUtcDay, utcDay } from "@workspace/core/usage";
 import {
@@ -12,7 +11,6 @@ import {
   type UsageSummary,
   type Consumption,
 } from "@workspace/core/usage";
-import { JsonStore } from "./json-store";
 const retention = 365 * 86400000;
 type Bucket = UsageSummary["rows"][number];
 /** Statistics only. Provider conversation stores remain the sole owners of content. */
@@ -23,7 +21,6 @@ export class UsageLedger {
   constructor(
     private readonly file: string,
     private readonly now: () => number = Date.now,
-    private readonly legacyFile?: string,
   ) {
     this.since = now();
   }
@@ -35,7 +32,7 @@ export class UsageLedger {
       this.db = new DatabaseSync(this.file);
       if (this.file !== ":memory:") chmodSync(this.file, 0o600);
       this.db.exec(
-        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,reasoning_effort TEXT,service_tier TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
       );
       const since = this.db
         .prepare("SELECT value FROM metadata WHERE key='since'")
@@ -56,47 +53,6 @@ export class UsageLedger {
   async load(): Promise<void> {
     const db = this.open();
     if (!db) return;
-    if (
-      this.legacyFile &&
-      !db.prepare("SELECT 1 FROM metadata WHERE key='legacy-import'").get()
-    ) {
-      const legacy = (await new JsonStore(this.legacyFile).read()) as {
-        since?: number;
-        records?: UsageRecord[];
-      } | null;
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        if (
-          legacy &&
-          Number.isFinite(legacy.since) &&
-          Array.isArray(legacy.records)
-        ) {
-          this.since = Math.min(this.since, legacy.since!);
-          db.prepare("INSERT OR REPLACE INTO metadata VALUES('since',?)").run(
-            String(this.since),
-          );
-          for (const record of legacy.records.slice(-10000))
-            if (
-              this.valid(record) &&
-              Number.isFinite(record.startedAt) &&
-              record.startedAt >= this.now() - retention &&
-              record.startedAt <= this.now() &&
-              ["started", "completed", "failed", "interrupted"].includes(
-                record.phase,
-              )
-            )
-              this.save(record, true);
-        }
-        db.prepare("INSERT INTO metadata VALUES('legacy-import','1')").run();
-        db.exec("COMMIT");
-      } catch {
-        db.exec("ROLLBACK");
-        this.available = false;
-        db.close();
-        this.db = null;
-        return;
-      }
-    }
     try {
       this.prune();
     } catch {
@@ -117,6 +73,7 @@ export class UsageLedger {
       ) &&
       (value.model === null ||
         (typeof value.model === "string" && value.model.length <= 200)) &&
+      [value.reasoningEffort, value.serviceTier].every(v => v == null || (typeof v === "string" && v.length > 0 && v.length <= 200)) &&
       Number.isFinite(value.at) &&
       value.at >= this.now() - retention &&
       value.at <= this.now() + 60000 &&
@@ -128,17 +85,19 @@ export class UsageLedger {
           value.durationMs <= 1e9))
     );
   }
-  private save(record: UsageRecord, ignore = false): void {
+  private save(record: UsageRecord): void {
     const reference = (v: unknown) =>
       typeof v === "string" && v.length <= 4096 ? v : null;
     this.db!.prepare(
-      `INSERT ${ignore ? "OR IGNORE" : "OR REPLACE"} INTO executions(provider,session_id,turn_id,agent_id,model,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      "INSERT OR REPLACE INTO executions(provider,session_id,turn_id,agent_id,model,reasoning_effort,service_tier,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     ).run(
       record.provider,
       record.sessionId,
       record.turnId,
       record.agentId,
       record.model,
+      record.reasoningEffort ?? null,
+      record.serviceTier ?? null,
       reference(record.teamId),
       reference(record.repository),
       record.phase,
@@ -156,6 +115,8 @@ export class UsageLedger {
       turnId: row.turn_id,
       agentId: row.agent_id,
       model: row.model,
+      reasoningEffort: row.reasoning_effort,
+      serviceTier: row.service_tier,
       teamId: row.team_id,
       repository: row.repository,
       phase: row.phase,
@@ -200,6 +161,8 @@ export class UsageLedger {
       turnId: event.turnId,
       provider: event.provider,
       model: event.model,
+      reasoningEffort: event.reasoningEffort ?? null,
+      serviceTier: event.serviceTier ?? null,
       at: event.at,
       phase: event.phase === "usage" ? previous!.phase : event.phase,
       startedAt: previous?.startedAt ?? event.at,
@@ -394,13 +357,10 @@ export class UsageLedger {
   async clear(): Promise<void> {
     const db = this.open();
     if (!db) throw new Error("Statistics are unavailable.");
-    if (this.legacyFile) await rm(this.legacyFile, { force: true });
     const since = this.now();
     db.exec("BEGIN IMMEDIATE");
     try {
-      db.exec(
-        "DELETE FROM executions; INSERT OR REPLACE INTO metadata VALUES('legacy-import','1');",
-      );
+      db.exec("DELETE FROM executions");
       db.prepare("INSERT OR REPLACE INTO metadata VALUES('since',?)").run(
         String(since),
       );

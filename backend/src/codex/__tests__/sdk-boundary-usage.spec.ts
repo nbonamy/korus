@@ -17,11 +17,13 @@ it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserv
     await driver.loadConversation(sdkAgent());
     expect(observations).toStrictEqual([]);
     const c = conversation("conversation-a");
+    c.setSnapshot({ selectedReasoningEffort: "high", selectedServiceTier: "fast" });
     c.emit({
       ...metadata,
       type: "turn.started",
       payload: { startedAt: metadata.occurredAt },
     } as CodexConversationEvent);
+    expect(observations[0]).toMatchObject({ reasoningEffort: "high", serviceTier: "fast" });
     const count = {
       totalTokens: 120,
       inputTokens: 100,
@@ -94,6 +96,7 @@ it("treats the SDK non-retrying error as terminal without counting retriable err
       type: "turn.started",
       payload: { startedAt: metadata.occurredAt },
     } as CodexConversationEvent);
+    expect(observations[0]).toMatchObject({ reasoningEffort: null, serviceTier: "normal" });
     const error = {
       message: "CANARY_private_error",
       codexErrorInfo: null,

@@ -495,8 +495,10 @@ The owning daemon records live provider executions in a bounded SQLite ledger.
 History hydration, inherited forks and context occupancy never become consumed
 tokens. Provider conversations remain the sole owners of prompts, responses and
 tool arguments; analytics stores only execution references, numeric measurements,
-outcomes and local grouping metadata. Unsupported consumption and model identity
-remain unknown. Codex consumption can be replaced or invalidated after completion.
+outcomes and local grouping metadata. Configured reasoning effort and service tier
+are captured at turn start and retained through completion and late usage corrections.
+Unsupported measurements remain unknown. Codex consumption can be replaced or
+invalidated after completion.
 Claude consumption covers the main agent loop; auxiliary calls are excluded.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
@@ -506,9 +508,8 @@ parallel tool waits counted once. Speed combines provider-reported output tokens
 with measured working time after the first generated output. A turn without both
 measurements has no speed.
 
-The ledger retains up to one year and 50,000 executions, imports legacy statistics
-once transactionally, and exposes grouped queries to Analytics through app-owned
-contracts. Clearing statistics deletes the local measurements without changing
-provider history. Storage failures leave analytics unavailable without blocking
+The ledger retains up to one year and 50,000 executions and exposes grouped
+queries to Analytics through app-owned contracts. Clearing statistics deletes the
+local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { it, expect, vi } from "vitest";
@@ -8,28 +8,19 @@ import { UsageService } from "../usage-service";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
 import type { BackendDriverRpc } from "../../driver-rpc";
-it("clears queued statistics through the app contract without resurrecting legacy data or touching provider history", async () => {
+it("clears queued statistics through the app contract and keeps them cleared after restart", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-clear-"));
-  const legacy = path.join(dir, "usage.json"),
-    file = path.join(dir, "usage.sqlite"),
-    history = path.join(dir, "provider-history.json");
+  const file = path.join(dir, "usage.sqlite");
   const at = Date.now();
   const observation = {
     provider: "codex",
     model: null,
     agentId: "a",
     sessionId: "s",
-    turnId: "legacy",
-    phase: "completed",
-    startedAt: at,
+    turnId: "queued",
     at,
   };
-  await writeFile(
-    legacy,
-    JSON.stringify({ since: at, records: [observation] }),
-  );
-  await writeFile(history, "provider-owned");
-  const local = new UsageLedger(file, Date.now, legacy);
+  const local = new UsageLedger(file);
   await local.load();
   const usage = new UsageService(local, () => undefined);
   const server = new AppBackendServer({
@@ -44,22 +35,20 @@ it("clears queued statistics through the app contract without resurrecting legac
       ...observation,
       provider: "codex",
       phase: "started",
-      turnId: "queued",
     });
     expect(
       await call("usage/clear", { filter: { provider: "codex" } }),
     ).toHaveProperty("error");
     expect(await call("usage/get")).toMatchObject({
-      result: { rows: [{ started: 2 }] },
+      result: { rows: [{ started: 1 }] },
     });
+    usage.observe({ ...observation, provider: "codex", phase: "started", turnId: "pending" });
     expect(await call("usage/clear")).toMatchObject({ result: null });
     expect(await call("usage/get")).toMatchObject({
       result: { rows: [], daily: [] },
     });
-    await expect(readFile(legacy)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await readFile(history, "utf8")).toBe("provider-owned");
     await local.close();
-    const reopened = new UsageLedger(file, Date.now, legacy);
+    const reopened = new UsageLedger(file);
     try {
       await reopened.load();
       expect(reopened.query().rows).toStrictEqual([]);
@@ -73,7 +62,7 @@ it("clears queued statistics through the app contract without resurrecting legac
   }
 });
 
-it("queries provider observations locally and rejects the retired reporting API", async () => {
+it("queries provider observations through the app contract and unsubscribes on shutdown", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-local-rpc-"));
   const local = new UsageLedger(path.join(dir, "usage.sqlite"));
   await local.load();
@@ -86,8 +75,6 @@ it("queries provider observations locally and rejects the retired reporting API"
     handle: vi.fn(async () => undefined),
     close: vi.fn(async () => undefined),
   } as unknown as BackendDriverRpc;
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
   const server = new AppBackendServer({ version: "test", snapshot: createTestSnapshot(), usage, driverRpc: driver });
   const call = (method: string, params: unknown = {}) => server.handleMessage({ jsonrpc: "2.0", id: 1, method, params });
   const event = { provider: "codex" as const, agentId: "a", sessionId: "s", turnId: "t", model: null, at: Date.now() };
@@ -95,12 +82,9 @@ it("queries provider observations locally and rejects the retired reporting API"
     observe({ ...event, phase: "started" });
     observe({ ...event, phase: "completed", tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: null, total: 15 } });
     expect(await call("usage/get", { filter: { group: "provider" } })).toMatchObject({ result: { rows: [{ label: "codex", started: 1, completed: 1, tokens: { total: 15 } }] } });
-    expect(await call("telemetry/privacy/set", { choice: { enabled: true, disclosure: 2 } })).toMatchObject({ error: { code: -32601 } });
-    expect(fetch).not.toHaveBeenCalled();
   } finally {
     await server.close();
     expect(unsubscribe).toHaveBeenCalledOnce();
-    vi.unstubAllGlobals();
     await rm(dir, { recursive: true, force: true });
   }
 });

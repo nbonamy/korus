@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { expect, it } from "vitest";
 import type { Agent } from "@workspace/core/contracts";
 import { UsageLedger } from "../usage-ledger";
@@ -59,8 +56,7 @@ it("ignores a previous turn's duplicate completion while timing the next turn", 
 });
 
 it("preserves the latest prompt timing when an earlier submission fails", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-submission-"));
-  const local = new UsageLedger(path.join(dir, "usage.sqlite"));
+  const local = new UsageLedger(":memory:");
   const agent = {
     id: "a",
     teamId: "team",
@@ -114,6 +110,5 @@ it("preserves the latest prompt timing when an earlier submission fails", async 
     });
   } finally {
     await usage.close();
-    await rm(dir, { recursive: true, force: true });
   }
 });

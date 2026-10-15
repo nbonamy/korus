@@ -1504,7 +1504,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
     if (!turn.observedAt || !turn.sessionId) return;
     const at=Date.now();
-    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
   }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {

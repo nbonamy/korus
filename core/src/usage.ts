@@ -8,6 +8,8 @@ export type ExecutionObservation = {
   phase: "started" | "completed" | "failed" | "interrupted" | "usage";
   at: number;
   model: string | null;
+  reasoningEffort?: string | null;
+  serviceTier?: string | null;
   tokens?: Consumption | null;
   durationMs?: number;
   /** Measured by the backend, never by a driver. */

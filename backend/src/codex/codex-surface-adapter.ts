@@ -1222,7 +1222,8 @@ export class CodexSurfaceAgentAdapter {
       this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:'failed',at:Date.parse(event.occurredAt),model:null});
     }
     if (event.type === 'turn.started' || event.type === 'turn.completed') {
-      const observation:ExecutionObservation = {agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:event.type==='turn.started'?'started':event.payload.status==='inProgress'?'started':event.payload.status,at:Date.parse(event.occurredAt),model:null,...consumption,...(event.type==='turn.completed' && event.payload.durationMs!==null ? {durationMs:event.payload.durationMs}:{})};
+      const settings = event.type === 'turn.started' ? session.handle.getSnapshot() : null;
+      const observation:ExecutionObservation = {agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:event.type==='turn.started'?'started':event.payload.status==='inProgress'?'started':event.payload.status,at:Date.parse(event.occurredAt),model:null,...(settings ? {reasoningEffort:settings.selectedReasoningEffort,serviceTier:settings.selectedServiceTier === null ? 'normal' : settings.selectedServiceTier ?? null} : {}),...consumption,...(event.type==='turn.completed' && event.payload.durationMs!==null ? {durationMs:event.payload.durationMs}:{})};
       this.emitUsage(observation);
     }
     const metadata = { occurredAt: event.occurredAt };

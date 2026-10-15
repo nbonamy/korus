@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { expect, it } from "vitest";
 import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
 import { TurnClock } from "../turn-clock";
@@ -8,8 +5,7 @@ import { UsageLedger } from "../usage-ledger";
 import { UsageService } from "../usage-service";
 
 it("records a turn's real working time from backend events, not from the provider's driver", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-timing-"));
-  const local = new UsageLedger(path.join(dir, "usage.sqlite"));
+  const local = new UsageLedger(":memory:");
   await local.load();
   let now = 0;
   const service = new UsageService(
@@ -108,6 +104,5 @@ it("records a turn's real working time from backend events, not from the provide
     });
   } finally {
     await service.close();
-    await rm(dir, { recursive: true, force: true });
   }
 });

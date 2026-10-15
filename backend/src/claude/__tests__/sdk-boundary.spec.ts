@@ -75,7 +75,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
     const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
-    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt');
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { reasoningEffort: 'high' });
     await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
     sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});
@@ -87,6 +87,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(observations.map(o=>o.phase)).toStrictEqual(['started','completed']);
     expect(observations[1]?.tokens).toStrictEqual({input:45,output:20,cacheRead:30,cacheWrite:5,total:65});
     expect(observations[0]?.model).toBe('claude-sonnet-4-6');
+    expect(observations[0]?.reasoningEffort).toBe('high');
     expect(observations[1]?.model).toBe('claude-sonnet-4-6');
   });
 

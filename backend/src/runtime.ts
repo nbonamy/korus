@@ -120,7 +120,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
-  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, path.join(backendHomeDir(), 'usage.json'));
+  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
   await localUsage.load();
   const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
   const mcpService: AppMcpService = new AppMcpService({

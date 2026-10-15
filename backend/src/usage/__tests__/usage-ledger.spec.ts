@@ -6,53 +6,29 @@ import { expect, it } from "vitest";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
 
-it("reads and updates an existing ledger with the retired behavior column", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-upgrade-"));
-  const file = path.join(dir, "usage.sqlite");
-  const at = Date.parse("2026-10-15T12:00:00Z");
-  const previous = new DatabaseSync(file);
-  previous.exec(
-    "CREATE TABLE executions(provider TEXT,session_id TEXT,turn_id TEXT,agent_id TEXT,model TEXT,team_id TEXT,repository TEXT,phase TEXT,started_at INTEGER,updated_at INTEGER,duration_ms INTEGER,tokens TEXT,behavior TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id))",
-  );
-  previous
-    .prepare(
-      "INSERT INTO executions VALUES('claude','s','old','a','model',NULL,NULL,'completed',?,?,NULL,NULL,?,NULL)",
-    )
-    .run(at, at, '{"responses":2}');
-  previous.close();
+it("persists turn-start effort and service tier without replacing them on later updates", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-settings-"));
+  const file = path.join(dir, "usage.sqlite"), at = Date.now();
   const ledger = new UsageLedger(file, () => at);
-  const event = {
-    provider: "claude" as const,
-    agentId: "a",
-    sessionId: "s",
-    model: "model",
-    at,
-  };
+  const event = { provider: "codex" as const, agentId: "a", sessionId: "s", model: null, at };
   try {
     await ledger.load();
-    expect(
-      await ledger.observe(
-        {
-          ...event,
-          turnId: "old",
-          phase: "usage",
-          tokens: { input: 100, output: 40, cacheRead: 10, cacheWrite: 0 },
-        },
-        { teamId: null, repository: null },
-      ),
-    ).toBe(true);
-    expect(
-      await ledger.observe(
-        { ...event, turnId: "new", phase: "started" },
-        { teamId: null, repository: null },
-      ),
-    ).toBe(true);
-    expect(ledger.query().rows[0]).toMatchObject({
-      started: 2,
-      completed: 1,
-      measuredTurns: 1,
-      tokens: { total: 140 },
-    });
+    for (const [i, serviceTier] of ["normal", "fast", "ultrafast", null].entries()) {
+      const turn = { ...event, turnId: String(i) };
+      await ledger.observe({ ...turn, phase: "started", reasoningEffort: i < 3 ? "high" : null, serviceTier }, { teamId: null, repository: null });
+      await ledger.observe({ ...turn, phase: "completed", reasoningEffort: "low", serviceTier: "changed" }, { teamId: null, repository: null });
+      await ledger.observe({ ...turn, phase: "usage" }, { teamId: null, repository: null });
+    }
+    await ledger.close();
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      expect(db.prepare("SELECT reasoning_effort,service_tier FROM executions ORDER BY turn_id").all().map(row => ({ ...row }))).toStrictEqual([
+        { reasoning_effort: "high", service_tier: "normal" },
+        { reasoning_effort: "high", service_tier: "fast" },
+        { reasoning_effort: "high", service_tier: "ultrafast" },
+        { reasoning_effort: null, service_tier: null },
+      ]);
+    } finally { db.close(); }
   } finally {
     await ledger.close();
     await rm(dir, { recursive: true, force: true });
@@ -89,10 +65,9 @@ it("includes every retained execution beyond 10,000 in totals and model breakdow
   }
 });
 
-it("imports statistics once, persists only statistics in SQLite, and replaces late measurements without inflating daily totals", async () => {
+it("persists only statistics in SQLite and replaces late measurements without inflating daily totals", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "local-analytics-"));
-  const file = path.join(dir, "usage.sqlite"),
-    legacy = path.join(dir, "usage.json");
+  const file = path.join(dir, "usage.sqlite");
   const at = Date.parse("2026-10-15T12:00:00Z");
   const event: ExecutionObservation = {
     provider: "claude",
@@ -103,37 +78,16 @@ it("imports statistics once, persists only statistics in SQLite, and replaces la
     model: "claude-sonnet-4-6",
     at,
   };
-  let ledger = new UsageLedger(file, () => at, legacy);
+  let ledger = new UsageLedger(file, () => at);
   try {
-    await writeFile(
-      legacy,
-      JSON.stringify({
-        since: at - 86400000,
-        records: [
-          {
-            ...event,
-            phase: "completed",
-            startedAt: at,
-            teamId: "team",
-            repository: "repo",
-            prompt: "CONTENT_CANARY",
-            response: "CONTENT_CANARY",
-            tokens: {
-              input: 100,
-              output: 20,
-              cacheRead: 10,
-              cacheWrite: null,
-              total: 120,
-            },
-          },
-        ],
-      }),
-    );
     await ledger.load();
+    const observation = { ...event, prompt: "CONTENT_CANARY", response: "CONTENT_CANARY" };
+    await ledger.observe(observation, { teamId: "team", repository: "repo" });
+    await ledger.observe({ ...observation, phase: "completed", tokens: { input: 50, output: 10, cacheRead: 10, cacheWrite: null, total: 60 } }, { teamId: null, repository: null });
     expect(ledger.query({ group: "provider" }).rows[0]).toMatchObject({
       started: 1,
       completed: 1,
-      tokens: { total: 120 },
+      tokens: { total: 60 },
     });
     const timing = { activeMs: 12000, ttftMs: 2000 };
     expect(
@@ -173,7 +127,7 @@ it("imports statistics once, persists only statistics in SQLite, and replaces la
       ],
     });
     await ledger.close();
-    ledger = new UsageLedger(file, () => at, legacy);
+    ledger = new UsageLedger(file, () => at);
     await ledger.load();
     expect(ledger.query().rows[0]).toMatchObject({
       started: 1,
