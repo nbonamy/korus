@@ -288,11 +288,21 @@ remain unknown. Account summaries and quotas are account-scoped local views.
 
 Product reports contain only finite daily numeric categories. Client disclosure,
 source permission, host permission, administrator policy and reviewed rollout
-configuration all gate collection and delivery. A permission transition aborts
+configuration all gate collection and delivery. Model-behavior reports require the
+renewed behavior disclosure; an older usage-reporting choice cannot enable them.
+An explicit measured zero is distinct from unavailable evidence. A permission transition aborts
 uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH actions
 use an unsynchronized source and cannot be exported. Later clients must add explicit
 permission synchronization rather than treating connection as consent. Reports
 carry random immutable batch IDs; local dedupe identities stay in local storage.
+
+Behavior observation stays in Korus provider adapters and consumes public SDK events.
+Claude response IDs dedupe per-block messages, and matched per-response usage and
+stream boundaries produce receipt-based throughput. Tool counts omit names and
+arguments. Multiple requests within one response do not prove concurrent execution.
+Codex tool IDs provide observed invocation counts; actual model attribution,
+response grouping and stream throughput remain unavailable. Ratios combine only
+matching released model/day numerators and denominators, with sample coverage.
 
 The telemetry service has its own TLS origin, database and operator secret. It has
 no provider credentials, relay identity or execution authority. SQLite transactions

@@ -16,7 +16,18 @@ export const operatorScript = String.raw`
     turns: [['turn.started','Started'], ['turn.completed','Completed'], ['turn.failed','Failed'], ['turn.interrupted','Interrupted']],
     features: [['feature.attempted','Attempted'], ['feature.succeeded','Succeeded'], ['feature.failed','Failed'], ['feature.cancelled','Cancelled'], ['feature.unavailable','Unavailable capability']]
   };
-  let current = null, selection = null, generation = 0, controller;
+  let current = null, selection = null, generation = 0, controller, view = 'usage';
+  const behaviorMeasures = [
+    ['streamRate','Observed stream throughput','tok/s','responses'],
+    ['responsesPerTurn','Model responses per turn','responses','turns'],
+    ['toolsPerTurn','Observed tools per turn','tools','turns'],
+    ['multiToolShare','Responses with multiple tools','%','responses'],
+    ['reasoningShare','Reasoning share of output','%','turns'],
+    ['duration','Mean turn duration','seconds','turns'],
+    ['completedRate','Completed turns','%','terminal turns'],
+    ['failedRate','Failed turns','%','terminal turns'],
+    ['interruptedRate','Interrupted turns','%','terminal turns'],
+  ];
   function node(tag, text, className) {
     const element = document.createElement(tag);
     if (text !== undefined) element.textContent = text;
@@ -169,9 +180,32 @@ export const operatorScript = String.raw`
     }
     for(const row of data.rows){const tr=node('tr');for(const value of [row.day,row.metric,row.value,number(row.total),number(row.reports)])tr.append(node('td',value));rows.append(tr);}
   }
+  function renderBehavior() {
+    const target=document.querySelector('#behavior-charts');target.replaceChildren();
+    const all=current?.behavior || [],models=all.filter(row=>row.model!=='unknown' && row.model!=='custom');
+    document.querySelector('#behavior-coverage').textContent=models.length?models.length+' attributed model categories. Each chart uses its own matched samples; missing measurements stay unavailable.':'No attributed model measurements for this selection. Unknown execution models are never inferred from settings.';
+    for(const [id,title,unit,sampleUnit] of behaviorMeasures){
+      const card=node('article',undefined,'panel behavior-card');card.id='behavior-'+id;const heading=node('h3',title);heading.id=card.id+'-title';card.setAttribute('aria-labelledby',heading.id);card.append(heading,node('p',unit,'muted'));
+      const measured=models.filter(model=>model.metrics[id].value!==null).sort((a,b)=>b.metrics[id].value-a.metrics[id].value || a.model.localeCompare(b.model));
+      if(!measured.length){const body=node('div');empty(body,'Unavailable','No matching released measurements for this metric.');card.append(body);}
+      else{
+        const maximum=Math.max(1,...measured.map(model=>model.metrics[id].value));
+        for(const model of measured.slice(0,12)){
+          const metric=model.metrics[id],row=node('div',undefined,'rank-row'),label=node('div',undefined,'rank-label');
+          const value=new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(metric.value)+(unit==='%'?'%':'');
+          label.append(node('span',model.model),node('strong',value));
+          const track=node('div',undefined,'rank-track'),fill=node('div',undefined,'rank-fill');fill.style.width=100*metric.value/maximum+'%';track.append(fill);
+          row.append(label,track,node('p',number(metric.samples)+' '+sampleUnit+' · '+metric.days+' UTC days','sample'));card.append(row);
+        }
+      }
+      const unavailable=models.filter(model=>model.metrics[id].value===null);
+      if(unavailable.length)card.append(node('p','Unavailable: '+unavailable.map(model=>model.model).join(', '),'chart-note'));
+      target.append(card);
+    }
+  }
   function render() {
     const rows=current?.rows || [];tooltip.hidden=true;
-    renderCards(rows);renderTrend(rows);renderRanking(rows);renderOutcomes(rows);
+    renderCards(rows);renderTrend(rows);renderRanking(rows);renderOutcomes(rows);renderBehavior();
   }
   function setPeriod(length) {
     form.elements.from.value=day(Date.now()-length*86400000);form.elements.to.value=day(Date.now()-86400000);
@@ -181,7 +215,7 @@ export const operatorScript = String.raw`
     const ownGeneration=++generation;controller?.abort();controller=new AbortController();
     current=null;selection={from:form.elements.from.value,to:form.elements.to.value};render();renderTables({rows:[],summary:[]});
     status.classList.remove('error');status.textContent='Loading released aggregates…';trend.setAttribute('aria-busy','true');
-    const params=new URLSearchParams(new FormData(form));if(!params.get('value'))params.delete('value');
+    const params=new URLSearchParams(new FormData(form));if(view==='behavior')params.set('dimension','model');if(!params.get('value'))params.delete('value');
     try{
       const response=await fetch('/operator/metrics?'+params,{credentials:'same-origin',signal:controller.signal});
       if(!response.ok)throw Error(response.status===401?'Operator authentication required.':'Could not load aggregates.');
@@ -192,6 +226,12 @@ export const operatorScript = String.raw`
     }catch(error){if(ownGeneration!==generation)return;status.classList.add('error');status.textContent=error.name==='AbortError'?'Request cancelled.':error.message;}
     finally{if(ownGeneration===generation)trend.setAttribute('aria-busy','false');}
   }
+  for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>{
+    view=button.dataset.view;document.querySelector('#usage-view').hidden=view!=='usage';document.querySelector('#behavior-view').hidden=view!=='behavior';
+    for(const tab of document.querySelectorAll('[data-view]'))tab.setAttribute('aria-pressed',String(tab===button));
+    form.elements.dimension.disabled=view==='behavior';if(view==='behavior')form.elements.dimension.value='model';
+    void load();
+  });
   form.addEventListener('submit',event=>{event.preventDefault();void load();});
   for(const button of document.querySelectorAll('[data-days]'))button.addEventListener('click',()=>{setPeriod(Number(button.dataset.days));void load();});
   form.elements.dimension.addEventListener('change',()=>{measure.value=form.elements.dimension.value==='feature'?'features':'tokens';void load();});

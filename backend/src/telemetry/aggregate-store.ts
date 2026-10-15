@@ -1,3 +1,4 @@
+import { summarizeModelBehavior, type ModelBehavior } from "./model-behavior";
 import { chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -152,6 +153,7 @@ export class AggregateStore {
   query(query: OperatorQuery): {
     rows: OperatorRow[];
     summary: OperatorSummary[];
+    behavior: ModelBehavior[];
     minimumReports: number;
     partial: boolean;
     updatedAt: string;
@@ -191,6 +193,8 @@ export class AggregateStore {
     return {
       rows: released,
       summary: summarizeOperatorRows(released, query.dimension, !!query.value),
+      behavior:
+        query.dimension === "model" ? summarizeModelBehavior(released) : [],
       minimumReports: this.minimumReports,
       partial: true,
       updatedAt: utcDay(this.now()),

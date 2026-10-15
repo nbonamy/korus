@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
+import { modelBehaviorMeasures, type ModelBehavior } from "../model-behavior";
 import { operatorPage, operatorScript } from "../operator-page";
 
 // Keep browser fixture types local: DOM ambient fetch types conflict with this Node workspace.
@@ -51,7 +52,8 @@ const rows = [
   row("2026-10-09", "turn.started", 30),
   row("2026-10-09", "turn.completed", 20),
 ];
-const result = (values = rows) => ({
+const result = (values = rows, behavior: ModelBehavior[] = []) => ({
+  behavior,
   rows: values,
   summary: [],
   updatedAt: "2026-10-14",
@@ -228,4 +230,48 @@ it("ignores older responses after the operator changes the selected period", asy
     document.querySelector('[aria-label="Input tokens: 900"]'),
   ).not.toBeNull();
   expect(document.querySelector('[aria-label="Input tokens: 360"]')).toBeNull();
+});
+
+it("switches to model comparisons with explicit sample coverage and excludes unknown attribution", async () => {
+  const metrics = (speed: number | null) =>
+    Object.fromEntries(
+      modelBehaviorMeasures.map((id) => [
+        id,
+        {
+          value: id === "streamRate" ? speed : null,
+          samples: id === "streamRate" && speed !== null ? 20 : null,
+          days: id === "streamRate" && speed !== null ? 2 : 0,
+        },
+      ]),
+    ) as ModelBehavior["metrics"];
+  const fetch = vi.fn(async (_url: string, _init?: unknown) =>
+    response(
+      result(rows, [
+        { model: "claude-sonnet-4-6", metrics: metrics(75) },
+        { model: "claude-opus-4-6", metrics: metrics(null) },
+        { model: "unknown", metrics: metrics(999) },
+      ]),
+    ),
+  );
+  const { document } = mount(fetch);
+  document.querySelector('[data-view="behavior"]')!.click();
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector("#behavior-streamRate")?.textContent,
+    ).toContain("75"),
+  );
+  expect(fetch.mock.calls.at(-1)?.[0]).toContain("dimension=model");
+  const speed = document.querySelector("#behavior-streamRate")!.textContent!;
+  expect(speed).toContain("20 responses");
+  expect(speed).toContain("claude-opus-4-6");
+  expect(speed).not.toContain("999");
+  expect(
+    document.querySelector("#behavior-reasoningShare")?.textContent,
+  ).toContain("Unavailable");
+  expect(document.querySelector("#behavior-reasoningShare h3")).not.toBeNull();
+  expect(document.querySelector("#behavior-coverage")?.textContent).toContain(
+    "2 attributed model categories",
+  );
+  document.querySelector('[data-view="usage"]')!.click();
+  expect(document.querySelector('[data-view="usage"]')).not.toBeNull();
 });

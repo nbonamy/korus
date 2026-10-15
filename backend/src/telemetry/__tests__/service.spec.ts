@@ -392,3 +392,83 @@ it("suppresses complementary marginals so filters and cross-dimension subtractio
     store.close();
   }
 });
+
+it("serves model comparisons from paired released samples, including genuine zero outcomes, through the authenticated API", async () => {
+  const service = await startTelemetryService({
+    database: ":memory:",
+    operatorToken: token,
+    host: "127.0.0.1",
+    port: 0,
+    synthetic: true,
+  });
+  try {
+    const values = {
+      "behavior.terminalObserved": 1,
+      "behavior.completed": 1,
+      "behavior.failed": 0,
+      "behavior.interrupted": 0,
+      "behavior.durationMs": 30000,
+      "behavior.durationObserved": 1,
+      "behavior.responses": 3,
+      "behavior.responsesObserved": 1,
+      "behavior.toolCalls": 6,
+      "behavior.toolsObserved": 1,
+      "behavior.multiToolResponses": 1,
+      "behavior.streamTokens": 1000,
+      "behavior.streamMs": 20000,
+      "behavior.streamResponses": 2,
+    };
+    for (let i = 0; i < 10; i++) {
+      const payload = {
+        ...report(),
+        family: "behavior",
+        rows: Object.entries(values).map(([metric, value]) => ({
+          day: utcDay(yesterday),
+          metric,
+          value,
+          provider: "claude",
+          model: "claude-sonnet-4-6",
+        })),
+      };
+      expect(
+        (
+          await fetch(service.url + "/reports", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        ).status,
+      ).toBe(200);
+    }
+    const result = (await fetch(
+      service.url +
+        "/operator/metrics?from=" +
+        utcDay(yesterday) +
+        "&to=" +
+        utcDay(yesterday) +
+        "&dimension=model",
+      { headers: { authorization: "Bearer " + token } },
+    ).then((r) => r.json())) as {
+      behavior: import("../model-behavior").ModelBehavior[];
+    };
+    const metrics = result.behavior[0]!.metrics;
+    expect(metrics.streamRate).toStrictEqual({
+      value: 50,
+      samples: 20,
+      days: 1,
+    });
+    expect(metrics.responsesPerTurn).toStrictEqual({
+      value: 3,
+      samples: 10,
+      days: 1,
+    });
+    expect(metrics.failedRate).toStrictEqual({
+      value: 0,
+      samples: 10,
+      days: 1,
+    });
+    expect(metrics.reasoningShare.value).toBeNull();
+  } finally {
+    await service.close();
+  }
+});
