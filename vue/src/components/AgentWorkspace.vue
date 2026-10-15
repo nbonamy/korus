@@ -482,6 +482,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     onExpandSidebar: () => emit('expand-sidebar'),
     onToggleExecutionPlan: toggleExecutionPlan,
     onToggleWorkspace: props.toggleRightWorkspace,
+    onOpenGitLog: () => agentId && openRightWorkspaceTab('gitLog', agentId),
     onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
     onOpenIn: (application: OpenInApplication) => agentId && props.openAgentIn(agentId, application),

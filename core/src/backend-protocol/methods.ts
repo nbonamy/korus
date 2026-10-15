@@ -48,6 +48,9 @@ export const backendMethods = {
   agentFileChunkRead: 'agent/file/chunk/read',
   agentFilesList: 'agent/files/list',
   workspaceFolderValidate: 'workspace/folder/validate',
+  agentGitLogGet: 'agent/git/log/get',
+  agentGitLogCommitGet: 'agent/git/log/commit/get',
+  agentGitLogFileGet: 'agent/git/log/file/get',
   agentGitDiffGet: 'agent/git/diff/get',
   agentGitBranchWorkPreview: 'agent/git/branchWork/preview',
   agentGitBranchWork: 'agent/git/branchWork',
@@ -244,6 +247,9 @@ export type BackendMethod = (typeof backendMethods)[keyof typeof backendMethods]
 export const backendMethodValues = Object.values(backendMethods) as BackendMethod[];
 
 export const agentGitBackendMethods = [
+  backendMethods.agentGitLogGet,
+  backendMethods.agentGitLogCommitGet,
+  backendMethods.agentGitLogFileGet,
   backendMethods.agentGitDiffGet,
   backendMethods.agentGitBranchWorkPreview,
   backendMethods.agentGitBranchWork,

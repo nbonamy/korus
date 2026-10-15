@@ -41,6 +41,7 @@
                   <BacklogIcon v-if="tab === 'backlog'" aria-hidden="true" />
                   <IconChecklist v-if="tab === 'codeReview'" aria-hidden="true" />
                   <IconSitemap v-else-if="tab === 'visualize'" aria-hidden="true" />
+                  <ClockHour8Icon v-else-if="tab === 'gitLog'" aria-hidden="true" />
                   <FileDiffIcon v-else-if="tab === 'review'" aria-hidden="true" />
                   <IconDeviceMobile v-else-if="tab === 'simulator'" aria-hidden="true" />
                   <IconWorld v-else-if="tab === 'browser' || isRightWorkspaceBrowserTab(tab)" aria-hidden="true" />
@@ -171,6 +172,12 @@
       </button>
         </nav>
 
+    <GitLogPanel
+      v-if="tabs.includes('gitLog')"
+      v-show="activeTab === 'gitLog'"
+      :agent="agent"
+      :branch="gitStatus?.branch ?? (agent.workspace?.kind === 'git' ? agent.workspace.branch : undefined)"
+    />
     <GitReviewPanel
       v-if="tabs.includes('review')"
       v-show="activeTab === 'review'"
@@ -378,7 +385,7 @@ import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentFileSearchItem, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
-import { ArrowUpRightIcon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -394,6 +401,7 @@ import VisualizePanel from './VisualizePanel.vue';
 import FileExplorerPanel from './FileExplorerPanel.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
+import GitLogPanel from './GitLogPanel.vue';
 import ImagePreviewPanel from './ImagePreviewPanel.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import { agentConversationId } from '@workspace/core/plan-review';
@@ -684,6 +692,7 @@ function stopFilesPaneResize(): void {
 }
 
 function tabLabel(tab: RightWorkspaceTab): string {
+  if (tab === 'gitLog') return translate('gitLog.title');
   if (tab === 'simulator') return translate('surface.mobileSimulator.tab');
   if (tab === 'backlog') return translate('surface.rightWorkspacePanel.backlog');
   if (tab === 'codeReview') return translate('surface.rightWorkspacePanel.review');
