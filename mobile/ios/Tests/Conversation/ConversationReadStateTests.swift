@@ -2,6 +2,15 @@ import XCTest
 @testable import CompanionConversation
 
 final class ConversationReadStateTests: XCTestCase {
+    func testReconnectInvalidatesTheOldReceiptAndAcceptsALowerFreshRevision() {
+        var reads = ConversationReadState()
+        reads.didRender(agentId: "agent", revision: 9)
+        reads.invalidate()
+        XCTAssertNil(reads.acknowledgement(activeAgentId: "agent", foreground: true, drawerOpen: false, reviewOpen: false))
+        reads.didRender(agentId: "agent", revision: 2)
+        XCTAssertEqual(reads.acknowledgement(activeAgentId: "agent", foreground: true, drawerOpen: false, reviewOpen: false), .init(agentId: "agent", revision: 2))
+    }
+
     func testCoveredConversationStaysUnreadAndReturningAcknowledgesOnlyTheRenderedRevision() {
         var reads = ConversationReadState()
         reads.didRender(agentId: "agent", revision: 2)

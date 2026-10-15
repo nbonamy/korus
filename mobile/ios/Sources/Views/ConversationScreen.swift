@@ -15,7 +15,16 @@ struct ConversationScreen: View {
                     }
             }
             .overlay {
-                if model.conversationLoadFailed {
+                if model.connection != .connected && !model.hasTranscript {
+                    ContentUnavailableView {
+                        Label(model.connection.label, systemImage: "wifi.exclamationmark")
+                    } description: { Text("Waiting for your laptop.") }
+                    actions: {
+                        Button("Reconnect") { model.reconnect() }
+                            .disabled(model.connection == .connecting || model.connection == .reconnecting)
+                    }
+                    .background(Color(.systemBackground).ignoresSafeArea())
+                } else if model.conversationLoadFailed {
                     ContentUnavailableView {
                         Label("Couldn’t load this conversation", systemImage: "exclamationmark.bubble")
                     } description: { Text("Try again to reconnect to this conversation.") }
@@ -27,6 +36,22 @@ struct ConversationScreen: View {
                         Color(.systemBackground).ignoresSafeArea()
                         ProgressView("Loading conversation…")
                     }
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if model.hasTranscript && model.connection != .connected {
+                    HStack {
+                        Image(systemName: "wifi.exclamationmark")
+                        Text(model.connection.label)
+                        Spacer()
+                        if model.connection == .error || model.connection == .disconnected {
+                            Button("Reconnect") { model.reconnect() }
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(.bar)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {

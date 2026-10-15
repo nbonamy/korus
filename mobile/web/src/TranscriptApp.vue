@@ -112,7 +112,7 @@ function loadOlder() {
   void handler('transcript').postMessage(JSON.stringify({ type: 'loadOlder', agentId: agent.value.id }));
 }
 
-type Context = { agentId: string; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
+type Context = { agentId: string; generation: number; ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState; engines: { current: string; choices: string[] } | null };
 // The pane only needs the names of the agents a message may mention.
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
@@ -139,11 +139,11 @@ window.companionTranscript = {
     currentAgentId = message.agentId ?? message.agent?.id ?? '';
     frame.value = message.frame;
     applyContext(message);
-    if ((!message.frame && !message.ready) || !message.agent) return null;
+    if (!message.ready || !message.agent) return null;
     await nextTick();
     // Let the updated pane paint before the native shell removes its loading overlay.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0 } : null;
+    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation } : null;
   },
   /** The chat's surroundings changed, not its conversation: a small update, applied only to the chat it was made for. */
   async setContext(json) {
@@ -154,7 +154,7 @@ window.companionTranscript = {
     if (!message.ready || !message.agent) return null;
     await nextTick();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0 } : null;
+    return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation } : null;
   },
   setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
 };

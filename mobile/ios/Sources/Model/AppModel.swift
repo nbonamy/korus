@@ -17,6 +17,9 @@ final class AppModel {
     private var conversationLoading = ConversationLoadingState()
     var loadingConversation: Bool { conversationLoading.isLoading }
     var conversationLoadFailed: Bool { conversationLoading.failed }
+    var hasTranscript: Bool { conversationLoading.hasTranscript }
+    private var conversationReady = false
+    private var conversationGeneration = 0
     var connection: ConnectionState = .unpaired
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -104,8 +107,13 @@ final class AppModel {
         transcript.onReadContent = { [weak self] request in self?.engine.dispatch(request) }
         transcript.onChooseBackend = { [weak self] backend in self?.chooseBackend(backend) }
         transcript.onLoadOlder = { [weak self] id in self?.command("loadOlder", ["agentId": id]) }
-        transcript.onRendered = { [weak self] id, revision in
-            guard let self, id == self.activeAgentID else { return }
+        transcript.onRenderFailed = { [weak self] in
+            guard let self, self.activeAgentID != nil else { return }
+            self.conversationLoading.renderingFailed()
+        }
+        transcript.onRendered = { [weak self] id, revision, generation in
+            guard let self, id == self.activeAgentID, self.connection == .connected,
+                  self.conversationReady, generation == self.conversationGeneration else { return }
             self.conversationLoading.rendered()
             self.conversationRead.didRender(agentId: id, revision: revision)
             self.acknowledgeRead()
@@ -134,7 +142,12 @@ final class AppModel {
     private func apply(_ state: EngineState) {
         set(\.startup, state.startup)
         set(\.pushRegistrationFailed, state.pushRegistrationFailed ?? false)
-        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty)
+        if activeAgentID != (state.agentId.isEmpty ? nil : state.agentId) || composerDrafts.target != state.composerTarget { conversationLoading.select() }
+        let generation = state.conversationGeneration ?? 0
+        if generation != conversationGeneration || state.connection != .connected || state.conversationReady != true { conversationRead.invalidate() }
+        conversationGeneration = generation
+        conversationReady = state.conversationReady == true
+        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected)
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
         set(\.failedRequest, state.failedRequest)
@@ -212,8 +225,8 @@ final class AppModel {
 
     func retryConversation() {
         guard let id = activeAgentID, connection == .connected else { return }
-        conversationLoading.select()
-        transcript.beginSelection()
+        conversationLoading.select(awaitingRender: true)
+        transcript.retry()
         command("selectAgent", ["id": id])
     }
 
@@ -318,9 +331,10 @@ final class AppModel {
     func reconnect() { command("reconnect") }
     func forget() { command("forget") }
     private func acknowledgeRead() {
+        guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
             foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
-        command("read", ["agentId": read.agentId, "revision": read.revision])
+        command("read", ["agentId": read.agentId, "revision": read.revision, "generation": conversationGeneration])
     }
 
     private var visibleNotificationTarget: ChatNotification.Target? {

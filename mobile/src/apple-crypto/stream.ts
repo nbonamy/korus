@@ -1,52 +1,91 @@
-import { AbstractMessageStream, LengthPrefixedDecoder } from '@libp2p/utils';
+import { AbstractMessageStream } from '@libp2p/utils';
 import type { AbortOptions, MessageStream } from '@libp2p/interface';
 import { Uint8ArrayList } from 'uint8arraylist';
-import { uint16BEDecode, uint16BEEncode } from '../../../node_modules/@chainsafe/libp2p-noise/dist/src/encoder.js';
+import { uint16BEEncode } from '../../../node_modules/@chainsafe/libp2p-noise/dist/src/encoder.js';
 import { appleCrypto, decode, encode } from './bridge';
 
 /** Ordered, bounded batches across the asynchronous WK bridge. Noise retains record counters natively. */
 export class AppleEncryptedStream extends AbstractMessageStream {
-  private readonly decoder = new LengthPrefixedDecoder({ lengthDecoder: data => uint16BEDecode(data.subarray()), maxBufferSize: 4 * 1024 * 1024, encodingLength: () => 2 });
+  private readonly incoming = new Uint8ArrayList();
+  // One partial Noise record may precede a coalesced transport buffer.
+  private readonly readLimit = 4 * 1024 * 1024 + 65537;
   private reading = Promise.resolve();
+  private pumping = false;
+  private transportEnded = false;
+  private transportClosed = false;
+  private transportPaused = false;
   private writing = Promise.resolve();
-  private queuedRead = 0;
   private released = false;
-  private cryptoPaused = false;
   constructor(private readonly transport: MessageStream, private readonly id: string) {
     super({ log: transport.log, direction: transport.direction, inactivityTimeout: transport.inactivityTimeout,
       maxReadBufferLength: transport.maxReadBufferLength, maxWriteBufferLength: 4 * 1024 * 1024, maxMessageSize: 4 * 65519 });
     transport.addEventListener('message', event => {
-      try {
-        const records = [...this.decoder.decode(event.data)].map(record => record.subarray());
-        this.queuedRead += records.reduce((sum, record) => sum + record.length, 0);
-        if (this.queuedRead > 4 * 1024 * 1024) throw new Error('Encrypted read buffer exceeded');
-        if (this.queuedRead >= 256 * 1024 && !this.cryptoPaused) { this.cryptoPaused = true; this.transport.pause(); }
-        for (let index = 0; index < records.length; index += 16) {
-          const batch = records.slice(index, index + 16);
-          this.reading = this.reading.then(async () => {
-            if (this.released) return;
-            const result = await appleCrypto<{ records: string[] }>({ op: 'decrypt', id, records: batch.map(encode) });
-            this.queuedRead -= batch.reduce((sum, record) => sum + record.length, 0);
-            if (!this.released) {
-              for (const record of result.records) this.onData(decode(record));
-              if (this.cryptoPaused && this.queuedRead < 128 * 1024) {
-                this.cryptoPaused = false;
-                if (this.readStatus === 'readable' && this.transport.status === 'open') this.transport.resume();
-              }
-            }
-          }).catch(error => this.abort(error));
-        }
-      } catch (error) { this.abort(error as Error); }
+      if (this.released) return;
+      if (event.data instanceof Uint8Array) this.incoming.append(event.data);
+      else for (const bytes of event.data) this.incoming.append(bytes);
+      if (this.incoming.byteLength > this.readLimit) { this.abort(new Error('Encrypted read buffer exceeded')); return; }
+      this.pump();
     });
     transport.addEventListener('close', event => {
       if (event.error) { this.abort(event.error); return; }
-      void this.reading.then(() => { this.onTransportClosed(); this.release(); });
+      this.transportClosed = true;
+      this.pump();
     });
-    transport.addEventListener('remoteCloseWrite', () => { void this.reading.then(() => this.onRemoteCloseWrite()); });
+    transport.addEventListener('remoteCloseWrite', () => { this.transportEnded = true; this.pump(); });
+  }
+  private pump() {
+    if (this.pumping || this.released) return;
+    this.pumping = true;
+    this.reading = Promise.resolve().then(async () => {
+      try {
+        while (!this.released) {
+          if (this.readStatus === 'paused') { this.pauseTransport(); return; }
+          const records: string[] = [];
+          while (records.length < 16 && this.incoming.byteLength >= 2) {
+            const length = this.incoming.getUint16(0);
+            if (length < 16) throw new Error('Invalid encrypted record length');
+            if (this.incoming.byteLength < length + 2) break;
+            records.push(encode(this.incoming.subarray(2, length + 2)));
+            this.incoming.consume(length + 2);
+          }
+          if (records.length) {
+            this.pauseTransport();
+            const result = await appleCrypto<{ records: string[] }>({ op: 'decrypt', id: this.id, records });
+            if (this.released) return;
+            for (const record of result.records) this.onData(decode(record));
+            continue;
+          }
+          if (this.transportClosed || this.transportEnded) {
+            if (this.incoming.byteLength) throw new Error('Truncated encrypted record');
+            if (this.transportClosed) { this.onTransportClosed(); this.release(); }
+            else this.onRemoteCloseWrite();
+            return;
+          }
+          if (this.transportPaused && this.transport.status === 'open') {
+            const previous = this.incoming.byteLength;
+            // resume() dispatches buffered messages synchronously before sendResume().
+            // Only this pump changes flow control, after that callback has returned.
+            this.transportPaused = false;
+            this.transport.resume();
+            if (this.incoming.byteLength !== previous) { this.pauseTransport(); continue; }
+          }
+          return;
+        }
+      } finally {
+        this.pumping = false;
+      }
+    }).catch(error => this.abort(error));
+  }
+  private pauseTransport() {
+    if (this.transport.status === 'open' && !this.transportPaused) {
+      this.transportPaused = true;
+      this.transport.pause();
+    }
   }
   private release() {
     if (this.released) return;
     this.released = true;
+    this.incoming.consume(this.incoming.byteLength);
     void Promise.all([this.reading, this.writing]).then(() => appleCrypto({ op: 'close', id: this.id })).catch(() => {});
   }
   sendData(data: Parameters<AbstractMessageStream['sendData']>[0]) {
@@ -61,8 +100,8 @@ export class AppleEncryptedStream extends AbstractMessageStream {
     }).catch(error => this.abort(error));
     return { sentBytes: data.byteLength, canSendMore: false };
   }
-  sendPause() { this.transport.pause(); }
-  sendResume() { if (!this.cryptoPaused) this.transport.resume(); }
+  sendPause() { this.pauseTransport(); }
+  sendResume() { this.pump(); }
   sendReset(error: Error) { this.transport.abort(error); this.release(); }
   async close(options?: AbortOptions) {
     this.writeStatus = 'closing';

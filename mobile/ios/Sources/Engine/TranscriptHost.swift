@@ -4,15 +4,19 @@ import UIKit
 
 /// The conversation itself: the shared Vue pane, read-only, in a web view. Everything around it is native.
 @MainActor
-final class TranscriptHost: NSObject, WKScriptMessageHandler {
+final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     let webView: WKWebView
     var onOpenImage: ((String, ImagePreview) -> Void)?
     var onLoadOlder: ((String) -> Void)?
     var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
-    var onRendered: ((String, Int) -> Void)?
+    var onRendered: ((String, Int, Int) -> Void)?
+    var onRenderFailed: (() -> Void)?
     private var presentation = 0
     private var isReady = false
+    private var needsRecovery = false
+    private var watchdog: Timer?
+    private var navigation: WKNavigation?
     private var queue = TranscriptRenderQueue()
     private var latestConversation: String?
     private var latestContext: String?
@@ -24,6 +28,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         configuration.userContentController.add(self, name: "transcript")
+        webView.navigationDelegate = self
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
@@ -32,13 +37,13 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
         #if DEBUG
         webView.isInspectable = true
         #endif
-        webView.load(URLRequest(url: WebAssets.url("transcript.html")))
+        loadPage()
     }
 
     /// The conversation, or just its surroundings. The page draws one message at a time; whatever arrives while it does is folded into the newest.
     func submit(_ kind: TranscriptRenderQueue.Kind, _ json: String) {
         switch kind {
-        case .conversation: presentation += 1; latestConversation = json; latestContext = nil
+        case .conversation: latestConversation = json; latestContext = nil
         case .context: latestContext = json
         }
         guard isReady else { return }
@@ -47,18 +52,86 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
 
     private func run(_ job: TranscriptRenderQueue.Job) {
         let revision = presentation
+        armWatchdog()
         let script = job.kind == .conversation ? "return await window.companionTranscript.setConversation(json)" : "return await window.companionTranscript.setContext(json)"
         webView.callAsyncJavaScript(script, arguments: ["json": job.json], in: nil, in: .page) { [weak self] result in
             guard let self else { return }
-            if self.presentation == revision, case .success(let value) = result,
+            guard self.presentation == revision else { return }
+            self.watchdog?.invalidate()
+            self.watchdog = nil
+            if case .failure = result { self.fail(); return }
+            if case .success(let value) = result,
                let receipt = value as? [String: Any], let agentID = receipt["agentId"] as? String,
-               let readRevision = receipt["revision"] as? Int { self.onRendered?(agentID, readRevision) }
+               let readRevision = receipt["revision"] as? Int,
+               let generation = receipt["generation"] as? Int { self.onRendered?(agentID, readRevision, generation) }
             if let next = self.queue.finish() { self.run(next) }
         }
     }
 
     /// A new native selection invalidates acknowledgments already in flight.
-    func beginSelection() { presentation += 1 }
+    func beginSelection() {
+        presentation += 1
+        watchdog?.invalidate()
+        watchdog = nil
+        queue = TranscriptRenderQueue()
+        latestConversation = nil
+        latestContext = nil
+        if needsRecovery { loadPage() }
+        else if !isReady { armWatchdog() }
+    }
+
+    /// Retry the same chat even when the engine's cached selection emits no new frame.
+    func retry() {
+        presentation += 1
+        queue = TranscriptRenderQueue()
+        loadPage()
+    }
+
+    private func loadPage() {
+        needsRecovery = false
+        isReady = false
+        webView.stopLoading()
+        navigation = webView.load(URLRequest(url: WebAssets.url("transcript.html")))
+        armWatchdog()
+    }
+
+    private func armWatchdog() {
+        watchdog?.invalidate()
+        watchdog = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] timer in
+            Task { @MainActor in
+                guard let self, self.watchdog === timer else { return }
+                // Background suspension is not a rendering failure.
+                if UIApplication.shared.applicationState != .active { self.armWatchdog() }
+                else { self.fail() }
+            }
+        }
+    }
+
+    private func fail() {
+        guard !needsRecovery else { return }
+        watchdog?.invalidate()
+        watchdog = nil
+        presentation += 1
+        isReady = false
+        needsRecovery = true
+        queue = TranscriptRenderQueue()
+        onRenderFailed?()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { fail() }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        navigationFailed(navigation, error)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        navigationFailed(navigation, error)
+    }
+
+    private func navigationFailed(_ navigation: WKNavigation?, _ error: Error) {
+        guard navigation === self.navigation, (error as NSError).code != NSURLErrorCancelled else { return }
+        fail()
+    }
 
     func receiveContent(_ json: String) {
         guard isReady else { return }
@@ -97,6 +170,9 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler {
             return
         }
         guard event["type"] as? String == "ready" else { return }
+        guard !needsRecovery else { return }
+        watchdog?.invalidate()
+        watchdog = nil
         isReady = true
         setInsets(top: insets.top, bottom: insets.bottom)
         if let latestConversation, let job = queue.enqueue(.conversation, latestConversation) { run(job) }

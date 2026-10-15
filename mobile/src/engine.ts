@@ -35,6 +35,8 @@ export type EngineState = {
   agentId: string;
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
+  conversationReady: boolean;
+  conversationGeneration: number;
   canSend: boolean;
   composerTarget: CompanionTarget | null;
   goal: { objective: string; status: string } | null;
@@ -74,6 +76,7 @@ export type EngineEvent =
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
 export type TranscriptContext = {
+  generation: number;
   ready: boolean; agent: Agent | null; peers: { id: string; label: string }[]; history: CompanionHistoryState;
   /** An empty chat's engine and the ones it may switch to. */
   engines: { current: string; choices: string[] } | null;
@@ -90,7 +93,7 @@ export type EngineCommand =
   | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
   /** The app moved to the foreground or background: the link is held only while it is visible. */
   | { type: 'activity'; active: boolean }
-  | { type: 'read'; agentId: string; revision: number }
+  | { type: 'read'; agentId: string; revision: number; generation: number }
   | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
@@ -173,6 +176,8 @@ export function createEngine(port: EnginePort) {
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
+      conversationReady: state.conversationReady.value,
+      conversationGeneration: state.conversationGeneration.value,
       mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
         ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
           id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, description: '',
@@ -190,7 +195,7 @@ export function createEngine(port: EnginePort) {
       permissions: { approvalPreset: permissions?.approvalPreset ?? null, permissionMode: permissions?.permissionMode ?? null, presets: [...(capabilities.approvalPresets ?? [])],
         modes: (capabilities.permissionModes ?? []).map((mode) => ({ id: mode.id, label: typeof mode.label === 'string' ? mode.label : mode.label.key })) },
       capabilities: { goals: capabilities.goals, models: capabilities.models, reasoningEffort: capabilities.reasoningEffort, serviceTier: capabilities.serviceTier ?? false,
-        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt, attachments: capabilities.attachments && !team?.remoteConnectionId },
+        planMode: capabilities.planMode !== 'unsupported', interrupt: capabilities.interrupt && state.status.value === 'connected' && state.conversationReady.value, attachments: capabilities.attachments && !team?.remoteConnectionId },
       favorites: state.modelFavorites.value.filter((favorite) => favorite.backend === agent?.backend).map(({ modelId, reasoningEffort, serviceTier }) => ({ modelId, reasoningEffort, serviceTier })),
     };
   }
@@ -231,7 +236,7 @@ export function createEngine(port: EnginePort) {
     return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
-  const contextNow = (): TranscriptContext => ({ ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
+  const contextNow = (): TranscriptContext => ({ generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
 
   // A conversation crosses the bridge whole, so it crosses once per change of its own content and no faster than the page can
   // draw it: updates in between are folded into the latest. The provider's replica has already applied every one of them.
@@ -268,7 +273,7 @@ export function createEngine(port: EnginePort) {
   }
   // Selection changes identity, cached frame and readiness together. Never send an intermediate
   // pairing (new transcript / old agent) across the native bridge.
-  watch(() => [state.conversation.value, state.agentId.value, state.agent.value, peers.value, state.history.value, state.conversationReady.value, state.workspace.value] as const, postConversation, { flush: 'post' });
+  watch(() => [state.conversation.value, state.agentId.value, state.agent.value, peers.value, state.history.value, state.conversationReady.value, state.conversationGeneration.value, state.workspace.value] as const, postConversation, { flush: 'post' });
 
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const onResolved = (status: 'accepted' | 'rejected') => { if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status }); };
@@ -325,7 +330,7 @@ export function createEngine(port: EnginePort) {
       case 'connect': return connect(command.laptopId);
       case 'disconnect': ++selectionEpoch; return state.disconnect();
       case 'read': {
-        if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value) return;
+        if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value || command.generation !== state.conversationGeneration.value) return;
         const read = state.agent.value?.readState;
         if (!read || command.revision <= read.readRevision || command.revision > read.revision) return;
         const key = `${state.laptopId.value}/${command.agentId}/${command.revision}`;

@@ -68,6 +68,8 @@ struct EngineState: Decodable {
     let agentId: String
     let header: Header?
     let loading: Bool
+    let conversationReady: Bool?
+    let conversationGeneration: Int?
     let composerTarget: ComposerTarget?
     let goal: Goal?
     let goalBusy: Bool?

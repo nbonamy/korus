@@ -70,7 +70,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       identity = peerIdFromPrivateKey(key).toString();
       signingKey = key;
       node = await createLibp2p({ privateKey: key, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1 })],
-        connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
+        // Native decryption is asynchronous. Outstanding receive credit must fit
+        // the paused stream buffer, including at the relayed (inner Noise) layer.
+        connectionEncrypters: [noise()], streamMuxers: [yamux({ streamOptions: { maxStreamWindowSize: 1024 * 1024 } })], services: { identify: identify() },
         connectionManager: { maxConnections: 4, maxParallelDials: 2 },
         connectionGater: { denyInboundConnection: () => true, denyDialMultiaddr: () => false },
       });

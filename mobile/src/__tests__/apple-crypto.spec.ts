@@ -13,6 +13,9 @@ import { XXHandshakeState } from '../../../node_modules/@chainsafe/libp2p-noise/
 import { wrapCrypto } from '../../../node_modules/@chainsafe/libp2p-noise/dist/src/crypto.js';
 import { pureJsCrypto } from '../../../node_modules/@chainsafe/libp2p-noise/dist/src/crypto/js.js';
 import { Uint8ArrayList } from 'uint8arraylist';
+import { AbstractMessageStream } from '@libp2p/utils';
+import { AppleEncryptedStream } from '../apple-crypto/stream';
+import { uint16BEEncode } from '../../../node_modules/@chainsafe/libp2p-noise/dist/src/encoder.js';
 let native: Awaited<ReturnType<typeof cryptoFixture>>;
 beforeAll(async () => {
   native = await cryptoFixture();
@@ -20,7 +23,130 @@ beforeAll(async () => {
 }, 30000);
 afterAll(async () => { await native?.close(); vi.unstubAllGlobals(); });
 
+async function encryptedStreamFixture() {
+  const first = await native.call({ op: 'create', initiator: true });
+  const crypto = wrapCrypto(pureJsCrypto);
+  const responder = new XXHandshakeState({ crypto, initiator: false, protocolName: 'Noise_XX_25519_ChaChaPoly_SHA256', prologue: new Uint8Array(), s: crypto.generateKeypair() });
+  responder.readMessageA(new Uint8ArrayList(decode((await native.call({ op: 'writeA', id: first.id })).data)));
+  await native.call({ op: 'readB', id: first.id, data: encode(responder.writeMessageB(new Uint8Array()).subarray()) });
+  responder.readMessageC(new Uint8ArrayList(decode((await native.call({ op: 'writeC', id: first.id, data: '' })).data)));
+  await native.call({ op: 'split', id: first.id });
+  const cipher = responder.ss.split()[1];
+  const log = Object.assign(vi.fn(), { enabled: false, error: vi.fn(), trace: vi.fn(), newScope: () => log });
+  class Transport extends AbstractMessageStream {
+    sendData(data: Parameters<AbstractMessageStream['sendData']>[0]) { return { sentBytes: data.byteLength, canSendMore: true }; }
+    remotePaused = false;
+    sendPause() { this.remotePaused = true; }
+    onResume?: () => void;
+    sendResume() { this.remotePaused = false; this.onResume?.(); }
+    sendReset() {}
+    async close() { this.onTransportClosed(); }
+  }
+  const transport = new Transport({ log, direction: 'inbound', maxReadBufferLength: 4 * 1024 * 1024 });
+  const stream = new AppleEncryptedStream(transport, first.id);
+  const encrypt = (payload: Uint8Array) => {
+    const wire = new Uint8ArrayList();
+    for (let offset = 0; offset < payload.length; offset += 65519) {
+      const record = cipher.encryptWithAd(new Uint8Array(), payload.subarray(offset, offset + 65519));
+      wire.append(uint16BEEncode(record.byteLength), record);
+    }
+    return wire.subarray();
+  };
+  return { stream, transport, encrypt };
+}
+
 describe('Apple-backed encrypted transport', () => {
+  it.each(['transport bytes', 'consumer resume'] as const)('does not lose a final wake-up from %s while a decrypt cycle unwinds', async wakeup => {
+    const { stream, transport, encrypt } = await encryptedStreamFixture();
+    const first = new Uint8Array([1, 2, 3]);
+    const last = new Uint8Array([4, 5, 6]);
+    const firstWire = encrypt(first), lastWire = encrypt(last);
+    const chunks: Uint8Array[] = [];
+    stream.addEventListener('message', event => {
+      chunks.push(event.data.subarray());
+      if (wakeup === 'consumer resume' && chunks.length === 1) {
+        stream.pause();
+        transport.onData(lastWire);
+        queueMicrotask(() => stream.resume());
+      }
+    });
+    if (wakeup === 'transport bytes') transport.onResume = () => {
+      transport.onResume = undefined;
+      queueMicrotask(() => transport.onData(lastWire));
+    };
+    try {
+      transport.onData(firstWire);
+      await vi.waitFor(() => expect(Buffer.concat(chunks)).toEqual(Buffer.concat([first, last])), { timeout: 500 });
+    } finally { stream.abort(new Error('Test complete')); }
+  });
+
+  it('re-pauses a synchronous resume burst while native decryption is blocked, then recovers byte-exactly', async () => {
+    const { stream, transport, encrypt } = await encryptedStreamFixture();
+    const first = new Uint8Array([1]);
+    const burst = new Uint8Array(1024 * 1024 - 65537).fill(7);
+    const firstWire = encrypt(first), burstWire = encrypt(burst);
+    const chunks: Uint8Array[] = [];
+    stream.addEventListener('message', event => chunks.push(event.data.subarray()));
+    const gates: (() => void)[] = [];
+    let calls = 0; let completed = 0;
+    const resumed = vi.fn(); transport.onResume = resumed;
+    vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: async ({ command }: any) => {
+      if (command.op !== 'decrypt') return native.call(command);
+      calls += 1;
+      await new Promise<void>(resolve => gates.push(resolve));
+      const result = await native.call(command); completed += 1; return result;
+    } } } } });
+    try {
+      transport.onData(firstWire);
+      await vi.waitFor(() => expect(calls).toBe(1));
+      expect(transport.readStatus).toBe('paused');
+      transport.onData(burstWire);
+      expect(transport.readBufferLength).toBe(burstWire.byteLength);
+      expect(transport.readBufferLength).toBeLessThanOrEqual(1024 * 1024);
+      gates.shift()!();
+      await vi.waitFor(() => expect(calls).toBe(2));
+      expect(completed).toBe(1);
+      expect(transport.readBufferLength).toBe(0);
+      expect(transport.readStatus).toBe('paused');
+      expect(transport.remotePaused).toBe(true);
+      expect(resumed).toHaveBeenCalledTimes(1);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(resumed).toHaveBeenCalledTimes(1);
+      expect(calls).toBe(2);
+      gates.shift()!();
+      await vi.waitFor(() => expect(Buffer.concat(chunks)).toEqual(Buffer.concat([first, burst])));
+    } finally {
+      for (const release of gates) release();
+      stream.abort(new Error('Test complete'));
+      vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: ({ command }: any) => native.call(command) } } } });
+    }
+  });
+
+  it.each([false, true])('decrypts a coalesced history burst larger than four MiB without losing record boundaries (fragmented: %s)', async fragmented => {
+    const { stream, transport, encrypt } = await encryptedStreamFixture();
+    const payload = new Uint8Array(4 * 1024 * 1024 + 123);
+    for (let index = 0; index < payload.length; index++) payload[index] = index % 251;
+    const wire = encrypt(payload);
+    const chunks: Uint8Array[] = [];
+    let received = 0; let failure: Error | undefined;
+    stream.addEventListener('message', event => { const bytes = event.data.subarray(); chunks.push(bytes); received += bytes.length; });
+    stream.addEventListener('close', event => { failure = event.error; });
+    vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: async ({ command }: any) => {
+      if (command.op === 'decrypt') await new Promise(resolve => setTimeout(resolve, 2));
+      return native.call(command);
+    } } } } });
+    try {
+      // resume() coalesces its paused buffer into one event; network packets need not match Noise records.
+      if (fragmented) { transport.onData(wire.subarray(0, 1)); transport.onData(wire.subarray(1, 1171)); transport.onData(wire.subarray(1171)); }
+      else transport.onData(wire.subarray());
+      await vi.waitFor(() => { expect(failure).toBeUndefined(); expect(received).toBe(payload.length); }, { timeout: 10000 });
+      expect(Buffer.concat(chunks)).toEqual(Buffer.from(payload));
+    } finally {
+      stream.abort(new Error('Test complete'));
+      vi.stubGlobal('window', { webkit: { messageHandlers: { native: { postMessage: ({ command }: any) => native.call(command) } } } });
+    }
+  }, 15000);
+
   it('preserves a saved Ed25519 identity and verifies signatures in both implementations', async () => {
     const original = await nodeKey('Ed25519');
     const migrated = privateKeyFromProtobuf(nodeSerialize(original));

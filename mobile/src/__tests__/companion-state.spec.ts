@@ -5,6 +5,40 @@ import { createDemoConnector } from '../demo-connector';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 
 describe('companion state', () => {
+  it('backs off repeated disconnects during history loading until a conversation actually synchronizes', async () => {
+    vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost!: () => void; let dropOnLoad = false;
+    const connect = vi.fn(async (id: string) => {
+      const session = await original(id);
+      return { ...session, onDisconnect(listener: () => void) { lost = listener; return () => {}; },
+        loadConversation: async (agentId: string) => {
+          if (dropOnLoad) { lost(); throw new Error('History stream closed'); }
+          return session.loadConversation(agentId);
+        } };
+    });
+    connector.connect = connect;
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      const retained = state.conversation.value;
+      dropOnLoad = true; lost();
+      for (const [attempt, delay] of [1000, 2000, 4000].entries()) {
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(connect).toHaveBeenCalledTimes(attempt + 1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(connect).toHaveBeenCalledTimes(attempt + 2);
+        expect(state.canSend.value).toBe(false);
+        expect(state.conversation.value).toStrictEqual(retained);
+      }
+      dropOnLoad = false;
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(state.canSend.value).toBe(true);
+      lost();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(connect).toHaveBeenCalledTimes(6);
+    } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
   it.each(['replacement', 'reset', 'location'] as const)('clears the selected transcript and awaits the new identity after a %s update', async change => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;

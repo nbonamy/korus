@@ -159,6 +159,13 @@ app state. Sequence gaps, provider revision gaps and reconnects rehydrate from t
 authoritative daemon. Stream queues and subscription counts are bounded; revocation
 and stream closure dispose listeners and buffered work.
 
+The iOS encrypted reader serializes native decryption with transport flow control.
+Its receive-window credit stays below the paused-buffer capacity: pausing cannot
+recall bytes already granted to the sender, and resuming can dispatch buffered
+bytes synchronously. A retained transcript is presentation-only during reconnect;
+render acknowledgments are bound to the current connection/selection generation,
+not compared against an earlier connection's revision counter.
+
 Pending questions, tool confirmations and approvals travel in the workspace's
 app-owned request projection. Responses carry the owning host, team, agent,
 session and request conversation identity. The gateway checks that identity and

@@ -3,6 +3,8 @@ struct ConversationReadState {
     struct Acknowledgement: Equatable { let agentId: String; let revision: Int }
     private var rendered: Acknowledgement?
 
+    mutating func invalidate() { rendered = nil }
+
     mutating func didRender(agentId: String, revision: Int) {
         rendered = .init(agentId: agentId, revision: revision)
     }

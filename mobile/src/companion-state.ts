@@ -81,6 +81,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let unsubscribe = () => {};
   let connectionEpoch = 0;
   let selectionEpoch = 0;
+  const conversationGeneration = ref(0);
   let selectedConversationKey = '';
   let reconnectWanted = false;
   let retryCount = 0;
@@ -273,6 +274,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     retryTimer = undefined;
     ++connectionEpoch;
     ++selectionEpoch;
+    ++conversationGeneration.value;
     loadingOlder.value = false;
     loading.value = false;
     conversationReady.value = false;
@@ -313,6 +315,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const removeDisconnect = session.onDisconnect(() => {
         if (epoch !== connectionEpoch) return;
         ++selectionEpoch;
+        ++conversationGeneration.value;
         loading.value = false;
         conversationReady.value = false;
         status.value = 'disconnected';
@@ -332,7 +335,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       status.value = 'connected';
       await reconcileReceipts();
       if (agentId.value) await selectAgent(agentId.value);
-      if (epoch === connectionEpoch) retryCount = 0;
+      if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) retryCount = 0;
     } catch {
       opened?.close();
       if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
@@ -460,7 +463,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => { const target = currentTarget(); return canSend.value && target ? session?.sendPrompt(target, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined; });
   async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
-    if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
+    if (!id || !active || status.value !== 'connected' || !conversationReady.value || sessionAction.value) return;
     const preview = closePreview.value;
     if (action === 'close' && preview?.target.agentId !== id) return;
     sessionAction.value = action; sessionActionFailed.value = false;
@@ -511,6 +514,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     closePreview.value = null;
     sessionActionFailed.value = false;
     const epoch = ++selectionEpoch;
+    ++conversationGeneration.value;
     const nextAgent = agents.value.find((a) => a.id === id);
     const nextKey = conversationIdentity(nextAgent ?? null);
     const cached = nextAgent && session && status.value === 'connected' ? session.cachedConversation?.(id) : undefined;
@@ -682,7 +686,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, loading, agents, agent,
+  return { registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }
