@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import {
   clientFeatures,
+  telemetryDisclosureVersion,
   isTelemetryChoice,
   isTelemetryReport,
   publicModel,
@@ -99,6 +100,9 @@ export class TelemetryReporter {
         .filter(
           (b) =>
             isTelemetryReport(b?.report) &&
+            (b.report.family !== "behavior" ||
+              this.state.choices.desktop?.disclosure ===
+                telemetryDisclosureVersion) &&
             Number.isFinite(b.created) &&
             Number.isFinite(b.next) &&
             Number.isSafeInteger(b.attempts) &&
@@ -236,7 +240,67 @@ export class TelemetryReporter {
         value: 1,
       });
     await this.record(source, identity + event.phase, "runtime", rows);
-    if (event.phase !== "started") this.eligible.delete(identity);
+    if (event.phase !== "started") {
+      if (
+        this.state.choices[source]?.disclosure === telemetryDisclosureVersion &&
+        this.state.choices.desktop?.disclosure === telemetryDisclosureVersion
+      )
+        await this.recordBehavior(event, source, identity);
+      this.eligible.delete(identity);
+    }
+  }
+  private async recordBehavior(
+    event: ExecutionObservation,
+    source: string,
+    identity: string,
+  ): Promise<void> {
+    const behavior = event.behavior;
+    // Model behavior requires response-level evidence; initialization/settings alone do not attribute a model.
+    const model = publicModel(behavior?.model ?? null);
+    const base = { day: utcDay(event.at), provider: event.provider, model };
+    const rows: TelemetryRow[] = [];
+    const add = (metric: TelemetryRow["metric"], value: number) =>
+      rows.push({ ...base, metric, value });
+    add("behavior.terminalObserved", 1);
+    add("behavior.completed", event.phase === "completed" ? 1 : 0);
+    add("behavior.failed", event.phase === "failed" ? 1 : 0);
+    add("behavior.interrupted", event.phase === "interrupted" ? 1 : 0);
+    if (
+      Number.isSafeInteger(event.durationMs) &&
+      event.durationMs! >= 0 &&
+      event.durationMs! <= 1e9
+    ) {
+      add("behavior.durationMs", event.durationMs!);
+      add("behavior.durationObserved", 1);
+    }
+    if (behavior?.responses !== null && behavior?.responses !== undefined) {
+      add("behavior.responses", behavior.responses);
+      add("behavior.responsesObserved", 1);
+      if (behavior.toolResponses !== null)
+        add("behavior.toolResponses", behavior.toolResponses);
+      if (behavior.multiToolResponses !== null)
+        add("behavior.multiToolResponses", behavior.multiToolResponses);
+    }
+    if (behavior?.toolCalls !== null && behavior?.toolCalls !== undefined) {
+      add("behavior.toolCalls", behavior.toolCalls);
+      add("behavior.toolsObserved", 1);
+    }
+    if (behavior?.stream) {
+      add("behavior.streamTokens", behavior.stream.outputTokens);
+      add("behavior.streamMs", behavior.stream.durationMs);
+      add("behavior.streamResponses", behavior.stream.responses);
+    }
+    if (
+      event.provider !== "codex" &&
+      event.tokens &&
+      event.tokens.reasoning !== null &&
+      event.tokens.reasoning !== undefined
+    ) {
+      add("behavior.reasoningTokens", event.tokens.reasoning);
+      add("behavior.reasoningOutput", event.tokens.output);
+      add("behavior.reasoningObserved", 1);
+    }
+    await this.record(source, identity + ":behavior", "behavior", rows);
   }
   permission(source: string): number | null {
     return this.allowed(source) ? this.generation : null;

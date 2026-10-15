@@ -368,3 +368,147 @@ it("fails closed on invalid configuration, oversized storage and persistence fai
   expect(failing.allowed("desktop")).toBe(false);
   await expect(failing.close()).resolves.toBeUndefined();
 });
+
+it("requires renewed behavior disclosure, emits explicit zero samples, preserves Codex local-only usage and drops pre-consent or post-opt-out behavior", async () => {
+  let now = event.at;
+  const reporter = new TelemetryReporter(
+    await file("behavior"),
+    config,
+    () => now,
+  );
+  const completed: ExecutionObservation = {
+    ...event,
+    phase: "completed",
+    durationMs: 20000,
+    model: "claude-sonnet-4-6",
+    behavior: {
+      model: "claude-sonnet-4-6",
+      responses: 2,
+      toolCalls: 0,
+      toolResponses: 0,
+      multiToolResponses: 0,
+      stream: { outputTokens: 120, durationMs: 2000, responses: 2 },
+    },
+  };
+  try {
+    await reporter.load();
+    await reporter.choose("desktop", { enabled: true, disclosure: 1 });
+    await reporter.execution(event, "desktop");
+    await reporter.execution(completed, "desktop");
+    expect(
+      reporter.privacy("desktop").pending.some((b) => b.family === "behavior"),
+    ).toBe(false);
+    await reporter.choose("desktop", { enabled: true, disclosure: 2 });
+    await reporter.execution(
+      { ...completed, turnId: "before-consent" },
+      "desktop",
+    );
+    expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+    const start = { ...event, turnId: "new" };
+    await reporter.execution(start, "desktop");
+    await reporter.execution({ ...completed, turnId: "new" }, "desktop");
+    const rows = reporter
+      .privacy("desktop")
+      .pending.find((b) => b.family === "behavior")!.rows;
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metric: "behavior.toolCalls", value: 0 }),
+        expect.objectContaining({ metric: "behavior.toolsObserved", value: 1 }),
+        expect.objectContaining({
+          metric: "behavior.streamTokens",
+          value: 120,
+        }),
+        expect.objectContaining({ metric: "behavior.streamMs", value: 2000 }),
+      ]),
+    );
+    expect(JSON.stringify(rows)).not.toContain("CANARY");
+    await reporter.execution(
+      { ...event, provider: "codex", turnId: "codex" },
+      "desktop",
+    );
+    await reporter.execution(
+      {
+        ...completed,
+        provider: "codex",
+        turnId: "codex",
+        model: null,
+        behavior: {
+          model: null,
+          responses: null,
+          toolCalls: 1,
+          toolResponses: null,
+          multiToolResponses: null,
+          stream: null,
+        },
+        tokens: {
+          input: 100,
+          output: 20,
+          reasoning: 10,
+          cacheRead: 0,
+          cacheWrite: null,
+        },
+      },
+      "desktop",
+    );
+    const codex = reporter
+      .privacy("desktop")
+      .pending.filter((b) => b.family === "behavior")
+      .flatMap((b) => b.rows)
+      .filter((r) => r.provider === "codex");
+    expect(
+      codex.some(
+        (r) =>
+          r.metric === "behavior.reasoningTokens" ||
+          r.metric === "behavior.streamTokens" ||
+          r.metric === "behavior.responses",
+      ),
+    ).toBe(false);
+    expect(codex).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metric: "behavior.toolCalls",
+          model: "unknown",
+          value: 1,
+        }),
+      ]),
+    );
+    await reporter.execution(
+      { ...event, turnId: "unproven", model: "claude-sonnet-4-6" },
+      "desktop",
+    );
+    await reporter.execution(
+      { ...completed, turnId: "unproven", behavior: null },
+      "desktop",
+    );
+    expect(
+      reporter
+        .privacy("desktop")
+        .pending.filter((b) => b.family === "behavior")
+        .flatMap((b) => b.rows),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metric: "behavior.terminalObserved",
+          provider: "claude",
+          model: "unknown",
+          value: 1,
+        }),
+      ]),
+    );
+    const permission = reporter.permission("desktop");
+    await reporter.choose("desktop", { enabled: false, disclosure: 2 });
+    await reporter.execution(
+      { ...event, turnId: "off" },
+      "desktop",
+      permission,
+    );
+    await reporter.execution(
+      { ...completed, turnId: "off" },
+      "desktop",
+      permission,
+    );
+    expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+  } finally {
+    await reporter.close();
+  }
+});

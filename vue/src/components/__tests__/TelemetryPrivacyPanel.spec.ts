@@ -4,23 +4,19 @@ import { setElectronTestClient } from "../../test/client";
 import TelemetryPrivacyPanel from "../TelemetryPrivacyPanel.vue";
 import TelemetryDisclosure from "../TelemetryDisclosure.vue";
 it("shows accurate disabled status, saves opt-out and exposes only the pending report preview", async () => {
-  const setTelemetryPrivacy = vi
-    .fn()
-    .mockResolvedValue({
-      choice: { enabled: false, disclosure: 1 },
-      active: false,
-      blocked: null,
-      pending: [],
-    });
+  const setTelemetryPrivacy = vi.fn().mockResolvedValue({
+    choice: { enabled: false, disclosure: 1 },
+    active: false,
+    blocked: null,
+    pending: [],
+  });
   setElectronTestClient({
-    getTelemetryPrivacy: vi
-      .fn()
-      .mockResolvedValue({
-        choice: { enabled: true, disclosure: 1 },
-        active: false,
-        blocked: "rollout",
-        pending: [],
-      }),
+    getTelemetryPrivacy: vi.fn().mockResolvedValue({
+      choice: { enabled: true, disclosure: 1 },
+      active: false,
+      blocked: "rollout",
+      pending: [],
+    }),
     setTelemetryPrivacy,
   });
   const wrapper = mount(TelemetryPrivacyPanel);
@@ -33,28 +29,24 @@ it("shows accurate disabled status, saves opt-out and exposes only the pending r
   await flushPromises();
   expect(setTelemetryPrivacy).toHaveBeenCalledExactlyOnceWith({
     enabled: false,
-    disclosure: 1,
+    disclosure: 2,
   });
   wrapper.unmount();
 });
 it("requires a first-run disclosure and allows disabling the default before continuing", async () => {
-  const setTelemetryPrivacy = vi
-    .fn()
-    .mockResolvedValue({
-      choice: { enabled: false, disclosure: 1 },
-      active: false,
-      blocked: "rollout",
-      pending: [],
-    });
+  const setTelemetryPrivacy = vi.fn().mockResolvedValue({
+    choice: { enabled: false, disclosure: 1 },
+    active: false,
+    blocked: "rollout",
+    pending: [],
+  });
   setElectronTestClient({
-    getTelemetryPrivacy: vi
-      .fn()
-      .mockResolvedValue({
-        choice: null,
-        active: false,
-        blocked: "disclosure",
-        pending: [],
-      }),
+    getTelemetryPrivacy: vi.fn().mockResolvedValue({
+      choice: null,
+      active: false,
+      blocked: "disclosure",
+      pending: [],
+    }),
     setTelemetryPrivacy,
   });
   const wrapper = mount(TelemetryDisclosure, { attachTo: document.body });
@@ -65,7 +57,37 @@ it("requires a first-run disclosure and allows disabling the default before cont
   await flushPromises();
   expect(setTelemetryPrivacy).toHaveBeenCalledWith({
     enabled: false,
-    disclosure: 1,
+    disclosure: 2,
   });
+  wrapper.unmount();
+});
+it("requires renewed disclosure for behavior measurements while preserving a previous opt-out", async () => {
+  const save = vi
+    .fn()
+    .mockResolvedValue({
+      choice: { enabled: false, disclosure: 2 },
+      active: false,
+      blocked: "rollout",
+      pending: [],
+    });
+  setElectronTestClient({
+    getTelemetryPrivacy: vi
+      .fn()
+      .mockResolvedValue({
+        choice: { enabled: false, disclosure: 1 },
+        active: false,
+        blocked: "rollout",
+        pending: [],
+      }),
+    setTelemetryPrivacy: save,
+  });
+  const wrapper = mount(TelemetryDisclosure, { attachTo: document.body });
+  await flushPromises();
+  expect(
+    (wrapper.get('input[type="checkbox"]').element as HTMLInputElement).checked,
+  ).toBe(false);
+  await wrapper.get("button").trigger("click");
+  await flushPromises();
+  expect(save).toHaveBeenCalledWith({ enabled: false, disclosure: 2 });
   wrapper.unmount();
 });

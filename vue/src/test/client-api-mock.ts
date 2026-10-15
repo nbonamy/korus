@@ -150,7 +150,7 @@ export function createClientApiMock(
   finishUsageFeature: vi.fn(async()=>undefined),
   getAccountUsage: vi.fn(async()=>null),
   getUsage: vi.fn().mockResolvedValue({recordedSince:0,retainedSince:0,rows:[]}),
-    getTelemetryPrivacy: vi.fn().mockResolvedValue({choice:{enabled:false,disclosure:1},active:false,blocked:'rollout',pending:[]}),
+    getTelemetryPrivacy: vi.fn().mockResolvedValue({choice:{enabled:false,disclosure:2},active:false,blocked:'rollout',pending:[]}),
     setTelemetryPrivacy: unscripted('setTelemetryPrivacy'),
     updateSettings: unscripted('updateSettings'),
     readEngineInstructions: unscripted('readEngineInstructions'),

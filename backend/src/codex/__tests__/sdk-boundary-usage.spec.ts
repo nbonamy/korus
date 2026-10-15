@@ -148,3 +148,61 @@ it("treats the SDK non-retrying error as terminal without counting retriable err
     await driver.close();
   }
 });
+
+it("counts the union of live semantic tool IDs, including completion-only tools, without grouping them into model responses", async () => {
+  const { driver, conversation } = codexSdkFixture();
+  const observations: ExecutionObservation[] = [];
+  driver.onUsage((o) => observations.push(o));
+  try {
+    await driver.loadConversation(sdkAgent());
+    const c = conversation("conversation-a");
+    const tool = (type: string, id: string) =>
+      c.emit({
+        ...metadata,
+        type,
+        payload: {
+          toolPart: {
+            id,
+            kind: "command",
+            title: "CANARY command",
+            status: "completed",
+          },
+        },
+      } as unknown as CodexConversationEvent);
+    tool("tool.completed", "historical");
+    c.emit({
+      ...metadata,
+      type: "turn.started",
+      payload: { startedAt: metadata.occurredAt },
+    } as CodexConversationEvent);
+    tool("tool.started", "a");
+    tool("tool.completed", "a");
+    tool("tool.completed", "b");
+    tool("tool.updated", "a");
+    c.emit({
+      ...metadata,
+      type: "turn.completed",
+      payload: {
+        status: "completed",
+        durationMs: 100,
+        error: null,
+        willRetry: false,
+        startedAt: metadata.occurredAt,
+        completedAt: metadata.occurredAt,
+      },
+    } as CodexConversationEvent);
+    tool("tool.completed", "late");
+    expect(observations).toHaveLength(2);
+    expect(observations[1]!.behavior).toStrictEqual({
+      model: null,
+      responses: null,
+      toolCalls: 2,
+      toolResponses: null,
+      multiToolResponses: null,
+      stream: null,
+    });
+    expect(JSON.stringify(observations)).not.toContain("CANARY");
+  } finally {
+    await driver.close();
+  }
+});

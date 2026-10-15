@@ -9,3 +9,8 @@ describe('telemetry wire privacy', () => {
     expect(publicModel(null)).toBe('unknown');
   });
 });
+it('bounds the behavior family and allows an explicitly measured zero without accepting zero observation counts or content',()=>{
+ const behavior={...report,family:'behavior',rows:[{day:'2026-10-11',provider:'claude',model:'claude-sonnet-4-6',metric:'behavior.toolCalls',value:0}]};
+ expect(isTelemetryReport(behavior)).toBe(true);
+ for(const invalid of [{...behavior,family:'runtime'},{...behavior,rows:[{...behavior.rows[0],metric:'behavior.toolsObserved'}]},{...behavior,rows:[{...behavior.rows[0],value:-1}]},{...behavior,rows:[{...behavior.rows[0],commands:'secret'}]}])expect(isTelemetryReport(invalid)).toBe(false);
+});

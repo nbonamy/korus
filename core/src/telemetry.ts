@@ -1,5 +1,31 @@
+/** Zero is allowed only for an explicitly observed behavior sum, never an unsupported measurement. */
+export const behaviorSums = [
+  "behavior.completed",
+  "behavior.failed",
+  "behavior.interrupted",
+  "behavior.durationMs",
+  "behavior.responses",
+  "behavior.toolCalls",
+  "behavior.toolResponses",
+  "behavior.multiToolResponses",
+  "behavior.streamTokens",
+  "behavior.reasoningTokens",
+  "behavior.reasoningOutput",
+] as const;
+export const behaviorMetrics = [
+  ...behaviorSums,
+  "behavior.terminalObserved",
+  "behavior.durationObserved",
+  "behavior.responsesObserved",
+  "behavior.toolsObserved",
+  "behavior.streamMs",
+  "behavior.streamResponses",
+  "behavior.reasoningObserved",
+] as const;
+export const telemetryDisclosureVersion = 2 as const;
 /** Reviewed finite wire schema. Identifiers and arbitrary properties never cross this seam. */
 export const telemetryMetrics = [
+  ...behaviorMetrics,
   "turn.started",
   "turn.completed",
   "turn.failed",
@@ -99,7 +125,7 @@ export type TelemetryRow = {
 export type TelemetryReport = {
   schema: 1;
   reportId: string;
-  family: "runtime" | "feature";
+  family: "runtime" | "feature" | "behavior";
   version: string;
   channel: "stable" | "preview";
   platform: "macos" | "windows" | "linux";
@@ -113,7 +139,7 @@ export const telemetryLimits = {
   queueBytes: 1048576,
   days: 7,
 } as const;
-export type TelemetryChoice = { enabled: boolean; disclosure: 1 };
+export type TelemetryChoice = { enabled: boolean; disclosure: 1 | 2 };
 export type TelemetryPrivacy = {
   choice: TelemetryChoice | null;
   active: boolean;
@@ -149,7 +175,7 @@ export function isTelemetryChoice(value: unknown): value is TelemetryChoice {
     object(value) &&
     keys(value, ["enabled", "disclosure"]) &&
     typeof value.enabled === "boolean" &&
-    value.disclosure === 1
+    [1, telemetryDisclosureVersion].includes(value.disclosure as number)
   );
 }
 export function isTelemetryReport(value: unknown): value is TelemetryReport {
@@ -173,7 +199,7 @@ export function isTelemetryReport(value: unknown): value is TelemetryReport {
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
       value.reportId,
     ) ||
-    !["runtime", "feature"].includes(String(value.family))
+    !["runtime", "feature", "behavior"].includes(String(value.family))
   )
     return false;
   if (
@@ -199,7 +225,9 @@ export function isTelemetryReport(value: unknown): value is TelemetryReport {
       !isUtcDay(row.day) ||
       !telemetryMetrics.includes(row.metric as TelemetryMetric) ||
       !Number.isSafeInteger(row.value) ||
-      (row.value as number) <= 0 ||
+      (row.value as number) < 0 ||
+      (row.value === 0 &&
+        !behaviorSums.includes(row.metric as (typeof behaviorSums)[number])) ||
       (row.value as number) > telemetryLimits.count
     )
       return false;
@@ -213,6 +241,8 @@ export function isTelemetryReport(value: unknown): value is TelemetryReport {
         return false;
     } else if (
       String(row.metric).startsWith("feature.") ||
+      (value.family === "behavior") !==
+        String(row.metric).startsWith("behavior.") ||
       !["codex", "claude", "antigravity"].includes(String(row.provider)) ||
       !publicModels.includes(row.model as PublicModel) ||
       row.feature !== undefined

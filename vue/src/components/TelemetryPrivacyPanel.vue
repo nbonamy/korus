@@ -36,6 +36,7 @@
   </SettingsPanelFrame>
 </template>
 <script setup lang="ts">
+import { telemetryDisclosureVersion } from "@workspace/core/telemetry";
 import { onMounted, ref } from "vue";
 import type { TelemetryPrivacy } from "@workspace/core/telemetry";
 import { appApi } from "../platform-api";
@@ -58,7 +59,7 @@ async function save(enabled: boolean): Promise<void> {
   try {
     privacy.value = await appApi!.setTelemetryPrivacy({
       enabled,
-      disclosure: 1,
+      disclosure: telemetryDisclosureVersion,
     });
   } catch {
     error.value = true;

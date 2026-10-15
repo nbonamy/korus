@@ -4,7 +4,7 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     telemetry: {privacy:'Privacy',usage:'Usage',reporting:'Share aggregate product usage',active:'Aggregate reporting is active.',inactive:'Uploads are disabled on this host.',
-      disclosure:`${product.name} uses coarse daily feature counts, provider and public-model categories, turn outcomes, and supported token totals to improve the product. Reporting is enabled by default after this disclosure when the reviewed rollout is active. You can turn it off in Settings > Privacy.`,
+      disclosure:`${product.name} uses coarse daily feature counts, provider and public-model categories, turn outcomes, supported token totals, and model behavior measurements such as response counts, tool counts and stream timing to improve the product. Reporting is enabled by default after this disclosure when the reviewed rollout is active. You can turn it off in Settings > Privacy.`,
       delivery:'Reports contain no prompts, responses, file paths, repository names, credentials, or persistent user/device identifiers. Delivery infrastructure sees network metadata such as your IP address transiently.',
       optOut:'Turning reporting off stops collection and purges unsent reports. Sent aggregates cannot be located or deleted individually without tracking you. Pending reports expire after 7 days; daily aggregates are retained for 90 days and monthly aggregates for 12 months. Local usage statistics continue to work.',
       continue:'Continue',pending:'Inspect pending reports',error:'Could not load or save usage settings. Try again.',local:'Local statistics stay on this host and work with product telemetry disabled.',

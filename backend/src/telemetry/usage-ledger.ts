@@ -1,6 +1,7 @@
 import { isUtcDay, utcDay } from "@workspace/core/telemetry";
 import {
   validConsumption,
+  validExecutionBehavior,
   type ExecutionObservation,
   type UsageRecord,
   type UsageFilter,
@@ -35,7 +36,8 @@ export class UsageLedger {
             typeof r.turnId === "string" &&
             Number.isFinite(r.startedAt) &&
             r.startedAt >= this.now() - retention &&
-            (!r.tokens || validConsumption(r.tokens)),
+            (!r.tokens || validConsumption(r.tokens)) &&
+            (!r.behavior || validExecutionBehavior(r.behavior)),
         )
         .slice(-10000);
     }
@@ -48,7 +50,8 @@ export class UsageLedger {
       !Number.isFinite(observation.at) ||
       observation.at < this.now() - retention ||
       observation.at > this.now() + 60000 ||
-      (observation.tokens && !validConsumption(observation.tokens))
+      (observation.tokens && !validConsumption(observation.tokens)) ||
+      (observation.behavior && !validExecutionBehavior(observation.behavior))
     )
       return false;
     this.records = this.records.filter(
@@ -77,6 +80,10 @@ export class UsageLedger {
       Object.assign(existing, {
         ...(observation.phase !== "usage"
           ? { phase: observation.phase, at: observation.at }
+          : {}),
+        model: observation.model,
+        ...(observation.behavior !== undefined
+          ? { behavior: observation.behavior }
           : {}),
         ...(observation.tokens !== undefined
           ? { tokens: observation.tokens }

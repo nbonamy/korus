@@ -54,6 +54,22 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(observations[0]?.model).toBe('claude-sonnet-4-6');
   });
 
+  it('carries one behavior sample across SDK blocks and suppressed steering results without inventing a second user turn',async()=>{
+    const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({type:'system',subtype:'init',session_id:'behavior-session',model:'claude-sonnet-4-6'});await sending;
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-a',model:'claude-sonnet-4-6',content:[{type:'text',text:'CANARY'}]}});
+    await driver.steerPrompt(snapshot.agents[0]!, 'steering');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(2));
+    sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-b',model:'claude-sonnet-4-6',content:[{type:'tool_use',id:'tool',name:'CANARY',input:{text:'CANARY'}}]}});
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-b',model:'claude-sonnet-4-6',content:[{type:'text',text:'CANARY'}]}});
+    sdk.emit({type:'user',uuid:sdk.inputs[1]!.uuid,session_id:'behavior-session',message:{content:'steering'}});
+    sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});
+    await vi.waitFor(()=>expect(observations).toHaveLength(2));
+    expect(observations[1]!.behavior).toStrictEqual({model:'claude-sonnet-4-6',responses:2,toolCalls:1,toolResponses:1,multiToolResponses:0,stream:null});
+    expect(JSON.stringify(observations)).not.toContain('CANARY');
+  });
+
   it('marks a Claude reviewer working for its turn and idle only after completion', async () => {
     const { sdk, driver, snapshot, events } = setup();
     const reviewer = snapshot.agents[0]!;

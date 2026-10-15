@@ -10,6 +10,7 @@ export type ExecutionObservation = {
   model: string | null;
   tokens?: Consumption | null;
   durationMs?: number;
+  behavior?: ExecutionBehavior | null;
 };
 /** Input includes cache reads. Claude also includes cache creation; Codex cache-write inclusion is unspecified. Reasoning is a subset of output. Never add cache categories to input. */
 export type Consumption = {
@@ -99,3 +100,77 @@ export type AccountUsage = {
   };
   dailyUsageBuckets: readonly { startDate: string; tokens: string }[] | null;
 };
+
+/** Numeric live metadata only. Counts describe observed main-loop responses/tools, not hidden provider work. */
+export type ExecutionBehavior = {
+  model: string | null;
+  responses: number | null;
+  toolCalls: number | null;
+  toolResponses: number | null;
+  multiToolResponses: number | null;
+  stream: {
+    outputTokens: number;
+    durationMs: number;
+    responses: number;
+  } | null;
+};
+export function validExecutionBehavior(
+  value: unknown,
+): value is ExecutionBehavior {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  const count = (n: unknown) =>
+    Number.isSafeInteger(n) && (n as number) >= 0 && (n as number) <= 1e9;
+  if (
+    Object.keys(v).some(
+      (k) =>
+        ![
+          "model",
+          "responses",
+          "toolCalls",
+          "toolResponses",
+          "multiToolResponses",
+          "stream",
+        ].includes(k),
+    ) ||
+    !(
+      v.model === null ||
+      (typeof v.model === "string" && v.model.length <= 200)
+    )
+  )
+    return false;
+  if (
+    ![v.responses, v.toolCalls, v.toolResponses, v.multiToolResponses].every(
+      (n) => n === null || count(n),
+    )
+  )
+    return false;
+  if (
+    v.toolResponses !== null &&
+    (v.responses === null ||
+      (v.toolResponses as number) > (v.responses as number))
+  )
+    return false;
+  if (
+    v.multiToolResponses !== null &&
+    (v.toolResponses === null ||
+      (v.multiToolResponses as number) > (v.toolResponses as number))
+  )
+    return false;
+  if (v.stream === null) return true;
+  if (!v.stream || typeof v.stream !== "object" || Array.isArray(v.stream))
+    return false;
+  const stream = v.stream as Record<string, unknown>;
+  return (
+    Object.keys(stream).every((k) =>
+      ["outputTokens", "durationMs", "responses"].includes(k),
+    ) &&
+    count(stream.outputTokens) &&
+    count(stream.durationMs) &&
+    (stream.durationMs as number) > 0 &&
+    count(stream.responses) &&
+    (stream.responses as number) > 0 &&
+    v.responses !== null &&
+    (stream.responses as number) <= (v.responses as number)
+  );
+}

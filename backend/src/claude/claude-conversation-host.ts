@@ -1,4 +1,4 @@
-import { validConsumption, type Consumption, type ExecutionObservation } from '@workspace/core/usage';
+import { validExecutionBehavior, validConsumption, type Consumption, type ExecutionObservation } from '@workspace/core/usage';
 import path from 'node:path';
 import { isAppMcpServerName, product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
@@ -73,6 +73,7 @@ type StreamedClaudeTool = {
 };
 
 type ActiveClaudeTurn = {
+  behavior?:import("@workspace/core/usage").ExecutionBehavior|null;
   observedAt?:number;
   consumption?:Consumption;
   agentId: string;
@@ -776,6 +777,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     if (message.type === 'result') {
+      activeTurn.behavior=validExecutionBehavior(message.executionBehavior)?message.executionBehavior:null;
+      if(activeTurn.behavior)activeTurn.model=activeTurn.behavior.model;
       if (validConsumption(message.executionConsumption)) activeTurn.consumption=message.executionConsumption;
       const errorMessage = claudeResultErrorMessage(message);
       if (errorMessage) {
@@ -1439,7 +1442,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
     if (!turn.observedAt || !turn.sessionId) return;
     const at=Date.now();
-    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{}),...(turn.behavior!==undefined?{behavior:turn.behavior}:{})}:{})};
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
   }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {

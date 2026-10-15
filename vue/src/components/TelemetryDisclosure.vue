@@ -25,6 +25,7 @@
   </FormDialog>
 </template>
 <script setup lang="ts">
+import { telemetryDisclosureVersion } from "@workspace/core/telemetry";
 import { onMounted, ref } from "vue";
 import FormDialog from "../shared/dialog/FormDialog.vue";
 import { appApi } from "../platform-api";
@@ -34,7 +35,9 @@ const error = ref(false);
 const busy = ref(false);
 onMounted(async () => {
   try {
-    visible.value = (await appApi!.getTelemetryPrivacy()).choice === null;
+    const privacy = await appApi!.getTelemetryPrivacy();
+    enabled.value = privacy.choice?.enabled ?? true;
+    visible.value = privacy.choice?.disclosure !== telemetryDisclosureVersion;
   } catch {
     /* An unavailable host cannot upload. */
   }
@@ -44,7 +47,7 @@ async function confirm(): Promise<void> {
   try {
     await appApi!.setTelemetryPrivacy({
       enabled: enabled.value,
-      disclosure: 1,
+      disclosure: telemetryDisclosureVersion,
     });
     visible.value = false;
   } catch {
