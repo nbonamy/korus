@@ -8,19 +8,14 @@ struct LockView: View {
     let showsUnlock: Bool
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(.background).ignoresSafeArea()
-            VStack(spacing: 18) {
-                Image(systemName: "lock.fill").font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
-                Text(model.productName).font(.title2.weight(.semibold))
-                if showsUnlock {
-                    Button { Task { await lock.unlock() } } label: {
-                        Label("Unlock", systemImage: "faceid").font(.body.weight(.semibold)).padding(.horizontal, 12).frame(height: 44)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .disabled(lock.isAuthenticating)
-                }
+        BrandedEntryView(productName: model.productName) {
+            Button { Task { await lock.unlock() } } label: {
+                Label("Unlock", systemImage: "faceid").font(.body.weight(.semibold)).padding(.horizontal, 12).frame(height: 44)
             }
+            .buttonStyle(.glassProminent)
+            .disabled(!showsUnlock || lock.isAuthenticating)
+            .opacity(showsUnlock ? 1 : 0)
+            .accessibilityHidden(!showsUnlock)
         }
         .accessibilityElement(children: .contain)
     }

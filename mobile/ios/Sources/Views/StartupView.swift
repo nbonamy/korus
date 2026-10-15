@@ -1,17 +1,35 @@
 import SwiftUI
 
+private let entryMark = Bundle.main.url(forResource: "icon", withExtension: "png")
+    .flatMap { UIImage(contentsOfFile: $0.path) }
+
 /// A quiet, branded arrival while the saved connection is restored.
 struct StartupView: View {
     let productName: String
     let connecting: Bool
-    private static let mark = Bundle.main.url(forResource: "icon", withExtension: "png")
-        .flatMap { UIImage(contentsOfFile: $0.path) }
+
+    var body: some View {
+        BrandedEntryView(productName: productName) {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(connecting ? "Connecting to your laptop…" : "Opening your workspace…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Keeps branding fixed while entry-screen actions change.
+struct BrandedEntryView<Footer: View>: View {
+    let productName: String
+    @ViewBuilder let footer: Footer
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
             VStack(spacing: 24) {
-                if let mark = Self.mark {
+                if let mark = entryMark {
                     Image(uiImage: mark)
                         .resizable()
                         .scaledToFit()
@@ -24,13 +42,8 @@ struct StartupView: View {
                     .font(.system(size: 34, weight: .semibold))
                     .tracking(-0.8)
             }
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text(connecting ? "Connecting to your laptop…" : "Opening your workspace…")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 44)
+            footer.frame(height: 44)
+                .padding(.top, 44)
             Spacer()
             Spacer().frame(height: 64)
         }

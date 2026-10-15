@@ -34,7 +34,7 @@ final class AppLock {
     private var leftAt: Date?
 
     init(authenticator: DeviceOwnerAuthenticating = SystemAuthenticator(), defaults: UserDefaults = .standard,
-         gracePeriod: TimeInterval = 30, now: @escaping () -> Date = Date.init) {
+         gracePeriod: TimeInterval = 300, now: @escaping () -> Date = Date.init) {
         self.authenticator = authenticator
         self.defaults = defaults
         self.gracePeriod = gracePeriod

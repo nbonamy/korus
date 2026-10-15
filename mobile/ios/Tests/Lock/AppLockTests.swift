@@ -24,7 +24,7 @@ final class AppLockTests: XCTestCase {
     private func make(available: Bool = true, verdict: Bool = true, enabled: Bool = true, store: UserDefaults? = nil) -> (AppLock, Authenticator, Clock) {
         let authenticator = Authenticator(); authenticator.isAvailable = available; authenticator.verdict = verdict
         let clock = Clock()
-        return (AppLock(authenticator: authenticator, defaults: store ?? defaults(enabled: enabled), gracePeriod: 30, now: { clock.date }), authenticator, clock)
+        return (AppLock(authenticator: authenticator, defaults: store ?? defaults(enabled: enabled), now: { clock.date }), authenticator, clock)
     }
     /// Lets the authenticator's pending answer through.
     private func answer(_ authenticator: Authenticator) async {
@@ -71,13 +71,13 @@ final class AppLockTests: XCTestCase {
         await answer(authenticator); await first.value
     }
 
-    func testAShortAbsenceKeepsTheAppOpenAndALongOneLocksIt() async {
+    func testReturningBeforeFiveMinutesStaysUnlockedAndFiveMinutesLocks() async {
         let (lock, authenticator, clock) = make()
         let opening = Task { await lock.unlock() }
         await answer(authenticator); await opening.value
-        lock.didLeave(); clock.advance(29); lock.didReturn()
+        lock.didLeave(); clock.advance(299); lock.didReturn()
         XCTAssertFalse(lock.isLocked)
-        lock.didLeave(); clock.advance(30); lock.didReturn()
+        lock.didLeave(); clock.advance(300); lock.didReturn()
         XCTAssertTrue(lock.isLocked)
     }
 
