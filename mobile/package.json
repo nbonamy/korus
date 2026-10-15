@@ -1,6 +1,6 @@
 {
   "name": "@workspace/mobile",
-  "version": "0.35.0",
+  "version": "0.35.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,8 +17,8 @@
   "dependencies": {
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
-    "@codex-app-sdk/core": "0.16.1",
-    "@codex-app-sdk/vue": "0.16.1",
+    "@codex-app-sdk/core": "0.16.2",
+    "@codex-app-sdk/vue": "0.16.2",
     "@libp2p/circuit-relay-v2": "4.2.14",
     "@libp2p/crypto": "5.1.24",
     "@libp2p/identify": "4.1.15",
@@ -27,8 +27,8 @@
     "@libp2p/utils": "7.4.2",
     "@libp2p/websockets": "10.1.22",
     "@multiformats/multiaddr": "13.0.3",
-    "@workspace/core": "0.35.0",
-    "@workspace/vue": "0.35.0",
+    "@workspace/core": "0.35.1",
+    "@workspace/vue": "0.35.1",
     "element-plus": "^2.13.6",
     "libp2p": "3.3.12",
     "multiformats": "14.0.5",

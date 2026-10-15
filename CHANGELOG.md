@@ -4,6 +4,28 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.35.1] - 2026-10-15
+
+### New features
+
+- Check remaining Codex and Claude usage and reset times from mobile Settings.
+- Create projects from your phone using a new repository, GitHub, or a repository
+  URL. Browse GitHub branches or create a new branch in its own worktree.
+
+### Improvements and fixes
+
+- Mobile reconnects silently after brief interruptions and app switching, keeping
+  your conversation visible. A Reconnect action appears after five seconds if
+  recovery takes longer.
+- Relay connections recover more reliably during active use.
+- Push notifications open the correct conversation, including while reconnecting.
+- Send image-only prompts from your phone, open image links, and view images
+  returned by tools. Image previews stay stable as conversations update and reload.
+- Project creation and worktree cleanup use consistent mobile sheets with clear
+  progress, searchable repository and branch lists, and simpler navigation.
+- Worktree cleanup only offers to delete the matching remote branch, protecting
+  main and other inherited upstream branches on desktop and mobile.
+
 ## [0.35.0] - 2026-10-14
 
 ### New features
