@@ -111,9 +111,11 @@ describe("isolated real telemetry HTTP and storage", () => {
         (await fetch(service.url + query + "&model=unknown", { headers: auth }))
           .status,
       ).toBe(400);
-      const page = await fetch(service.url + "/", { headers: auth }).then((r) =>
-        r.text(),
+      const pageResponse = await fetch(service.url + "/", { headers: auth });
+      expect(pageResponse.headers.get("cache-control")).toBe(
+        "no-store, no-transform",
       );
+      const page = await pageResponse.text();
       expect(page).toContain("Released metric cells");
       expect(page).not.toContain("CANARY");
       const audit = await fetch(service.url + "/v1/telemetry/status", {

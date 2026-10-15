@@ -12,28 +12,31 @@ import path from 'node:path';
 const [root, output] = process.argv.slice(2);
 const product = JSON.parse(readFileSync(path.join(root, 'core/src/product.json'), 'utf8'));
 const host = 'api.' + new URL(product.websiteUrl).hostname;
+const consoleHost = 'console.' + new URL(product.websiteUrl).hostname;
 const service = product.slug + '-api';
-if (!/^[a-z0-9.-]+$/.test(host) || !/^[a-z0-9-]+$/.test(service) || !/^[a-zA-Z0-9 -]+$/.test(product.name)) throw Error('Invalid API deployment identity');
-writeFileSync(path.join(output, 'identity'), [service, host, ''].join(String.fromCharCode(10)));
-for (const file of ['api.service', 'api.env', 'nginx.conf', 'nginx-bootstrap.conf', 'activate.sh']) {
+if (!/^[a-z0-9.-]+$/.test(host) || !/^[a-z0-9.-]+$/.test(consoleHost) || !/^[a-z0-9-]+$/.test(service) || !/^[a-zA-Z0-9 -]+$/.test(product.name)) throw Error('Invalid API deployment identity');
+writeFileSync(path.join(output, 'identity'), [service, host, consoleHost, ''].join(String.fromCharCode(10)));
+for (const file of ['api.service', 'api.env', 'nginx.conf', 'nginx-bootstrap.conf', 'console-nginx.conf', 'console-bootstrap.conf', 'activate.sh']) {
   const source = readFileSync(path.join(root, 'server/deploy', file), 'utf8');
-  writeFileSync(path.join(output, file), source.replaceAll('__API_HOST__', host).replaceAll('__API_SERVICE__', service).replaceAll('__API_ZONE__', service.replaceAll('-', '_')).replaceAll('__PRODUCT_NAME__', product.name));
+  writeFileSync(path.join(output, file), source.replaceAll('__API_HOST__', host).replaceAll('__CONSOLE_HOST__', consoleHost).replaceAll('__API_SERVICE__', service).replaceAll('__API_ZONE__', service.replaceAll('-', '_')).replaceAll('__PRODUCT_NAME__', product.name));
 }
 NODE
 DEPLOY_SERVICE="$(sed -n '1p' "$RENDER_DIR/identity")"
 DEPLOY_DOMAIN="$(sed -n '2p' "$RENDER_DIR/identity")"
+CONSOLE_DOMAIN="$(sed -n '3p' "$RENDER_DIR/identity")"
 STAGING_DIR="$(ssh -o BatchMode=yes "$DEPLOY_HOST" 'mktemp -d /tmp/app-api-deploy.XXXXXXXX')"
 if [[ ! "$STAGING_DIR" =~ ^/tmp/app-api-deploy\.[A-Za-z0-9]+$ ]]; then
   echo 'Invalid remote staging directory' >&2
   exit 1
 fi
 trap 'rm -rf -- "$RENDER_DIR"; ssh -o BatchMode=yes "$DEPLOY_HOST" "rm -rf -- '\''$STAGING_DIR'\''"' EXIT
-scp "$ROOT_DIR/server/dist/api.mjs" "$RENDER_DIR/api.service" "$RENDER_DIR/api.env" "$RENDER_DIR/nginx.conf" "$RENDER_DIR/nginx-bootstrap.conf" "$RENDER_DIR/activate.sh" "$DEPLOY_HOST:$STAGING_DIR/"
-ssh -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$STAGING_DIR" "$DEPLOY_SERVICE" "$DEPLOY_DOMAIN" <<'REMOTE'
+scp "$ROOT_DIR/server/dist/api.mjs" "$RENDER_DIR/api.service" "$RENDER_DIR/api.env" "$RENDER_DIR/nginx.conf" "$RENDER_DIR/nginx-bootstrap.conf" "$RENDER_DIR/console-nginx.conf" "$RENDER_DIR/console-bootstrap.conf" "$RENDER_DIR/activate.sh" "$DEPLOY_HOST:$STAGING_DIR/"
+ssh -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$STAGING_DIR" "$DEPLOY_SERVICE" "$DEPLOY_DOMAIN" "$CONSOLE_DOMAIN" <<'REMOTE'
 set -euo pipefail
 stage="$1"
 api_service="$2"
 api_host="$3"
+console_host="$4"
 sudo -n systemctl is-active nginx >/dev/null
 sudo -n ss -lnt | grep -q '127.0.0.1:47810' && ! sudo -n systemctl is-active --quiet $api_service && { echo 'API port is already occupied' >&2; exit 1; }
 if ! id $api_service >/dev/null 2>&1; then sudo -n useradd --system --no-create-home --shell /usr/sbin/nologin $api_service; fi
@@ -51,10 +54,15 @@ sudo -n ln -sfn "releases/$release" /opt/$api_service/current
 sudo -n install -m 0640 -o root -g $api_service "$stage/api.env" /etc/$api_service/api.env
 sudo -n install -m 0644 "$stage/api.service" /etc/systemd/system/$api_service.service
 sudo -n install -m 0644 "$stage/nginx.conf" /opt/$api_service/nginx.conf
+sudo -n install -m 0644 "$stage/console-nginx.conf" /opt/$api_service/console-nginx.conf
 sudo -n install -m 0755 "$stage/activate.sh" /opt/$api_service/activate.sh
 if ! sudo -n test -f /etc/letsencrypt/live/$api_host/fullchain.pem; then
   sudo -n install -m 0644 "$stage/nginx-bootstrap.conf" /etc/nginx/sites-available/$api_host.bootstrap.conf
   sudo -n ln -sfn /etc/nginx/sites-available/$api_host.bootstrap.conf /etc/nginx/sites-enabled/$api_host.conf
+fi
+if ! sudo -n test -f /etc/letsencrypt/live/$console_host/fullchain.pem; then
+  sudo -n install -m 0644 "$stage/console-bootstrap.conf" /etc/nginx/sites-available/$console_host.bootstrap.conf
+  sudo -n ln -sfn /etc/nginx/sites-available/$console_host.bootstrap.conf /etc/nginx/sites-enabled/$console_host.conf
 fi
 sudo -n systemd-analyze verify /etc/systemd/system/$api_service.service
 sudo -n systemctl daemon-reload

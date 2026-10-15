@@ -78,7 +78,7 @@ export async function startApiServer(
     );
   };
   const handle = async (request: IncomingMessage, response: ServerResponse) => {
-    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Cache-Control", "no-store, no-transform");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader(
       "Content-Security-Policy",

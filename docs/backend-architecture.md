@@ -337,6 +337,8 @@ through the `API_*` environment. An owned TLS-terminating reverse proxy may use
 headers and disables request/error logs. Synthetic tests use `API_SYNTHETIC=1`.
 Neither option permits public plaintext listeners. The operator
 page uses TLS-protected HTTP authentication and read APIs require the same secret.
+Responses forbid caching and intermediary content transformations; browser policy
+allows only same-origin scripts and connections.
 The application emits no request, payload, IP, User-Agent or referrer logs. Bound
 in-memory abuse counters expire after one minute. Delivery infrastructure still
 sees IPs transiently; proxy/CDN/APM logs must be disabled or explicitly minimized
@@ -356,8 +358,11 @@ is configured by server deployment, and no historical local usage is exported.
 
 `server/deploy/prepare.sh` installs the API on Joshua with a private service user,
 operator-token file, state directory and hardened systemd unit. The service binds
-loopback; nginx owns public TLS. After DNS resolves, `/opt/korus-api/activate.sh`
-obtains the certificate and activates the HTTPS virtual host. The API is separate
+loopback; nginx owns public TLS. The `api` subdomain exposes API routes; the private
+frontend lives on the `console` subdomain. The console proxies only its page, assets
+and authenticated read endpoints, keeping browser credentials on the same origin.
+After both hostnames resolve, `/opt/korus-api/activate.sh` obtains their certificates
+and activates the HTTPS virtual hosts. The API is separate
 from the companion relay, including keys, database and logs. `/v1/telemetry/reports`
 accepts bounded anonymous batches; dashboard and read APIs require the operator
 secret. OpenTelemetry interoperability is independent of the domain reporter API;
