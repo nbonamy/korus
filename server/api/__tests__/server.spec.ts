@@ -295,6 +295,72 @@ it("suppresses complementary marginals so filters and cross-dimension subtractio
   }
 });
 
+it("keeps development out of production totals and suppression, survives restart, and expires it after seven UTC days", async () => {
+  const { AggregateStore } = await import("../telemetry/aggregate-store");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-development-"));
+  let now = Date.now();
+  const day = utcDay(now - 86400000);
+  const database = path.join(dir, "db");
+  let store = new AggregateStore(database, () => now);
+  try {
+    for (let i = 0; i < 10; i++) store.ingest(report());
+    const development: TelemetryReport = {
+      ...report(),
+      channel: "development",
+      rows: [
+        {
+          day,
+          metric: "turn.started",
+          provider: "claude",
+          model: "custom",
+          value: 1,
+        },
+      ],
+    };
+    expect(store.ingest(development)).toBe("accepted");
+    store.close();
+    store = new AggregateStore(database, () => now);
+    expect(store.ingest(development)).toBe("duplicate");
+    const query = { from: day, to: day, dimension: "provider" as const };
+    expect(store.query(query).rows).toStrictEqual([
+      {
+        day,
+        metric: "turn.started",
+        dimension: "provider",
+        value: "codex",
+        total: 1000,
+        reports: 10,
+      },
+    ]);
+    expect(
+      store.query({ ...query, environment: "development" }).rows,
+    ).toStrictEqual([
+      {
+        day,
+        metric: "turn.started",
+        dimension: "provider",
+        value: "claude",
+        total: 1,
+        reports: 1,
+      },
+    ]);
+    now += 5 * 86400000;
+    store.cleanup();
+    expect(
+      store.query({ ...query, environment: "development" }).rows,
+    ).toHaveLength(1);
+    now += 86400000;
+    store.cleanup();
+    expect(
+      store.query({ ...query, environment: "development" }).rows,
+    ).toStrictEqual([]);
+    expect(store.query(query).rows).toHaveLength(1);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it("serves model comparisons from paired released samples, including genuine zero outcomes, through the authenticated API", async () => {
   const service = await startApiServer({
     database: ":memory:",

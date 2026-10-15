@@ -39,7 +39,7 @@ export type ReporterConfig = {
   endpoint: string | null;
   synthetic?: boolean;
   version: string;
-  channel: "stable" | "preview";
+  channel: TelemetryReport["channel"];
   platform: "macos" | "windows" | "linux";
   client: "desktop" | "web" | "mobile" | "daemon";
 };
@@ -51,7 +51,9 @@ export class TelemetryReporter {
   private controller: AbortController | null = null;
   private closed = false;
   private flight: Promise<void> | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private timerAt = 0;
+  private started = false;
   private eligible = new Map<string, string>();
   private operations = new Map<
     string,
@@ -119,7 +121,18 @@ export class TelemetryReporter {
             Number.isSafeInteger(b.attempts) &&
             b.attempts >= 0,
         )
-        .map((b) => ({ ...b, sealed: true }));
+        .map((b) => ({
+          ...b,
+          next:
+            b.attempts === 0
+              ? Math.min(
+                  b.next,
+                  this.now() +
+                    (b.report.channel === "development" ? 0 : 300000),
+                )
+              : b.next,
+          sealed: true,
+        }));
     if (Array.isArray(data?.seen))
       this.state.seen = data.seen
         .filter(
@@ -139,12 +152,26 @@ export class TelemetryReporter {
     }
   }
   start(): void {
-    if (!this.timer && this.baseAllowed()) {
-      this.timer = setInterval(() => {
-        void this.flush().catch(() => undefined);
-      }, 60000);
-      this.timer.unref();
+    this.started = true;
+    this.schedule();
+  }
+  private schedule(): void {
+    if (!this.started || !this.baseAllowed() || !this.state.queue.length) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      return;
     }
+    const next = Math.min(...this.state.queue.map((batch) => batch.next));
+    const at = Math.max(this.now() + 1000, next);
+    // New observations may move delivery earlier, never postpone an existing batch.
+    if (this.timer && this.timerAt <= at) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.timerAt = at;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.flush().catch(() => undefined);
+    }, at - this.now());
+    this.timer.unref();
   }
   privacy(source: string): TelemetryPrivacy {
     const choice = this.state.choices[source] ?? null;
@@ -185,6 +212,7 @@ export class TelemetryReporter {
     this.state.queue = [];
     this.eligible.clear();
     this.operations.clear();
+    this.schedule();
     try {
       await this.save();
     } catch {
@@ -480,6 +508,10 @@ export class TelemetryReporter {
     let batch = this.state.queue.find(
       (b) =>
         !b.sealed &&
+        b.report.channel === report.channel &&
+        b.report.version === report.version &&
+        b.report.platform === report.platform &&
+        b.report.client === report.client &&
         b.report.family === family &&
         b.report.rows.length + rows.length <= telemetryLimits.rows &&
         rows.every(
@@ -499,7 +531,7 @@ export class TelemetryReporter {
       batch = {
         report: { ...report, rows: [] },
         created: this.now(),
-        next: this.now() + 3600000 + Math.floor(this.random() * 3600000),
+        next: this.now() + (this.config.channel === "development" ? 0 : 300000),
         attempts: 0,
         sealed: false,
       };
@@ -530,6 +562,7 @@ export class TelemetryReporter {
       this.eligible.clear();
       this.operations.clear();
     }
+    this.schedule();
   }
   private baseAllowed(): boolean {
     return (
@@ -575,6 +608,7 @@ export class TelemetryReporter {
     if (this.flight) return this.flight;
     this.flight = this.send().finally(() => {
       this.flight = null;
+      this.schedule();
     });
     return this.flight;
   }
@@ -629,7 +663,7 @@ export class TelemetryReporter {
     await this.drain();
     this.closed = true;
     this.generation++;
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
     this.controller?.abort();
     await this.flight?.catch(() => undefined);
     await this.store.close().catch(() => undefined);

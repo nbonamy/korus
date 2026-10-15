@@ -25,6 +25,7 @@ export type OperatorQuery = {
   to: string;
   dimension: OperatorDimension;
   value?: string;
+  environment?: "production" | "development";
 };
 export type OperatorRow = {
   day: string;
@@ -94,9 +95,11 @@ export class AggregateStore {
         };
         for (const [dimension, value] of Object.entries(dimensions))
           if (value)
-            for (const period of ["daily", "monthly"]) {
+            for (const period of report.channel === "development"
+              ? ["development-daily"]
+              : ["daily", "monthly"]) {
               const day =
-                period === "daily" ? row.day : row.day.slice(0, 7) + "-01";
+                period !== "monthly" ? row.day : row.day.slice(0, 7) + "-01";
               const key = JSON.stringify([
                 period,
                 day,
@@ -155,6 +158,7 @@ export class AggregateStore {
     summary: OperatorSummary[];
     behavior: ModelBehavior[];
     minimumReports: number;
+    environment: "production" | "development";
     partial: boolean;
     updatedAt: string;
     coverage: string;
@@ -163,43 +167,55 @@ export class AggregateStore {
       !operatorDimensions.includes(query.dimension) ||
       !isUtcDay(query.from) ||
       !isUtcDay(query.to) ||
+      (query.environment !== undefined &&
+        !["production", "development"].includes(query.environment)) ||
       query.from > query.to ||
       Date.parse(query.to) - Date.parse(query.from) > 90 * 86400000 ||
       (query.value &&
         (query.value.length > 64 || !/^[-a-zA-Z0-9.]+$/.test(query.value)))
     )
       throw new Error("Invalid query.");
-    // Secondary suppression across every marginal prevents subtracting released totals to recover a rare category.
-    // Release completed UTC day cells only. Filters sum those fixed cells and cannot unlock suppressed data.
+    const development = query.environment === "development";
+    const period = development ? "development-daily" : "daily";
+    const minimumReports = development ? 1 : this.minimumReports;
+    // Development has separate buckets and short retention. Production release rules
+    // apply across every production marginal, independently of development volume.
     const rows = this.db
       .prepare(
-        "SELECT b.day,b.metric,b.dimension,b.value,b.total,b.reports FROM buckets b WHERE b.period='daily' AND b.day>=? AND b.day<=? AND b.day<? AND b.dimension=? AND (? IS NULL OR b.value=?) AND b.reports>=? AND NOT EXISTS (SELECT 1 FROM buckets rare WHERE rare.period='daily' AND rare.day=b.day AND rare.metric=b.metric AND rare.reports<?) ORDER BY b.day,b.metric,b.value LIMIT 2000",
+        "SELECT b.day,b.metric,b.dimension,b.value,b.total,b.reports FROM buckets b WHERE b.period=? AND b.day>=? AND b.day<=? AND b.day<? AND b.dimension=? AND (? IS NULL OR b.value=?) AND b.reports>=? AND (?=1 OR NOT EXISTS (SELECT 1 FROM buckets rare WHERE rare.period=b.period AND rare.day=b.day AND rare.metric=b.metric AND rare.reports<?)) ORDER BY b.day,b.metric,b.value LIMIT 2000",
       )
       .all(
+        period,
         query.from,
         query.to,
-        utcDay(this.now()),
+        utcDay(this.now() + (development ? 86400000 : 0)),
         query.dimension,
         query.value ?? null,
         query.value ?? null,
-        this.minimumReports,
-        this.minimumReports,
+        minimumReports,
+        development ? 1 : 0,
+        minimumReports,
       ) as unknown as OperatorRow[];
+    const bin = development ? 1 : 10;
     const released = rows.map((r) => ({
       ...r,
-      total: Math.floor(r.total / 10) * 10,
-      reports: Math.floor(r.reports / 10) * 10,
+      total: Math.floor(r.total / bin) * bin,
+      reports: Math.floor(r.reports / bin) * bin,
     }));
     return {
       rows: released,
       summary: summarizeOperatorRows(released, query.dimension, !!query.value),
       behavior:
         query.dimension === "model" ? summarizeModelBehavior(released) : [],
-      minimumReports: this.minimumReports,
+      minimumReports,
+      environment: development ? "development" : "production",
       partial: true,
       updatedAt: utcDay(this.now()),
       coverage:
-        "Report volume is not people. Missing, current-day and low-volume cells are withheld. Codex consumption is local-only; token observations cover supported Claude main-loop executions. Input includes cache reads and Claude cache creation; output includes reasoning. Filters use independent marginals and cannot be combined. Shares and success rates are approximate and describe released cells only, not the full population.",
+        (development
+          ? "Development only: exact observed counts, including today, retained for seven days. Excluded from production statistics. "
+          : "Report volume is not people. Missing, current-day and low-volume cells are withheld. ") +
+        "Codex consumption is local-only; token observations cover supported Claude main-loop executions. Input includes cache reads and Claude cache creation; output includes reasoning. Filters use independent marginals and cannot be combined. Shares and success rates describe observed cells only, not the full population.",
     };
   }
   cleanup(): void {
@@ -208,6 +224,11 @@ export class AggregateStore {
       this.db
         .prepare("DELETE FROM dedupe WHERE received<?")
         .run(this.now() - 7 * 86400000);
+      this.db
+        .prepare(
+          "DELETE FROM buckets WHERE period='development-daily' AND day<?",
+        )
+        .run(utcDay(this.now() - 6 * 86400000));
       this.db
         .prepare("DELETE FROM buckets WHERE period='daily' AND day<?")
         .run(utcDay(this.now() - 90 * 86400000));

@@ -22,6 +22,7 @@ it("requires an explicitly configured server URL on every daemon, independent of
   vi.stubEnv("CI", "");
   vi.stubEnv("NODE_ENV", "development");
   expect(runtimeTelemetryConfig("0.33.0").environment).toBe(true);
+  expect(runtimeTelemetryConfig("0.33.0").channel).toBe("development");
   vi.stubEnv("NODE_ENV", "test");
   expect(runtimeTelemetryConfig("0.33.0").environment).toBe(false);
 });

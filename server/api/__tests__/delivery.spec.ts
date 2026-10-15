@@ -12,7 +12,6 @@ import { UsageLedger } from "../../../backend/src/telemetry/usage-ledger";
 import { UsageService } from "../../../backend/src/telemetry/usage-service";
 import { runtimeTelemetryConfig } from "../../../backend/src/telemetry/config";
 const token = "synthetic-operator-token-for-isolated-tests-only";
-const yesterday = Date.now() - 86400000;
 it("configured development reporting → disclosed source → numeric local history → safe report; opt-out and remote ownership remain closed", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-e2e-"));
   const service = await startApiServer({
@@ -22,7 +21,7 @@ it("configured development reporting → disclosed source → numeric local hist
     port: 0,
     synthetic: true,
   });
-  let now = yesterday;
+  const now = Date.now();
   const bodies: string[] = [];
   vi.stubEnv("NODE_ENV", "development");
   vi.stubEnv("CI", "");
@@ -82,7 +81,6 @@ it("configured development reporting → disclosed source → numeric local hist
     });
     await usage.drain();
     expect(ledger.query().rows[0]?.measuredTurns).toBe(1);
-    now += 4000000;
     await reporter.flush();
     expect(bodies).toHaveLength(1);
     expect(bodies.join()).not.toContain("CANARY");
@@ -90,6 +88,41 @@ it("configured development reporting → disclosed source → numeric local hist
       headers: { authorization: "Bearer " + token },
     }).then((response) => response.json());
     expect(audit).toMatchObject({ acceptedReports: 1, rejectedReports: 0 });
+    const day = new Date(now).toISOString().slice(0, 10);
+    const metrics = `${service.url}/v1/telemetry/metrics?from=${day}&to=${day}&dimension=provider`;
+    const read = async (suffix: string, authenticated = true) => {
+      const response = await fetch(metrics + suffix, {
+        headers: authenticated ? { authorization: "Bearer " + token } : {},
+      });
+      return { status: response.status, data: await response.json() };
+    };
+    expect((await read("&environment=development", false)).status).toBe(401);
+    const development = await read("&environment=development");
+    expect(development.status).toBe(200);
+    expect(development.data).toMatchObject({
+      environment: "development",
+      minimumReports: 1,
+      rows: expect.arrayContaining([
+        {
+          day,
+          metric: "turn.started",
+          dimension: "provider",
+          value: "claude",
+          total: 1,
+          reports: 1,
+        },
+        {
+          day,
+          metric: "turn.completed",
+          dimension: "provider",
+          value: "claude",
+          total: 1,
+          reports: 1,
+        },
+      ]),
+    });
+    expect((await read("")).data).toMatchObject({ rows: [] });
+    expect((await read("&environment=arbitrary")).status).toBe(400);
     await reporter.choose("desktop", { enabled: false, disclosure: 1 });
     usage.source(event.agentId, "desktop");
     usage.observe({ ...event, turnId: "two" });

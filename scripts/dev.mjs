@@ -38,6 +38,7 @@ const electronDev = start('npm', ['run', 'start:electron'], {
   cwd: rootDir,
   name: 'electron',
   env: {
+    NODE_ENV: 'development',
     APP_BACKEND_MODE: 'bundled',
     APP_BACKEND_COMMAND: process.execPath,
     APP_BACKEND_ARGS: `${backendBundle},--stdio`,

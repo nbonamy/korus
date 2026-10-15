@@ -35,6 +35,89 @@ const event: ExecutionObservation = {
   at: Date.parse("2026-10-11T23:59:00Z"),
   model: "CANARY_private_model",
 };
+it("automatically sends development observations within one second and holds production batches for five minutes", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const reporters: TelemetryReporter[] = [];
+  try {
+    for (const channel of ["development", "stable"] as const) {
+      const deliver = vi.fn(async () => new Response(null, { status: 200 }));
+      let now = event.at;
+      const reporter = new TelemetryReporter(
+        await file("outbox"),
+        { ...config, channel },
+        () => now,
+        deliver,
+      );
+      reporters.push(reporter);
+      await reporter.load();
+      await reporter.choose("desktop", { enabled: true, disclosure: 1 });
+      reporter.start();
+      await reporter.execution(event, "desktop");
+      await reporter.execution({ ...event, phase: "completed" }, "desktop");
+      await vi.advanceTimersByTimeAsync(1000);
+      await reporter.flush();
+      expect(deliver).toHaveBeenCalledTimes(channel === "development" ? 1 : 0);
+      if (channel === "development") {
+        expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+        await reporter.choose("desktop", { enabled: false, disclosure: 2 });
+        await reporter.feature("desktop", "off", "browser.open", "succeeded");
+        await vi.advanceTimersByTimeAsync(1000);
+        await reporter.flush();
+        expect(deliver).toHaveBeenCalledOnce();
+      } else {
+        now += 299999;
+        await reporter.flush();
+        expect(deliver).not.toHaveBeenCalled();
+        now++;
+        await vi.advanceTimersByTimeAsync(299000);
+        await reporter.flush();
+        expect(deliver).toHaveBeenCalledOnce();
+      }
+      await reporter.close();
+    }
+  } finally {
+    await Promise.all(reporters.map((reporter) => reporter.close()));
+    vi.useRealTimers();
+  }
+});
+it("applies the new cadence to persisted unsent batches while preserving retry backoff and immutable report IDs", async () => {
+  let now = event.at;
+  const f = await file("legacy-outbox");
+  const original = new TelemetryReporter(f, config, () => now);
+  await original.load();
+  await original.choose("desktop", { enabled: true, disclosure: 1 });
+  await original.execution(event, "desktop");
+  const report = original.privacy("desktop").pending[0]!;
+  await original.close();
+  for (const attempts of [0, 1]) {
+    await writeFile(
+      f,
+      JSON.stringify({
+        choices: { desktop: { enabled: true, disclosure: 1 } },
+        queue: [
+          { report, created: now, next: now + 7200000, attempts, sealed: true },
+        ],
+        seen: [],
+      }),
+    );
+    const deliver = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 200 }),
+    );
+    const restored = new TelemetryReporter(f, config, () => now, deliver);
+    try {
+      await restored.load();
+      now += 300000;
+      await restored.flush();
+      expect(deliver).toHaveBeenCalledTimes(attempts === 0 ? 1 : 0);
+      if (attempts === 0)
+        expect(
+          JSON.parse(String(deliver.mock.calls[0]?.[1]?.body)),
+        ).toStrictEqual(report);
+    } finally {
+      await restored.close();
+    }
+  }
+});
 it("requires disclosure, preserves choices, fails closed and purges immutable retry batches on opt out", async () => {
   let now = event.at;
   const sends: string[] = [];

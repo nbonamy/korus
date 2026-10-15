@@ -16,7 +16,10 @@ export const operatorScript = String.raw`
     turns: [['turn.started','Started'], ['turn.completed','Completed'], ['turn.failed','Failed'], ['turn.interrupted','Interrupted']],
     features: [['feature.attempted','Attempted'], ['feature.succeeded','Succeeded'], ['feature.failed','Failed'], ['feature.cancelled','Cancelled'], ['feature.unavailable','Unavailable capability']]
   };
-  let current = null, selection = null, generation = 0, controller, view = 'usage';
+  let current = null, selection = null, generation = 0, controller, view = 'usage', period = 7, authenticated = true;
+  const isDevelopment = () => form.elements.environment.value === 'development';
+  form.elements.environment.value = new URLSearchParams(location.search).get('environment') === 'development' ? 'development' : 'production';
+  if (isDevelopment()) measure.value = 'turns';
   const behaviorMeasures = [
     ['streamRate','Observed stream throughput','tok/s','responses'],
     ['responsesPerTurn','Model responses per turn','responses','turns'],
@@ -208,22 +211,26 @@ export const operatorScript = String.raw`
     renderCards(rows);renderTrend(rows);renderRanking(rows);renderOutcomes(rows);renderBehavior();
   }
   function setPeriod(length) {
-    form.elements.from.value=day(Date.now()-length*86400000);form.elements.to.value=day(Date.now()-86400000);
+    period=length;
+    const end=Date.now()-(isDevelopment()?0:86400000);
+    form.elements.from.value=day(end-(length-1)*86400000);form.elements.to.value=day(end);
     for(const button of document.querySelectorAll('[data-days]'))button.setAttribute('aria-pressed',String(Number(button.dataset.days)===length));
   }
-  async function load() {
+  async function load(background = false) {
     const ownGeneration=++generation;controller?.abort();controller=new AbortController();
-    current=null;selection={from:form.elements.from.value,to:form.elements.to.value};render();renderTables({rows:[],summary:[]});
-    status.classList.remove('error');status.textContent='Loading released aggregates…';trend.setAttribute('aria-busy','true');
+    if(!background){authenticated=true;current=null;selection={from:form.elements.from.value,to:form.elements.to.value};render();renderTables({rows:[],summary:[]});status.textContent='Loading aggregates…';}
+    status.classList.remove('error');trend.setAttribute('aria-busy','true');
     const params=new URLSearchParams(new FormData(form));if(view==='behavior')params.set('dimension','model');if(!params.get('value'))params.delete('value');
     try{
       const response=await fetch('/v1/telemetry/metrics?'+params,{credentials:'same-origin',signal:controller.signal});
-      if(!response.ok)throw Error(response.status===401?'Operator authentication required.':'Could not load aggregates.');
+      if(!response.ok){if(response.status===401)authenticated=false;throw Error(response.status===401?'Operator authentication required.':'Could not load aggregates.');}
       const data=await response.json();if(ownGeneration!==generation)return;
       current=data;document.querySelector('#coverage').textContent=data.coverage;
-      status.textContent=(data.rows.length?'Partial aggregate data.':'No released data for these filters.')+' Updated '+data.updatedAt+' · UTC days · bins of ten';
+      status.textContent=isDevelopment()
+        ? 'Development · '+(data.rows.length?'Exact observed counts, including today.':'No development reports for these filters yet.')+' Refreshes every 5 seconds.'
+        : (data.rows.length?'Partial aggregate data.':'No released data for these filters.')+' Updated '+data.updatedAt+' · UTC days · bins of ten';
       render();renderTables(data);
-    }catch(error){if(ownGeneration!==generation)return;status.classList.add('error');status.textContent=error.name==='AbortError'?'Request cancelled.':error.message;}
+    }catch(error){if(ownGeneration!==generation)return;current=null;render();renderTables({rows:[],summary:[]});status.classList.add('error');status.textContent=error.name==='AbortError'?'Request cancelled.':error.message;}
     finally{if(ownGeneration===generation)trend.setAttribute('aria-busy','false');}
   }
   for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>{
@@ -235,10 +242,12 @@ export const operatorScript = String.raw`
   form.addEventListener('submit',event=>{event.preventDefault();void load();});
   for(const button of document.querySelectorAll('[data-days]'))button.addEventListener('click',()=>{setPeriod(Number(button.dataset.days));void load();});
   form.elements.dimension.addEventListener('change',()=>{measure.value=form.elements.dimension.value==='feature'?'features':'tokens';void load();});
+  form.elements.environment.addEventListener('change',()=>{setPeriod(period);measure.value=isDevelopment()?'turns':'tokens';void load();});
   for(const field of [form.elements.from,form.elements.to])field.addEventListener('change',()=>{for(const button of document.querySelectorAll('[data-days]'))button.setAttribute('aria-pressed','false');});
   measure.addEventListener('change',render);
   let resizeFrame;
   addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{if(current)renderTrend(current.rows);});});
+  setInterval(()=>{if(isDevelopment() && authenticated && !document.hidden && trend.getAttribute('aria-busy')!=='true')void load(true);},5000);
   setPeriod(7);void load();
 })();
 `;

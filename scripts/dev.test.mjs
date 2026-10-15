@@ -41,10 +41,10 @@ for (const scenario of [
           const assets = process.env.CODEX_APP_SDK_ASSETS_PATH;
           const copy = path.join(process.cwd(), 'copied-helper');
           fs.copyFileSync(path.join(assets, 'apple-speechanalyzer-cli'), copy);
-          fs.writeFileSync(process.env.APP_DEV_TRACE, JSON.stringify({ assets, helper: fs.readFileSync(copy, 'utf8') }));
+          fs.writeFileSync(process.env.APP_DEV_TRACE, JSON.stringify({ assets, helper: fs.readFileSync(copy, 'utf8'), nodeEnv: process.env.NODE_ENV }));
         }
       `);
-      const env = { ...process.env, npm_execpath: npmCli, APP_DEV_TRACE: trace };
+      const env = { ...process.env, NODE_ENV: 'production', npm_execpath: npmCli, APP_DEV_TRACE: trace };
       delete env.CODEX_APP_SDK_SOURCE;
       delete env.CODEX_APP_SDK_ASSETS_PATH;
       delete env.APP_BUNDLED_CODEX_PATH;
@@ -57,6 +57,7 @@ for (const scenario of [
       assert.deepEqual(JSON.parse(readFileSync(trace, 'utf8')), {
         assets: scenario.source ? localAssets : path.join(installedPackage, 'assets'),
         helper: scenario.source ? 'local helper' : 'installed helper',
+        nodeEnv: 'development',
       });
     } finally {
       rmSync(temp, { recursive: true, force: true });

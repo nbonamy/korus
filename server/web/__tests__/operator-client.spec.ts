@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { modelBehaviorMeasures, type ModelBehavior } from "../../api/telemetry/model-behavior";
+import {
+  modelBehaviorMeasures,
+  type ModelBehavior,
+} from "../../api/telemetry/model-behavior";
 import { operatorPage, operatorScript } from "../operator-page";
 
 // Keep browser fixture types local: DOM ambient fetch types conflict with this Node workspace.
@@ -78,10 +81,55 @@ function mount(
   frameDocument.write(operatorPage);
   frameDocument.close();
   frameWindow.Date.now = () => Date.UTC(2026, 9, 14, 12);
-  Object.assign(frameWindow, { fetch });
+  const poll = vi.fn((_callback: () => void, _interval: number) => 1);
+  Object.assign(frameWindow, { fetch, setInterval: poll });
   frameWindow.eval(operatorScript);
-  return { document: frameDocument, window: frameWindow, fetch };
+  return { document: frameDocument, window: frameWindow, fetch, poll };
 }
+
+it("shows exact current-day development turns and refreshes them automatically without mixing production", async () => {
+  const fetch = vi.fn(async (_url: string, _init?: unknown) =>
+    response(result([row("2026-10-14", "turn.started", 1)])),
+  );
+  const { document, window, poll } = mount(fetch);
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  const environment =
+    document.querySelector<FixtureElement>("[name=environment]")!;
+  expect(environment).not.toBeNull();
+  environment.value = "development";
+  environment.dispatchEvent(new window.Event("change"));
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector('[aria-label="Started turns: 1"]'),
+    ).not.toBeNull(),
+  );
+  expect(fetch.mock.calls.at(-1)?.[0]).toContain("environment=development");
+  expect(fetch.mock.calls.at(-1)?.[0]).toContain("to=2026-10-14");
+  expect(document.querySelector("#trend-title")?.textContent).toBe(
+    "Turn activity",
+  );
+  expect(document.querySelectorAll("#trend .chart-point")).toHaveLength(1);
+  expect(document.querySelector("#status")?.textContent).toContain(
+    "Development",
+  );
+  expect(document.querySelector("#status")?.textContent).not.toContain(
+    "bins of ten",
+  );
+  const refresh = poll.mock.calls[0]!;
+  expect(refresh[1]).toBe(5000);
+  const calls = fetch.mock.calls.length;
+  refresh[0]();
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(calls + 1));
+  environment.value = "production";
+  environment.dispatchEvent(new window.Event("change"));
+  await vi.waitFor(() =>
+    expect(fetch.mock.calls.at(-1)?.[0]).toContain("environment=production"),
+  );
+  expect(fetch.mock.calls.at(-1)?.[0]).toContain("to=2026-10-13");
+  const productionCalls = fetch.mock.calls.length;
+  refresh[0]();
+  expect(fetch).toHaveBeenCalledTimes(productionCalls);
+});
 
 it("renders released trends with gaps, accessible exact values and keyboard tooltips without inventing unknown outcomes", async () => {
   const { document } = mount();

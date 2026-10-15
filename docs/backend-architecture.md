@@ -522,6 +522,9 @@ uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH acti
 use an unsynchronized source and cannot be exported. Later clients must add explicit
 permission synchronization rather than treating connection as consent. Reports
 carry random immutable batch IDs; local dedupe identities stay in local storage.
+Development launchers mark reports with the finite `development` channel. The
+reporter coalesces nearby development observations for one second; production
+batches wait five minutes. Delivery retries remain bounded and permission-aware.
 
 Behavior observation stays in Korus provider adapters and consumes public SDK events.
 Claude response IDs dedupe per-block messages, and matched per-response usage and
@@ -538,11 +541,15 @@ The telemetry module has its own database and operator secret. It has
 no provider credentials, relay identity or execution authority. SQLite transactions
 couple batch dedupe and predefined aggregate increments. Daily buckets expire after
 90 days, monthly marginals after 12 months, batch IDs after 7 days. Backups must use
-the same retention ceiling and deletion policy. Operators read only completed-day,
+the same retention ceiling and deletion policy. Production operators read only completed-day,
 minimum-volume, coarse-bin independent marginals; filters cannot join dimensions or
 release suppressed cells. A rare category suppresses complementary marginals for
 the same day and metric, preventing subtraction across breakdowns. Report volume is not people. Public writers can poison
 aggregates; an embedded client secret would not establish authenticity.
+Development has separate daily buckets, seven-day retention, and exact current-day
+counts behind the same operator authentication. The console's Development view
+refreshes every five seconds; development volume cannot contribute to production
+totals or alter production suppression.
 
 Build the hosted API with `npm run build:server`.
 Run `npm run start:server` with a private database location, an operator-token

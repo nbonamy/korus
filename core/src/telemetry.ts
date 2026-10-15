@@ -128,7 +128,7 @@ export type TelemetryReport = {
   reportId: string;
   family: "runtime" | "feature" | "behavior";
   version: string;
-  channel: "stable" | "preview";
+  channel: "stable" | "preview" | "development";
   platform: "macos" | "windows" | "linux";
   client: "desktop" | "web" | "mobile" | "daemon";
   rows: TelemetryRow[];
@@ -206,7 +206,7 @@ export function isTelemetryReport(value: unknown): value is TelemetryReport {
   if (
     typeof value.version !== "string" ||
     !/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value.version) ||
-    !["stable", "preview"].includes(String(value.channel)) ||
+    !["stable", "preview", "development"].includes(String(value.channel)) ||
     !["macos", "windows", "linux"].includes(String(value.platform)) ||
     !["desktop", "web", "mobile", "daemon"].includes(String(value.client))
   )

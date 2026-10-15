@@ -165,9 +165,9 @@ export async function startApiServer(
         if (url.pathname === "/v1/telemetry/metrics") {
           const params = Object.fromEntries(url.searchParams);
           if (
-            url.searchParams.size > 4 ||
+            url.searchParams.size > 5 ||
             Object.keys(params).some(
-              (k) => !["from", "to", "dimension", "value"].includes(k),
+              (k) => !["from", "to", "dimension", "value", "environment"].includes(k),
             ) ||
             !operatorDimensions.includes(
               params.dimension as (typeof operatorDimensions)[number],
