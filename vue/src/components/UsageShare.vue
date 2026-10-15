@@ -1,5 +1,9 @@
 <template>
-  <section class="usage-share" :aria-label="$t('analytics.share')">
+  <UsageCard
+    as="section"
+    class="usage-share"
+    :aria-label="$t('analytics.share')"
+  >
     <header>
       <div class="chart-heading">
         <h3>{{ $t("analytics.share") }}</h3>
@@ -97,9 +101,10 @@
         </li>
       </ul>
     </div>
-  </section>
+  </UsageCard>
 </template>
 <script setup lang="ts">
+import UsageCard from "./UsageCard.vue";
 import { computed, ref, useId } from "vue";
 import {
   chartFormat,

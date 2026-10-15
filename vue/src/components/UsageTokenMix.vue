@@ -1,0 +1,140 @@
+<template>
+  <UsageStatTile
+    :label="$t('analytics.tokenMix')"
+    :value="parts.length ? undefined : $t('telemetry.unknown')"
+  >
+    <template v-if="parts.length">
+      <div class="mix-bar" role="img" :aria-label="$t('analytics.tokenMix')">
+        <span
+          v-for="part in parts"
+          :key="part.id"
+          :style="{
+            flexGrow: part.value,
+            background: `linear-gradient(180deg, ${part.color}, color-mix(in srgb, ${part.color} 70%, transparent))`,
+          }"
+        />
+      </div>
+      <ul class="mix-legend">
+        <li v-for="part in parts" :key="part.id">
+          <i :style="{ background: part.color }" />
+          <span>{{ part.label }}</span>
+          <b>{{ chartFormat(part.percent) }}%</b>
+        </li>
+      </ul>
+    </template>
+    <div class="mix-coverage">
+      <div
+        class="mix-meter"
+        role="meter"
+        :aria-valuenow="Math.round(coverage)"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="$t('analytics.tokenCoverage')"
+      >
+        <span :style="{ width: coverage + '%' }" />
+      </div>
+      <small>{{
+        $t("analytics.measuredOf", {
+          measured: chartFormat(measured),
+          turns: chartFormat(turns),
+        })
+      }}</small>
+    </div>
+  </UsageStatTile>
+</template>
+<script setup lang="ts">
+import { computed } from "vue";
+import type { UsageSummary } from "@workspace/core/usage";
+import { translate } from "../i18n";
+import UsageStatTile from "./UsageStatTile.vue";
+import { chartFormat, sumValues } from "./usage-chart";
+const props = defineProps<{
+  rows: UsageSummary["rows"];
+  measured: number;
+  turns: number;
+}>();
+// Input and output carry the family colours; cache categories are their lighter variants.
+const kinds = [
+  ["input", "inputTokens", "var(--chart-7)"],
+  ["output", "outputTokens", "var(--chart-5)"],
+  ["cacheRead", "cacheRead", "color-mix(in oklab, var(--chart-7) 50%, white)"],
+  [
+    "cacheWrite",
+    "cacheWrite",
+    "color-mix(in oklab, var(--chart-5) 50%, white)",
+  ],
+  ["reasoning", "reasoning", "var(--chart-4)"],
+] as const;
+const parts = computed(() => {
+  const found = kinds.flatMap(([id, label, color]) => {
+    const value = sumValues(props.rows.map((row) => row.tokens?.[id]));
+    return value
+      ? [{ id, label: translate("analytics." + label), color, value }]
+      : [];
+  });
+  const all = found.reduce((n, part) => n + part.value, 0);
+  return found.map((part) => ({ ...part, percent: (100 * part.value) / all }));
+});
+const coverage = computed(() =>
+  props.turns ? (100 * props.measured) / props.turns : 0,
+);
+</script>
+<style scoped>
+.mix-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin: var(--space-4) 0 var(--space-3);
+}
+.mix-bar > span {
+  min-width: 4px;
+  border-radius: var(--radius-sm);
+}
+.mix-legend {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-12);
+}
+.mix-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.mix-legend span {
+  flex: 1;
+  color: var(--color-text-muted);
+}
+.mix-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+.mix-coverage {
+  margin-top: auto;
+  padding-top: var(--space-4);
+}
+.mix-meter {
+  height: 6px;
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--chart-3) 14%, transparent);
+}
+.mix-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--chart-3) 55%, transparent),
+    var(--chart-3)
+  );
+}
+small {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+}
+</style>

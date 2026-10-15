@@ -1,5 +1,9 @@
 <template>
-  <section class="usage-activity" :aria-label="$t('analytics.activity')">
+  <UsageCard
+    as="section"
+    class="usage-activity"
+    :aria-label="$t('analytics.activity')"
+  >
     <div class="activity-layout">
       <div class="activity-summary">
         <dl class="activity-totals">
@@ -50,9 +54,10 @@
         </div>
       </div>
     </div>
-  </section>
+  </UsageCard>
 </template>
 <script setup lang="ts">
+import UsageCard from "./UsageCard.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { translate } from "../i18n";
 import { ACTIVITY_WEEKS, activityWindow, chartFormat } from "./usage-chart";

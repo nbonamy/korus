@@ -152,3 +152,21 @@ export function activityWindow(now = Date.now()): { from: string; to: string } {
     to: utcDay(today),
   };
 }
+export const sumValues = (values: (number | null | undefined)[]) =>
+  values.some((value) => value !== null && value !== undefined)
+    ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
+const measureKeys: Record<UsageMeasure, string> = {
+  turns: "turns",
+  total: "totalTokens",
+  input: "inputTokens",
+  output: "outputTokens",
+};
+export const measureLabel = (measure: UsageMeasure) =>
+  translate("analytics." + measureKeys[measure]);
+export const groupingOptions = () => [
+  { value: "provider" as const, label: translate("telemetry.provider") },
+  { value: "model" as const, label: translate("telemetry.model") },
+];
+export const seconds = (value: number) =>
+  translate("analytics.seconds", { value: chartFormat(value) });
