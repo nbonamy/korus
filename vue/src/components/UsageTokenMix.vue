@@ -6,7 +6,7 @@
     <template v-if="parts.length">
       <div class="mix-bar" role="img" :aria-label="$t('analytics.tokenMix')">
         <span
-          v-for="part in parts"
+          v-for="part in parts.filter((part) => !part.parent)"
           :key="part.id"
           :style="{
             flexGrow: part.value,
@@ -53,27 +53,57 @@ const props = defineProps<{
   measured: number;
   turns: number;
 }>();
-// Input and output carry the family colours; cache categories are their lighter variants.
+// Only inclusive input/output form the mix; other counters are compared to input/output separately.
 const kinds = [
-  ["input", "inputTokens", "var(--chart-7)"],
-  ["output", "outputTokens", "var(--chart-5)"],
-  ["cacheRead", "cacheRead", "color-mix(in oklab, var(--chart-7) 50%, white)"],
+  ["input", "inputTokens", "var(--chart-7)", null],
+  ["output", "outputTokens", "var(--chart-5)", null],
+  [
+    "cacheRead",
+    "cacheRead",
+    "color-mix(in oklab, var(--chart-7) 50%, white)",
+    "input",
+  ],
   [
     "cacheWrite",
     "cacheWrite",
     "color-mix(in oklab, var(--chart-5) 50%, white)",
+    "input",
   ],
-  ["reasoning", "reasoning", "var(--chart-4)"],
+  ["reasoning", "reasoning", "var(--chart-4)", "output"],
 ] as const;
 const parts = computed(() => {
-  const found = kinds.flatMap(([id, label, color]) => {
-    const value = sumValues(props.rows.map((row) => row.tokens?.[id]));
-    return value
-      ? [{ id, label: translate("analytics." + label), color, value }]
+  const tokens = props.rows.flatMap((row) => (row.tokens ? [row.tokens] : []));
+  const all = tokens.reduce((n, row) => n + row.input + row.output, 0);
+  return kinds.flatMap(([id, label, color, parent]) => {
+    // A partial counter measurement cannot be compared to the full parent total.
+    if (parent && tokens.some((row) => row[id] == null)) return [];
+    const value = sumValues(tokens.map((row) => row[id]));
+    const denominator = parent
+      ? sumValues(tokens.map((row) => row[parent]))
+      : all;
+    return value && denominator
+      ? [
+          {
+            id,
+            parent,
+            value,
+            color,
+            label:
+              translate("analytics." + label) +
+              (parent
+                ? " (" +
+                  translate(
+                    parent === "input"
+                      ? "analytics.percentOfInput"
+                      : "analytics.percentOfOutput",
+                  ) +
+                  ")"
+                : ""),
+            percent: (100 * value) / denominator,
+          },
+        ]
       : [];
   });
-  const all = found.reduce((n, part) => n + part.value, 0);
-  return found.map((part) => ({ ...part, percent: (100 * part.value) / all }));
 });
 const coverage = computed(() =>
   props.turns ? (100 * props.measured) / props.turns : 0,

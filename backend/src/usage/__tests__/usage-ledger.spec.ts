@@ -1,9 +1,93 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
+
+it("reads and updates an existing ledger with the retired behavior column", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-upgrade-"));
+  const file = path.join(dir, "usage.sqlite");
+  const at = Date.parse("2026-10-15T12:00:00Z");
+  const previous = new DatabaseSync(file);
+  previous.exec(
+    "CREATE TABLE executions(provider TEXT,session_id TEXT,turn_id TEXT,agent_id TEXT,model TEXT,team_id TEXT,repository TEXT,phase TEXT,started_at INTEGER,updated_at INTEGER,duration_ms INTEGER,tokens TEXT,behavior TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id))",
+  );
+  previous
+    .prepare(
+      "INSERT INTO executions VALUES('claude','s','old','a','model',NULL,NULL,'completed',?,?,NULL,NULL,?,NULL)",
+    )
+    .run(at, at, '{"responses":2}');
+  previous.close();
+  const ledger = new UsageLedger(file, () => at);
+  const event = {
+    provider: "claude" as const,
+    agentId: "a",
+    sessionId: "s",
+    model: "model",
+    at,
+  };
+  try {
+    await ledger.load();
+    expect(
+      await ledger.observe(
+        {
+          ...event,
+          turnId: "old",
+          phase: "usage",
+          tokens: { input: 100, output: 40, cacheRead: 10, cacheWrite: 0 },
+        },
+        { teamId: null, repository: null },
+      ),
+    ).toBe(true);
+    expect(
+      await ledger.observe(
+        { ...event, turnId: "new", phase: "started" },
+        { teamId: null, repository: null },
+      ),
+    ).toBe(true);
+    expect(ledger.query().rows[0]).toMatchObject({
+      started: 2,
+      completed: 1,
+      measuredTurns: 1,
+      tokens: { total: 140 },
+    });
+  } finally {
+    await ledger.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("includes every retained execution beyond 10,000 in totals and model breakdowns", async () => {
+  const at = Date.parse("2026-10-15T12:00:00Z");
+  const ledger = new UsageLedger(":memory:", () => at);
+  try {
+    await ledger.load();
+    for (let i = 0; i < 10001; i++)
+      await ledger.observe(
+        {
+          provider: "claude",
+          agentId: "a",
+          sessionId: "s",
+          turnId: String(i),
+          model: i === 10000 ? "latest-model" : "model",
+          phase: "started",
+          at: at - 10001 + i,
+        },
+        { teamId: null, repository: null },
+      );
+    expect(ledger.query().rows[0]?.started).toBe(10001);
+    expect(ledger.query({ group: "model" }).rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "latest-model", started: 1 }),
+      ]),
+    );
+    expect(ledger.query().daily?.[0]?.started).toBe(10001);
+  } finally {
+    await ledger.close();
+  }
+});
 
 it("imports statistics once, persists only statistics in SQLite, and replaces late measurements without inflating daily totals", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "local-analytics-"));

@@ -52,9 +52,10 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(observations.map(o=>o.phase)).toStrictEqual(['started','completed']);
     expect(observations[1]?.tokens).toStrictEqual({input:45,output:20,cacheRead:30,cacheWrite:5,total:65});
     expect(observations[0]?.model).toBe('claude-sonnet-4-6');
+    expect(observations[1]?.model).toBe('claude-sonnet-4-6');
   });
 
-  it('carries one behavior sample across SDK blocks and suppressed steering results without inventing a second user turn',async()=>{
+  it('preserves actual model attribution across SDK blocks and suppressed steering results without inventing a second user turn',async()=>{
     const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
     const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
     sdk.emit({type:'system',subtype:'init',session_id:'behavior-session',model:'claude-sonnet-4-6'});await sending;
@@ -66,7 +67,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     sdk.emit({type:'user',uuid:sdk.inputs[1]!.uuid,session_id:'behavior-session',message:{content:'steering'}});
     sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});
     await vi.waitFor(()=>expect(observations).toHaveLength(2));
-    expect(observations[1]!.behavior).toStrictEqual({model:'claude-sonnet-4-6',responses:2,toolCalls:1,toolResponses:1,multiToolResponses:0,stream:null});
+    expect(observations[1]!.model).toBe('claude-sonnet-4-6');
     expect(JSON.stringify(observations)).not.toContain('CANARY');
   });
 

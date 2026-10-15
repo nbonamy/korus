@@ -505,7 +505,6 @@ export class AppController {
       return this.selectAgent(agentId);
     });
 
-    ipc.handle(ipcChannels.getAccountUsage, (_event, provider) => this.requireBackendClient().request(backendMethods.accountUsageGet,{provider}));
     ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
     ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
 

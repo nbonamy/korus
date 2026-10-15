@@ -13,7 +13,6 @@ export type AppBackendPort = {
 type ParamsFactory = (args: unknown[]) => unknown;
 
 const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?]>> = {
-  getAccountUsage: [backendMethods.accountUsageGet, named('provider')],
   getUsage: [backendMethods.usageGet, namedOptional('filter')],
   clearUsage: [backendMethods.usageClear],
   startVisualize: [backendMethods.agentVisualizeStart, namedOptional('agentId', 'input')],

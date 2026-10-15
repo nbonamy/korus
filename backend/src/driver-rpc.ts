@@ -181,10 +181,6 @@ export class BackendDriverRpc {
         if (action !== 'check' && action !== 'cancel' && action !== 'logout' && !(action === 'login' && backend === 'antigravity')) throw new Error('Invalid authentication action.');
         return driver.authenticate({ action, ...(record.loginId === undefined ? {} : { loginId: requireString(record.loginId, 'loginId') }) });
       }
-      case backendMethods.driverAccountUsageGet: {
-        const driver=this.requireDriver(requireBackend(requireRecord(params).backend));
-        return driver.getAccountUsage ? await driver.getAccountUsage() : null;
-      }
       case backendMethods.driverBankedResetsGet: {
         const driver = this.requireCodexDriver();
         return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };

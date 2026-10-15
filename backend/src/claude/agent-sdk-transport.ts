@@ -1,4 +1,4 @@
-import { ClaudeBehaviorObserver } from './claude-behavior-observer';
+import { ClaudeModelObserver } from './claude-model-observer';
 import { validConsumption, type Consumption } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
@@ -55,7 +55,7 @@ export type ClaudeQueryFactory = (input: {
 }) => ClaudeQueryRuntime;
 
 type ActiveTransportTurn = {
-  behavior:ClaudeBehaviorObserver;
+  model:ClaudeModelObserver;
   consumption?:Consumption|null;
   done: Promise<void>;
   resolve: () => void;
@@ -411,7 +411,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         const message = sdkMessage as ClaudeSdkMessage;
         this.rekeySessionFromMessage(session, message);
         const activeTurn = session.activeTurn;
-        activeTurn?.behavior.observe(message);
+        activeTurn?.model.observe(message);
         if (message.type === 'user' && typeof message.uuid === 'string') activeTurn?.pendingInputs.delete(message.uuid);
         if (message.type === 'result' && activeTurn) {
           const usage=message.usage as Record<string,unknown>|undefined;
@@ -425,7 +425,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
             if (message.is_error && observed.input===0 && observed.output===0) activeTurn.consumption=null;
           } else activeTurn.consumption=null;
           message.executionConsumption=activeTurn.consumption;
-          message.executionBehavior=activeTurn.behavior.snapshot();
+          message.executionModel=activeTurn.model.snapshot();
         }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;
@@ -592,7 +592,7 @@ function createActiveTurn(
     settled: false,
     pendingInputs: new Set(),
     steered: false,
-    behavior:new ClaudeBehaviorObserver(),
+    model:new ClaudeModelObserver(),
     onMessage,
     ...(onPermissionRequest ? { onPermissionRequest } : {}),
     ...(onPermissionCancelled ? { onPermissionCancelled } : {}),

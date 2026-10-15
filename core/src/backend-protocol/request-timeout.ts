@@ -15,8 +15,6 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
-  [backendMethods.accountUsageGet]: IO_REQUEST_TIMEOUT_MS,
-  [backendMethods.driverAccountUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,

@@ -134,7 +134,6 @@ const api: AppApi = {
   closeAgent: (agentId: string, input) => ipc.invoke(ipcChannels.closeAgent, agentId, input),
   markAgentRead: (agentId: string, revision: number) => ipc.invoke(ipcChannels.markAgentRead, agentId, revision),
   selectAgent: (agentId: string) => ipc.invoke(ipcChannels.selectAgent, agentId),
-  getAccountUsage: (provider) => ipc.invoke(ipcChannels.getAccountUsage, provider),
   getUsage: (filter) => ipc.invoke(ipcChannels.getUsage, filter),
   clearUsage: () => ipc.invoke(ipcChannels.clearUsage),
   updateSettings: (input: UpdateSettingsInput) => ipc.invoke(ipcChannels.updateSettings, input),

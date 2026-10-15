@@ -1,6 +1,4 @@
 export const backendMethods = {
-  accountUsageGet: 'usage/account/get',
-  driverAccountUsageGet: 'driver/account/usage/get',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',
   clientFocusGet: 'client/focus/get',

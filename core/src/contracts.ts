@@ -838,7 +838,6 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
-  getAccountUsage(provider: AgentBackend): Promise<import('./usage').AccountUsage | null>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
   clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;

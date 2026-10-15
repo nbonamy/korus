@@ -5,7 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 import { isUtcDay, utcDay } from "@workspace/core/usage";
 import {
   validConsumption,
-  validExecutionBehavior,
   validExecutionTiming,
   type ExecutionObservation,
   type UsageRecord,
@@ -36,7 +35,7 @@ export class UsageLedger {
       this.db = new DatabaseSync(this.file);
       if (this.file !== ":memory:") chmodSync(this.file, 0o600);
       this.db.exec(
-        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,behavior TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
       );
       const since = this.db
         .prepare("SELECT value FROM metadata WHERE key='since'")
@@ -122,7 +121,6 @@ export class UsageLedger {
       value.at >= this.now() - retention &&
       value.at <= this.now() + 60000 &&
       (!value.tokens || validConsumption(value.tokens)) &&
-      (!value.behavior || validExecutionBehavior(value.behavior)) &&
       (!value.timing || validExecutionTiming(value.timing)) &&
       (value.durationMs === undefined ||
         (Number.isSafeInteger(value.durationMs) &&
@@ -134,7 +132,7 @@ export class UsageLedger {
     const reference = (v: unknown) =>
       typeof v === "string" && v.length <= 4096 ? v : null;
     this.db!.prepare(
-      `INSERT ${ignore ? "OR IGNORE" : "OR REPLACE"} INTO executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT ${ignore ? "OR IGNORE" : "OR REPLACE"} INTO executions(provider,session_id,turn_id,agent_id,model,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
       record.provider,
       record.sessionId,
@@ -148,7 +146,6 @@ export class UsageLedger {
       record.at,
       record.durationMs ?? null,
       record.tokens ? JSON.stringify(record.tokens) : null,
-      record.behavior ? JSON.stringify(record.behavior) : null,
       record.timing ? JSON.stringify(record.timing) : null,
     );
   }
@@ -166,7 +163,6 @@ export class UsageLedger {
       at: row.updated_at,
       ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
       tokens: row.tokens ? JSON.parse(String(row.tokens)) : null,
-      ...(row.behavior ? { behavior: JSON.parse(String(row.behavior)) } : {}),
       ...(row.timing ? { timing: JSON.parse(String(row.timing)) } : {}),
     } as UsageRecord;
   }
@@ -212,7 +208,6 @@ export class UsageLedger {
       ...(previous ? { ...previous, model: event.model } : {}),
       ...(event.phase !== "usage" ? { phase: event.phase, at: event.at } : {}),
       ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
-      ...(event.behavior !== undefined ? { behavior: event.behavior } : {}),
       ...(event.timing !== undefined ? { timing: event.timing } : {}),
       ...(event.durationMs !== undefined
         ? { durationMs: event.durationMs }
@@ -289,7 +284,7 @@ export class UsageLedger {
         .prepare(
           "SELECT * FROM executions WHERE " +
             conditions.join(" AND ") +
-            " ORDER BY started_at LIMIT 10000",
+            " ORDER BY started_at LIMIT 50000",
         )
         .all(...args)) {
         const record = this.decode(row);

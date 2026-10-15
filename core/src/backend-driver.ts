@@ -104,7 +104,6 @@ export type AgentBackendDriver = {
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): BackendRuntimeStatus;
-  getAccountUsage?(): Promise<import('./usage').AccountUsage | null>;
   getBankedResets?(): Promise<import('./contracts/banked-resets').BankedResets>;
   useBankedReset?(input: import('./contracts/banked-resets').UseBankedResetInput): Promise<import('./contracts/banked-resets').BankedResetResult>;
   getAccountRateLimits?(): Promise<import('./contracts').AccountRateLimits | null>;

@@ -668,10 +668,6 @@ export class AppBackendServer {
     if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
     if (params) delete params._clientId;
     const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
-    if(message.method===backendMethods.accountUsageGet) {
-      try {if(!isAgentBackend(params?.provider))throw new Error('Invalid provider.');return createAppRpcResult(message.id,await this.requireDriverRpc().handle(backendMethods.driverAccountUsageGet,{backend:params.provider}));}
-      catch{return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Account usage is unavailable.');}
-    }
     if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');

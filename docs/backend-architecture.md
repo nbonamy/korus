@@ -499,7 +499,7 @@ outcomes and local grouping metadata. Unsupported consumption and model identity
 remain unknown. Codex consumption can be replaced or invalidated after completion.
 Claude consumption covers the main agent loop; auxiliary calls are excluded.
 Reasoning is included in output. Cache categories must not be added to input.
-Account summaries and quotas remain separate account-scoped views.
+Provider quotas remain separate account-scoped views.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens

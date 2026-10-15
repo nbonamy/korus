@@ -1,6 +1,6 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import type { CodexConversationEvent } from "@codex-app-sdk/core/surface";
-import type { ExecutionObservation, AccountUsage } from "@workspace/core/usage";
+import type { ExecutionObservation } from "@workspace/core/usage";
 import { codexSdkFixture, sdkAgent } from "./sdk-surface-fixture";
 const metadata = {
   seq: 1,
@@ -82,38 +82,6 @@ it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserv
     await driver.close();
   }
 });
-it("reads account-wide usage only on explicit request, keeps decimal strings exact, and returns unknown with older SDKs", async () => {
-  const { driver, surface } = codexSdkFixture();
-  const account: AccountUsage = {
-    summary: {
-      lifetimeTokens: "90071992547409931234",
-      peakDailyTokens: null,
-      longestRunningTurnSec: null,
-      currentStreakDays: "1",
-      longestStreakDays: "2",
-    },
-    dailyUsageBuckets: [
-      { startDate: "2026-10-10", tokens: "90071992547409931234" },
-    ],
-  };
-  let reads = 0;
-  try {
-    expect(await driver.getAccountUsage()).toBeNull();
-    Object.assign(surface, {
-      readAccountUsage: async () => {
-        reads++;
-        return account;
-      },
-    });
-    await driver.loadConversation(sdkAgent());
-    expect(reads).toBe(0);
-    expect(await driver.getAccountUsage()).toStrictEqual(account);
-    expect(reads).toBe(1);
-  } finally {
-    await driver.close();
-  }
-});
-
 it("treats the SDK non-retrying error as terminal without counting retriable errors as new executions", async () => {
   const { driver, conversation } = codexSdkFixture();
   const observations: ExecutionObservation[] = [];
@@ -143,64 +111,6 @@ it("treats the SDK non-retrying error as terminal without counting retriable err
       payload: { error, willRetry: false },
     } as CodexConversationEvent);
     expect(observations.map((e) => e.phase)).toEqual(["started", "failed"]);
-    expect(JSON.stringify(observations)).not.toContain("CANARY");
-  } finally {
-    await driver.close();
-  }
-});
-
-it("counts the union of live semantic tool IDs, including completion-only tools, without grouping them into model responses", async () => {
-  const { driver, conversation } = codexSdkFixture();
-  const observations: ExecutionObservation[] = [];
-  driver.onUsage((o) => observations.push(o));
-  try {
-    await driver.loadConversation(sdkAgent());
-    const c = conversation("conversation-a");
-    const tool = (type: string, id: string) =>
-      c.emit({
-        ...metadata,
-        type,
-        payload: {
-          toolPart: {
-            id,
-            kind: "command",
-            title: "CANARY command",
-            status: "completed",
-          },
-        },
-      } as unknown as CodexConversationEvent);
-    tool("tool.completed", "historical");
-    c.emit({
-      ...metadata,
-      type: "turn.started",
-      payload: { startedAt: metadata.occurredAt },
-    } as CodexConversationEvent);
-    tool("tool.started", "a");
-    tool("tool.completed", "a");
-    tool("tool.completed", "b");
-    tool("tool.updated", "a");
-    c.emit({
-      ...metadata,
-      type: "turn.completed",
-      payload: {
-        status: "completed",
-        durationMs: 100,
-        error: null,
-        willRetry: false,
-        startedAt: metadata.occurredAt,
-        completedAt: metadata.occurredAt,
-      },
-    } as CodexConversationEvent);
-    tool("tool.completed", "late");
-    expect(observations).toHaveLength(2);
-    expect(observations[1]!.behavior).toStrictEqual({
-      model: null,
-      responses: null,
-      toolCalls: 2,
-      toolResponses: null,
-      multiToolResponses: null,
-      stream: null,
-    });
     expect(JSON.stringify(observations)).not.toContain("CANARY");
   } finally {
     await driver.close();

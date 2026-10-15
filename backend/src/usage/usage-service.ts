@@ -33,7 +33,7 @@ function toolStates(view: {
 /** Records numeric observations in the owning daemon's local ledger. */
 export class UsageService {
   private chain: Promise<void> = Promise.resolve();
-  private executions = new Set<string>();
+  private executions = new Map<string, string>();
   private submitted = new Map<string, { at: number; wall: number }>();
   constructor(
     readonly local: UsageLedger,
@@ -71,11 +71,12 @@ export class UsageService {
     return submission;
   }
   cancelPrompt(agentId: string, submission: object | null | undefined): void {
-    if (this.submitted.get(agentId) === submission) this.submitted.delete(agentId);
+    if (this.submitted.get(agentId) === submission)
+      this.submitted.delete(agentId);
   }
   observe(event: ExecutionObservation): void {
     const key = JSON.stringify([event.provider, event.sessionId, event.turnId]);
-    if (event.phase === "started" && !this.executions.has(key)) {
+    if (event.phase === "started" && !this.executions.has(event.agentId)) {
       // The clock starts at prompt submission, falling back to the first observation.
       const submitted = this.submitted.get(event.agentId);
       this.clock.start(
@@ -85,12 +86,16 @@ export class UsageService {
           : this.now(),
       );
       this.submitted.delete(event.agentId);
-      this.executions.add(key);
+      this.executions.set(event.agentId, key);
       while (this.executions.size > 10000)
-        this.executions.delete(this.executions.values().next().value!);
+        this.executions.delete(this.executions.keys().next().value!);
     }
-    if (event.phase !== "started" && event.phase !== "usage") {
-      this.executions.delete(key);
+    if (
+      event.phase !== "started" &&
+      event.phase !== "usage" &&
+      this.executions.get(event.agentId) === key
+    ) {
+      this.executions.delete(event.agentId);
       const timing = this.clock.finish(event.agentId);
       if (timing) event = { ...event, timing };
     }
