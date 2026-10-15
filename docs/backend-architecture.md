@@ -293,10 +293,13 @@ idempotent outcome callback for longer workflows. `record('artifact.open')` coun
 a completed point event. Feature names and outcomes are finite typed categories;
 there is no property bag. The reporter captures permission before work, isolates
 observer failures, bounds its queue and owns persistence/delivery. Services never
-log payloads or implement their own collectors.
+log payloads or implement their own collectors. Native browser and simulator
+callbacks carry only the local agent reference needed to recover the initiating
+execution permission. The native observing client can finish its operation but
+cannot substitute desktop permission for an opted-out or unknown source.
 
 Product reports contain only finite daily numeric categories. Client disclosure,
-source permission, host permission, administrator policy and reviewed rollout
+source permission, host permission, administrator policy, reviewed rollout and explicit endpoint
 configuration all gate collection and delivery. Model-behavior reports require the
 renewed behavior disclosure; an older usage-reporting choice cannot enable them.
 An explicit measured zero is distinct from unavailable evidence. A permission transition aborts
@@ -329,8 +332,10 @@ aggregates; an embedded client secret would not establish authenticity.
 Build the hosted API with `npm run build:server`.
 Run `npm run start:server` with a private database location, an operator-token
 file containing at least 32 characters, and TLS key/certificate files configured
-through the `TELEMETRY_*` environment. Synthetic loopback testing can use
-`TELEMETRY_SYNTHETIC=1`; it cannot bypass TLS on a public interface. The operator
+through the `API_*` environment. An owned TLS-terminating reverse proxy may use
+`API_REVERSE_PROXY=1` with a loopback-only listener; it overwrites client address
+headers and disables request/error logs. Synthetic tests use `API_SYNTHETIC=1`.
+Neither option permits public plaintext listeners. The operator
 page uses TLS-protected HTTP authentication and read APIs require the same secret.
 The application emits no request, payload, IP, User-Agent or referrer logs. Bound
 in-memory abuse counters expire after one minute. Delivery infrastructure still
@@ -339,10 +344,21 @@ and disclosed. Rotate the operator secret by restarting the service. Monitor the
 health route without logging request metadata; cap disk, ingress and spending
 outside the process.
 
-Production activation requires approval of the default-on consent basis, privacy
-and store disclosures, endpoint ownership, all logging layers, retention/backups
-and operational budget. The daemon requires explicit reviewed-rollout, desktop
-runtime and endpoint configuration; headless/dev/test/CI and unconfigured remotes
-remain off. Administrator force-off overrides user choices. Rollback removes the
-rollout configuration or enables force-off, then restarts the daemon to purge its
-outbox. No telemetry upload credential or relay key belongs in application clients.
+Application reporting requires `APP_TELEMETRY_URL`, a public HTTPS origin loaded
+from build configuration or the daemon environment. An empty runtime override
+disables a packaged default. Unset/invalid URLs, development, tests and CI disable
+reporting. `APP_TELEMETRY_REVIEWED_ROLLOUT=1` is a separate build/runtime gate
+for approved activation after consent, disclosures and endpoint logging review.
+It defaults off. `APP_TELEMETRY_FORCE_OFF=1` overrides user choices. Onboarding records
+the default-on choice with an opt-out; General settings persist later changes.
+Unconfigured clients and remote permission remain closed. No application environment
+is configured by server deployment, and no historical local usage is exported.
+
+`server/deploy/prepare.sh` installs the API on Joshua with a private service user,
+operator-token file, state directory and hardened systemd unit. The service binds
+loopback; nginx owns public TLS. After DNS resolves, `/opt/korus-api/activate.sh`
+obtains the certificate and activates the HTTPS virtual host. The API is separate
+from the companion relay, including keys, database and logs. `/v1/telemetry/reports`
+accepts bounded anonymous batches; dashboard and read APIs require the operator
+secret. OpenTelemetry interoperability is independent of the domain reporter API;
+the current ingestion format is the strict Korus report schema.
