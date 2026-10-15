@@ -43,6 +43,7 @@ struct PairingScannerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .appSheetSurface()
         .task { await prepareCamera() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await prepareCamera() } }

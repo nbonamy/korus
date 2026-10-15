@@ -48,12 +48,29 @@ struct EngineState: Decodable {
         var id: String { target.agentId }
     }
     enum ChatCreation: String, Decodable { case idle, creating, failed }
+    struct ProjectBranches: Decodable, Equatable {
+        struct Branch: Decodable, Identifiable, Equatable {
+            let name: String
+            let isDefault: Bool
+            var id: String { name }
+        }
+        var repositoryId: String?
+        var status = "idle"
+        var items: [Branch] = []
+    }
+    struct ProjectRepositories: Decodable, Equatable {
+        struct Repository: Decodable, Identifiable, Equatable { let id: String; let name: String }
+        var status = "idle"
+        var items: [Repository] = []
+    }
     enum Pairing: String, Decodable { case idle, working, awaitingApproval }
 
     enum Startup: String, Decodable { case loading, ready, error }
 
     let pushRegistrationFailed: Bool?
     let usage: UsageState?
+    let projectBranches: ProjectBranches?
+    let projectRepositories: ProjectRepositories?
     let requests: [PendingRequest]?
     let respondingRequest: String?
     let failedRequest: String?

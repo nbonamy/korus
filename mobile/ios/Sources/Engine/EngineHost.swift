@@ -98,6 +98,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         case "conversation": if let json { onTranscript?(.conversation, json) }
         case "conversationContext": if let json { onTranscript?(.context, json) }
         case "conversationContent": if let json { onContent?(json) }
+        case "conversationImage": if let json { onContent?(json) }
         default: break
         }
     }

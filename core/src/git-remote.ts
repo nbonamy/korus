@@ -1,5 +1,12 @@
 const REMOTE_KEY_PREFIX = 'remote:';
 
+/** Only a same-named tracked branch belongs to this branch's deletion choice. */
+export function matchingBranchUpstream(branch: string | null | undefined, upstream: string | null | undefined, baseBranch?: string | null): string | undefined {
+  if (!branch || branch === baseBranch || !upstream) return undefined;
+  const separator = upstream.indexOf('/');
+  return separator > 0 && upstream.slice(separator + 1) === branch ? upstream : undefined;
+}
+
 export function sanitizeGitRemoteUrl(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;

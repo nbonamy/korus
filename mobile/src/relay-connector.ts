@@ -200,6 +200,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }
       const session: CompanionSession = {
         getWorkspace: read,
+        readImage: (agentId, path) => request(host, 'conversation.image.read', { target: target(agentId), path }),
         getUsage: () => request(host, 'usage.get', {}),
         async registerPush(registration) {
           if (!registration) { await request(host, 'notifications.register', null); return; }
@@ -249,6 +250,9 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },
         listBranches: (teamId, repositoryId) => request(host, 'repository.branches', { teamId, repositoryId }),
+        githubRepositories: teamId => request(host, 'project.github.list', { teamId }),
+        githubBranches: (teamId, repositoryId) => request(host, 'project.github.branches', { teamId, repositoryId }),
+        async createProject(input, signal) { return created((await request<{ creationId: string }>(host, 'project.create', input)).creationId, signal); },
         // Worktree setup can outlast any single request: the laptop works on, the phone asks how it is going.
         async createChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.create', chat)).creationId, signal); },
         async createQuickChat(chat, signal) { return created((await request<{ creationId: string }>(host, 'agent.quickChat.create', chat)).creationId, signal); },

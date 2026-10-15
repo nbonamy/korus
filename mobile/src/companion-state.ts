@@ -3,9 +3,10 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
-import type { CompanionBranch, CompanionNewChat, CompanionUsage } from '@workspace/core/companion-protocol';
+import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 import { reconcileWorkspace } from './workspace-reconcile';
@@ -111,6 +112,35 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let branchEpoch = 0;
   function dismissBranches() { ++branchEpoch; branches.value = { repositoryId: null, status: 'idle', items: [] }; }
   const stopBranches = watch([laptopId, teamId, status], dismissBranches, { flush: 'sync' });
+  const projectRepositories = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionGitHubRepository[] }>({ status: 'idle', items: [] });
+  let projectEpoch = 0;
+  function dismissProjectRepositories() { ++projectEpoch; projectRepositories.value = { status: 'idle', items: [] }; dismissProjectBranches(); }
+  const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
+  async function loadProjectRepositories() {
+    const active = session; const team = teamId.value; const epoch = ++projectEpoch;
+    projectRepositories.value = { status: 'loading', items: [] };
+    try {
+      if (!active?.githubRepositories || !team || status.value !== 'connected') throw new Error('GitHub is unavailable.');
+      const items = await active.githubRepositories(team);
+      if (epoch === projectEpoch && active === session) projectRepositories.value = { status: 'loaded', items };
+    } catch {
+      if (epoch === projectEpoch) projectRepositories.value = { status: 'failed', items: [] };
+    }
+  }
+  const projectBranches = shallowRef<{ repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionProjectBranch[] }>({ repositoryId: null, status: 'idle', items: [] });
+  let projectBranchEpoch = 0;
+  function dismissProjectBranches() { ++projectBranchEpoch; projectBranches.value = { repositoryId: null, status: 'idle', items: [] }; }
+  async function loadProjectBranches(repositoryId: string) {
+    const active = session, team = teamId.value, epoch = ++projectBranchEpoch;
+    projectBranches.value = { repositoryId, status: 'loading', items: [] };
+    try {
+      if (!active?.githubBranches || !team || status.value !== 'connected') throw new Error('GitHub branches are unavailable.');
+      const items = await active.githubBranches(team, repositoryId);
+      if (epoch === projectBranchEpoch && active === session) projectBranches.value = { repositoryId, status: 'loaded', items };
+    } catch {
+      if (epoch === projectBranchEpoch) projectBranches.value = { repositoryId, status: 'failed', items: [] };
+    }
+  }
   async function loadBranches(repositoryId: string) {
     const active = session; const team = teamId.value; const epoch = ++branchEpoch;
     branches.value = { repositoryId, status: 'loading', items: [] };
@@ -514,7 +544,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (!active.previewCloseSession) throw new Error('Close preview unavailable.');
       const preview = await active.previewCloseSession(id);
       if (epoch !== selectionEpoch || active !== session) return;
-      closePreview.value = preview;
+      closePreview.value = { ...preview, upstream: matchingBranchUpstream(preview.branch, preview.upstream) ?? null };
     } catch {
       if (epoch === selectionEpoch && active === session) sessionActionFailed.value = true;
     } finally { sessionAction.value = null; }
@@ -524,7 +554,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const preview = closePreview.value;
     if (!preview || preview.target.agentId !== id || id !== agentId.value) return;
     if (deleteWorktree && (!preview.isLinkedWorktree || (preview.hasChanges && !discardChanges))) return;
-    await controlSession('close', deleteWorktree ? { deleteWorktree: true, deleteRemoteBranch, discardChanges, confirmed: true } : undefined);
+    await controlSession('close', deleteWorktree ? { deleteWorktree: true, deleteRemoteBranch: deleteRemoteBranch && Boolean(preview.upstream), discardChanges, confirmed: true } : undefined);
   }
   const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
   const dismissSessionError = () => { sessionActionFailed.value = false; };
@@ -577,6 +607,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const chunk = await active.readConversationContent(id, input);
     if (!valid()) throw new Error('Conversation changed.');
     return chunk;
+  }
+  async function readImage(id: string, path: string) {
+    const active = session; const epoch = selectionEpoch;
+    const valid = () => active === session && epoch === selectionEpoch && id === agentId.value && status.value === 'connected';
+    if (!valid() || !active?.readImage) throw new Error('Image is unavailable.');
+    const image = await active.readImage(id, path);
+    if (!valid()) throw new Error('Conversation changed.');
+    return image;
   }
 
   async function loadOlder(id: string) {
@@ -631,7 +669,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const settings = composerSettings.value;
       const composerOptions = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
       const options = selectedSkills.length ? { ...composerOptions, skills: selectedSkills } : composerOptions;
-      await (uploads.length ? capturedSession.sendPrompt(target, prompt, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, prompt, clientCommandId, options));
+      const promptText = prompt.trim() ? prompt : '(no user instructions)';
+      await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
       uncertain[draftKey] = false;
       await persist();
@@ -673,6 +712,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const createChat = (chat: Omit<CompanionNewChat, 'teamId'>) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }));
   const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
+  const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
   /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
   async function selectBackend(backend: AgentBackend) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
@@ -705,7 +745,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
-    draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+  return { projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
+    draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

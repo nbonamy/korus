@@ -143,6 +143,18 @@ describe('native relay host adapter', () => {
     } finally { await connector.dispose!(); }
   });
   const agent = { id: 'agent', name: 'Agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' }, status: { type: 'idle' }, folder: null, createdAt: '', updatedAt: '' };
+  it('reads an image through the paired host and complete owning conversation target', async () => {
+    const connector = connect(); await pairWith(connector);
+    const image = { dataUrl: 'data:image/png;base64,cG5n' };
+    transport.response = method => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'], remoteConnectionId: 'remote' }], agents: [agent] } : image;
+    try {
+      const session = await connector.connect(host.hostId); await session.getWorkspace();
+      expect(await session.readImage!('agent', '/tmp/shot.png')).toStrictEqual(image);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'conversation.image.read', args: {
+        target: { hostId: host.hostId, locationId: 'remote', teamId: 'team', agentId: 'agent', sessionId: '{"kind":"codex","threadId":"thread"}' }, path: '/tmp/shot.png',
+      } });
+    } finally { await connector.dispose!(); }
+  });
   it('receives large history pages from the pinned laptop and owning session', async () => {
     const connector = connect(); await pairWith(connector);
     const page = { frame: { type: 'codex.conversationSnapshotChanged', backend: 'codex', threadId: 'thread', agentId: 'agent', seq: 1, occurredAt: '', payload: { revision: 1, snapshot: { messages: [{ text: 'x'.repeat(companionFrameLimit) }] } } }, hasOlder: false };
@@ -410,6 +422,17 @@ describe('native relay host adapter', () => {
       expect(await quick).toBe('quick-chat');
     } finally { vi.useRealTimers(); }
     expect(transport.requests.find((request) => request.method === 'agent.quickChat.create')?.args).toStrictEqual({ teamId: 'team', backend: 'claude' });
+    const projectRepositories = [{ id: 'org/repo', name: 'org/repo' }];
+    transport.response = method => method === 'project.github.list' ? projectRepositories : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
+    expect(await session.githubRepositories!('team')).toStrictEqual(projectRepositories);
+    expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team' });
+    const projectBranches = [{ name: 'main', isDefault: true }];
+    transport.response = method => method === 'project.github.branches' ? projectBranches : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
+    expect(await session.githubBranches!('team', 'org/repo')).toStrictEqual(projectBranches);
+    expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team', repositoryId: 'org/repo' });
+    const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', backend: 'claude' as const, branch: 'feature/mobile' };
+    expect(await session.createProject!(projectInput)).toBe('project-agent');
+    expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);
     transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
     await session.getWorkspace();
     await session.setBackend!('new-chat', 'claude');

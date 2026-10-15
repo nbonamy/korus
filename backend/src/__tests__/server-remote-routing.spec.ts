@@ -14,6 +14,21 @@ import {
 
 describe('AppBackendServer', () => {
 
+  it('routes branch browsing to the selected host and keeps token reads on that host', async () => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    const branches = [{ name: 'main', isDefault: true }];
+    const listBranches = vi.fn().mockResolvedValue(branches);
+    const remoteClients = { request: vi.fn().mockResolvedValue(branches) };
+    const server = new AppBackendServer({ version: 'test', snapshot, workIntegrations: { listBranches } as never, remoteClients: remoteClients as never });
+    const params = { provider: 'github', sourceId: 'org/repo' };
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'workProvider/branches/list', params })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledExactlyOnceWith('github', 'org/repo');
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'workProvider/branches/list', params: { ...params, location: { kind: 'remote', remoteConnectionId: connection.id } } })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledOnce();
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'workProvider/branches/list', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
   it('rechecks provider installation on the owning remote host without running a local installer', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();

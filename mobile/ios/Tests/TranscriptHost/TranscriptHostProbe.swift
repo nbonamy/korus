@@ -57,9 +57,9 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         loading.update(fetching: true, failed: false, hasAgent: true)
         loading.update(fetching: false, failed: false, hasAgent: true)
     }
-    func frame(_ revision: Int, generation: Int = 1, ready: Bool = true) -> String {
+    func frame(_ revision: Int, generation: Int = 1, ready: Bool = true, text: String? = nil) -> String {
         let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Transcript test", "backend": "codex", "status": ["type": "working"], "readState": ["revision": revision, "readRevision": 0]]
-        let message: [String: Any] = ["id": "message", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": "Rendered test content \(revision)"]]]
+        let message: [String: Any] = ["id": "message", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": text ?? "Rendered test content \(revision)"]]]
         let snapshot: [String: Any] = ["messages": [message], "turns": [], "activeTurnId": NSNull(), "busy": false]
         let object: [String: Any] = ["agent": agent, "agentId": "transcript-probe", "generation": generation, "ready": ready, "peers": [], "history": ["hasOlder": false, "loadingOlder": false, "failed": false], "frame": ["agentId": "transcript-probe", "backend": "codex", "payload": ["snapshot": snapshot]]]
         return String(data: try! JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
@@ -158,6 +158,27 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         await retry(27)
         await pause(300)
         check(!loading.failed && !loading.isLoading, "obsolete render callbacks cannot fail the recovered page")
+
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        var openedImage = false
+        var imageReads = 0
+        host.onReadContent = { [weak self] request in
+            guard request["type"] as? String == "readConversationImage", let self else { return }
+            imageReads += 1
+            let response: [String: Any] = ["type": "conversationImage", "requestId": request["requestId"]!, "agentId": request["agentId"]!, "dataUrl": "data:image/png;base64,\(png)"]
+            self.host.receiveContent(String(data: try! JSONSerialization.data(withJSONObject: response), encoding: .utf8)!)
+        }
+        host.onOpenImage = { agentID, image in
+            if case .data(let bytes) = image.source { openedImage = agentID == "transcript-probe" && bytes == Data(base64Encoded: png) }
+        }
+        host.submit(.conversation, frame(28, text: "![Inline screenshot](/tmp/inline.png) [Screenshot](/tmp/shot.png)"))
+        await wait { imageReads > 0 }
+        await pause(300)
+        let inlineImage = await js("Array.from(document.images).some(image => image.alt === 'Inline screenshot' && image.naturalWidth > 0)") as? Bool ?? false
+        check(inlineImage, "inline laptop images resolve through the native image bridge")
+        _ = await js("document.querySelector('a[href=\"/tmp/shot.png\"]').click()")
+        await wait { openedImage }
+        check(openedImage && imageReads >= 2, "ordinary image links deliver bytes to the native viewer without model-specific links")
 
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("transcript-results.json")
         try! JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted, .sortedKeys]).write(to: url)

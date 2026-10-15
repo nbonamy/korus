@@ -56,6 +56,9 @@ final class AppModel {
     /// The repository a worktree is being named for; the sheet shows while it is set.
     var newWorktreeGroup: SidebarGroup?
     var existingBranchGroup: SidebarGroup?
+    var newProjectSource: NewProjectSource?
+    var projectBranches = EngineState.ProjectBranches()
+    var projectRepositories = EngineState.ProjectRepositories()
     var branches = RepositoryBranches()
     var creatingChatGroupID: String?
     /// The engine new chats start with, remembered between launches; unavailable ones fall back to the first the laptop offers.
@@ -144,6 +147,8 @@ final class AppModel {
     private func apply(_ state: EngineState) {
         set(\.startup, state.startup)
         set(\.usage, state.usage ?? UsageState())
+        set(\.projectBranches, state.projectBranches ?? EngineState.ProjectBranches())
+        set(\.projectRepositories, state.projectRepositories ?? EngineState.ProjectRepositories())
         set(\.pushRegistrationFailed, state.pushRegistrationFailed ?? false)
         if activeAgentID != (state.agentId.isEmpty ? nil : state.agentId) || composerDrafts.target != state.composerTarget { conversationLoading.select() }
         let generation = state.conversationGeneration ?? 0
@@ -160,13 +165,13 @@ final class AppModel {
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
         set(\.teams, state.teams)
-        if teamID != state.teamId { existingBranchGroup = nil }
+        if teamID != state.teamId { existingBranchGroup = nil; newProjectSource = nil }
         set(\.teamID, state.teamId)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
-        if created { newWorktreeGroup = nil; existingBranchGroup = nil; drawerOpen = false }
+        if created { newWorktreeGroup = nil; existingBranchGroup = nil; newProjectSource = nil; drawerOpen = false }
         set(\.branches, state.branches ?? RepositoryBranches())
         set(\.groups, state.groups.map { group in
             SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
@@ -314,6 +319,24 @@ final class AppModel {
         guard let backend = newChatBackend, chatCreation != .creating else { return }
         creatingChatGroupID = Self.quickChatID
         command("newQuickChat", ["backend": backend])
+    }
+    func openProject(_ source: NewProjectSource) {
+        guard canStartChat, chatCreation != .creating else { return }
+        dismissChatFailure()
+        newProjectSource = source
+    }
+    func createProject(source: NewProjectSource, value: String, backend: String, branch: String? = nil, worktree: [String: String]? = nil) {
+        guard canStartChat, backends.contains(backend), chatCreation != .creating else { return }
+        preferredBackend = backend
+        var fields: [String: Any] = ["source": source.rawValue, "value": value, "backend": backend]
+        if let branch { fields["branch"] = branch }
+        if let worktree { fields["worktree"] = worktree }
+        command("createProject", fields)
+    }
+    func closeProjectSheet() {
+        guard chatCreation != .creating else { return }
+        newProjectSource = nil
+        dismissChatFailure()
     }
     func loadBranches(in group: SidebarGroup) {
         guard let repositoryId = group.repositoryId else { return }

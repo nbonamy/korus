@@ -17,9 +17,10 @@ import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
-import type { CompanionUsage } from '@workspace/core/companion-protocol';
+import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
+import { conversationImageReference } from './images';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -45,6 +46,15 @@ const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.');
+const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+  if ((input.branch || input.worktree) && input.source !== 'github') return false;
+  if (input.branch && input.worktree) return false;
+  if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
+  if (input.source !== 'url') return true;
+  if (/^git@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+$/u.test(input.value)) return true;
+  try { const url = new URL(input.value); return ['https:', 'ssh:'].includes(url.protocol) && Boolean(url.hostname) && url.pathname.length > 1 && !url.password && (!url.username || url.protocol === 'ssh:'); }
+  catch { return false; }
+}, 'Invalid project name or repository URL.');
 /** A new chat as the laptop runs it: the paths are real, resolved from what the phone named. */
 type NewChatRequest = { teamId: string; remoteConnectionId?: string; backend: AgentBackend; repositoryName: string; repositoryRoot: string; defaultBranch?: string; existingBranch?: string; worktree?: { branchName: string } };
 type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
@@ -55,6 +65,10 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
+  githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
+  githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
+  createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
@@ -119,6 +133,15 @@ function currentReset(frame: CompanionReset, current: CompanionAgent, target: Co
 }
 /** Every operation a phone may call on an agent; none can bypass the dispatcher's target and grant checks. */
 const agentOperations = {
+  'conversation.image.read': agentOperation(withTarget(z.object({ path: z.string().min(1).max(4096) }).strict()))({
+    act: async (port, agent, { path }, target) => {
+      const frame = currentReset(await port.conversation(agent.id), agent, target);
+      const reference = conversationImageReference(frame, path);
+      if (!port.readImage) throw new Error('Image reading is unavailable.');
+      return port.readImage(agent.id, reference);
+    },
+    read: {},
+  }),
   'conversation.read': agentOperation(withTarget(z.object({ revision: z.number().int().nonnegative().safe() }).strict()))({
     act: async (port, agent, { revision }) => {
       if (!port.markRead) throw new Error('Read acknowledgments unavailable.');
@@ -313,6 +336,32 @@ export class CompanionGateway {
    * inside the mutation lock.
    */
   private readonly operations: Record<string, Operation> = {
+    'project.github.list': async (peer, args) => {
+      const { teamId } = z.object({ teamId: identity }).strict().parse(args);
+      if (!this.port.githubRepositories) throw new Error('GitHub repositories are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.githubRepositories!(remote));
+    },
+    'project.github.branches': async (peer, args) => {
+      const { teamId, repositoryId } = repositorySchema.parse(args);
+      if (!this.port.githubBranches) throw new Error('GitHub branches are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.githubBranches!(repositoryId, remote));
+    },
+    'project.create': async (peer, args) => {
+      const input = projectSchema.parse(args);
+      const workspace = await this.port.workspace();
+      const team = workspace.teams.find(team => team.id === input.teamId);
+      this.requireGrant(peer);
+      if (!team) throw new Error('Team not found.');
+      const authorize = async () => {
+        const current = await this.port.workspace();
+        this.requireGrant(peer);
+        if (!current.teams.some(candidate => candidate.id === team.id && candidate.remoteConnectionId === team.remoteConnectionId)) throw new Error('Team changed.');
+        if (!current.backends?.[team.id]?.includes(input.backend)) throw new Error('That engine is not available.');
+      };
+      await authorize();
+      if (!this.port.createProject) throw new Error('Project creation is unavailable.');
+      return { creationId: this.creations.start(peer.peerId, () => this.port.createProject!(input, team.remoteConnectionId, authorize)) };
+    },
     'usage.get': async (peer, args) => {
       z.object({}).strict().parse(args);
       if (!this.port.usage) throw new Error('Usage is unavailable.');
@@ -464,6 +513,18 @@ export class CompanionGateway {
     const repository = workspace.agents.flatMap((agent) => agent.teamId === team.id && agent.sessionKind !== 'quickChat' && agent.workspace?.kind === 'git' && opaquePath(agent.workspace.primaryWorktreeRoot) === input.repositoryId ? [agent.workspace] : [])[0];
     if (!repository) throw new Error('Repository not found.');
     return { team, repository };
+  }
+  private async projectRead<Result>(peer: Peer, teamId: string, read: (remoteConnectionId?: string) => Promise<Result>): Promise<Result> {
+    const workspace = await this.port.workspace();
+    this.requireGrant(peer);
+    const team = workspace.teams.find(team => team.id === teamId);
+    if (!team) throw new Error('Team not found.');
+    const remote = team.remoteConnectionId;
+    const result = await read(remote);
+    const current = await this.port.workspace();
+    this.requireGrant(peer);
+    if (!current.teams.some(candidate => candidate.id === teamId && candidate.remoteConnectionId === remote)) throw new Error('Team changed.');
+    return result;
   }
   private requireGrant({ peerId, grant }: Peer) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');

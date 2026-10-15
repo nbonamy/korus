@@ -7,6 +7,18 @@ afterEach(() => {
 });
 
 describe('GitHubWorkProviderDriver', () => {
+  it('lists every branch page and marks the default branch without exposing provider metadata', async () => {
+    const token = { provider: 'github' as const, accessToken: 'secret', tokenType: 'bearer', connectedAt: 'now' };
+    const fetch = vi.fn(async (url: string) => url.endsWith('/org/repo') ? jsonResponse({ default_branch: 'main' })
+      : url.includes('page=2') ? jsonResponse([{ name: 'main', protected: true }])
+      : jsonResponse([{ name: 'feature/mobile', commit: { sha: 'private' } }], { link: '<https://api.github.com/repos/org/repo/branches?per_page=100&page=2>; rel="next"' }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await new GitHubWorkProviderDriver('id').listBranches(token, 'org/repo')).toStrictEqual([
+      { name: 'main', isDefault: true }, { name: 'feature/mobile', isDefault: false },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it('starts device authorization with GitHub OAuth', async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({
       device_code: 'device-code',

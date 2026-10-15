@@ -11,7 +11,10 @@ struct ReviewSetupView: View {
 
     var body: some View {
         Group {
-            if let setup = app.reviewState.setup {
+            if app.reviewState.status == .starting {
+                AppSheetProgress(title: "Starting your review", symbol: "checklist",
+                                 message: "\(app.productName) is preparing the reviewer.")
+            } else if let setup = app.reviewState.setup {
                 if setup.activeReview {
                     ContentUnavailableView {
                         Label("Review already started", systemImage: "checklist")
@@ -31,8 +34,9 @@ struct ReviewSetupView: View {
                 actions: { Button("Retry") { app.command("loadReview") } }
             } else { ProgressView("Loading review setup…") }
         }
-        .navigationTitle("Review Changes")
+        .navigationTitle(app.reviewState.status == .starting ? "" : "Review Changes")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(app.reviewState.status == .starting)
         .onChange(of: app.connection) { _, connection in
             if connection == .connected { app.command("loadReview") }
         }
@@ -46,7 +50,7 @@ struct ReviewSetupView: View {
     }
 
     private func form(_ setup: ReviewSetup) -> some View {
-        Form {
+        AppSheetList {
             Section {
                 choice("Uncommitted Changes", description: setup.uncommitted ? "Staged and unstaged changes in this workspace." : "No uncommitted changes.",
                        icon: "doc.badge.ellipsis", selected: choices.scope == "uncommitted", enabled: setup.uncommitted) { choices.scope = "uncommitted" }
@@ -113,14 +117,11 @@ struct ReviewSetupView: View {
         .disabled(busy)
         .safeAreaInset(edge: .bottom) {
             Button { app.startReview(choices) } label: {
-                HStack {
-                    if busy { ProgressView().tint(.white) }
-                    Text(app.reviewState.status == .starting ? "Starting Review…" : "Start Review").fontWeight(.semibold)
-                }.frame(maxWidth: .infinity).padding(.vertical, 10)
+                Text("Start Review").fontWeight(.semibold).frame(maxWidth: .infinity).padding(.vertical, 10)
             }
             .buttonStyle(.borderedProminent)
             .disabled(app.reviewState.status != .ready || !app.canSend || choices.input(setup) == nil)
-            .padding().background(.bar)
+            .appSheetFooter()
         }
     }
 

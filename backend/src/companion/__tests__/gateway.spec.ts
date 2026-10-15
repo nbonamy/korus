@@ -19,6 +19,7 @@ function fixture() {
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
+    readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
@@ -35,6 +36,23 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('reads only images referenced by the current conversation and rechecks the grant after reading', async () => {
+    const f = fixture(); await f.pair();
+    f.port.conversation.mockResolvedValue({ type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', payload: { snapshot: { messages: [
+      { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](</tmp/phone shot.png>)' }] },
+    ] } } });
+    const input = { target, path: '/tmp/phone shot.png' };
+    expect(await f.gateway.request('phone', 'conversation.image.read', input)).toStrictEqual({ dataUrl: 'data:image/png;base64,cG5n' });
+    expect(f.port.readImage).toHaveBeenCalledExactlyOnceWith('agent', input.path);
+    await expect(f.gateway.request('phone', 'conversation.image.read', { target, path: '/tmp/other.png' })).rejects.toThrow();
+    expect(f.port.readImage).toHaveBeenCalledTimes(1);
+    let release!: () => void;
+    f.port.readImage.mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return { dataUrl: 'data:image/png;base64,cG5n' }; });
+    const loading = f.gateway.request('phone', 'conversation.image.read', input);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await f.gateway.revoke('phone'); release();
+    await expect(loading).rejects.toThrow('not authorized');
+  });
   it.each(['validation', 'saving', 'queued'] as const)('reports pending before admission finishes %s and deduplicates retries', async phase => {
     const f = fixture(); await f.pair();
     let release!: () => void;
@@ -290,10 +308,11 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
       'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },
+      'conversation.image.read': { args: t => ({ target: t, path: '/tmp/shot.png' }), effect: 'readImage', read: true },
       'conversation.loadOlder': { args: (t) => t, effect: 'loadOlderHistory', read: true },
       'conversation.content.read': { args: (t) => ({ target: t, input: { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 } }), effect: 'readConversationContent', read: true, agent: claude },
       'agent.request.respond': { args: (t) => ({ target: t, id: 'q', conversationId: 'conversation', outcome: { kind: 'cancelled' } }), effect: 'respondRequest' },
@@ -317,7 +336,7 @@ describe('companion authorization gateway', () => {
       const agent = { ...workspace.agents[0]!, ...row.agent };
       const current = { ...workspace, agents: [agent, workspace.agents[1]!], backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
       f.port.workspace.mockResolvedValue(current);
-      f.port.conversation.mockResolvedValue({ type: `${agent.backend}.conversationSnapshotChanged`, backend: agent.backend, agentId: 'agent', payload: { snapshot: {} } });
+      f.port.conversation.mockResolvedValue({ type: `${agent.backend}.conversationSnapshotChanged`, backend: agent.backend, agentId: 'agent', payload: { snapshot: { messages: [{ id: 'shot', parts: [{ type: 'text', text: '[Shot](/tmp/shot.png)' }] }] } } });
       return { f, current, target: { ...target, sessionId: companionSessionId(agent) } };
     }
     it('has a stale, revoked and mid-read case for each operation the gateway binds to a target', () => {

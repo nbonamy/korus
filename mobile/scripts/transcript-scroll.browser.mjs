@@ -38,7 +38,7 @@ test('empty repository chats show the repository and branch without overlapping 
   } finally { await browser?.close(); await server.close(); }
 });
 
-test('the transcript retrieves deferred Claude content only on demand through bounded native replies', async () => {
+test('the transcript automatically retrieves bounded deferred Claude content through native replies', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
   try {
@@ -67,8 +67,6 @@ test('the transcript retrieves deferred Claude content only on demand through bo
       await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true, peers: [], history: { hasOlder: false, loadingOlder: false, failed: false }, engines: null,
         frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [preview], turns: [], activeTurnId: null, busy: false } } } }));
     });
-    assert.equal(await page.evaluate(() => window.contentRequests.length), 0);
-    await page.getByRole('button', { name: 'Load full content', exact: true }).click();
     await page.getByText('Lossless content reached the transcript.', { exact: false }).waitFor();
     const requests = await page.evaluate(() => window.contentRequests);
     assert.ok(requests.length > 1);
@@ -100,7 +98,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
     const presentation = await page.evaluate(async () => {
       const agent = { id: 'presentation-agent', teamId: 'scroll-team', name: 'Presentation test', folder: null, readState: { revision: 3, readRevision: 1 },
         backend: 'codex', status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' };
-      const conversation = { agent, agents: [agent], frame: { payload: { snapshot: {
+      const conversation = { agentId: agent.id, generation: 1, ready: true, agent, peers: [], frame: { payload: { snapshot: {
         messages: [{ id: 'presentation-message', role: 'assistant', status: 'complete', createdAt: '2026-01-01',
           parts: [{ type: 'text', text: 'The selected conversation has rendered.' }] }], turns: [], activeTurnId: null, busy: false,
       } } } };
@@ -111,7 +109,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       const ready = await pending;
       const after = paintReached && document.body.textContent.includes('The selected conversation has rendered.');
       const stale = window.companionTranscript.setConversation(JSON.stringify(conversation));
-      const cleared = window.companionTranscript.setConversation(JSON.stringify({ ...conversation, frame: null }));
+      const cleared = window.companionTranscript.setConversation(JSON.stringify({ ...conversation, ready: false, frame: null }));
       const superseded = await stale;
       const empty = await cleared;
       // A genuinely empty, loaded thread is ready too; a null frame is not.
@@ -121,7 +119,7 @@ test('the embedded transcript scrolls, requests earlier history, and keeps its r
       }));
       return { before, ready, after, superseded, empty, newThread };
     });
-    assert.deepEqual(presentation, { before: false, ready: { agentId: 'presentation-agent', revision: 3 }, after: true, superseded: null, empty: null, newThread: { agentId: 'presentation-agent', revision: 3 } });
+    assert.deepEqual(presentation, { before: false, ready: { agentId: 'presentation-agent', revision: 3, generation: 1 }, after: true, superseded: null, empty: null, newThread: { agentId: 'presentation-agent', revision: 3, generation: 1 } });
     assert.ok(await page.locator('.conversation-pane__empty h1').isVisible(), 'the empty quick chat shows its welcome headline');
     assert.equal(await page.getByRole('radio', { name: 'Codex', exact: true }).getAttribute('aria-checked'), 'true');
     await page.getByRole('radio', { name: 'Claude', exact: true }).click();
@@ -299,6 +297,50 @@ test('transcript links ask iOS to open external destinations without navigating 
   } finally { await browser?.close(); await server.close(); }
 });
 
+test('a normal laptop image link resolves through native and opens the image viewer, with failures visible', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
+    await page.addInitScript(() => {
+      window.nativeEvents = [];
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const event = JSON.parse(json); window.nativeEvents.push(event);
+        if (event.type === 'readConversationImage' && event.path === 'slow.png') { window.slowImageRequest = event; return; }
+        if (event.type === 'readConversationImage') queueMicrotask(() => window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId,
+          ...(event.path.endsWith('missing.png') ? { error: 'Unavailable' } : { dataUrl: 'data:image/png;base64,cG5n' }) })));
+      } } } };
+    });
+    await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
+    await page.waitForFunction(() => window.companionTranscript);
+    await page.evaluate(async () => {
+      const agent = { id: 'image-links', name: 'Images', backend: 'claude', folder: '/repo', status: { type: 'idle' } };
+      const message = { id: 'screenshots', role: 'assistant', parts: [{ type: 'text', text: '[Screenshot](/tmp/phone.png) [Missing](missing.png) [Slow](slow.png) [Fast](fast.png)' }] };
+      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true,
+        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages: [message], turns: [], busy: false } } } }));
+    });
+    for (const [label, path, src] of [['Screenshot', '/tmp/phone.png', 'data:image/png;base64,cG5n'], ['Missing', 'missing.png', '']]) {
+      const title = path.split('/').at(-1);
+      await page.getByRole('link', { name: label, exact: true }).click();
+      await page.waitForFunction(title => window.nativeEvents.some(event => event.type === 'openImage' && event.title === title), title);
+      const events = await page.evaluate(() => window.nativeEvents);
+      assert.ok(events.some(event => event.type === 'readConversationImage' && event.agentId === 'image-links' && event.path === path));
+      assert.deepEqual(events.filter(event => event.type === 'openImage').at(-1), { type: 'openImage', agentId: 'image-links', title, src });
+    }
+    assert.ok(await page.getByRole('link', { name: 'Screenshot', exact: true }).isVisible());
+    await page.getByRole('link', { name: 'Slow', exact: true }).click();
+    await page.getByRole('link', { name: 'Fast', exact: true }).click();
+    await page.waitForFunction(() => window.nativeEvents.some(event => event.type === 'openImage' && event.title === 'fast.png'));
+    await page.evaluate(async () => {
+      const event = window.slowImageRequest;
+      window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId, dataUrl: 'data:image/png;base64,cG5n' }));
+      await Promise.resolve();
+    });
+    assert.equal((await page.evaluate(() => window.nativeEvents.filter(event => event.type === 'openImage'))).at(-1).title, 'fast.png');
+  } finally { await browser?.close(); await server.close(); }
+});
+
 test('conversation images open the native viewer through the SDK action without leaking laptop paths or moving the transcript', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;
@@ -307,7 +349,11 @@ test('conversation images open the native viewer through the SDK action without 
     const page = await browser.newPage({ viewport: { width: 402, height: 740 } });
     await page.addInitScript(() => {
       window.nativeEvents = [];
-      window.webkit = { messageHandlers: { transcript: { postMessage(json) { window.nativeEvents.push(JSON.parse(json)); } } } };
+      window.webkit = { messageHandlers: { transcript: { postMessage(json) {
+        const event = JSON.parse(json); window.nativeEvents.push(event);
+        if (event.type === 'readConversationImage') queueMicrotask(() => window.companionTranscript.setImage(JSON.stringify({ requestId: event.requestId, agentId: event.agentId,
+          dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=' })));
+      } } } };
     });
     await page.goto(`${server.resolvedUrls.local[0]}transcript.html`);
     await page.waitForFunction(() => window.companionTranscript);
@@ -315,12 +361,24 @@ test('conversation images open the native viewer through the SDK action without 
     await page.evaluate(async src => {
       const agent = { id: 'image-agent', name: 'Images', folder: null, backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
       const messages = [
-        { id: 'photo', role: 'user', parts: [{ type: 'attachment', attachment: { kind: 'image', name: 'Photo.jpg', path: '/private/laptop/Photo.jpg', url: src } }] },
+        { id: 'photo', role: 'user', parts: [{ type: 'attachment', attachment: { kind: 'image', name: 'Photo.jpg', path: '/private/laptop/Photo.jpg' } }] },
         { id: 'result', role: 'assistant', parts: [{ type: 'media', media: { title: 'Result', alt: 'Result', url: src } }] },
       ];
-      await window.companionTranscript.setConversation(JSON.stringify({ agentId: agent.id, agent, ready: true,
-        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } }));
+      window.imageConversation = { agentId: agent.id, agent, ready: true,
+        frame: { agentId: agent.id, backend: 'claude', payload: { snapshot: { messages, turns: [], activeTurnId: null, busy: false } } } };
+      await window.companionTranscript.setConversation(JSON.stringify(window.imageConversation));
     }, src);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Open Photo.jpg"] img')?.naturalWidth > 0);
+    await page.evaluate(async () => {
+      const image = document.querySelector('[aria-label="Open Photo.jpg"] img');
+      for (let update = 0; update < 3; update++) {
+        const snapshot = window.imageConversation.frame.payload.snapshot;
+        snapshot.messages[1].parts.push({ type: 'text', text: `Streaming update ${update}` });
+        await window.companionTranscript.setConversation(JSON.stringify(window.imageConversation));
+        if (document.querySelector('[aria-label="Open Photo.jpg"] img') !== image) throw new Error('An unchanged attachment preview was replaced');
+      }
+    });
+    assert.equal((await page.evaluate(() => window.nativeEvents.filter(event => event.type === 'readConversationImage'))).length, 1, 'streaming must not read the same image again');
     const original = page.url();
     for (const title of ['Photo.jpg', 'Result']) {
       const button = page.getByRole('button', { name: `Open ${title}`, exact: true });

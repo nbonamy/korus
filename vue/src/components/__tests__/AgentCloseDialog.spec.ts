@@ -31,6 +31,15 @@ const workflow = {
 };
 
 describe('AgentCloseDialog', () => {
+  it('hides remote deletion for an inherited base upstream and clears a stale remote deletion choice', async () => {
+    const wrapper = mountDialog();
+    await wrapper.get('.agent-close-dialog__remote .el-switch').trigger('click');
+    await wrapper.setProps({ workflow: { ...workflow, upstream: 'origin/main', baseBranch: 'main' } });
+    expect(wrapper.find('.agent-close-dialog__remote').exists()).toBe(false);
+    await wrapper.get('.app-button--primary').trigger('click');
+    expect(wrapper.emitted('delete-worktree')).toStrictEqual([[false, false]]);
+  });
+
   it('requires an explicit discard choice before deleting a dirty worktree and resets it on reopening', async () => {
     const wrapper = mountDialog();
     await wrapper.setProps({ workflow: { ...workflow, files: [{ path: 'README.fr.md', indexStatus: '?', worktreeStatus: '?' }] } });

@@ -14,7 +14,10 @@ struct ExistingBranchSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if model.connection != .connected {
+                if busy {
+                    AppSheetProgress(title: "Opening your branch", symbol: "arrow.triangle.branch",
+                                     message: "\(model.productName) is getting the workspace ready.", subject: group.label, branch: selectedBranch)
+                } else if model.connection != .connected {
                     ContentUnavailableView("Not connected", systemImage: "wifi.slash", description: Text("Reconnect to your laptop to browse branches."))
                 } else if branches.status == .loading {
                     ProgressView("Loading branches…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -28,12 +31,13 @@ struct ExistingBranchSheet: View {
                     branchList
                 }
             }
-            .navigationTitle("Existing Branch")
+            .navigationTitle(busy ? "" : "Existing Branch")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search branches")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { model.closeBranchSheet() }.disabled(busy)
+                if !busy {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { model.closeBranchSheet() }
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -43,12 +47,13 @@ struct ExistingBranchSheet: View {
                             .font(.footnote).foregroundStyle(.red)
                         Button("Refresh branches") { model.loadBranches(in: group) }
                     }
-                    .padding().frame(maxWidth: .infinity).background(.regularMaterial)
+                    .appSheetFooter()
                 }
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .appSheetSurface()
+        .presentationDetents(busy ? [.medium] : [.medium, .large])
+        .presentationDragIndicator(busy ? .hidden : .visible)
         .interactiveDismissDisabled(busy)
         .onAppear { model.loadBranches(in: group) }
         .onChange(of: model.connection) { _, connection in
@@ -57,7 +62,7 @@ struct ExistingBranchSheet: View {
     }
 
     private var branchList: some View {
-        List {
+        AppSheetList {
             Section(group.label) {
                 ForEach(branches.matching(query)) { branch in
                     Button {
@@ -71,8 +76,7 @@ struct ExistingBranchSheet: View {
                                 if branch.isDefault { Text("Default").font(.caption).foregroundStyle(.secondary) }
                             }
                             Spacer(minLength: 8)
-                            if busy && selectedBranch == branch.name { ProgressView() }
-                            else if branch.isCheckedOut { Text("Checked out").font(.caption).foregroundStyle(.secondary) }
+                            if branch.isCheckedOut { Text("Checked out").font(.caption).foregroundStyle(.secondary) }
                         }
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
@@ -81,6 +85,7 @@ struct ExistingBranchSheet: View {
                 }
             }
         }
+        .searchable(text: $query, prompt: "Search branches")
         .overlay {
             if branches.items.isEmpty {
                 ContentUnavailableView("No branches", systemImage: "arrow.triangle.branch")

@@ -141,6 +141,25 @@ Account usage is an on-demand read of the paired laptop's enabled, connected quo
 providers through the same backend operation as the desktop menu. Only quota windows
 cross the companion seam; billing and credit details stay on the laptop. Reads recheck
 the device grant before returning, and do not depend on the selected conversation.
+Project acquisition uses the owning team's desktop operations for new repositories,
+GitHub discovery and URL cloning. The phone sends names, catalog IDs or network Git
+URLs rather than filesystem paths. GitHub credentials and checkout paths stay on
+the owning host; each write rechecks the grant, team location and available engine.
+Branch browsing uses the owning host’s connected integration without preparing a
+checkout. Selecting a branch reuses its checked-out worktree or fetches and prepares
+a linked worktree, preserving the primary checkout. Long-running acquisition uses
+the same device-scoped creation receipts as new chats.
+New GitHub branches use a catalog-validated base on the owning host, refresh its
+remote tip and create a separate worktree. Existing branch names are rejected;
+the primary checkout and its local base branch stay untouched.
+New worktree branches do not inherit the base's tracking configuration. Remote
+deletion requires a same-named tracked branch and excludes the primary worktree's
+branch; an arbitrary upstream never authorizes remote deletion. Companion previews
+and desktop dialogs use the same eligibility policy as the backend deletion guard.
+Conversation image reads accept only image references in the authoritative conversation,
+bound to its current host and session. The owning daemon resolves and reads the file;
+the phone receives bounded image bytes on demand. Image reads do not persist a copy;
+deleted source files are unavailable.
 
 Every agent operation names a full target (host, location, team, agent and session); a
 session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews

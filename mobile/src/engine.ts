@@ -18,6 +18,8 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  projectRepositories: ReturnType<typeof createCompanionState>['projectRepositories']['value'];
+  projectBranches: ReturnType<typeof createCompanionState>['projectBranches']['value'];
   usage: ReturnType<typeof createCompanionState>['usage']['value'];
   pushRegistrationFailed: boolean;
   requests: ReturnType<typeof createCompanionState>['requests']['value'];
@@ -65,6 +67,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
   | { type: 'notification'; notification: CompanionNotification }
   | { type: 'notificationOpenFailed' }
   | { type: 'sendResult'; requestId: string; status: 'accepted' | 'rejected' | 'unknown' }
@@ -84,6 +87,10 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
+  | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
+  | { type: 'loadProjectRepositories' } | { type: 'dismissProjectRepositories' }
+  | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
@@ -187,6 +194,8 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      projectRepositories: state.projectRepositories.value,
+      projectBranches: state.projectBranches.value,
       pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       usage: state.usage.value,
@@ -359,6 +368,15 @@ export function createEngine(port: EnginePort) {
         }
         return;
       }
+      case 'readConversationImage': {
+        try {
+          const image = await state.readImage(command.agentId, command.path);
+          if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, ...image });
+        } catch {
+          if (!disposed) port.post({ type: 'conversationImage', requestId: command.requestId, agentId: command.agentId, error: 'Image is unavailable.' });
+        }
+        return;
+      }
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
@@ -425,6 +443,11 @@ export function createEngine(port: EnginePort) {
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
       case 'loadBranches': return state.loadBranches(command.repositoryId);
+      case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId);
+      case 'dismissProjectBranches': return state.dismissProjectBranches();
+      case 'loadProjectRepositories': return state.loadProjectRepositories();
+      case 'dismissProjectRepositories': return state.dismissProjectRepositories();
+      case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
       case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
       case 'backend': return state.selectBackend(command.backend);

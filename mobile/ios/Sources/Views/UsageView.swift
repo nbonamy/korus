@@ -4,7 +4,7 @@ struct UsageView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        List {
+        AppSheetList {
             if model.connection != .connected {
                 ContentUnavailableView {
                     Label("Laptop disconnected", systemImage: "laptopcomputer")
@@ -36,18 +36,20 @@ struct UsageView: View {
                                 Button("Retry") { model.loadUsage() }
                             } else {
                                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                                    ForEach(provider.rows) { row in
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(row.label)
-                                                if let reset = row.reset(at: context.date) {
-                                                    Text("Resets in \(reset)").font(.caption).foregroundStyle(.secondary)
+                                    VStack(spacing: 16) {
+                                        ForEach(provider.rows) { row in
+                                            HStack {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(row.label)
+                                                    if let reset = row.reset(at: context.date) {
+                                                        Text("Resets in \(reset)").font(.caption).foregroundStyle(.secondary)
+                                                    }
                                                 }
+                                                Spacer()
+                                                Text("\(row.remaining) left").monospacedDigit()
                                             }
-                                            Spacer()
-                                            Text("\(row.remaining) left").monospacedDigit()
+                                            .accessibilityElement(children: .combine)
                                         }
-                                        .accessibilityElement(children: .combine)
                                     }
                                 }
                             }

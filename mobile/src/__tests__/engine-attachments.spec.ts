@@ -58,16 +58,16 @@ describe('native attachment submission', () => {
     } finally { f.engine.dispose(); }
   });
 
-  it('admits an attachment-only prompt and acknowledges it only after the laptop accepts it', async () => {
+  it.each(['', '  \n', 'Describe this image'])('admits a native image prompt %j with desktop fallback text and acknowledges only after laptop acceptance', async text => {
     const f = fixture();
     let accept!: () => void;
     f.sendPrompt.mockImplementationOnce(() => new Promise<void>((resolve) => { accept = resolve; }));
     try {
       await f.open();
-      const sending = f.engine.dispatch({ type: 'send', requestId: 'send-1', target: f.engine.snapshot().composerTarget!, text: '', uploads: [photo] });
+      const sending = f.engine.dispatch({ type: 'send', requestId: 'send-1', target: f.engine.snapshot().composerTarget!, text, uploads: [photo] });
       await vi.waitFor(() => expect(f.sendPrompt).toHaveBeenCalledOnce());
       expect(f.events.filter((event) => event.type === 'sendResult')).toEqual([]);
-      expect(f.sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), '', expect.any(String), expect.anything(), [photo]);
+      expect(f.sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), text.trim() ? text : '(no user instructions)', expect.any(String), expect.anything(), [photo]);
       accept(); await sending;
       expect(f.events.at(-1)).toMatchObject({ type: 'sendResult', requestId: 'send-1', status: 'accepted' });
     } finally { f.engine.dispose(); }

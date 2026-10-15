@@ -55,6 +55,7 @@ struct ComposerView: View {
                     pickerImport = nil; picker = nil
                     loadFiles(urls, request: request.token)
                 })
+                .appSheetSurface()
         }
         .fullScreenCover(item: $camera, onDismiss: {
             if let request = cameraImport { model.composerDrafts.finishImport(request, attachments: []); cameraImport = nil }

@@ -41,13 +41,16 @@ struct DrawerView: View {
         }
         .background(Color(.systemBackground))
         .sheet(isPresented: $showingSettings) { SettingsView() }
+        .sheet(item: Binding(get: { model.newProjectSource }, set: { if $0 == nil { model.closeProjectSheet() } })) { source in
+            NewProjectSheet(source: source)
+        }
         .sheet(item: Binding(get: { model.newWorktreeGroup }, set: { if $0 == nil { model.closeWorktreeSheet() } })) { group in
             NewWorktreeSheet(group: group)
         }
         .sheet(item: Binding(get: { model.existingBranchGroup }, set: { if $0 == nil { model.closeBranchSheet() } })) { group in
             ExistingBranchSheet(group: group)
         }
-        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil && model.existingBranchGroup == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
+        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil && model.existingBranchGroup == nil && model.newProjectSource == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check the connection and try again.")
@@ -115,19 +118,24 @@ struct DrawerView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             // Said only when something is wrong; a healthy link needs no words.
             if model.connection != .connected {
-                Circle().fill(model.connection.color).frame(width: 9, height: 9)
-                Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Circle().fill(model.connection.color).frame(width: 9, height: 9)
+                    Text(model.connection.label).font(.subheadline).foregroundStyle(.secondary)
+                }
             }
-            Spacer()
-            Button { showingSettings = true } label: {
-                Image(systemName: "gearshape").font(.body.weight(.semibold)).frame(width: 40, height: 40)
-                    .glassEffect(.regular.interactive(), in: .circle)
+            HStack(spacing: 10) {
+                NewAgentMenu(enabled: model.canStartChat && model.chatCreation != .creating, select: model.openProject)
+                Spacer()
+                Button { showingSettings = true } label: {
+                    Image(systemName: "gearshape").font(.body.weight(.semibold)).frame(width: 40, height: 40)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)

@@ -31,6 +31,23 @@ async function fixture() {
 }
 
 describe('merge cleanup with real Git', () => {
+  it('refuses to delete the base upstream of an unpublished worktree branch while allowing local-only cleanup', async () => {
+    const { root, repo, feature } = await fixture();
+    try {
+      await git(repo, ['push', 'origin', 'main']);
+      await git(repo, ['push', 'origin', '--delete', 'feature']);
+      expect((await git(repo, ['ls-remote', '--heads', 'origin', 'refs/heads/feature'])).stdout).toBe('');
+      await git(feature, ['branch', '--set-upstream-to=origin/main']);
+      const service = new AgentGitService(() => new Date(), git);
+      await expect(service.deleteLinkedWorktree(feature, true)).rejects.toThrow('remote branch');
+      expect((await git(repo, ['ls-remote', '--heads', 'origin', 'refs/heads/main'])).stdout).not.toBe('');
+      expect((await git(repo, ['worktree', 'list', '--porcelain'])).stdout).toContain(`worktree ${feature}`);
+      await service.deleteLinkedWorktree(feature, false);
+      expect((await git(repo, ['ls-remote', '--heads', 'origin', 'refs/heads/main'])).stdout).not.toBe('');
+      expect((await git(repo, ['branch', '--list', 'feature'])).stdout).toBe('');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it.each(['merge', 'squash'] as const)('cleans up a %s when the tracked remote branch is behind', async (strategy) => {
     const { root, repo, feature } = await fixture();
     try {

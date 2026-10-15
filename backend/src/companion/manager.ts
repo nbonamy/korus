@@ -12,6 +12,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
+import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
@@ -20,6 +21,8 @@ import { ConversationSource } from './conversation-source';
 import { warnMain } from '../log';
 import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
+import { CompanionProjectAcquisition } from './project-acquisition';
+import { readConversationImage } from './images';
 
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
@@ -153,7 +156,12 @@ export class CompanionManager {
     }
     this.saved = saved;
     this.notifications = new CompanionNotifications(peerIdFromPrivateKey(this.key).toString());
+    const projects = new CompanionProjectAcquisition(this.backend);
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
+      githubRepositories: remote => projects.list(remote),
+      githubBranches: (repositoryId, remote) => projects.branches(repositoryId, remote),
+      createProject: (input, remote, authorize) => projects.create(input, remote, authorize),
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
@@ -231,7 +239,7 @@ export class CompanionManager {
         if (agent.folder && workspace.agents.some((other) => other.id !== agentId && other.folder === agent.folder && location(other.teamId) === location(agent.teamId))) return plain;
         try {
           const workflow = await this.backend.request<AgentGitWorkflow>(backendMethods.agentGitWorkflowGet, { agentId, _clientId: 'companion-read' });
-          return { isLinkedWorktree: workflow.isLinkedWorktree, branch: workflow.branch ?? null, upstream: workflow.upstream ?? null, hasChanges: workflow.files.length > 0 };
+          return { isLinkedWorktree: workflow.isLinkedWorktree, branch: workflow.branch ?? null, upstream: matchingBranchUpstream(workflow.branch, workflow.upstream, workflow.baseBranch) ?? null, hasChanges: workflow.files.length > 0 };
         } catch { return plain; } // Non-Git or unavailable workspaces can still close while keeping all files.
       },
       close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },

@@ -161,7 +161,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
             onLoadOlder?(agentID)
             return
         }
-        if event["type"] as? String == "readConversationContent" {
+        if ["readConversationContent", "readConversationImage"].contains(event["type"] as? String ?? ""), message.frameInfo.isMainFrame {
             onReadContent?(event)
             return
         }

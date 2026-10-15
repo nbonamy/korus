@@ -1,6 +1,7 @@
 <template>
   <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px` }">
     <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
+    <div v-if="imageLoading" class="transcript__media-status" role="status">Loading image…</div>
     <ConversationPane
       v-if="agent && (frame || ready)"
       :controller="controller"
@@ -27,7 +28,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, provide, reactive, shallowRef } from 'vue';
-import { createCodexConversationPaneController, type CodexConversationPaneState } from '@codex-app-sdk/vue';
+import { createCodexConversationPaneController, provideCodexHostCapabilities, type CodexConversationPaneState } from '@codex-app-sdk/vue';
 import type { Agent } from '@workspace/core/contracts';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
@@ -46,6 +47,44 @@ provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidat
 
 const messages = computed(() => frame.value?.payload.snapshot.messages ?? []);
 const repository = computed(() => agent.value?.workspace?.kind === 'git' ? agent.value.workspace : null);
+const imageLoading = shallowRef(false);
+let imageOpenEpoch = 0;
+const imageRequests = new Map<string, { agentId: string; resolve: (source: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+function readImage(path: string): Promise<string> {
+  const agentId = agent.value?.id;
+  if (!agentId) return Promise.reject(new Error('No conversation.'));
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { imageRequests.delete(requestId); reject(new Error('Image request timed out.')); }, 30_000);
+    imageRequests.set(requestId, { agentId, resolve, reject, timer });
+    void handler('transcript').postMessage(JSON.stringify({ type: 'readConversationImage', requestId, agentId, path }));
+  });
+}
+function setImage(json: string) {
+  const reply = JSON.parse(json) as { requestId: string; agentId: string; dataUrl?: string; error?: string };
+  const pending = imageRequests.get(reply.requestId);
+  if (!pending) return;
+  imageRequests.delete(reply.requestId); clearTimeout(pending.timer);
+  if (reply.agentId !== pending.agentId || agent.value?.id !== pending.agentId || reply.error || !reply.dataUrl) pending.reject(new Error('Image is unavailable.'));
+  else pending.resolve(reply.dataUrl);
+}
+provideCodexHostCapabilities({
+  capabilities: { attachments: false, clipboard: false, externalLinks: true, transcription: false },
+  readImagePreview: readImage,
+  async copyToClipboard(content) { await navigator.clipboard.writeText(content.text); },
+  async ingestAttachments() { return []; }, async pickAttachments() { return []; },
+  async transcribeAudio() { throw new Error('Native composer owns dictation.'); },
+  async openExternal(url) { await handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url })); },
+});
+async function openFileImage(path: string, title: string) {
+  const agentId = agent.value?.id;
+  const epoch = ++imageOpenEpoch;
+  imageLoading.value = true;
+  let src = '';
+  try { src = await readImage(path); } catch { /* The native viewer presents an unavailable state. */ }
+  finally { if (epoch === imageOpenEpoch) imageLoading.value = false; }
+  if (epoch === imageOpenEpoch && agentId && agentId === agent.value?.id) void handler('transcript').postMessage(JSON.stringify({ type: 'openImage', agentId, title, src }));
+}
 const contentRequests = new Map<string, { agentId: string; sessionId: string; resolve: (chunk: ConversationContentChunk) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 function readConversationContent(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk> {
   const requestId = crypto.randomUUID();
@@ -74,10 +113,12 @@ const controller = createCodexConversationPaneController({
     loadOlderHistory: loadOlder,
     openLink(link) {
       if (link.kind === 'external') void handler('transcript').postMessage(JSON.stringify({ type: 'openExternal', url: link.href }));
+      else if (/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/i.test(link.path)) void openFileImage(link.path, link.path.split(/[\\/]/).at(-1) || 'Image');
     },
     async openImage(image) {
       const agentId = agent.value?.id;
       let src = /^(https?:|data:image\/)/i.test(image.src) ? image.src : '';
+      if (!src && !image.src.startsWith('blob:')) { await openFileImage(image.src, image.title || image.name || image.alt || 'Image'); return true; }
       // Blob URLs belong to this WebView; pass their displayed bytes rather than a device-local URL.
       if (image.src.startsWith('blob:')) {
         try {
@@ -117,6 +158,7 @@ type Context = { agentId: string; generation: number; ready: boolean; agent: Age
 const peerAgents = (peers: Context['peers'] = []) => peers.map((peer) => ({ id: peer.id, name: peer.label }) as Agent);
 let currentAgentId = '';
 function applyContext(message: Context) {
+  if (agent.value?.id !== message.agent?.id || JSON.stringify(agent.value?.backendSession) !== JSON.stringify(message.agent?.backendSession)) { ++imageOpenEpoch; imageLoading.value = false; }
   agent.value = message.agent; agents.value = peerAgents(message.peers);
   ready.value = message.ready ?? false; engines.value = message.engines ?? null;
   history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
@@ -124,7 +166,9 @@ function applyContext(message: Context) {
 
 let presentation = 0;
 window.companionTranscript = {
+  setImage,
   setContent(json) {
+    if ((JSON.parse(json) as { type?: string }).type === 'conversationImage') { setImage(json); return; }
     const reply = JSON.parse(json) as { requestId: string; agentId: string; sessionId: string; chunk?: ConversationContentChunk; error?: string };
     const pending = contentRequests.get(reply.requestId);
     if (!pending) return;
@@ -165,6 +209,7 @@ html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-
 .transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
 /* History errors must not resize the reading viewport when shown or dismissed. */
 .transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; background: var(--color-surface-lowest); }
+.transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
 /* Keep secondary transcript text legible at a phone's viewing distance. */
 .transcript, .transcript :where(.codex-chat-theme) {
   --font-size-12: 14px;

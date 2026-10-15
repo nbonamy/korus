@@ -240,6 +240,7 @@ export const backendMethods = {
   workProviderAssignedItemsList: 'workProvider/assignedItems/list',
   workProviderItemsList: 'workProvider/items/list',
   workProviderSourcesList: 'workProvider/sources/list',
+  workProviderBranchesList: 'workProvider/branches/list',
 } as const;
 
 export type BackendMethod = (typeof backendMethods)[keyof typeof backendMethods];

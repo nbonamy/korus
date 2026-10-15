@@ -2573,6 +2573,13 @@ export class AppBackendServer {
       }
       case backendMethods.workProviderDisconnect:
         return createAppRpcResult(message.id, await this.requireWorkIntegrations().disconnect(requireWorkProvider(message.params)));
+      case backendMethods.workProviderBranchesList: {
+        const params = requireRecord(message.params);
+        const provider = requireWorkProvider(params);
+        const sourceId = requireString(params.sourceId, 'sourceId');
+        return this.respondInLocation(message.id, this.automationLocationFromParams(params), backendMethods.workProviderBranchesList,
+          { provider, sourceId }, () => this.requireWorkIntegrations().listBranches(provider, sourceId));
+      }
       case backendMethods.workProviderSourcesList: {
         return this.respondInLocation(
           message.id,
@@ -3708,6 +3715,8 @@ function sourceWorktreeInputWithoutRemoteConnection(input: CreateSourceWorktreeI
     ...(input.baseBranch ? { baseBranch: input.baseBranch } : {}),
     ...(input.destinationPath ? { destinationPath: input.destinationPath } : {}),
     ...(input.reuseExisting ? { reuseExisting: true } : {}),
+    ...(input.fetchRemoteBranch ? { fetchRemoteBranch: true } : {}),
+    ...(input.requireNewBranch ? { requireNewBranch: true } : {}),
   };
 }
 

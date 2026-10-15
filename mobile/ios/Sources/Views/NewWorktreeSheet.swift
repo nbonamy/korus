@@ -11,6 +11,21 @@ struct NewWorktreeSheet: View {
     private var trimmed: String { branchName.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
+        Group {
+            if busy {
+                AppSheetProgress(title: "Creating your worktree", symbol: "arrow.triangle.branch",
+                                 message: "\(model.productName) is getting the workspace ready.", subject: group.label, branch: trimmed)
+            } else { form.padding(20) }
+        }
+        .appSheetSurface()
+        .presentationDetents(busy ? [.medium] : [.height(290)])
+        .presentationDragIndicator(busy ? .hidden : .visible)
+        .interactiveDismissDisabled(busy)
+        .onAppear { focused = !busy }
+        .onChange(of: busy) { _, busy in if busy { focused = false } }
+    }
+
+    private var form: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("New worktree").font(.headline)
             HStack(spacing: 10) {
@@ -21,13 +36,12 @@ struct NewWorktreeSheet: View {
                     .focused($focused)
                     .submitLabel(.go)
                     .onSubmit(start)
-                    .disabled(busy)
                     .onChange(of: branchName) { _, name in
                         if name.contains(" ") { branchName = name.replacingOccurrences(of: " ", with: "-") }
                     }
             }
             .padding(.horizontal, 16).frame(height: 50)
-            .glassEffect(.regular, in: .capsule)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 12))
             if model.chatCreation == .failed {
                 Text("Couldn’t create the worktree. Check the branch name and the connection.")
                     .font(.footnote).foregroundStyle(.red)
@@ -36,23 +50,17 @@ struct NewWorktreeSheet: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Button(action: start) {
-                Group {
-                    if busy { HStack(spacing: 8) { ProgressView(); Text("Setting up…") } } else { Text("Create") }
-                }
-                .font(.body.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
+                Text("Create")
+                    .font(.body.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
             }
             .buttonStyle(.glassProminent)
-            .disabled(trimmed.isEmpty || busy)
+            .disabled(trimmed.isEmpty)
         }
-        .padding(20)
-        .presentationDetents([.height(290)])
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(busy)
-        .onAppear { focused = true }
     }
 
     private func start() {
         guard !trimmed.isEmpty else { return }
+        focused = false
         model.startChat(in: group, branchName: trimmed)
     }
 }

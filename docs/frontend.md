@@ -181,6 +181,17 @@ which retains ownership of operation state, confirmations and host routing.
 - The in-app browser's `<webview>` sits in the workspace DOM so menus and dialogs
   layer over it; never hide the page to expose an overlay.
 
+Native mobile sheets use an opaque, light neutral canvas with white grouped rows
+and subtle separators, adapting both surfaces in dark mode. A shared sheet style keeps settings destinations, forms and
+footers consistent in light and dark mode. Camera and image content retain their
+own contrast treatment; system pickers retain their native controls.
+Long-running operations replace their sheet forms with `AppSheetProgress`, using
+one centered layout for the operation, context and indeterminate indicator. Progress
+uses the medium sheet height; multi-step sheets keep Cancel at the trailing edge
+and Back at the leading edge throughout the flow.
+Actions and dismissal remain unavailable until the operation resolves; failures
+return to the form with its inputs preserved.
+
 ## Accessibility And Copy
 
 - Every icon-only control has an accessible name; keep native keyboard behavior,

@@ -174,9 +174,11 @@ describe('companion state', () => {
     const target = { hostId: 'laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null };
     const preview = { target, isLinkedWorktree: true, branch: 'feature', upstream: 'origin/feature', hasChanges: true };
     const closeSession = vi.fn();
+    let finishClose!: () => void;
+    const closing = new Promise<void>(resolve => { finishClose = resolve; });
     connector.connect = async (id) => {
       const session = await original(id); let workspace = await session.getWorkspace();
-      closeSession.mockImplementation(async () => { workspace = { ...workspace, agents: workspace.agents.filter((agent) => agent.id !== target.agentId) }; });
+      closeSession.mockImplementation(async () => { await closing; workspace = { ...workspace, agents: workspace.agents.filter((agent) => agent.id !== target.agentId) }; });
       return { ...session, getWorkspace: async () => workspace, previewCloseSession: async () => preview, closeSession };
     };
     const state = createCompanionState(connector);
@@ -187,13 +189,34 @@ describe('companion state', () => {
       expect(closeSession).not.toHaveBeenCalled();
       await state.confirmCloseSession('demo-agent', true, false, false);
       expect(closeSession).not.toHaveBeenCalled(); // Dirty work needs explicit discard consent.
-      await state.confirmCloseSession('demo-agent', deleting, deleting, deleting);
+      const pending = state.confirmCloseSession('demo-agent', deleting, deleting, deleting);
+      expect(state.sessionAction.value).toBe('close');
+      state.cancelCloseSession();
+      expect(state.closePreview.value).toStrictEqual(preview);
+      expect(state.agentId.value).toBe('demo-agent');
+      finishClose(); await pending;
+      expect(state.sessionAction.value).toBeNull();
       expect(closeSession).toHaveBeenCalledExactlyOnceWith(target, deleting ? { deleteWorktree: true, deleteRemoteBranch: true, discardChanges: true, confirmed: true } : undefined);
       expect(state.closePreview.value).toBeNull();
       expect(state.agentId.value).toBe('demo-reviewer');
       expect(state.conversation.value?.agentId).toBe('demo-reviewer');
     } finally { state.dispose(); }
   });
+  it('does not expose inherited base tracking as a remotely deletable branch from an older host', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const closeSession = vi.fn(async () => {});
+    const preview = { target: { hostId: 'laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null }, isLinkedWorktree: true, branch: 'feature/new', upstream: 'origin/main', hasChanges: false };
+    connector.connect = async id => ({ ...await original(id), previewCloseSession: async () => preview, closeSession });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await state.requestCloseSession();
+      expect(state.closePreview.value).toStrictEqual({ ...preview, upstream: null });
+      await state.confirmCloseSession('demo-agent', true, true);
+      expect(closeSession).toHaveBeenCalledExactlyOnceWith(preview.target, { deleteWorktree: true, deleteRemoteBranch: false, discardChanges: false, confirmed: true });
+    } finally { state.dispose(); }
+  });
+
   it('keeps a refused close open and rejects stale confirmation after changing conversations', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
     const closeSession = vi.fn(async () => { throw new Error('Worktree changed'); });
@@ -507,7 +530,7 @@ describe('companion state', () => {
       await state.submit('   ');
       expect(sendPrompt).not.toHaveBeenCalled();
       await state.submit('', { attachments: [{ type: 'image', reference: 'phone-attachment:1' }] });
-      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '', expect.any(String), { planMode: false }, [upload]);
+      expect(sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), '(no user instructions)', expect.any(String), { planMode: false }, [upload]);
     } finally { state.dispose(); }
   });
   it('applies a permission change at once, restores it if the laptop refuses, and can stop the agent', async () => {

@@ -16,7 +16,7 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppSheetList {
                 Section {
                     NavigationLink { UsageView() } label: {
                         Label("Usage", systemImage: "gauge.with.dots.needle.33percent")
@@ -82,5 +82,6 @@ struct SettingsView: View {
                 Text("You will need a new pairing code to connect again.")
             }
         }
+        .appSheetSurface()
     }
 }

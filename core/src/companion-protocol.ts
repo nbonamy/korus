@@ -24,6 +24,12 @@ export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLi
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
 export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
+/** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
+export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'github' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectBranch = { name: string; isDefault: boolean };
+export type CompanionGitHubRepository = { id: string; name: string };
+/** Image bytes resolved by the conversation's host, never a host-local file URL. */
+export type CompanionImage = { dataUrl: string };
 export type CompanionChatCreation = { state: 'running' } | { state: 'success'; agentId: string } | { state: 'error'; error: string };
 /** Shown on the laptop: the phone already knows the relay, so the code is all it needs. */
 export type CompanionInvitation = { code: string; expiresAt: number };
