@@ -293,6 +293,28 @@ The iOS build rejects bundled third-party cryptographic implementations, includi
 transitive fallbacks; upstream Noise upgrades require interoperability revalidation.
 Desktop and relay use their existing libp2p implementations.
 
+### Companion push delivery
+
+The relay's optional `apns` configuration supplies `teamId`, the product app ID as
+`topic`, and `development` and/or `production` entries containing `keyId` and
+`privateKeyFile`. Signing keys are read from operator-managed files; they never enter
+client bundles or source control. The Apple App ID must enable Push Notifications,
+and the installed app's signed `aps-environment` entitlement must match the key's
+environment. Device tokens are opaque and rotate; the phone registers at launch and
+forwards updates through its authenticated laptop session. The phone signs each
+registration with its pairing identity, binding the token, environment, laptop,
+relay and expiration. The relay verifies this consent and a current paired route
+before contacting Apple. Global, host and token budgets bound delivery even when
+clients rotate identities; concurrent duplicate notifications share one send.
+Apple invalid-token responses remove only the registration that produced the failure.
+
+`npm run dev:relay` reads `APP_COMPANION_APNS_KEY_ID`,
+`APP_COMPANION_APNS_TEAM_ID`, `APP_COMPANION_APNS_KEY_FILE` and
+`APP_COMPANION_APNS_ENVIRONMENT` (`development` or `production`) from the environment
+or ignored `.env`. Without APNs configuration the foreground notification stream
+remains available. An APNs acceptance response is not proof of OS delivery; verify
+background delivery and tap navigation on a signed device separately.
+
 ### Background daemon (macOS)
 
 Settings can install a per-user LaunchAgent that runs `daemon serve`, so agents and
@@ -467,24 +489,26 @@ manage MCP tools: treat it as a privileged control plane.
 - Standalone `daemon` must not import Electron; secret storage sits behind an
   abstract token-store port.
 
-### Companion push delivery
+## Local usage statistics
 
-The relay's optional `apns` configuration supplies `teamId`, the product app ID as
-`topic`, and `development` and/or `production` entries containing `keyId` and
-`privateKeyFile`. Signing keys are read from operator-managed files; they never enter
-client bundles or source control. The Apple App ID must enable Push Notifications,
-and the installed app's signed `aps-environment` entitlement must match the key's
-environment. Device tokens are opaque and rotate; the phone registers at launch and
-forwards updates through its authenticated laptop session. The phone signs each
-registration with its pairing identity, binding the token, environment, laptop,
-relay and expiration. The relay verifies this consent and a current paired route
-before contacting Apple. Global, host and token budgets bound delivery even when
-clients rotate identities; concurrent duplicate notifications share one send.
-Apple invalid-token responses remove only the registration that produced the failure.
+The owning daemon records live provider executions in a bounded SQLite ledger.
+History hydration, inherited forks and context occupancy never become consumed
+tokens. Provider conversations remain the sole owners of prompts, responses and
+tool arguments; analytics stores only execution references, numeric measurements,
+outcomes and local grouping metadata. Unsupported consumption and model identity
+remain unknown. Codex consumption can be replaced or invalidated after completion.
+Claude consumption covers the main agent loop; auxiliary calls are excluded.
+Reasoning is included in output. Cache categories must not be added to input.
+Provider quotas remain separate account-scoped views.
 
-`npm run dev:relay` reads `APP_COMPANION_APNS_KEY_ID`,
-`APP_COMPANION_APNS_TEAM_ID`, `APP_COMPANION_APNS_KEY_FILE` and
-`APP_COMPANION_APNS_ENVIRONMENT` (`development` or `production`) from the environment
-or ignored `.env`. Without APNs configuration the foreground notification stream
-remains available. An APNs acceptance response is not proof of OS delivery; verify
-background delivery and tap navigation on a signed device separately.
+The backend turn clock excludes waits for user input and in-flight tools, with
+parallel tool waits counted once. Speed combines provider-reported output tokens
+with measured working time after the first generated output. A turn without both
+measurements has no speed.
+
+The ledger retains up to one year and 50,000 executions, imports legacy statistics
+once transactionally, and exposes grouped queries to Analytics through app-owned
+contracts. Clearing statistics deletes the local measurements without changing
+provider history. Storage failures leave analytics unavailable without blocking
+provider work. No reporting endpoint, upload queue or hosted analytics service is
+part of this path.

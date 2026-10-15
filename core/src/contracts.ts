@@ -838,6 +838,8 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
+  getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
+  clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
   setVisualizeOpen(agentId: string, input: import('./visualize').SetVisualizeOpenInput): Promise<AppSnapshot>;
   generateVisualizationSuggestion(agentId: string, input: import('./visualize').GenerateVisualizationSuggestionInput): Promise<AppSnapshot>;

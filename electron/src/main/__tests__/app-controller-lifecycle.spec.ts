@@ -9,6 +9,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 
 const native = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
+  nativeOptions: undefined as unknown,
   exposed: new Map<string, unknown>(),
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn(), showMessageBoxSync: vi.fn(), showErrorBox: vi.fn() },
   shell: { openExternal: vi.fn(), openPath: vi.fn(), beep: vi.fn() },
@@ -16,6 +17,12 @@ const native = vi.hoisted(() => ({
   factory: vi.fn(), createWindow: vi.fn(), maintenance: vi.fn(), capture: vi.fn(),
   keyStart: vi.fn((_hotkey: string, _capture: () => void) => true), keyStop: vi.fn(), ready: false,
 }));
+vi.mock('@codex-app-sdk/electron', async importOriginal => {
+  const sdk = await importOriginal<typeof import('@codex-app-sdk/electron')>();
+  return { ...sdk, registerCodexNativeIpc: (...args: Parameters<typeof sdk.registerCodexNativeIpc>) => {
+    native.nativeOptions = args[1]; return sdk.registerCodexNativeIpc(...args);
+  } };
+});
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   return {
@@ -161,6 +168,17 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('exposes statistics deletion through preload and propagates backend failures',async()=>{
+    const {backend}=setup();
+    await import('../../preload');
+    const api=native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    backend.request.mockResolvedValueOnce(null);
+    await api.clearUsage();
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.usageClear);
+    backend.request.mockRejectedValueOnce(Error('storage unavailable'));
+    await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
+  });
+
   it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
     const { backend } = setup();
     const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };

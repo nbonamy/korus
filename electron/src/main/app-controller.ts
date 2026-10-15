@@ -505,6 +505,9 @@ export class AppController {
       return this.selectAgent(agentId);
     });
 
+    ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
+    ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
+
     ipc.handle(ipcChannels.updateSettings, async (_event, input: UpdateSettingsInput) => {
       return this.updateSettings(input);
     });
@@ -1288,7 +1291,7 @@ export class AppController {
       if (!agent) {
         throw new Error(`Agent not found: ${agentId}`);
       }
-      const state = await this.browserPane.open(this.mainWindow, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
+      const state = await this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
       this.resolvePendingBrowserOpen(agentId, browserId, url, state);
       return state;
     } catch (error) {

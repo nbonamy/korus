@@ -1,3 +1,5 @@
+import { UsageService } from './usage/usage-service';
+import { UsageLedger } from './usage/usage-ledger';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
 import { CompanionManager } from './companion/manager';
@@ -118,6 +120,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
+  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, path.join(backendHomeDir(), 'usage.json'));
+  await localUsage.load();
+  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
   const mcpService: AppMcpService = new AppMcpService({
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
@@ -270,6 +275,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    usage,
     companionControl: (input) => companion.control(input),
     onPromptSource: (agent, clientId) => companion.recordPrompt(agent, clientId),
     documents,

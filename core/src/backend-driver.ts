@@ -101,6 +101,7 @@ export type BackendCodeReviewResult = {
 
 export type AgentBackendDriver = {
   readonly backend: AgentBackend;
+  onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): BackendRuntimeStatus;
   getBankedResets?(): Promise<import('./contracts/banked-resets').BankedResets>;

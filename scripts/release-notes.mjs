@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const RELEASE_NOTES_PATH = 'vue/src/generated/release-notes.json';
-const PACKAGE_PATHS = ['package.json', 'core/package.json', 'backend/package.json', 'vue/package.json', 'electron/package.json', 'web/package.json'];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -86,13 +85,13 @@ export function serializeReleaseNotes(releaseNotes) {
 }
 
 export function expectedReleaseNotes(rootDir = ROOT) {
-  const manifests = PACKAGE_PATHS.map((relativePath) => ({
+  const rootPackage = readJson(path.join(rootDir, 'package.json'));
+  const workspaces = rootPackage.workspaces.map((workspace) => `${workspace}/package.json`).map((relativePath) => ({
     path: relativePath,
     manifest: readJson(path.join(rootDir, relativePath)),
   }));
-  const [root, ...workspaces] = manifests;
   const version = assertVersionConsistency({
-    rootPackage: root.manifest,
+    rootPackage,
     workspaces,
     lockfile: readJson(path.join(rootDir, 'package-lock.json')),
   });

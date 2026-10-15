@@ -69,6 +69,7 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('Accessibility');
     expect(wrapper.findAll('.el-menu-item').map((item) => item.text())).toStrictEqual([
       'General',
+      'Analytics',
       'Appearance',
       'Voice',
       'Personalization',

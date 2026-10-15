@@ -40,11 +40,11 @@ const server = start(process.execPath, [
   serverBundle,
 ], {
   name: 'server',
-  env: { PORT: String(serverPort), HOST: '127.0.0.1' },
+  env: { NODE_ENV: 'development', PORT: String(serverPort), HOST: '127.0.0.1' },
 });
 const client = start('npm', ['exec', '-w', '@workspace/web', '--', 'vite', '--host', '127.0.0.1', '--port', String(clientPort), '--strictPort'], {
   name: 'client',
-  env: { WEB_DEV_SERVER_PORT: String(serverPort) },
+  env: { NODE_ENV: 'development', WEB_DEV_SERVER_PORT: String(serverPort) },
 });
 
 for (const [name, child] of [['server', server], ['client', client]]) {

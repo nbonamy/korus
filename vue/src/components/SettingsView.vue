@@ -13,9 +13,10 @@
     />
 
     <main class="settings-view__content">
-      <div class="settings-view__panel">
+      <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
+        <UsagePanel v-if="activeTab === 'usage'" />
         <SettingsGeneralPanel
-          v-if="activeTab === 'general'"
+          v-else-if="activeTab === 'general'"
           :choose-source-folder="chooseSourceFolder"
           :daemon-status="daemonStatus"
           :daemon-status-error="daemonStatusError"
@@ -148,6 +149,7 @@
 import { computed } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
+import UsagePanel from './UsagePanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
@@ -315,5 +317,8 @@ function selectTab(tab: SettingsTab): void {
 .settings-view__panel {
   max-width: 720px;
   margin: 0 auto;
+}
+.settings-view__panel--wide {
+  max-width: 1200px;
 }
 </style>

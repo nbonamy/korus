@@ -550,7 +550,7 @@ describe('AppShell authentication and conversation', () => {
       },
     });
 
-    await nextTick();
+    await flushPromises();
 
     expect(wrapper.find('.github-onboarding').exists()).toBe(false);
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
@@ -558,6 +558,7 @@ describe('AppShell authentication and conversation', () => {
     expect(useConfetti().bursts.value).toHaveLength(1);
 
     await wrapper.get('.onboarding-complete .el-button').trigger('click');
+    await flushPromises();
 
     expect(wrapper.find('.onboarding-complete').exists()).toBe(false);
     expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');

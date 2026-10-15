@@ -1,3 +1,5 @@
+import { appApi } from '../../platform-api';
+import { setElectronTestClient } from '../../test/client';
 import { product } from '@workspace/core/product';
 import { flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';

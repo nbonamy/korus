@@ -295,9 +295,9 @@ describe('AppBackendServer', () => {
   });
 
   it.each([
-    { prompt: 'run next', delivered: 'run next' },
-    { prompt: '/worktree', delivered: WORKTREE_DELEGATION_PROMPT },
-  ])('owns queued prompt draining and dequeues $prompt only after backend acceptance', async ({ prompt, delivered }) => {
+    { prompt: 'run next', delivered: 'run next', clientId: 'desktop' },
+    { prompt: '/worktree', delivered: WORKTREE_DELEGATION_PROMPT, clientId: 'mobile-test' },
+  ])('owns queued prompt draining and dequeues $prompt only after backend acceptance', async ({ prompt, delivered, clientId }) => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -333,6 +333,7 @@ describe('AppBackendServer', () => {
     await server.handleMessage({
       jsonrpc: '2.0', id: 'queue', method: 'agent/prompt/send',
       params: {
+        _clientId: clientId,
         agentId: 'agent-dina',
         prompt,
         options: {
@@ -390,7 +391,7 @@ describe('AppBackendServer', () => {
       payload: { type: 'idle' },
     });
     await flushMicrotasks();
-    expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'desktop');
+    expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), clientId);
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), delivered, {
       model: 'sol',
       reasoningEffort: 'high',

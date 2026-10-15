@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import type { UsageService } from './usage/usage-service';
+import type { UsageFilter } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { isBankedResets, isBankedResetResult, isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
@@ -91,6 +94,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  usage?:UsageService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
@@ -186,6 +190,7 @@ export class AppBackendServer {
   private readonly agentRequests: AgentRequestRegistry;
   private readonly remoteTeams: RemoteTeamService;
   private readonly documents: DocumentWorkspaceService;
+  private unsubscribeUsage?:()=>void;
   private readonly clientPreferences: ClientPreferencesService;
   private readonly agentPrompts: AgentPromptManager;
   private readonly planReviews: AgentPlanReviewService;
@@ -255,6 +260,7 @@ export class AppBackendServer {
       startAgent: (agent, prompt) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt),
     });
     this.driverRpc = options.driverRpc;
+    this.unsubscribeUsage = options.driverRpc?.onUsage?.(event=>options.usage?.observe(event));
     this.onEvent = options.onEvent;
     this.onBackendEventApplied = options.onBackendEventApplied;
     this.saveSnapshot = options.saveSnapshot;
@@ -662,6 +668,14 @@ export class AppBackendServer {
     if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
     if (params) delete params._clientId;
     const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
+    if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
+      try {
+        const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
+        if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
+        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
+      } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }
+    }
+
     if ([backendMethods.clientWorkspaceGet, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead, backendMethods.clientDocumentSave].some(method => method === message.method)) {
       try {
         if (message.method === backendMethods.clientWorkspaceGet) return createAppRpcResult(message.id, await this.documents.get(clientId));
@@ -723,7 +737,15 @@ export class AppBackendServer {
         }
       }
     }
-    const response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId);
+    const sourceAgentId=[backendMethods.agentPromptSend,backendMethods.agentTurnRetry,backendMethods.agentTurnContinueInterrupted].some(method=>method===message.method) && typeof params?.agentId==='string' ? params.agentId : null;
+    const source=sourceAgentId ? this.options.usage?.beginPrompt(sourceAgentId) : null;
+    let response:AppRpcResponse|undefined;
+    try { response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId); }
+    catch(error) {
+      if(sourceAgentId)this.options.usage?.cancelPrompt(sourceAgentId,source);
+      throw error;
+    }
+    if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
         const created = (createsAgent ? response.result.agents : response.result.teams).find((item) => item.id === creation.id);
@@ -2789,6 +2811,7 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.unsubscribeUsage?.();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
     this.agentWorkspaces.close();
@@ -2797,6 +2820,7 @@ export class AppBackendServer {
     this.unsubscribeDriverEvents?.();
     await this.driverRpc?.close();
     await this.remoteClients.close();
+    await this.options.usage?.close();
   }
 
   emitEvent(event: BackendEvent): void {
@@ -3164,6 +3188,7 @@ export class AppBackendServer {
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
     const fullEvent = this.nextMainEvent(event);
+    this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
@@ -3202,6 +3227,7 @@ export class AppBackendServer {
       }
     }
     const fullEvent = this.nextMainEvent(event);
+    this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
