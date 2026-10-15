@@ -286,6 +286,15 @@ unspecified. Codex consumption can be replaced or invalidated after completion
 and remains local-only. Unsupported consumption and execution models
 remain unknown. Account summaries and quotas are account-scoped local views.
 
+Backend services accept the narrow `FeatureReporter` port from
+`telemetry.forSource(clientId)`. `track('browser.open', action)` observes an operation
+without changing its return value or error; `begin('mission.start')` returns an
+idempotent outcome callback for longer workflows. `record('artifact.open')` counts
+a completed point event. Feature names and outcomes are finite typed categories;
+there is no property bag. The reporter captures permission before work, isolates
+observer failures, bounds its queue and owns persistence/delivery. Services never
+log payloads or implement their own collectors.
+
 Product reports contain only finite daily numeric categories. Client disclosure,
 source permission, host permission, administrator policy and reviewed rollout
 configuration all gate collection and delivery. Model-behavior reports require the

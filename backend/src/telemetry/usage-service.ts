@@ -154,6 +154,7 @@ export class UsageService {
   }
   async drain(): Promise<void> {
     await this.chain;
+    await this.telemetry.drain();
   }
   async close(): Promise<void> {
     await this.chain;

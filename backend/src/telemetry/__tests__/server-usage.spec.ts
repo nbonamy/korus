@@ -55,6 +55,7 @@ it("counts completion at the owning command and routes per-client choices withou
       input: { name: "CANARY_remote_team", color: "#7158D4" },
     });
     expect(snapshot.teams).toHaveLength(3);
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending[0]?.rows).toStrictEqual(
       ["feature.attempted", "feature.succeeded"].map((metric) => ({
         day: new Date().toISOString().slice(0, 10),
@@ -73,6 +74,7 @@ it("counts completion at the owning command and routes per-client choices withou
     await call("workProvider/backlog/configure", {
       input: { provider: "github", configuration: {} },
     });
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending.flatMap((b) => b.rows)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -99,6 +101,7 @@ it("counts completion at the owning command and routes per-client choices withou
     await expect(
       call("mission/execution/update", { input: { action: "run" } }),
     ).rejects.toThrow("Invalid mission command");
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending.flatMap((b) => b.rows)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -154,6 +157,7 @@ it("counts completion at the owning command and routes per-client choices withou
       }),
     ).toHaveProperty("result");
     expect(agent.codeReview.automation?.state).toBe("paused");
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending.flatMap((b) => b.rows)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -185,6 +189,7 @@ it("counts completion at the owning command and routes per-client choices withou
       }),
     ).toHaveProperty("result");
     expect(saveReport).toHaveBeenCalledOnce();
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending.flatMap((b) => b.rows)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -207,6 +212,7 @@ it("counts completion at the owning command and routes per-client choices withou
     await call("team/create", {
       input: { name: "local only", color: "#7158D4" },
     });
+    await reporter.drain();
     expect(reporter.privacy("desktop").pending).toStrictEqual([]);
     expect(
       await call("usage/get", { filter: { group: "provider" } }),

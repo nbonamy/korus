@@ -723,19 +723,21 @@ export class AppBackendServer {
     const outcomeKind=message.method===backendMethods.missionExecute?'mission':message.method===backendMethods.automationRun?'automation':null;
     const previousOutcomes=outcomeKind?this.options.usage?.outcomeKeys(outcomeKind,this.snapshot)??[]:[];
     const feature = telemetryFeatureForMethod(message.method,params,this.snapshot);
-    const operationId=randomUUID();
+    const features=this.options.usage?.telemetry.forSource(clientId);
     const target = typeof params?.agentId==='string' ? this.snapshot.agents.find(a=>a.id===params.agentId) : undefined;
     const input=isRecord(params?.input)?params.input:{};
     const targetTeam=input.teamId??target?.teamId;
     const remote = params?.remoteConnectionId || input.remoteConnectionId || (isRecord(params?.location) && params.location.kind==='remote') || this.snapshot.teams.find(t=>t.id===targetTeam)?.remoteConnectionId;
-    if(feature && !remote) await this.options.usage?.telemetry.feature(clientId,operationId+':attempt',feature,'attempted',telemetryPermission);
+    const finishFeature=feature && !remote ? features?.begin(feature) : undefined;
+    const finishExport=feature==='review.finish' && !remote ? features?.begin('review.export') : undefined;
     const sourceAgentId=[backendMethods.agentPromptSend,backendMethods.agentTurnRetry,backendMethods.agentTurnContinueInterrupted].some(method=>method===message.method) && typeof params?.agentId==='string' ? params.agentId : null;
     const source=sourceAgentId ? this.options.usage?.source(sourceAgentId,clientId) : null;
     let response:AppRpcResponse|undefined;
     try { response = await this.dispatchMessage(request, (id) => { creation.id = id; }); }
     catch(error) {
       if(sourceAgentId)this.options.usage?.cancelSource(sourceAgentId,source);
-      if(feature && !remote)await this.options.usage?.telemetry.feature(clientId,operationId,feature,'failed',telemetryPermission);
+      finishFeature?.('failed');
+      finishExport?.('failed');
       throw error;
     }
     if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelSource(sourceAgentId,source);
@@ -746,9 +748,9 @@ export class AppBackendServer {
       const status=isRecord(result)?result.status:undefined;
       const outcome=!('result' in response)?'failed':status==='cancelled'?'cancelled':status==='failed'||status==='conflict'?'failed':status==='unavailable'||status==='unsupported'?'unavailable':'succeeded';
       if (!remote) {
-        await this.options.usage?.telemetry.feature(clientId,operationId,feature,outcome,telemetryPermission);
+        finishFeature?.(outcome);
         // Successful finish includes an owned, awaited report save; failures never imply an export.
-        if(feature==='review.finish' && outcome==='succeeded') await this.options.usage?.telemetry.feature(clientId,operationId+':export','review.export','succeeded',telemetryPermission);
+        finishExport?.(outcome);
       }
     }
 

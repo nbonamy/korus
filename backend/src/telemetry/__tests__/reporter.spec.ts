@@ -512,3 +512,82 @@ it("requires renewed behavior disclosure, emits explicit zero samples, preserves
     await reporter.close();
   }
 });
+
+it("gives services a nonblocking typed operation port with one outcome and permission captured before work", async () => {
+  const reporter = new TelemetryReporter(
+    await file("operations"),
+    config,
+    () => event.at,
+  );
+  await reporter.load();
+  const features = reporter.forSource("desktop");
+  expect(
+    await features.track("browser.open", () => "opened while disabled"),
+  ).toBe("opened while disabled");
+  await reporter.choose("desktop", { enabled: true, disclosure: 2 });
+  const finish = features.begin("mission.start");
+  finish("cancelled");
+  finish("succeeded");
+  const result = { status: "unavailable" as const, secret: "CANARY_content" };
+  expect(
+    await features.track(
+      "browser.open",
+      () => result,
+      (value) => value.status,
+    ),
+  ).toBe(result);
+  const failure = new Error("CANARY_error");
+  await expect(
+    features.track("review.start.manual", () => {
+      throw failure;
+    }),
+  ).rejects.toBe(failure);
+  await reporter.drain();
+  expect(
+    reporter
+      .privacy("desktop")
+      .pending.flatMap((batch) => batch.rows)
+      .map((row) => [row.feature, row.metric, row.value]),
+  ).toStrictEqual([
+    ["mission.start", "feature.attempted", 1],
+    ["mission.start", "feature.cancelled", 1],
+    ["browser.open", "feature.attempted", 1],
+    ["browser.open", "feature.unavailable", 1],
+    ["review.start.manual", "feature.attempted", 1],
+    ["review.start.manual", "feature.failed", 1],
+  ]);
+  expect(JSON.stringify(reporter.privacy("desktop").pending)).not.toContain(
+    "CANARY",
+  );
+  const pending = features.begin("mission.finish");
+  await reporter.choose("desktop", { enabled: false, disclosure: 2 });
+  await reporter.choose("desktop", { enabled: true, disclosure: 2 });
+  pending("succeeded");
+  await reporter.drain();
+  expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+  await reporter.close();
+});
+
+it("keeps successful operations successful when reporting or outcome classification fails", async () => {
+  const queue = await file("queue");
+  const reporter = new TelemetryReporter(queue, config);
+  await reporter.load();
+  await reporter.choose("desktop", { enabled: true, disclosure: 2 });
+  await rm(path.dirname(queue), { recursive: true });
+  await writeFile(path.dirname(queue), "not-a-directory");
+  const features = reporter.forSource("desktop");
+  const result = { succeeded: true };
+  expect(await features.track("browser.open", () => result)).toBe(result);
+  expect(
+    await features.track(
+      "agent.create",
+      () => result,
+      () => {
+        throw new Error("classifier");
+      },
+    ),
+  ).toBe(result);
+  features.record("CANARY_arbitrary_event" as never);
+  await reporter.close();
+  expect(reporter.privacy("desktop").pending).toStrictEqual([]);
+});

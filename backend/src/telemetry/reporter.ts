@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import {
   clientFeatures,
+  telemetryFeatures,
   telemetryDisclosureVersion,
   isTelemetryChoice,
   isTelemetryReport,
@@ -17,6 +18,7 @@ import {
 } from "@workspace/core/telemetry";
 import type { ExecutionObservation } from "@workspace/core/usage";
 import { JsonStore } from "./json-store";
+import type { FeatureReporter, FeatureCompletion } from "./feature-reporter";
 type Batch = {
   report: TelemetryReport;
   created: number;
@@ -43,6 +45,8 @@ export type ReporterConfig = {
 export class TelemetryReporter {
   private state: State = { choices: {}, queue: [], seen: [] };
   private generation = 0;
+  private observations: Promise<void> = Promise.resolve();
+  private observationCount = 0;
   private controller: AbortController | null = null;
   private closed = false;
   private flight: Promise<void> | null = null;
@@ -302,6 +306,75 @@ export class TelemetryReporter {
     }
     await this.record(source, identity + ":behavior", "behavior", rows);
   }
+  /** Inject this narrow port into backend services; source IDs and permissions stay local. */
+  forSource(source: string): FeatureReporter {
+    const record = (
+      feature: TelemetryFeature,
+      outcome: FeatureOutcome,
+      id: string,
+      permission: number | null,
+    ) => {
+      // Callers never wait for disk/network, and telemetry can never fail their operation.
+      if (
+        !telemetryFeatures.includes(feature) ||
+        ![
+          "attempted",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unavailable",
+        ].includes(outcome) ||
+        permission === null ||
+        this.observationCount >= 1000
+      )
+        return;
+      this.observationCount++;
+      this.observations = this.observations
+        .then(() => this.feature(source, id, feature, outcome, permission))
+        .catch(() => undefined)
+        .finally(() => {
+          this.observationCount--;
+        });
+    };
+    const begin = (feature: TelemetryFeature) => {
+      const permission = this.permission(source);
+      const id = randomUUID();
+      let finished = false;
+      record(feature, "attempted", id + ":attempt", permission);
+      return (outcome: FeatureCompletion) => {
+        if (finished) return;
+        finished = true;
+        record(feature, outcome, id, permission);
+      };
+    };
+    return {
+      record: (feature, outcome = "succeeded") =>
+        record(feature, outcome, randomUUID(), this.permission(source)),
+      begin,
+      track: async (feature, action, classify) => {
+        const finish = begin(feature);
+        try {
+          const result = await action();
+          // Classification is app policy; observer mistakes must preserve the successful result.
+          let outcome: FeatureCompletion = "succeeded";
+          try {
+            outcome = classify?.(result) ?? outcome;
+          } catch {
+            return result;
+          }
+          finish(outcome);
+          return result;
+        } catch (error) {
+          finish("failed");
+          throw error;
+        }
+      },
+    };
+  }
+  /** Wait for accepted local observations, without triggering an upload. */
+  async drain(): Promise<void> {
+    await this.observations;
+  }
   permission(source: string): number | null {
     return this.allowed(source) ? this.generation : null;
   }
@@ -537,6 +610,7 @@ export class TelemetryReporter {
     }
   }
   async close(): Promise<void> {
+    await this.drain();
     this.closed = true;
     this.generation++;
     if (this.timer) clearInterval(this.timer);
