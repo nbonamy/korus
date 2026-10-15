@@ -3,10 +3,7 @@
     <p v-if="loading">{{ $t('gitLog.loadingDetails') }}</p>
     <div v-else-if="error" role="alert"><p>{{ error }}</p><button class="app-button app-button--tertiary" type="button" @click="load">{{ $t('gitLog.retry') }}</button></div>
     <template v-else-if="details">
-      <p class="git-log-details__message">{{ details.message }}</p>
-      <p class="git-log-details__meta">{{ details.author }} · {{ new Date(details.date).toLocaleString() }}</p>
-      <button class="git-log-details__hash" type="button" :aria-label="$t('gitLog.copy')" :title="details.sha" @click="copyHash"><CopyIcon aria-hidden="true" /><code>{{ details.sha.slice(0, 8) }}</code><span v-if="copied">{{ $t('gitLog.copied') }}</span></button>
-      <p v-if="copyError" role="alert">{{ $t('gitLog.copyError') }}</p>
+      <p v-if="messageBody" class="git-log-details__message">{{ messageBody }}</p>
       <h4>{{ $t('gitLog.files') }}</h4>
       <p v-if="!details.files.length">{{ $t('gitLog.noFiles') }}</p>
       <div class="git-log-details__files">
@@ -27,19 +24,22 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { AgentGitLogDetails } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
-import { CopyIcon } from '../shared/icons/app-icons';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 
 const props = defineProps<{ agentId: string; head: string; sha: string }>();
 const details = ref<AgentGitLogDetails | null>(null);
+const messageBody = computed(() => {
+  const message = details.value?.message ?? '';
+  // Git's subject is the first paragraph, already shown in the commit row.
+  const separator = /\r?\n[ \t]*\r?\n/u.exec(message);
+  return separator ? message.slice(separator.index + separator[0].length).trim() : '';
+});
 const loading = ref(true);
 const error = ref<string | null>(null);
-const copied = ref(false);
-const copyError = ref(false);
 const selectedFile = ref<string | null>(null);
 const fileDiff = ref('');
 const fileState = ref<'idle' | 'loading' | 'error'>('idle');
@@ -49,7 +49,7 @@ let fileGeneration = 0;
 async function load(): Promise<void> {
   const id = ++generation;
   fileGeneration++;
-  loading.value = true; error.value = null; details.value = null; selectedFile.value = null; copied.value = false; copyError.value = false;
+  loading.value = true; error.value = null; details.value = null; selectedFile.value = null;
   try {
     if (!appApi) throw new Error('Git history unavailable');
     const result = await appApi.getAgentGitLogCommit(props.agentId, { head: props.head, sha: props.sha });
@@ -73,11 +73,6 @@ async function readFile(path: string): Promise<void> {
     if (id === fileGeneration) { fileState.value = 'error'; fileError.value = translate('gitLog.fileError'); }
   }
 }
-async function copyHash(): Promise<void> {
-  const id = generation;
-  try { await navigator.clipboard.writeText(props.sha); if (id === generation) { copied.value = true; copyError.value = false; } }
-  catch { if (id === generation) copyError.value = true; }
-}
 watch(() => [props.agentId, props.head, props.sha], load, { immediate: true });
 onBeforeUnmount(() => { generation++; fileGeneration++; });
 </script>
@@ -95,34 +90,6 @@ onBeforeUnmount(() => { generation++; fileGeneration++; });
 .git-log-details__message {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.git-log-details__meta {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-}
-
-.git-log-details__hash {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  max-width: 100%;
-  padding: var(--space-2) 0;
-  border: 0;
-  color: var(--color-text);
-  background: transparent;
-  cursor: pointer;
-}
-
-.git-log-details__hash svg {
-  width: 16px;
-  height: 16px;
-}
-
-.git-log-details__hash code {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-high);
 }
 
 .git-log-details h4 {

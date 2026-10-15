@@ -1,32 +1,35 @@
 <template>
   <section class="git-log-panel" :aria-label="$t('gitLog.title')">
     <header class="git-log-panel__toolbar">
-      <div class="git-log-panel__context">
-        <span class="git-log-panel__branch"><GitBranchIcon aria-hidden="true" />{{ page ? (page.branch ?? $t('gitLog.detached')) : (branch ?? $t('gitLog.detached')) }}</span>
-        <span class="git-log-panel__repository">{{ repository }}</span>
+      <span class="git-log-panel__branch" :title="page ? (page.branch ?? $t('gitLog.detached')) : (branch ?? $t('gitLog.detached'))"><GitBranchIcon aria-hidden="true" /><span class="git-log-panel__branch-name">{{ page ? (page.branch ?? $t('gitLog.detached')) : (branch ?? $t('gitLog.detached')) }}</span></span>
+      <div class="git-log-panel__search">
+        <ClearableTextInput v-model="search" :aria-label="$t('gitLog.search')" :placeholder="$t('gitLog.search')" :maxlength="200" />
       </div>
       <button type="button" class="git-log-panel__refresh" :aria-label="$t('gitLog.refresh')" @click="refresh"><RefreshIcon aria-hidden="true" /></button>
     </header>
-    <div class="git-log-panel__search">
-      <ClearableTextInput v-model="search" :aria-label="$t('gitLog.search')" :placeholder="$t('gitLog.search')" :maxlength="200" />
-    </div>
     <div ref="scrollRoot" class="git-log-panel__history" :aria-busy="loading">
       <p v-if="error" role="alert" class="git-log-panel__status">{{ error }}</p>
       <p v-if="loading && !commits.length" class="git-log-panel__status">{{ $t('gitLog.loading') }}</p>
       <p v-else-if="!error && !commits.length" class="git-log-panel__status">{{ $t(search ? 'gitLog.noMatches' : 'gitLog.empty') }}</p>
       <section v-for="group in groups" :key="group.key" class="git-log-panel__group">
-        <h3>{{ group.label }}</h3>
-        <article v-for="commit in group.commits" :key="commit.sha" class="git-log-panel__entry" :class="{ 'git-log-panel__entry--selected': selected === commit.sha }">
-          <button type="button" class="git-log-panel__commit" :aria-expanded="selected === commit.sha" @click="selected = selected === commit.sha ? null : commit.sha">
-            <span class="git-log-panel__dot" aria-hidden="true" />
-            <span class="git-log-panel__commit-copy">
-              <span class="git-log-panel__subject">{{ commit.subject }}</span>
-              <span class="git-log-panel__meta">{{ commit.author }} · {{ commit.sha.slice(0, 8) }} · <time :datetime="commit.date" :title="new Date(commit.date).toLocaleString()">{{ new Date(commit.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }}</time></span>
-            </span>
-            <ChevronDown class="git-log-panel__chevron" :class="{ 'git-log-panel__chevron--up': selected === commit.sha }" aria-hidden="true" />
-          </button>
-          <GitLogCommitDetails v-if="selected === commit.sha && page?.head" :key="`${agent.id}:${page.head}:${commit.sha}`" :agent-id="agent.id" :head="page.head" :sha="commit.sha" />
-        </article>
+        <h3><button type="button" class="git-log-panel__group-toggle" :aria-expanded="!collapsedGroups.has(group.date)" @click="toggleGroup(group.date)"><ChevronDown :class="{ 'git-log-panel__group-chevron--closed': collapsedGroups.has(group.date) }" aria-hidden="true" /><span>{{ group.label }}</span></button></h3>
+        <template v-if="!collapsedGroups.has(group.date)">
+          <article v-for="commit in group.commits" :key="commit.sha" class="git-log-panel__entry" :class="{ 'git-log-panel__entry--selected': selected === commit.sha }">
+            <div class="git-log-panel__row">
+              <button type="button" class="git-log-panel__commit" :aria-expanded="selected === commit.sha" @click="selected = selected === commit.sha ? null : commit.sha">
+                <span class="git-log-panel__dot" aria-hidden="true" />
+                <span class="git-log-panel__commit-copy">
+                  <span class="git-log-panel__subject">{{ commit.subject }}</span>
+                  <span class="git-log-panel__meta">{{ commit.author }} · {{ commit.sha.slice(0, 8) }} · <time :datetime="commit.date" :title="new Date(commit.date).toLocaleString()">{{ new Date(commit.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }}</time></span>
+                </span>
+                <ChevronDown class="git-log-panel__chevron" :class="{ 'git-log-panel__chevron--up': selected === commit.sha }" aria-hidden="true" />
+              </button>
+              <button class="git-log-panel__hash-copy" type="button" :aria-label="$t('gitLog.copy')" :title="$t(copiedSha === commit.sha ? 'gitLog.copied' : 'gitLog.copy')" @click="copyHash(commit.sha)"><CheckIcon v-if="copiedSha === commit.sha" aria-hidden="true" /><CopyIcon v-else aria-hidden="true" /></button>
+            </div>
+            <p v-if="copyErrorSha === commit.sha" class="git-log-panel__status" role="alert">{{ $t('gitLog.copyError') }}</p>
+            <GitLogCommitDetails v-if="selected === commit.sha && page?.head" :key="`${agent.id}:${page.head}:${commit.sha}`" :agent-id="agent.id" :head="page.head" :sha="commit.sha" />
+          </article>
+        </template>
       </section>
       <button v-if="page?.nextCursor" type="button" class="git-log-panel__older" :aria-label="$t('gitLog.older')" :disabled="loading" @click="loadOlder">{{ $t(loading ? 'gitLog.loading' : 'gitLog.older') }}</button>
     </div>
@@ -38,7 +41,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { Agent, AgentGitLogCommit, AgentGitLogPage } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { translate } from '../i18n';
-import { ChevronDown, GitBranchIcon, RefreshIcon } from '../shared/icons/app-icons';
+import { CheckIcon, CopyIcon, ChevronDown, GitBranchIcon, RefreshIcon } from '../shared/icons/app-icons';
 import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
 import GitLogCommitDetails from './GitLogCommitDetails.vue';
 
@@ -47,12 +50,14 @@ const search = ref('');
 const page = ref<AgentGitLogPage | null>(null);
 const commits = ref<AgentGitLogCommit[]>([]);
 const selected = ref<string | null>(null);
+const collapsedGroups = ref(new Set<string>());
+const copiedSha = ref<string | null>(null);
+const copyErrorSha = ref<string | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const scrollRoot = ref<HTMLElement | null>(null);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
-const repository = computed(() => page.value?.repository ?? (props.agent.workspace?.kind === 'git' ? props.agent.workspace.repositoryName : ''));
 const groups = computed(() => {
   const result: { key: string; date: string; label: string; commits: AgentGitLogCommit[] }[] = [];
   const today = new Date().toDateString();
@@ -74,6 +79,8 @@ function invalidate(): number {
   clearTimeout(timer);
   const id = ++generation;
   page.value = null; commits.value = []; selected.value = null; error.value = null;
+  copiedSha.value = null; copyErrorSha.value = null;
+  collapsedGroups.value.clear();
   loading.value = true;
   if (scrollRoot.value) scrollRoot.value.scrollTop = 0;
   return id;
@@ -86,7 +93,7 @@ async function load(id: number, older = false): Promise<void> {
   error.value = null;
   try {
     if (!appApi) throw new Error('Git history unavailable');
-    const result = await appApi.getAgentGitLog(agentId, { search: search.value, ...(cursor ? { cursor } : {}) });
+    const result = await appApi.getAgentGitLog(agentId, { search: search.value, ...(cursor ? { cursor: { ...cursor } } : {}) });
     if (id !== generation) return;
     page.value = result;
     commits.value = older ? [...commits.value, ...result.commits] : result.commits;
@@ -96,7 +103,20 @@ async function load(id: number, older = false): Promise<void> {
     if (id === generation) loading.value = false;
   }
 }
+async function copyHash(sha: string): Promise<void> {
+  const id = generation;
+  try {
+    await navigator.clipboard.writeText(sha);
+    if (id === generation) { copiedSha.value = sha; copyErrorSha.value = null; }
+  } catch {
+    if (id === generation) { copiedSha.value = null; copyErrorSha.value = sha; }
+  }
+}
 function refresh(): void { void load(invalidate()); }
+function toggleGroup(date: string): void {
+  if (collapsedGroups.value.has(date)) collapsedGroups.value.delete(date);
+  else collapsedGroups.value.add(date);
+}
 function loadOlder(): void { if (!loading.value) void load(generation, true); }
 watch(search, () => { const id = invalidate(); timer = setTimeout(() => { void load(id); }, 250); }, { flush: 'sync' });
 watch(() => [props.agent.id, props.agent.folder, props.agent.teamId, props.branch], () => {
@@ -118,36 +138,28 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
 .git-log-panel__toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-6) var(--space-8);
-}
-
-.git-log-panel__context {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-6);
+  padding: var(--space-4);
 }
 
 .git-log-panel__branch {
   display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 35%;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  height: 28px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-13);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
-.git-log-panel__repository {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-13);
+.git-log-panel__branch-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .git-log-panel__branch svg,
@@ -178,7 +190,19 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
 }
 
 .git-log-panel__search {
-  padding: 0 var(--space-8) var(--space-4);
+  flex: 1;
+  min-width: 96px;
+}
+
+.git-log-panel__search :deep(.app-form-dialog__control) {
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+}
+
+.git-log-panel__search :deep(input) {
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-13);
 }
 
 .git-log-panel__history {
@@ -202,6 +226,30 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   text-transform: uppercase;
 }
 
+.git-log-panel__group-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.git-log-panel__group-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.git-log-panel__group-chevron--closed {
+  transform: rotate(-90deg);
+}
+
 .git-log-panel__entry {
   position: relative;
 }
@@ -220,6 +268,10 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   bottom: 12px;
 }
 
+.git-log-panel__row {
+  position: relative;
+}
+
 .git-log-panel__commit {
   position: relative;
   display: flex;
@@ -235,11 +287,11 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   cursor: pointer;
 }
 
-.git-log-panel__commit:hover {
+.git-log-panel__row:hover .git-log-panel__commit {
   background: var(--color-surface-high);
 }
 
-.git-log-panel__entry--selected > .git-log-panel__commit {
+.git-log-panel__entry--selected .git-log-panel__row .git-log-panel__commit {
   background: var(--color-primary-container);
 }
 
@@ -264,6 +316,7 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   min-width: 0;
   flex-direction: column;
   gap: var(--space-2);
+  padding-right: 28px;
 }
 
 .git-log-panel__subject {
@@ -277,13 +330,48 @@ onBeforeUnmount(() => { generation++; clearTimeout(timer); });
   overflow-wrap: anywhere;
 }
 
+.git-log-panel__hash-copy {
+  position: absolute;
+  top: 50%;
+  right: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transform: translateY(-50%);
+  visibility: hidden;
+}
+
+.git-log-panel__hash-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.git-log-panel__hash-copy:hover {
+  color: var(--color-text);
+  background: var(--color-surface-high);
+}
+
+.git-log-panel__row:hover .git-log-panel__hash-copy,
+.git-log-panel__row:focus-within .git-log-panel__hash-copy,
+.git-log-panel__entry--selected .git-log-panel__hash-copy {
+  visibility: visible;
+}
+
 .git-log-panel__chevron {
   visibility: hidden;
   color: var(--color-text-muted);
 }
 
-.git-log-panel__commit:hover .git-log-panel__chevron,
-.git-log-panel__commit:focus-visible .git-log-panel__chevron,
+.git-log-panel__row:hover .git-log-panel__chevron,
+.git-log-panel__row:focus-within .git-log-panel__chevron,
 .git-log-panel__entry--selected .git-log-panel__chevron {
   visibility: visible;
 }

@@ -4,7 +4,7 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     gitLog: {
-      title: 'Git log', menu: 'Git log…', refresh: 'Refresh Git log', search: 'Search commits',
+      title: 'Git log', menu: 'Git log', refresh: 'Refresh Git log', search: 'Search commits',
       detached: 'Detached HEAD', today: 'Today', yesterday: 'Yesterday', loading: 'Loading commits…',
       empty: 'No commits yet.', noMatches: 'No matching commits.', older: 'Load older commits',
       readError: 'Unable to load Git history. Refresh to try again.', loadingDetails: 'Loading commit…',
@@ -30,7 +30,7 @@ export const messages = {
     },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
     branchWork: {
-      menu: 'Branch…', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
+      menu: 'Branch', title: 'Continue on a new branch', description: 'Move your uncommitted changes to a new worktree and continue with a new agent. The current branch will be reset.',
       loading: 'Loading…', branchName: 'Branch name', branchPlaceholder: 'Branch name…',
       resume: 'Resume {branch}', submit: 'Branch', working: 'Branching…', retry: 'Retry', refresh: 'Refresh', close: 'Close', cancel: 'Cancel',
       progressEyebrow: 'Branch current work', progressTitle: 'Preparing your new worktree', progressReady: '{branch} is ready', progressFailed: 'Worktree setup needs attention',
@@ -40,7 +40,7 @@ export const messages = {
       backups: 'Source recovery copies: {folder}', retained: 'Retained in the source checkout:', inspect: 'Open agent',
     },
     gitPrune: {
-      title: 'Prune repository', menu: 'Prune…', subtitle: '{repository} · merged into {branch}',
+      title: 'Prune repository', menu: 'Prune', subtitle: '{repository} · merged into {branch}',
       description: 'Merged and unused local branches are selected. Remote branches are off by default. Deleting a worktree also deletes its local branch.',
       selectMergedRemotes: 'Select merged remote branches', missingWorktree: 'Missing worktree {path} and local branch',
       refresh: 'Refresh branches', branches: 'Branches to prune', loading: 'Loading branches…', empty: 'No branches to prune',

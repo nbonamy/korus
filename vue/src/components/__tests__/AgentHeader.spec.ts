@@ -38,7 +38,7 @@ describe('AgentHeader', () => {
     } });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Git log…')!.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Git log')!.trigger('click');
     expect(wrapper.emitted('open-git-log')).toStrictEqual([[]]);
     wrapper.unmount();
   });

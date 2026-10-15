@@ -56,7 +56,7 @@ it('opens branch history from the first Git menu action in the real shell and cl
   const wrapper = mountShell({ snapshot }); await flushPromises();
   await wrapper.get('.git-workflow-control__trigger').trigger('click');
   const first = wrapper.findAll('.git-workflow-control [role="menuitem"]')[0]!;
-  expect(first.text()).toBe('Git log…');
+  expect(first.text()).toBe('Git log');
   await first.trigger('click'); await flushPromises();
   expect(getAgentGitLog).toHaveBeenCalledExactlyOnceWith('agent-dina', { search: '' });
   expect(wrapper.get('.git-log-panel').text()).toContain('Rendered branch history');
