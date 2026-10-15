@@ -1,7 +1,8 @@
+/// <reference path="../../../backend/src/build-env.d.ts" />
 import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import { startApiServer } from "../server";
 import {
   TelemetryReporter,
@@ -9,9 +10,10 @@ import {
 } from "../../../backend/src/telemetry/reporter";
 import { UsageLedger } from "../../../backend/src/telemetry/usage-ledger";
 import { UsageService } from "../../../backend/src/telemetry/usage-service";
+import { runtimeTelemetryConfig } from "../../../backend/src/telemetry/config";
 const token = "synthetic-operator-token-for-isolated-tests-only";
 const yesterday = Date.now() - 86400000;
-it("disclosed enabled source → numeric local history → safe report → private dashboard; opt-out and remote ownership remain closed", async () => {
+it("configured development reporting → disclosed source → numeric local history → safe report; opt-out and remote ownership remain closed", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-e2e-"));
   const service = await startApiServer({
     database: path.join(dir, "db"),
@@ -22,16 +24,14 @@ it("disclosed enabled source → numeric local history → safe report → priva
   });
   let now = yesterday;
   const bodies: string[] = [];
+  vi.stubEnv("NODE_ENV", "development");
+  vi.stubEnv("CI", "");
+  vi.stubEnv("APP_TELEMETRY_URL", "https://api.example.test");
+  vi.stubEnv("APP_TELEMETRY_FORCE_OFF", "0");
   const config: ReporterConfig = {
-    rollout: true,
-    forceOff: false,
-    environment: true,
+    ...runtimeTelemetryConfig("0.35.0"),
     synthetic: true,
     endpoint: service.url + "/v1/telemetry/reports",
-    version: "0.33.0",
-    channel: "stable",
-    platform: "macos",
-    client: "desktop",
   };
   const reporter = new TelemetryReporter(
     path.join(dir, "outbox"),
@@ -86,6 +86,10 @@ it("disclosed enabled source → numeric local history → safe report → priva
     await reporter.flush();
     expect(bodies).toHaveLength(1);
     expect(bodies.join()).not.toContain("CANARY");
+    const audit = await fetch(service.url + "/v1/telemetry/status", {
+      headers: { authorization: "Bearer " + token },
+    }).then((response) => response.json());
+    expect(audit).toMatchObject({ acceptedReports: 1, rejectedReports: 0 });
     await reporter.choose("desktop", { enabled: false, disclosure: 1 });
     usage.source(event.agentId, "desktop");
     usage.observe({ ...event, turnId: "two" });
@@ -105,6 +109,7 @@ it("disclosed enabled source → numeric local history → safe report → priva
     await usage.drain();
     expect(reporter.privacy("desktop").pending).toStrictEqual([]);
   } finally {
+    vi.unstubAllEnvs();
     await usage.close();
     await service.close();
     await rm(dir, { recursive: true, force: true });

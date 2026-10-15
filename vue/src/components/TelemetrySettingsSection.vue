@@ -7,15 +7,13 @@
       :model-value="privacy?.choice?.enabled ?? false"
       :disabled="busy || !privacy"
       :description="
-        privacy?.active ? $t('telemetry.active') : $t('telemetry.inactive')
+        privacy?.choice?.enabled && !privacy.active
+          ? $t('telemetry.unavailable')
+          : $t('telemetry.description')
       "
       @update:model-value="save"
     />
     <p v-if="error" role="alert">{{ $t("telemetry.error") }}</p>
-    <details v-if="privacy">
-      <summary>{{ $t("telemetry.pending") }}</summary>
-      <pre>{{ JSON.stringify(privacy.pending, null, 2) }}</pre>
-    </details>
   </FormSection>
 </template>
 <script setup lang="ts">
@@ -52,11 +50,3 @@ async function save(enabled: boolean): Promise<void> {
   }
 }
 </script>
-<style scoped>
-pre {
-  max-width: 100%;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-</style>

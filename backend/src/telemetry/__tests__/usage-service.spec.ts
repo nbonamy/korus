@@ -11,7 +11,6 @@ import { UsageService } from "../usage-service";
 it("binds new asynchronous outcomes to their initiating permission; history, repeats and post-opt-out completion cannot export", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-outcomes-"));
   const reporter = new TelemetryReporter(path.join(dir, "queue"), {
-    rollout: true,
     environment: true,
     forceOff: false,
     endpoint: "http://127.0.0.1:1/reports",
@@ -77,7 +76,6 @@ it("binds new asynchronous outcomes to their initiating permission; history, rep
 it("keeps local executions when request origins are rejected, concurrent or unavailable, without attributing them to another client", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-source-"));
   const reporter = new TelemetryReporter(path.join(dir, "queue"), {
-    rollout: true,
     environment: true,
     forceOff: false,
     endpoint: "http://127.0.0.1:1/reports",

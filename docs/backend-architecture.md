@@ -514,7 +514,7 @@ execution permission. The native observing client can finish its operation but
 cannot substitute desktop permission for an opted-out or unknown source.
 
 Product reports contain only finite daily numeric categories. Client disclosure,
-source permission, host permission, administrator policy, reviewed rollout and explicit endpoint
+source permission, host permission, administrator policy and explicit endpoint
 configuration all gate collection and delivery. Model-behavior reports require the
 renewed behavior disclosure; an older usage-reporting choice cannot enable them.
 An explicit measured zero is distinct from unavailable evidence. A permission transition aborts
@@ -563,10 +563,9 @@ outside the process.
 
 Application reporting requires `APP_TELEMETRY_URL`, a public HTTPS origin loaded
 from build configuration or the daemon environment. An empty runtime override
-disables a packaged default. Unset/invalid URLs, development, tests and CI disable
-reporting. `APP_TELEMETRY_REVIEWED_ROLLOUT=1` is a separate build/runtime gate
-for approved activation after consent, disclosures and endpoint logging review.
-It defaults off. `APP_TELEMETRY_FORCE_OFF=1` overrides user choices. Onboarding records
+disables a packaged default. Unset/invalid URLs, tests and CI disable reporting.
+Development runs use the same endpoint and consent controls as packaged builds.
+`APP_TELEMETRY_FORCE_OFF=1` overrides user choices. Onboarding records
 the default-on choice with an opt-out; General settings persist later changes.
 Unconfigured clients and remote permission remain closed. No application environment
 is configured by server deployment, and no historical local usage is exported.

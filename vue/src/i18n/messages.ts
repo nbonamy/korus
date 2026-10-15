@@ -3,11 +3,11 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
-    telemetry: {privacy:'Privacy',usage:'Usage',reporting:'Share anonymous usage statistics',about:'About anonymous usage statistics',anonymous:'Anonymous product statistics',active:'Aggregate reporting is active.',inactive:'Uploads are disabled on this host.',
+    telemetry: {privacy:'Privacy',usage:'Usage',reporting:'Share anonymous usage statistics',about:'About anonymous usage statistics',anonymous:'Anonymous product statistics',description:`Help improve ${product.name} with anonymous usage and performance statistics.`,unavailable:'Your preference is saved. Sharing is currently unavailable.',
       disclosure:`${product.name} uses coarse daily feature counts, provider and public-model categories, turn outcomes, supported token totals, and model behavior measurements such as response counts, tool counts and stream timing to improve the product. You can turn reporting off here or in Settings > General.`,
       delivery:'Reports are anonymous: no account, user or device ID, prompts, responses, commands, file paths, repository names, or credentials. Delivery infrastructure sees network metadata such as your IP address transiently.',
       optOut:'Turning reporting off stops collection and purges unsent reports. Sent aggregates cannot be located or deleted individually without tracking you. Pending reports expire after 7 days; daily aggregates are retained for 90 days and monthly aggregates for 12 months. Local usage statistics continue to work.',
-      continue:'Continue',pending:'Inspect pending reports',error:'Could not load or save usage settings. Try again.',local:'Local statistics stay on this host and work with product telemetry disabled.',
+      continue:'Continue',error:'Could not load or save usage settings. Try again.',local:'Local statistics stay on this host and work with product telemetry disabled.',
       from:'From',to:'To',group:'Group by',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',all:'All',refresh:'Refresh',coverage:'Recorded history since {since}, limited to 90 days or 10,000 turns. Earlier history is unavailable.',
       semantics:'Tokens: total / input / output / cache read / cache write / reasoning. Input includes cache reads; Claude input also includes cache creation. Do not add cache categories to input. Reasoning is included in output. Claude consumption covers the main agent loop; auxiliary calls are excluded. Unavailable consumption is never treated as zero.',
       turns:'Started turns',outcomes:'Completed / failed / interrupted / active',tokens:'Tokens',measured:'Measured / started',unknown:'Unavailable',empty:'No recorded turns match these filters.',

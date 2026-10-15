@@ -10,7 +10,6 @@ import { TelemetryReporter } from "../reporter";
 it("counts completion at the owning command and routes per-client choices without exporting private team content", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-rpc-"));
   const reporter = new TelemetryReporter(path.join(dir, "outbox"), {
-    rollout: true,
     environment: true,
     forceOff: false,
     endpoint: "http://127.0.0.1:1/reports",

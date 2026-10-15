@@ -144,7 +144,7 @@ export type TelemetryChoice = { enabled: boolean; disclosure: 1 | 2 };
 export type TelemetryPrivacy = {
   choice: TelemetryChoice | null;
   active: boolean;
-  blocked: "disclosure" | "rollout" | "administrator" | "environment" | null;
+  blocked: "disclosure" | "configuration" | "administrator" | "environment" | null;
   pending: TelemetryReport[];
 };
 export function publicModel(model: string | null | undefined): PublicModel {

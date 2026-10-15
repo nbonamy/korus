@@ -23,17 +23,8 @@ export function runtimeTelemetryConfig(version: string): ReporterConfig {
   }
   return {
     endpoint,
-    rollout:
-      endpoint !== null &&
-      (process.env.APP_TELEMETRY_REVIEWED_ROLLOUT ??
-        (typeof __APP_TELEMETRY_REVIEWED_ROLLOUT__ === "boolean" &&
-        __APP_TELEMETRY_REVIEWED_ROLLOUT__
-          ? "1"
-          : "0")) === "1",
     forceOff: process.env.APP_TELEMETRY_FORCE_OFF === "1",
-    environment:
-      !process.env.CI &&
-      !["test", "development"].includes(process.env.NODE_ENV ?? ""),
+    environment: !process.env.CI && process.env.NODE_ENV !== "test",
     version,
     channel: "stable",
     platform:

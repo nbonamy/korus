@@ -17,7 +17,6 @@ async function file(name: string) {
   return path.join(d, name);
 }
 const config: ReporterConfig = {
-  rollout: true,
   forceOff: false,
   environment: true,
   endpoint: "http://127.0.0.1:9999/report",
@@ -91,7 +90,7 @@ it("requires disclosure, preserves choices, fails closed and purges immutable re
   await restored.close();
   for (const override of [
     { forceOff: true },
-    { rollout: false },
+    { endpoint: null },
     { environment: false },
   ]) {
     const blocked = new TelemetryReporter(

@@ -11,7 +11,6 @@ import { UsageLedger } from "../usage-ledger";
 it("counts actual Computer Use operations under the initiating execution permission, without content or replay attribution", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "computer-usage-"));
   const reporter = new TelemetryReporter(path.join(dir, "queue"), {
-    rollout: true,
     forceOff: false,
     environment: true,
     endpoint: "http://127.0.0.1:1/reports",

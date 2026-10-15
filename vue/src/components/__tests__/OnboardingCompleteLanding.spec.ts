@@ -5,7 +5,7 @@ import { setElectronTestClient } from '../../test/client';
 import OnboardingCompleteLanding from '../OnboardingCompleteLanding.vue';
 const save = vi.fn();
 beforeEach(() => {
-  save.mockReset().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'rollout', pending: [] });
+  save.mockReset().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'configuration', pending: [] });
   setElectronTestClient({ getTelemetryPrivacy: vi.fn().mockResolvedValue({ choice: null, active: false, blocked: 'disclosure', pending: [] }), setTelemetryPrivacy: save });
 });
 afterEach(() => { clearConfetti(); vi.useRealTimers(); });

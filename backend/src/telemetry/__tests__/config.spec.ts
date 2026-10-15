@@ -6,16 +6,12 @@ afterEach(() => {
 });
 it("requires an explicitly configured server URL on every daemon, independent of the initiating desktop or mobile client", () => {
   vi.stubEnv("APP_TELEMETRY_URL", undefined);
-  vi.stubEnv("APP_TELEMETRY_REVIEWED_ROLLOUT", undefined);
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("CI", "");
   expect(runtimeTelemetryConfig("0.33.0").endpoint).toBeNull();
   vi.stubEnv("APP_TELEMETRY_URL", "https://api.example.test/");
-  expect(runtimeTelemetryConfig("0.33.0").rollout).toBe(false);
-  vi.stubEnv("APP_TELEMETRY_REVIEWED_ROLLOUT", "1");
   expect(runtimeTelemetryConfig("0.33.0")).toMatchObject({
     endpoint: "https://api.example.test/v1/telemetry/reports",
-    rollout: true,
     environment: true,
     client: "daemon",
   });
@@ -25,6 +21,8 @@ it("requires an explicitly configured server URL on every daemon, independent of
   expect(runtimeTelemetryConfig("0.33.0").environment).toBe(false);
   vi.stubEnv("CI", "");
   vi.stubEnv("NODE_ENV", "development");
+  expect(runtimeTelemetryConfig("0.33.0").environment).toBe(true);
+  vi.stubEnv("NODE_ENV", "test");
   expect(runtimeTelemetryConfig("0.33.0").environment).toBe(false);
 });
 it("rejects non-HTTPS servers, embedded secrets and unexpected paths or query properties", () => {
@@ -40,21 +38,14 @@ it("rejects non-HTTPS servers, embedded secrets and unexpected paths or query pr
   }
 });
 
-it("keeps packaged reporting behind explicit reviewed rollout and honors empty runtime overrides", () => {
+it("honors packaged endpoint configuration and empty runtime overrides", () => {
   vi.stubGlobal("__APP_TELEMETRY_URL__", "https://packaged.example.test");
-  vi.stubGlobal("__APP_TELEMETRY_REVIEWED_ROLLOUT__", true);
   vi.stubEnv("APP_TELEMETRY_URL", undefined);
-  vi.stubEnv("APP_TELEMETRY_REVIEWED_ROLLOUT", undefined);
   expect(runtimeTelemetryConfig("0.33.0")).toMatchObject({
     endpoint: "https://packaged.example.test/v1/telemetry/reports",
-    rollout: true,
   });
-  vi.stubEnv("APP_TELEMETRY_REVIEWED_ROLLOUT", "0");
-  expect(runtimeTelemetryConfig("0.33.0").rollout).toBe(false);
-  vi.stubEnv("APP_TELEMETRY_REVIEWED_ROLLOUT", "1");
   vi.stubEnv("APP_TELEMETRY_URL", "");
   expect(runtimeTelemetryConfig("0.33.0")).toMatchObject({
     endpoint: null,
-    rollout: false,
   });
 });

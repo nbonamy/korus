@@ -498,7 +498,7 @@ describe('AppShell authentication and conversation', () => {
     vi.useFakeTimers();
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setTelemetryPrivacy = vi.fn().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'rollout', pending: [] });
+    const setTelemetryPrivacy = vi.fn().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'configuration', pending: [] });
     const setMenuBarVisible = vi.fn().mockResolvedValue(undefined);
     const getCodexAuthentication = vi.fn()
       .mockResolvedValueOnce({

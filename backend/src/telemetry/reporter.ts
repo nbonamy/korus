@@ -34,7 +34,6 @@ type State = {
 /** Local ownership only; never serialized into a report. */
 export type ObservationOrigin = { source: string; permission: number | null };
 export type ReporterConfig = {
-  rollout: boolean;
   forceOff: boolean;
   environment: boolean;
   endpoint: string | null;
@@ -153,8 +152,8 @@ export class TelemetryReporter {
       ? "administrator"
       : !this.config.environment
         ? "environment"
-        : !this.config.rollout || !this.config.endpoint
-          ? "rollout"
+        : !this.config.endpoint
+          ? "configuration"
           : !choice
             ? "disclosure"
             : null;
@@ -535,7 +534,6 @@ export class TelemetryReporter {
   private baseAllowed(): boolean {
     return (
       !this.closed &&
-      this.config.rollout &&
       !this.config.forceOff &&
       this.config.environment &&
       !!this.config.endpoint
