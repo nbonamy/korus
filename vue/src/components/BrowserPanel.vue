@@ -663,7 +663,7 @@ function messageFor(reason: unknown): string {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.browser-panel button {
+.browser-panel button:where(:not(.annotation-send-button)) {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -675,7 +675,7 @@ function messageFor(reason: unknown): string {
   color: var(--color-text-muted);
 }
 
-.browser-panel button:hover:not(:disabled),
+.browser-panel button:where(:not(.annotation-send-button)):hover:not(:disabled),
 .browser-panel button[aria-pressed="true"]:not(.browser-panel__bookmark-page) {
   background: var(--color-surface-high);
   color: var(--color-text);

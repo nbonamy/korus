@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.35.0",
+  "currentVersion": "0.35.1",
   "releases": [
+    {
+      "version": "0.35.1",
+      "releasedAt": "2026-10-15",
+      "sourceSha256": "0a2f4a44998ec4942c9c6936ee29fcc62b96ea5dfa2a992ef56aad948e03bd7f",
+      "markdown": "### New features\n\n- Check remaining Codex and Claude usage and reset times from mobile Settings.\n- Create projects from your phone using a new repository, GitHub, or a repository\n  URL. Browse GitHub branches or create a new branch in its own worktree.\n\n### Improvements and fixes\n\n- Mobile reconnects silently after brief interruptions and app switching, keeping\n  your conversation visible. A Reconnect action appears after five seconds if\n  recovery takes longer.\n- Relay connections recover more reliably during active use.\n- Push notifications open the correct conversation, including while reconnecting.\n- Send image-only prompts from your phone, open image links, and view images\n  returned by tools. Image previews stay stable as conversations update and reload.\n- Project creation and worktree cleanup use consistent mobile sheets with clear\n  progress, searchable repository and branch lists, and simpler navigation.\n- Worktree cleanup only offers to delete the matching remote branch, protecting\n  main and other inherited upstream branches on desktop and mobile."
+    },
     {
       "version": "0.35.0",
       "releasedAt": "2026-10-14",

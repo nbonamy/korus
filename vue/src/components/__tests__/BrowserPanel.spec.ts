@@ -388,7 +388,7 @@ describe('BrowserPanel', () => {
   });
 
   it('accumulates annotations and sends one scoped prompt when the batch is ready', async () => {
-    const { api, emitEvent, wrapper } = mountPanel();
+    const { api, emitEvent, wrapper } = mountPanel({}, { attachTo: document.body });
     await flushPromises();
     await wrapper.get('[aria-label="Annotate page"]').trigger('click');
 
@@ -427,7 +427,12 @@ describe('BrowserPanel', () => {
     expect(wrapper.emitted('send-prompt')).toBeUndefined();
     expect(wrapper.find('[aria-label="Browser side panel"]').exists()).toBe(false);
 
-    await wrapper.get('[aria-label="Send 2 annotations"]').trigger('click');
+    const send = wrapper.get<HTMLButtonElement>('[aria-label="Send 2 annotations"]');
+    const style = getComputedStyle(send.element);
+    expect(style.display).toBe('inline-flex');
+    expect(style.width).toBe('auto');
+    expect(style.whiteSpace).toBe('nowrap');
+    await send.trigger('click');
 
     expect(wrapper.emitted('send-prompt')).toStrictEqual([[
       'Browser annotations on http://localhost:3000/\n\n1. Target: element #save\n   Feedback: Keep this on one line on mobile.\n\n2. Target: selected area at 120,220 (160×40)\n   Feedback: Make this button blue.\n\nInspect the rendered page and make the smallest changes that address every annotation.',
