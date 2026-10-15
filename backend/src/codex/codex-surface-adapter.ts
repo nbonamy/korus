@@ -1,3 +1,4 @@
+import { TextStreamObserver } from "../telemetry/text-stream-observer";
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { codexExecutionConsumption } from './execution-usage';
 import { bankedResetsFromSurface } from './banked-resets';
@@ -95,6 +96,7 @@ type SubagentOwner = {
 
 export class CodexSurfaceAgentAdapter {
   private readonly listeners = new Set<AdapterListener>();
+  private readonly textStreams = new Map<string,{observer:TextStreamObserver;seq:number}>();
   private readonly observedTools = new Map<string,Set<string>|null>();
   private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
@@ -1221,6 +1223,8 @@ export class CodexSurfaceAgentAdapter {
     const observationKey='turnId' in event?JSON.stringify([session.handle.id,event.turnId]):null;
     if(event.type==='turn.started' && observationKey && !this.observedTools.has(observationKey)) {
       this.observedTools.set(observationKey,new Set());
+      this.textStreams.set(observationKey,{observer:new TextStreamObserver(),seq:-1});
+      while(this.textStreams.size>256)this.textStreams.delete(this.textStreams.keys().next().value!);
       while(this.observedTools.size>256)this.observedTools.delete(this.observedTools.keys().next().value!);
     }
     if((event.type==='tool.started' || event.type==='tool.completed') && observationKey && event.origin!=='lifecycle') {
@@ -1231,6 +1235,9 @@ export class CodexSurfaceAgentAdapter {
         else ids.add(id);
       }
     }
+    const text=observationKey?this.textStreams.get(observationKey):undefined;
+    if(event.type==='message.delta' && event.origin==='notification' && text && event.seq>text.seq){text.seq=event.seq;text.observer.delta(event.payload.itemId,event.payload.delta);}
+    const textStream=text?.observer.snapshot();
     const observedTools=observationKey && this.observedTools.has(observationKey) ? {model:null,responses:null,toolCalls:this.observedTools.get(observationKey)?.size??null,toolResponses:null,multiToolResponses:null,stream:null}:undefined;
     const consumption=codexExecutionConsumption(event);
     if ((event as {type:string}).type==='conversation.executionUsageChanged' && consumption) {
@@ -1238,13 +1245,14 @@ export class CodexSurfaceAgentAdapter {
       if(typeof turnId==='string') this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId,provider:'codex',phase:'usage',at:Date.parse(event.occurredAt),model:null,...consumption});
     }
     if (event.type === 'turn.error' && !event.payload.willRetry) {
-      this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:'failed',at:Date.parse(event.occurredAt),model:null,...(observedTools?{behavior:observedTools}:{})});
-      if(observationKey)this.observedTools.delete(observationKey);
+      this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:'failed',at:Date.parse(event.occurredAt),model:null,...(observedTools?{behavior:observedTools}:{}),...(textStream?{textStream}:{})});
+      if(observationKey){this.observedTools.delete(observationKey);this.textStreams.delete(observationKey);}
     }
     if (event.type === 'turn.started' || event.type === 'turn.completed') {
       const observation:ExecutionObservation = {agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:event.type==='turn.started'?'started':event.payload.status==='inProgress'?'started':event.payload.status,at:Date.parse(event.occurredAt),model:null,...consumption,...(event.type==='turn.completed' && event.payload.durationMs!==null ? {durationMs:event.payload.durationMs}:{})};
       if(event.type==='turn.completed' && event.payload.status!=='inProgress') {
-        observation.behavior=observedTools;if(observationKey)this.observedTools.delete(observationKey);
+        if(textStream)observation.textStream=textStream;
+        observation.behavior=observedTools;if(observationKey){this.observedTools.delete(observationKey);this.textStreams.delete(observationKey);}
       }
       this.emitUsage(observation);
     }

@@ -20,6 +20,7 @@ const requestTimeoutByMethod = {
   [backendMethods.accountUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverAccountUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
+  [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryPrivacyGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryPrivacySet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,

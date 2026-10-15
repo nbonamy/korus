@@ -15,7 +15,7 @@ type SettingsDestination = {
 // Settings navigation and command search share labels and host availability.
 const settingsDestinations: readonly SettingsDestination[] = [
   { id: 'general', labelKey: 'surface.settingsSidebar.general', group: 'app', icon: SettingsIcon, aliases: 'preferences follow-up celebrations source folder background sleep permissions accessibility' },
-  { id: 'usage', labelKey: 'telemetry.usage', group: 'app', icon: SettingsIcon, aliases: 'statistics turns tokens provider model account' },
+  { id: 'usage', labelKey: 'telemetry.usage', group: 'app', icon: SettingsIcon, aliases: 'analytics statistics turns tokens provider model performance characters account' },
   { id: 'appearance', labelKey: 'surface.settingsSidebar.appearance', group: 'app', icon: PaletteIcon, aliases: 'theme color light dark font typography text size' },
   { id: 'voice', labelKey: 'surface.settingsSidebar.voice', group: 'app', icon: MicrophoneIcon, aliases: 'speech spoken announcements narration mute audio' },
   { id: 'personalization', labelKey: 'surface.instructionSettings.personalization', group: 'app', icon: UserIcon, aliases: 'instructions AGENTS.md CLAUDE.md personal preferences' },

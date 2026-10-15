@@ -11,7 +11,31 @@ export type ExecutionObservation = {
   tokens?: Consumption | null;
   durationMs?: number;
   behavior?: ExecutionBehavior | null;
+  /** Local-only observed text delivery; never a token estimate or transcript. */
+  textStream?: TextStream | null;
 };
+export type TextStream = {
+  characters: number;
+  durationMs: number;
+  messages: number;
+};
+export function validTextStream(value: unknown): value is TextStream {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Object.keys(v).every((k) =>
+      ["characters", "durationMs", "messages"].includes(k),
+    ) &&
+    ["characters", "durationMs", "messages"].every(
+      (k) =>
+        Number.isSafeInteger(v[k]) &&
+        (v[k] as number) >= 0 &&
+        (v[k] as number) <= 1e9,
+    ) &&
+    (v.durationMs as number) > 0 &&
+    (v.messages as number) > 0
+  );
+}
 /** Input includes cache reads. Claude also includes cache creation; Codex cache-write inclusion is unspecified. Reasoning is a subset of output. Never add cache categories to input. */
 export type Consumption = {
   total?: number | null;
@@ -38,6 +62,20 @@ export type UsageFilter = {
   group?: "provider" | "model" | "teamId" | "repository" | "agentId";
 };
 export type UsageSummary = {
+  available?: boolean;
+  daily?: {
+    day: string;
+    started: number;
+    tokens: Consumption | null;
+    measuredTurns: number;
+    /** Same grouping as rows, retaining each day's observed contributions. */
+    groups?: {
+      label: string;
+      started: number;
+      tokens: Consumption | null;
+      measuredTurns: number;
+    }[];
+  }[];
   recordedSince: number;
   retainedSince: number;
   rows: {
@@ -49,6 +87,7 @@ export type UsageSummary = {
     inProgress: number;
     measuredTurns: number;
     tokens: Consumption | null;
+    textStream?: TextStream;
   }[];
 };
 export function validConsumption(value: unknown): value is Consumption {

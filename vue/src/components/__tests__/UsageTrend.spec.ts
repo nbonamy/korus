@@ -1,0 +1,99 @@
+import { mount } from "@vue/test-utils";
+import { expect, it } from "vitest";
+import UsageTrend from "../UsageTrend.vue";
+it("stacks only observed group contributions and leaves unsupported token series unavailable", async () => {
+  const token = {
+    input: 80,
+    output: 20,
+    cacheRead: 0,
+    cacheWrite: null,
+    total: 100,
+  };
+  const wrapper = mount(UsageTrend, {
+    props: {
+      from: "2026-10-10",
+      to: "2026-10-12",
+      measure: "turns",
+      series: [
+        {
+          key: "claude",
+          label: "Claude Code",
+          color: "blue",
+          value: 2,
+          turns: 2,
+          tokens: 100,
+        },
+        {
+          key: "codex",
+          label: "Codex",
+          color: "green",
+          value: 1,
+          turns: 1,
+          tokens: null,
+        },
+      ],
+      daily: [
+        {
+          day: "2026-10-10",
+          started: 3,
+          measuredTurns: 1,
+          tokens: token,
+          groups: [
+            { label: "claude", started: 2, measuredTurns: 1, tokens: token },
+            { label: "codex", started: 1, measuredTurns: 0, tokens: null },
+          ],
+        },
+      ],
+    },
+  });
+  expect(
+    wrapper.find('[aria-label="2026-10-10 · Claude Code: 2"]').exists(),
+  ).toBe(true);
+  expect(wrapper.find('[aria-label="2026-10-10 · Codex: 1"]').exists()).toBe(
+    true,
+  );
+  expect(wrapper.find('[aria-label^="2026-10-11 ·"]').exists()).toBe(false);
+  await wrapper.setProps({ measure: "input" });
+  expect(
+    wrapper.find('[aria-label="2026-10-10 · Claude Code: 80"]').exists(),
+  ).toBe(true);
+  expect(wrapper.find('[aria-label^="2026-10-10 · Codex:"]').exists()).toBe(
+    false,
+  );
+  await wrapper.setProps({
+    daily: [
+      {
+        day: "2026-10-10",
+        started: 1,
+        measuredTurns: 0,
+        tokens: null,
+        groups: [
+          { label: "codex", started: 1, measuredTurns: 0, tokens: null },
+        ],
+      },
+    ],
+  });
+  expect(wrapper.find("svg").exists()).toBe(false);
+  expect(wrapper.text()).toContain("Unavailable");
+  await wrapper.setProps({
+    daily: [
+      {
+        day: "2026-10-10",
+        started: 1,
+        measuredTurns: 1,
+        tokens: { ...token, input: 0 },
+        groups: [
+          {
+            label: "claude",
+            started: 1,
+            measuredTurns: 1,
+            tokens: { ...token, input: 0 },
+          },
+        ],
+      },
+    ],
+  });
+  expect(wrapper.find("svg").exists()).toBe(true);
+  expect(wrapper.findAll("rect")).toHaveLength(0);
+  wrapper.unmount();
+});

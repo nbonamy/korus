@@ -13,7 +13,7 @@
     />
 
     <main class="settings-view__content">
-      <div class="settings-view__panel">
+      <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
         <UsagePanel v-if="activeTab === 'usage'" />
         <SettingsGeneralPanel
           v-else-if="activeTab === 'general'"
@@ -317,5 +317,8 @@ function selectTab(tab: SettingsTab): void {
 .settings-view__panel {
   max-width: 720px;
   margin: 0 auto;
+}
+.settings-view__panel--wide {
+  max-width: 1200px;
 }
 </style>

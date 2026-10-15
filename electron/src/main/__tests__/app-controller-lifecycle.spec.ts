@@ -168,6 +168,17 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('exposes statistics deletion through preload and propagates backend failures',async()=>{
+    const {backend}=setup();
+    await import('../../preload');
+    const api=native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    backend.request.mockResolvedValueOnce(null);
+    await api.clearUsage();
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.usageClear);
+    backend.request.mockRejectedValueOnce(Error('storage unavailable'));
+    await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
+  });
+
   it('keeps stale privacy reads and disabled native completion from restoring dictation observation permission', async () => {
     const { backend } = setup();
     let resolve!: (value: unknown) => void;

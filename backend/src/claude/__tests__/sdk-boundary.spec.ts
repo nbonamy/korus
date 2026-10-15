@@ -70,6 +70,28 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(JSON.stringify(observations)).not.toContain('CANARY');
   });
 
+  it('projects only live assistant text delivery into local numeric statistics',async()=>{
+    const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(e=>observations.push(e));
+    let now=100;const clock=vi.spyOn(performance,'now').mockImplementation(()=>now);
+    try {
+      const sending=driver.sendPrompt(snapshot.agents[0]!, 'CONTENT_CANARY prompt');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
+      sdk.emit({type:'system',subtype:'init',session_id:'text-session',model:'claude-sonnet-4-6'});await sending;
+      const emit=(event:Record<string,unknown>)=>sdk.emit({type:'stream_event',session_id:'text-session',event});
+      emit({type:'message_start',message:{id:'response',model:'claude-sonnet-4-6'}});
+      emit({type:'content_block_delta',delta:{type:'text_delta',text:'CONTENT_CANARY first'}});
+      await vi.waitFor(()=>expect(snapshot.agents[0]!.status.type).toBe('working'));
+      // Wait for the SDK iterator before advancing its receipt clock.
+      await new Promise(resolve=>setTimeout(resolve,0));now=1100;
+      emit({type:'content_block_delta',delta:{type:'thinking_delta',thinking:'CONTENT_CANARY reasoning'}});
+      emit({type:'content_block_delta',delta:{type:'text_delta',text:'hello'}});
+      emit({type:'message_stop'});
+      sdk.emit({type:'result',subtype:'success',session_id:'text-session',is_error:false});
+      await vi.waitFor(()=>expect(observations).toHaveLength(2));
+      expect(observations[1]).toMatchObject({textStream:{characters:5,durationMs:1000,messages:1}});
+      expect(JSON.stringify(observations)).not.toContain('CONTENT_CANARY');
+    } finally {clock.mockRestore();}
+  });
+
   it('marks a Claude reviewer working for its turn and idle only after completion', async () => {
     const { sdk, driver, snapshot, events } = setup();
     const reviewer = snapshot.agents[0]!;

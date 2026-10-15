@@ -492,7 +492,7 @@ manage MCP tools: treat it as a privileged control plane.
 ## Local usage and product telemetry
 
 The owning daemon observes live provider execution through driver/SDK numeric
-seams. Its bounded local ledger is independent of product telemetry permission;
+seams. Its bounded SQLite statistics ledger is independent of product telemetry permission;
 history hydration, inherited forks and context occupancy never become consumed
 tokens. Claude consumption covers the SDK's per-turn main loop, excluding
 auxiliary calls. Output includes reasoning. Input includes cache reads and Claude cache creation;
@@ -500,6 +500,26 @@ cache categories must not be added to input. Codex cache-write inclusion is
 unspecified. Codex consumption can be replaced or invalidated after completion
 and remains local-only. Unsupported consumption and execution models
 remain unknown. Account summaries and quotas are account-scoped local views.
+
+The local database stores one replaceable statistics record per execution, with
+provider/model metadata, numeric consumption, outcomes and measured delivery
+intervals. It does not store prompts, responses, tool arguments or transcripts.
+Legacy usage statistics are imported once transactionally. Retention is bounded to
+90 days and 10,000 executions; failed storage leaves analytics unavailable without
+blocking provider work. App-owned usage queries supply grouped totals and daily
+series to the in-app Analytics screen.
+
+Local text throughput counts Unicode code points delivered after a streamed
+message's first text chunk, divided by the receipt interval from first to last text
+chunk. Intervals are matched per message; waits between messages are excluded.
+The first chunk establishes timing and is excluded from the numerator. Single-chunk
+or zero-duration samples stay unavailable. Text is inspected transiently for its
+count and never retained by the numeric observer. Claude and Codex adapters use
+existing live semantic events; model attribution remains unknown without evidence.
+
+The application runtime disconnects the remote destination regardless of saved
+opt-in or endpoint configuration. Local analytics continues through the same owning
+observation path; the retained exporter and hosted API remain separate modules.
 
 Backend services accept the narrow `FeatureReporter` port from
 `telemetry.forSource(clientId)`. `track('browser.open', action)` observes an operation
@@ -522,15 +542,16 @@ uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH acti
 use an unsynchronized source and cannot be exported. Later clients must add explicit
 permission synchronization rather than treating connection as consent. Reports
 carry random immutable batch IDs; local dedupe identities stay in local storage.
-The reporter coalesces nearby observations for one second in development;
-production batches wait five minutes. Both feed the same live console. Delivery retries remain bounded and permission-aware.
+When enabled, the exporter coalesces nearby observations for one second in
+development and five minutes in production. Delivery retries are bounded and
+permission-aware.
 
 Behavior observation stays in Korus provider adapters and consumes public SDK events.
 Claude response IDs dedupe per-block messages, and matched per-response usage and
 stream boundaries produce receipt-based throughput. Tool counts omit names and
 arguments. Multiple requests within one response do not prove concurrent execution.
 Codex tool IDs provide observed invocation counts; actual model attribution,
-response grouping and stream throughput remain unavailable. Ratios combine only
+response grouping and token stream throughput remain unavailable. Ratios combine only
 matching released model/day numerators and denominators, with sample coverage.
 
 The hosted Korus API lives in `server/api`, with its private operator frontend in

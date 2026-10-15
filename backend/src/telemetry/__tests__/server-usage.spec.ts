@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { it, expect, vi } from "vitest";
@@ -216,6 +216,81 @@ it("counts completion at the owning command and routes per-client choices withou
     expect(
       await call("usage/get", { filter: { group: "provider" } }),
     ).toMatchObject({ result: { rows: [] } });
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("clears queued statistics through the app contract without resurrecting legacy data or touching provider history", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "usage-clear-"));
+  const legacy = path.join(dir, "usage.json"),
+    file = path.join(dir, "usage.sqlite"),
+    history = path.join(dir, "provider-history.json");
+  const at = Date.now();
+  const observation = {
+    provider: "codex",
+    model: null,
+    agentId: "a",
+    sessionId: "s",
+    turnId: "legacy",
+    phase: "completed",
+    startedAt: at,
+    at,
+  };
+  await writeFile(
+    legacy,
+    JSON.stringify({ since: at, records: [observation] }),
+  );
+  await writeFile(history, "provider-owned");
+  const local = new UsageLedger(file, Date.now, legacy);
+  const reporter = new TelemetryReporter(path.join(dir, "outbox"), {
+    environment: true,
+    forceOff: false,
+    endpoint: null,
+    version: "test",
+    channel: "stable",
+    platform: "macos",
+    client: "daemon",
+  });
+  await local.load();
+  await reporter.load();
+  const usage = new UsageService(local, reporter, () => undefined);
+  const server = new AppBackendServer({
+    version: "test",
+    snapshot: createTestSnapshot(),
+    usage,
+  });
+  const call = (method: string, params: unknown = {}) =>
+    server.handleMessage({ jsonrpc: "2.0", id: 1, method, params });
+  try {
+    usage.observe({
+      ...observation,
+      provider: "codex",
+      phase: "started",
+      turnId: "queued",
+    });
+    expect(
+      await call("usage/clear", { filter: { provider: "codex" } }),
+    ).toHaveProperty("error");
+    expect(await call("usage/get")).toMatchObject({
+      result: { rows: [{ started: 2 }] },
+    });
+    expect(await call("usage/clear")).toMatchObject({ result: null });
+    expect(await call("usage/get")).toMatchObject({
+      result: { rows: [], daily: [] },
+    });
+    await expect(readFile(legacy)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(history, "utf8")).toBe("provider-owned");
+    await local.close();
+    const reopened = new UsageLedger(file, Date.now, legacy);
+    try {
+      await reopened.load();
+      expect(reopened.query().rows).toStrictEqual([]);
+      expect(reopened.query().recordedSince).toBeGreaterThanOrEqual(at);
+    } finally {
+      await reopened.close();
+    }
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

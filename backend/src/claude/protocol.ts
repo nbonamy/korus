@@ -64,6 +64,7 @@ export type ClaudeSdkMessage =
     is_error?: boolean;
     result?: string;
     error?: unknown;
+    executionTextStream?: import("@workspace/core/usage").TextStream|null;
     executionBehavior?: import("@workspace/core/usage").ExecutionBehavior | null;
     executionConsumption?: import('@workspace/core/usage').Consumption | null;
     usage?: unknown;

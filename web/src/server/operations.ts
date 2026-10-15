@@ -17,6 +17,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   finishUsageFeature: [backendMethods.telemetryFeatureFinish, named('operationId','outcome')],
   getAccountUsage: [backendMethods.accountUsageGet, named('provider')],
   getUsage: [backendMethods.usageGet, namedOptional('filter')],
+  clearUsage: [backendMethods.usageClear],
   getTelemetryPrivacy: [backendMethods.telemetryPrivacyGet],
   setTelemetryPrivacy: [backendMethods.telemetryPrivacySet, named('choice')],
   startVisualize: [backendMethods.agentVisualizeStart, namedOptional('agentId', 'input')],

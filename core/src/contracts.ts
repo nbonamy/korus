@@ -842,6 +842,7 @@ export type AppApi = {
   finishUsageFeature(operationId: string, outcome: Exclude<import('./telemetry').FeatureOutcome, 'attempted'>): Promise<void>;
   getAccountUsage(provider: AgentBackend): Promise<import('./usage').AccountUsage | null>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
+  clearUsage(): Promise<void>;
   getTelemetryPrivacy(): Promise<import('./telemetry').TelemetryPrivacy>;
   setTelemetryPrivacy(choice: import('./telemetry').TelemetryChoice): Promise<import('./telemetry').TelemetryPrivacy>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;

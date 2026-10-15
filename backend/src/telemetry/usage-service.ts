@@ -179,6 +179,11 @@ export class UsageService {
       agentId === undefined ? undefined : this.executionOrigin(agentId),
     );
   }
+  clear(): Promise<void> {
+    const clearing = this.chain.then(() => this.local.clear());
+    this.chain = clearing.catch(() => undefined);
+    return clearing;
+  }
   async drain(): Promise<void> {
     await this.chain;
     await this.telemetry.drain();

@@ -122,7 +122,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
-  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.json'));
+  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, path.join(backendHomeDir(), 'usage.json'));
   const telemetry = new TelemetryReporter(
     path.join(backendHomeDir(), 'telemetry.json'), runtimeTelemetryConfig(options.version),
   );

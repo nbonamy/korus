@@ -138,6 +138,7 @@ const api: AppApi = {
   finishUsageFeature: (operationId, outcome) => ipc.invoke(ipcChannels.finishUsageFeature, operationId, outcome),
   getAccountUsage: (provider) => ipc.invoke(ipcChannels.getAccountUsage, provider),
   getUsage: (filter) => ipc.invoke(ipcChannels.getUsage, filter),
+  clearUsage: () => ipc.invoke(ipcChannels.clearUsage),
   getTelemetryPrivacy: () => ipc.invoke(ipcChannels.getTelemetryPrivacy),
   setTelemetryPrivacy: (choice) => ipc.invoke(ipcChannels.setTelemetryPrivacy, choice),
   updateSettings: (input: UpdateSettingsInput) => ipc.invoke(ipcChannels.updateSettings, input),

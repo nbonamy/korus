@@ -513,6 +513,7 @@ export class AppController {
     ipc.handle(ipcChannels.finishUsageFeature, (_event, operationId, outcome) => this.requireBackendClient().request(backendMethods.telemetryFeatureFinish,{operationId,outcome}));
     ipc.handle(ipcChannels.getAccountUsage, (_event, provider) => this.requireBackendClient().request(backendMethods.accountUsageGet,{provider}));
     ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
+    ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
     ipc.handle(ipcChannels.getTelemetryPrivacy, async () => {
       const generation=this.telemetryGeneration;
       const privacy=await this.requireBackendClient().request<import('@workspace/core/telemetry').TelemetryPrivacy>(backendMethods.telemetryPrivacyGet);

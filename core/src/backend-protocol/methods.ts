@@ -4,6 +4,7 @@ export const backendMethods = {
   accountUsageGet: 'usage/account/get',
   driverAccountUsageGet: 'driver/account/usage/get',
   usageGet: 'usage/get',
+  usageClear: 'usage/clear',
   telemetryPrivacyGet: 'telemetry/privacy/get',
   telemetryPrivacySet: 'telemetry/privacy/set',
   clientFocusGet: 'client/focus/get',

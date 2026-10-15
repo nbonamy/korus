@@ -3,7 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
-    telemetry: {privacy:'Privacy',usage:'Usage',reporting:'Share anonymous usage statistics',about:'About anonymous usage statistics',anonymous:'Anonymous product statistics',description:`Help improve ${product.name} with anonymous usage and performance statistics.`,unavailable:'Your preference is saved. Sharing is currently unavailable.',
+    telemetry: {privacy:'Privacy',usage:'Analytics',reporting:'Share anonymous usage statistics',about:'About anonymous usage statistics',anonymous:'Anonymous product statistics',description:`Help improve ${product.name} with anonymous usage and performance statistics.`,unavailable:'Your preference is saved. Sharing is currently unavailable.',
       disclosure:`${product.name} uses coarse daily feature counts, provider and public-model categories, turn outcomes, supported token totals, and model behavior measurements such as response counts, tool counts and stream timing to improve the product. You can turn reporting off here or in Settings > General.`,
       delivery:'Reports are anonymous: no account, user or device ID, prompts, responses, commands, file paths, repository names, or credentials. Delivery infrastructure sees network metadata such as your IP address transiently.',
       optOut:'Turning reporting off stops collection and purges unsent reports. Sent aggregates cannot be located or deleted individually without tracking you. Pending reports expire after 7 days; daily aggregates are retained for 90 days and monthly aggregates for 12 months. Local usage statistics continue to work.',
@@ -13,6 +13,11 @@ export const messages = {
       turns:'Started turns',outcomes:'Completed / failed / interrupted / active',tokens:'Tokens',measured:'Measured / started',unknown:'Unavailable',empty:'No recorded turns match these filters.',
       account:'Account usage',accountScope:'Account-wide provider history, separate from local agent totals and filters. Select a provider above, then load explicitly. This data is never uploaded. Daily history shows up to 90 days.',loadAccount:'Load account usage',accountUnknown:'Account usage is unavailable for this provider or runtime.',accountDays:'Account daily history',value:'Value',date:'Date',lifetimeTokens:'Lifetime tokens',peakDailyTokens:'Peak daily tokens',longestRunningTurnSec:'Longest turn (seconds)',currentStreakDays:'Current streak (days)',longestStreakDays:'Longest streak (days)',
       separate:'Context occupancy and account limits are shown separately in the conversation and provider settings. They are not consumed-token totals.',
+    },
+    analytics: {
+      clear:'Clear statistics',clearConfirm:'Clear',clearing:'Clearing…',clearTitle:'Clear statistics?',clearConfirmation:'All recorded statistics will be deleted.',clearError:'Could not clear statistics. Try again.',
+      allProviders:'All providers',usageOverview:'Usage',share:'Usage share',dailyBreakdown:'Daily breakdown',shareBreakdown:'Share breakdown',measuredTokens:'Tokens',cacheRead:'Cache read',cacheWrite:'Cache write',reasoning:'Reasoning',
+      providerUsage:'Provider usage',modelUsage:'Model usage',performance:'Model performance',measure:'Measure',turns:'Turns',totalTokens:'Total tokens',inputTokens:'Input tokens',outputTokens:'Output tokens',dateRange:'Date range',days:'{count} days',loadError:'Could not load statistics. Try again.',loading:'Loading…',totals:'Analytics totals',breakdown:'Usage breakdown',textDelivery:'Text speed',rateNote:'Characters received during streamed text intervals.',shareNote:'Token shares include turns with available token data.',charactersPerSecond:'characters/s',measuredMessages:'Messages',characters:'Characters',tokenCoverage:'Token data',turnsUnit:'turns',tokensUnit:'tokens',unknownModel:'Unknown model',samples:'{count} messages',details:'Details',trend:'Activity over time',
     },
     gitLog: {
       title: 'Git log', menu: 'Git log', refresh: 'Refresh Git log', search: 'Search commits',
