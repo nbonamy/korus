@@ -38,6 +38,7 @@ export type ReporterConfig = {
   environment: boolean;
   endpoint: string | null;
   synthetic?: boolean;
+  immediate?: boolean;
   version: string;
   channel: TelemetryReport["channel"];
   platform: "macos" | "windows" | "linux";
@@ -127,8 +128,7 @@ export class TelemetryReporter {
             b.attempts === 0
               ? Math.min(
                   b.next,
-                  this.now() +
-                    (b.report.channel === "development" ? 0 : 300000),
+                  this.now() + (this.config.immediate ? 0 : 300000),
                 )
               : b.next,
           sealed: true,
@@ -531,7 +531,7 @@ export class TelemetryReporter {
       batch = {
         report: { ...report, rows: [] },
         created: this.now(),
-        next: this.now() + (this.config.channel === "development" ? 0 : 300000),
+        next: this.now() + (this.config.immediate ? 0 : 300000),
         attempts: 0,
         sealed: false,
       };

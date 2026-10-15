@@ -48,7 +48,9 @@ describe("isolated real telemetry HTTP and storage", () => {
     });
     const headers = { "content-type": "application/json" };
     try {
-      expect((await fetch(service.url + "/")).status).toBe(401);
+      const welcome = await fetch(service.url + "/");
+      expect(welcome.status).toBe(200);
+      expect(await welcome.text()).toContain('autocomplete="current-password"');
       expect((await fetch(service.url + "/v1/telemetry/metrics")).status).toBe(
         401,
       );
@@ -83,7 +85,16 @@ describe("isolated real telemetry HTTP and storage", () => {
       expect(
         (await fetch(service.url + query, { headers: auth }).then(readJson))
           .rows,
-      ).toStrictEqual([]);
+      ).toStrictEqual([
+        {
+          day: utcDay(yesterday),
+          metric: "turn.started",
+          dimension: "provider",
+          value: "codex",
+          total: 100,
+          reports: 1,
+        },
+      ]);
       for (let i = 0; i < 9; i++)
         expect(
           (
@@ -125,7 +136,7 @@ describe("isolated real telemetry HTTP and storage", () => {
         acceptedReports: 10,
         duplicateReports: 4,
         rejectedReports: 1,
-        authorizationDenied: 2,
+        authorizationDenied: 1,
         retentionHealthy: true,
       });
       expect(JSON.stringify(audit)).not.toContain("CANARY");
@@ -163,7 +174,7 @@ it("rolls back whole batches on aggregate overflow and expires dedupe/daily/mont
   const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-retention-"));
   const file = path.join(dir, "db");
   let now = Date.now();
-  const store = new AggregateStore(file, () => now, 10);
+  const store = new AggregateStore(file, () => now);
   try {
     const r = report();
     store.ingest(r);
@@ -237,13 +248,11 @@ it("rolls back whole batches on aggregate overflow and expires dedupe/daily/mont
   }
 });
 
-it("fails closed for public plaintext listeners, missing operator authentication and weakened release thresholds", async () => {
+it("fails closed for public plaintext listeners, missing operator authentication", async () => {
   for (const override of [
     { synthetic: false },
     { host: "0.0.0.0" },
     { operatorToken: "short" },
-    { minimumReports: 1 },
-    { minimumReports: NaN },
   ])
     await expect(
       startApiServer({
@@ -257,107 +266,51 @@ it("fails closed for public plaintext listeners, missing operator authentication
     ).rejects.toThrow();
 });
 
-it("suppresses complementary marginals so filters and cross-dimension subtraction cannot recover a rare category", async () => {
+it("combines all incoming channels in one live view and preserves small exact current-day counts", async () => {
   const { AggregateStore } = await import("../telemetry/aggregate-store");
   const store = new AggregateStore(":memory:");
   try {
-    for (let i = 0; i < 10; i++) store.ingest(report());
-    store.ingest({
-      ...report(),
-      rows: [
-        {
-          day: utcDay(yesterday),
-          provider: "claude",
-          model: "custom",
-          metric: "turn.started",
-          value: 17,
-        },
-      ],
-    });
-    for (const dimension of ["provider", "model", "platform"] as const)
-      expect(
-        store.query({
-          from: utcDay(yesterday),
-          to: utcDay(yesterday),
-          dimension,
-        }).rows,
-      ).toEqual([]);
+    const day = utcDay(Date.now());
+    for (const channel of ["stable", "development"] as const)
+      store.ingest({
+        ...report(),
+        channel,
+        rows: [
+          {
+            day,
+            metric: "turn.started",
+            provider: "codex",
+            model: "unknown",
+            value: 1,
+          },
+        ],
+      });
     expect(
-      store.query({
-        from: utcDay(yesterday),
-        to: utcDay(yesterday),
-        dimension: "provider",
-        value: "codex",
-      }).rows,
-    ).toEqual([]);
-  } finally {
-    store.close();
-  }
-});
-
-it("keeps development out of production totals and suppression, survives restart, and expires it after seven UTC days", async () => {
-  const { AggregateStore } = await import("../telemetry/aggregate-store");
-  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-development-"));
-  let now = Date.now();
-  const day = utcDay(now - 86400000);
-  const database = path.join(dir, "db");
-  let store = new AggregateStore(database, () => now);
-  try {
-    for (let i = 0; i < 10; i++) store.ingest(report());
-    const development: TelemetryReport = {
-      ...report(),
-      channel: "development",
-      rows: [
-        {
-          day,
-          metric: "turn.started",
-          provider: "claude",
-          model: "custom",
-          value: 1,
-        },
-      ],
-    };
-    expect(store.ingest(development)).toBe("accepted");
-    store.close();
-    store = new AggregateStore(database, () => now);
-    expect(store.ingest(development)).toBe("duplicate");
-    const query = { from: day, to: day, dimension: "provider" as const };
-    expect(store.query(query).rows).toStrictEqual([
-      {
-        day,
-        metric: "turn.started",
-        dimension: "provider",
-        value: "codex",
-        total: 1000,
-        reports: 10,
-      },
-    ]);
-    expect(
-      store.query({ ...query, environment: "development" }).rows,
+      store.query({ from: day, to: day, dimension: "provider" }).rows,
     ).toStrictEqual([
       {
         day,
         metric: "turn.started",
         dimension: "provider",
-        value: "claude",
-        total: 1,
-        reports: 1,
+        value: "codex",
+        total: 2,
+        reports: 2,
       },
     ]);
-    now += 5 * 86400000;
-    store.cleanup();
     expect(
-      store.query({ ...query, environment: "development" }).rows,
-    ).toHaveLength(1);
-    now += 86400000;
-    store.cleanup();
-    expect(
-      store.query({ ...query, environment: "development" }).rows,
-    ).toStrictEqual([]);
-    expect(store.query(query).rows).toHaveLength(1);
+      store.query({ from: day, to: day, dimension: "channel" }).rows,
+    ).toStrictEqual([
+      {
+        day,
+        metric: "turn.started",
+        dimension: "channel",
+        value: "stable",
+        total: 2,
+        reports: 2,
+      },
+    ]);
   } finally {
     store.close();
-    await rm(dir, { recursive: true, force: true });
   }
 });
 
@@ -450,8 +403,7 @@ it("protects dashboard assets and rejects malformed HTTP bodies, methods and unb
     port: 0,
     synthetic: true,
   });
-  const authorization =
-    "Basic " + Buffer.from("operator:" + token).toString("base64");
+  const authorization = "Bearer " + token;
   try {
     expect((await fetch(service.url + "/assets/operator.js")).status).toBe(401);
     const script = await fetch(service.url + "/assets/operator.js", {
@@ -554,6 +506,53 @@ it("allows a TLS-terminating proxy only on loopback and applies rate limits to i
     ).toBe(200);
   } finally {
     await service.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("folds persisted separated buckets into the live view once across restarts", async () => {
+  const { AggregateStore } = await import("../telemetry/aggregate-store");
+  const { DatabaseSync } = await import("node:sqlite");
+  const dir = await mkdtemp(
+      path.join(os.tmpdir(), "telemetry-unified-migration-"),
+    ),
+    file = path.join(dir, "db");
+  let store = new AggregateStore(file);
+  const day = utcDay(yesterday),
+    query = { from: day, to: day, dimension: "provider" as const };
+  try {
+    store.ingest(report());
+    store.close();
+    const db = new DatabaseSync(file);
+    try {
+      db.prepare("INSERT INTO buckets VALUES(?,?,?,?,?,?,?)").run(
+        "development-daily",
+        day,
+        "turn.started",
+        "provider",
+        "codex",
+        1,
+        1,
+      );
+    } finally {
+      db.close();
+    }
+    for (let index = 0; index < 2; index++) {
+      store = new AggregateStore(file);
+      expect(store.query(query).rows).toStrictEqual([
+        {
+          day,
+          metric: "turn.started",
+          dimension: "provider",
+          value: "codex",
+          total: 101,
+          reports: 2,
+        },
+      ]);
+      if (index === 0) store.close();
+    }
+  } finally {
+    store.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

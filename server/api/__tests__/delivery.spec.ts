@@ -96,11 +96,10 @@ it("configured development reporting → disclosed source → numeric local hist
       });
       return { status: response.status, data: await response.json() };
     };
-    expect((await read("&environment=development", false)).status).toBe(401);
-    const development = await read("&environment=development");
+    expect((await read("", false)).status).toBe(401);
+    const development = await read("");
     expect(development.status).toBe(200);
     expect(development.data).toMatchObject({
-      environment: "development",
       minimumReports: 1,
       rows: expect.arrayContaining([
         {
@@ -121,7 +120,6 @@ it("configured development reporting → disclosed source → numeric local hist
         },
       ]),
     });
-    expect((await read("")).data).toMatchObject({ rows: [] });
     expect((await read("&environment=arbitrary")).status).toBe(400);
     await reporter.choose("desktop", { enabled: false, disclosure: 1 });
     usage.source(event.agentId, "desktop");

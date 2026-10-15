@@ -16,10 +16,15 @@ export const operatorScript = String.raw`
     turns: [['turn.started','Started'], ['turn.completed','Completed'], ['turn.failed','Failed'], ['turn.interrupted','Interrupted']],
     features: [['feature.attempted','Attempted'], ['feature.succeeded','Succeeded'], ['feature.failed','Failed'], ['feature.cancelled','Cancelled'], ['feature.unavailable','Unavailable capability']]
   };
-  let current = null, selection = null, generation = 0, controller, view = 'usage', period = 7, authenticated = true;
-  const isDevelopment = () => form.elements.environment.value === 'development';
-  form.elements.environment.value = new URLSearchParams(location.search).get('environment') === 'development' ? 'development' : 'production';
-  if (isDevelopment()) measure.value = 'turns';
+  let current = null, selection = null, generation = 0, controller, view = 'usage', authenticated = true;
+  const viewState = {
+    usage: {dimension:'provider',value:'',measure:'turns'},
+    behavior: {dimension:'model',value:'',measure:'turns'},
+    features: {dimension:'feature',value:'',measure:'features'},
+  };
+  const featureLabels={'browser.open':'Browser','computer.use':'Computer use','mission.start':'Missions','review.start.manual':'Manual reviews','review.start.automatic':'Automatic reviews'};
+  const categoryLabel = value => view==='features' ? featureLabels[value] || value : value;
+  measure.value = 'turns';
   const behaviorMeasures = [
     ['streamRate','Observed stream throughput','tok/s','responses'],
     ['responsesPerTurn','Model responses per turn','responses','turns'],
@@ -77,13 +82,29 @@ export const operatorScript = String.raw`
     return result;
   }
   function renderCards(rows) {
-    const metrics = measure.value === 'features' ? measures.features.slice(0,4)
-      : [['turn.started','Started turns'],['turn.completed','Completed turns'],...measures.tokens];
-    document.querySelector('#kpis').replaceChildren(...metrics.map(([metric, label]) => {
-      const card = node('article', undefined, 'kpi');
-      const value = sum(rows, metric);
-      card.append(node('p',label,'kpi-label'), node('p',value === null ? '—' : compact(value),'kpi-value'),node('p',value === null ? 'Unavailable for this selection' : number(value) + ' · released cells','kpi-note'));
-      card.setAttribute('aria-label', label + ': ' + number(value));
+    const feature=view==='features';
+    const metrics=feature
+      ? [['feature.attempted','Feature actions'],['feature.succeeded','Successful actions'],['feature.failed','Failed actions']]
+      : [['turn.started','Started turns'],...measures.tokens];
+    const cards=metrics.map(([metric,label])=>{
+      const value=sum(rows,metric);
+      return {label,value,display:value===null?'—':compact(value),note:value===null?'Unavailable for this selection':number(value)+' · observed counts'};
+    });
+    const metric=feature?'feature.attempted':'turn.started';
+    const observed=rows.filter(row=>row.metric===metric);
+    if(feature){
+      const value=observed.length ? new Set(observed.filter(row=>row.total>0).map(row=>row.value)).size : null;
+      cards.splice(1,0,{label:'Features used',value,display:value===null?'—':number(value),note:'Distinct features in this selection'});
+    }else{
+      const totals=new Map();for(const row of observed)totals.set(row.value,(totals.get(row.value)||0)+row.total);
+      const leader=[...totals].sort(([a,av],[b,bv])=>bv-av || a.localeCompare(b))[0];
+      const total=sum(rows,metric),value=leader && total>0 ? leader[0] : null;
+      cards.splice(1,0,{label:'Top '+form.elements.dimension.value,value,display:value===null?'—':value,note:value===null?'Unavailable for this selection':new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(100*leader[1]/total)+'% of observed turns'});
+    }
+    document.querySelector('#kpis').replaceChildren(...cards.map(({label,value,display,note})=>{
+      const card=node('article',undefined,'kpi');
+      card.append(node('p',label,'kpi-label'),node('p',display,'kpi-value'),node('p',note,'kpi-note'));
+      card.setAttribute('aria-label',label+': '+(value===null?'Unavailable':typeof value==='number'?number(value):value));
       return card;
     }));
   }
@@ -134,47 +155,28 @@ export const operatorScript = String.raw`
     });
     trend.replaceChildren(svg);
   }
-  function renderRanking(rows) {
-    const metrics=measures[measure.value];
-    const primary=metrics.find(([metric])=>rows.some(row=>row.metric===metric)) || metrics[0];
-    const target=document.querySelector('#ranking');
-    const dimension=form.elements.dimension.selectedOptions[0].textContent.toLowerCase();
-    document.querySelector('#breakdown-title').textContent=primary[1]+' by '+dimension;
-    document.querySelector('#ranking-unit').textContent='Released totals';
-    const categories=[...new Set(rows.map(row=>row.value))];
-    const values=categories.map(category=>({category,value:sum(rows.filter(row=>row.value===category),primary[0])})).filter(item=>item.value!==null).sort((a,b)=>b.value-a.value || a.category.localeCompare(b.category));
-    if(!values.length){empty(target);return;}
-    target.replaceChildren();const maximum=Math.max(1,values[0].value);
+  function renderShares(target, rows, metric, unit, label = value => value) {
+    const categories=[...new Set(rows.filter(row=>row.metric===metric).map(row=>row.value))];
+    const values=categories.map(category=>({category,value:sum(rows.filter(row=>row.value===category),metric)})).sort((a,b)=>b.value-a.value || a.category.localeCompare(b.category));
+    const total=values.reduce((sum,item)=>sum+item.value,0);
+    if(!total){empty(target,'No activity recorded','No matching activity counts are available for this period.');return;}
+    target.replaceChildren();
     for(const [index,item] of values.slice(0,8).entries()){
-      const row=node('div',undefined,'rank-row'),label=node('div',undefined,'rank-label'),track=node('div',undefined,'rank-track'),fill=node('div',undefined,'rank-fill');
-      label.append(node('span',item.category),node('strong',number(item.value)));
-      fill.style.width=(100*item.value/maximum)+'%';fill.style.opacity=String(1-index*.07);track.append(fill);row.append(label,track);target.append(row);
+      const row=node('div',undefined,'rank-row'),heading=node('div',undefined,'rank-label'),track=node('div',undefined,'rank-track'),fill=node('div',undefined,'rank-fill');
+      const share=100*item.value/total;
+      const percentage=new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(share)+'%';
+      heading.append(node('span',label(item.category)),node('strong',percentage));
+      fill.style.width=share+'%';fill.style.opacity=String(1-index*.07);track.append(fill);
+      row.append(heading,track,node('p',number(item.value)+' '+unit,'chart-note'));target.append(row);
     }
-    if(values.length>8)target.append(node('p','Showing 8 of '+values.length+' released categories.','chart-note'));
+    if(values.length>8)target.append(node('p','Showing 8 of '+values.length+' categories. Shares include all categories.','chart-note'));
   }
-  function renderOutcomes(rows) {
-    const feature=measure.value==='features';
-    document.querySelector('#outcome-title').textContent=feature?'Released feature outcomes':'Released turn outcomes';
-    const metrics=feature?measures.features.slice(1):measures.turns.slice(1);
-    const target=document.querySelector('#outcomes');
-    const values=metrics.map(([metric,label],index)=>({label,color:['var(--green)','var(--accent)','var(--amber)','var(--purple)'][index],value:sum(rows,metric)}));
-    const released=values.filter(item=>item.value!==null),total=released.reduce((total,item)=>total+item.value,0);
-    if(!released.length || !total){empty(target,'Outcomes unavailable','There are no non-zero released outcomes for this selection.');return;}
-    const wrap=node('div',undefined,'donut-wrap'),legend=node('div',undefined,'outcome-legend');
-    const svg=svgNode('svg',{viewBox:'0 0 180 180',class:'donut',role:'img','aria-label':'Released outcomes: '+number(total)});
-    svg.append(svgNode('title',{},'Share of released outcomes only. Withheld outcomes are unavailable.'));
-    svg.append(svgNode('circle',{cx:90,cy:90,r:68,fill:'none',stroke:'var(--grid)','stroke-width':18}));
-    let offset=0;const circumference=2*Math.PI*68;
-    for(const item of values){
-      const entry=node('div',undefined,'outcome-row'),name=node('span',undefined,'legend-item');name.append(swatch(item.color),node('span',item.label));
-      entry.append(name,node('strong',item.value===null?'—':Math.round(item.value/total*100)+'%'),node('span',number(item.value),'muted'));legend.append(entry);
-      if(item.value===null || !item.value)continue;
-      const length=item.value/total*circumference;
-      const arc=svgNode('circle',{cx:90,cy:90,r:68,fill:'none',stroke:item.color,'stroke-width':18,'stroke-dasharray':length+' '+circumference,'stroke-dashoffset':-offset,transform:'rotate(-90 90 90)'});
-      arc.append(svgNode('title',{},item.label+': '+number(item.value)));svg.append(arc);offset+=length;
-    }
-    svg.append(svgNode('text',{x:90,y:88,'text-anchor':'middle',fill:'var(--text)','font-size':26,'font-weight':600},compact(total)),svgNode('text',{x:90,y:108,'text-anchor':'middle',fill:'var(--muted)','font-size':11},'released'));
-    wrap.append(svg,legend);target.replaceChildren(wrap);
+  function renderRanking(rows) {
+    const feature=view==='features';
+    const dimension=form.elements.dimension.selectedOptions[0].textContent.toLowerCase();
+    document.querySelector('#breakdown-title').textContent='Share of '+(feature?'actions':'turns')+' by '+dimension;
+    document.querySelector('#ranking-unit').textContent='Within selection';
+    renderShares(document.querySelector('#ranking'),rows,feature?'feature.attempted':'turn.started',feature?'actions':'turns',categoryLabel);
   }
   function renderTables(data) {
     const summary=document.querySelector('#summary'),rows=document.querySelector('#rows');summary.replaceChildren();rows.replaceChildren();
@@ -208,11 +210,10 @@ export const operatorScript = String.raw`
   }
   function render() {
     const rows=current?.rows || [];tooltip.hidden=true;
-    renderCards(rows);renderTrend(rows);renderRanking(rows);renderOutcomes(rows);renderBehavior();
+    renderCards(rows);renderTrend(rows);renderRanking(rows);renderBehavior();
   }
   function setPeriod(length) {
-    period=length;
-    const end=Date.now()-(isDevelopment()?0:86400000);
+    const end=Date.now();
     form.elements.from.value=day(end-(length-1)*86400000);form.elements.to.value=day(end);
     for(const button of document.querySelectorAll('[data-days]'))button.setAttribute('aria-pressed',String(Number(button.dataset.days)===length));
   }
@@ -220,34 +221,82 @@ export const operatorScript = String.raw`
     const ownGeneration=++generation;controller?.abort();controller=new AbortController();
     if(!background){authenticated=true;current=null;selection={from:form.elements.from.value,to:form.elements.to.value};render();renderTables({rows:[],summary:[]});status.textContent='Loading aggregates…';}
     status.classList.remove('error');trend.setAttribute('aria-busy','true');
-    const params=new URLSearchParams(new FormData(form));if(view==='behavior')params.set('dimension','model');if(!params.get('value'))params.delete('value');
+    const params=new URLSearchParams(new FormData(form));if(view!=='usage')params.set('dimension',view==='features'?'feature':'model');if(!params.get('value'))params.delete('value');
     try{
       const response=await fetch('/v1/telemetry/metrics?'+params,{credentials:'same-origin',signal:controller.signal});
-      if(!response.ok){if(response.status===401)authenticated=false;throw Error(response.status===401?'Operator authentication required.':'Could not load aggregates.');}
+      if(ownGeneration!==generation)return;
+      if(response.status===401){authenticated=false;throw Error('Operator authentication required.');}
+      if(!response.ok)throw Error('Could not load aggregates.');
       const data=await response.json();if(ownGeneration!==generation)return;
-      current=data;document.querySelector('#coverage').textContent=data.coverage;
-      status.textContent=isDevelopment()
-        ? 'Development · '+(data.rows.length?'Exact observed counts, including today.':'No development reports for these filters yet.')+' Refreshes every 5 seconds.'
-        : (data.rows.length?'Partial aggregate data.':'No released data for these filters.')+' Updated '+data.updatedAt+' · UTC days · bins of ten';
+      current=data;
+      document.querySelector('#coverage').textContent=view==='features'
+        ? (data.demo?'Demo data only. ':'')+'Anonymous feature action counts. Counts describe attempts and outcomes, not people. Missing measurements remain unavailable.'
+        : data.coverage;
+      status.textContent=(data.demo?'Demo data. ':data.rows.length?'Live aggregate data. ':'No reports for these filters yet. ')+'Refreshes every 5 seconds.';
+      document.querySelector('#demo-banner').hidden=!data.demo;
+      document.querySelector('#demo-generate').hidden=!!data.demo || !data.demoAvailable;
       render();renderTables(data);
     }catch(error){if(ownGeneration!==generation)return;current=null;render();renderTables({rows:[],summary:[]});status.classList.add('error');status.textContent=error.name==='AbortError'?'Request cancelled.':error.message;}
     finally{if(ownGeneration===generation)trend.setAttribute('aria-busy','false');}
   }
+  function configureView() {
+    const feature=view==='features',behavior=view==='behavior';
+    const title=feature?'Feature usage':behavior?'Model behavior':'Model usage';
+    document.querySelector('.page-header h1').textContent=title;
+    document.querySelector('.page-header .subtitle').textContent=feature
+      ? 'Feature activity, from browser and computer use to missions and reviews.'
+      : behavior?'Execution duration, tool activity and supported performance measurements.'
+      : 'Provider and model adoption, turn activity and observed token consumption.';
+    document.title=document.title.split(' · ')[0]+' · '+title;
+    document.querySelector('#usage-view').hidden=behavior;
+    document.querySelector('#behavior-view').hidden=!behavior;
+    document.querySelector('#dimension-filter').hidden=view!=='usage';
+    form.elements.dimension.disabled=view!=='usage';
+    document.querySelector('#measure-filter').hidden=view!=='usage';
+    document.querySelector('#usage-note').hidden=feature;
+    document.querySelector('#daily-summaries').hidden=feature;
+    const dimension=form.elements.dimension.value;
+    document.querySelector('#category-label').textContent=feature?'Feature':dimension==='provider'?'Provider':'Model';
+    form.elements.value.placeholder=feature?'All features':dimension==='provider'?'All providers':'All models';
+    document.querySelector('#ranking-note').textContent=feature
+      ? 'Share of feature actions in this selection. Counts describe attempts, not people.'
+      : 'Share of observed turns in this selection, including unknown models. Not a count of people.';
+    for(const tab of document.querySelectorAll('[data-view]'))tab.setAttribute('aria-pressed',String(tab.dataset.view===view));
+  }
   for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>{
-    view=button.dataset.view;document.querySelector('#usage-view').hidden=view!=='usage';document.querySelector('#behavior-view').hidden=view!=='behavior';
-    for(const tab of document.querySelectorAll('[data-view]'))tab.setAttribute('aria-pressed',String(tab===button));
-    form.elements.dimension.disabled=view==='behavior';if(view==='behavior')form.elements.dimension.value='model';
-    void load();
+    if(view===button.dataset.view)return;
+    viewState[view]={dimension:form.elements.dimension.value,value:form.elements.value.value,measure:measure.value};
+    view=button.dataset.view;
+    const state=viewState[view];
+    form.elements.dimension.value=state.dimension;form.elements.value.value=state.value;measure.value=state.measure;
+    configureView();void load();
   });
   form.addEventListener('submit',event=>{event.preventDefault();void load();});
   for(const button of document.querySelectorAll('[data-days]'))button.addEventListener('click',()=>{setPeriod(Number(button.dataset.days));void load();});
-  form.elements.dimension.addEventListener('change',()=>{measure.value=form.elements.dimension.value==='feature'?'features':'tokens';void load();});
-  form.elements.environment.addEventListener('change',()=>{setPeriod(period);measure.value=isDevelopment()?'turns':'tokens';void load();});
+  form.elements.dimension.addEventListener('change',()=>{form.elements.value.value='';configureView();void load();});
   for(const field of [form.elements.from,form.elements.to])field.addEventListener('change',()=>{for(const button of document.querySelectorAll('[data-days]'))button.setAttribute('aria-pressed','false');});
   measure.addEventListener('change',render);
+  for(const [id,method] of [['demo-generate','POST'],['demo-delete','DELETE']])document.querySelector('#'+id).addEventListener('click',async event=>{
+    const button=event.currentTarget;button.disabled=true;
+    try{
+      const response=await fetch('/v1/telemetry/demo',{method,credentials:'same-origin'});
+      if(!response.ok)throw Error('Could not update demo data.');
+      if(method==='POST')setPeriod(7);
+      await load();
+    }catch{status.classList.add('error');status.textContent='Could not update demo data. Please try again.';}
+    finally{button.disabled=false;}
+  });
+  document.querySelector('#sign-out').addEventListener('click',async event=>{
+    event.currentTarget.disabled=true;
+    try{
+      const response=await fetch('/v1/operator/session',{method:'DELETE',credentials:'same-origin'});
+      if(!response.ok)throw Error('Could not sign out. Please try again.');
+      location.reload();
+    }catch{event.target.disabled=false;status.classList.add('error');status.textContent='Could not sign out. Please try again.';}
+  });
   let resizeFrame;
   addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{if(current)renderTrend(current.rows);});});
-  setInterval(()=>{if(isDevelopment() && authenticated && !document.hidden && trend.getAttribute('aria-busy')!=='true')void load(true);},5000);
-  setPeriod(7);void load();
+  setInterval(()=>{if(authenticated && !document.hidden && trend.getAttribute('aria-busy')!=='true')void load(true);},5000);
+  configureView();setPeriod(7);void load();
 })();
 `;

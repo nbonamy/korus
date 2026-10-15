@@ -11,6 +11,7 @@ interface FixtureElement {
   textContent: string | null;
   value: string;
   hidden: boolean;
+  getAttribute(name: string): string | null;
   click(): void;
   focus(): void;
   blur(): void;
@@ -27,9 +28,29 @@ interface FixtureDocument {
 }
 interface FixtureWindow {
   Date: typeof Date;
+  getComputedStyle(element: FixtureElement): {
+    height: string;
+    appearance: string;
+  };
   Event: new (name: string, options?: { cancelable: boolean }) => unknown;
   eval(script: string): void;
 }
+
+it("gives filter selects and date fields the same explicit height without native select sizing", async () => {
+  const { document, window } = mount();
+  await vi.waitFor(() =>
+    expect(document.querySelector("#trend")?.getAttribute("aria-busy")).toBe(
+      "false",
+    ),
+  );
+  const fields = document.querySelectorAll(
+    ".filters input, .filters select, #measure",
+  );
+  for (const field of Array.from(fields))
+    expect(window.getComputedStyle(field).height).toBe("40px");
+  for (const field of Array.from(document.querySelectorAll("select")))
+    expect(window.getComputedStyle(field).appearance).toBe("none");
+});
 interface FixtureFrame {
   contentWindow: FixtureWindow | null;
   contentDocument: FixtureDocument | null;
@@ -48,19 +69,68 @@ const row = (day: string, metric: string, total: number, value = "claude") => ({
   reports: 10,
 });
 const rows = [
-  row("2026-10-07", "tokens.input", 120),
-  row("2026-10-09", "tokens.input", 240),
-  row("2026-10-07", "tokens.output", 40),
-  row("2026-10-09", "tokens.output", 80),
-  row("2026-10-09", "turn.started", 30),
-  row("2026-10-09", "turn.completed", 20),
+  row("2026-10-08", "tokens.input", 120),
+  row("2026-10-10", "tokens.input", 240),
+  row("2026-10-08", "tokens.output", 40),
+  row("2026-10-10", "tokens.output", 80),
+  row("2026-10-10", "turn.started", 30),
+  row("2026-10-10", "turn.completed", 20),
 ];
-const result = (values = rows, behavior: ModelBehavior[] = []) => ({
+const result = (
+  values = rows,
+  behavior: ModelBehavior[] = [],
+  demo = false,
+) => ({
+  demo,
+  demoAvailable: true,
   behavior,
   rows: values,
   summary: [],
   updatedAt: "2026-10-14",
   coverage: "Released cells only; withheld values are unavailable.",
+});
+
+it("generates labeled demo data and deletes it to return to real counts through the signed-in controls", async () => {
+  let demo = false;
+  const fetch = vi.fn(async (url: string, input?: unknown) => {
+    if (url === "/v1/telemetry/demo")
+      demo = (input as { method: string }).method === "POST";
+    return response(
+      result([row("2026-10-14", "turn.started", demo ? 500 : 1)], [], demo),
+    );
+  });
+  const { document } = mount(fetch);
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector('[aria-label="Started turns: 1"]'),
+    ).not.toBeNull(),
+  );
+  document.querySelector("#demo-generate")!.click();
+  await vi.waitFor(() =>
+    expect(document.querySelector<FixtureElement>("#demo-banner")!.hidden).toBe(
+      false,
+    ),
+  );
+  expect(fetch).toHaveBeenCalledWith("/v1/telemetry/demo", {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  expect(
+    document.querySelector('[aria-label="Started turns: 500"]'),
+  ).not.toBeNull();
+  document.querySelector("#demo-delete")!.click();
+  await vi.waitFor(() =>
+    expect(document.querySelector<FixtureElement>("#demo-banner")!.hidden).toBe(
+      true,
+    ),
+  );
+  expect(fetch).toHaveBeenCalledWith("/v1/telemetry/demo", {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  expect(
+    document.querySelector('[aria-label="Started turns: 1"]'),
+  ).not.toBeNull();
 });
 const response = (data = result(), status = 200) => ({
   ok: status === 200,
@@ -87,52 +157,160 @@ function mount(
   return { document: frameDocument, window: frameWindow, fetch, poll };
 }
 
-it("shows exact current-day development turns and refreshes them automatically without mixing production", async () => {
+it("shows current-day turns in one live console and refreshes automatically", async () => {
   const fetch = vi.fn(async (_url: string, _init?: unknown) =>
     response(result([row("2026-10-14", "turn.started", 1)])),
   );
-  const { document, window, poll } = mount(fetch);
-  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-  const environment =
-    document.querySelector<FixtureElement>("[name=environment]")!;
-  expect(environment).not.toBeNull();
-  environment.value = "development";
-  environment.dispatchEvent(new window.Event("change"));
+  const { document, poll } = mount(fetch);
   await vi.waitFor(() =>
     expect(
       document.querySelector('[aria-label="Started turns: 1"]'),
     ).not.toBeNull(),
   );
-  expect(fetch.mock.calls.at(-1)?.[0]).toContain("environment=development");
-  expect(fetch.mock.calls.at(-1)?.[0]).toContain("to=2026-10-14");
-  expect(document.querySelector("#trend-title")?.textContent).toBe(
-    "Turn activity",
-  );
+  expect(document.querySelector("[name=environment]")).toBeNull();
+  expect(fetch.mock.calls[0]?.[0]).toContain("to=2026-10-14");
+  expect(fetch.mock.calls[0]?.[0]).not.toContain("environment=");
   expect(document.querySelectorAll("#trend .chart-point")).toHaveLength(1);
-  expect(document.querySelector("#status")?.textContent).toContain(
-    "Development",
-  );
-  expect(document.querySelector("#status")?.textContent).not.toContain(
-    "bins of ten",
-  );
   const refresh = poll.mock.calls[0]!;
   expect(refresh[1]).toBe(5000);
-  const calls = fetch.mock.calls.length;
   refresh[0]();
-  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(calls + 1));
-  environment.value = "production";
-  environment.dispatchEvent(new window.Event("change"));
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   await vi.waitFor(() =>
-    expect(fetch.mock.calls.at(-1)?.[0]).toContain("environment=production"),
+    expect(document.querySelector("#trend")?.getAttribute("aria-busy")).toBe(
+      "false",
+    ),
   );
-  expect(fetch.mock.calls.at(-1)?.[0]).toContain("to=2026-10-13");
-  const productionCalls = fetch.mock.calls.length;
-  refresh[0]();
-  expect(fetch).toHaveBeenCalledTimes(productionCalls);
 });
 
-it("renders released trends with gaps, accessible exact values and keyboard tooltips without inventing unknown outcomes", async () => {
-  const { document } = mount();
+it("separates model share from feature actions and keeps token volume out of turn share", async () => {
+  const features = [
+    {
+      ...row("2026-10-10", "feature.attempted", 6, "browser.open"),
+      dimension: "feature",
+    },
+    {
+      ...row("2026-10-10", "feature.attempted", 2, "computer.use"),
+      dimension: "feature",
+    },
+    {
+      ...row("2026-10-10", "feature.succeeded", 100, "browser.open"),
+      dimension: "feature",
+    },
+  ];
+  const fetch = vi.fn(async (url: string) =>
+    response(
+      result(
+        new URL(url, "https://console.example").searchParams.get(
+          "dimension",
+        ) === "feature"
+          ? features
+          : [
+              row("2026-10-10", "turn.started", 10),
+              row("2026-10-10", "turn.started", 30, "codex"),
+              row("2026-10-10", "tokens.input", 99999),
+            ],
+      ),
+    ),
+  );
+  const { document, window } = mount(fetch);
+  await vi.waitFor(() =>
+    expect(document.querySelector("#ranking")?.textContent).toContain(
+      "30 turns",
+    ),
+  );
+  expect(document.querySelector('[aria-label^="Feature actions:"]')).toBeNull();
+  expect(
+    document.querySelector('[aria-label="Top provider: codex"]'),
+  ).not.toBeNull();
+  expect(document.querySelector('[aria-label^="Completed turns:"]')).toBeNull();
+  expect(document.querySelector("#ranking")?.textContent).toContain("75%");
+  expect(document.querySelector("#ranking")?.textContent).toContain("25%");
+  expect(document.querySelector("#ranking")?.textContent).toContain("30 turns");
+  const measure = document.querySelector<FixtureElement>("#measure")!;
+  measure.value = "tokens";
+  measure.dispatchEvent(new window.Event("change"));
+  expect(document.querySelector("#ranking")?.textContent).toContain("75%");
+  expect(fetch).toHaveBeenCalledOnce();
+  document.querySelector('[data-view="features"]')!.click();
+  await vi.waitFor(() =>
+    expect(
+      document.querySelector('[aria-label="Feature actions: 8"]'),
+    ).not.toBeNull(),
+  );
+  expect(
+    document.querySelector('[aria-label="Features used: 2"]'),
+  ).not.toBeNull();
+  expect(document.querySelector('[aria-label^="Input tokens:"]')).toBeNull();
+  expect(document.querySelector("#ranking")?.textContent).toContain("Browser");
+  expect(document.querySelector("#ranking")?.textContent).toContain(
+    "6 actions",
+  );
+  expect(document.querySelector("#ranking")?.textContent).toContain(
+    "Computer use",
+  );
+  expect(document.querySelector("#ranking")?.textContent).not.toContain("100");
+  expect(fetch.mock.calls.at(-1)![0]).toContain("dimension=feature");
+});
+
+it("preserves the shared date range and independent tab filters without sending model filters to features", async () => {
+  const { document, window, fetch } = mount();
+  await vi.waitFor(() =>
+    expect(document.querySelector("#trend")?.getAttribute("aria-busy")).toBe(
+      "false",
+    ),
+  );
+  expect(
+    Array.from(document.querySelectorAll("[data-view]")).map(
+      (tab) => tab.textContent,
+    ),
+  ).toStrictEqual(["Model usage", "Model behavior", "Feature usage"]);
+  document.querySelector('[data-days="30"]')!.click();
+  const dimension = document.querySelector<FixtureElement>("[name=dimension]")!;
+  dimension.value = "model";
+  dimension.dispatchEvent(new window.Event("change"));
+  const category = document.querySelector<FixtureElement>("[name=value]")!;
+  category.value = "gpt-5.4";
+  document
+    .querySelector("#query")!
+    .dispatchEvent(new window.Event("submit", { cancelable: true }));
+  document.querySelector('[data-view="behavior"]')!.click();
+  expect(fetch.mock.calls.at(-1)![0]).toContain("dimension=model");
+  expect(fetch.mock.calls.at(-1)![0]).not.toContain("value=");
+  expect(document.querySelector("#usage-view")!.hidden).toBe(true);
+  expect(document.querySelector("#behavior-view")!.hidden).toBe(false);
+  document.querySelector('[data-view="features"]')!.click();
+  expect(fetch.mock.calls.at(-1)![0]).toContain(
+    "from=2026-09-15&to=2026-10-14",
+  );
+  expect(fetch.mock.calls.at(-1)![0]).toContain("dimension=feature");
+  expect(fetch.mock.calls.at(-1)![0]).not.toContain("value=");
+  expect(document.querySelector("#dimension-filter")!.hidden).toBe(true);
+  expect(document.querySelector("#measure-filter")!.hidden).toBe(true);
+  category.value = "browser.open";
+  document
+    .querySelector("#query")!
+    .dispatchEvent(new window.Event("submit", { cancelable: true }));
+  document.querySelector('[data-view="usage"]')!.click();
+  expect(category.value).toBe("gpt-5.4");
+  expect(dimension.value).toBe("model");
+  expect(document.querySelector("#dimension-filter")!.hidden).toBe(false);
+  expect(fetch.mock.calls.at(-1)![0]).toContain("value=gpt-5.4");
+  expect(fetch.mock.calls.at(-1)![0]).toContain("dimension=model");
+  document.querySelector('[data-view="features"]')!.click();
+  expect(category.value).toBe("browser.open");
+  expect(fetch.mock.calls.at(-1)![0]).toContain("value=browser.open");
+  await vi.waitFor(() =>
+    expect(document.querySelector("#trend")?.getAttribute("aria-busy")).toBe(
+      "false",
+    ),
+  );
+});
+
+it("renders released trends with gaps, accessible exact values and keyboard tooltips", async () => {
+  const { document, window } = mount();
+  const measure = document.querySelector<FixtureElement>("#measure")!;
+  measure.value = "tokens";
+  measure.dispatchEvent(new window.Event("change"));
   await vi.waitFor(() =>
     expect(document.querySelector("#trend svg")).not.toBeNull(),
   );
@@ -146,7 +324,7 @@ it("renders released trends with gaps, accessible exact values and keyboard tool
     ),
   ).toHaveLength(2);
   expect(document.querySelector("#trend")?.textContent).not.toContain(
-    "Oct 8 (UTC)",
+    "Oct 9 (UTC)",
   );
   const point = document.querySelector<FixtureElement>("#trend .chart-point")!;
   point.focus();
@@ -160,16 +338,7 @@ it("renders released trends with gaps, accessible exact values and keyboard tool
   expect(document.querySelector<FixtureElement>("#chart-tooltip")?.hidden).toBe(
     true,
   );
-  expect(document.querySelector("#ranking")?.textContent).toContain("360");
-  expect(document.querySelector("#outcomes")?.textContent).toContain(
-    "Completed",
-  );
-  expect(document.querySelector("#outcomes")?.textContent).toContain(
-    "Unavailable",
-  );
-  expect(
-    document.querySelector('#outcomes [aria-label="Released outcomes: 20"]'),
-  ).not.toBeNull();
+  expect(document.querySelector("#ranking")?.textContent).toContain("100%");
 });
 
 it("changes UTC periods, breakdown and measure through the authenticated API, and renders category names as text", async () => {
@@ -178,7 +347,7 @@ it("changes UTC periods, breakdown and measure through the authenticated API, an
       result([
         row(
           "2026-10-09",
-          "feature.succeeded",
+          "feature.attempted",
           50,
           "<img src=x onerror=alert(1)>",
         ),
@@ -189,13 +358,11 @@ it("changes UTC periods, breakdown and measure through the authenticated API, an
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
   document.querySelector<FixtureElement>('[data-days="30"]')!.click();
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-  expect(fetch.mock.calls[1]?.[0]).toContain("from=2026-09-14&to=2026-10-13");
+  expect(fetch.mock.calls[1]?.[0]).toContain("from=2026-09-15&to=2026-10-14");
   expect(fetch.mock.calls[1]?.[1]).toMatchObject({
     credentials: "same-origin",
   });
-  const dimension = document.querySelector<FixtureElement>("[name=dimension]")!;
-  dimension.value = "feature";
-  dimension.dispatchEvent(new window.Event("change"));
+  document.querySelector('[data-view="features"]')!.click();
   await vi.waitFor(() =>
     expect(document.querySelector("#trend-title")?.textContent).toBe(
       "Feature activity",
@@ -203,22 +370,20 @@ it("changes UTC periods, breakdown and measure through the authenticated API, an
   );
   expect(fetch.mock.calls.at(-1)?.[0]).toContain("dimension=feature");
   await vi.waitFor(() =>
-    expect(document.querySelector("#breakdown-title")?.textContent).toBe(
-      "Succeeded by feature",
+    expect(document.querySelector("#ranking")?.textContent).toContain(
+      "<img src=x onerror=alert(1)>",
     ),
   );
-  expect(document.querySelector("#ranking")?.textContent).toContain(
-    "<img src=x onerror=alert(1)>",
+  expect(document.querySelector("#breakdown-title")?.textContent).toBe(
+    "Share of actions by feature",
   );
-  expect(document.querySelector("img")).toBeNull();
-  expect(document.querySelector('[aria-label="Succeeded: 50"]')).not.toBeNull();
+  expect(document.querySelector("#ranking img")).toBeNull();
+  expect(
+    document.querySelector('[aria-label="Feature actions: 50"]'),
+  ).not.toBeNull();
   const before = fetch.mock.calls.length;
   const measure = document.querySelector<FixtureElement>("#measure")!;
-  measure.value = "turns";
-  measure.dispatchEvent(new window.Event("change"));
-  expect(document.querySelector("#trend")?.textContent).toContain(
-    "No released data",
-  );
+  expect(document.querySelector("#measure-filter")!.hidden).toBe(true);
   expect(fetch.mock.calls).toHaveLength(before);
 });
 
@@ -247,12 +412,12 @@ it("clears stale graphs for authentication errors and empty selections rather th
     .dispatchEvent(new window.Event("submit", { cancelable: true }));
   await vi.waitFor(() =>
     expect(document.querySelector("#status")?.textContent).toContain(
-      "No released data",
+      "No reports",
     ),
   );
   expect(document.querySelector("#trend svg")).toBeNull();
   expect(document.querySelector("#ranking")?.textContent).toContain(
-    "No released data",
+    "No activity recorded",
   );
 });
 
@@ -266,7 +431,7 @@ it("ignores older responses after the operator changes the selected period", asy
   );
   const { document } = mount(fetch);
   document.querySelector<FixtureElement>('[data-days="30"]')!.click();
-  pending[1]!(response(result([row("2026-10-09", "tokens.input", 900)])));
+  pending[1]!(response(result([row("2026-10-10", "tokens.input", 900)])));
   await vi.waitFor(() =>
     expect(
       document.querySelector('[aria-label="Input tokens: 900"]'),

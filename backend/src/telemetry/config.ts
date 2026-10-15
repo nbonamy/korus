@@ -26,7 +26,8 @@ export function runtimeTelemetryConfig(version: string): ReporterConfig {
     forceOff: process.env.APP_TELEMETRY_FORCE_OFF === "1",
     environment: !process.env.CI && process.env.NODE_ENV !== "test",
     version,
-    channel: process.env.NODE_ENV === "development" ? "development" : "stable",
+    channel: "stable",
+    immediate: process.env.NODE_ENV === "development",
     platform:
       process.platform === "darwin"
         ? "macos"

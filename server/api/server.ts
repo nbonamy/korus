@@ -4,7 +4,6 @@ import {
   type ServerResponse,
 } from "node:http";
 import { createServer as httpsServer } from "node:https";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { isTelemetryReport, telemetryLimits } from "@workspace/core/telemetry";
 import {
@@ -13,6 +12,8 @@ import {
   type OperatorQuery,
 } from "./telemetry/aggregate-store";
 import { operatorPage, operatorScript } from "../web/operator-page";
+import { welcomePage, operatorLogo, signInScript } from "../web/welcome-page";
+import { OperatorAccess } from "./operator-access";
 export type ApiServerConfig = {
   database: string;
   operatorToken: string;
@@ -22,7 +23,6 @@ export type ApiServerConfig = {
   synthetic?: boolean;
   /** Plaintext is allowed only on loopback behind the TLS-terminating owned proxy. */
   reverseProxy?: boolean;
-  minimumReports?: number;
 };
 export async function startApiServer(
   config: ApiServerConfig,
@@ -36,20 +36,12 @@ export async function startApiServer(
       ))
   )
     throw new Error("TLS and operator authentication are required.");
-  if (
-    config.minimumReports !== undefined &&
-    (!Number.isSafeInteger(config.minimumReports) ||
-      config.minimumReports < 10 ||
-      config.minimumReports > 1000)
-  )
-    throw new Error("Invalid release threshold.");
-  const store = new AggregateStore(
-    config.database,
-    Date.now,
-    config.minimumReports ?? 10,
-  );
+  const store = new AggregateStore(config.database, Date.now);
   store.cleanup();
-  const secret = createHash("sha256").update(config.operatorToken).digest();
+  const access = new OperatorAccess(
+    config.operatorToken,
+    !!config.tls || !!config.reverseProxy,
+  );
   const rate = new Map<string, { until: number; requests: number }>();
   let active = 0;
   const audit = {
@@ -62,19 +54,9 @@ export async function startApiServer(
     lastRetentionAt: new Date().toISOString(),
   };
   const authenticated = (request: IncomingMessage): boolean => {
-    const authorization = request.headers.authorization ?? "";
-    const provided = authorization.startsWith("Bearer ")
-      ? authorization.slice(7)
-      : authorization.startsWith("Basic ")
-        ? Buffer.from(authorization.slice(6), "base64")
-            .toString()
-            .split(":")
-            .slice(1)
-            .join(":")
-        : "";
-    return timingSafeEqual(
-      secret,
-      createHash("sha256").update(provided).digest(),
+    return access.authenticated(
+      request.headers.authorization,
+      request.headers.cookie,
     );
   };
   const handle = async (request: IncomingMessage, response: ServerResponse) => {
@@ -82,7 +64,7 @@ export async function startApiServer(
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader(
       "Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
     );
     const send = (status: number, data: unknown) => {
       response.writeHead(status, { "content-type": "application/json" });
@@ -115,6 +97,134 @@ export async function startApiServer(
     const deadline = setTimeout(() => request.destroy(), 10000);
     try {
       const url = new URL(request.url ?? "/", "https://service.invalid");
+      if (url.pathname === "/v1/telemetry/demo" && !url.search) {
+        if (!config.synthetic || config.host !== "127.0.0.1") {
+          send(404, { error: "route" });
+          return;
+        }
+        if (!authenticated(request)) {
+          send(401, { error: "unauthorized" });
+          return;
+        }
+        if (!["POST", "DELETE"].includes(request.method ?? "")) {
+          send(405, { error: "method" });
+          return;
+        }
+        const origin = `${config.tls || config.reverseProxy ? "https" : "http"}://${request.headers.host}`;
+        if (request.headers.origin !== origin) {
+          send(403, { error: "origin" });
+          return;
+        }
+        if (
+          request.headers["transfer-encoding"] ||
+          Number(request.headers["content-length"] ?? 0) !== 0
+        ) {
+          send(400, { error: "body" });
+          request.resume();
+          return;
+        }
+        store.setDemo(request.method === "POST");
+        send(200, { demo: request.method === "POST" });
+        return;
+      }
+      if (
+        url.pathname === "/assets/logo.svg" ||
+        url.pathname === "/assets/sign-in.js"
+      ) {
+        if (request.method !== "GET") {
+          send(405, { error: "method" });
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": url.pathname.endsWith(".svg")
+            ? "image/svg+xml"
+            : "application/javascript",
+        });
+        response.end(
+          url.pathname.endsWith(".svg") ? operatorLogo : signInScript,
+        );
+        return;
+      }
+      if (url.pathname === "/v1/operator/session" && !url.search) {
+        if (!["POST", "DELETE"].includes(request.method ?? "")) {
+          send(405, { error: "method" });
+          return;
+        }
+        const origin = `${config.tls || config.reverseProxy ? "https" : "http"}://${request.headers.host}`;
+        if (request.headers.origin !== origin) {
+          send(403, { error: "origin" });
+          request.resume();
+          return;
+        }
+        if (request.method === "DELETE") {
+          response.setHeader(
+            "Set-Cookie",
+            access.signOut(request.headers.cookie),
+          );
+          send(200, { authenticated: false });
+          return;
+        }
+        if (
+          request.headers["content-type"] !== "application/json" ||
+          Number(request.headers["content-length"] ?? 0) > 2048
+        ) {
+          send(413, { error: "body" });
+          request.resume();
+          return;
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        for await (const chunk of request) {
+          const bytes = Buffer.from(chunk);
+          size += bytes.length;
+          if (size > 2048) {
+            send(413, { error: "body" });
+            request.destroy();
+            return;
+          }
+          chunks.push(bytes);
+        }
+        let input: unknown;
+        try {
+          input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        } catch {
+          send(400, { error: "schema" });
+          return;
+        }
+        if (
+          !input ||
+          typeof input !== "object" ||
+          Array.isArray(input) ||
+          Object.keys(input).length !== 1 ||
+          !("password" in input) ||
+          typeof input.password !== "string" ||
+          input.password.length > 1024
+        ) {
+          send(400, { error: "schema" });
+          return;
+        }
+        const cookie = access.signIn(input.password);
+        if (!cookie) {
+          audit.authorizationDenied = Math.min(
+            1e9,
+            audit.authorizationDenied + 1,
+          );
+          send(401, { error: "unauthorized" });
+          return;
+        }
+        response.setHeader("Set-Cookie", cookie);
+        send(200, { authenticated: true });
+        return;
+      }
+      if (
+        url.pathname === "/" &&
+        request.method === "GET" &&
+        !authenticated(request)
+      ) {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end(welcomePage);
+        return;
+      }
       if (url.pathname === "/health" && request.method === "GET") {
         send(audit.retentionHealthy ? 200 : 503, {
           status: audit.retentionHealthy ? "ok" : "maintenance",
@@ -127,16 +237,13 @@ export async function startApiServer(
           "/assets/operator.js",
           "/v1/telemetry/status",
           "/v1/telemetry/metrics",
+          "/v1/operator/page",
         ].includes(url.pathname)
       ) {
         if (!authenticated(request)) {
           audit.authorizationDenied = Math.min(
             1e9,
             audit.authorizationDenied + 1,
-          );
-          response.setHeader(
-            "WWW-Authenticate",
-            'Basic realm="Private telemetry", charset="UTF-8"',
           );
           send(401, { error: "unauthorized" });
           return;
@@ -150,7 +257,7 @@ export async function startApiServer(
           send(200, audit);
           return;
         }
-        if (url.pathname === "/") {
+        if (url.pathname === "/" || url.pathname === "/v1/operator/page") {
           response.writeHead(200, {
             "content-type": "text/html; charset=utf-8",
           });
@@ -165,9 +272,9 @@ export async function startApiServer(
         if (url.pathname === "/v1/telemetry/metrics") {
           const params = Object.fromEntries(url.searchParams);
           if (
-            url.searchParams.size > 5 ||
+            url.searchParams.size > 4 ||
             Object.keys(params).some(
-              (k) => !["from", "to", "dimension", "value", "environment"].includes(k),
+              (k) => !["from", "to", "dimension", "value"].includes(k),
             ) ||
             !operatorDimensions.includes(
               params.dimension as (typeof operatorDimensions)[number],
@@ -177,7 +284,10 @@ export async function startApiServer(
             return;
           }
           try {
-            send(200, store.query(params as OperatorQuery));
+            send(200, {
+              ...store.query(params as OperatorQuery),
+              demoAvailable: !!config.synthetic && config.host === "127.0.0.1",
+            });
           } catch {
             send(400, { error: "query" });
           }
@@ -274,6 +384,7 @@ export async function startApiServer(
         server.closeAllConnections();
       });
       store.close();
+      access.close();
       rate.clear();
     },
   };

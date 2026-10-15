@@ -1,4 +1,5 @@
 import { summarizeModelBehavior, type ModelBehavior } from "./model-behavior";
+import { demoBuckets } from "./demo-data";
 import { chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -25,7 +26,6 @@ export type OperatorQuery = {
   to: string;
   dimension: OperatorDimension;
   value?: string;
-  environment?: "production" | "development";
 };
 export type OperatorRow = {
   day: string;
@@ -41,13 +41,53 @@ export class AggregateStore {
   constructor(
     file: string,
     private readonly now: () => number = Date.now,
-    private readonly minimumReports = 10,
   ) {
     this.db = new DatabaseSync(file);
     if (file !== ":memory:") chmodSync(file, 0o600);
     this.db.exec(
       "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS dedupe(id TEXT PRIMARY KEY, received INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS buckets(period TEXT NOT NULL, day TEXT NOT NULL, metric TEXT NOT NULL, dimension TEXT NOT NULL, value TEXT NOT NULL, total INTEGER NOT NULL, reports INTEGER NOT NULL, PRIMARY KEY(period,day,metric,dimension,value));",
     );
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(
+        "INSERT INTO buckets SELECT 'daily',day,metric,dimension,CASE WHEN dimension='channel' AND value='development' THEN 'stable' ELSE value END,total,reports FROM buckets WHERE period='development-daily' ON CONFLICT(period,day,metric,dimension,value) DO UPDATE SET total=total+excluded.total,reports=reports+excluded.reports; DELETE FROM buckets WHERE period='development-daily'; COMMIT;",
+      );
+    } catch {
+      this.db.exec("ROLLBACK");
+      this.db.close();
+      throw new Error("Aggregate migration failed.");
+    }
+  }
+  setDemo(enabled: boolean): void {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec("DELETE FROM buckets WHERE period='demo-daily'");
+      if (enabled) {
+        const insert = this.db.prepare(
+          "INSERT INTO buckets VALUES('demo-daily',?,?,?,?,?,?)",
+        );
+        for (const row of demoBuckets(this.now()))
+          insert.run(
+            row.day,
+            row.metric,
+            row.dimension,
+            row.value,
+            row.total,
+            row.reports,
+          );
+        if (
+          Number(
+            this.db.prepare("SELECT COUNT(*) AS count FROM buckets").get()!
+              .count,
+          ) > 100000
+        )
+          throw new Error("Capacity reached.");
+      }
+      this.db.exec("COMMIT");
+    } catch {
+      this.db.exec("ROLLBACK");
+      throw new Error("Demo data could not be updated.");
+    }
   }
   ingest(report: TelemetryReport): "accepted" | "duplicate" {
     const now = this.now();
@@ -88,16 +128,14 @@ export class AggregateStore {
         const dimensions: Record<string, string | undefined> = {
           platform: report.platform,
           version: report.version,
-          channel: report.channel,
+          channel: report.channel === "development" ? "stable" : report.channel,
           provider: row.provider,
           model: row.model,
           feature: row.feature,
         };
         for (const [dimension, value] of Object.entries(dimensions))
           if (value)
-            for (const period of report.channel === "development"
-              ? ["development-daily"]
-              : ["daily", "monthly"]) {
+            for (const period of ["daily", "monthly"]) {
               const day =
                 period !== "monthly" ? row.day : row.day.slice(0, 7) + "-01";
               const key = JSON.stringify([
@@ -158,7 +196,7 @@ export class AggregateStore {
     summary: OperatorSummary[];
     behavior: ModelBehavior[];
     minimumReports: number;
-    environment: "production" | "development";
+    demo: boolean;
     partial: boolean;
     updatedAt: string;
     coverage: string;
@@ -167,55 +205,42 @@ export class AggregateStore {
       !operatorDimensions.includes(query.dimension) ||
       !isUtcDay(query.from) ||
       !isUtcDay(query.to) ||
-      (query.environment !== undefined &&
-        !["production", "development"].includes(query.environment)) ||
       query.from > query.to ||
       Date.parse(query.to) - Date.parse(query.from) > 90 * 86400000 ||
       (query.value &&
         (query.value.length > 64 || !/^[-a-zA-Z0-9.]+$/.test(query.value)))
     )
       throw new Error("Invalid query.");
-    const development = query.environment === "development";
-    const period = development ? "development-daily" : "daily";
-    const minimumReports = development ? 1 : this.minimumReports;
-    // Development has separate buckets and short retention. Production release rules
-    // apply across every production marginal, independently of development volume.
-    const rows = this.db
+    const demo = !!this.db
+      .prepare("SELECT 1 FROM buckets WHERE period='demo-daily' LIMIT 1")
+      .get();
+    const released = this.db
       .prepare(
-        "SELECT b.day,b.metric,b.dimension,b.value,b.total,b.reports FROM buckets b WHERE b.period=? AND b.day>=? AND b.day<=? AND b.day<? AND b.dimension=? AND (? IS NULL OR b.value=?) AND b.reports>=? AND (?=1 OR NOT EXISTS (SELECT 1 FROM buckets rare WHERE rare.period=b.period AND rare.day=b.day AND rare.metric=b.metric AND rare.reports<?)) ORDER BY b.day,b.metric,b.value LIMIT 2000",
+        "SELECT day,metric,dimension,value,total,reports FROM buckets WHERE period=? AND day>=? AND day<=? AND day<=? AND dimension=? AND (? IS NULL OR value=?) ORDER BY day,metric,value LIMIT 2000",
       )
       .all(
-        period,
+        demo ? "demo-daily" : "daily",
         query.from,
         query.to,
-        utcDay(this.now() + (development ? 86400000 : 0)),
+        utcDay(this.now()),
         query.dimension,
         query.value ?? null,
         query.value ?? null,
-        minimumReports,
-        development ? 1 : 0,
-        minimumReports,
       ) as unknown as OperatorRow[];
-    const bin = development ? 1 : 10;
-    const released = rows.map((r) => ({
-      ...r,
-      total: Math.floor(r.total / bin) * bin,
-      reports: Math.floor(r.reports / bin) * bin,
-    }));
+    const rows = released.map((row) => ({ ...row }));
     return {
-      rows: released,
-      summary: summarizeOperatorRows(released, query.dimension, !!query.value),
-      behavior:
-        query.dimension === "model" ? summarizeModelBehavior(released) : [],
-      minimumReports,
-      environment: development ? "development" : "production",
+      rows,
+      summary: summarizeOperatorRows(rows, query.dimension, !!query.value),
+      behavior: query.dimension === "model" ? summarizeModelBehavior(rows) : [],
+      minimumReports: 1,
+      demo,
       partial: true,
       updatedAt: utcDay(this.now()),
       coverage:
-        (development
-          ? "Development only: exact observed counts, including today, retained for seven days. Excluded from production statistics. "
-          : "Report volume is not people. Missing, current-day and low-volume cells are withheld. ") +
-        "Codex consumption is local-only; token observations cover supported Claude main-loop executions. Input includes cache reads and Claude cache creation; output includes reasoning. Filters use independent marginals and cannot be combined. Shares and success rates describe observed cells only, not the full population.",
+        (demo
+          ? "Demo data only. Sample values are separate from real reports and can be deleted. "
+          : "Exact anonymous numeric aggregates, including today. Report volume is not people. ") +
+        "Codex consumption is local-only; token observations cover supported Claude main-loop executions. Input includes cache reads and Claude cache creation; output includes reasoning. Filters use independent marginals and cannot be combined. Missing measurements remain unavailable.",
     };
   }
   cleanup(): void {
@@ -225,9 +250,7 @@ export class AggregateStore {
         .prepare("DELETE FROM dedupe WHERE received<?")
         .run(this.now() - 7 * 86400000);
       this.db
-        .prepare(
-          "DELETE FROM buckets WHERE period='development-daily' AND day<?",
-        )
+        .prepare("DELETE FROM buckets WHERE period='demo-daily' AND day<?")
         .run(utcDay(this.now() - 6 * 86400000));
       this.db
         .prepare("DELETE FROM buckets WHERE period='daily' AND day<?")

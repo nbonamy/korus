@@ -103,6 +103,7 @@
     "verify:github-mcp-token": "node scripts/verify-github-mcp-token.mjs",
     "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs",
     "build:server": "npm run build -w @workspace/server",
+    "dev:server": "node scripts/dev-server.mjs",
     "start:server": "npm run start -w @workspace/server"
   },
   "allowScripts": {

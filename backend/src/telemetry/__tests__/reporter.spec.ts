@@ -39,12 +39,12 @@ it("automatically sends development observations within one second and holds pro
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const reporters: TelemetryReporter[] = [];
   try {
-    for (const channel of ["development", "stable"] as const) {
+    for (const immediate of [true, false]) {
       const deliver = vi.fn(async () => new Response(null, { status: 200 }));
       let now = event.at;
       const reporter = new TelemetryReporter(
         await file("outbox"),
-        { ...config, channel },
+        { ...config, immediate },
         () => now,
         deliver,
       );
@@ -56,8 +56,8 @@ it("automatically sends development observations within one second and holds pro
       await reporter.execution({ ...event, phase: "completed" }, "desktop");
       await vi.advanceTimersByTimeAsync(1000);
       await reporter.flush();
-      expect(deliver).toHaveBeenCalledTimes(channel === "development" ? 1 : 0);
-      if (channel === "development") {
+      expect(deliver).toHaveBeenCalledTimes(immediate ? 1 : 0);
+      if (immediate) {
         expect(reporter.privacy("desktop").pending).toStrictEqual([]);
         await reporter.choose("desktop", { enabled: false, disclosure: 2 });
         await reporter.feature("desktop", "off", "browser.open", "succeeded");

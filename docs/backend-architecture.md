@@ -522,9 +522,8 @@ uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH acti
 use an unsynchronized source and cannot be exported. Later clients must add explicit
 permission synchronization rather than treating connection as consent. Reports
 carry random immutable batch IDs; local dedupe identities stay in local storage.
-Development launchers mark reports with the finite `development` channel. The
-reporter coalesces nearby development observations for one second; production
-batches wait five minutes. Delivery retries remain bounded and permission-aware.
+The reporter coalesces nearby observations for one second in development;
+production batches wait five minutes. Both feed the same live console. Delivery retries remain bounded and permission-aware.
 
 Behavior observation stays in Korus provider adapters and consumes public SDK events.
 Claude response IDs dedupe per-block messages, and matched per-response usage and
@@ -541,15 +540,18 @@ The telemetry module has its own database and operator secret. It has
 no provider credentials, relay identity or execution authority. SQLite transactions
 couple batch dedupe and predefined aggregate increments. Daily buckets expire after
 90 days, monthly marginals after 12 months, batch IDs after 7 days. Backups must use
-the same retention ceiling and deletion policy. Production operators read only completed-day,
-minimum-volume, coarse-bin independent marginals; filters cannot join dimensions or
-release suppressed cells. A rare category suppresses complementary marginals for
-the same day and metric, preventing subtraction across breakdowns. Report volume is not people. Public writers can poison
-aggregates; an embedded client secret would not establish authenticity.
-Development has separate daily buckets, seven-day retention, and exact current-day
-counts behind the same operator authentication. The console's Development view
-refreshes every five seconds; development volume cannot contribute to production
-totals or alter production suppression.
+the same retention ceiling and deletion policy. Operators read exact daily
+independent marginals, including today, through bounded authenticated queries.
+Filters cannot join dimensions. Report volume is not people. Public writers can
+poison aggregates; an embedded client secret would not establish authenticity.
+The console refreshes every five seconds. Local validation exposes operator-only
+demo controls that generate
+seven days of synthetic numeric samples in separate buckets. Demo mode shows only
+those samples with a visible label; deleting them restores real reports unchanged.
+Demo buckets expire after seven days and never enter ingestion or batch dedupe.
+`npm run dev:server` runs the console on loopback with private credentials and
+SQLite state under `.app-dev/console`. This synthetic HTTP listener uses an
+`HttpOnly`, `SameSite=Strict` cookie; hosted access requires the secure cookie.
 
 Build the hosted API with `npm run build:server`.
 Run `npm run start:server` with a private database location, an operator-token
@@ -581,7 +583,13 @@ is configured by server deployment, and no historical local usage is exported.
 operator-token file, state directory and hardened systemd unit. The service binds
 loopback; nginx owns public TLS. The `api` subdomain exposes API routes; the private
 frontend lives on the `console` subdomain. The console proxies only its page, assets
-and authenticated read endpoints, keeping browser credentials on the same origin.
+and its operator-session/read endpoints, keeping browser credentials on the same
+origin. Its public welcome page loads the authenticated console through same-origin
+requests and exchanges the operator password for an opaque,
+two-hour `HttpOnly`, `Secure`, `SameSite=Strict`, host-only cookie. Session creation
+and sign-out require the same origin. At most 128 sessions live in volatile memory;
+sign-out, expiry and service restart revoke them. API clients may use bearer
+authentication. Credentials and cookies never enter telemetry or access logs.
 After both hostnames resolve, `/opt/korus-api/activate.sh` obtains their certificates
 and activates the HTTPS virtual hosts. The API is separate
 from the companion relay, including keys, database and logs. `/v1/telemetry/reports`
