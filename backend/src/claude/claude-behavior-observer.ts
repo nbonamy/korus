@@ -1,4 +1,3 @@
-import { TextStreamObserver } from "../telemetry/text-stream-observer";
 import {
   validExecutionBehavior,
   type ExecutionBehavior,
@@ -18,13 +17,7 @@ export class ClaudeBehaviorObserver {
   private blocks = new Map<number, string>();
   private invalid = false;
   private toolCount = 0;
-  private readonly text: TextStreamObserver;
-  constructor(private readonly now: () => number = () => performance.now()) {
-    this.text = new TextStreamObserver(now);
-  }
-  textSnapshot() {
-    return this.invalid ? null : this.text.snapshot();
-  }
+  constructor(private readonly now: () => number = () => performance.now()) {}
   observe(message: ClaudeSdkMessage): void {
     if (this.invalid) return;
     if (message.type === "assistant" && typeof message.error === "string")
@@ -98,11 +91,6 @@ export class ClaudeBehaviorObserver {
       if (id) this.tool(response, id);
       this.blocks.delete(event.index as number);
     }
-    if (event.type === "content_block_delta") {
-      const delta = event.delta as Record<string, unknown> | undefined;
-      if (delta?.type === "text_delta" && typeof delta.text === "string")
-        this.text.delta(this.current!, delta.text);
-    }
     if (event.type === "message_delta") {
       const usage = event.usage as Record<string, unknown> | undefined;
       const delta = event.delta as Record<string, unknown> | undefined;
@@ -116,7 +104,6 @@ export class ClaudeBehaviorObserver {
         response.output = usage!.output_tokens as number;
     }
     if (event.type === "message_stop") {
-      this.text.end(this.current!);
       response.stop ??= this.now();
       this.current = null;
       this.blocks.clear();

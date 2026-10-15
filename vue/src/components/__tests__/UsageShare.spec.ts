@@ -44,3 +44,32 @@ it("uses measured values as the donut denominator without drawing unknown measur
   expect(wrapper.findAll("circle[tabindex]")).toHaveLength(0);
   wrapper.unmount();
 });
+
+it("replaces the centre figure with the hovered slice's share", async () => {
+  const series = [
+    {
+      key: "a",
+      label: "Model A",
+      color: "blue",
+      value: 300,
+      turns: 1,
+      tokens: 300,
+    },
+    {
+      key: "b",
+      label: "Model B",
+      color: "green",
+      value: 100,
+      turns: 1,
+      tokens: 100,
+    },
+  ];
+  const wrapper = mount(UsageShare, { props: { series, measure: "total" } });
+  expect(wrapper.get(".ring-total").text()).toBe("400");
+  await wrapper.findAll("circle[tabindex]")[1]!.trigger("pointerenter");
+  expect(wrapper.get(".ring-total").text()).toBe("25%");
+  expect(wrapper.get(".ring-unit").text()).toBe("Model B");
+  await wrapper.findAll("circle[tabindex]")[1]!.trigger("pointerleave");
+  expect(wrapper.get(".ring-total").text()).toBe("400");
+  wrapper.unmount();
+});

@@ -3,6 +3,16 @@ import { it, expect, vi } from "vitest";
 import { setElectronTestClient } from "../../test/client";
 import UsagePanel from "../UsagePanel.vue";
 import { ElMessageBox } from "element-plus";
+const choose = async (
+  wrapper: ReturnType<typeof mount>,
+  group: string,
+  label: string,
+) =>
+  wrapper
+    .get(group)
+    .findAll('[role="radio"]')
+    .find((option) => option.text() === label)!
+    .trigger("click");
 it("shows unknown consumption with measured denominators and filters the local owning API", async () => {
   const getUsage = vi.fn().mockResolvedValue({
     recordedSince: 1,
@@ -23,49 +33,17 @@ it("shows unknown consumption with measured denominators and filters the local o
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await flushPromises();
-  expect(wrapper.get('[role="rowgroup"]').text()).toContain("Unavailable");
-  expect(wrapper.get('[role="rowgroup"]').text()).toContain("0 / 3");
-  await wrapper.get("#usage-provider select").setValue("claude");
+  expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
+    "Unavailable",
+  );
+  expect(wrapper.text()).toContain("0 of 3 turns measured");
+  await choose(wrapper, "#usage-provider", "Claude Code");
   await flushPromises();
   expect(getUsage).toHaveBeenCalledWith(
     expect.objectContaining({ group: "provider", provider: "claude" }),
   );
   wrapper.unmount();
 });
-it("reads account history only on request, keeps large counters exact and presents unsupported account data as unavailable", async () => {
-  const getAccountUsage = vi
-    .fn()
-    .mockResolvedValueOnce({
-      summary: {
-        lifetimeTokens: "90071992547409931234",
-        peakDailyTokens: null,
-      },
-      dailyUsageBuckets: [
-        { startDate: "2026-10-10", tokens: "90071992547409931234" },
-      ],
-    })
-    .mockResolvedValueOnce(null);
-  setElectronTestClient({ getAccountUsage });
-  const wrapper = mount(UsagePanel);
-  await flushPromises();
-  expect(getAccountUsage).not.toHaveBeenCalled();
-  await wrapper
-    .findAll("button")
-    .find((b) => b.text() === "Load account usage")!
-    .trigger("click");
-  await flushPromises();
-  expect(getAccountUsage).toHaveBeenCalledWith("codex");
-  expect(wrapper.text()).toContain("90071992547409931234");
-  expect(wrapper.text()).toContain("Unavailable");
-  await wrapper
-    .findAll("button")
-    .find((b) => b.text() === "Load account usage")!
-    .trigger("click");
-  await flushPromises();
-  expect(wrapper.text()).toContain("Account usage is unavailable");
-  wrapper.unmount();
-});
-
 it("changes each chart breakdown independently and shares the selected token measure", async () => {
   const row = (label: string, started: number, known: boolean) => ({
     label,
@@ -78,8 +56,14 @@ it("changes each chart breakdown independently and shares the selected token mea
     tokens: known
       ? { total: 300, input: 200, output: 100, cacheRead: 0, cacheWrite: null }
       : null,
-    textStream: known
-      ? { characters: 500, durationMs: 1000, messages: 1 }
+    speed: known
+      ? {
+          turns: 1,
+          outputTokens: 100,
+          generationMs: 4000,
+          ttftMs: 1500,
+          ttftTurns: 1,
+        }
       : undefined,
   });
   const getUsage = vi.fn(async ({ group }) => {
@@ -111,17 +95,17 @@ it("changes each chart breakdown independently and shares the selected token mea
   expect(wrapper.get('[aria-label="Activity over time"]').text()).toContain(
     "Claude Code",
   );
-  await wrapper.get("#usage-trend-group select").setValue("model");
+  await choose(wrapper, "#usage-trend-group", "Model");
   expect(wrapper.get('[aria-label="Activity over time"]').text()).toContain(
     "sonnet",
   );
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
     "Claude Code",
   );
-  await wrapper.get("#usage-share-group select").setValue("model");
+  await choose(wrapper, "#usage-share-group", "Model");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("sonnet");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("75%");
-  await wrapper.get("#usage-measure select").setValue("total");
+  await choose(wrapper, "#usage-measure", "Total");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
     "Unavailable",
@@ -129,17 +113,21 @@ it("changes each chart breakdown independently and shares the selected token mea
   expect(
     wrapper
       .get('[aria-label="Activity over time"]')
-      .findAll("rect")
+      .findAll("circle")
       .filter((r) => r.attributes("aria-label")?.includes("sonnet")).length,
   ).toBe(1);
-  expect(getUsage).toHaveBeenCalledTimes(2); // Both projections are loaded once; chart controls do not fetch or mix periods.
+  expect(getUsage).toHaveBeenCalledTimes(3); // Both projections and the comparison period load once; chart controls do not fetch or mix periods.
   await wrapper
     .findAll('[role="tab"]')
     .find((t) => t.text() === "Model performance")!
     .trigger("click");
   await flushPromises();
-  expect(wrapper.text()).toContain("500");
-  expect(wrapper.text()).toContain("characters/s");
+  // 100 provider-reported tokens over 4 working seconds after the first token.
+  expect(wrapper.text()).toContain("25");
+  expect(wrapper.text()).toContain("tokens/s");
+  expect(wrapper.text()).toContain("1.5 s to first token");
+  expect(wrapper.text()).toContain("excluding time spent waiting");
+  expect(wrapper.text()).not.toContain("Account usage");
   wrapper.unmount();
 });
 
@@ -150,7 +138,7 @@ it("ignores stale filter responses and clears previous statistics when a new que
     .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
-  await wrapper.get("#usage-provider select").setValue("claude");
+  await choose(wrapper, "#usage-provider", "Claude Code");
   const summary = (label: string) => ({
     recordedSince: 1,
     retainedSince: 1,
@@ -167,11 +155,13 @@ it("ignores stale filter responses and clears previous statistics when a new que
       },
     ],
   });
-  pending[2]!(summary("claude"));
-  pending[3]!(summary("sonnet"));
+  pending[3]!(summary("claude"));
+  pending[4]!(summary("sonnet"));
+  pending[5]!(summary("claude"));
   await flushPromises();
   pending[0]!(summary("codex"));
   pending[1]!(summary("Unknown"));
+  pending[2]!(summary("codex"));
   await flushPromises();
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
     "Claude",
@@ -246,4 +236,41 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
     confirm.mockRestore();
     wrapper.unmount();
   }
+});
+
+it("compares the selection with the previous period and still renders when that comparison fails", async () => {
+  const row = (started: number) => ({
+    label: "codex",
+    started,
+    completed: started,
+    failed: 0,
+    interrupted: 0,
+    inProgress: 0,
+    measuredTurns: 0,
+    tokens: null,
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const getUsage = vi.fn(async ({ to }) => ({
+    recordedSince: 1,
+    retainedSince: 1,
+    rows: [row(to === today ? 150 : 100)],
+  }));
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  await flushPromises();
+  expect(wrapper.get(".hero-delta").text()).toContain("50%");
+  expect(wrapper.get(".hero-delta").text()).toContain("previous 7 days");
+  getUsage.mockImplementation(async ({ to }) => {
+    if (to !== today) throw Error("no history");
+    return { recordedSince: 1, retainedSince: 1, rows: [row(150)] };
+  });
+  await wrapper
+    .findAll("button")
+    .find((button) => button.text() === "Refresh")!
+    .trigger("click");
+  await flushPromises();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  expect(wrapper.find(".hero-delta").exists()).toBe(false);
+  expect(wrapper.get(".hero-number").text()).toContain("150");
+  wrapper.unmount();
 });

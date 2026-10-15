@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import {
   validExecutionBehavior,
-  validTextStream,
+  validExecutionTiming,
   type ExecutionBehavior,
 } from "../usage";
 const value: ExecutionBehavior = {
@@ -47,17 +47,18 @@ it("preserves known zero separately from unavailable measurements and validates 
     expect(validExecutionBehavior(invalid)).toBe(false);
 });
 
-it("accepts content-free paired text measurements and rejects unavailable timing, unsafe counts and content-bearing properties", () => {
-  expect(validTextStream({ characters: 0, durationMs: 1, messages: 1 })).toBe(
-    true,
-  );
+it("accepts bounded timing and rejects empty spans, a first output after the end, unsafe numbers and extra properties", () => {
+  expect(validExecutionTiming({ activeMs: 1000, ttftMs: 200 })).toBe(true);
+  expect(validExecutionTiming({ activeMs: 1000, ttftMs: null })).toBe(true);
   for (const value of [
     null,
     [],
-    { characters: 5, durationMs: 0, messages: 1 },
-    { characters: -1, durationMs: 1000, messages: 1 },
-    { characters: 5, durationMs: 1000, messages: 0 },
-    { characters: 5, durationMs: 1000, messages: 1, content: "private" },
+    { activeMs: 0, ttftMs: null },
+    { activeMs: 1000, ttftMs: 1001 },
+    { activeMs: 1000, ttftMs: -1 },
+    { activeMs: 1.5, ttftMs: null },
+    { activeMs: 1000 },
+    { activeMs: 1000, ttftMs: null, content: "private" },
   ])
-    expect(validTextStream(value)).toBe(false);
+    expect(validExecutionTiming(value)).toBe(false);
 });

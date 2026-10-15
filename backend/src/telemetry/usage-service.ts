@@ -1,9 +1,42 @@
-import type { Agent, AppSnapshot } from "@workspace/core/contracts";
+import type {
+  Agent,
+  AppSnapshot,
+  MainToRendererEvent,
+} from "@workspace/core/contracts";
 import type { ExecutionObservation } from "@workspace/core/usage";
 import { TelemetryReporter, type ObservationOrigin } from "./reporter";
 import type { ClientFeature } from "@workspace/core/telemetry";
 import { UsageLedger } from "./usage-ledger";
+import { TurnClock } from "./turn-clock";
+import { providerConversationEventView } from "@workspace/core/provider-conversation-event";
 import type { FeatureReporter } from "./feature-reporter";
+/** Tool calls an event reports as running or finished, however the provider surfaces them. */
+function toolStates(view: {
+  type: string;
+  payload?: unknown;
+}): [string, boolean][] {
+  const payload = (view.payload ?? {}) as Record<string, any>;
+  const state = (part: {
+    id?: unknown;
+    status?: unknown;
+  }): [string, boolean][] =>
+    typeof part?.id === "string" && typeof part.status === "string"
+      ? [[part.id, part.status === "running"]]
+      : [];
+  if (view.type === "tool.started" || view.type === "tool.completed")
+    return state(payload.toolPart ?? {});
+  if (view.type === "tool.updated") {
+    const update = payload.update ?? {};
+    return typeof update.itemId === "string" &&
+      typeof update.status === "string"
+      ? [[update.itemId, update.status === "running"]]
+      : [];
+  }
+  const parts = payload.message?.parts;
+  return Array.isArray(parts)
+    ? parts.flatMap((part) => (part?.type === "tool" ? state(part) : []))
+    : [];
+}
 /** One owner records; observers and remote history never feed this service. */
 export class UsageService {
   private chain: Promise<void> = Promise.resolve();
@@ -91,11 +124,35 @@ export class UsageService {
       } else if (!status) this.outcomes.delete(key);
     }
   }
+  /** When each agent's latest prompt was submitted, on the turn clock's timeline. */
+  private submitted = new Map<string, { at: number; wall: number }>();
   constructor(
     readonly local: UsageLedger,
     readonly telemetry: TelemetryReporter,
     private readonly agent: (id: string) => Agent | undefined,
+    private readonly clock: TurnClock = new TurnClock(),
+    private readonly now: () => number = () => performance.now(),
   ) {}
+  /** Feeds the turn clock from the one stream every provider's events pass through. */
+  observeEvent(event: MainToRendererEvent): void {
+    const agentId = event.agentId;
+    if (!agentId) return;
+    if (event.type === "agent.statusChanged") {
+      const status = (event.payload as { type?: string }).type;
+      if (status === "awaitingInput") this.clock.wait(agentId, true);
+      else if (status === "working") this.clock.wait(agentId, false);
+      return;
+    }
+    const view = providerConversationEventView(event);
+    if (
+      view.type === "message.delta" ||
+      view.type === "plan.delta" ||
+      view.type === "tool.started"
+    )
+      this.clock.output(agentId);
+    for (const [id, running] of toolStates(view))
+      this.clock.tool(agentId, id, running);
+  }
   source(agentId: string, clientId: string): object | null {
     const agent = this.agent(agentId);
     if (agent && !["idle", "error"].includes(agent.status.type)) return null;
@@ -107,16 +164,28 @@ export class UsageService {
     // Concurrent/queued requests without provider-owned origin evidence are ambiguous and fail closed.
     if (this.sources.has(agentId)) source.permission = null;
     this.sources.set(agentId, source);
+    this.submitted.set(agentId, { at: this.now(), wall: Date.now() });
     while (this.sources.size > 10000)
       this.sources.delete(this.sources.keys().next().value!);
     return source;
   }
   cancelSource(agentId: string, source: object | null | undefined): void {
-    if (this.sources.get(agentId) === source) this.sources.delete(agentId);
+    if (this.sources.get(agentId) !== source) return;
+    this.sources.delete(agentId);
+    this.submitted.delete(agentId);
   }
   observe(event: ExecutionObservation): void {
     const key = JSON.stringify([event.provider, event.sessionId, event.turnId]);
     if (event.phase === "started" && !this.executions.has(key)) {
+      // The clock starts at prompt submission, falling back to the first observation.
+      const submitted = this.submitted.get(event.agentId);
+      this.clock.start(
+        event.agentId,
+        submitted && Date.now() - submitted.wall < 60000
+          ? submitted.at
+          : this.now(),
+      );
+      this.submitted.delete(event.agentId);
       const arm = this.sources.get(event.agentId);
       this.executions.set(key, {
         ...(arm && arm.at > Date.now() - 60000
@@ -132,8 +201,11 @@ export class UsageService {
       source: "unknown",
       permission: null,
     };
-    if (event.phase !== "started" && event.phase !== "usage")
+    if (event.phase !== "started" && event.phase !== "usage") {
       this.executions.delete(key);
+      const timing = this.clock.finish(event.agentId);
+      if (timing) event = { ...event, timing };
+    }
     const agent = this.agent(event.agentId);
     this.chain = this.chain
       .then(async () => {

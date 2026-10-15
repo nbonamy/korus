@@ -426,7 +426,6 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
           } else activeTurn.consumption=null;
           message.executionConsumption=activeTurn.consumption;
           message.executionBehavior=activeTurn.behavior.snapshot();
-          message.executionTextStream=activeTurn.behavior.textSnapshot();
         }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;

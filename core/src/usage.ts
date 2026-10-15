@@ -11,29 +11,23 @@ export type ExecutionObservation = {
   tokens?: Consumption | null;
   durationMs?: number;
   behavior?: ExecutionBehavior | null;
-  /** Local-only observed text delivery; never a token estimate or transcript. */
-  textStream?: TextStream | null;
+  /** Measured by the backend, never by a driver. */
+  timing?: ExecutionTiming | null;
 };
-export type TextStream = {
-  characters: number;
-  durationMs: number;
-  messages: number;
-};
-export function validTextStream(value: unknown): value is TextStream {
+/** Time a turn really spent working: wall time minus waits for the user, split at the first generated output. */
+export type ExecutionTiming = { activeMs: number; ttftMs: number | null };
+export function validExecutionTiming(value: unknown): value is ExecutionTiming {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   return (
-    Object.keys(v).every((k) =>
-      ["characters", "durationMs", "messages"].includes(k),
-    ) &&
-    ["characters", "durationMs", "messages"].every(
-      (k) =>
-        Number.isSafeInteger(v[k]) &&
-        (v[k] as number) >= 0 &&
-        (v[k] as number) <= 1e9,
-    ) &&
-    (v.durationMs as number) > 0 &&
-    (v.messages as number) > 0
+    Object.keys(v).every((k) => ["activeMs", "ttftMs"].includes(k)) &&
+    Number.isSafeInteger(v.activeMs) &&
+    (v.activeMs as number) > 0 &&
+    (v.activeMs as number) <= 1e9 &&
+    (v.ttftMs === null ||
+      (Number.isSafeInteger(v.ttftMs) &&
+        (v.ttftMs as number) >= 0 &&
+        (v.ttftMs as number) <= (v.activeMs as number)))
   );
 }
 /** Input includes cache reads. Claude also includes cache creation; Codex cache-write inclusion is unspecified. Reasoning is a subset of output. Never add cache categories to input. */
@@ -87,7 +81,14 @@ export type UsageSummary = {
     inProgress: number;
     measuredTurns: number;
     tokens: Consumption | null;
-    textStream?: TextStream;
+    /** Turns with provider-reported output tokens and measured timing. */
+    speed?: {
+      turns: number;
+      outputTokens: number;
+      generationMs: number;
+      ttftMs: number;
+      ttftTurns: number;
+    };
   }[];
 };
 export function validConsumption(value: unknown): value is Consumption {

@@ -502,8 +502,15 @@ and remains local-only. Unsupported consumption and execution models
 remain unknown. Account summaries and quotas are account-scoped local views.
 
 The local database stores one replaceable statistics record per execution, with
-provider/model metadata, numeric consumption, outcomes and measured delivery
-intervals. It does not store prompts, responses, tool arguments or transcripts.
+provider/model metadata, numeric consumption, outcomes and measured timing. It
+does not store prompts, responses, tool arguments or transcripts.
+
+Timing is owned by the backend, not by drivers: a turn clock fed from the shared
+event stream starts at prompt submission, stops while the agent awaits the user or
+any tool call is in flight (parallel calls pause it once), and records the working
+time at the first generated output. Speed is provider-reported output tokens over the
+working time after that first output; there is no character-based estimate, so a turn
+without provider tokens or a measured clock has no speed.
 Legacy usage statistics are imported once transactionally. Retention is bounded to
 90 days and 10,000 executions; failed storage leaves analytics unavailable without
 blocking provider work. App-owned usage queries supply grouped totals and daily

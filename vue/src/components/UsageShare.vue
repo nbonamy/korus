@@ -1,23 +1,47 @@
 <template>
   <section class="usage-share" :aria-label="$t('analytics.share')">
     <header>
-      <h3>{{ $t("analytics.share") }}</h3>
+      <div class="chart-heading">
+        <h3>{{ $t("analytics.share") }}</h3>
+        <p v-if="subtitle">{{ subtitle }}</p>
+      </div>
       <slot name="controls" />
     </header>
     <div class="share-content">
       <svg viewBox="0 0 160 160" role="img" :aria-label="$t('analytics.share')">
-        <circle cx="80" cy="80" r="57" class="ring-track" />
+        <defs>
+          <linearGradient
+            v-for="(slice, index) in slices"
+            :id="`${uid}-${index}`"
+            :key="slice.key"
+            x1="0"
+            y1="0"
+            x2="1"
+            y2="1"
+          >
+            <stop offset="0" :style="{ stopColor: slice.color }" />
+            <stop
+              offset="1"
+              :style="{ stopColor: slice.color, stopOpacity: 0.6 }"
+            />
+          </linearGradient>
+        </defs>
+        <circle cx="80" cy="80" :r="radius" class="ring-track" />
         <circle
-          v-for="slice in slices"
+          v-for="(slice, index) in slices"
           :key="slice.key"
+          class="ring-slice"
+          :class="{ dimmed: active !== null && active !== slice.key }"
           cx="80"
           cy="80"
-          r="57"
+          :r="radius"
           fill="none"
-          stroke-width="19"
-          :stroke="slice.color"
-          :stroke-dasharray="slice.length + ' ' + circumference"
-          :stroke-dashoffset="-slice.offset"
+          :stroke-width="active === slice.key ? thickness + 3 : thickness"
+          :stroke="`url(#${uid}-${index})`"
+          :stroke-dasharray="
+            Math.max(0.5, slice.length - gap) + ' ' + circumference
+          "
+          :stroke-dashoffset="-(slice.offset + gap / 2)"
           transform="rotate(-90 80 80)"
           tabindex="0"
           :aria-label="
@@ -28,50 +52,71 @@
             chartFormat(slice.percent) +
             '%'
           "
-        >
-          <title>{{ slice.label }} · {{ chartFormat(slice.percent) }}%</title>
-        </circle>
-        <text x="80" y="79" text-anchor="middle" class="ring-total">
-          {{ total === null ? "—" : chartFormat(total, true) }}
+          @pointerenter="active = slice.key"
+          @pointerleave="active = null"
+          @focus="active = slice.key"
+          @blur="active = null"
+        />
+        <text x="80" y="80" text-anchor="middle" class="ring-total">
+          {{
+            highlighted
+              ? chartFormat(highlighted.percent) + "%"
+              : total === null
+                ? "—"
+                : chartFormat(total, true)
+          }}
         </text>
         <text x="80" y="99" text-anchor="middle" class="ring-unit">
           {{
-            $t(
-              measure === "turns"
-                ? "analytics.turnsUnit"
-                : "analytics.measuredTokens",
-            )
+            highlighted
+              ? clip(highlighted.label)
+              : $t(
+                  measure === "turns"
+                    ? "analytics.turnsUnit"
+                    : "analytics.measuredTokens",
+                )
           }}
         </text>
       </svg>
       <ul>
-        <li v-for="row in series" :key="row.key">
+        <li
+          v-for="row in series"
+          :key="row.key"
+          :class="{ dimmed: active !== null && active !== row.key }"
+          @pointerenter="active = row.key"
+          @pointerleave="active = null"
+        >
           <i :style="{ background: row.color }" />
-          <div>
-            <strong>{{ row.label }}</strong
-            ><span
-              >{{ chartFormat(row.value) }} ·
-              {{
-                row.value === null || !total
-                  ? $t("telemetry.unknown")
-                  : chartFormat((100 * row.value) / total) + "%"
-              }}</span
-            >
-          </div>
+          <strong :title="row.label">{{ row.label }}</strong>
+          <span class="share-percent">{{
+            row.value === null || !total
+              ? $t("telemetry.unknown")
+              : chartFormat((100 * row.value) / total) + "%"
+          }}</span>
+          <span class="share-value">{{ chartFormat(row.value) }}</span>
         </li>
       </ul>
     </div>
   </section>
 </template>
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, useId } from "vue";
 import {
   chartFormat,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
-const props = defineProps<{ series: UsageSeries[]; measure: UsageMeasure }>();
-const circumference = 2 * Math.PI * 57;
+const props = defineProps<{
+  series: UsageSeries[];
+  measure: UsageMeasure;
+  subtitle?: string;
+}>();
+const uid = useId();
+const radius = 58,
+  thickness = 16,
+  gap = 2;
+const circumference = 2 * Math.PI * radius;
+const active = ref<string | null>(null);
 const total = computed(() =>
   props.series.some((row) => row.value !== null)
     ? props.series.reduce((n, row) => n + (row.value ?? 0), 0)
@@ -92,11 +137,16 @@ const slices = computed(() => {
     return [slice];
   });
 });
+const highlighted = computed(
+  () => slices.value.find((slice) => slice.key === active.value) ?? null,
+);
+const clip = (label: string) =>
+  label.length > 16 ? label.slice(0, 15) + "…" : label;
 </script>
 <style scoped>
 header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-6);
   margin-bottom: var(--space-8);
@@ -104,70 +154,100 @@ header {
 h3 {
   margin: 0;
   font-size: var(--font-size-14);
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
+}
+.chart-heading p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
 }
 .share-content {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-8);
-  min-height: 220px;
 }
 svg {
-  width: 49%;
-  max-width: 230px;
-  flex-shrink: 0;
+  align-self: center;
+  width: min(100%, 220px);
+  overflow: visible;
 }
 .ring-track {
   fill: none;
-  stroke: var(--color-surface-high);
-  stroke-width: 19;
+  stroke: color-mix(in srgb, var(--color-text) 6%, transparent);
+  stroke-width: 16;
+}
+.ring-slice {
+  outline: none;
+  cursor: default;
+  transition:
+    stroke-width 140ms ease,
+    opacity 140ms ease;
+}
+.ring-slice.dimmed {
+  opacity: 0.35;
 }
 .ring-total {
   fill: var(--color-text);
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
 }
 .ring-unit {
   fill: var(--color-text-muted);
   font-size: 9px;
 }
-circle:focus {
-  outline: none;
-  stroke-width: 23px;
-}
 ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-  max-height: 250px;
-  overflow: auto;
-  flex: 1;
-}
-li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding: var(--space-4) 0;
-  font-size: var(--font-size-12);
-}
-i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-li div {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  flex: 1;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 52px;
+  grid-template-areas: "dot name value percent";
+  column-gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-12);
+  transition:
+    opacity 140ms ease,
+    background 140ms ease;
+}
+li:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+li.dimmed {
+  opacity: 0.45;
+}
+li i {
+  grid-area: dot;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
 }
 strong {
-  font-weight: 500;
-  overflow-wrap: anywhere;
+  grid-area: name;
+  align-self: center;
+  overflow: hidden;
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-li span {
+.share-percent {
+  grid-area: percent;
+  justify-self: end;
+  font-weight: var(--font-weight-bold);
+}
+.share-value {
+  grid-area: value;
+  justify-self: end;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }

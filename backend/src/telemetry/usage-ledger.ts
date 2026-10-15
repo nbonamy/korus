@@ -6,7 +6,7 @@ import { isUtcDay, utcDay } from "@workspace/core/telemetry";
 import {
   validConsumption,
   validExecutionBehavior,
-  validTextStream,
+  validExecutionTiming,
   type ExecutionObservation,
   type UsageRecord,
   type UsageFilter,
@@ -36,7 +36,7 @@ export class UsageLedger {
       this.db = new DatabaseSync(this.file);
       if (this.file !== ":memory:") chmodSync(this.file, 0o600);
       this.db.exec(
-        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,behavior TEXT,text_stream TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
+        "PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=1000; CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS executions(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,agent_id TEXT NOT NULL,model TEXT,team_id TEXT,repository TEXT,phase TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,duration_ms INTEGER,tokens TEXT,behavior TEXT,timing TEXT,PRIMARY KEY(provider,session_id,turn_id)); CREATE INDEX IF NOT EXISTS executions_started ON executions(started_at);",
       );
       const since = this.db
         .prepare("SELECT value FROM metadata WHERE key='since'")
@@ -126,7 +126,7 @@ export class UsageLedger {
       value.at <= this.now() + 60000 &&
       (!value.tokens || validConsumption(value.tokens)) &&
       (!value.behavior || validExecutionBehavior(value.behavior)) &&
-      (!value.textStream || validTextStream(value.textStream)) &&
+      (!value.timing || validExecutionTiming(value.timing)) &&
       (value.durationMs === undefined ||
         (Number.isSafeInteger(value.durationMs) &&
           value.durationMs >= 0 &&
@@ -152,7 +152,7 @@ export class UsageLedger {
       record.durationMs ?? null,
       record.tokens ? JSON.stringify(record.tokens) : null,
       record.behavior ? JSON.stringify(record.behavior) : null,
-      record.textStream ? JSON.stringify(record.textStream) : null,
+      record.timing ? JSON.stringify(record.timing) : null,
     );
   }
   private decode(row: Record<string, unknown>): UsageRecord {
@@ -170,9 +170,7 @@ export class UsageLedger {
       ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
       tokens: row.tokens ? JSON.parse(String(row.tokens)) : null,
       ...(row.behavior ? { behavior: JSON.parse(String(row.behavior)) } : {}),
-      ...(row.text_stream
-        ? { textStream: JSON.parse(String(row.text_stream)) }
-        : {}),
+      ...(row.timing ? { timing: JSON.parse(String(row.timing)) } : {}),
     } as UsageRecord;
   }
   private prune(): void {
@@ -218,9 +216,7 @@ export class UsageLedger {
       ...(event.phase !== "usage" ? { phase: event.phase, at: event.at } : {}),
       ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
       ...(event.behavior !== undefined ? { behavior: event.behavior } : {}),
-      ...(event.textStream !== undefined
-        ? { textStream: event.textStream }
-        : {}),
+      ...(event.timing !== undefined ? { timing: event.timing } : {}),
       ...(event.durationMs !== undefined
         ? { durationMs: event.durationMs }
         : {}),
@@ -381,10 +377,25 @@ export class UsageLedger {
             : (row.tokens[key] ?? 0) + value;
       }
     }
-    if (record.textStream) {
-      row.textStream ??= { characters: 0, durationMs: 0, messages: 0 };
-      for (const key of ["characters", "durationMs", "messages"] as const)
-        row.textStream[key] += record.textStream[key];
+    const timing = record.timing;
+    if (timing) {
+      row.speed ??= {
+        turns: 0,
+        outputTokens: 0,
+        generationMs: 0,
+        ttftMs: 0,
+        ttftTurns: 0,
+      };
+      if (timing.ttftMs !== null) {
+        row.speed.ttftMs += timing.ttftMs;
+        row.speed.ttftTurns++;
+        const output = record.tokens?.output ?? 0;
+        if (output > 0 && timing.activeMs > timing.ttftMs) {
+          row.speed.turns++;
+          row.speed.outputTokens += output;
+          row.speed.generationMs += timing.activeMs - timing.ttftMs;
+        }
+      }
     }
     rows.set(label, row);
   }

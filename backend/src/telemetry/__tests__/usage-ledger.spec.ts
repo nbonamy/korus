@@ -51,10 +51,21 @@ it("imports statistics once, persists only statistics in SQLite, and replaces la
       completed: 1,
       tokens: { total: 120 },
     });
-    const stream = { characters: 400, durationMs: 2000, messages: 1 };
+    const timing = { activeMs: 12000, ttftMs: 2000 };
     expect(
       await ledger.observe(
-        { ...event, phase: "usage", textStream: stream },
+        {
+          ...event,
+          phase: "usage",
+          tokens: {
+            input: 100,
+            output: 20,
+            cacheRead: 10,
+            cacheWrite: null,
+            total: 120,
+          },
+          timing,
+        },
         { teamId: null, repository: null },
       ),
     ).toBe(true);
@@ -63,14 +74,26 @@ it("imports statistics once, persists only statistics in SQLite, and replaces la
     ).toBe(false);
     expect(ledger.query({ group: "model" })).toMatchObject({
       daily: [{ day: "2026-10-15", started: 1, tokens: { total: 120 } }],
-      rows: [{ label: event.model, textStream: stream }],
+      rows: [
+        {
+          label: event.model,
+          // 20 tokens over the 10s after the first output.
+          speed: {
+            turns: 1,
+            outputTokens: 20,
+            generationMs: 10000,
+            ttftMs: 2000,
+            ttftTurns: 1,
+          },
+        },
+      ],
     });
     await ledger.close();
     ledger = new UsageLedger(file, () => at, legacy);
     await ledger.load();
     expect(ledger.query().rows[0]).toMatchObject({
       started: 1,
-      textStream: stream,
+      speed: { turns: 1, outputTokens: 20, generationMs: 10000 },
     });
     expect(ledger.query({ provider: "codex" }).rows).toStrictEqual([]);
     await ledger.close();
