@@ -437,6 +437,7 @@ describe('AppBackendServer', () => {
 
     const visualize = (result as { result: AppSnapshot }).result.agents[0]!.visualize!;
     expect(visualize.conversationRef).toStrictEqual({ backend: 'codex', threadId: 'thread-design' });
+    expect(visualize.isOpen).toBe(true);
     expect(visualize.selectedVisualizationId).toBe('debug-visualization-workflow');
     expect(visualize.visualizations.map(visualization => visualization.content.kind)).toStrictEqual(['mermaid', 'svg']);
     expect(visualize.suggestions.map(suggestion => suggestion.id)).toContain('debug-suggestion-state');

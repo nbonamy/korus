@@ -117,14 +117,29 @@ under `docs/` and link it here.
 
 ## Quality
 
-Quality is not optional in this repo. Every code change must add or update
-tests unless it is truly docs-only or impossible to test; in that case, say so
-explicitly in the handoff.
+Quality is not optional in this repo. Every behavior change needs coverage at
+the owning runtime boundary; write the behavior test before the production
+change. For docs-only or impossible-to-test changes, say so explicitly in the
+handoff.
+
+- Never write unit tests after you write code.
+- Highly prefer E2E or integration tests as the sole testing mechanism. Use them
+  to verify complex features work. At the end of those tests, produce a
+  verifiable and repeatable artifact.
+- If you must test a system in isolation, first write down all the ways it could
+  fail, then write the code.
+- A test that breaks under a behavior-preserving refactor is asserting
+  implementation, not behavior. Do not add it.
+- Never delete or weaken a failing test to make the suite pass. Fix the code, or
+  ask.
 
 Before adding or retaining a test, apply the mandatory **Test Value Gate** in
 `docs/testing.md`. A test must protect observable behavior, an owned contract,
 a meaningful state transition, or a realistic error/security/architecture
-boundary. Mount and exercise UI components through their rendered behavior.
+boundary. Prefer E2E and integration tests. Isolate a system only when a
+concrete regression cannot be reliably observed at those boundaries, and write
+down its failure modes before implementation. When UI isolation is necessary,
+mount and exercise the component through its rendered behavior.
 Tests must never read production source files as text to assert their contents;
 this includes TypeScript, Vue, stylesheets, scripts, package manifests, and
 configuration. Enforce static architecture rules with lint, type, AST, or
