@@ -498,7 +498,6 @@ describe('AppShell authentication and conversation', () => {
     vi.useFakeTimers();
     const snapshot = createInitialSnapshot();
     snapshot.agents = [];
-    const setTelemetryPrivacy = vi.fn().mockResolvedValue({ choice: { enabled: true, disclosure: 2 }, active: false, blocked: 'configuration', pending: [] });
     const setMenuBarVisible = vi.fn().mockResolvedValue(undefined);
     const getCodexAuthentication = vi.fn()
       .mockResolvedValueOnce({
@@ -513,8 +512,6 @@ describe('AppShell authentication and conversation', () => {
       });
     window.app = {
       getCodexAuthentication,
-      getTelemetryPrivacy: vi.fn().mockResolvedValue({ choice: null, active: false, blocked: 'disclosure', pending: [] }),
-      setTelemetryPrivacy,
       setMenuBarVisible,
       startCodexChatGptLogin: vi.fn().mockResolvedValue(undefined),
       updateSettings: vi.fn().mockResolvedValue(snapshot),
@@ -562,7 +559,6 @@ describe('AppShell authentication and conversation', () => {
 
     await wrapper.get('.onboarding-complete .el-button').trigger('click');
     await flushPromises();
-    expect(setTelemetryPrivacy).toHaveBeenCalledExactlyOnceWith({ enabled: true, disclosure: 2 });
 
     expect(wrapper.find('.onboarding-complete').exists()).toBe(false);
     expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');

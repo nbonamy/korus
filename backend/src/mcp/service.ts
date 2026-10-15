@@ -1,4 +1,3 @@
-import type { FeatureReporter } from "../telemetry/feature-reporter";
 import { delegatedAssignmentPrompt } from '../agents/worktree-delegation';
 import { completeUserDelegationTurn, type DelegationContext } from '@workspace/core/delegation-context';
 import { randomUUID } from 'node:crypto';
@@ -65,7 +64,6 @@ export type AppMcpServiceOptions = {
   onEvent?: (event: BackendEvent) => void;
   computerUse?: ComputerUseClient;
   computerUseEnabled?: () => boolean;
-  featuresForAgent?: (agentId: string) => FeatureReporter;
   browser?: InAppBrowserClient;
   hostedMcpGateway?: HostedMcpGateway;
   queueSpokenAnnouncement?: (input: Omit<SpokenAnnouncementRequest, 'voice'>) => Promise<SpokenAnnouncementQueueResult>;
@@ -140,7 +138,6 @@ export class AppMcpService {
     this.server = new AppMcpHttpServer({
       coordinator: this.coordinator,
       computerUse: options.computerUse,
-      featuresForAgent: options.featuresForAgent,
       computerUseEnabled: this.computerUseEnabled,
       browser: options.browser,
       hostedMcpGateway: options.hostedMcpGateway,

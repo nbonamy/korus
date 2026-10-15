@@ -66,16 +66,6 @@
       "entry": [
         "scripts/*.browser.mjs"
       ]
-    },
-    "server": {
-      "entry": [
-        "api/main.ts"
-      ],
-      "project": [
-        "api/**/*.ts",
-        "web/**/*.ts",
-        "*.ts"
-      ]
     }
   }
 }

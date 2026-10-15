@@ -94,7 +94,7 @@
           <strong :title="row.label">{{ row.label }}</strong>
           <span class="share-percent">{{
             row.value === null || !total
-              ? $t("telemetry.unknown")
+              ? $t("analytics.unknown")
               : chartFormat((100 * row.value) / total) + "%"
           }}</span>
           <span class="share-value">{{ chartFormat(row.value) }}</span>

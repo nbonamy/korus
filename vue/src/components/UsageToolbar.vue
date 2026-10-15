@@ -42,7 +42,7 @@
             v-for="key in ['from', 'to'] as const"
             :key="key"
             :for="'usage-' + key"
-            >{{ $t("telemetry." + key)
+            >{{ $t("analytics." + key)
             }}<input
               :id="'usage-' + key"
               :value="filter[key]"
@@ -57,7 +57,7 @@
         <UsageToggle
           :model-value="filter.provider"
           :options="providerOptions"
-          :label="$t('telemetry.provider')"
+          :label="$t('analytics.provider')"
           @update:model-value="emit('update:provider', $event)"
         />
       </div>

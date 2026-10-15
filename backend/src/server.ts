@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { UsageService } from './telemetry/usage-service';
-import { isTelemetryChoice, type TelemetryFeature } from '@workspace/core/telemetry';
+import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { PromptRejectedError } from './agents/prompt-rejected';
@@ -673,17 +672,12 @@ export class AppBackendServer {
       try {if(!isAgentBackend(params?.provider))throw new Error('Invalid provider.');return createAppRpcResult(message.id,await this.requireDriverRpc().handle(backendMethods.driverAccountUsageGet,{backend:params.provider}));}
       catch{return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Account usage is unavailable.');}
     }
-    if ([backendMethods.usageGet,backendMethods.usageClear,backendMethods.telemetryPrivacyGet,backendMethods.telemetryPrivacySet,backendMethods.telemetryFeatureBegin,backendMethods.telemetryFeatureFinish].some(method=>method===message.method)) {
+    if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
-        if(message.method===backendMethods.telemetryFeatureBegin) return createAppRpcResult(message.id,await usage.beginClientFeature(clientId,params?.feature as import('@workspace/core/telemetry').ClientFeature,params?.agentId===undefined?undefined:requireString(params.agentId,'agentId')));
-        if(message.method===backendMethods.telemetryFeatureFinish) {await usage.telemetry.finishFeature(clientId,requireString(params?.operationId,'operationId'),params?.outcome as Exclude<import('@workspace/core/telemetry').FeatureOutcome,'attempted'>);return createAppRpcResult(message.id,null);}
         if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
         if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
-        if(message.method===backendMethods.telemetryPrivacyGet) return createAppRpcResult(message.id,usage.telemetry.privacy(clientId));
-        if(!isTelemetryChoice(params?.choice)) throw new Error('Invalid privacy choice.');
-        return createAppRpcResult(message.id,await usage.telemetry.choose(clientId,params.choice));
-      } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage or privacy request is unavailable or invalid.'); }
+      } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }
     }
 
     if ([backendMethods.clientWorkspaceGet, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead, backendMethods.clientDocumentSave].some(method => method === message.method)) {
@@ -747,41 +741,15 @@ export class AppBackendServer {
         }
       }
     }
-    const telemetryPermission=this.options.usage?.telemetry.permission(clientId)??null;
-    const outcomeKind=message.method===backendMethods.missionExecute?'mission':message.method===backendMethods.automationRun?'automation':null;
-    const previousOutcomes=outcomeKind?this.options.usage?.outcomeKeys(outcomeKind,this.snapshot)??[]:[];
-    const feature = telemetryFeatureForMethod(message.method,params,this.snapshot);
-    const features=this.options.usage?.telemetry.forSource(clientId);
-    const target = typeof params?.agentId==='string' ? this.snapshot.agents.find(a=>a.id===params.agentId) : undefined;
-    const input=isRecord(params?.input)?params.input:{};
-    const targetTeam=input.teamId??target?.teamId;
-    const remote = params?.remoteConnectionId || input.remoteConnectionId || (isRecord(params?.location) && params.location.kind==='remote') || this.snapshot.teams.find(t=>t.id===targetTeam)?.remoteConnectionId;
-    const finishFeature=feature && !remote ? features?.begin(feature) : undefined;
-    const finishExport=feature==='review.finish' && !remote ? features?.begin('review.export') : undefined;
     const sourceAgentId=[backendMethods.agentPromptSend,backendMethods.agentTurnRetry,backendMethods.agentTurnContinueInterrupted].some(method=>method===message.method) && typeof params?.agentId==='string' ? params.agentId : null;
-    const source=sourceAgentId ? this.options.usage?.source(sourceAgentId,clientId) : null;
+    const source=sourceAgentId ? this.options.usage?.beginPrompt(sourceAgentId) : null;
     let response:AppRpcResponse|undefined;
     try { response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId); }
     catch(error) {
-      if(sourceAgentId)this.options.usage?.cancelSource(sourceAgentId,source);
-      finishFeature?.('failed');
-      finishExport?.('failed');
+      if(sourceAgentId)this.options.usage?.cancelPrompt(sourceAgentId,source);
       throw error;
     }
-    if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelSource(sourceAgentId,source);
-    if(outcomeKind && !remote && response && 'result' in response)this.options.usage?.trackOutcomes(outcomeKind,previousOutcomes,this.snapshot,clientId,telemetryPermission);
-    if (feature && response) {
-      // Remote execution belongs to its owner; a local observer never counts it.
-      const result='result' in response ? response.result : null;
-      const status=isRecord(result)?result.status:undefined;
-      const outcome=!('result' in response)?'failed':status==='cancelled'?'cancelled':status==='failed'||status==='conflict'?'failed':status==='unavailable'||status==='unsupported'?'unavailable':'succeeded';
-      if (!remote) {
-        finishFeature?.(outcome);
-        // Successful finish includes an owned, awaited report save; failures never imply an export.
-        finishExport?.(outcome);
-      }
-    }
-
+    if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
         const created = (createsAgent ? response.result.agents : response.result.teams).find((item) => item.id === creation.id);
@@ -3088,7 +3056,6 @@ export class AppBackendServer {
   }
 
   private emitSnapshotUpdated(snapshot: AppSnapshot): void {
-    this.options.usage?.observeSnapshot(this.snapshot);
     const event: AppBackendEvent = {
       seq: this.nextEventSeq(),
       type: 'snapshot.updated',
@@ -4116,19 +4083,4 @@ function remoteControlStatusFromUnknown(value: unknown): DevicePairingStatus | n
   if (typeof record.installationId === 'string') status.installationId = record.installationId;
   if (record.environmentId === null || typeof record.environmentId === 'string') status.environmentId = record.environmentId;
   return status;
-}
-
-function telemetryFeatureForMethod(method:string,params:Record<string,unknown>|undefined,snapshot:AppSnapshot):TelemetryFeature|undefined {
-  if(method===backendMethods.agentCodeReviewDiscard && snapshot.agents.find(a=>a.id===params?.agentId)?.codeReview?.automation?.state==='running') return 'review.switch.manual';
-  const input=isRecord(params?.input)?params.input:{};
-  if(method===backendMethods.missionExecute) return ['run','continueToReview','fixSelectedReviewFindings','rerunReview'].includes(String(input.action)) ? 'mission.start' : undefined;
-  if(method===backendMethods.agentCodeReviewStart) return isRecord(input.automation) && input.automation.enabled===true ? 'review.start.automatic':'review.start.manual';
-  if(method===backendMethods.workProviderBacklogConfigure) return input.provider==='github' ? 'backlog.source.github' : input.provider==='linear' ? 'backlog.source.linear' : undefined;
-  const mapping:Record<string,TelemetryFeature>={
-    [backendMethods.agentCreate]:'agent.create',[backendMethods.teamCreate]:'team.create',
-    [backendMethods.agentFork]:'delegation.native',[backendMethods.agentHandoff]:'delegation.handoff',
-    [backendMethods.agentCodeReviewStart]:'review.start',[backendMethods.agentCodeReviewFinish]:'review.finish',[backendMethods.agentCodeReviewDiscard]:'review.discard',
-    [backendMethods.agentGitBranchCreate]:'git.branch',[backendMethods.agentGitUpdateFromBase]:'git.update',[backendMethods.agentGitMerge]:'git.merge',[backendMethods.agentGitPrune]:'git.prune',
-    [backendMethods.agentFilePreview]:'artifact.open',[backendMethods.agentWorkItemAssign]:'backlog.assign',[backendMethods.missionExecute]:'mission.start',[backendMethods.automationRun]:'automation.run',
-  };return mapping[method];
 }

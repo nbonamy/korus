@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
-import { isUtcDay, utcDay } from "@workspace/core/telemetry";
+import { isUtcDay, utcDay } from "@workspace/core/usage";
 import {
   validConsumption,
   validExecutionBehavior,
@@ -61,10 +61,7 @@ export class UsageLedger {
       this.legacyFile &&
       !db.prepare("SELECT 1 FROM metadata WHERE key='legacy-import'").get()
     ) {
-      const legacy = (await new JsonStore<{
-        since: number;
-        records: UsageRecord[];
-      }>(this.legacyFile).read()) as {
+      const legacy = (await new JsonStore(this.legacyFile).read()) as {
         since?: number;
         records?: UsageRecord[];
       } | null;

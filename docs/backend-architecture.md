@@ -489,138 +489,26 @@ manage MCP tools: treat it as a privileged control plane.
 - Standalone `daemon` must not import Electron; secret storage sits behind an
   abstract token-store port.
 
-## Local usage and product telemetry
+## Local usage statistics
 
-The owning daemon observes live provider execution through driver/SDK numeric
-seams. Its bounded SQLite statistics ledger is independent of product telemetry permission;
-history hydration, inherited forks and context occupancy never become consumed
-tokens. Claude consumption covers the SDK's per-turn main loop, excluding
-auxiliary calls. Output includes reasoning. Input includes cache reads and Claude cache creation;
-cache categories must not be added to input. Codex cache-write inclusion is
-unspecified. Codex consumption can be replaced or invalidated after completion
-and remains local-only. Unsupported consumption and execution models
-remain unknown. Account summaries and quotas are account-scoped local views.
+The owning daemon records live provider executions in a bounded SQLite ledger.
+History hydration, inherited forks and context occupancy never become consumed
+tokens. Provider conversations remain the sole owners of prompts, responses and
+tool arguments; analytics stores only execution references, numeric measurements,
+outcomes and local grouping metadata. Unsupported consumption and model identity
+remain unknown. Codex consumption can be replaced or invalidated after completion.
+Claude consumption covers the main agent loop; auxiliary calls are excluded.
+Reasoning is included in output. Cache categories must not be added to input.
+Account summaries and quotas remain separate account-scoped views.
 
-The local database stores one replaceable statistics record per execution, with
-provider/model metadata, numeric consumption, outcomes and measured timing. It
-does not store prompts, responses, tool arguments or transcripts.
+The backend turn clock excludes waits for user input and in-flight tools, with
+parallel tool waits counted once. Speed combines provider-reported output tokens
+with measured working time after the first generated output. A turn without both
+measurements has no speed.
 
-Timing is owned by the backend, not by drivers: a turn clock fed from the shared
-event stream starts at prompt submission, stops while the agent awaits the user or
-any tool call is in flight (parallel calls pause it once), and records the working
-time at the first generated output. Speed is provider-reported output tokens over the
-working time after that first output; there is no character-based estimate, so a turn
-without provider tokens or a measured clock has no speed.
-Legacy usage statistics are imported once transactionally. Retention is bounded to
-one year and 50,000 executions; failed storage leaves analytics unavailable without
-blocking provider work. App-owned usage queries supply grouped totals and daily
-series to the in-app Analytics screen.
-
-Local text throughput counts Unicode code points delivered after a streamed
-message's first text chunk, divided by the receipt interval from first to last text
-chunk. Intervals are matched per message; waits between messages are excluded.
-The first chunk establishes timing and is excluded from the numerator. Single-chunk
-or zero-duration samples stay unavailable. Text is inspected transiently for its
-count and never retained by the numeric observer. Claude and Codex adapters use
-existing live semantic events; model attribution remains unknown without evidence.
-
-The application runtime disconnects the remote destination regardless of saved
-opt-in or endpoint configuration. Local analytics continues through the same owning
-observation path; the retained exporter and hosted API remain separate modules.
-
-Backend services accept the narrow `FeatureReporter` port from
-`telemetry.forSource(clientId)`. `track('browser.open', action)` observes an operation
-without changing its return value or error; `begin('mission.start')` returns an
-idempotent outcome callback for longer workflows. `record('artifact.open')` counts
-a completed point event. Feature names and outcomes are finite typed categories;
-there is no property bag. The reporter captures permission before work, isolates
-observer failures, bounds its queue and owns persistence/delivery. Services never
-log payloads or implement their own collectors. Native browser and simulator
-callbacks carry only the local agent reference needed to recover the initiating
-execution permission. The native observing client can finish its operation but
-cannot substitute desktop permission for an opted-out or unknown source.
-
-Product reports contain only finite daily numeric categories. Client disclosure,
-source permission, host permission, administrator policy and explicit endpoint
-configuration all gate collection and delivery. Model-behavior reports require the
-renewed behavior disclosure; an older usage-reporting choice cannot enable them.
-An explicit measured zero is distinct from unavailable evidence. A permission transition aborts
-uploads and purges pending batches; re-enabling starts fresh. Forwarded SSH actions
-use an unsynchronized source and cannot be exported. Later clients must add explicit
-permission synchronization rather than treating connection as consent. Reports
-carry random immutable batch IDs; local dedupe identities stay in local storage.
-When enabled, the exporter coalesces nearby observations for one second in
-development and five minutes in production. Delivery retries are bounded and
-permission-aware.
-
-Behavior observation stays in Korus provider adapters and consumes public SDK events.
-Claude response IDs dedupe per-block messages, and matched per-response usage and
-stream boundaries produce receipt-based throughput. Tool counts omit names and
-arguments. Multiple requests within one response do not prove concurrent execution.
-Codex tool IDs provide observed invocation counts; actual model attribution,
-response grouping and token stream throughput remain unavailable. Ratios combine only
-matching released model/day numerators and denominators, with sample coverage.
-
-The hosted Korus API lives in `server/api`, with its private operator frontend in
-`server/web`. It is independent of the desktop daemon and companion relay; telemetry
-is one API domain. The server workspace gates on 85% statement coverage.
-The telemetry module has its own database and operator secret. It has
-no provider credentials, relay identity or execution authority. SQLite transactions
-couple batch dedupe and predefined aggregate increments. Daily buckets expire after
-90 days, monthly marginals after 12 months, batch IDs after 7 days. Backups must use
-the same retention ceiling and deletion policy. Operators read exact daily
-independent marginals, including today, through bounded authenticated queries.
-Filters cannot join dimensions. Report volume is not people. Public writers can
-poison aggregates; an embedded client secret would not establish authenticity.
-The console refreshes every five seconds. Local validation exposes operator-only
-demo controls that generate
-seven days of synthetic numeric samples in separate buckets. Demo mode shows only
-those samples with a visible label; deleting them restores real reports unchanged.
-Demo buckets expire after seven days and never enter ingestion or batch dedupe.
-`npm run dev:server` runs the console on loopback with private credentials and
-SQLite state under `.app-dev/console`. This synthetic HTTP listener uses an
-`HttpOnly`, `SameSite=Strict` cookie; hosted access requires the secure cookie.
-
-Build the hosted API with `npm run build:server`.
-Run `npm run start:server` with a private database location, an operator-token
-file containing at least 32 characters, and TLS key/certificate files configured
-through the `API_*` environment. An owned TLS-terminating reverse proxy may use
-`API_REVERSE_PROXY=1` with a loopback-only listener; it overwrites client address
-headers and disables request/error logs. Synthetic tests use `API_SYNTHETIC=1`.
-Neither option permits public plaintext listeners. The operator
-page uses TLS-protected HTTP authentication and read APIs require the same secret.
-Responses forbid caching and intermediary content transformations; browser policy
-allows only same-origin scripts and connections.
-The application emits no request, payload, IP, User-Agent or referrer logs. Bound
-in-memory abuse counters expire after one minute. Delivery infrastructure still
-sees IPs transiently; proxy/CDN/APM logs must be disabled or explicitly minimized
-and disclosed. Rotate the operator secret by restarting the service. Monitor the
-health route without logging request metadata; cap disk, ingress and spending
-outside the process.
-
-Application reporting requires `APP_TELEMETRY_URL`, a public HTTPS origin loaded
-from build configuration or the daemon environment. An empty runtime override
-disables a packaged default. Unset/invalid URLs, tests and CI disable reporting.
-Development runs use the same endpoint and consent controls as packaged builds.
-`APP_TELEMETRY_FORCE_OFF=1` overrides user choices. Onboarding records
-the default-on choice with an opt-out; General settings persist later changes.
-Unconfigured clients and remote permission remain closed. No application environment
-is configured by server deployment, and no historical local usage is exported.
-
-`server/deploy/prepare.sh` installs the API on Joshua with a private service user,
-operator-token file, state directory and hardened systemd unit. The service binds
-loopback; nginx owns public TLS. The `api` subdomain exposes API routes; the private
-frontend lives on the `console` subdomain. The console proxies only its page, assets
-and its operator-session/read endpoints, keeping browser credentials on the same
-origin. Its public welcome page loads the authenticated console through same-origin
-requests and exchanges the operator password for an opaque,
-two-hour `HttpOnly`, `Secure`, `SameSite=Strict`, host-only cookie. Session creation
-and sign-out require the same origin. At most 128 sessions live in volatile memory;
-sign-out, expiry and service restart revoke them. API clients may use bearer
-authentication. Credentials and cookies never enter telemetry or access logs.
-After both hostnames resolve, `/opt/korus-api/activate.sh` obtains their certificates
-and activates the HTTPS virtual hosts. The API is separate
-from the companion relay, including keys, database and logs. `/v1/telemetry/reports`
-accepts bounded anonymous batches; dashboard and read APIs require the operator
-secret. OpenTelemetry interoperability is independent of the domain reporter API;
-the current ingestion format is the strict Korus report schema.
+The ledger retains up to one year and 50,000 executions, imports legacy statistics
+once transactionally, and exposes grouped queries to Analytics through app-owned
+contracts. Clearing statistics deletes the local measurements without changing
+provider history. Storage failures leave analytics unavailable without blocking
+provider work. No reporting endpoint, upload queue or hosted analytics service is
+part of this path.

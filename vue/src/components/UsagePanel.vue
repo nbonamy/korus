@@ -1,18 +1,18 @@
 <template>
   <SettingsPanelFrame
     class="analytics"
-    :title="$t('telemetry.usage')"
+    :title="$t('analytics.title')"
     title-id="usage-title"
   >
     <template #actions>
       <button
         class="app-button analytics-refresh"
         type="button"
-        :aria-label="$t('telemetry.refresh')"
+        :aria-label="$t('analytics.refresh')"
         :disabled="busy"
         @click="load()"
       >
-        <RefreshIcon :size="14" />{{ $t("telemetry.refresh") }}
+        <RefreshIcon :size="14" />{{ $t("analytics.refresh") }}
       </button>
     </template>
     <UsageActivity

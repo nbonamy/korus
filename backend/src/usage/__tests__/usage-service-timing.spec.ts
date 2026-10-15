@@ -3,29 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
-import { TelemetryReporter } from "../reporter";
 import { TurnClock } from "../turn-clock";
 import { UsageLedger } from "../usage-ledger";
 import { UsageService } from "../usage-service";
 
 it("records a turn's real working time from backend events, not from the provider's driver", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "usage-timing-"));
-  const reporter = new TelemetryReporter(path.join(dir, "outbox"), {
-    environment: true,
-    forceOff: true,
-    endpoint: "http://127.0.0.1:1/reports",
-    synthetic: true,
-    version: "0.33.0",
-    channel: "stable",
-    platform: "macos",
-    client: "desktop",
-  });
   const local = new UsageLedger(path.join(dir, "usage.sqlite"));
   await local.load();
   let now = 0;
   const service = new UsageService(
     local,
-    reporter,
     () =>
       ({
         id: "a",
@@ -114,7 +102,7 @@ it("records a turn's real working time from backend events, not from the provide
         total: 600,
       },
     });
-    await (service as unknown as { chain: Promise<void> }).chain;
+    await service.drain();
     expect(local.query({ group: "provider" }).rows[0]).toMatchObject({
       speed: {
         turns: 1,
@@ -125,7 +113,7 @@ it("records a turn's real working time from backend events, not from the provide
       },
     });
   } finally {
-    await local.close();
+    await service.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

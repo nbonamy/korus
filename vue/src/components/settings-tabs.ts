@@ -50,7 +50,7 @@ const settingsDestinations: readonly SettingsDestination[] = [
   },
   {
     id: "usage",
-    labelKey: "telemetry.usage",
+    labelKey: "analytics.title",
     group: "app",
     icon: ChartBarIcon,
     aliases:

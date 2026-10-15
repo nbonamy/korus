@@ -22,7 +22,7 @@
     <table>
       <thead>
         <tr>
-          <th>{{ $t("telemetry." + grouping) }}</th>
+          <th>{{ $t("analytics." + grouping) }}</th>
           <th class="num">{{ $t("analytics.turns") }}</th>
           <th>{{ $t("analytics.share") }}</th>
           <th class="num">{{ $t("analytics.measuredTokens") }}</th>
@@ -40,7 +40,7 @@
             <span class="breakdown-share"
               ><UsageBar :value="share(row)" :color="row.color" /><b>{{
                 share(row) === null
-                  ? $t("telemetry.unknown")
+                  ? $t("analytics.unknown")
                   : chartFormat(share(row)) + "%"
               }}</b></span
             >

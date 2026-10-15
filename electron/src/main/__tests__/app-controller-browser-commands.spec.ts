@@ -175,7 +175,6 @@ describe('AppController', () => {
     void opened.then(settled);
 
     await openBrowser(controller, 'agent-dina', 'primary', '');
-    expect(request).toHaveBeenCalledWith(backendMethods.telemetryFeatureBegin, { feature: 'browser.open', agentId: 'agent-dina' });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
 

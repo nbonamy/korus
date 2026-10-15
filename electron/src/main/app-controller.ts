@@ -14,7 +14,6 @@ import { mainT } from './i18n';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, protocol, shell } from 'electron';
 import path from 'node:path';
 import { CodexElectronAttachmentRegistry, registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
-import { observeBrowserCommand, observeUsageFeature, speechOperationObserver } from './usage-feature';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
 import { initializeMainLogging, installProcessErrorLogging, logMain, warnMain } from './log';
 import { createMainWindow } from './main-window';
@@ -66,8 +65,6 @@ export class AppController {
   private backendClientEventUnsubscribe: (() => void) | null = null;
   private backendClientConnectionUnsubscribe: (() => void) | null = null;
   private nativeIpcUnregister: (() => void) | null = null;
-  private telemetryActive=false;
-  private telemetryGeneration=0;
   private readonly nativeAttachmentRegistry = new CodexElectronAttachmentRegistry();
   private readonly localMediaRegistry = new LocalMediaRegistry();
   private lastBackendEventSeq = 0;
@@ -146,7 +143,7 @@ export class AppController {
     this.backendClient = backendClient ?? createRuntimeAppBackendClient({
       mobileSimulator: (agentId, input) => this.executeMobileSimulator(agentId, input),
       browserOpen: (agentId, browserId, url) => this.requestBrowserOpen(agentId, browserId, url),
-      browserExecute: (agentId, browserId, command, arguments_) => observeBrowserCommand(this.backendClient, command, () => this.browserPane.execute(agentId, browserId, command, arguments_), agentId),
+      browserExecute: (agentId, browserId, command, arguments_) => this.browserPane.execute(agentId, browserId, command, arguments_),
       spokenAnnouncements: this.policyAwareSpokenAnnouncements,
       spokenAnnouncementVoice: () => this.snapshot?.general.spokenAnnouncementVoice ?? 'af_heart',
     });
@@ -194,10 +191,9 @@ export class AppController {
 
   registerIpcHandlers(): void {
     this.nativeIpcUnregister?.();
-    const nativeOptions={maxAudioBytes:undefined,onSpeechOperation:speechOperationObserver(()=>this.backendClient,()=>this.telemetryActive?this.telemetryGeneration:null)};
     this.nativeIpcUnregister = registerCodexNativeIpc(
       { clipboard, dialog, ipcMain, shell },
-      nativeOptions,
+      {},
       this.nativeAttachmentRegistry,
     );
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
@@ -509,23 +505,10 @@ export class AppController {
       return this.selectAgent(agentId);
     });
 
-    ipc.handle(ipcChannels.beginUsageFeature, (_event, feature) => this.requireBackendClient().request(backendMethods.telemetryFeatureBegin,{feature}));
-    ipc.handle(ipcChannels.finishUsageFeature, (_event, operationId, outcome) => this.requireBackendClient().request(backendMethods.telemetryFeatureFinish,{operationId,outcome}));
     ipc.handle(ipcChannels.getAccountUsage, (_event, provider) => this.requireBackendClient().request(backendMethods.accountUsageGet,{provider}));
     ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
     ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
-    ipc.handle(ipcChannels.getTelemetryPrivacy, async () => {
-      const generation=this.telemetryGeneration;
-      const privacy=await this.requireBackendClient().request<import('@workspace/core/telemetry').TelemetryPrivacy>(backendMethods.telemetryPrivacyGet);
-      if(generation===this.telemetryGeneration && this.telemetryActive!==privacy.active){this.telemetryActive=privacy.active;this.telemetryGeneration++;}
-      return privacy;
-    });
-    ipc.handle(ipcChannels.setTelemetryPrivacy, async (_event, choice) => {
-      this.telemetryActive=false;const generation=++this.telemetryGeneration;
-      const privacy=await this.requireBackendClient().request<import('@workspace/core/telemetry').TelemetryPrivacy>(backendMethods.telemetryPrivacySet,{choice});
-      if(generation===this.telemetryGeneration)this.telemetryActive=privacy.active;
-      return privacy;
-    });
+
     ipc.handle(ipcChannels.updateSettings, async (_event, input: UpdateSettingsInput) => {
       return this.updateSettings(input);
     });
@@ -709,7 +692,7 @@ export class AppController {
     ipc.handle(ipcChannels.browserReload, (_event, agentId: string, browserId: string) => this.browserPane.reload(agentId, browserId));
     ipc.handle(ipcChannels.browserGetZoom, (_event, agentId: string, browserId: string) => this.browserPane.getZoom(agentId, browserId));
     ipc.handle(ipcChannels.browserSetZoom, (_event, agentId: string, browserId: string, percent: number) => this.browserPane.setZoom(agentId, browserId, percent));
-    ipc.handle(ipcChannels.browserCopyScreenshot, (_event, agentId: string, browserId: string, rect?: BrowserBounds) => observeUsageFeature(this.backendClient, 'browser.capture', () => this.browserPane.copyScreenshot(agentId, browserId, rect)));
+    ipc.handle(ipcChannels.browserCopyScreenshot, (_event, agentId: string, browserId: string, rect?: BrowserBounds) => this.browserPane.copyScreenshot(agentId, browserId, rect));
     ipc.handle(ipcChannels.browserSetBounds, (_event, agentId: string, browserId: string, bounds: BrowserViewportBounds) => this.browserPane.setBounds(agentId, browserId, bounds));
     ipc.handle(ipcChannels.browserViewportApplied, (_event, agentId: string, browserId: string, requestId: string, error?: string) => this.browserPane.viewportApplied(agentId, browserId, requestId, error));
     ipc.handle(ipcChannels.browserSetVisible, (_event, agentId: string, browserId: string, visible: boolean) => this.browserPane.setVisible(agentId, browserId, visible));
@@ -1290,9 +1273,7 @@ export class AppController {
 
   private async executeMobileSimulator(agentId: string, input: MobileRequest, userInitiated = false): Promise<MobileResult> {
     this.requireMobileAgent(agentId);
-    const execute=()=>this.mobileSimulator.execute(agentId, input, userInitiated);
-    const result = ['list','status','inspect'].includes(input.action) ? await execute()
-      : await observeUsageFeature(this.backendClient, 'simulator.execute', execute, userInitiated ? undefined : agentId);
+    const result = await this.mobileSimulator.execute(agentId, input, userInitiated);
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       // The pane follows an agent's lifecycle; a user detaching or powering off in the pane keeps it open.
       if (input.action === 'attach') sendAppCommand(this.mainWindow.webContents, { type: 'open-simulator', agentId });
@@ -1311,7 +1292,7 @@ export class AppController {
       if (!agent) {
         throw new Error(`Agent not found: ${agentId}`);
       }
-      const state = await observeUsageFeature(this.backendClient, 'browser.open', () => this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId), this.pendingBrowserOpens.has(browserPaneKey(agentId, browserId)) ? agentId : undefined);
+      const state = await this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
       this.resolvePendingBrowserOpen(agentId, browserId, url, state);
       return state;
     } catch (error) {

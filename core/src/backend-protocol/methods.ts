@@ -1,12 +1,8 @@
 export const backendMethods = {
-  telemetryFeatureBegin: 'telemetry/feature/begin',
-  telemetryFeatureFinish: 'telemetry/feature/finish',
   accountUsageGet: 'usage/account/get',
   driverAccountUsageGet: 'driver/account/usage/get',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',
-  telemetryPrivacyGet: 'telemetry/privacy/get',
-  telemetryPrivacySet: 'telemetry/privacy/set',
   clientFocusGet: 'client/focus/get',
   companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",

@@ -129,7 +129,7 @@ export function validConsumption(value: unknown): value is Consumption {
   );
 }
 
-/** Provider account-wide history, never per-agent usage and never product telemetry. Large counters stay decimal strings. */
+/** Provider account-wide history, separate from per-agent usage. Large counters stay decimal strings. */
 export type AccountUsage = {
   summary: {
     lifetimeTokens: string | null;
@@ -212,5 +212,17 @@ export function validExecutionBehavior(
     (stream.responses as number) > 0 &&
     v.responses !== null &&
     (stream.responses as number) <= (v.responses as number)
+  );
+}
+
+export function utcDay(time: number): string {
+  return new Date(time).toISOString().slice(0, 10);
+}
+export function isUtcDay(day: unknown): day is string {
+  return (
+    typeof day === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+    Number.isFinite(Date.parse(day)) &&
+    new Date(day).toISOString().slice(0, 10) === day
   );
 }

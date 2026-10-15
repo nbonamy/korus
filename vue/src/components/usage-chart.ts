@@ -17,7 +17,7 @@ export const chartFormat = (
   compact = false,
 ): string =>
   value == null
-    ? translate("telemetry.unknown")
+    ? translate("analytics.unknown")
     : new Intl.NumberFormat(undefined, {
         maximumFractionDigits: 1,
         ...(compact ? { notation: "compact" as const } : {}),
@@ -165,8 +165,8 @@ const measureKeys: Record<UsageMeasure, string> = {
 export const measureLabel = (measure: UsageMeasure) =>
   translate("analytics." + measureKeys[measure]);
 export const groupingOptions = () => [
-  { value: "provider" as const, label: translate("telemetry.provider") },
-  { value: "model" as const, label: translate("telemetry.model") },
+  { value: "provider" as const, label: translate("analytics.provider") },
+  { value: "model" as const, label: translate("analytics.model") },
 ];
 export const seconds = (value: number) =>
   translate("analytics.seconds", { value: chartFormat(value) });

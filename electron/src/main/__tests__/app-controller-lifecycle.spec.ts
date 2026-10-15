@@ -179,43 +179,6 @@ describe('controller desktop lifecycle', () => {
     await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
   });
 
-  it('keeps stale privacy reads and disabled native completion from restoring dictation observation permission', async () => {
-    const { backend } = setup();
-    let resolve!: (value: unknown) => void;
-    const pending = new Promise(resolveRead => { resolve = resolveRead; });
-    let stale = true;
-    backend.request.mockImplementation(async method => {
-      if(method === 'telemetry/privacy/get') return stale ? pending : { active: true };
-      if(method === 'telemetry/privacy/set') return { active: false };
-      if(method === 'telemetry/feature/begin') return 'ephemeral';
-      if(method === 'telemetry/feature/finish') return null;
-      throw Error('Unexpected request');
-    });
-    const observe=(native.nativeOptions as { onSpeechOperation: import('../usage-feature').SpeechOperationObserver }).onSpeechOperation;
-    const read=invoke(ipcChannels.getTelemetryPrivacy);
-    await invoke(ipcChannels.setTelemetryPrivacy, { enabled: false, disclosure: 1 });
-    resolve({ active: true }); await read;
-    expect(observe('start')).toBeUndefined();
-    stale = false; await invoke(ipcChannels.getTelemetryPrivacy);
-    const finish=observe('start')!;
-    await invoke(ipcChannels.setTelemetryPrivacy, { enabled: false, disclosure: 1 });
-    finish('succeeded'); await Promise.resolve(); await Promise.resolve();
-    expect(backend.request).not.toHaveBeenCalledWith('telemetry/feature/finish', expect.anything());
-  });
-
-  it('counts simulator control completion once without device/content metadata or passive status observation', async () => {
-    const { backend, state } = setup();
-    backend.request.mockImplementation(async method => method === 'telemetry/feature/begin' ? 'local-only' : null);
-    const agentId=state.snapshot.agents[0]!.id;
-    await invoke(ipcChannels.mobileSimulator, agentId, { action: 'list' });
-    expect(backend.request).not.toHaveBeenCalled();
-    await invoke(ipcChannels.mobileSimulator, agentId, { action: 'attach', deviceId: 'phone' });
-    expect(backend.request.mock.calls).toEqual([
-      ['telemetry/feature/begin', { feature: 'simulator.execute' }],
-      ['telemetry/feature/finish', { operationId: 'local-only', outcome: 'succeeded' }],
-    ]);
-  });
-
   it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
     const { backend } = setup();
     const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };

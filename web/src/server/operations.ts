@@ -13,13 +13,9 @@ export type AppBackendPort = {
 type ParamsFactory = (args: unknown[]) => unknown;
 
 const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?]>> = {
-  beginUsageFeature: [backendMethods.telemetryFeatureBegin, named('feature')],
-  finishUsageFeature: [backendMethods.telemetryFeatureFinish, named('operationId','outcome')],
   getAccountUsage: [backendMethods.accountUsageGet, named('provider')],
   getUsage: [backendMethods.usageGet, namedOptional('filter')],
   clearUsage: [backendMethods.usageClear],
-  getTelemetryPrivacy: [backendMethods.telemetryPrivacyGet],
-  setTelemetryPrivacy: [backendMethods.telemetryPrivacySet, named('choice')],
   startVisualize: [backendMethods.agentVisualizeStart, namedOptional('agentId', 'input')],
   setVisualizeOpen: [backendMethods.agentVisualizeOpenSet, named('agentId', 'input')],
   generateVisualizationSuggestion: [backendMethods.agentVisualizationSuggestionGenerate, named('agentId', 'input')],

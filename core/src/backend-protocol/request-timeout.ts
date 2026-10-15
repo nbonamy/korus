@@ -15,14 +15,10 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
-  [backendMethods.telemetryFeatureBegin]: QUICK_REQUEST_TIMEOUT_MS,
-  [backendMethods.telemetryFeatureFinish]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.accountUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverAccountUsageGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
-  [backendMethods.telemetryPrivacyGet]: IO_REQUEST_TIMEOUT_MS,
-  [backendMethods.telemetryPrivacySet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,
   [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,

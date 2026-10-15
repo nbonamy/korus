@@ -1,7 +1,5 @@
-import { UsageService } from './telemetry/usage-service';
-import { UsageLedger } from './telemetry/usage-ledger';
-import { TelemetryReporter } from './telemetry/reporter';
-import { runtimeTelemetryConfig } from './telemetry/config';
+import { UsageService } from './usage/usage-service';
+import { UsageLedger } from './usage/usage-ledger';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
 import { CompanionManager } from './companion/manager';
@@ -123,15 +121,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'), Date.now, path.join(backendHomeDir(), 'usage.json'));
-  const telemetry = new TelemetryReporter(
-    path.join(backendHomeDir(), 'telemetry.json'), runtimeTelemetryConfig(options.version),
-  );
   await localUsage.load();
-  await telemetry.load();
-  telemetry.start();
-  const usage = new UsageService(localUsage, telemetry, id => snapshot.agents.find(a => a.id === id));
+  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
   const mcpService: AppMcpService = new AppMcpService({
-    featuresForAgent: agentId => usage.featuresForAgent(agentId),
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
     persistSnapshot: () => saveBackendSnapshot(snapshot),

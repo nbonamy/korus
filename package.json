@@ -33,8 +33,7 @@
     "vue",
     "electron",
     "web",
-    "mobile",
-    "server"
+    "mobile"
   ],
   "scripts": {
     "postinstall": "node scripts/patch-relay-timers.mjs",
@@ -101,10 +100,7 @@
     "typecheck:electron": "npm run typecheck -w @workspace/electron",
     "typecheck:web": "npm run typecheck -w @workspace/web",
     "verify:github-mcp-token": "node scripts/verify-github-mcp-token.mjs",
-    "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs",
-    "build:server": "npm run build -w @workspace/server",
-    "dev:server": "node scripts/dev-server.mjs",
-    "start:server": "npm run start -w @workspace/server"
+    "prepare:mobile-simulator": "node scripts/prepare-mobile-simulator.mjs"
   },
   "allowScripts": {
     "electron-winstaller@5.4.4": true

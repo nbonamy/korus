@@ -1,4 +1,3 @@
-import type { FeatureReporter } from "../telemetry/feature-reporter";
 import { product } from '@workspace/core/product';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -28,7 +27,6 @@ export type AppMcpHttpServerOptions = {
   coordinator: AppMcpAgentCoordinator;
   computerUse?: ComputerUseClient;
   computerUseEnabled?: () => boolean;
-  featuresForAgent?: (agentId: string) => FeatureReporter;
   browser?: InAppBrowserClient;
   hostedMcpGateway?: HostedMcpGateway;
   reviewTools?: ReviewToolRegistry;
@@ -54,7 +52,7 @@ export class AppMcpHttpServer {
       createCollaborationToolModuleProvider(this.coordinator),
       createMissionToolModuleProvider(this.coordinator),
       createMissionReviewToolModuleProvider(this.coordinator),
-      createComputerUseToolModuleProvider(options.computerUse, computerUseEnabled, options.featuresForAgent),
+      createComputerUseToolModuleProvider(options.computerUse, computerUseEnabled),
       createBrowserToolModuleProvider(options.browser),
       createReviewToolModuleProvider(options.reviewTools),
       ...(options.toolModuleProviders ?? []),

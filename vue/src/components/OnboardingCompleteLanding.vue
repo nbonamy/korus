@@ -13,25 +13,18 @@
         <span class="onboarding-landing-title__line">{{ t('auth.completeTitle') }}</span>
         <span class="onboarding-landing-title__line onboarding-landing-title__detail">{{ t('auth.completeDetail') }}</span>
       </h1>
-      <TelemetryReportingControl v-model="enabled" :disabled="busy || loading" />
-      <p v-if="error" role="alert">{{ t('telemetry.error') }}</p>
       <el-button
         class="onboarding-complete__action"
         type="primary"
         size="large"
-        :loading="busy"
-        :disabled="loading || busy"
-        @click="complete"
+        @click="emit('complete')"
       >{{ t('auth.completeAction') }}</el-button>
     </div>
   </OnboardingLandingFrame>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { telemetryDisclosureVersion } from '@workspace/core/telemetry';
-import { appApi } from '../platform-api';
-import TelemetryReportingControl from './TelemetryReportingControl.vue';
+import { onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useConfetti } from '../shared/confetti/use-confetti';
 import OnboardingLandingFrame from './OnboardingLandingFrame.vue';
@@ -48,34 +41,9 @@ const emit = defineEmits<{
   complete: [];
 }>();
 const { t } = useI18n();
-const enabled = ref(true);
-const loading = ref(true);
-const busy = ref(false);
-const error = ref(false);
-onMounted(async () => {
+onMounted(() => {
   if (props.celebrate) useConfetti().celebrate();
-  try {
-    const privacy = await appApi!.getTelemetryPrivacy();
-    enabled.value = privacy.choice?.enabled ?? true;
-  } catch {
-    error.value = true;
-  } finally {
-    loading.value = false;
-  }
 });
-async function complete(): Promise<void> {
-  if (busy.value || loading.value) return;
-  busy.value = true;
-  error.value = false;
-  try {
-    await appApi!.setTelemetryPrivacy({ enabled: enabled.value, disclosure: telemetryDisclosureVersion });
-    emit('complete');
-  } catch {
-    error.value = true;
-  } finally {
-    busy.value = false;
-  }
-}
 </script>
 
 <style scoped>

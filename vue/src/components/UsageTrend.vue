@@ -10,7 +10,7 @@
       </header>
     </slot>
     <p v-if="!observed" class="chart-empty">
-      {{ $t("telemetry.unknown") }}
+      {{ $t("analytics.unknown") }}
     </p>
     <div v-else ref="stage" class="chart-stage">
       <svg

@@ -1,9 +1,18 @@
 import { expect, it } from "vitest";
 import {
+  isUtcDay,
+  utcDay,
   validExecutionBehavior,
   validExecutionTiming,
   type ExecutionBehavior,
 } from "../usage";
+
+it("groups timestamps by UTC day and rejects normalized or invalid calendar filters", () => {
+  expect(utcDay(Date.parse("2026-10-15T23:30:00-05:00"))).toBe("2026-10-16");
+  expect(isUtcDay("2024-02-29")).toBe(true);
+  for (const day of ["2026-02-29", "2026-13-01", "2026-10-15T00:00:00Z", " 2026-10-15", "2026-1-1", null])
+    expect(isUtcDay(day)).toBe(false);
+});
 const value: ExecutionBehavior = {
   model: "claude-sonnet-4-6",
   responses: 2,

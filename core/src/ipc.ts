@@ -1,13 +1,9 @@
 import type { AppCommand, AppApi, MainToRendererEvent } from './contracts';
 
 export const ipcChannels = {
-  beginUsageFeature: 'telemetry:feature:begin',
-  finishUsageFeature: 'telemetry:feature:finish',
   getAccountUsage: 'usage:account:get',
   getUsage: 'usage:get',
   clearUsage: 'usage:clear',
-  getTelemetryPrivacy: 'telemetry:privacy:get',
-  setTelemetryPrivacy: 'telemetry:privacy:set',
   mobileSimulator: 'mobile:execute',
   mobileSimulatorView: 'mobile:view',
   getDocumentWorkspaces: "document:getDocumentWorkspaces",
