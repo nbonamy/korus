@@ -19,6 +19,8 @@ import { CompanionGateway } from '../gateway';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionWorkspace, CompanionReset } from '@workspace/core/companion-protocol';
 import type { Libp2p } from '@libp2p/interface';
+import { logMain } from '../../log';
+vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
 const stops: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
 describe('encrypted companion circuit', () => {
@@ -114,6 +116,8 @@ describe('encrypted companion circuit', () => {
     await gateway.revoke(phone.peerId.toString());
     await expect.poll(() => ended).toBe(true);
     await expect.poll(() => events.size).toBe(0);
+    expect(logMain).toHaveBeenCalledWith('companion', 'updates request', expect.objectContaining({ method: 'conversation.subscribe', requestId: expect.any(String), queuedFrames: expect.any(Number) }));
+    expect(logMain).toHaveBeenCalledWith('companion', 'updates ended', expect.objectContaining({ elapsedMs: expect.any(Number), sequence: expect.any(Number) }));
     expect(() => gateway.subscribe(phone.peerId.toString(), () => {}, () => {})).toThrow('authorized');
   }, 15_000);
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {

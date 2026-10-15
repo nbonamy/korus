@@ -17,8 +17,9 @@ struct RootView: View {
                     Button("Retry") { model.command("start") }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.startup == .loading || (model.teams.isEmpty && (model.connection == .connecting || model.connection == .reconnecting)) {
-                StartupView(productName: model.productName, connecting: !model.laptops.isEmpty)
+            } else if model.startup == .loading || (model.teams.isEmpty && !model.needsPairing && model.connection != .connected) {
+                if model.showConnectionLost { ConnectionLostView(reconnect: model.reconnect) }
+                else { StartupView(productName: model.productName, connecting: !model.laptops.isEmpty) }
             } else if model.needsPairing { PairingView() } else { shell }
         }
         .overlay(alignment: .top) {

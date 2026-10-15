@@ -7,10 +7,11 @@ import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
 import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
-vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop }; } }));
+vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import type { ProtectedVault } from '../protected-storage';
+import { setConnectionDiagnosticSink } from '../connection-diagnostics';
 const unb64 = (text: string) => new Uint8Array(Buffer.from(text, 'base64'));
 /** Identities introduced by the pinned relay; transport authenticity is tested with real Noise separately. */
 async function laptop(shown = 'K7QD-M2XP') {
@@ -170,12 +171,13 @@ describe('native relay host adapter', () => {
     } finally { await connector.dispose!(); }
   });
   it('pins the introduced laptop, claims the code, and reuses the limited pinned circuit for approval polls', async () => {
+    const diagnostics = vi.fn(); setConnectionDiagnosticSink(diagnostics);
     const connector = connect();
     const address = `/dns4/relay.example/tcp/443/tls/ws/p2p/${host.relay.peerId}/p2p-circuit/p2p/${host.hostId}`;
     const streamFactory = transport.dial.getMockImplementation()!;
     const wrongPath = vi.fn(); const reused = vi.fn(streamFactory);
     transport.connections.push({ status: 'open', remoteAddr: { toString: () => `${address}/other` }, newStream: wrongPath },
-      { status: 'open', remoteAddr: { toString: () => address }, newStream: reused });
+      { id: 'circuit', status: 'open', remoteAddr: { toString: () => address }, limits: { bytes: 67108864n, seconds: 120 }, newStream: reused });
     try {
       const pending = vi.fn();
       expect(await connector.pair!(' k7qd m2xp ', 'Phone', pending)).toBe(host.hostId);
@@ -185,7 +187,8 @@ describe('native relay host adapter', () => {
       expect(reused).toHaveBeenCalledWith('/workspace/companion/1.0.0', expect.objectContaining({ runOnLimitedConnection: true }));
       expect(wrongPath).not.toHaveBeenCalled(); expect(transport.dial).toHaveBeenCalledTimes(1);
       expect(pending).toHaveBeenCalledOnce();
-    } finally { await connector.dispose!(); }
+      expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({ event: 'transport.stream-open', reused: true, connectionId: 'circuit', remainingBytes: '67108864', remainingSeconds: 120 }));
+    } finally { setConnectionDiagnosticSink(undefined); await connector.dispose!(); }
   });
   it('streams updates immediately without polling and reports transport loss without replaying prompts', async () => {
     vi.useFakeTimers();
@@ -205,6 +208,13 @@ describe('native relay host adapter', () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(transport.requests.filter((request) => request.method === 'snapshot.get')).toHaveLength(1);
       expect(transport.requests.filter((request) => request.method === 'conversation.subscribe')).toHaveLength(1);
+      await session.setActive!(false);
+      expect(transport.requests.filter(request => request.method === 'snapshot.get').at(-1)?.args.notifications).toBe(false);
+      await session.setActive!(true);
+      expect(transport.requests.filter(request => request.method === 'snapshot.get').at(-1)?.args.notifications).toBe(true);
+      expect(await session.loadConversation('agent')).toStrictEqual(next);
+      expect(transport.requests.filter(request => request.method === 'conversation.subscribe')).toHaveLength(1);
+      expect(disconnected).not.toHaveBeenCalled();
       transport.endUpdates(); await vi.advanceTimersByTimeAsync(0);
       expect(disconnected).toHaveBeenCalledOnce();
       expect(transport.requests.some((request) => request.method === 'prompt.submit')).toBe(false);

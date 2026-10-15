@@ -4,6 +4,8 @@ import type { AccountRateLimits, Agent, AgentBackend, ModelFavorite, ProviderCon
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
+/** Match the native app lock: quick app switches retain the authenticated connection. */
+export const companionBackgroundGraceMs = 5 * 60_000;
 export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;

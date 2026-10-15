@@ -23,6 +23,110 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
 }
 
 describe('companion engine', () => {
+  it('lets manual reconnect replace a stalled automatic attempt while preserving the selected conversation', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost = () => {}; let release!: (session: Awaited<ReturnType<typeof original>>) => void;
+    const stalled = new Promise<Awaited<ReturnType<typeof original>>>(resolve => { release = resolve; });
+    const abandonedClose = vi.fn();
+    connector.connect = vi.fn(async id => ({ ...await original(id), onDisconnect(listener: () => void) { lost = listener; return () => {}; } }));
+    const { engine } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      await engine.dispatch({ type: 'activity', active: false });
+      lost();
+      vi.mocked(connector.connect).mockImplementationOnce(() => stalled);
+      const automatic = engine.dispatch({ type: 'activity', active: true });
+      await vi.waitFor(() => expect(engine.snapshot().connection).toBe('reconnecting'));
+      expect(engine.snapshot()).toMatchObject({ agentId: 'demo-agent', canSend: false });
+      await engine.dispatch({ type: 'reconnect' });
+      expect(connector.connect).toHaveBeenCalledTimes(3);
+      expect(engine.snapshot()).toMatchObject({ connection: 'connected', agentId: 'demo-agent', conversationReady: true });
+      release({ ...await original('demo-laptop'), close: abandonedClose }); await automatic;
+      expect(abandonedClose).toHaveBeenCalledOnce();
+      expect(engine.snapshot()).toMatchObject({ connection: 'connected', agentId: 'demo-agent', conversationReady: true });
+    } finally { release?.({ ...await original('demo-laptop'), close() {} }); engine.dispose(); }
+  });
+  it('reuses the connection and selected conversation during the five-minute background grace period', async () => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const original = connector.connect;
+    const close = vi.fn(); const setActive = vi.fn(async () => {});
+    connector.connect = vi.fn(async id => ({ ...await original(id), close, setActive }));
+    connector.suspend = vi.fn(async () => {});
+    const { engine } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const before = engine.snapshot();
+      await engine.dispatch({ type: 'activity', active: false });
+      await vi.advanceTimersByTimeAsync(240_000);
+      await engine.dispatch({ type: 'activity', active: false }); // Duplicate native callbacks do not extend the deadline.
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(engine.snapshot().connection).toBe('connected');
+      expect(close).not.toHaveBeenCalled(); expect(connector.suspend).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(connector.connect).toHaveBeenCalledOnce();
+      expect(engine.snapshot()).toMatchObject({ agentId: before.agentId, conversationGeneration: before.conversationGeneration, conversationReady: true });
+      expect(setActive.mock.calls).toStrictEqual([[false], [true]]);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(connector.suspend).not.toHaveBeenCalled();
+    } finally { engine.dispose(); vi.useRealTimers(); }
+  });
+  it.each(['timer', 'suspended clock'] as const)('expires the five-minute grace period with a %s and reconnects on return', async mode => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
+    connector.suspend = vi.fn(async () => {}); connector.resume = vi.fn(async () => {});
+    const { engine } = open(connector);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'activity', active: false });
+      expect(connector.suspend).not.toHaveBeenCalled();
+      if (mode === 'timer') {
+        await vi.advanceTimersByTimeAsync(300_000);
+        expect(connector.suspend).toHaveBeenCalledOnce();
+        expect(engine.snapshot().connection).toBe('disconnected');
+      } else vi.setSystemTime(Date.now() + 300_001);
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(connector.suspend).toHaveBeenCalledOnce(); expect(connector.resume).toHaveBeenCalledOnce();
+      expect(connect).toHaveBeenCalledTimes(2); expect(engine.snapshot().connection).toBe('connected');
+    } finally { engine.dispose(); vi.useRealTimers(); }
+  });
+  it('defers reconnecting a lost background connection until the app returns', async () => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost = () => {};
+    connector.connect = vi.fn(async id => ({ ...await original(id), onDisconnect(listener: () => void) { lost = listener; return () => {}; } }));
+    const { engine } = open(connector);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'activity', active: false });
+      lost();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(connector.connect).toHaveBeenCalledOnce();
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(connector.connect).toHaveBeenCalledTimes(2);
+      expect(engine.snapshot().connection).toBe('connected');
+      await engine.dispatch({ type: 'activity', active: false }); engine.dispose();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(connector.connect).toHaveBeenCalledTimes(2);
+    } finally { engine.dispose(); vi.useRealTimers(); }
+  });
+  it('does not reopen networking when the app backgrounds during an expired connection teardown', async () => {
+    vi.useFakeTimers();
+    const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
+    let finish!: () => void;
+    connector.suspend = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    connector.resume = vi.fn(async () => {});
+    const { engine } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'activity', active: false });
+      await vi.advanceTimersByTimeAsync(300_000);
+      const returning = engine.dispatch({ type: 'activity', active: true });
+      await engine.dispatch({ type: 'activity', active: false });
+      finish(); await returning;
+      expect(connector.resume).not.toHaveBeenCalled(); expect(connect).toHaveBeenCalledOnce();
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(connect).toHaveBeenCalledTimes(2);
+    } finally { finish?.(); engine.dispose(); vi.useRealTimers(); }
+  });
   it('restores pairing while locked without connecting or reading until the screen is unlocked', async () => {
     const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
     const engine = createEngine({ connector, initialActive: false, post: () => {} });

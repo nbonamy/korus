@@ -200,8 +200,12 @@ triggers reconciliation, never automatic replay or authorization.
 The visible conversation remains subscribed. Leaving it starts a five-minute
 expiry while its replica continues to receive events. Viewing it again cancels
 expiry; incoming events do not extend it. Expiry discards the replica and removes
-the subscription. Session changes invalidate the old replica, and app backgrounding
-closes the update stream and clears the subscription cache.
+the subscription. Session changes invalidate the old replica. App backgrounding
+delays intentional transport teardown for five minutes, matching the native lock grace.
+Heartbeat deadlines and automatic reconnects pause while hidden; background presence
+still enables APNs delivery immediately. Expiry closes the transport and cache;
+foreground restoration also checks elapsed wall time because iOS may pause timers.
+Transport loss preserves the visible conversation while the client reconnects.
 
 The separate relay executable has a persistent pinned identity. Public admission
 accepts fresh laptop identities without accounts or operator enrollment. Short-lived,
@@ -244,6 +248,9 @@ no limit that protects other clients is keyed on one. Full rate counters evict t
 window rather than refusing new clients; the bounded laptop lease table refuses new hosts
 when full.
 Circuit reservations and admission leases share a bounded lifetime.
+Dependency installation applies a version-checked repair for `retimeable-signal`
+so renewed reservation deadlines discard their obsolete timers. Its installed-runtime
+regression test protects renewal and cancellation until the upstream repair is consumed.
 The systemd service runs without root,
 with bounded memory and a read-only system filesystem. Versioned bundles live under
 `/opt/companion-relay`; configuration and push keys belong under

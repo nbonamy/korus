@@ -3,6 +3,7 @@ import { createClaudeConversationReplica } from '@workspace/core/claude-conversa
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionReset, CompanionTarget } from '@workspace/core/companion-protocol';
+import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 type Replica = { apply(event: never): unknown; getSnapshot(): unknown };
 type Entry = { target: CompanionTarget; frame: CompanionReset | null; replica?: Replica; timer?: ReturnType<typeof setTimeout>; expiresAt?: number; loading?: Promise<CompanionReset | null> };
@@ -89,6 +90,7 @@ export class ConversationCache {
       return entry.frame;
     }).catch((error) => {
       if (this.entries.get(entry.target.agentId) !== entry) return null;
+      connectionDiagnostic('conversation.load-error', { agentId: entry.target.agentId, stage: this.selected === entry.target.agentId ? 'selected' : 'hidden', ...connectionError(error) });
       throw error;
     });
     entry.loading = pending.finally(() => { if (entry.loading === loading) entry.loading = undefined; });

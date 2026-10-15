@@ -8,11 +8,12 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, PrivateKey, Stream } from '@libp2p/interface';
-import { readCompanionFrames, readFirstCompanionFrame, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { readCompanionFrames, readFirstCompanionFrame, companionBackgroundGraceMs, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { relayAddress, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import type { CompanionGateway } from './gateway';
 import { sendWithBackpressure } from './stream-io';
+import { logMain, warnMain } from '../log';
 
 const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method: z.string().min(1).max(80), args: z.unknown() }).strict();
 export class CompanionOutboundConnector {
@@ -104,36 +105,48 @@ export class CompanionOutboundConnector {
   private async serveUpdates(stream: Stream, peerId: string) {
     stream.maxReadBufferLength = companionFrameLimit + 4;
     stream.maxWriteBufferLength = companionResponseLimit + 4;
-    stream.inactivityTimeout = 45_000;
+    stream.inactivityTimeout = companionBackgroundGraceMs + 45_000;
     let sequence = 0; let queuedBytes = 0; let queuedFrames = 0; let closed = false;
+    const started = Date.now(); let requestStarted = started; let method = ''; let requestId = '';
+    const diagnostic = () => ({ streamId: stream.id, elapsedMs: Date.now() - started, method, requestId,
+      requestAgeMs: method ? Date.now() - requestStarted : 0, sequence, queuedBytes, queuedFrames });
+    logMain('companion', 'updates opened', diagnostic());
     let pending = Promise.resolve();
-    const fail = () => { closed = true; stream.abort(new Error('Companion update stream closed.')); };
+    const fail = (reason: string) => { if (!closed) warnMain('companion', 'updates failed', { ...diagnostic(), reason }); closed = true; stream.abort(new Error('Companion update stream closed.')); };
     const send = (value: unknown) => {
       if (closed) return;
       let bytes: Uint8Array;
-      try { bytes = encodeCompanionFrame(value, companionResponseLimit); } catch { fail(); return; }
+      try { bytes = encodeCompanionFrame(value, companionResponseLimit); } catch { fail('encode-failed'); return; }
       queuedBytes += bytes.byteLength; queuedFrames++;
-      if (queuedBytes > companionResponseLimit * 2 || queuedFrames > 256) { fail(); return; }
+      if (queuedBytes > companionResponseLimit * 2 || queuedFrames > 256) { fail('send-queue-limit'); return; }
       pending = pending.then(async () => {
         if (closed) return;
         await sendWithBackpressure(stream, bytes);
         queuedBytes -= bytes.byteLength; queuedFrames--;
-      }).catch(fail);
+      }).catch(() => fail('send-failed'));
     };
     let subscription: ReturnType<CompanionGateway['subscribe']> | undefined;
-    const cleanup = () => { closed = true; subscription?.close(); };
+    let loggedClose = false;
+    const cleanup = () => {
+      if (!loggedClose) { logMain('companion', 'updates closed', diagnostic()); loggedClose = true; }
+      closed = true; subscription?.close();
+    };
     stream.addEventListener('close', cleanup, { once: true });
     try {
-      subscription = this.gateway.subscribe(peerId, (update) => send({ v: 1, seq: ++sequence, update }), fail);
+      subscription = this.gateway.subscribe(peerId, (update) => send({ v: 1, seq: ++sequence, update }), () => fail('subscription-failed'));
       for await (const value of readCompanionFrames(stream)) {
         const request = requestSchema.parse(value);
+        method = request.method; requestId = request.id; requestStarted = Date.now();
+        logMain('companion', 'updates request', diagnostic());
         try {
           const result = await subscription.request(request.method, request.args);
           send({ v: 1, id: request.id, result });
-        } catch { send({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
+          logMain('companion', 'updates reply', diagnostic());
+        } catch { warnMain('companion', 'updates operation denied', diagnostic()); send({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
+        finally { method = ''; requestId = ''; }
       }
-    } catch { fail(); }
-    finally { cleanup(); stream.removeEventListener('close', cleanup); stream.abort(new Error('Updates ended.')); }
+    } catch { fail('receive-failed'); }
+    finally { logMain('companion', 'updates ended', diagnostic()); cleanup(); stream.removeEventListener('close', cleanup); stream.abort(new Error('Updates ended.')); }
   }
   private async serve(stream: Stream, peerId: string) {
     stream.maxReadBufferLength = companionFrameLimit + 4;

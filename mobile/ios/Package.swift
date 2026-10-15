@@ -5,6 +5,8 @@ let package = Package(
     name: "CompanionDictation",
     platforms: [.macOS(.v14), .iOS("26.0")],
     targets: [
+        .target(name: "CompanionDiagnostics", path: "Sources/Diagnostics"),
+        .testTarget(name: "CompanionDiagnosticsTests", dependencies: ["CompanionDiagnostics"], path: "Tests/Diagnostics"),
         .target(name: "CompanionUsage", path: "Sources/Usage"),
         .testTarget(name: "CompanionUsageTests", dependencies: ["CompanionUsage"], path: "Tests/Usage"),
         .target(name: "CompanionLock", path: "Sources/Lock"),
@@ -15,7 +17,7 @@ let package = Package(
         .testTarget(name: "CompanionPairingTests", dependencies: ["CompanionPairing"], path: "Tests/Pairing"),
         .target(name: "CompanionComposer", path: "Sources/Composer"),
         .testTarget(name: "CompanionComposerTests", dependencies: ["CompanionComposer"], path: "Tests/Composer"),
-        .target(name: "CompanionSidebar", path: "Sources/Model", exclude: ["AppModel.swift", "Fixtures.swift"], sources: ["ViewModels.swift"]),
+        .target(name: "CompanionSidebar", path: "Sources/Model", exclude: ["AppModel.swift", "Fixtures.swift"], sources: ["ViewModels.swift", "ConnectionNoticeState.swift"]),
         .testTarget(name: "CompanionSidebarTests", dependencies: ["CompanionSidebar"], path: "Tests/Sidebar"),
         .target(name: "CompanionRequests", path: "Sources/Requests"),
         .testTarget(name: "CompanionRequestsTests", dependencies: ["CompanionRequests"], path: "Tests/Requests"),

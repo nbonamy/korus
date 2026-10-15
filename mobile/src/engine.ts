@@ -7,8 +7,9 @@ import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
-import { companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { companionBackgroundGraceMs, companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
+import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
 import type { ComposerChange } from './composer-settings';
@@ -100,7 +101,7 @@ export type EngineCommand =
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
   | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
-  /** The app moved to the foreground or background: the link is held only while it is visible. */
+  /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
   | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
@@ -134,6 +135,19 @@ export function createEngine(port: EnginePort) {
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
   let foreground = port.initialActive ?? true;
+  let activityEpoch = 0;
+  let backgroundedAt: number | undefined;
+  let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
+  let backgroundSuspended = false;
+  let suspension: Promise<void> | undefined;
+  function suspendAfterGrace() {
+    if (backgroundSuspended) return suspension;
+    backgroundSuspended = true;
+    connectionDiagnostic('app.background-grace-expired');
+    state.disconnect();
+    suspension = Promise.resolve(port.connector.suspend?.());
+    return suspension;
+  }
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
@@ -395,16 +409,35 @@ export function createEngine(port: EnginePort) {
         finally { reading.delete(key); }
         return;
       }
-      case 'activity':
+      case 'activity': {
+        const activity = ++activityEpoch;
+        connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });
         foreground = command.active;
         if (command.active) {
+          clearTimeout(backgroundTimer); backgroundTimer = undefined;
+          if (backgroundedAt !== undefined && Date.now() - backgroundedAt >= companionBackgroundGraceMs) suspendAfterGrace();
+          await suspension?.catch(() => {});
+          if (disposed || activity !== activityEpoch || !foreground) return;
+          suspension = undefined; backgroundedAt = undefined; backgroundSuspended = false;
           await port.connector.resume?.();
+          if (disposed || activity !== activityEpoch || !foreground) return;
+          await state.setActive(true);
+          if (disposed || activity !== activityEpoch || !foreground) return;
           if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
           else await state.reconnect();
           return openPendingNotification();
         }
-        state.disconnect(); return port.connector.suspend?.();
-      case 'reconnect': await state.reconnect(); return openPendingNotification();
+        void state.setActive(false);
+        if (backgroundedAt === undefined) {
+          backgroundedAt = Date.now();
+          backgroundTimer = setTimeout(() => {
+            backgroundTimer = undefined;
+            if (!disposed && !foreground) void suspendAfterGrace()?.catch(() => {});
+          }, companionBackgroundGraceMs);
+        }
+        return;
+      }
+      case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
         ++notificationEpoch; pendingNotification = null;
         ++selectionEpoch;
@@ -479,5 +512,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

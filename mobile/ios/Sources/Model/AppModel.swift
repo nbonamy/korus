@@ -22,7 +22,12 @@ final class AppModel {
     var hasTranscript: Bool { conversationLoading.hasTranscript }
     private var conversationReady = false
     private var conversationGeneration = 0
-    var connection: ConnectionState = .unpaired
+    private var connectionNotice = ConnectionNoticeState()
+    @ObservationIgnored private var connectionNoticeTask: Task<Void, Never>?
+    var showConnectionLost: Bool { connectionNotice.isVisible }
+    var connection: ConnectionState = .unpaired {
+        didSet { if connection != oldValue { updateConnectionNotice() } }
+    }
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
@@ -133,8 +138,23 @@ final class AppModel {
 
     var selectedModel: ModelChoice? { models.first { $0.id == selectedModelID } }
 
-    /// A saved pairing exists but the link is not up: the person picks it, or it reconnects on its own.
-    var needsPairing: Bool { connection == .unpaired || connection == .revoked || (groups.isEmpty && connection != .connecting && connection != .reconnecting && connection != .connected) }
+    /// Temporary connection loss does not require pairing again.
+    var needsPairing: Bool { connection == .unpaired || connection == .revoked }
+
+    private func updateConnectionNotice() {
+        let previous = connectionNotice.deadline
+        connectionNotice.update(connection: connection, active: foreground && screenUnlocked)
+        guard previous != connectionNotice.deadline else { return }
+        connectionNoticeTask?.cancel()
+        connectionNoticeTask = nil
+        guard let deadline = connectionNotice.deadline else { return }
+        connectionNoticeTask = Task { [weak self] in
+            do { try await Task.sleep(until: deadline, clock: .continuous) }
+            catch { return }
+            guard let self, self.connectionNotice.deadline == deadline else { return }
+            self.connectionNotice.update(connection: self.connection, active: self.foreground && self.screenUnlocked)
+        }
+    }
 
     // MARK: Engine
 
@@ -382,12 +402,14 @@ final class AppModel {
     }
     func setActive(_ active: Bool) {
         foreground = active
+        updateConnectionNotice()
         if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
         command("activity", ["active": active && screenUnlocked])
     }
     func setUnlocked(_ unlocked: Bool) {
         screenUnlocked = unlocked
+        updateConnectionNotice()
         if !unlocked { dictation.cancel(); notifications.clear() }
         command("activity", ["active": unlocked && foreground])
         if unlocked { acknowledgeRead() }

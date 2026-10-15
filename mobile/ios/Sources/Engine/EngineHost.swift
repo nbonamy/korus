@@ -15,6 +15,8 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     private let crypto = AppleCryptoService(scriptURL: Bundle.main.url(forResource: "noise-session", withExtension: "js", subdirectory: "Web"))
     private var isReady = false
     private var pending: [[String: Any]] = []
+    private let diagnosticQueue = DispatchQueue(label: "companion.connection-diagnostics", qos: .utility)
+    private let connectionLog = ConnectionLog(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Diagnostics"))
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -23,6 +25,10 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         super.init()
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "native")
         configuration.userContentController.add(self, name: "engine")
+        diagnosticQueue.async { [connectionLog] in
+            connectionLog.append(["event": "app.engine-start", "at": ISO8601DateFormatter().string(from: Date()),
+                                  "stage": "build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")"])
+        }
         #if DEBUG
         webView.isInspectable = true
         #endif
@@ -47,6 +53,10 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
               message.frameInfo.request.url == WebAssets.url("engine.html"),
               let body = message.body as? [String: Any], let type = body["type"] as? String else { replyHandler(nil, "Invalid request."); return }
         switch type {
+        case "connection.diagnostic":
+            guard let record = body["record"] as? [String: Any] else { replyHandler(nil, "Invalid diagnostic."); return }
+            diagnosticQueue.async { [connectionLog] in connectionLog.append(record) }
+            replyHandler(true, nil)
         case "crypto":
             guard let command = body["command"] as? [String: Any] else { replyHandler(nil, "Invalid crypto request."); return }
             crypto.execute(command) { result in
