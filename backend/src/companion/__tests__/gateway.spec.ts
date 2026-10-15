@@ -17,7 +17,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture() {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
@@ -314,7 +314,7 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
       'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },
@@ -330,6 +330,8 @@ describe('companion authorization gateway', () => {
       'agent.approvalPreset.set': { args: (t) => ({ target: t, preset: 'full-access' }), effect: 'setApprovalPreset' },
       'agent.permissionMode.set': { args: (t) => ({ target: t, mode: 'acceptEdits' }), effect: 'setPermissionMode' },
       'agent.goal.set': { args: (t) => ({ target: t, objective: 'Ship' }), effect: 'changeGoal' },
+      'agent.queuedPrompt.steer': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
+      'agent.queuedPrompt.delete': { args: t => ({ target: t, promptId: 'queued' }), effect: 'updateQueuedPrompt' },
       'agent.backend.set': { args: (t) => ({ target: t, backend: 'claude' }), effect: 'setBackend' },
       'agent.restart': { args: (t) => t, effect: 'restart' },
       'agent.close.preview': { args: (t) => t, effect: 'closePreview', read: true },
@@ -340,7 +342,7 @@ describe('companion authorization gateway', () => {
     function ready(row: Row) {
       const f = fixture();
       const agent = { ...workspace.agents[0]!, ...row.agent };
-      const current = { ...workspace, agents: [agent, workspace.agents[1]!], backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
+      const current = { ...workspace, queuedPrompts: [{ id: 'queued', agentId: 'agent', text: 'Next instruction' }], agents: [agent, workspace.agents[1]!], backends: { team: ['codex' as const, 'claude' as const] }, agentRequests: { agent: [question] } };
       f.port.workspace.mockResolvedValue(current);
       f.port.conversation.mockResolvedValue({ type: `${agent.backend}.conversationSnapshotChanged`, backend: agent.backend, agentId: 'agent', payload: { snapshot: { messages: [{ id: 'shot', parts: [{ type: 'text', text: '[Shot](/tmp/shot.png)' }] }] } } });
       return { f, current, target: { ...target, sessionId: companionSessionId(agent) } };

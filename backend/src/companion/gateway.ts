@@ -32,6 +32,7 @@ const requestOutcomeSchema = z.discriminatedUnion('kind', [
 const closeInputSchema = z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.object({
+  followUpBehavior: z.enum(['queue', 'steer']).optional(),
   skills: z.array(z.object({ name: z.string().min(1).max(500), path: z.string().min(1).max(4096) }).strict()).max(100).optional(),
   model: z.string().min(1).max(200).nullable().optional(), reasoningEffort: z.string().min(1).max(40).nullable().optional(),
   serviceTier: z.string().min(1).max(80).nullable().optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
@@ -83,6 +84,7 @@ export type GatewayPort = {
   plugins?(agentId: string): Promise<BackendPluginSummary[]>;
   skills(agentId: string): Promise<BackendSkillSummary[]>;
   changeGoal?(agentId: string, objective: string | null): Promise<void>;
+  updateQueuedPrompt?(target: CompanionTarget, promptId: string, action: 'steer' | 'delete'): Promise<void>;
   interrupt(agentId: string): Promise<void>;
   restart(agentId: string): Promise<void>;
   branches(repositoryRoot: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
@@ -122,6 +124,15 @@ const withTarget = <Input>(input: z.ZodType<Input>) => (args: unknown) => {
   const { target, ...rest } = z.looseObject({ target: targetSchema }).parse(args);
   return { target, input: input.parse(rest) };
 };
+const queuedPromptOperation = (action: 'steer' | 'delete') => agentOperation(withTarget(z.object({ promptId: identity }).strict()))({
+  check: (agent, { promptId }, workspace) => {
+    if (!workspace.queuedPrompts?.some(prompt => prompt.id === promptId && prompt.agentId === agent.id)) throw new Error('Prompt is no longer queued.');
+  },
+  act: async (port, _agent, { promptId }, target) => {
+    if (!port.updateQueuedPrompt) throw new Error('Queue actions unavailable.');
+    await port.updateQueuedPrompt(target, promptId, action); return {};
+  },
+});
 /** Provider snapshots must belong to the agent's current session; Claude and Antigravity can rebind a session id mid-conversation, so their frame is this agent's own replica. */
 function currentReset(frame: CompanionReset, current: CompanionAgent, target: CompanionTarget) {
   const session = current.backendSession;
@@ -133,6 +144,8 @@ function currentReset(frame: CompanionReset, current: CompanionAgent, target: Co
 }
 /** Every operation a phone may call on an agent; none can bypass the dispatcher's target and grant checks. */
 const agentOperations = {
+  'agent.queuedPrompt.steer': queuedPromptOperation('steer'),
+  'agent.queuedPrompt.delete': queuedPromptOperation('delete'),
   'conversation.image.read': agentOperation(withTarget(z.object({ path: z.string().min(1).max(4096) }).strict()))({
     act: async (port, agent, { path }, target) => {
       const frame = currentReset(await port.conversation(agent.id), agent, target);

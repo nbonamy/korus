@@ -16,6 +16,13 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('shares queued text for visible agents without prompt options or attachment paths', () => {
+    const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})], general: {} as AppSnapshot['general'],
+      queuedPrompts: ['keep', 'worker', 'missing'].map(agentId => ({ id: agentId, agentId, text: 'Follow up', createdAt: now, options: { attachments: [{ type: 'file' as const, name: 'note.txt', path: '/private/note.txt' }] } })),
+      missions: [{ execution: { runs: [{ workerId: 'worker' }] } }] as unknown as AppSnapshot['missions'] });
+    expect(projectCompanionWorkspace(workspace).queuedPrompts).toStrictEqual([{ id: 'keep', agentId: 'keep', text: 'Follow up' }]);
+    expect(projectCompanionWorkspace({ teams, agents: [] }).queuedPrompts).toStrictEqual([]);
+  });
   it('includes the same read revision used by the desktop', () => {
     const readState = { revision: 7, readRevision: 5 };
     const projected = projectCompanionWorkspace({ teams, agents: [agent('readable', { readState })] });

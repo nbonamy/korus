@@ -19,6 +19,9 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  queuedPrompts: { id: string; text: string }[];
+  queuedPromptPending: string | null;
+  queuedPromptFailed: boolean;
   projectRepositories: ReturnType<typeof createCompanionState>['projectRepositories']['value'];
   projectBranches: ReturnType<typeof createCompanionState>['projectBranches']['value'];
   usage: ReturnType<typeof createCompanionState>['usage']['value'];
@@ -110,8 +113,9 @@ export type EngineCommand =
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
-  | { type: 'send'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
+  | { type: 'queuedPrompt'; target: CompanionTarget; promptId: string; action: 'steer' | 'delete' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
   | { type: 'confirmCloseSession'; agentId: string; deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean }
   | { type: 'cancelCloseSession' }
@@ -208,6 +212,9 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
+      queuedPromptPending: state.queuedPromptPending.value,
+      queuedPromptFailed: state.queuedPromptFailed.value,
       projectRepositories: state.projectRepositories.value,
       projectBranches: state.projectBranches.value,
       pushRegistrationFailed: state.pushRegistrationFailed.value,
@@ -325,11 +332,12 @@ export function createEngine(port: EnginePort) {
   async function send(command: Extract<EngineCommand, { type: 'send' }>) {
     const onResolved = (status: 'accepted' | 'rejected') => { if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status }); };
     const frame = state.conversation.value;
-    if (!frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, uploads: command.uploads, onResolved });
+    const followUpBehavior = command.followUpBehavior;
+    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
     const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
-    const result = await state.submit(command.text, { ...command.options, uploads: command.uploads, onResolved });
+    const result = await state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
     if (state.error.value || result !== 'accepted') { pending.splice(pending.indexOf(entry), 1); postConversation(); }
     return result;
   }
@@ -350,6 +358,7 @@ export function createEngine(port: EnginePort) {
   async function dispatch(command: EngineCommand): Promise<void> {
     switch (command.type) {
       case 'pushRegistration': return state.registerPush(command.registration);
+      case 'queuedPrompt': return state.updateQueuedPrompt(command.target, command.promptId, command.action);
       case 'openNotification': {
         const target = command.target;
         const epoch = ++notificationEpoch;

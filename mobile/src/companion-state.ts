@@ -50,6 +50,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const sessionActionFailed = ref(false);
   const pendingGoals = reactive(new Set<string>());
   const goalError = ref(false);
+  const queuedPromptPending = ref<string | null>(null);
+  const queuedPromptFailed = ref(false);
   const goalKey = () => JSON.stringify([laptopId.value, agentId.value]);
   const goalBusy = computed(() => pendingGoals.has(goalKey()));
 
@@ -561,6 +563,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
   const dismissSessionError = () => { sessionActionFailed.value = false; };
   async function selectAgent(id: string) {
+    if (id !== agentId.value) queuedPromptFailed.value = false;
     goalError.value = false;
     closePreview.value = null;
     sessionActionFailed.value = false;
@@ -637,7 +640,22 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === selectionEpoch && active === session) loadingOlder.value = false;
     }
   }
-  async function submit(prompt: string, sendOptions?: { attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
+  async function updateQueuedPrompt(target: CompanionTarget, promptId: string, action: 'steer' | 'delete') {
+    const active = session; const epoch = selectionEpoch;
+    const current = currentTarget();
+    if (status.value !== 'connected' || !active?.updateQueuedPrompt || queuedPromptPending.value
+      || !current || (Object.keys(current) as (keyof CompanionTarget)[]).some(key => target[key] !== current[key])
+      || !workspace.value.queuedPrompts?.some(prompt => prompt.agentId === target.agentId && prompt.id === promptId)) return;
+    queuedPromptPending.value = promptId; queuedPromptFailed.value = false;
+    try {
+      await active.updateQueuedPrompt(target, promptId, action);
+      const next = await active.getWorkspace();
+      if (active === session) applyWorkspace(next);
+    } catch {
+      if (active === session && epoch === selectionEpoch) queuedPromptFailed.value = true;
+    } finally { queuedPromptPending.value = null; }
+  }
+  async function submit(prompt: string, sendOptions?: { followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
     if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
     const target = currentTarget();
@@ -670,7 +688,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const settings = composerSettings.value;
       const composerOptions = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
-      const options = selectedSkills.length ? { ...composerOptions, skills: selectedSkills } : composerOptions;
+      const options = selectedSkills.length || sendOptions?.followUpBehavior ? { ...composerOptions, ...(selectedSkills.length ? { skills: selectedSkills } : {}), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
       const promptText = prompt.trim() ? prompt : '(no user instructions)';
       await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
@@ -753,7 +771,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
+  return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

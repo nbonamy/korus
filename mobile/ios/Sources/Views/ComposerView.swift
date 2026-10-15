@@ -42,6 +42,11 @@ struct ComposerView: View {
                 }, dismiss: { dismissedQuery = query }, retry: { loadSuggestions() })
                 .padding(.horizontal, 12)
             }
+            if !model.queuedPrompts.isEmpty { queuedMessages }
+            if model.queuedPromptFailed {
+                Text("Queue change couldn’t be confirmed. Check the queue before trying again.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 22)
+            }
             composer
         }
         .sheet(item: $picker, onDismiss: {
@@ -301,26 +306,88 @@ struct ComposerView: View {
         }
     }
 
+    private var queuedMessages: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Queued · \(model.queuedPrompts.count)", systemImage: "tray")
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(model.queuedPrompts) { prompt in
+                        HStack(spacing: 4) {
+                            Text(prompt.text.replacingOccurrences(of: "\n", with: " "))
+                                .font(.callout).lineLimit(1).truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            queueButton("Steer", icon: "arrow.up", prompt: prompt, steer: true)
+                            queueButton("Delete", icon: "trash", prompt: prompt, steer: false)
+                        }
+                        .frame(height: 44)
+                        .overlay(alignment: .bottom) {
+                            if prompt.id != model.queuedPrompts.last?.id { Divider() }
+                        }
+                    }
+                }
+            }
+            .frame(height: CGFloat(min(model.queuedPrompts.count, 2)) * 44)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Color(.systemGroupedBackground), in: .rect(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Queued messages")
+    }
+
+    private func queueButton(_ title: String, icon: String, prompt: EngineState.QueuedPrompt, steer: Bool) -> some View {
+        Button { model.updateQueuedPrompt(prompt.id, steer: steer) } label: {
+            Image(systemName: icon).font(.system(size: 15, weight: .medium))
+                .foregroundStyle(steer ? Color.accentColor : Color.secondary)
+                .frame(width: 32, height: 32)
+                .background(steer ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 9))
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.canManageSession || model.queuedPromptPending != nil)
+        .opacity(model.queuedPromptPending == prompt.id ? 0.4 : 1)
+        .accessibilityLabel("\(title) queued message: \(prompt.text)")
+    }
+
     private var sendButton: some View {
         let empty = model.composerDrafts.empty
         let stopping = primaryAction == .stop
         let sending = primaryAction == .sending
+        let choosing = model.isWorking && !model.goalMode && primaryAction == .send
+        let mode = model.composerPreferences.followUpBehavior
         let disabled = sending || (stopping ? !model.canManageSession || !model.canInterrupt : empty || !model.canSend || model.composerDrafts.importing || (!model.supportsAttachments && !model.composerDrafts.items.isEmpty))
-        return Button {
-            if stopping { model.interrupt() }
-            else { focused = false; model.send() }
-        } label: {
-            Group {
-                if sending { ProgressView().tint(.white) }
-                else { Image(systemName: stopping ? "stop.fill" : "arrow.up") }
+        let label = Group {
+            if sending { ProgressView().tint(.white) }
+            else { Image(systemName: stopping ? "stop.fill" : "arrow.up") }
+        }
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 36, height: 36)
+            .background(disabled && !sending ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
+        return Group {
+            if choosing {
+                Menu {
+                    Button("Steer", systemImage: "arrow.up") { focused = false; model.send(mode: .steer) }
+                    Button("Queue", systemImage: "tray") { focused = false; model.send(mode: .queue) }
+                } label: { label } primaryAction: {
+                    focused = false; model.send()
+                }
+                .menuIndicator(.hidden)
+                .menuOrder(.fixed)
+            } else {
+                Button {
+                    if stopping { model.interrupt() }
+                    else { focused = false; model.send() }
+                } label: { label }
             }
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(disabled && !sending ? Color.secondary.opacity(0.35) : Color.accentColor, in: .circle)
         }
         .disabled(disabled)
         .animation(.smooth(duration: 0.2), value: primaryAction)
-        .accessibilityLabel(sending ? "Sending" : stopping ? "Stop" : model.goalMode ? "Set goal" : "Send")
+        .accessibilityLabel(sending ? "Sending" : stopping ? "Stop" : model.goalMode ? "Set goal" : choosing ? mode == .queue ? "Queue message" : "Steer agent" : "Send")
+        .accessibilityHint(choosing ? "Touch and hold to choose Queue or Steer." : "")
     }
 }

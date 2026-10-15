@@ -49,12 +49,13 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
       status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   });
-  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], backends: source.backends ?? {}, agentRequests: Object.fromEntries(agents.map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])) };
+  return { teams, agents, repositoryIcons, modelFavorites: source.modelFavorites ?? [], backends: source.backends ?? {}, agentRequests: Object.fromEntries(agents.map((agent) => [agent.id, source.agentRequests?.[agent.id] ?? []])),
+    queuedPrompts: (source.queuedPrompts ?? []).filter(prompt => agents.some(agent => agent.id === prompt.agentId)).map(({ id, agentId, text }) => ({ id, agentId, text })) };
 }
 
 /** The laptop's workspace as the desktop sidebar lists it: mission-owned workers stay out of the agent list. */
-export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & Partial<Pick<AppSnapshot, 'missions' | 'providerConnections' | 'remoteConnections' | 'activeTeamId' | 'agentRequests'>>): CompanionWorkspace {
+export function companionWorkspaceOf(snapshot: Pick<AppSnapshot, 'teams' | 'agents' | 'general'> & Partial<Pick<AppSnapshot, 'missions' | 'providerConnections' | 'remoteConnections' | 'activeTeamId' | 'agentRequests' | 'queuedPrompts'>>): CompanionWorkspace {
   const workerIds = new Set((snapshot.missions ?? []).flatMap((mission) => mission.execution?.runs.flatMap((run) => run.workerId ? [run.workerId] : []) ?? []));
-  return { agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
+  return { queuedPrompts: snapshot.queuedPrompts?.map(({ id, agentId, text }) => ({ id, agentId, text })), agentRequests: snapshot.agentRequests ?? {}, teams: snapshot.teams, agents: snapshot.agents.filter((agent) => !workerIds.has(agent.id)), repositoryIcons: snapshot.general.repositoryIcons, modelFavorites: snapshot.general.modelFavorites,
     backends: Object.fromEntries(snapshot.teams.map((team) => [team.id, enabledAgentBackends({ providerConnections: providerConnectionsForTeam({ ...snapshot, remoteConnections: snapshot.remoteConnections ?? { connections: [] } } as AppSnapshot, team.id) })])) };
 }

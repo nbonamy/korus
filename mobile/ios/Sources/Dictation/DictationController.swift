@@ -1,11 +1,17 @@
 import Foundation
 import Observation
 
+struct DictationResult: Sendable {
+    let text: String
+    /// A completed utterance within the audio stream; the recording can continue.
+    var finalizedUtteranceStart: TimeInterval? = nil
+}
+
 /// The operating system owns recording and recognition; this controller owns the draft lifecycle.
 @MainActor
 protocol DictationCapture: AnyObject {
     func authorize() async throws
-    func start(update: @escaping @MainActor (String) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws
+    func start(update: @escaping @MainActor (DictationResult) -> Void, completion: @escaping @MainActor (Error?) -> Void) throws
     func finish()
     func cancel()
 }
@@ -30,27 +36,50 @@ final class DictationController {
         phase = .requesting
         let id = UUID()
         generation = id
-        let prefix = text.isEmpty || text.last?.isWhitespace == true ? text : text + " "
         do {
             let permission = Task { try await capture.authorize() }
             authorization = permission
             try await permission.value
-            guard generation == id else { return }
-            authorization = nil
-            try capture.start(update: { [weak self] transcript in
-                guard let self, self.generation == id else { return }
-                update(prefix + transcript)
-            }, completion: { [weak self] failure in
-                guard let self, self.generation == id else { return }
-                self.cancel()
-                self.error = failure?.localizedDescription
-            })
-            if generation == id { phase = .recording }
         } catch {
             guard generation == id else { return }
             cancel()
             self.error = error.localizedDescription
+            return
         }
+        guard generation == id else { return }
+        authorization = nil
+        do { try beginCapture(text: text, update: update) }
+        catch { cancel(); self.error = error.localizedDescription }
+    }
+
+    private func beginCapture(text: String, update: @escaping @MainActor (String) -> Void) throws {
+        let id = UUID()
+        generation = id
+        let prefix = text.isEmpty || text.last?.isWhitespace == true ? text : text + " "
+        var utterances: [(start: TimeInterval, text: String)] = []
+        var draft = text
+        phase = .recording
+        try capture.start(update: { [weak self] result in
+            guard let self, self.generation == id, !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            if let start = result.finalizedUtteranceStart {
+                // Repeated/cumulative final results replace their audio range rather than duplicating it.
+                utterances.removeAll { $0.start >= start }
+                utterances.append((start, result.text))
+                draft = prefix + utterances.map(\.text).joined(separator: " ")
+            } else {
+                draft = prefix + (utterances.map(\.text) + [result.text]).joined(separator: " ")
+            }
+            update(draft)
+        }, completion: { [weak self] failure in
+            guard let self, self.generation == id else { return }
+            if failure == nil && self.phase == .recording {
+                do { try self.beginCapture(text: draft, update: update) }
+                catch { self.cancel(); self.error = error.localizedDescription }
+            } else {
+                self.cancel()
+                self.error = failure?.localizedDescription
+            }
+        })
     }
 
     /// Stop capturing immediately, but let recognition deliver its last words.

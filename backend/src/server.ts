@@ -1860,6 +1860,8 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const prompt = requirePromptText(params.prompt, params.options as SendPromptOptions | undefined);
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
         return this.routeAgentSnapshotRequest(
           message.id,
           agentId,
@@ -1868,15 +1870,25 @@ export class AppBackendServer {
             agentId,
             prompt,
             options: params.options as SendPromptOptions | undefined,
+            ...expectation,
           },
           async (agent) => {
+            assertPromptSession(agent, expectedSessionId);
             const options = params.options as SendPromptOptions | undefined;
-            const result = this.agentPrompts.send(agentId, prompt, options, clientId);
+            // Phone receipts await provider acceptance when idle; busy sends enter the desktop queue.
+            let result: AppSnapshot;
+            if (expectedSessionId !== undefined && this.agentPrompts.canStart(agent)) {
+              await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
+              result = this.snapshot;
+            } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
             if (prompt.trim() || options?.attachments?.length) this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return result;
           },
-        );
+        ).catch(error => {
+          if (error instanceof PromptRejectedError) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error.message);
+          throw error;
+        });
       }
       case backendMethods.agentPromptSteer: {
         const params = requireRecord(message.params);
@@ -1926,7 +1938,10 @@ export class AppBackendServer {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptDelete, { agentId, promptId }, async () => {
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptDelete, { agentId, promptId, ...expectation }, async agent => {
+          assertPromptSession(agent, expectedSessionId);
           this.agentPrompts.dequeue(agentId, promptId);
           return this.snapshot;
         });
@@ -1948,11 +1963,15 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
         const replacement = params.prompt === undefined ? undefined : requireString(params.prompt, 'prompt').trim();
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptSteer, {
           agentId,
           promptId,
+          ...expectation,
           ...(replacement === undefined ? {} : { prompt: replacement }),
         }, async (agent) => {
+          assertPromptSession(agent, expectedSessionId);
           const queuedPrompt = (this.snapshot.queuedPrompts ?? []).find((prompt) => prompt.agentId === agentId && prompt.id === promptId);
           if (!queuedPrompt) return this.snapshot;
           const prompt = replacement ?? queuedPrompt.text;
@@ -1963,6 +1982,7 @@ export class AppBackendServer {
             agent,
             prompt,
             options: queuedPrompt.options,
+            ...expectation,
           }) as BackendSendResult;
           agent.backendSession = result.backendSession;
           this.agentPrompts.dequeue(agentId, promptId);

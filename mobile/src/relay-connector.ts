@@ -271,6 +271,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           await request(host, 'agent.goal.set', { target, objective });
         },
         async interrupt(agentId) { await request(host, 'agent.interrupt', target(agentId)); },
+        async updateQueuedPrompt(target, promptId, action) { await request(host, `agent.queuedPrompt.${action}`, { target, promptId }); },
         async restartSession(agentId) { await request(host, 'agent.restart', target(agentId)); },
         async previewCloseSession(agentId) { return request(host, 'agent.close.preview', target(agentId)); },
         async closeSession(target, input) { await request(host, 'agent.close', { target, ...(input ? { input } : {}) }); },

@@ -53,7 +53,7 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
   cleanup.push(() => server.close());
   const backend: CompanionBackendPort = {
     async request<Result>(method: string, params?: unknown): Promise<Result> {
-      if (method === backendMethods.agentPromptSteer) beforeDispatch?.(agent);
+      if ([backendMethods.agentPromptSteer, backendMethods.agentPromptSend, backendMethods.agentQueuedPromptSteer, backendMethods.agentQueuedPromptDelete].includes(method as never)) beforeDispatch?.(agent);
       const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
       if (response && 'error' in response && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError(response.error.message);
       if (!response || !('result' in response)) throw new Error('Backend request failed');
@@ -75,6 +75,86 @@ async function fixture(status: 'idle' | 'working' | 'awaitingInput', rejectSteer
 }
 
 describe('mobile prompt admission', () => {
+  it.each(['steer', 'delete'] as const)('rechecks the session at the backend before a queued %s', async action => {
+    const f = await fixture('working', false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' }];
+    await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
+    expect(f.snapshot.queuedPrompts).toHaveLength(1);
+    expect(f.steerPrompt).not.toHaveBeenCalled();
+  });
+
+  it.each(['steer', 'delete'] as const)('applies %s to the selected queued prompt without changing its sibling', async action => {
+    const f = await fixture('working');
+    f.snapshot.queuedPrompts = [
+      { id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Selected instruction', options: f.command.options },
+      { id: 'sibling', createdAt: '', agentId: 'agent-phone', text: 'Keep this queued' },
+    ];
+    await f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' });
+    expect(f.snapshot.queuedPrompts).toStrictEqual([{ id: 'sibling', createdAt: '', agentId: 'agent-phone', text: 'Keep this queued' }]);
+    if (action === 'steer') expect(f.steerPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), 'Selected instruction', f.command.options);
+    else expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+  });
+
+  it('retains a queued prompt when steering fails', async () => {
+    const f = await fixture('working', true);
+    f.snapshot.queuedPrompts = [{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Keep on failure' }];
+    await expect(f.gateway.request('phone', 'agent.queuedPrompt.steer', { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
+    expect(f.snapshot.queuedPrompts).toStrictEqual([{ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Keep on failure' }]);
+    expect(f.steerPrompt).toHaveBeenCalledOnce();
+  });
+
+  it.each(['steer', 'delete'] as const)('rejects %s for another agent queue or a stale session', async action => {
+    const f = await fixture('working');
+    f.snapshot.queuedPrompts = [{ id: 'other', createdAt: '', agentId: 'another-agent', text: 'Private queue' }];
+    await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'other' })).rejects.toThrow();
+    f.snapshot.queuedPrompts!.push({ id: 'selected', createdAt: '', agentId: 'agent-phone', text: 'Original session' });
+    f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'replacement' };
+    await expect(f.gateway.request('phone', `agent.queuedPrompt.${action}`, { target: f.command.target, promptId: 'selected' })).rejects.toThrow();
+    expect(f.snapshot.queuedPrompts).toHaveLength(2);
+    expect(f.steerPrompt).not.toHaveBeenCalled();
+  });
+
+  it.each(['working', 'awaitingInput'] as const)('queues once on the host and exposes the queue to the phone (%s)', async status => {
+    const f = await fixture(status);
+    const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'accepted' });
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+    expect(f.steerPrompt).not.toHaveBeenCalled();
+    expect(f.snapshot.queuedPrompts).toStrictEqual([expect.objectContaining({ agentId: 'agent-phone', text: command.text, options: f.command.options })]);
+    const workspace = await f.gateway.request('phone', 'snapshot.get', {});
+    expect(workspace).toMatchObject({ queuedPrompts: [{ id: f.snapshot.queuedPrompts![0]!.id, agentId: 'agent-phone', text: command.text }] });
+    f.snapshot.agents[0]!.status = { type: 'idle' };
+    await f.gateway.request('phone', 'prompt.submit', command);
+    expect(f.snapshot.queuedPrompts).toHaveLength(1);
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+    await expect(f.gateway.request('phone', 'prompt.submit', { ...command, options: { ...command.options, followUpBehavior: 'steer' } })).rejects.toThrow('reused');
+  });
+
+  it('waits for provider acceptance when Queue is chosen for an idle agent', async () => {
+    const f = await fixture('idle');
+    let accept!: () => void;
+    f.sendPrompt.mockImplementationOnce(async () => { await new Promise<void>(resolve => { accept = resolve; }); return { backendSession: { kind: 'codex', threadId: 'thread-phone' }, turnId: 'queued-idle' }; });
+    const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
+    const sending = f.gateway.request('phone', 'prompt.submit', command);
+    try {
+      await vi.waitFor(() => expect(accept).toBeTypeOf('function'));
+      expect(await f.gateway.request('phone', 'command.status', { clientCommandId: command.clientCommandId })).toMatchObject({ state: 'pending' });
+    } finally { accept?.(); }
+    expect(await sending).toMatchObject({ state: 'accepted' });
+    expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
+    expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'agent-phone' }), command.text, expect.objectContaining(f.command.options));
+    expect(f.steerPrompt).not.toHaveBeenCalled();
+  });
+
+  it('rejects a queued send if its session changes after gateway admission', async () => {
+    const f = await fixture('working', false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    const command = { ...f.command, options: { ...f.command.options, followUpBehavior: 'queue' } };
+    expect(await f.gateway.request('phone', 'prompt.submit', command)).toMatchObject({ state: 'rejected' });
+    expect(f.snapshot.queuedPrompts ?? []).toStrictEqual([]);
+    expect(f.sendPrompt).not.toHaveBeenCalled();
+  });
+
   it.each(['idle', 'working'] as const)('rejects a session replaced after gateway admission without dispatching (%s)', async status => {
     const f = await fixture(status, false, agent => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
     const command = { ...f.command, attachments: [{ type: 'file', name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('note').toString('base64') }] };

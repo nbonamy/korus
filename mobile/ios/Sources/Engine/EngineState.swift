@@ -2,6 +2,10 @@ import Foundation
 
 /// The engine's state as it arrives from JSON; `AppModel` maps it onto the view models the screens draw.
 struct EngineState: Decodable {
+    struct QueuedPrompt: Decodable, Identifiable, Equatable { let id: String; let text: String }
+    let queuedPrompts: [QueuedPrompt]?
+    let queuedPromptPending: String?
+    let queuedPromptFailed: Bool?
     struct Laptop: Decodable, Hashable { let id: String; let name: String }
     struct Session: Decodable {
         struct Status: Decodable { let type: AgentStatus }
