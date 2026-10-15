@@ -61,8 +61,16 @@ export class ClientPreferencesService {
     } else {
       const split = splitSettingsInput((input ?? {}) as UpdateSettingsInput);
       if (Object.keys(split.policy).length) throw new Error('Backend policies must be updated through settings/update.');
+      const favoritePatch = split.preferences.general?.backlogRepositoryFavorites;
+      if (favoritePatch !== undefined) {
+        split.preferences.general!.backlogRepositoryFavorites = { ...snapshot.general.backlogRepositoryFavorites, ...favoritePatch };
+      }
       updateSettingsInSnapshot(snapshot, split.preferences);
       preferences.general = { ...preferences.general, ...split.preferences.general };
+      if (split.preferences.general?.browserBookmarks !== undefined) {
+        preferences.general.browserBookmarks = snapshot.general.browserBookmarks;
+      }
+      if (favoritePatch !== undefined) preferences.general.backlogRepositoryFavorites = snapshot.general.backlogRepositoryFavorites;
       preferences.theme = { ...preferences.theme, ...split.preferences.theme };
     }
     preferences.activeAgentId = snapshot.activeAgentId;

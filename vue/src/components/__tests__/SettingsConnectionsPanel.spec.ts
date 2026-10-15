@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SourceFolderListInput } from '@workspace/core/contracts';
+import type { CompanionControl } from '@workspace/core/companion-protocol';
 import { codexPairingUrl } from '../../device-pairing';
 import SettingsConnectionsPanel from '../SettingsConnectionsPanel.vue';
 const installedCodexVersion = '0.159.3';
@@ -49,6 +50,44 @@ describe('SettingsConnectionsPanel', () => {
         preventSleepWhenRemoteAccessEnabled: false,
       },
     });
+  });
+
+  it('accepts the host companion control function without a prop type warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const companionControl = vi.fn(async () => ({ status: { enabled: false } }) as never);
+    const wrapper = mount(SettingsConnectionsPanel, {
+      props: { getRemoteControlStatus: async () => ({ status: 'connected' }), companionControl },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Mobile access');
+    expect(companionControl).toHaveBeenCalledWith({ action: 'status' });
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('companionControl');
+  });
+
+  it('saves the mobile keep-awake preference while the relay reconnects and hides it when access is disabled', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const status = { configured: true, enabled: true, connected: false, hostId: 'host', relayOrigin: '', devices: [], pending: [] };
+    const companionControl = vi.fn(async (input: CompanionControl) => {
+      if (input.action === 'disable') status.enabled = false;
+      return { status: { ...status } };
+    });
+    const wrapper = mount(SettingsConnectionsPanel, { props: {
+      settings: { preventSleepWhenRemoteAccessEnabled: true }, updateSettings, companionControl,
+    } });
+    await flushPromises();
+    const mobile = wrapper.get('[aria-labelledby="settings-mobile-title"]');
+    const keepAwake = () => mobile.find('[role="switch"][aria-label="Keep this Mac awake"]');
+    expect(keepAwake().exists()).toBe(true);
+    await keepAwake().setValue(false);
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith({ general: { preventSleepWhenRemoteAccessEnabled: false } });
+    await wrapper.setProps({ settings: { preventSleepWhenRemoteAccessEnabled: false } });
+    expect((keepAwake().element as HTMLInputElement).checked).toBe(false);
+    await mobile.get('[role="switch"][aria-label="Allow connections"]').setValue(false);
+    await flushPromises();
+    expect(keepAwake().exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('hides the remote-access keep-awake setting while device connections are disabled', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
+import { matchingBranchUpstream, canonicalGitRemoteIdentity, repositoryIconKeyForRemote, sanitizeGitRemoteUrl } from '../git-remote';
 
 describe('git remote identity', () => {
   it('removes credentials and non-identity URL parts before persistence', () => {
@@ -18,5 +18,20 @@ describe('git remote identity', () => {
   it('rejects local paths and malformed remotes', () => {
     expect(sanitizeGitRemoteUrl('/src/codex')).toBeUndefined();
     expect(repositoryIconKeyForRemote('/src/codex')).toBeUndefined();
+  });
+});
+
+
+describe('worktree remote deletion choices', () => {
+  it.each([
+    ['feature/new', 'origin/feature/new', 'main', 'origin/feature/new'],
+    ['feature/new', 'fork/feature/new', 'main', 'fork/feature/new'],
+    ['feature/new', 'origin/main', 'main', undefined],
+    ['feature/new', undefined, 'main', undefined],
+    ['main', 'origin/main', 'main', undefined],
+    ['feature', 'origin/other/feature', 'main', undefined],
+    [undefined, 'origin/main', 'main', undefined],
+  ])('offers only a matching tracked branch (%s, %s)', (branch, upstream, baseBranch, expected) => {
+    expect(matchingBranchUpstream(branch, upstream, baseBranch)).toBe(expected);
   });
 });

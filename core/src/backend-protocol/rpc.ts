@@ -73,6 +73,7 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
     result: AppSnapshot;
@@ -133,9 +134,29 @@ export type AppBackendRequestMap = {
     params: undefined;
     result: ClientState;
   };
+  [backendMethods.agentGitLogGet]: {
+    params: { agentId: string; input?: import('../contracts').AgentGitLogInput };
+    result: import('../contracts').AgentGitLogPage;
+  };
+  [backendMethods.agentGitLogCommitGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogCommitInput };
+    result: import('../contracts').AgentGitLogDetails;
+  };
+  [backendMethods.agentGitLogFileGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogFileInput };
+    result: import('../contracts').AgentGitLogFileDiff;
+  };
   [backendMethods.agentGitDiffGet]: {
     params: { agentId: string; target?: AgentGitDiffTarget };
     result: import('../contracts').AgentGitDiff;
+  };
+  [backendMethods.agentGitBranchWorkPreview]: {
+    params: { agentId: string };
+    result: import('../branch-current-work').BranchWorkPreview;
+  };
+  [backendMethods.agentGitBranchWork]: {
+    params: { agentId: string; input: import('../branch-current-work').BranchWorkInput };
+    result: import('../branch-current-work').BranchWorkResult;
   };
   [backendMethods.agentGitWorkflowGet]: {
     params: { agentId: string };

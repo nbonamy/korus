@@ -78,6 +78,24 @@ describe('RemoteEngineConnections', () => {
     wrapper.unmount();
   });
 
+  it('installs Antigravity on its owning remote host and refreshes its availability without signing in', async () => {
+    const { api } = createClientApiMock();
+    const engine = { backend: 'antigravity' as const, installed: false, connected: false, checking: false };
+    api.getProviderConnections.mockResolvedValueOnce([engine]).mockResolvedValue([{ ...engine, installed: true }]);
+    api.installProvider.mockResolvedValue({ backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/remote/app/antigravity-home' });
+    configureAppClient({ platform: 'desktop', api });
+    const wrapper = mount(RemoteEngineConnections, { props: { connection } });
+    await flushPromises();
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    await flushPromises();
+    expect(api.installProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'wall-e');
+    expect(api.getProviderConnections).toHaveBeenLastCalledWith('wall-e');
+    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
+    expect(wrapper.get('.form-row__control button').text()).toBe('Connect');
+    expect(api.authenticateProvider).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it('rechecks the owning remote host after external installation and signs in separately', async () => {
     const { api } = createClientApiMock();
     const missing = (['codex', 'claude'] as const).map(backend => ({ backend, installed: false, connected: false, checking: false }));

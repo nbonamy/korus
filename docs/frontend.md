@@ -114,6 +114,7 @@ Search by behavior first.
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `vue/src/shared/form/` |
+| Single-line text with an inline clear action | `ClearableTextInput` | `vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `vue/src/shared/` |
 | Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |
@@ -122,6 +123,23 @@ Search by behavior first.
 | Dense structured data | `AppDataList` | `vue/src/components/` |
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
 | Worktree provisioning progress | `WorkspaceProvisioningProgressDialog` | `vue/src/components/` |
+
+App-owned keyboard shortcuts live in `core/src/keyboard-shortcuts.ts`. Native menus,
+native input routing, shell matching and the shortcut reference share these
+binding declarations. Availability reflects the host and current surface; provider
+composer bindings remain SDK-owned. Reference and command-palette opening bindings
+are handled in the renderer so editable targets and modal dialogs retain their input.
+The command palette and shortcut reference share the canonical quick-open dialog's
+search, rows and key hints. The reference groups read-only rows; the palette invokes
+existing shell handlers. Their action icons share renderer presentation metadata;
+Git actions retain the icons supplied by their workflow control.
+Quick-open rows support sibling actions that appear on hover or keyboard focus,
+keeping secondary actions separate from the primary row target.
+Palette entries declare their sections explicitly and preserve owning-menu order.
+Settings destinations share their icons, labels and host/provider availability in
+`components/settings-tabs.ts`, consumed by both the sidebar and command search.
+Git command availability and dispatch come from the focused agent's workflow control,
+which retains ownership of operation state, confirmations and host routing.
 
 ## Interaction
 
@@ -162,6 +180,17 @@ Search by behavior first.
   timing may smooth completion but must never imply a phase finished early.
 - The in-app browser's `<webview>` sits in the workspace DOM so menus and dialogs
   layer over it; never hide the page to expose an overlay.
+
+Native mobile sheets use an opaque, light neutral canvas with white grouped rows
+and subtle separators, adapting both surfaces in dark mode. A shared sheet style keeps settings destinations, forms and
+footers consistent in light and dark mode. Camera and image content retain their
+own contrast treatment; system pickers retain their native controls.
+Long-running operations replace their sheet forms with `AppSheetProgress`, using
+one centered layout for the operation, context and indeterminate indicator. Progress
+uses the medium sheet height; multi-step sheets keep Cancel at the trailing edge
+and Back at the leading edge throughout the flow.
+Actions and dismissal remain unavailable until the operation resolves; failures
+return to the form with its inputs preserved.
 
 ## Accessibility And Copy
 

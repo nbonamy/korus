@@ -50,7 +50,7 @@ async function review(text,reply) {
   const tools=await rpc('tools/list',{});
   if(!tools.tools.some(tool=>tool.name==='report_finding')||tools.tools.some(tool=>tool.name==='create-agent')) throw new Error('Wrong review scope');
   const ledgerFile=require('node:path').join(process.cwd(),'fixture-ledger.json');
-  if(text.startsWith('Fix the ')) {
+  if(text.split('</context>').at(-1).trim().startsWith('Fix the ')) {
    const finding=JSON.parse(fs.readFileSync(ledgerFile,'utf8'));
    fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-code.txt'),'fixed');
    await call('update_finding',{findingId:finding.id,status:'fixed',evidence:'Fixture external tool wrote and verified fixed content.'});

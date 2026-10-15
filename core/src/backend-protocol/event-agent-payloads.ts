@@ -1,3 +1,5 @@
+import { isAgentReadState } from '../agent-read-state';
+import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isThreadFlags } from '../thread-flags';
 import { isAppTextDescriptor } from '../app-text';
@@ -70,7 +72,7 @@ function expectBackendSession(value: unknown, path: string): void {
   expectString(value.sessionId, `${path}.sessionId`);
   if (value.kind === 'antigravity') return;
   expectLiteral(value.transport, ['stdio', 'websocket'], `${path}.transport`);
-  ['transcriptSessionId', 'serverUrl', 'model', 'reasoningEffort'].forEach(
+  ['transcriptSessionId', 'transcriptFolder', 'serverUrl', 'model', 'reasoningEffort'].forEach(
     (key) => expectOptional(value, key, path, expectString),
   );
 }
@@ -212,6 +214,9 @@ function expectPullRequest(value: unknown, path: string): void {
 function expectAgentUpdate(value: unknown, path: string): void {
   expectRecord(value, path);
   expectString(value.id, `${path}.id`);
+  expectOptional(value, 'delegationContext', path, (candidate, candidatePath) => {
+    if (!isDelegationContext(candidate)) throw new Error(`${candidatePath}: invalid delegation context`);
+  });
   [
     'teamId',
     'delegatedByAgentId',
@@ -262,6 +267,7 @@ function expectAgentUpdate(value: unknown, path: string): void {
   expectOptional(value, 'plan', path, expectPlan);
   expectOptional(value, 'goal', path, expectGoal);
   expectOptional(value, 'threadFlags', path, (candidate, candidatePath) => expectNullable(candidate, candidatePath, (flagValue, flagPath) => expectKnownShape(flagValue, flagPath, isThreadFlags, 'thread flags')));
+  expectOptional(value, 'readState', path, (value, path) => expectKnownShape(value, path, isAgentReadState, 'agent read state'));
   expectOptional(value, 'isRegistered', path, expectBoolean);
   expectOptional(value, 'status', path, expectAgentStatus);
 }

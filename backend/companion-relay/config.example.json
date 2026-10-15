@@ -1,0 +1,6 @@
+{
+  "listen": "/ip4/127.0.0.1/tcp/47800/ws",
+  "trustedProxy": true,
+  "stateDirectory": "/var/lib/companion-relay",
+  "healthPort": 47802
+}

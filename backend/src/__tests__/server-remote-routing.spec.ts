@@ -14,6 +14,21 @@ import {
 
 describe('AppBackendServer', () => {
 
+  it('routes branch browsing to the selected host and keeps token reads on that host', async () => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    const branches = [{ name: 'main', isDefault: true }];
+    const listBranches = vi.fn().mockResolvedValue(branches);
+    const remoteClients = { request: vi.fn().mockResolvedValue(branches) };
+    const server = new AppBackendServer({ version: 'test', snapshot, workIntegrations: { listBranches } as never, remoteClients: remoteClients as never });
+    const params = { provider: 'github', sourceId: 'org/repo' };
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'workProvider/branches/list', params })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledExactlyOnceWith('github', 'org/repo');
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'workProvider/branches/list', params: { ...params, location: { kind: 'remote', remoteConnectionId: connection.id } } })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledOnce();
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'workProvider/branches/list', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
   it('rechecks provider installation on the owning remote host without running a local installer', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
@@ -489,7 +504,10 @@ describe('AppBackendServer', () => {
     })).rejects.toThrow('This session does not have a project workspace.');
   });
 
-  it('routes remote agent prompts to the owning remote daemon', async () => {
+  it.each([
+    { method: 'agent/prompt/send', delivery: {} },
+    { method: 'agent/prompt/steer', delivery: { startIfIdle: true, expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
+  ])('routes remote agent prompts to the owning remote daemon ($method)', async ({ method, delivery }) => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
@@ -530,10 +548,11 @@ describe('AppBackendServer', () => {
     const response = await server.handleMessage({
       jsonrpc: '2.0',
       id: 'prompt',
-      method: 'agent/prompt/send',
+      method,
       params: {
         agentId: 'agent-remote',
         prompt: 'hello',
+        ...delivery,
       },
     });
     expect(response).toMatchObject({
@@ -557,11 +576,12 @@ describe('AppBackendServer', () => {
     expect(remoteClients.request).toHaveBeenNthCalledWith(
       2,
       snapshot.remoteConnections.connections[0],
-      'agent/prompt/send',
+      method,
       { ...{
         agentId: 'agent-remote',
         prompt: 'hello',
         options: undefined,
+        ...delivery,
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );

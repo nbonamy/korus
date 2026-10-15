@@ -1,3 +1,4 @@
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -201,6 +202,27 @@ describe('controller desktop lifecycle', () => {
     expect(backend.request.mock.calls).toEqual([
       ['telemetry/feature/begin', { feature: 'simulator.execute' }],
       ['telemetry/feature/finish', { operationId: 'local-only', outcome: 'succeeded' }],
+    ]);
+  });
+
+  it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
+    const { backend } = setup();
+    const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
+    backend.request.mockResolvedValueOnce(result);
+    const input = { action: 'decide', pendingId: 'pending-device', approve: true };
+    await expect(invoke(ipcChannels.companionControl, input)).resolves.toBe(result);
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
+  });
+
+  it('hands a review to manual through the preload and IPC without an interruption request', async () => {
+    const { backend, state } = setup();
+    backend.request.mockImplementation(async method => method === 'agent/codeReview/manual' ? state.snapshot : state.clientState);
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    await expect(api.switchCodeReviewToManual('reviewer', 'review')).resolves.toStrictEqual(state.snapshot);
+    expect(backend.request.mock.calls).toStrictEqual([
+      ['agent/codeReview/manual', { agentId: 'reviewer', sessionId: 'review' }],
+      ['client/state/get'],
     ]);
   });
 

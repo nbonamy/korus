@@ -13,6 +13,13 @@ it('routes document saves and layout changes through client-scoped operations', 
 });
 
 describe(`${product.name} web operations`, () => {
+  it('routes manual review handoff without discarding or interrupting the review', async () => {
+    const snapshot = { agents: [{ id: 'reviewer', codeReview: { id: 'review', automation: { state: 'manual' } } }] };
+    const request = vi.fn().mockResolvedValue(snapshot);
+    await expect(invokeAppWebOperation({ request }, 'switchCodeReviewToManual', ['reviewer', 'review'])).resolves.toStrictEqual(snapshot);
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentCodeReviewManual, { agentId: 'reviewer', sessionId: 'review' });
+  });
+
   it('preserves history search options and the conversation resume target expected by the daemon', async () => {
     const target = { storageState: 'active', ref: { backend: 'antigravity', folder: '/work', sessionId: 'native-history' } } as const;
     const request = vi.fn().mockResolvedValue({ agents: [] });
@@ -34,6 +41,17 @@ describe(`${product.name} web operations`, () => {
     expect(request).toHaveBeenCalledOnce();
   });
 
+  it('preserves the branch name and recovery result through the web transport', async () => {
+    const result = { state: 'recovery', folder: '/repo-work', branchName: 'feature', retainedPaths: ['file'] };
+    const request = vi.fn().mockResolvedValue(result);
+    const input = { confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature' };
+    await invokeAppWebOperation({ request }, 'previewBranchCurrentWork', ['agent']);
+    await expect(invokeAppWebOperation({ request }, 'branchCurrentWork', ['agent', input])).resolves.toStrictEqual(result);
+    expect(request.mock.calls).toStrictEqual([
+      [backendMethods.agentGitBranchWorkPreview, { agentId: 'agent' }],
+      [backendMethods.agentGitBranchWork, { agentId: 'agent', input }],
+    ]);
+  });
   it('routes prune inventory and confirmed selections to the owning agent', async () => {
     const request = vi.fn().mockResolvedValue({ deleted: [], failed: [] });
     const input = { confirmed: true, targets: [{ id: 'refs/heads/feature', revision: 'checked' }] };
@@ -87,6 +105,16 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.teamConnect, { input }],
     ]);
   });
+  it.each([
+    ['getAgentGitLog', backendMethods.agentGitLogGet, { search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }],
+    ['getAgentGitLogCommit', backendMethods.agentGitLogCommitGet, { head: 'head', sha: 'sha' }],
+    ['getAgentGitLogFile', backendMethods.agentGitLogFileGet, { head: 'head', sha: 'sha', path: 'file.ts' }],
+  ] as const)('preserves historical selection through %s', async (operation, method, input) => {
+    const result = { history: 'owning host result' };
+    const request = vi.fn().mockResolvedValue(result);
+    await expect(invokeAppWebOperation({ request }, operation, ['agent-1', input])).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith(method, { agentId: 'agent-1', input });
+  });
   it('returns diff query data and preserves the selected target', async () => {
     const target = { type: 'commit', sha: 'abc123' };
     const diff = { target, summary: { addedLines: 1, removedLines: 0, changedFiles: 1 }, diff: 'patch', sections: [] };
@@ -110,6 +138,9 @@ describe(`${product.name} web operations`, () => {
     await invokeAppWebOperation({ request }, 'getClaudeAuthentication', ['wall-e']);
     await invokeAppWebOperation({ request }, 'startCodexChatGptDeviceCodeLogin', ['wall-e']);
     await invokeAppWebOperation({ request }, 'cancelCodexChatGptLogin', ['wall-e', 'login-1']);
+    await invokeAppWebOperation({ request }, 'getBankedResets', ['wall-e']);
+    const reset = { confirmed: true, redemptionToken: 'selection', idempotencyKey: 'attempt' };
+    await invokeAppWebOperation({ request }, 'useBankedReset', [reset, 'wall-e']);
     await invokeAppWebOperation({ request }, 'getProviderUsage', ['claude']);
     await invokeAppWebOperation({ request }, 'disconnectProvider', ['claude', 'wall-e']);
     await invokeAppWebOperation({ request }, 'disconnectProvider', ['codex']);
@@ -120,6 +151,8 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.claudeAuthenticationGet, { connectionId: 'wall-e' }],
       [backendMethods.codexChatGptDeviceCodeLoginStart, { remoteConnectionId: 'wall-e' }],
       [backendMethods.codexLoginCancel, { remoteConnectionId: 'wall-e', loginId: 'login-1' }],
+      [backendMethods.bankedResetsGet, { remoteConnectionId: 'wall-e' }],
+      [backendMethods.bankedResetUse, { input: reset, remoteConnectionId: 'wall-e' }],
       [backendMethods.providerUsageGet, { backend: 'claude' }],
       [backendMethods.providerDisconnect, { backend: 'claude', remoteConnectionId: 'wall-e' }],
       [backendMethods.providerDisconnect, { backend: 'codex' }],
@@ -129,6 +162,9 @@ describe(`${product.name} web operations`, () => {
   });
   it('maps allowlisted product operations to daemon methods', async () => {
     const request = vi.fn().mockResolvedValue({ ok: true });
+
+    await invokeAppWebOperation({ request }, 'installProvider', ['antigravity', 'remote-host']);
+    expect(request).toHaveBeenLastCalledWith(backendMethods.providerInstall, { backend: 'antigravity', remoteConnectionId: 'remote-host' });
 
     await expect(invokeAppWebOperation({ request }, 'createAgent', [{ name: 'Dina' }]))
       .resolves.toEqual({ ok: true });
@@ -245,4 +281,11 @@ describe(`${product.name} web operations`, () => {
     );
     expect(request).not.toHaveBeenCalled();
   });
+});
+
+it('preserves plan ownership, revision and explicit feedback action at the web bridge', async () => {
+  const request = vi.fn().mockResolvedValue({ agents: [] });
+  const response = { reviewId: 'plan', resolution: 'save', draftVersion: 3, draft: { choices: [], comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Add cancellation.' }] } };
+  await expect(invokeAppWebOperation({ request }, 'respondToPlanReview', ['owner', response])).resolves.toStrictEqual({ agents: [] });
+  expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentPlanReviewRespond, { agentId: 'owner', response });
 });

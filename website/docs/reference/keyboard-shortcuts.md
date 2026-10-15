@@ -1,10 +1,16 @@
 ---
-description: Common macOS shortcuts for navigating agents and their workspace.
+description: Find contextual actions and keyboard shortcuts for agents and their workspace.
 ---
 
 # Keyboard shortcuts
 
-These shortcuts apply to the Korus desktop shell on macOS. Conversation controls can also have provider-specific shortcuts.
+Use the command palette to find actions and the shortcut reference to look up key combinations. The shortcut tables below use macOS notation; the in-app reference shows your platform's bindings. Conversation controls can also have provider-specific shortcuts.
+
+## Find an action
+
+Open the **Command Palette** with **⌘Shift P** on macOS or **Ctrl+Shift+P** on Windows and Linux. Search for an action, use the arrow keys to select it, and press Enter. The available actions follow the selected agent and workspace, including Git operations, code review, simulators, and Settings. Unavailable actions show why they cannot run.
+
+Open **View → Keyboard Shortcuts** for a searchable reference to actions and key combinations on your platform. **⌘Shift /** on macOS or **Ctrl+Shift+/** on Windows and Linux opens the same reference. This is separate from **⌘K**, which finds agents.
 
 ## Navigation
 

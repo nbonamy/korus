@@ -3,7 +3,8 @@
   "ignoreBinaries": [
     "shasum",
     "swift",
-    "spctl"
+    "spctl",
+    "openssl"
   ],
   "workspaces": {
     ".": {
@@ -42,7 +43,28 @@
     },
     "backend": {
       "entry": [
-        "src/daemon.ts"
+        "src/daemon.ts",
+        "src/companion/relay-main.ts",
+        "src/companion/__tests__/live-harness.ts"
+      ]
+    },
+    "mobile": {
+      "entry": [
+        "src/relay-connector.ts",
+        "src/companion-state.ts",
+        "web/src/engine-main.ts",
+        "web/src/transcript-main.ts",
+        "scripts/*.mjs"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "web/src/**/*.{ts,vue}",
+        "scripts/*.mjs"
+      ]
+    },
+    "vue": {
+      "entry": [
+        "scripts/*.browser.mjs"
       ]
     },
     "server": {

@@ -172,3 +172,39 @@ export type AgentGitOperationProgress = {
   operation: 'pullRequest' | 'merge';
   phase: 'handoff' | 'delivery';
 };
+
+/** A cursor is tied to one immutable HEAD and one literal message search. */
+export type AgentGitLogInput = {
+  search?: string;
+  limit?: number;
+  cursor?: { head: string; offset: number; search: string };
+};
+export type AgentGitLogCommit = {
+  sha: string;
+  subject: string;
+  author: string;
+  date: string;
+};
+export type AgentGitLogPage = {
+  repository: string;
+  branch: string | null;
+  head: string | null;
+  commits: AgentGitLogCommit[];
+  nextCursor?: NonNullable<AgentGitLogInput['cursor']>;
+};
+export type AgentGitLogCommitInput = { head: string; sha: string };
+export type AgentGitLogFile = {
+  path: string;
+  previousPath?: string;
+  status: string;
+  addedLines: number | null;
+  removedLines: number | null;
+  binary: boolean;
+};
+export type AgentGitLogDetails = AgentGitLogCommit & {
+  message: string;
+  files: AgentGitLogFile[];
+  filesTruncated: boolean;
+};
+export type AgentGitLogFileInput = AgentGitLogCommitInput & { path: string };
+export type AgentGitLogFileDiff = { diff: string };

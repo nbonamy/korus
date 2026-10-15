@@ -50,14 +50,19 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
 
 ## Antigravity
 
-`backend/src/antigravity` detects the externally installed ACP runtime/harness and
-owns OAuth observations and the provider replica; the agy CLI is not the
-execution path. OAuth renewal stays native, background checks suppress login UI,
+`backend/src/antigravity` owns installation and discovery of the ACP
+runtime/harness, OAuth observations, and the provider replica. The agy CLI is not
+the execution path. OAuth renewal stays native, background checks suppress login UI,
 and child environments sanitize Google credentials/projects with isolated
 `GEMINI_HOME` and temporary storage. Home routing is not a filesystem sandbox.
-Korus provides installation instructions and rechecks availability; it never
-downloads the runtime. Discovery accepts the paired executables on PATH, explicit
-runtime/harness environment paths, or an existing versioned runtime directory.
+An explicit installation request downloads a pinned Google-hosted archive into
+private temporary storage. Size and SHA-256 checks precede bounded extraction of
+regular executable files; an ACP handshake in a disposable home verifies the
+qualified runtime before atomic activation. Installation never authenticates,
+and runtime binaries remain outside app release resources. Provider setup
+serializes installation with home changes and detection refreshes. Discovery
+accepts the managed pair, paired executables on PATH, explicit runtime/harness
+environment paths, or an existing versioned runtime directory.
 
 Each agent owns a process/session with serialized prompts and bounded cancellation.
 Cold replay validates session identity and rebuilds atomically: replay tool IDs
@@ -102,6 +107,206 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
 - Requests carry deadlines (`core/src/backend-protocol/request-timeout.ts`) so no
   client waits forever; Electron adds a grace period so a remote timeout reaches
   the desktop first.
+
+### Companion gateway and relay
+
+Each companion safety property has one owner. Extend the owner instead of adding a
+parallel check, counter or state flag:
+
+- Device authorization and target binding: the gateway operation table. Agent
+  operations go through its target check and act on the workspace that check read,
+  checking the grant after the last read; none accepts a bare agent ID.
+- At-most-once prompt admission: `CommandLedger`, the only holder of in-flight state.
+- Rate limits: `WindowBudget`. Limits that protect other clients are keyed by
+  `sourceNetwork`; counters keyed by a peer identity only reduce noise.
+- Stream framing and backpressure: the shared frame readers and `sendWithBackpressure`.
+
+A review finding against this area names the invariant below that it breaks. Behavior
+listed as outside the relay's guarantees is not a defect.
+
+`CompanionManager` runs inside the authoritative daemon and delegates reads and
+prompt admission to existing app-owned handlers, including remote-team routing.
+Its protected state owns a stable Noise identity, device grants and a command
+receipt ledger. Serialized atomic writes precede grants and prompt dispatch. An
+interrupted admission stays unresolved; reconnect reads its receipt instead of
+repeating the provider operation. Conversation reads serve the provider's own replica:
+Codex is asked each time (it republishes its whole snapshot), while Claude and
+Antigravity are followed from their reset and revisioned updates, because asking again
+re-reads the transcript from disk and can discard the turn in flight. A revision gap, or
+a copy that has gone quiet for 30 seconds, sends the read back to the provider.
+Retained conversation routing data excludes app snapshots, is capped at 64 agents,
+and is pruned against workspace membership; disabling access or stopping the service
+clears it. The gateway exposes no generic RPC, filesystem or shell forwarding.
+Account usage is an on-demand read of the paired laptop's enabled, connected quota
+providers through the same backend operation as the desktop menu. Only quota windows
+cross the companion seam; billing and credit details stay on the laptop. Reads recheck
+the device grant before returning, and do not depend on the selected conversation.
+Project acquisition uses the owning team's desktop operations for new repositories,
+GitHub discovery and URL cloning. The phone sends names, catalog IDs or network Git
+URLs rather than filesystem paths. GitHub credentials and checkout paths stay on
+the owning host; each write rechecks the grant, team location and available engine.
+Branch browsing uses the owning host’s connected integration without preparing a
+checkout. Selecting a branch reuses its checked-out worktree or fetches and prepares
+a linked worktree, preserving the primary checkout. Long-running acquisition uses
+the same device-scoped creation receipts as new chats.
+New GitHub branches use a catalog-validated base on the owning host, refresh its
+remote tip and create a separate worktree. Existing branch names are rejected;
+the primary checkout and its local base branch stay untouched.
+New worktree branches do not inherit the base's tracking configuration. Remote
+deletion requires a same-named tracked branch and excludes the primary worktree's
+branch; an arbitrary upstream never authorizes remote deletion. Companion previews
+and desktop dialogs use the same eligibility policy as the backend deletion guard.
+Conversation image reads accept only image references in the authoritative conversation,
+bound to its current host and session. The owning daemon resolves and reads the file;
+the phone receives bounded image bytes on demand. Image reads do not persist a copy;
+deleted source files are unavailable.
+
+Every agent operation names a full target (host, location, team, agent and session); a
+session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews
+carry the target the native composer captured; other commands use the engine's latest
+workspace when sent. Reads recheck the target after
+the provider answers.
+Prompt admission carries the captured session identity through remote routing and
+provider preflight. The owning daemon checks it before dispatch; a stale session is
+a confirmed rejection rather than a prompt in a replacement conversation.
+
+The desktop's remote-access keep-awake preference covers both Codex remote access
+and Korus mobile access. The companion publishes durable access enablement into
+daemon client state, including after restart; relay reconnects do not release it.
+Electron applies the policy only on AC power and owns the native sleep blocker.
+
+Mobile updates use one authenticated duplex stream per phone. A workspace reset
+and a subscribe-before-read conversation barrier precede ordered provider-native
+deltas. The phone uses the existing provider replicas, never a second transcript
+reducer. Workspace projections are sent on change; heartbeat messages carry no
+app state. Sequence gaps, provider revision gaps and reconnects rehydrate from the
+authoritative daemon. Stream queues and subscription counts are bounded; revocation
+and stream closure dispose listeners and buffered work.
+
+The iOS encrypted reader serializes native decryption with transport flow control.
+Its receive-window credit stays below the paused-buffer capacity: pausing cannot
+recall bytes already granted to the sender, and resuming can dispatch buffered
+bytes synchronously. A retained transcript is presentation-only during reconnect;
+render acknowledgments are bound to the current connection/selection generation,
+not compared against an earlier connection's revision counter.
+
+Pending questions, tool confirmations and approvals travel in the workspace's
+app-owned request projection. Responses carry the owning host, team, agent,
+session and request conversation identity. The gateway checks that identity and
+the daemon request owner validates the decision scope and consumes the request.
+The native sheet retains entered answers on failure; a failed acknowledgment
+triggers reconciliation, never automatic replay or authorization.
+
+The visible conversation remains subscribed. Leaving it starts a five-minute
+expiry while its replica continues to receive events. Viewing it again cancels
+expiry; incoming events do not extend it. Expiry discards the replica and removes
+the subscription. Session changes invalidate the old replica, and app backgrounding
+closes the update stream and clears the subscription cache.
+
+The separate relay executable has a persistent pinned identity. Public admission
+accepts fresh laptop identities without accounts or operator enrollment. Short-lived,
+bounded host leases own routing state; the laptop refreshes its device grants and
+pairing windows while connected. Temporary pairing routes remain time/rate bounded;
+paired routes derive from daemon grants. Endpoints enforce companion methods after
+Noise authentication; the relay cannot inspect encrypted application frames. Circuit
+duration and data budgets force an explicit reconnect and authoritative rehydrate.
+An optional nonempty `hostIds` configuration restricts a privately operated relay.
+Public admission never replaces pairing proof or explicit desktop approval.
+
+The relay is untrusted infrastructure. It must preserve confidentiality, endpoint
+authentication and authorization, and bound its own memory, sockets and outbound APNs
+traffic. Code guessing is bounded by the code space, its lifetime and desktop approval;
+relay guess counters only reduce noise. Availability under distributed abuse, and
+identity introduction by a compromised relay during pairing, are outside its guarantees.
+
+Both endpoints initiate outbound WSS connections. The product metadata supplies the
+public relay URL and pinned peer identity. Desktop and phone builds carry only
+`APP_COMPANION_RELAY_URL` and `APP_COMPANION_RELAY_PEER_ID` from the build environment
+or `.env`, never the environment file or its credentials. A runtime environment
+pair takes precedence over the packaged pair; either overrides a relay saved by
+an explicit `enable` call. Without these deployment overrides, saved configuration
+precedes product metadata. A partial pair fails closed instead of mixing sources.
+A phone needs only a pairing code.
+Changing the phone build's relay clears saved pairings for other relays; the phone
+pairs again instead of restoring a stale development connection. The first
+invitation turns mobile access on. An invalid or partial environment pair
+fails closed instead of silently selecting another relay.
+
+The host deployment templates under `backend/companion-relay/deploy` terminate TLS
+in nginx and keep relay and health listeners on loopback. Certbot uses the nginx
+ACME webroot and reloads nginx after successful renewal. Only published Cloudflare
+proxy ranges may supply the client address used for connection and request limits;
+direct clients retain their socket address. nginx overwrites `X-Real-IP` and the
+relay accepts it only in explicit `trustedProxy` mode on a loopback listener.
+Connection rates, concurrent sockets, laptop leases and push requests are bounded per
+source network: an IPv4 address or an IPv6 /64. Peer identities cost nothing to create, so
+no limit that protects other clients is keyed on one. Full rate counters evict their oldest
+window rather than refusing new clients; the bounded laptop lease table refuses new hosts
+when full.
+Circuit reservations and admission leases share a bounded lifetime.
+The systemd service runs without root,
+with bounded memory and a read-only system filesystem. Versioned bundles live under
+`/opt/companion-relay`; configuration and push keys belong under
+`/etc/companion-relay`. The private identity under `/var/lib/companion-relay` must
+survive service and bundle replacements: changing it invalidates installed peer
+pins. Container deployments can instead provide TLS directly to the executable.
+
+Pairing uses a short code (`XXXX-XXXX`, 40 bits) with a five-minute lifetime.
+The laptop advertises each full code and its original expiry over its authenticated
+connection to the pinned relay. The relay is trusted for the initial introduction:
+resolving a code atomically binds it to one authenticated phone and returns the
+laptop identity. Repeated lookups by that phone recover a lost reply; another phone
+cannot claim it. Advertisements cannot extend expiry or rearm withdrawn codes.
+Lookup attempts, invitations and temporary routes are bounded.
+
+The phone pins the introduced laptop identity when establishing its Noise circuit.
+The laptop independently consumes the invitation for that authenticated phone and
+requires explicit desktop approval before granting app access. Approval persists the
+phone identity; the phone stores the laptop and relay identities in protected storage,
+never the code. Rejection, expiry and daemon restart invalidate pending invitations.
+Relay restarts cannot bypass the laptop's single-use claim. Subsequent reconnects
+use saved pins without another introduction. A compromised relay during initial
+pairing could substitute identities; after correct pairing it can disrupt delivery
+but cannot impersonate either pinned endpoint or decrypt conversations.
+
+Admission and rendezvous use version 2 and do not downgrade to another pairing
+scheme. Relay, desktop and mobile must support that version for new pairing;
+persisted identities and device grants retain their format. Existing companion
+conversation and push protocols keep their authenticated, encrypted boundaries.
+
+The iOS engine uses CryptoKit for X25519, Ed25519, SHA-256, HKDF and
+ChaCha20-Poly1305. The pinned upstream Noise XX/cipher state machine runs in a
+private JavaScriptCore context on a serial worker, supplied with synchronous Apple
+primitives. Bounded, ordered record batches cross the asynchronous WebView bridge;
+backpressure preserves ordering without running cryptography on the UI thread.
+The same adapter secures both the relay connection and the inner laptop circuit.
+Ed25519 protobuf serialization preserves existing device identities and Keychain
+pairings. Unsupported key types or an unavailable native service fail closed.
+The iOS build rejects bundled third-party cryptographic implementations, including
+transitive fallbacks; upstream Noise upgrades require interoperability revalidation.
+Desktop and relay use their existing libp2p implementations.
+
+### Companion push delivery
+
+The relay's optional `apns` configuration supplies `teamId`, the product app ID as
+`topic`, and `development` and/or `production` entries containing `keyId` and
+`privateKeyFile`. Signing keys are read from operator-managed files; they never enter
+client bundles or source control. The Apple App ID must enable Push Notifications,
+and the installed app's signed `aps-environment` entitlement must match the key's
+environment. Device tokens are opaque and rotate; the phone registers at launch and
+forwards updates through its authenticated laptop session. The phone signs each
+registration with its pairing identity, binding the token, environment, laptop,
+relay and expiration. The relay verifies this consent and a current paired route
+before contacting Apple. Global, host and token budgets bound delivery even when
+clients rotate identities; concurrent duplicate notifications share one send.
+Apple invalid-token responses remove only the registration that produced the failure.
+
+`npm run dev:relay` reads `APP_COMPANION_APNS_KEY_ID`,
+`APP_COMPANION_APNS_TEAM_ID`, `APP_COMPANION_APNS_KEY_FILE` and
+`APP_COMPANION_APNS_ENVIRONMENT` (`development` or `production`) from the environment
+or ignored `.env`. Without APNs configuration the foreground notification stream
+remains available. An APNs acceptance response is not proof of OS delivery; verify
+background delivery and tap navigation on a signed device separately.
 
 ### Background daemon (macOS)
 
@@ -207,8 +412,11 @@ one line per job state change. Never move a release tag.
   builds, publish. Because it is dispatched from the tag, the workflow, scripts and
   app source all come from the same immutable commit; a release-tooling fix means a
   new version.
-- Quality checks run on Linux; macOS-only signing cleanup tests gate the macOS
-  build. Publishing requires both the shared quality gate and every native build.
+- Release tests run on Linux; macOS-only signing cleanup tests gate the macOS
+  build. Publishing requires both the release test gate and every native build.
+- The independent Quality workflow runs on every push, PR and manual dispatch,
+  retaining coverage reports and enforcing the five 85% statement gates. Release
+  tests run without coverage and have no dependency on the Quality workflow.
 - Only the final job has contents-write permission. It requires every platform to
   ship its full installer set, stages them on a draft release, then publishes the
   requested channel. Published releases are never modified; an interrupted run

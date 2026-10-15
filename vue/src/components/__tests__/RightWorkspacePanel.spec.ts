@@ -68,6 +68,17 @@ function mountPanel(
 }
 
 describe('RightWorkspacePanel', () => {
+  it('offers a collapsed outline for a full Markdown document tab', async () => {
+    const tab = rightWorkspaceFileTab('readme.md');
+    const wrapper = mountPanel([tab], tab, {
+      [tab]: { kind: 'markdown', title: 'README', content: '# Guide\n\n## Setup', state: 'idle' },
+    });
+    await flushPromises();
+    const toggle = wrapper.get('.markdown-panel button[aria-expanded]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    await toggle.trigger('click');
+    expect(wrapper.findAll('[aria-label="Document outline"] button').map(row => row.text())).toStrictEqual(['Guide', 'Setup']);
+  });
   it('saves an inactive transient tab from its own action without selecting or closing it', async () => {
     const first = 'file:markdown:first'; const second = 'file:markdown:second'; const saved = 'file:saved.md';
     const wrapper = mountPanel([first, second, saved], first, {
@@ -560,7 +571,7 @@ describe('RightWorkspacePanel', () => {
     expect(outsideWrapper.find('[aria-label="Open in VS Code"]').exists()).toBe(false);
   });
 
-  it('renders Plan Review as a normal tab beside existing workspace tabs', async () => {
+  it.each(['markdown', 'native review'] as const)('renders a %s plan beside existing workspace tabs', async (kind) => {
     const wrapper = mountPanel(['browser', 'plan'], 'plan', {}, {
       kind: 'markdown',
       purpose: 'plan',
@@ -569,9 +580,18 @@ describe('RightWorkspacePanel', () => {
       state: 'idle',
       error: null,
     });
+    if (kind === 'native review') {
+      await wrapper.setProps({ agent: {
+        ...wrapper.props('agent'),
+        backendSession: { kind: 'codex', threadId: 'plan-thread' },
+        planReview: { id: 'plan-review', conversationId: 'plan-thread', turnId: 'plan-turn', markdown: '# Plan\n\nKeep Browser available.', status: 'pending' },
+      } });
+    }
 
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Browser', 'Implementation plan']);
-    expect(wrapper.get('.plan-review-panel').text()).toContain('Keep Browser available.');
+    expect(wrapper.get('h1').text()).toBe('Plan');
+    expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Keep Browser available.');
+    expect(wrapper.find('.plan-review-footer').exists()).toBe(kind === 'native review');
 
     await wrapper.findAll('[role="tab"]')[0]?.trigger('click');
     await wrapper.get('[aria-label="Close Implementation plan tab"]').trigger('click');

@@ -34,6 +34,13 @@
         </div>
       </template>
       <template #message-header="{ message }">
+        <DeferredConversationContent
+          v-if="agent && contentSessionId && message.id && deferredContent(message) && !loadedContent.has(deferredContent(message)!.contentId)"
+          :key="deferredContent(message)!.contentId"
+          :agent-id="agent.id" :session-id="contentSessionId" :message-id="message.id"
+          :content="deferredContent(message)!" :read="readConversationContent"
+          @loaded="(id, full) => loadedContent.set(id, full)"
+        />
         <span
           v-if="collaborationMessageLabel(message.id)"
           class="conversation-pane__message-header"
@@ -131,8 +138,9 @@
 </template>
 
 <script setup lang="ts">
+import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   CodexConversationPane,
@@ -158,6 +166,8 @@ import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-fl
 import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
+import DeferredConversationContent from './DeferredConversationContent.vue';
+import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import AgentMention from './AgentMention.vue';
 import ComposerContextCards, { type ComposerContextCard } from './ComposerContextCards.vue';
 import ChatTextSelectionAnnotation from './ChatTextSelectionAnnotation.vue';
@@ -212,6 +222,7 @@ const props = withDefaults(defineProps<{
   savedPromptDrafts?: readonly SavedPromptDraft[];
   savePromptDraft?: (agentId: string, text: string) => Promise<void>;
   removePromptDraft?: (id: string) => Promise<void>;
+  readConversationContent?: (agentId: string, input: ConversationContentInput) => Promise<ConversationContentChunk>;
 }>(), {
   agents: () => [],
   keyboardActive: true,
@@ -246,6 +257,14 @@ const emit = defineEmits<{
 }>();
 
 const conversationKey = computed(() => props.agent?.id ?? 'no-agent');
+const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
+const loadedContent = reactive(new Map<string, RendererMessage>());
+watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
+function deferredContent(message: CodexChatMessage | SurfaceMessage): RendererMessage['deferredContent'] {
+  // The SDK header slot exposes its normalized message, so resolve app metadata by ID.
+  const original = resolveCodexConversationPaneValue(props.controller.state).identity.messages.find((candidate) => candidate.id === message.id);
+  return (original as RendererMessage | undefined)?.deferredContent;
+}
 const paneConversationKey = computed(() => resolveCodexConversationPaneValue(props.controller.state).identity.conversationKey ?? conversationKey.value);
 const agentDrafts = computed(() => props.savedPromptDrafts.filter((draft) => draft.agentId === props.agent?.id));
 const draftPickerOpen = ref(false);
@@ -266,13 +285,13 @@ function editorElement(): HTMLElement | null {
 }
 
 function handleDraftShortcut(event: KeyboardEvent): void {
-  if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey || !props.agent) return;
-  const key = event.key.toLowerCase();
-  if (key === 'x' && event.target === editorElement()) {
+  if (!props.agent) return;
+  const input = { key: event.key, meta: event.metaKey, shift: event.shiftKey, control: event.ctrlKey, alt: event.altKey };
+  if (matchesShellShortcut('saveDraft', input) && event.target === editorElement()) {
     event.preventDefault();
     event.stopPropagation();
     void saveCurrentDraft();
-  } else if (key === 'v' && event.target === editorElement() && !draftPickerOpen.value) {
+  } else if (matchesShellShortcut('drafts', input) && event.target === editorElement() && !draftPickerOpen.value) {
     event.preventDefault();
     event.stopPropagation();
     openSavedDraftPicker();
@@ -444,6 +463,8 @@ function annotationActionLabel(attachment: CodexNativeAttachment | undefined): s
 function transformConversationMessage(
   message: CodexChatMessage | SurfaceMessage,
 ): CodexChatMessage | SurfaceMessage {
+  const deferred = deferredContent(message);
+  if (deferred && loadedContent.has(deferred.contentId)) message = loadedContent.get(deferred.contentId)!;
   const cached = transformedMessageCache.get(message);
   if (cached) return cached;
 

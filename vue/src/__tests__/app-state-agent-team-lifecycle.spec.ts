@@ -468,6 +468,30 @@ describe('useAppState', () => {
     expect(setDockBadgeCount).toHaveBeenLastCalledWith(0);
   });
 
+  it('clears desktop unread and Dock badges when mobile acknowledges activity, and marks focused activity read', async () => {
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    const remote = createInitialSnapshot();
+    const agent = remote.agents[0]!;
+    agent.readState = { revision: 2, readRevision: 0 };
+    const markAgentRead = vi.fn().mockResolvedValue(undefined);
+    const setDockBadgeCount = vi.fn().mockResolvedValue(undefined);
+    stubElectronTestWindow({ app: { getSnapshot: vi.fn().mockResolvedValue(remote), markAgentRead, setDockBadgeCount,
+      onEvent: vi.fn(listener => { listeners.push(listener); return () => {}; }) } });
+    const state = useAppState();
+    state.setRendererWindowFocused(false);
+    await state.loadSnapshot();
+    expect(state.unreadAgentIds.value).toContain(agent.id);
+    expect(markAgentRead).not.toHaveBeenCalled();
+    listeners[0]!({ type: 'agent.updated', seq: 1, occurredAt: '', agentId: agent.id, payload: { id: agent.id, readState: { revision: 2, readRevision: 2 } } });
+    expect(state.unreadAgentIds.value).not.toContain(agent.id);
+    expect(setDockBadgeCount).toHaveBeenLastCalledWith(0);
+    listeners[0]!({ type: 'agent.updated', seq: 2, occurredAt: '', agentId: agent.id, payload: { id: agent.id, readState: { revision: 3, readRevision: 2 } } });
+    expect(state.unreadAgentIds.value).toContain(agent.id);
+    state.setRendererWindowFocused(true);
+    await nextTick();
+    expect(markAgentRead).toHaveBeenCalledWith(agent.id, 3);
+  });
+
   it('marks an inactive current-team agent and an agent from another non-empty team unread for Debug', async () => {
     const remoteSnapshot = createInitialSnapshot();
     const otherAgents = [

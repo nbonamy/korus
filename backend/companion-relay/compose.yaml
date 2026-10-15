@@ -1,0 +1,27 @@
+services:
+  relay:
+    build:
+      context: ../relay-dist
+      dockerfile: ../companion-relay/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?provide an approved Node image pinned by digest}
+    restart: unless-stopped
+    read_only: true
+    init: true
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ['443:8443']
+    volumes:
+      - ${RELAY_CONFIG_FILE:?provide the operator config}:/run/companion-relay/config.json:ro
+      - ${RELAY_TLS_DIRECTORY:?provide the TLS directory}:/run/tls:ro
+      - identity:/var/lib/companion-relay
+    tmpfs: [/tmp:size=16m,mode=1777]
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: {max-size: '5m', max-file: '2'}
+volumes:
+  identity:

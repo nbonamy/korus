@@ -26,6 +26,7 @@
           :restart-app="restartApp"
           :update-settings="updateSettings"
         />
+        <SettingsWorkflowsPanel v-else-if="activeTab === 'workflows'" :settings="generalSettings" :update-settings="updateSettings" />
         <SettingsVoicePanel
           v-else-if="activeTab === 'voice'"
           :settings="generalSettings"
@@ -40,6 +41,7 @@
         <SettingsCodexPanel
           v-else-if="activeTab === 'codex'"
           :connected="codexConnected"
+          :remote-connection-id="remoteConnectionId"
           :installed="providerConnections?.find(engine => engine.backend === 'codex')?.installed ?? false"
           @refresh="refreshProvider?.('codex')"
           :authentication="providerConnections?.find(engine => engine.backend === 'codex')?.authentication"
@@ -58,6 +60,7 @@
           v-else-if="activeTab === 'antigravity'"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
+          @install="installProvider?.('antigravity')"
           :connected="providerConnections?.some(engine => engine.backend === 'antigravity' && engine.connected)"
           :authentication="providerConnections?.find(engine => engine.backend === 'antigravity')?.authentication"
           :home="generalSettings.providerHomes?.antigravity"
@@ -128,6 +131,7 @@
           :check-remote-connection="checkRemoteConnection"
           :update-remote-connection="updateRemoteConnection"
           :remove-remote-connection="removeRemoteConnection"
+          :companion-control="companionControl"
           :get-remote-control-status="getRemoteControlStatus"
           :enable-remote-control="enableRemoteControl"
           :disable-remote-control="disableRemoteControl"
@@ -152,6 +156,7 @@ import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
 import SettingsAntigravityPanel from './SettingsAntigravityPanel.vue';
 import SettingsCodexPanel from './SettingsCodexPanel.vue';
 import SettingsConnectionsPanel from './SettingsConnectionsPanel.vue';
+import SettingsWorkflowsPanel from './SettingsWorkflowsPanel.vue';
 import SettingsGeneralPanel from './SettingsGeneralPanel.vue';
 import SettingsInstructionsPanel from './SettingsInstructionsPanel.vue';
 import SettingsPersonalizationPanel from './SettingsPersonalizationPanel.vue';
@@ -169,8 +174,10 @@ const appVersion = appPackage.version;
 
 const props = withDefaults(defineProps<{
   codexConnected?: boolean;
+  remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
+  installProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;
   providerSetupError?: string | null;
   customizeProvider?: (backend: AgentBackend) => unknown;
@@ -211,6 +218,7 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;

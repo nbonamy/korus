@@ -31,6 +31,10 @@ export default defineConfig(({ mode }) => {
       __APP_TELEMETRY_REVIEWED_ROLLOUT__: JSON.stringify(env.APP_TELEMETRY_REVIEWED_ROLLOUT === '1'),
       __APP_GITHUB_CLIENT_ID__: JSON.stringify(env.APP_GITHUB_CLIENT_ID ?? ''),
       __APP_LINEAR_CLIENT_ID__: JSON.stringify(env.APP_LINEAR_CLIENT_ID ?? ''),
+      __APP_COMPANION_RELAY__: JSON.stringify({
+        origin: env.APP_COMPANION_RELAY_URL ?? '',
+        peerId: env.APP_COMPANION_RELAY_PEER_ID ?? '',
+      }),
     },
     resolve: {
       alias: {

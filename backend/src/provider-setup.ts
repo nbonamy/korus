@@ -96,6 +96,22 @@ export class ProviderSetup {
     } finally { this.busy = false; }
   }
 
+  async install(backend: AgentBackend): Promise<ProviderSetupStatus> {
+    if (this.busy) throw new Error('Provider setup is already in progress.');
+    const lifecycle = this.lifecycle(backend);
+    if (!lifecycle.install) throw new Error('Install this provider using its official instructions.');
+    this.invalidateInstallation(backend);
+    if (this.status(backend).installed) return this.status(backend);
+    this.busy = true;
+    try {
+      await lifecycle.install();
+      this.invalidateInstallation(backend);
+      if (!this.status(backend).installed) throw new Error('The provider installation could not be detected.');
+      await this.reconnect(backend);
+      return this.status(backend);
+    } finally { this.invalidateInstallation(backend); this.busy = false; }
+  }
+
   private home(backend: AgentBackend): ProviderHomeSettings {
     return this.snapshot.general.providerHomes?.[backend] ?? this.lifecycle(backend).home(this.snapshot);
   }

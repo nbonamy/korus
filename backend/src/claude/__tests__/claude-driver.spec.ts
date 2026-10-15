@@ -27,6 +27,47 @@ function unwrapClaudeConversationEvent(event: BackendEvent) {
 }
 
 describe('ClaudeBackendDriver', () => {
+  it('delegates from a running source at its completed native boundary and rebinds the child query', async () => {
+    const transport = createConcurrentFakeTransport();
+    const forkWorktreeSession = vi.fn().mockResolvedValue('child-native');
+    const startTurn = vi.fn(transport.startTurn);
+    const driver = new ClaudeBackendDriver({ ...transport, startTurn, forkWorktreeSession }, async () => null, { appMcpServerUrl: 'http://127.0.0.1:4321/mcp' });
+    const parent = { ...agent, backendSession: { kind: 'claude' as const, sessionId: 'source', transport: 'stdio' as const } };
+    const worker: Agent = { ...agent, id: 'worker', folder: '/tmp/worker', backendDefaults: { kind: 'claude', model: 'haiku', reasoningEffort: 'low', permissionMode: 'default' } };
+    try {
+      const seed = driver.sendPrompt(parent, 'Design seed');
+      transport.emit(parent.id, { type: 'system', subtype: 'init', session_id: 'source' });
+      await seed;
+      transport.emit(parent.id, { type: 'assistant', uuid: 'native-completed', message: { content: 'Seed' } });
+      transport.emit(parent.id, { type: 'result', subtype: 'success', session_id: 'source', is_error: false });
+      const running = driver.sendPrompt(parent, 'Delegate');
+      transport.emit(parent.id, { type: 'system', subtype: 'init', session_id: 'source' });
+      await running;
+      transport.emit(parent.id, { type: 'assistant', uuid: 'active-tool-boundary', message: { content: 'Creating worker' } });
+      worker.backendSession = (await driver.forkWorktreeConversation(parent, worker))!.backendSession;
+      expect(forkWorktreeSession).toHaveBeenCalledExactlyOnceWith('source', parent.folder, 'native-completed', undefined);
+      expect(parent.backendSession.sessionId).toBe('source');
+      const assignment = driver.sendPrompt(worker, 'Worker task');
+      expect(startTurn.mock.calls.at(-1)?.[0]).toMatchObject({ ownerId: worker.id, cwd: worker.folder, sessionId: 'child-native', model: 'haiku', effort: 'low', permissionMode: 'default', mcpServerUrl: 'http://127.0.0.1:4321/mcp?agentId=worker', appendSystemPrompt: expect.stringContaining('worker') });
+      transport.emit(worker.id, { type: 'system', subtype: 'init', session_id: 'child-native' });
+      expect((await assignment).backendSession).toMatchObject({ transcriptFolder: parent.folder });
+    } finally { await driver.close(); }
+  });
+
+  it('refuses a running worktree fork without a completed boundary and leaves the source active', async () => {
+    const transport = createConcurrentFakeTransport();
+    const forkWorktreeSession = vi.fn();
+    const driver = new ClaudeBackendDriver({ ...transport, forkWorktreeSession });
+    try {
+      const parent = { ...agent, backendSession: { kind: 'claude' as const, sessionId: 'source', transport: 'stdio' as const } };
+      const running = driver.sendPrompt(parent, 'First task');
+      transport.emit(parent.id, { type: 'system', subtype: 'init', session_id: 'source' });
+      await running;
+      await expect(driver.forkWorktreeConversation(parent, { ...agent, id: 'worker', folder: '/tmp/worker' })).rejects.toThrow('completed native boundary');
+      expect(forkWorktreeSession).not.toHaveBeenCalled();
+      await expect(driver.assertHandoffReady(parent)).rejects.toThrow('Claude turn');
+    } finally { await driver.close(); }
+  });
   it.each([false, true])('waits for native goal clear and reports failure honestly (error: %s)', async (isError) => {
     const transport = createFakeTransport();
     const driver = new ClaudeBackendDriver(transport);
@@ -985,13 +1026,9 @@ describe('ClaudeBackendDriver', () => {
       expect.objectContaining({
         agentId: 'agent-claude',
         backend: 'claude',
-        type: 'claude.conversationSnapshotChanged',
-        payload: expect.objectContaining({
-          snapshot: expect.objectContaining({
-            sessionId: 'claude-session-existing',
-            contextUsage: expect.objectContaining({ totalTokens: 33_120 }),
-          }),
-        }),
+        type: 'context.usageUpdated',
+        backendSessionId: 'claude-session-existing',
+        payload: { contextUsage: expect.objectContaining({ totalTokens: 33_120 }) },
       }),
     ]);
   });

@@ -30,6 +30,11 @@ describe('agent Git IPC', () => {
   });
 
   it.each([
+    [ipcChannels.getAgentGitLog, backendMethods.agentGitLogGet, [{ search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }], { branch: 'main', commits: [] }],
+    [ipcChannels.getAgentGitLogCommit, backendMethods.agentGitLogCommitGet, [{ head: 'head', sha: 'sha' }], { message: 'full', files: [] }],
+    [ipcChannels.getAgentGitLogFile, backendMethods.agentGitLogFileGet, [{ head: 'head', sha: 'sha', path: 'file.ts' }], { diff: 'patch' }],
+    [ipcChannels.previewBranchCurrentWork, backendMethods.agentGitBranchWorkPreview, [], { folder: '/repo', head: 'head', snapshotId: 'snapshot' }],
+    [ipcChannels.branchCurrentWork, backendMethods.agentGitBranchWork, [{ confirmed: true, requestId: 'request', snapshotId: 'snapshot', branchName: 'feature' }], { state: 'recovery', branchName: 'feature', folder: '/worktree', retainedPaths: ['file.ts'] }],
     [ipcChannels.getAgentGitWorkflow, backendMethods.agentGitWorkflowGet, [], { repository: 'repo' }],
     [ipcChannels.getAgentGitPrune, backendMethods.agentGitPruneGet, [], { repository: 'repo', baseBranch: 'main', groups: [], unavailableRemotes: [] }],
     [ipcChannels.pruneAgentGit, backendMethods.agentGitPrune, [{ targets: [{ id: 'refs/heads/feat/web', revision: 'checked' }], confirmed: true }], { deleted: ['refs/heads/feat/web'], failed: [] }],

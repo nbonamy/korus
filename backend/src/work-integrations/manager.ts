@@ -1,4 +1,4 @@
-import type { AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
+import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import type { WorkProviderDeviceAuthorization, WorkProviderDriver } from './types';
 import { workProviderDefinition } from '@workspace/core/work-providers';
@@ -293,6 +293,12 @@ export class WorkIntegrationManager {
     });
     await this.options.saveSnapshot();
     return this.snapshot();
+  }
+
+  async listBranches(provider: WorkProviderKind, repositoryId: string): Promise<SourceBranch[]> {
+    const driver = this.driver(provider);
+    if (!driver.listBranches) throw new Error('Branch browsing is unavailable for this integration.');
+    return driver.listBranches(await this.connectedToken(provider), repositoryId);
   }
 
   async listSources(provider: WorkProviderKind): Promise<WorkSource[]> {

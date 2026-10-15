@@ -1,3 +1,4 @@
+import { isDelegationContext } from '../delegation-context';
 import { product } from '../product';
 import { isAntigravityEvent, isAntigravitySnapshot } from '../antigravity-conversation-guards';
 import { isProviderAuthentication } from '../contracts/provider-setup';
@@ -226,6 +227,9 @@ function expectAgentCreationProgress(value: unknown, path: string): void {
   expectOptional(value, 'createProject', path, expectBoolean);
   expectOptional(value, 'branchName', path, expectString);
   expectBoolean(value.hasPrompt, `${path}.hasPrompt`);
+  expectOptional(value, 'delegationContext', path, (candidate, candidatePath) => {
+    if (!isDelegationContext(candidate)) throw new Error(`${candidatePath}: invalid delegation context`);
+  });
   expectOptional(value, 'phase', path, (candidate, candidatePath) => {
     expectLiteral(
       candidate,
@@ -366,6 +370,9 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
   expectString(value.agentId, `${path}.agentId`);
   expectLiteral(value.backend, ['claude'], `${path}.backend`);
   expectLiteral(value.type, [
+    'history.prepended',
+    'message.replaced',
+    'context.usageUpdated',
     'turn.started',
     'turn.proposedPlanDelta',
     'turn.proposedPlanCompleted',
@@ -458,6 +465,13 @@ export const runtimePayloadValidators = {
   },
   'agentCreation.progress': expectAgentCreationProgress,
   'mission.implementationStartProgress': expectMissionImplementationStartProgress,
+  'git.branchWorkProgress': (value, path) => {
+    expectRecord(value, path);
+    for (const key of ['id', 'agentId', 'branchName']) expectString(value[key], `${path}.${key}`);
+    expectLiteral(value.state, ['running', 'success', 'error'], `${path}.state`);
+    expectLiteral(value.phase, ['creatingWorktree', 'movingChanges', 'creatingAgent', 'resettingSource'], `${path}.phase`);
+    expectOptional(value, 'error', path, expectString);
+  },
   'git.operationProgress': (value, path) => {
     expectRecord(value, path);
     expectLiteral(

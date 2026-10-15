@@ -32,6 +32,9 @@ export class CodexBackendDriver implements AgentBackendDriver {
     private readonly sessionManager: CodexSurfaceAgentAdapter,
   ) {}
 
+  getBankedResets() { return this.sessionManager.getBankedResets(); }
+  useBankedReset(input: import('@workspace/core/contracts/banked-resets').UseBankedResetInput) { return this.sessionManager.useBankedReset(input); }
+
   getRuntimeStatus(): BackendRuntimeStatus {
     return this.sessionManager.getRuntimeStatus();
   }
@@ -153,6 +156,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
       : undefined;
 
     return cleanedPromptOptions({
+      ...(options?.delegation ? { delegation: options.delegation } : {}),
       ...(options?.attachments?.length ? { attachments: options.attachments } : {}),
       model: options?.model ?? null,
       ...(typeof options?.planMode === 'boolean' ? { planMode: options.planMode } : {}),
@@ -304,6 +308,11 @@ export class CodexBackendDriver implements AgentBackendDriver {
     await this.sessionManager.reconcileConversations(agents);
   }
 
+  async forkWorktreeConversation(agent: Agent, targetAgent: Agent): Promise<BackendConversationForkResult> {
+    const result = await this.sessionManager.forkWorktreeConversation(agent, targetAgent);
+    return { backendSession: codexBackendSession(result.threadId), ...(result.activeTurnId ? { activeTurnId: result.activeTurnId } : {}) };
+  }
+
   async forkConversation(agent: Agent, targetAgent: Agent, turnId?: string): Promise<BackendConversationForkResult> {
     const result = turnId === undefined
       ? await this.sessionManager.forkConversation(agent, targetAgent)
@@ -334,7 +343,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
 }
 
 function cleanedPromptOptions(options: SendPromptOptions): SendPromptOptions | undefined {
-  return (options.attachments?.length ?? 0) > 0 || options.model || typeof options.planMode === 'boolean' || options.backendOptions
+  return (options.attachments?.length ?? 0) > 0 || options.model || typeof options.planMode === 'boolean' || options.backendOptions || options.delegation
     ? options
     : undefined;
 }

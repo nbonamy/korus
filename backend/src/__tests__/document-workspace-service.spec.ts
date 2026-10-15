@@ -14,6 +14,28 @@ async function fixture() {
 }
 
 describe('document workspace lifetime', () => {
+  it('opens stored documents with additive fields and keeps them through layout changes', async () => {
+    const { service, filename } = await fixture();
+    const document = await service.display('a', { kind: 'markdown', content: 'Keep this document' });
+    const tabId = `file:markdown:${document.documentId}`;
+    await service.apply('desktop', 'a', { upsert: [{ id: 'browser', title: 'Browser', browser: { id: 'primary', url: 'https://example.com' } }] });
+    const stored = JSON.parse(await readFile(filename, 'utf8'));
+    stored.data.futureStoreField = true;
+    stored.data.clients.desktop.a.futureLayoutField = true;
+    stored.data.clients.desktop.a.tabs[0].futureTabField = true;
+    stored.data.clients.desktop.a.tabs[1].browser.futureBrowserField = true;
+    stored.data.documents[document.documentId!].futureDocumentField = true;
+    await writeFile(filename, JSON.stringify(stored));
+
+    const restarted = new DocumentWorkspaceService(filename);
+    expect((await restarted.get('desktop')).a!.tabs).toHaveLength(2);
+    expect(await restarted.read('desktop', 'a', tabId, async () => '')).toStrictEqual({ content: 'Keep this document' });
+    await restarted.apply('desktop', 'a', { width: 640 });
+    stored.data.clients.desktop.a.width = 640;
+    expect(JSON.parse(await readFile(filename, 'utf8')).data).toStrictEqual(stored.data);
+    expect(() => restarted.apply('desktop', 'a', { futureCommandField: true } as never)).toThrow();
+  });
+
   it('retains each browser identity and latest URL through a fresh service', async () => {
     const { service, filename } = await fixture();
     const tabs = [

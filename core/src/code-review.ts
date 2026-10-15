@@ -33,7 +33,7 @@ export type CodeReviewPreferences = {
 };
 
 export type CodeReviewAutomation = CodeReviewAutomationSettings & {
-  state: 'running' | 'paused' | 'completed';
+  state: 'running' | 'paused' | 'completed' | 'manual';
   baseRef?: string;
   head?: string;
   branch?: string;
@@ -284,7 +284,7 @@ export function isCodeReviewSession(value: unknown): value is CodeReviewSession 
   if (value.automation !== undefined) {
     const auto = value.automation;
     if (!isRecord(auto)
-      || !['running', 'paused', 'completed'].includes(String(auto.state))
+      || !['running', 'paused', 'completed', 'manual'].includes(String(auto.state))
       || !Array.isArray(auto.commits) || !auto.commits.every(commit => typeof commit === 'string')
       || !optionalSelection(auto.baseRef) || !optionalSelection(auto.head) || !optionalSelection(auto.fingerprint)
       || !optionalSelection(auto.branch)

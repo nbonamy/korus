@@ -230,6 +230,8 @@ export type RendererPromptAttachment =
   };
 
 export type SendPromptOptions = {
+  /** User-selected options for the /delegate command, consumed by the app adapter. */
+  delegation?: import('../delegation-context').DelegationOverrides;
   attachments?: readonly PromptAttachment[];
   model?: string | null;
   planMode?: boolean;
@@ -321,7 +323,12 @@ export type RendererMessage = {
   turnId?: string;
   parts: RendererMessagePart[];
   createdAt: string;
+  /** Lossless JSON of this message, retrieved in bounded chunks from its owning session. */
+  deferredContent?: { contentId: string; byteLength: number };
 };
+
+export type ConversationContentInput = { sessionId: string; contentId: string; offset: number };
+export type ConversationContentChunk = { data: string; nextOffset: number | null; totalBytes: number };
 
 export type AgentFileActivity = {
   agentId: string;

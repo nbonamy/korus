@@ -174,9 +174,10 @@ function registerCollaborationTools(
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
       destinationPath: z.string().optional().describe('Optional destination path for the new worktree.'),
       prompt: z.string().optional().describe('Concise visible request. Starts the agent and waits for acceptance.'),
-      instructions: z.string().optional().describe('Task-specific context supplement; requires prompt. Wrapped in <context>, hidden in the UI but retained in the transcript. No secrets.'),
+      startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
+      instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
     },
-  }, ({ name, backend, model, reasoningEffort, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId }) => loggedToolResult('create-agent', {
+  }, ({ name, backend, model, reasoningEffort, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,
     repoPath,
     createWorktree: createWorktree === true,
@@ -192,11 +193,12 @@ function registerCollaborationTools(
     prompt,
     task,
     requestId,
+    startingContext,
     instructions,
   })));
 
   server.registerTool('display-markdown', {
-    description: `Display Markdown in the ${product.name} side panel. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
+    description: `Display Markdown in the ${product.name} side panel. Plan-mode proposals open automatically through native plan output; do not display a second copy here. Provide exactly one of path or markdown. Use path for Markdown files in your agent folder; use markdown for inline generated content.`,
     inputSchema: {
       path: z.string().optional().describe('Markdown file path relative to your agent folder, or an absolute path inside it.'),
       markdown: z.string().optional().describe('Inline Markdown content to display.'),

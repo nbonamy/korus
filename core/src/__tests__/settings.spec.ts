@@ -1,8 +1,35 @@
+import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from '../delegation-context';
 import { describe, expect, it } from 'vitest';
 import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
 
 describe('settings contracts', () => {
+  it('defaults interactive planning on and preserves an explicit opt-out', () => {
+    expect(normalizeGeneralSettings({}).useInteractivePlans).toBe(true);
+    expect(defaultGeneralSettings.useInteractivePlans).toBe(true);
+    expect(normalizeGeneralSettings({ useInteractivePlans: false }).useInteractivePlans).toBe(false);
+    const snapshot = createEmptySnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans: false } });
+    expect(snapshot.general.useInteractivePlans).toBe(false);
+  });
+  it('defaults delegation to handoff, preserves a saved fork choice and normalizes instructions', () => {
+    expect(normalizeGeneralSettings({}).worktreeDelegationStartingContext).toBe('handoff');
+    expect(defaultGeneralSettings.worktreeDelegationStartingContext).toBe('handoff');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'conversation' }).worktreeDelegationStartingContext).toBe('conversation');
+    const snapshot = createEmptySnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: '  Keep local.\nTest.  ' } });
+    expect(snapshot.general.worktreeDelegationStartingContext).toBe('handoff');
+    expect(snapshot.general.worktreeDelegationInstructions).toBe('Keep local.\nTest.');
+    expect(normalizeGeneralSettings({ worktreeDelegationInstructions: 'x'.repeat(MAX_DELEGATION_INSTRUCTIONS_LENGTH + 5) }).worktreeDelegationInstructions).toHaveLength(MAX_DELEGATION_INSTRUCTIONS_LENGTH);
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
+    expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
+  });
+  it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
+    expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
+    expect(normalizeGeneralSettings({ backlogRepositoryFavorites: {
+      github: ['org/b', 'org/a', 'org/b', '', 42], linear: ['team-id'], unknown: ['org/c'],
+    } }).backlogRepositoryFavorites).toStrictEqual({ github: ['org/b', 'org/a'], linear: ['team-id'] });
+  });
   it('updates one global Git preference without replacing the other', () => {
     const snapshot = createEmptySnapshot();
     snapshot.general.git = { pull: 'rebase', update: 'merge' };
@@ -48,12 +75,16 @@ describe('settings contracts', () => {
       spokenAnnouncementVoice: 'bf_emma',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: true,
       cockpitAgentViewMode: 'recent',
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
       appshots: defaultAppshotSettings,
@@ -150,13 +181,17 @@ describe('settings contracts', () => {
       spokenAnnouncementVoice: 'af_heart',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       preventSleepWhenAgentsRun: false,
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: false,
       cockpitAgentViewMode: 'teams',
       sessionCompressionWarningEnabled: true,
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,

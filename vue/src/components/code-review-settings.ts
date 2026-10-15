@@ -6,7 +6,8 @@ import { appApi } from '../platform-api';
 type ReviewSettingsContext = {
   preferences: () => CodeReviewPreferences | undefined;
   listModels: (agentId: string, backend: AgentBackend) => Promise<BackendModelOption[]>;
-  stop: (agentId: string, sessionId: string) => Promise<unknown>;
+  switchToManual: (agentId: string, sessionId: string) => Promise<unknown>;
+  stop: (agentId: string) => Promise<unknown>;
 };
 
 export const codeReviewSettingsKey: InjectionKey<ReviewSettingsContext> = Symbol('codeReviewSettings');
@@ -15,11 +16,13 @@ export function useCodeReviewSettings(): ReviewSettingsContext {
   return inject(codeReviewSettingsKey, {
     preferences: () => undefined,
     listModels: async (agentId, backend) => await appApi?.listBackendModels(agentId, backend) ?? [],
-    stop: async (agentId, sessionId) => {
+    switchToManual: async (agentId, sessionId) => {
       if (!appApi) throw new Error('Backend connection is unavailable.');
-      // Disable the loop before interrupting the provider, including between turns.
-      await appApi.discardCodeReview(agentId, sessionId);
-      await appApi.interruptAgent(agentId);
+      return await appApi.switchCodeReviewToManual(agentId, sessionId);
+    },
+    stop: async agentId => {
+      if (!appApi) throw new Error('Backend connection is unavailable.');
+      return await appApi.interruptAgent(agentId);
     },
   });
 }

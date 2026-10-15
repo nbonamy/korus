@@ -1,5 +1,7 @@
 import type { ExecutionObservation } from '@workspace/core/usage';
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
+import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
@@ -183,6 +185,17 @@ export class BackendDriverRpc {
         const driver=this.requireDriver(requireBackend(requireRecord(params).backend));
         return driver.getAccountUsage ? await driver.getAccountUsage() : null;
       }
+      case backendMethods.driverBankedResetsGet: {
+        const driver = this.requireCodexDriver();
+        return driver.getBankedResets ? driver.getBankedResets() : { status: 'unsupported' };
+      }
+      case backendMethods.driverBankedResetUse: {
+        const input = requireRecord(params).input;
+        if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
+        const driver = this.requireCodexDriver();
+        if (!driver.useBankedReset) throw new Error('Reset redemption is unsupported');
+        return driver.useBankedReset(input);
+      }
       case backendMethods.driverAccountRateLimitsGet: {
         const driver = this.requireDriver(requireBackend(requireRecord(params).backend));
         return driver.getAccountRateLimits ? { supported: true, rateLimits: await driver.getAccountRateLimits() } : { supported: false };
@@ -293,8 +306,9 @@ export class BackendDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
-        const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        assertPromptSession(agent, requireExpectedSessionId(record));
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
       }
@@ -418,6 +432,14 @@ export class BackendDriverRpc {
         }
         return driver.loadOlderHistory(agent);
       }
+      case backendMethods.driverConversationContentRead: {
+        const { agent } = requireAgentParams(params);
+        const input = requireRecord(requireRecord(params).input);
+        if (typeof input.sessionId !== 'string' || typeof input.contentId !== 'string' || !Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error('Invalid conversation content request.');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.readConversationContent) throw unsupportedBackendFeature(agent, 'conversation content');
+        return driver.readConversationContent(agent, { sessionId: input.sessionId, contentId: input.contentId, offset: input.offset as number });
+      }
       case backendMethods.driverConversationsList: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
@@ -433,6 +455,13 @@ export class BackendDriverRpc {
           throw unsupportedBackendFeature(agent, 'conversation resume');
         }
         return driver.resumeConversation(agent, record.target as ConversationResumeTarget);
+      }
+      case backendMethods.driverWorktreeConversationFork: {
+        const { agent } = requireAgentParams(params);
+        const targetAgent = requireAgent(requireRecord(params).targetAgent, 'targetAgent');
+        if (agent.backend !== targetAgent.backend) throw new Error('Native worktree forks require the same provider.');
+        const driver = this.requireDriver(agent.backend);
+        return driver.forkWorktreeConversation ? driver.forkWorktreeConversation(agent, targetAgent) : null;
       }
       case backendMethods.driverConversationFork: {
         const { agent } = requireAgentParams(params);
@@ -469,12 +498,13 @@ export class BackendDriverRpc {
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
+        assertPromptSession(agent, requireExpectedSessionId(record));
         const driver = this.requireDriver(agent.backend);
         if (!driver.steerPrompt) {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
-        const rawPrompt = requireString(record.prompt, 'prompt');
-        const prompt = expandWorktreeDelegationCommand(rawPrompt) ?? rawPrompt;
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
           ? driver.steerPrompt(agent, prompt, options)

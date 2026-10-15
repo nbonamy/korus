@@ -1,3 +1,5 @@
+import { isAgentReadState } from './agent-read-state';
+import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
 import { normalizeAutomationSchedule } from './automation-schedule';
 import { isWorkProviderKind } from './work-providers';
@@ -109,6 +111,9 @@ function isAgent(value: unknown): boolean {
     typeof value.id === 'string' &&
     optional(value, 'teamId', isString) &&
     optional(value, 'delegatedByAgentId', isString) &&
+    optional(value, 'delegationContext', isDelegationContext) &&
+    optional(value, 'userDelegationOverrides', isTurnDelegationOverrides) &&
+    optional(value, 'delegationUserInstructions', isDelegationUserInstructions) &&
     optional(value, 'handoff', isAgentHandoff) &&
     optional(value, 'pullRequest', isAgentPullRequestTracking) &&
     optional(value, 'sessionKind', (candidate) => candidate === 'quickChat') &&
@@ -126,6 +131,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'plan', isThreadPlan) &&
     optional(value, 'planReview', isPlanReview) &&
     optional(value, 'codeReview', isCodeReviewSession) &&
+    optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
@@ -199,6 +205,7 @@ function isBackendSession(value: unknown): boolean {
     typeof value.sessionId === 'string' &&
     includes(['stdio', 'websocket'], value.transport) &&
     optional(value, 'transcriptSessionId', isString) &&
+    optional(value, 'transcriptFolder', isString) &&
     optional(value, 'serverUrl', isString) &&
     optional(value, 'model', isString) &&
     optional(value, 'reasoningEffort', isString);
@@ -554,6 +561,9 @@ function isGeneralSettings(value: unknown): boolean {
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
+    optional(value, 'useInteractivePlans', isBoolean) &&
+    optional(value, 'worktreeDelegationStartingContext', candidate => includes(['conversation', 'handoff'], candidate)) &&
+    optional(value, 'worktreeDelegationInstructions', isString) &&
     isRecordMapOf(value.repositoryIcons, isString) &&
     isAppshotSettings(value.appshots) &&
     optional(value, 'plugins', isPluginSettings);

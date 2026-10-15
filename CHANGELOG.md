@@ -4,6 +4,68 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.35.0] - 2026-10-14
+
+### New features
+
+- Pair Korus Mobile for iPhone from Settings → Connections to follow your
+  agents, send prompts, and respond to questions and approvals away from your
+  desktop, without a VPN or router configuration.
+- Manage paired phones individually and revoke access from the desktop.
+- Open Git log from the Git menu to browse the current branch's history,
+  search commit messages, and inspect changed files and historical diffs inline.
+
+### Improvements and fixes
+
+- The command palette includes simulator and review workspace actions.
+- Delegate from the composer's + menu immediately using saved settings;
+  add task details after `/delegate` when needed.
+- Clear an agent's name directly from its text field.
+- Long Claude conversations load in bounded pages, with oversized content
+  available on demand. Unread activity stays synchronized across desktop and phone.
+- Conversations keep their reading position while scrolling, and completed
+  tool-only replies show their message actions.
+- Simulator views recover cleanly when apps restart or a view ends.
+- Mobile conversations load large histories reliably, retain visible content
+  while reconnecting, and offer recovery when rendering fails.
+- The mobile unlock screen matches the connecting screen without layout jumps,
+  with a five-minute grace period when returning from another app.
+
+## [0.34.0] - 2026-10-13
+
+### New features
+
+- Find contextual actions in the command palette with Cmd/Ctrl+Shift+P,
+  and browse a searchable keyboard shortcut reference from the View menu.
+- Branch current changes into a new worktree with an idle agent, preserving
+  staged and unstaged work and moving untracked files without creating a commit.
+- Favorite GitHub repositories and Linear sources in Backlog, with saved
+  per-provider ordering and drag-and-drop reordering.
+- Choose a fresh handoff or a native Codex/Claude conversation fork when
+  delegating work, with reusable instructions and per-task overrides.
+- Review plans with inline choices and section comments. Confirm your answers,
+  request revisions, and approve implementation with feedback preserved on reload.
+- Switch automatic reviews to manual while the current turn continues, or
+  stop a review while keeping its findings for later.
+- Save, search, rename, and reopen named bookmarks in the built-in browser.
+- Navigate Markdown documents with an optional heading outline.
+- Install the Antigravity runtime directly from provider setup.
+- View Codex credits and banked resets in Settings, and redeem an available
+  reset with explicit confirmation.
+
+### Improvements and fixes
+
+- Simulator video reconnects automatically after pauses without losing the
+  device attachment or replaying interrupted gestures.
+- Merge cleanup is enabled by default and remembers your worktree and branch
+  deletion choices.
+- Additional fields in saved workspace data no longer prevent startup.
+- Delegation instructions stay attached to the correct turn when queued or
+  overlapping turns complete. Favorites saves preserve other providers' ordering.
+- Selected review findings and delegated tasks use concise visible prompts,
+  keeping supporting context out of the conversation's main text.
+- Workflow guidance loads on demand to keep agent context smaller.
+
 ## [0.33.0] - 2026-10-09
 
 ### New features

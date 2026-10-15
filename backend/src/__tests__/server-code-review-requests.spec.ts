@@ -10,6 +10,65 @@ import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-to
 
 
 describe('AppBackendServer code review workflow', () => {
+  it('simulates automatic inspection through manual handoff and stop without calling a provider', async () => {
+    const snapshot = createTestSnapshot();
+    const owner: Agent = {
+      id: 'debug-owner', teamId: snapshot.teams[0]!.id, name: 'Debug owner', folder: '/repo',
+      backend: 'codex', status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now',
+    };
+    snapshot.agents = [owner];
+    snapshot.teams[0]!.agentIds = [owner.id];
+    const interrupt = vi.fn();
+    const runCodeReview = vi.fn();
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }),
+      getCapabilities: () => codexBackendCapabilities, runCodeReview, interrupt,
+      sendPrompt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => undefined, close: vi.fn(),
+    };
+    const server = new AppBackendServer({
+      version: 'test', snapshot, saveSnapshot: vi.fn().mockResolvedValue(undefined),
+      driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
+      codeReviewTools: {
+        createReviewToolContext: () => ({ id: 'debug-context', url: 'http://review.test/mcp' }),
+        closeReviewToolContext: vi.fn(),
+      },
+    });
+    try {
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'automaticReviewing' });
+      const session = owner.codeReview!;
+      expect(session).toMatchObject({ status: 'reviewing', automation: { enabled: true, state: 'running' } });
+      const findings = structuredClone(session.rounds[0]!.findings);
+      expect(findings).toHaveLength(4);
+      await request(server, backendMethods.agentCodeReviewManual, { agentId: owner.id, sessionId: session.id });
+      expect(session).toMatchObject({ status: 'reviewing', automation: { enabled: false, state: 'manual' } });
+      expect(owner.status.type).toBe('working');
+      await request(server, backendMethods.agentInterrupt, { agentId: owner.id });
+      expect(owner.codeReview).toBe(session);
+      expect(session.status).toBe('failed');
+      expect(session.rounds[0]!.error).toBe('Review stopped. Retry to complete the inspection.');
+      expect(session.rounds[0]!.findings).toStrictEqual(findings);
+      expect(session.automation?.state).toBe('manual');
+      expect(owner.status.type).toBe('idle');
+      expect(interrupt).not.toHaveBeenCalled();
+      expect(runCodeReview).not.toHaveBeenCalled();
+
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'automaticReviewing' });
+      expect(owner.codeReview).not.toBe(session);
+      expect(owner.codeReview?.automation?.state).toBe('running');
+      await request(server, backendMethods.debugCodeReviewSet, { agentId: owner.id, scenario: 'ready' });
+      expect(owner.codeReview?.status).toBe('ready');
+      expect(owner.status.type).toBe('idle');
+      const idleFixture = owner.codeReview;
+      owner.status = { type: 'working' };
+      await expect(server.handleMessage({
+        jsonrpc: '2.0', id: 'busy-simulation', method: backendMethods.debugCodeReviewSet,
+        params: { agentId: owner.id, scenario: 'automaticReviewing' },
+      })).rejects.toThrow('active agent turn');
+      expect(owner.codeReview).toBe(idleFixture);
+      owner.status = { type: 'idle' };
+    } finally { await server.close(); }
+  });
+
   it.each(['reviewing', 'fixing'] as const)('resumes a persisted %s session after startup connection detection without replacing the open context', async status => {
     const snapshot = createTestSnapshot();
     snapshot.sourceFolder = { path: '/repo', initialized: true, recentRepoNames: [] };
@@ -122,7 +181,7 @@ describe('AppBackendServer code review workflow', () => {
     await server.close();
   });
 
-  it('discards a review session through the app-owned request', async () => {
+  it.each(['discard', 'manual'] as const)('routes review %s through the app-owned request and persists the result', async action => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
@@ -130,9 +189,10 @@ describe('AppBackendServer code review workflow', () => {
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
       codeReview: {
         id: 'review-1', targetAgentId: 'agent-owner', reviewerAgentId: 'agent-owner', scope: { type: 'uncommitted' },
-        threadMode: 'current', status: 'failed', activeRoundId: 'round-1',
-        rounds: [{ id: 'round-1', number: 1, status: 'failed', findings: [], startedAt: 'now' }],
+        threadMode: 'current', status: 'ready', activeRoundId: 'round-1',
+        rounds: [{ id: 'round-1', number: 1, status: 'ready', findings: [], startedAt: 'now' }],
         createdAt: 'now', updatedAt: 'now',
+        automation: { enabled: true, state: 'paused', maxPriority: 'p2', maxRounds: 3, commits: [], reason: 'Round limit.' },
       },
     };
     snapshot.agents.push(owner);
@@ -142,21 +202,27 @@ describe('AppBackendServer code review workflow', () => {
       changedFiles: 2, addedLines: 12, removedLines: 3, hasUntracked: false,
       state: 'dirty', updatedAt: '2026-09-19T10:00:00.000Z',
     };
+    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
       version: 'test', snapshot,
       driverRpc: new BackendDriverRpc(new Map()),
-      saveSnapshot: vi.fn().mockResolvedValue(undefined),
+      saveSnapshot,
       codeReviewTools: {
         createReviewToolContext: () => ({ id: 'unused', url: 'http://review.test/mcp' }),
         closeReviewToolContext: vi.fn(),
       },
     });
 
-    await request(server, backendMethods.agentCodeReviewDiscard, {
+    await request(server, action === 'discard' ? backendMethods.agentCodeReviewDiscard : backendMethods.agentCodeReviewManual, {
       agentId: owner.id, sessionId: 'review-1',
     });
 
-    expect(owner.codeReview).toBeUndefined();
+    if (action === 'discard') expect(owner.codeReview).toBeUndefined();
+    else {
+      expect(owner.codeReview).toMatchObject({ id: 'review-1', status: 'ready', automation: { enabled: false, state: 'manual' } });
+      expect(owner.codeReview?.automation?.reason).toBeUndefined();
+      expect(saveSnapshot).toHaveBeenCalled();
+    }
     await server.close();
   });
 
@@ -204,6 +270,9 @@ describe('AppBackendServer code review workflow', () => {
       };
     });
     const disposeCodeReview = vi.fn().mockResolvedValue(undefined);
+    snapshot.general.worktreeDelegationStartingContext = 'conversation';
+    snapshot.general.worktreeDelegationInstructions = 'Saved delegation directions must not enter an independent review.';
+    const forkWorktreeConversation = vi.fn();
     // The first archive (between rounds) fails: housekeeping errors must not block the review.
     const archiveAgentConversation = vi.fn().mockRejectedValueOnce(new Error('thread not found')).mockResolvedValue(undefined);
     const saveCodeReviewReport = vi.fn().mockResolvedValue('/reports/review.md');
@@ -214,6 +283,7 @@ describe('AppBackendServer code review workflow', () => {
       getRuntimeStatus: () => ({ backend, status: 'running' }),
       getCapabilities: () => defaultBackendCapabilities(backend),
       runCodeReview,
+      forkWorktreeConversation,
       disposeCodeReview,
       ...(backend === 'codex' ? { archiveAgentConversation } : {}),
       releaseConversation,
@@ -247,6 +317,10 @@ describe('AppBackendServer code review workflow', () => {
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
     const session = reviewer.codeReview!;
+    expect(forkWorktreeConversation).not.toHaveBeenCalled();
+    expect(reviewer.delegationContext).toBeUndefined();
+    expect(runCodeReview.mock.calls[0]?.[1].reviewerSession).toBeUndefined();
+    expect(runCodeReview.mock.calls[0]?.[1].prompt).not.toContain(snapshot.general.worktreeDelegationInstructions);
     expect(started.activeAgentId).toBe(reviewer.id);
     expect(session).toMatchObject({ targetAgentId: owner.id, reviewerAgentId: reviewer.id, threadMode: 'independent' });
     expect(reviewer).toMatchObject({
@@ -306,7 +380,14 @@ describe('AppBackendServer code review workflow', () => {
     await server.close();
   });
 
-  it('returns interrupted remediation to finding selection without an error', async () => {
+  it.each([
+    { phase: 'remediation', completion: 'reject', order: 'before' },
+    { phase: 'inspection', completion: 'resolve', order: 'before' },
+    { phase: 'inspection', completion: 'reject', order: 'before' },
+    { phase: 'inspection', completion: 'resolve', order: 'after' },
+    { phase: 'inspection', completion: 'reject', order: 'after' },
+    { phase: 'inspection', completion: 'confirmed', order: 'before' },
+  ] as const)('handles a $phase stop when the provider $completion happens $order the interrupt response', async ({ phase, completion, order }) => {
     const snapshot = createTestSnapshot();
     const owner: Agent = {
       id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
@@ -317,9 +398,13 @@ describe('AppBackendServer code review workflow', () => {
     snapshot.teams[0]!.agentIds.push(owner.id);
     let activeHandlers: ReviewToolHandlers | null = null;
     let findingId = '';
-    let rejectFix: ((error: Error) => void) | undefined;
-    const interruptedFix = new Promise<BackendCodeReviewResult>((_resolve, reject) => {
-      rejectFix = reject;
+    let settleTurn!: () => Promise<void>;
+    const interruptedTurn = new Promise<BackendCodeReviewResult>((resolve, reject) => {
+      settleTurn = async () => {
+        if (completion === 'confirmed') await activeHandlers!.finishReviewRound({ findingCount: 1 });
+        if (completion === 'reject') reject(new Error('Provider turn cancelled.'));
+        else resolve({ text: 'Inspection response.', reviewerSession: { kind: 'codex', threadId: 'review-thread' } });
+      };
     });
     const runCodeReview = vi.fn(async (_agent: Agent, input: Parameters<NonNullable<AgentBackendDriver['runCodeReview']>>[1]) => {
       if (!activeHandlers) throw new Error('Missing review tool context.');
@@ -328,16 +413,20 @@ describe('AppBackendServer code review workflow', () => {
           priority: 'p1', title: 'Authorize before writing',
           body: 'The public mutation writes before checking ownership.',
         })).id;
+        if (phase === 'inspection') return interruptedTurn;
         await activeHandlers.finishReviewRound({ findingCount: 1 });
         return {
           text: '',
           reviewerSession: { kind: 'codex' as const, threadId: 'review-thread' },
         };
       }
-      return interruptedFix;
+      return interruptedTurn;
     });
     const interrupt = vi.fn(async (agent: Agent) => {
-      rejectFix?.(new Error('Turn interrupted.'));
+      if (order === 'before') {
+        await settleTurn();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
       return {
         backendSession: agent.backendSession ?? { kind: 'codex' as const, threadId: 'review-thread' },
       };
@@ -371,21 +460,36 @@ describe('AppBackendServer code review workflow', () => {
       input: { scope: { type: 'uncommitted' }, threadMode: 'independent' },
     });
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
-    await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
+    await vi.waitFor(() => expect(reviewer.codeReview?.rounds[0]?.findings).toHaveLength(1));
     const session = reviewer.codeReview!;
     const round = session.rounds[0]!;
-    await request(server, backendMethods.agentCodeReviewRoundSubmit, {
-      agentId: reviewer.id,
-      sessionId: session.id,
-    });
-    await vi.waitFor(() => expect(round.findings[0]?.remediation.state).toBe('fixing'));
+    if (phase === 'remediation') {
+      await vi.waitFor(() => expect(session.status).toBe('ready'));
+      await request(server, backendMethods.agentCodeReviewRoundSubmit, {
+        agentId: reviewer.id,
+        sessionId: session.id,
+      });
+      await vi.waitFor(() => expect(round.findings[0]?.remediation.state).toBe('fixing'));
+    }
+    const findingsBeforeStop = structuredClone(round.findings);
 
     await request(server, backendMethods.agentInterrupt, { agentId: reviewer.id });
-    await vi.waitFor(() => expect(session.status).toBe('ready'));
+    if (order === 'after') await settleTurn();
+    await new Promise<void>(resolve => setImmediate(resolve));
 
     expect(interrupt).toHaveBeenCalledWith(reviewer);
-    expect(round).toMatchObject({ status: 'ready' });
-    expect(round).not.toHaveProperty('error');
+    expect(reviewer.codeReview).toBe(session);
+    if (phase === 'inspection' && completion !== 'confirmed') {
+      expect(session.status).toBe('failed');
+      expect(round).toMatchObject({ status: 'failed', error: 'Review stopped. Retry to complete the inspection.' });
+      expect(round.findings).toStrictEqual(findingsBeforeStop);
+      expect(round.completedAt).toBeDefined();
+    } else {
+      expect(session.status).toBe('ready');
+      expect(round).toMatchObject({ status: 'ready' });
+      expect(round).not.toHaveProperty('error');
+      if (completion === 'confirmed') expect(round.findings).toStrictEqual(findingsBeforeStop);
+    }
     expect(round.findings[0]?.decision.state).toBe('selected');
     expect(round.findings[0]?.remediation).toStrictEqual({ state: 'notStarted' });
     await server.close();

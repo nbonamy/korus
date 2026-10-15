@@ -83,13 +83,15 @@ vue/src/generated/release-notes.json may change unless Nicolas explicitly includ
 another change in the release commit. When resuming preparation, reuse completed
 audit and verification results whose inputs have not changed.
 
-The GitHub quality job owns the clean install, Electron setup, lint/typechecks,
-full test suite, script tests, and 85% statement coverage in every workspace
-against published SDK packages. Run those gates once, in CI, before platform
-builds and publication; do not repeat them locally during routine release prep.
+The independent Quality workflow owns lint/typechecks, the full test suite under
+coverage, script tests, and the five 85% statement gates against published SDK
+packages. It runs on every push and retains coverage reports. Releases run ordinary
+workspace and script tests without coverage before builds and publication. The
+workflows are independent; Quality failures do not block releases. Do not repeat
+CI gates locally during release prep.
 Use focused local checks only to investigate a specific failure or when Nicolas
-explicitly requests local validation. Keep the pipeline's quality gate enabled;
-a failing gate blocks builds and publication.
+explicitly requests local validation. Keep the release test gate enabled;
+a failing release test blocks builds and publication.
 
 Use `korus-dod` and review the staged diff, then commit with
 `chore: release prep`. Report the audited SDK version and Git
@@ -107,7 +109,8 @@ exactly one command for the confirmed channel:
 It requires the clean, pushed default branch, creates the missing remote
 `v<version>` tag at HEAD, dispatches one GitHub workflow from that tag (quality →
 four platform builds → publish) and watches it. The final job stages the
-installers on a draft and publishes the channel; there is no second workflow.
+installers on a draft and publishes the channel. The independent Quality workflow
+runs from pushes; the release command does not dispatch it again.
 
 Build and publication take roughly 20 minutes. Run the command in the background,
 capture the run ID and URL once dispatch is confirmed, then end the turn so Nicolas

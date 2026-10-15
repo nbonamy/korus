@@ -5,6 +5,7 @@ import type { Mission } from '@workspace/core/missions';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';
 import './agent-fields';
+import { normalizeBrowserBookmarks, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
 
 type CodexDefaults = Extract<BackendDefaults, { kind: 'codex' }>;
 type ClaudeDefaults = Extract<BackendDefaults, { kind: 'claude' }>;
@@ -39,6 +40,7 @@ export type RosterData = {
 
 export type SettingsData = {
   settings: AppGeneralSettings;
+  browserBookmarksByClient?: Record<string, BrowserBookmark[]>;
   theme: AppThemeSettings;
   sourceFolder: SourceFolderState;
   remoteConnections: RemoteConnection[];
@@ -62,6 +64,13 @@ export type StoreFiles = {
 export function splitPersistedState(state: FullPersistedState): StoreFiles {
   const libraries = state.repositoryVisualizations ?? {};
   const agentIds = new Set(state.agents.map((agent) => agent.id));
+  const { browserBookmarks, ...sharedSettings } = state.general;
+  const browserBookmarksByClient = Object.fromEntries(Object.entries(state.clientPreferences ?? {})
+    .filter(([, preferences]) => preferences.general?.browserBookmarks !== undefined)
+    .map(([id, preferences]) => [id, normalizeBrowserBookmarks(preferences.general?.browserBookmarks)]));
+  if (!('desktop' in browserBookmarksByClient) && browserBookmarks !== undefined) {
+    browserBookmarksByClient.desktop = normalizeBrowserBookmarks(browserBookmarks);
+  }
   return {
     roster: {
       activeTeamId: state.activeTeamId,
@@ -76,7 +85,8 @@ export function splitPersistedState(state: FullPersistedState): StoreFiles {
       ...(state.accountRateLimits ? { accountRateLimits: state.accountRateLimits } : {}),
     },
     settings: {
-      settings: state.general,
+      settings: sharedSettings,
+      ...(Object.keys(browserBookmarksByClient).length ? { browserBookmarksByClient } : {}),
       theme: state.theme,
       sourceFolder: state.sourceFolder,
       remoteConnections: state.remoteConnections.connections,
@@ -94,6 +104,9 @@ export function splitPersistedState(state: FullPersistedState): StoreFiles {
 /** Rebuilds the legacy-shaped state that the existing sanitizers and repairs consume. */
 export function joinPersistedState(files: StoreFiles): PersistedState {
   const { roster, settings } = files;
+  const { browserBookmarks, ...sharedSettings } = settings.settings;
+  const browserBookmarksByClient = settings.browserBookmarksByClient
+    ?? (browserBookmarks !== undefined ? { desktop: browserBookmarks } : undefined);
   const unsupportedIds = new Set(roster.agents.filter(agent => !isSupportedRosterAgent(agent)).map(agent => agent.id));
   const teamOfAgent = new Map(roster.teams.flatMap((team) => team.agentIds.map((agentId) => [agentId, team.id] as const)));
   const activeTeam = roster.teams.find((team) => team.id === roster.activeTeamId);
@@ -120,7 +133,9 @@ export function joinPersistedState(files: StoreFiles): PersistedState {
       } satisfies AgentSubagentTree])),
     workBacklog: { ...settings.workIntegrations, assignments: roster.workAssignments },
     remoteConnections: { connections: settings.remoteConnections },
-    general: settings.settings,
+    general: sharedSettings,
+    ...(browserBookmarksByClient ? { clientPreferences: Object.fromEntries(Object.entries(browserBookmarksByClient)
+      .map(([id, bookmarks]) => [id, { general: { browserBookmarks: normalizeBrowserBookmarks(bookmarks) } }])) } : {}),
     sourceFolder: settings.sourceFolder,
     theme: settings.theme,
   };
@@ -175,9 +190,9 @@ function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
   return {
     ...kept,
     engine: engineFrom(agent),
-    // Finished work is not actionable; keep only what can still change.
+    // Keep the latest review decision and feedback across restarts.
     ...(plan && plan.status !== 'completed' ? { plan } : {}),
-    ...(planReview?.status === 'pending' ? { planReview } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(goal && goal.status !== 'complete' ? { goal } : {}),
   };
 }

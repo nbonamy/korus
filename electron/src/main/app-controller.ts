@@ -224,6 +224,7 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
     ipc.handle(ipcChannels.disableRemoteControl, () => this.disableRemoteControl());
@@ -494,10 +495,15 @@ export class AppController {
     ipc.handle(ipcChannels.loadOlderAgentHistory, async (_event, agentId: string) => {
       return this.loadOlderAgentHistory(agentId);
     });
+    ipc.handle(ipcChannels.readConversationContent, async (_event, agentId: string, input) => {
+      return this.requireBackendClient().request(backendMethods.agentConversationContentRead, { agentId, input });
+    });
 
     ipc.handle(ipcChannels.closeAgent, async (_event, agentId: string, input) => {
       return this.closeAgent(agentId, input);
     });
+
+    ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
 
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {
       return this.selectAgent(agentId);
@@ -538,11 +544,14 @@ export class AppController {
     ipc.handle(ipcChannels.getProviderUpdate, (_event, backend, remoteConnectionId, refresh) => this.requireBackendClient().request(backendMethods.providerUpdateGet, { backend, remoteConnectionId, refresh }));
     ipc.handle(ipcChannels.setProviderUpdate, (_event, backend, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerUpdateSet, { backend, input, remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderConnections, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerConnectionsGet, { remoteConnectionId }));
+    ipc.handle(ipcChannels.getBankedResets, (_event, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetsGet, { remoteConnectionId }));
+    ipc.handle(ipcChannels.useBankedReset, (_event, input, remoteConnectionId) => this.requireBackendClient().request(backendMethods.bankedResetUse, { input, remoteConnectionId }));
     ipc.handle(ipcChannels.getProviderUsage, (_event, backend) => this.requireBackendClient().request(backendMethods.providerUsageGet, { backend }));
     ipc.handle(ipcChannels.setProviderEnabled, (_event, backend, enabled, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerEnabledSet, { backend, enabled, remoteConnectionId }));
     ipc.handle(ipcChannels.disconnectProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.authenticateProvider, (_event, backend, action) => this.requireBackendClient().request(backendMethods.providerAuthenticate, { backend, action }));
     ipc.handle(ipcChannels.configureProviderSetup, (_event, backend, choice) => this.requireBackendClient().request(backendMethods.providerSetupConfigure, { backend, choice }));
+    ipc.handle(ipcChannels.installProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerInstall, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.refreshProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerRefresh, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.cancelCodexChatGptLogin, (_event, remoteConnectionId?: string, loginId?: string) => this.cancelCodexChatGptLogin(remoteConnectionId, loginId));
     ipc.handle(ipcChannels.startCodexChatGptDeviceCodeLogin, (_event, remoteConnectionId: string) => {
@@ -633,6 +642,9 @@ export class AppController {
     ));
     ipc.handle(ipcChannels.commitCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewCommit, { agentId, sessionId }))
+    ));
+    ipc.handle(ipcChannels.switchCodeReviewToManual, async (_event, agentId: string, sessionId: string) => (
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewManual, { agentId, sessionId }))
     ));
     ipc.handle(ipcChannels.discardCodeReview, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewDiscard, { agentId, sessionId }))
@@ -1755,7 +1767,7 @@ export class AppController {
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
       hasDebugExecutionPlan: () => this.hasDebugExecutionPlan(),
-      injectDebugPlanReview: () => this.injectDebugPlanReview(),
+      injectDebugPlanReview: format => this.injectDebugPlanReview(format),
       populateDebugVisualize: (scenario) => this.populateDebugVisualize(scenario),
       getDebugMissionStage: () => this.debugMission()?.stage,
       getDebugMissionReviewState: () => this.debugMissionReviewState(),
@@ -1846,13 +1858,13 @@ export class AppController {
       }));
   }
 
-  private injectDebugPlanReview(): void {
+  private injectDebugPlanReview(format: 'text' | 'choices'): void {
     const agentId = this.snapshot?.activeAgentId;
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
 
-    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId })
+    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId, format })
       .then((snapshot) => this.adoptBackendSnapshot(snapshot))
       .catch((error) => warnMain('debug', 'failed to inject plan review fixture', {
         agentId,

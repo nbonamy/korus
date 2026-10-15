@@ -27,6 +27,19 @@ describe('AppController', () => {
     ));
   });
 
+  it.each(['text', 'html'] as const)('routes the Debug %s plan fixture to its owning backend', async format => {
+    const snapshot = createInitialSnapshot();
+    const request = vi.fn().mockResolvedValue(snapshot);
+    const controller = new AppController(snapshot, createBackendClient({ request }));
+    const options = (controller as unknown as {
+      debugMenuOptions(): { injectDebugPlanReview(format: 'text' | 'html'): void };
+    }).debugMenuOptions();
+    options.injectDebugPlanReview(format);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledExactlyOnceWith(
+      backendMethods.debugPlanReadyForReviewInject, { agentId: 'agent-dina', format },
+    ));
+  });
+
   it('routes Mission stage fixtures for the Mission selected by the renderer', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Debug mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });

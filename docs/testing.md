@@ -23,7 +23,7 @@ Every code change adds or updates tests for the behavior it changes; no small-ch
 exemption. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All five workspaces (`core`, `backend`, `vue`, `electron`, `web`) gate on exactly
+All six workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of
 exercised behavior, not a reason to invent a test. Leave no broad untested areas
@@ -166,11 +166,14 @@ commands (`test:electron`, `typecheck:web`, …). For visual changes add a local
 app/screenshot check when the app can boot; for protocol or persistence changes run
 the touched module's tests plus the full coverage gate.
 
-Before release CI runs `npm run test:coverage` then `npm run test:scripts`
-(coverage already executes every workspace suite, and lint already covers
-typechecks). A failed test or any workspace below 85% statements blocks release. Run
-against the installed SDK package boundary; source aliases do not substitute for
-package verification. Desktop smoke (boot, create or select an agent, pick a folder,
-send, stream, interrupt or approve, restore after reload) and screenshot checks for
-shell, sidebars, composer, artifact panes, diffs and theme switching apply once the
+The independent Quality workflow runs on every push, PR and manual dispatch. It
+owns lint/typechecks, the full suite under coverage, script tests, and retained
+coverage reports. The release workflow runs ordinary workspace and script tests,
+without coverage, before builds and publication. The workflows are independent:
+Quality failures do not block releases; release test failures do. Run against the
+installed SDK package boundary; source aliases do not substitute for package
+verification. Desktop smoke (boot, create or
+select an agent, pick a folder, send, stream, interrupt or approve, restore after
+reload) and screenshot checks for shell, sidebars, composer, artifact panes, diffs
+and theme switching apply once the
 chosen desktop tool is configured.

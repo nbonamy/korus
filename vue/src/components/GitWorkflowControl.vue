@@ -383,6 +383,7 @@
       <div v-else-if="updateOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="updateDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="updateFromBase(Boolean(workflow?.files.length))">{{ $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
   </el-dialog>
+  <BranchCurrentWorkDialog v-if="appApi" :key="`branch-${agent.id}`" v-model="branchWorkDialogOpen" :agent-id="agent.id" :load="appApi.previewBranchCurrentWork" :transfer="appApi.branchCurrentWork" :progress="branchWorkProgress" @started="branchWorkProgress = null" @transferred="loadWorkflow({ closeMenu: false })" @inspect-agent="emit('inspect-agent', $event)" />
   <GitPruneDialog v-if="pruneDialogOpen && appApi" :key="agent.id" v-model="pruneDialogOpen" :agent-id="agent.id" :load="appApi.getAgentGitPrune" :prune="appApi.pruneAgentGit" @pruned="loadWorkflow({ closeMenu: false })" />
 </template>
 
@@ -391,7 +392,7 @@ import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitOperationProgress, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
-import { AlertTriangleIcon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -399,6 +400,8 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import GitPruneDialog from './GitPruneDialog.vue';
+import BranchCurrentWorkDialog from './BranchCurrentWorkDialog.vue';
+import type { BranchWorkProgress } from '@workspace/core/branch-current-work';
 import { Trash2Icon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
@@ -419,6 +422,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'open-git-diff': [];
+  'open-git-log': [];
+  'inspect-agent': [agentId: string];
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
 const root = ref<HTMLElement | null>(null);
@@ -429,6 +434,8 @@ const busy = ref(false);
 const commitDialogOpen = ref(false);
 const revertDialogOpen = ref(false);
 const pruneDialogOpen = ref(false);
+const branchWorkDialogOpen = ref(false);
+const branchWorkProgress = ref<BranchWorkProgress | null>(null);
 const revertIncludeUntracked = ref(false);
 const revertError = ref<string | null>(null);
 const pushDialogOpen = ref(false);
@@ -447,6 +454,7 @@ const mergeStrategy = ref<'merge' | 'squash'>('merge');
 const squashCommitMessage = ref('');
 const deleteBranch = ref(false);
 const deleteWorktree = ref(false);
+const mergeCleanupPreferenceKey = 'app:mergeCleanup';
 const reportBack = ref(true);
 const gitOperationProgress = ref<AgentGitOperationProgress | null>(null);
 const committedMessage = ref('');
@@ -635,8 +643,11 @@ const updateEnabled = computed(() => Boolean(props.updateFromBase && workflow.va
 const pullEnabled = computed(() => Boolean(props.pullBranch && workflow.value?.upstream && currentBranchAvailable.value));
 const firstEnabledAction = computed(() => (commitEnabled.value ? 'commit' : pushEnabled.value ? 'push' : mergeEnabled.value && !mergeUnavailable.value ? 'merge' : prEnabled.value ? 'create-pr' : null));
 const menuItems = computed<AppMenuItem[]>(() => [
+  { id: 'log', type: 'action', label: translate('gitLog.menu'), icon: ClockHour8Icon },
+  { id: 'separator-log', type: 'separator' },
   { id: 'revert', type: 'action', label: translate('surface.gitWorkflowControl.revert'), icon: ArrowBackUpIcon, disabled: !props.revertChanges || !commitEnabled.value },
   { id: 'commit', type: 'action', label: translate('surface.gitWorkflowControl.commit'), icon: GitCommitIcon, disabled: !commitEnabled.value },
+  { id: 'branch-work', type: 'action', label: translate('branchWork.menu'), icon: GitForkIcon, disabled: !workflow.value || !appApi },
   { id: 'separator-sync', type: 'separator' },
   { id: 'pull', type: 'action', label: translate('surface.gitWorkflowControl.pull'), icon: RefreshIcon, disabled: !pullEnabled.value },
   { id: 'push', type: 'action', label: translate('surface.gitWorkflowControl.push'), icon: CloudUploadIcon, disabled: !pushEnabled.value },
@@ -675,10 +686,12 @@ watch(mergeDialogOpen, (open) => {
     resetMergeOperation();
     reportBack.value = true;
     squashCommitMessage.value = '';
-    if (!workflow.value?.isLinkedWorktree) {
-      deleteWorktree.value = false;
-      deleteBranch.value = false;
-    }
+    let saved: { deleteWorktree?: unknown; deleteBranch?: unknown } | null = null;
+    try { saved = JSON.parse(window.localStorage.getItem(mergeCleanupPreferenceKey) ?? 'null'); } catch { /* Optional client preference. */ }
+    deleteWorktree.value = Boolean(workflow.value?.isLinkedWorktree)
+      && (typeof saved?.deleteWorktree === 'boolean' ? saved.deleteWorktree : true);
+    deleteBranch.value = deleteWorktree.value
+      && (typeof saved?.deleteBranch === 'boolean' ? saved.deleteBranch : true);
   } else if (!mergeOperationRunning.value) {
     mergeTargetDirtyWarning.value = false;
     resetMergeOperation();
@@ -691,6 +704,13 @@ watch(updateDialogOpen, (open) => {
 
 watch(deleteWorktree, (enabled) => {
   if (!enabled) deleteBranch.value = false;
+});
+
+watch([deleteWorktree, deleteBranch], ([removeWorktree, removeBranch]) => {
+  if (!mergeDialogOpen.value || !workflow.value?.isLinkedWorktree) return;
+  try {
+    window.localStorage.setItem(mergeCleanupPreferenceKey, JSON.stringify({ deleteWorktree: removeWorktree, deleteBranch: removeBranch }));
+  } catch { /* Storage failures must not block merging. */ }
 });
 
 watch(mergeStrategy, (strategy) => {
@@ -715,6 +735,8 @@ onBeforeUnmount(() => {
 watch([() => props.agent.id, () => props.agent.folder], () => {
   revertDialogOpen.value = false;
   pruneDialogOpen.value = false;
+  branchWorkDialogOpen.value = false;
+  branchWorkProgress.value = null;
   void loadWorkflow({ reset: true });
 });
 watch(() => props.gitStatus?.updatedAt, () => {
@@ -782,10 +804,14 @@ function runFirstEnabled(): void { if (firstEnabledAction.value) selectAction(fi
 async function selectAction(action: string): Promise<void> {
   if (busy.value) return;
   menuOpen.value = false;
+  if (action === 'log') { emit('open-git-log'); return; }
   if (action === 'revert' && props.revertChanges && commitEnabled.value) {
     revertIncludeUntracked.value = false;
     revertError.value = null;
     revertDialogOpen.value = true;
+  }
+  else if (action === 'branch-work' && workflow.value && appApi) {
+    branchWorkDialogOpen.value = true;
   }
   else if (action === 'prune' && workflow.value && appApi) {
     pruneDialogOpen.value = true;
@@ -1287,11 +1313,35 @@ function clearDebugOperationTimers(): void {
   debugOperationTimers.splice(0).forEach((timer) => clearTimeout(timer));
 }
 
-defineExpose({ showDebugOperationProgress });
+function getCommandActions(): import('./command-palette-actions').CommandPaletteAction[] {
+  const agentId = props.agent.id;
+  const supported: Record<string, boolean> = {
+    log: true, revert: Boolean(props.revertChanges), commit: Boolean(props.commitChanges), push: Boolean(props.pushBranch),
+    'create-pr': Boolean(props.createPullRequest), merge: Boolean(props.mergeBranch),
+    pull: Boolean(props.pullBranch), 'update-from-base': Boolean(props.updateFromBase), prune: Boolean(appApi),
+    'branch-work': Boolean(appApi),
+  };
+  return menuItems.value.filter(item => item.type === 'action').map(item => ({
+    id: `git:${item.id}`,
+    icon: item.icon,
+    label: translate('commands.gitAction', { action: item.label }),
+    aliases: item.id === 'create-pr' ? 'pull request github' : item.id === 'revert' ? 'discard changes' : item.id,
+    disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || (workflowError.value && item.id !== 'log') ? translate('commands.gitUnavailable') : undefined,
+    run: () => {
+      const current = menuItems.value.find(candidate => candidate.id === item.id);
+      if (props.agent.id === agentId && supported[item.id] && current?.type === 'action' && !current.disabled) return selectAction(item.id);
+    },
+  }));
+}
+defineExpose({ showDebugOperationProgress, getCommandActions });
 
 let unsubscribeMainEvents: (() => void) | null = null;
 
 function handleMainEvent(event: MainToRendererEvent): void {
+  if (event.type === 'git.branchWorkProgress' && event.agentId === props.agent.id) {
+    branchWorkProgress.value = event.payload;
+    return;
+  }
   if (event.type !== 'git.operationProgress' || event.agentId !== props.agent.id) return;
   gitOperationProgress.value = {
     operation: event.payload.operation,

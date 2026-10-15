@@ -1,8 +1,56 @@
 import path from 'node:path';
+import os from 'node:os';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { createGitWorktree, createSourceWorktree, listSourceBranches, listSourceWorktrees, parseGitWorktreeList, parseSourceBranches, suggestedSourceWorktreePath } from '../git-worktrees';
 
 describe('git worktree operations', () => {
+  it('opens a remote branch created after cloning without changing the main checkout', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'branch-open-'));
+    const remote = path.join(root, 'remote.git'), seed = path.join(root, 'seed'), repo = path.join(root, 'repo');
+    const git = async (cwd: string, ...args: string[]) => (await promisify(execFile)('git', args, { cwd })).stdout.trim();
+    try {
+      await git(root, 'init', '--bare', remote);
+      await git(root, 'init', '-b', 'main', seed);
+      await git(seed, 'config', 'user.name', 'Test'); await git(seed, 'config', 'user.email', 'test@example.invalid');
+      await git(seed, 'commit', '--allow-empty', '-m', 'base'); await git(seed, 'remote', 'add', 'origin', remote);
+      await git(seed, 'push', 'origin', 'main'); await git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+      await git(root, 'clone', remote, repo);
+      await git(seed, 'checkout', '-b', 'feature/mobile'); await git(seed, 'commit', '--allow-empty', '-m', 'feature');
+      await git(seed, 'push', 'origin', 'feature/mobile');
+      const expected = await git(seed, 'rev-parse', 'HEAD');
+      const worktree = await createSourceWorktree({ repoPath: repo, branchName: 'feature/mobile', fetchRemoteBranch: true });
+      expect(await git(worktree.path, 'rev-parse', 'HEAD')).toBe(expected);
+      expect(await git(repo, 'branch', '--show-current')).toBe('main');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('creates a new branch from the current remote base without moving the primary checkout or reusing an existing branch', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'branch-create-'));
+    const remote = path.join(root, 'remote.git'), seed = path.join(root, 'seed'), repo = path.join(root, 'repo');
+    const git = async (cwd: string, ...args: string[]) => (await promisify(execFile)('git', args, { cwd })).stdout.trim();
+    try {
+      await git(root, 'init', '--bare', remote); await git(root, 'init', '-b', 'main', seed);
+      await git(seed, 'config', 'user.name', 'Test'); await git(seed, 'config', 'user.email', 'test@example.invalid');
+      await git(seed, 'commit', '--allow-empty', '-m', 'base'); await git(seed, 'remote', 'add', 'origin', remote);
+      await git(seed, 'push', 'origin', 'main'); await git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+      await git(root, 'clone', remote, repo);
+      const original = await git(repo, 'rev-parse', 'HEAD');
+      await git(seed, 'commit', '--allow-empty', '-m', 'updated base'); await git(seed, 'push', 'origin', 'main');
+      const expected = await git(seed, 'rev-parse', 'HEAD');
+      const input = { repoPath: repo, branchName: 'feature/new', baseBranch: 'main', fetchRemoteBranch: true, requireNewBranch: true };
+      const worktree = await createSourceWorktree(input);
+      expect(await git(worktree.path, 'rev-parse', 'HEAD')).toBe(expected);
+      expect(await git(worktree.path, 'branch', '--show-current')).toBe('feature/new');
+      await expect(git(worktree.path, 'rev-parse', '--abbrev-ref', '@{upstream}')).rejects.toThrow();
+      expect(await git(repo, 'rev-parse', 'HEAD')).toBe(original);
+      expect(await git(repo, 'branch', '--show-current')).toBe('main');
+      await expect(createSourceWorktree({ ...input, reuseExisting: true })).rejects.toThrow('already exists');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('suggests sibling worktree paths from repo and branch names', () => {
     expect(suggestedSourceWorktreePath('/Users/nbonamy/src/agent-workspace', 'feature/source folder')).toBe(
       path.join('/Users/nbonamy/src', 'agent-workspace-feature-source-folder'),
@@ -31,6 +79,7 @@ describe('git worktree operations', () => {
       'add',
       '-b',
       'feature/source-folder',
+      '--no-track',
       path.join('/Users/nbonamy/src', 'agent-workspace-feature-source-folder'),
     ], {
       cwd: '/Users/nbonamy/src/agent-workspace',
@@ -90,7 +139,7 @@ describe('git worktree operations', () => {
       baseBranch: 'main',
     }, { run: localRun });
     expect(localRun).toHaveBeenLastCalledWith('git', [
-      'worktree', 'add', '-b', 'feature/new', '/repo-feature-new', 'main',
+      'worktree', 'add', '-b', 'feature/new', '--no-track', '/repo-feature-new', 'main',
     ], { cwd: '/repo' });
 
     const remoteRun = vi.fn().mockImplementation(async (_command: string, args: string[]) => {
@@ -104,7 +153,7 @@ describe('git worktree operations', () => {
       baseBranch: 'main',
     }, { run: remoteRun });
     expect(remoteRun).toHaveBeenLastCalledWith('git', [
-      'worktree', 'add', '-b', 'feature/from-remote', '/repo-feature-from-remote', 'origin/main',
+      'worktree', 'add', '-b', 'feature/from-remote', '--no-track', '/repo-feature-from-remote', 'origin/main',
     ], { cwd: '/repo' });
   });
 
@@ -119,7 +168,7 @@ describe('git worktree operations', () => {
       startPoint: 'FETCH_HEAD',
     }, { run: newBranchRun });
     expect(newBranchRun).toHaveBeenLastCalledWith('git', [
-      'worktree', 'add', '-b', 'review/pr-42', '/repo-review-pr-42', 'FETCH_HEAD',
+      'worktree', 'add', '-b', 'review/pr-42', '--no-track', '/repo-review-pr-42', 'FETCH_HEAD',
     ], { cwd: '/repo' });
     expect(newBranchRun.mock.calls.some(([, args]) => args[0] === 'for-each-ref')).toBe(false);
 

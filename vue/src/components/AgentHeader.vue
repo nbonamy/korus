@@ -61,7 +61,7 @@
         @select="emit('select-git-diff-target', $event)"
       />
       <GitWorkflowControl
-        v-if="gitReviewAvailable && agent"
+        v-if="gitWorkflowAvailable && agent"
         ref="gitWorkflowControl"
         :agent="agent"
         :git-status="gitStatus"
@@ -75,6 +75,8 @@
         :pull-branch="pullGitBranch"
         :revert-changes="revertGitChanges"
         :report-back-agent-name="reportBackAgentName"
+        @open-git-log="emit('open-git-log')"
+        @inspect-agent="emit('select-agent', $event)"
       />
       <OpenInControl
         class="agent-header__open-in"
@@ -172,8 +174,10 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'expand-sidebar': [];
+  'select-agent': [agentId: string];
   'toggle-workspace': [];
   'toggle-execution-plan': [];
+  'open-git-log': [];
   'open-git-diff': [target: AgentGitDiffTarget];
   'select-git-diff-target': [target: AgentGitDiffTarget];
   'install-update': [];
@@ -181,15 +185,14 @@ const emit = defineEmits<{
   'select-subagent': [conversationId: string];
 }>();
 
-const gitWorkflowControl = ref<{
-  showDebugOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void>;
-} | null>(null);
+const gitWorkflowControl = ref<InstanceType<typeof GitWorkflowControl> | null>(null);
 
 function showDebugGitOperationProgress(operation: 'pullRequest' | 'merge'): void | Promise<void> {
   return gitWorkflowControl.value?.showDebugOperationProgress(operation);
 }
 
-defineExpose({ showDebugGitOperationProgress });
+function getCommandActions() { return gitWorkflowControl.value?.getCommandActions() ?? []; }
+defineExpose({ showDebugGitOperationProgress, getCommandActions });
 
 const displayName = computed(() => props.agent ? agentDisplayName(props.agent) : '');
 
@@ -256,6 +259,7 @@ const agentStatusDetail = computed(() => {
   }
 });
 
+const gitWorkflowAvailable = computed(() => gitReviewAvailable.value || props.agent?.workspace?.kind === 'git');
 const gitReviewAvailable = computed(() => {
   const gitStatus = props.gitStatus;
   return Boolean(gitStatus && gitStatus.state !== 'unknown');

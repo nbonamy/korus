@@ -49,6 +49,8 @@ the local desktop to show UI or use an OS affordance belongs in Electron main.
 The local mobile simulator host owns device attachments and native command execution
 in Electron. Its pane and provider-independent MCP tool share that authority;
 [the MCP model](mcp.md#mobile-simulators) records the attachment and coordinate rules.
+Normal video teardown settles pending reads with an ended result; cleanup is
+idempotent and cannot stop a replacement view. Native stream failures remain errors.
 
 Host capabilities are enforced in `daemon` as well as in the UI: a persisted
 desktop preference cannot enable a tool the host does not provide.
@@ -61,9 +63,123 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
+| `mobile` | native iOS shell, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
+
+The mobile companion engine is a narrow workspace/read/send port over the companion
+protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
+window above native sheets and full-screen presentations when authentication is
+required; brief app switches within the unlock grace period retain the last screen.
+Locked settings cannot disable protection. A background WKWebView hosts
+the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
+through the shared Vue conversation pane without a transcript reducer. Native safe
+area insets reserve the header and composer space, including the scroll-to-bottom
+control. History requests route through the owning daemon to provider-owned paging.
+A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
+rather than per-update: the engine sends the transcript once per change of its own
+content, capped at ten transfers per second during streaming (the provider replica
+has already applied every event), and changes around it (agent status, names, history, engine
+choice) travel as a small context message that never resends the transcript.
+Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+The native side routes on an event type without parsing the transcript payload, hands
+the page one message at a time, and replaces anything that piled up with the newest.
+Unread activity belongs to the owning daemon and persists with each agent. Clients
+acknowledge the attention revision they displayed; older acknowledgments cannot
+clear newer activity. Desktop and companion indicators consume the same metadata.
+The phone acknowledges only its rendered, unlocked foreground conversation with the drawer
+closed; cached subscriptions and background updates never count as reading.
+
+Mobile attention alerts originate from live completed-turn and normalized request
+creation events in the owning daemon. Snapshots do not create alerts. An event ID
+binds the host, conversation and turn/request across the foreground stream and APNs;
+native presentation suppresses duplicates and the visible conversation. A live
+foreground phone receives only the in-app stream, not an APNs push. Stream closure
+or an expired inbound heartbeat restores push eligibility independently per device.
+Desktop-originated turns suppress push while Electron reports current focus;
+mobile-originated work and unknown origins remain eligible. Prompt provenance is
+volatile, scoped to the turn, and carried through in-process queued admission.
+It never changes provider conversation state. Desktop focus failures leave push
+available rather than retaining stale focus. Suppressed alerts are not replayed.
+Banner dismissal does not acknowledge unread activity. Notification navigation retains
+the latest tap through startup, app unlock and connection restoration, then validates
+the paired host and current full conversation target before opening it. Explicit
+navigation or forgetting the laptop cancels a pending tap; connection interruptions
+are not evidence that its conversation is missing.
+Push device tokens belong to each authenticated pairing and are persisted privately
+with its grant; revocation removes them. The relay holds the APNs signing keys and
+accepts bounded, rate-limited notification requests only from admitted laptops for
+their registered phones, with phone-signed consent scoped to the relay, laptop,
+token, environment and expiration. Public relay admission needs no account or
+operator enrollment; pairing proof and desktop approval still gate access.
+APNs receives agent names, attention kinds and opaque navigation IDs, never
+conversation text, prompts, approvals or tool arguments.
+Foreground APNs delivery uses the same native banner path with system presentation
+suppressed; background delivery belongs to iOS. The native app bundle ID and APNs
+topic both use the product app ID. Sandbox and production credentials are separate.
+
+Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
+events: those projections are absent from the mobile workspace, and conversation
+content travels through the subscribed provider stream.
+Mobile prompts start a turn when idle and steer active work, without entering the
+prompt queue. The owning daemon decides at admission time; durable companion receipts
+also cover steering, so reconnecting cannot replay an accepted or uncertain prompt.
+Receipts distinguish active admission from a confirmed rejection and an unknown
+provider outcome. The phone reconciles timed-out admissions while connected,
+without replaying them; late acceptance clears only the captured native draft
+and attachments. An unresolved outcome keeps its warning and draft but permits
+an explicit new send after the user checks the conversation.
+The composer microphone uses Apple's Speech framework with on-device recognition
+required and native microphone permissions. Audio stays on the phone; partial and
+final transcripts update only the active draft. Sending, navigation, and backgrounding
+stop capture and invalidate late recognition callbacks. Keyboard dictation remains
+available through the system text field.
+
+Pairing identities, laptop records, and each laptop's last-opened team and agent use
+device-only Keychain entries accessible while unlocked. Selection restoration checks
+the connected workspace and falls back in desktop team/agent order. The engine's
+optional protected draft store persists prompt intent
+and delivery uncertainty by laptop and agent; its native host keeps composer text
+and selected attachment bytes in memory, keyed by the full laptop/conversation target.
+Pending first-send drafts follow initialization of their empty provider session;
+established-session replacements keep separate drafts. Native pickers and explicit
+clipboard paste supply bounded bytes, never device paths.
+Goal mode is a native draft choice; setting and clearing use target-bound companion
+commands routed to the same daemon goal operations as desktop. The native goal bar
+reads the daemon's goal projection, and uncertain delivery retains the objective
+without replaying the mutation.
+Review initialization reads the desktop's Git scope and reviewer model catalog through
+a target-bound companion request. Native choices use the existing review-start input;
+the daemon remains the owner of review execution and findings. Opening setup does not
+start a review, and automatic fixes and local commits require explicit selection.
+The companion engine validates the target before submission and reports admission
+back to the native draft; only accepted sends clear their captured text and attachments.
+The laptop stores uploads privately and passes ordinary provider attachment paths
+through its existing prompt route. Nested remote teams remain text-only until their
+owning host supports trusted file transfer. Reconnect reconciles available command receipts without replaying prompts
+and retains the last loaded snapshot while rehydrating the same provider session.
+
+Repository branch selection uses the desktop branch catalog on the repository’s
+owning host. The phone receives names and checkout status, never checkout paths;
+chat creation resolves the branch again and reuses its checkout or creates a
+worktree on that existing branch.
+
+Mobile access belongs to the existing owning daemon. A dedicated libp2p companion
+protocol runs through an outbound WebSocket circuit relay, with Noise authenticating
+and encrypting the laptop-to-device channel. A phone pairs with a short code that
+expires after five minutes and is claimed by one authenticated phone. The pinned
+relay is trusted for this initial identity introduction; subsequent connections use
+the saved laptop and phone identity pins. Explicit desktop approval is required;
+an approved phone can read every team and send prompts. The relay carries
+conversation ciphertext, connection metadata and optional push attention metadata;
+its leased host registrations, temporary claimed-device routes and traffic bounds
+constrain routing. Endpoint authorization constrains app methods and location/team/agent/session
+targets. Local revocation persists before closing device connections. The local web,
+MCP and daemon socket transports retain their existing exposure boundaries.
+Native Debug builds may use WS for their configured relay on local Wi-Fi without
+a TLS certificate; Noise and pairing still apply. Release builds require WSS
+outside loopback, and saved pairings cannot enable the development exception.
 
 ## Conversation Ownership
 
@@ -130,6 +246,9 @@ Rules:
 - Every file is `{ schemaVersion, writtenBy, data }`. A build refuses to read or
   rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- Within a supported schema version, additive fields do not block loading agents,
+  settings, tasks, document workspaces or visualizations. Known field types and task
+  lifecycle invariants remain validated; command inputs retain their own strict validation.
 - Agents with an unknown engine kind are excluded from runtime state and logged.
   The store preserves their opaque records, team membership, work assignments and
   subagent data across ordinary saves; it never converts them to another provider.
@@ -210,6 +329,19 @@ backend locations.
 
 ## Source Repositories And Worktrees
 
+Branch moves capture all tracked and untracked changes against a source HEAD,
+preserving staging and working-file contents separately. Ignored files stay in the
+source checkout. The backend saves a private recovery journal under the repository's
+common Git directory and protects both captured trees with private refs until delivery.
+Moves create an idle agent without committing or starting a task; worktree setup and
+environment copying are disabled. Source cleanup requires a complete destination
+snapshot and persisted agent. Newer source edits remain in place. Path cleanup holds
+the source index lock and retains source file inodes as private recovery copies,
+protecting edits through already-open file descriptors. Retries reuse the reserved
+agent identity and never overwrite changed destination files. Move progress is
+backend-authored and correlated by request and source agent; it remains renderer-only
+state and does not start an agent conversation.
+
 The source folder is a backend-location convenience setting, not team membership
 and not an agent setting. It is auto-detected once on a fresh state; after the user
 clears or changes it, Korus never re-detects.
@@ -227,11 +359,39 @@ clears or changes it, Korus never re-detects.
   else. Otherwise the user's setting may copy `.env*` files (never templates,
   generated folders, nested checkouts, or over existing files) and restore
   dependencies. Existing worktrees are never re-initialized.
+- Git history is a read-only owning-host query through the agent Git protocol.
+  Pages are anchored to the worktree's HEAD and literal message search; stale
+  cursors require refresh. Commit details must belong to that history, and file
+  diffs use exact paths from its changed-file catalog. Merge details compare the
+  first parent; root commits compare the empty tree. Git commands have output and
+  time limits, and large catalogs disclose their display bound. Renderer history
+  is disposable selection state, separate from provider conversations and snapshots.
 - Delegated agents keep a durable link to the delegating agent. When the user
   finishes delegated work through PR or merge, `daemon` tells the idle worker
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+- Worktree delegation preferences belong to app settings. A delegation can
+  override its starting context and add task instructions. App-submitted user
+  overrides retain their provenance through prompt admission and persistence.
+  Controls bind to the accepted provider conversation and turn; an older terminal
+  cannot clear a newer prompt's controls, even while admission is pending.
+  Unbound controls restored after an interrupted admission are replaced by the
+  next user prompt; an unknown execution is never matched to an arbitrary terminal.
+  Explicit per-task user directions override saved user preferences; both outrank
+  agent-generated assignment guidance within the user's authorized scope.
+  User directions are frozen in the durable task and worker metadata, and supplied
+  once in the worker request's hidden context. The visible prompt contains only
+  the task. Agent-generated assignment guidance is
+  contextual task data and cannot present itself as a direct user override.
+  Assignment instructions are frozen before durable startup and never grant
+  publication or merge authority.
+- Same-provider worktree delegation uses an optional driver-owned native fork,
+  rebound to the worker's identity, folder and provider configuration. A busy
+  source uses a completed native boundary when supported. Cross-provider,
+  unsupported or refused forks start a fresh handoff with persisted
+  context metadata. Korus never replays a transcript to imitate a fork.
+  Independent code reviewers always start fresh.
 - Korus-created pull requests are tracked on their agent; a runtime scheduler
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree
@@ -280,6 +440,8 @@ separate from worker agents and provider conversations. They are stored in
   progression.
 - Result delivery batches are persisted before parent prompt acceptance and use
   normal prompt admission, waiting while the parent is busy or awaiting input.
+  The prompt presents readable task outcomes; tracking markers, coordination
+  instructions and complete structured results remain in hidden context.
   Explicit interruption, a missing parent, or a restart blocks automatic wakeup.
   Acceptance markers in provider history can reconcile an uncertain delivery;
   missing or truncated history never proves non-execution and never triggers a
@@ -349,6 +511,10 @@ target and reviewer agents) plus an opaque reviewer session reference.
   through subsequent rounds and reloads.
 - Finishing saves a report first, then removes the ledger and the review-owned
   agent. Discarding removes the ledger from any state. Reopening starts from zero.
+- Switching an automatic review to manual is a durable ledger transition. It keeps
+  the active provider turn and review context intact; async completion can finish
+  that operation but cannot schedule automatic remediation, commits or fresh rounds.
+  Provider interruption remains a separate operation.
 - Findings and the `finish_review_round` acknowledgment are model tools
   ([mcp.md](mcp.md)); user decisions and workflow transitions are backend
   commands.
@@ -421,9 +587,42 @@ annotations arrive as structured metadata the renderer batches into one prompt.
 Open browser tabs retain their browser identity and latest URL in the per-client
 workspace store. Restoring a tab navigates through the normal host browser API;
 page contents, navigation history and live guest handles remain ephemeral.
+Named web bookmarks belong to the owning client's presentation preferences,
+independent of agents and tabs. Stored URLs are normalized HTTP/HTTPS addresses
+without embedded credentials; opening one uses the normal host navigation policy.
+The settings store retains their client identity separately from shared defaults.
 The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
+
+## Interactive planning
+
+Provider-native Markdown proposals own plan review identity and approval. Korus adds
+section and selected-text comments and decorates flat Markdown checkbox lists as
+multiple choices and `( )` / `(x)` lists as single choices. Code examples, nested
+lists and mixed lists retain normal Markdown rendering. Authored HTML remains
+escaped by the shared Markdown renderer. Model-selected defaults are proposals;
+only explicitly confirmed groups become feedback. Confirmation survives answer
+edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
+drafts remain saved without ratifying defaults.
+
+The owning host's Workflows setting enables interactive plans by default. Enabled
+Plan-mode turns receive hidden Markdown choice guidance; disabling it leaves
+ordinary Markdown and native review actions without choice controls.
+
+Draft feedback belongs to the agent, conversation and native review ID. The owning
+host persists it with optimistic versions through the existing review response
+contract. Saving does not start a turn. Revise explicitly sends feedback in a
+Plan-mode turn, with confirmed answers and comments inside hidden context; Approve
+uses the native implementation authorization path. Persisted delivery intent
+prevents automatic retry after an uncertain delivery. New proposals start unanswered and retain prior
+feedback in bounded review history.
+
+The Vue editor is keyed by owner and review identity. Its draft and serial saves
+survive snapshot updates without replacing document or footer elements. Stale
+responses cannot target another review. Saved structured plans migrate to Markdown
+and retain their feedback; migration grants approval authority only when the saved
+plan matches an existing native review.
 
 ## Theming
 

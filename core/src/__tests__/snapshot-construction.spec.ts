@@ -117,6 +117,16 @@ describe('snapshot construction', () => {
     expect(isAppSnapshot(initial)).toBe(true);
     expect(isAppSnapshot({ ...initial, general: null })).toBe(false);
   });
+
+  it('rejects malformed delegation preferences and inconsistent persisted worker context', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'unavailable' };
+    expect(isAppSnapshot(snapshot)).toBe(true);
+    expect(isAppSnapshot({ ...snapshot, general: { ...snapshot.general, worktreeDelegationStartingContext: 'replay' } })).toBe(false);
+    expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], delegationContext: { requested: 'handoff', effective: 'conversation' } }] })).toBe(false);
+    expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], userDelegationOverrides: { startingContext: 'replay' } }] })).toBe(false);
+    expect(isAppSnapshot({ ...snapshot, agents: [{ ...snapshot.agents[0], delegationUserInstructions: { saved: 42 } }] })).toBe(false);
+  });
 });
 
 function expectedEmptySnapshot(): AppSnapshot {
@@ -178,9 +188,13 @@ function expectedEmptySnapshot(): AppSnapshot {
       cockpitAgentViewMode: 'teams',
       collapsedRepositoryKeys: [],
       modelFavorites: [],
+      backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
+      worktreeDelegationStartingContext: 'handoff',
+      worktreeDelegationInstructions: '',
       repositoryIcons: {},
       appshots: {
         hotkey: 'command',

@@ -142,7 +142,12 @@ describe('app menu', () => {
       'Quit',
     ]);
     expect(menu.find((item) => item.role === 'editMenu')).toBeDefined();
+    expect(submenu(menu, 'View').slice(0, 3).map(item => item.type ?? item.label)).toStrictEqual([
+      'Command Palette…', 'Keyboard Shortcuts…', 'separator',
+    ]);
     expect(menuLabels(submenu(menu, 'View'))).toStrictEqual([
+      'Command Palette…',
+      'Keyboard Shortcuts…',
       'Changes',
       'Browser',
       'Go to Agent...',
@@ -162,7 +167,7 @@ describe('app menu', () => {
       'Resume Session',
       'Restart Agent',
     ]);
-    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['What’s New']);
+    expect(menuLabels(submenu(menu, 'Help'))).toStrictEqual(['Command Palette…', 'Keyboard Shortcuts…', 'What’s New']);
     expect(JSON.stringify(menu)).not.toMatch(/viewMenu|reload|forceReload|toggleDevTools/i);
   });
 
@@ -251,6 +256,18 @@ describe('app menu', () => {
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(10, { type: 'cycle-agents', direction: -1 });
     clickItem(menu, 'Help', 'What’s New');
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(11, { type: 'open-whats-new' });
+    clickItem(menu, 'Help', 'Keyboard Shortcuts…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(12, { type: 'open-keyboard-shortcuts' });
+    expect(menuItem(menu, 'Help', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
+    clickItem(menu, 'Help', 'Command Palette…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
+    expect(menuItem(menu, 'Help', 'Command Palette…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+P', registerAccelerator: false });
+    clickItem(menu, 'View', 'Command Palette…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
+    clickItem(menu, 'View', 'Keyboard Shortcuts…');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-keyboard-shortcuts' });
+    expect(menuItem(menu, 'View', 'Command Palette…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+P', registerAccelerator: false });
+    expect(menuItem(menu, 'View', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
   });
 
   it('uses the expected file menu accelerators', () => {
@@ -395,6 +412,8 @@ describe('app menu', () => {
     const releaseMenu = buildAppMenuTemplate(callbacks(), { debugMode: false }, 'darwin');
 
     expect(menuLabels(submenu(debugMenu, 'View'))).toStrictEqual([
+      'Command Palette…',
+      'Keyboard Shortcuts…',
       'Changes',
       'Browser',
       'Go to Agent...',
@@ -423,7 +442,8 @@ describe('app menu', () => {
       'Multi-question Request',
       'Mark as Unread',
       'Execution Plan',
-      'Plan Review',
+      'Text Plan Review',
+      'Plan Review with Choices',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Mission Fixtures')).toStrictEqual([
       'Requirements',
@@ -446,12 +466,14 @@ describe('app menu', () => {
       type: 'checkbox',
       checked: false,
     });
-    expect(submenuLabels(debugMenu, 'Debug', 'Review')).toStrictEqual([
-      'Findings While Reviewing',
-      'Findings Ready for Selection',
-      'Remediation Mix',
-      'Completed Without Findings',
+    expect(nestedSubmenu(debugMenu, 'Debug', 'Review').map(menuEntryLabel)).toStrictEqual([
       'Simulate Uncommitted Changes',
+      'separator',
+      'Automatic Review in Progress',
+      'Manual Review in Progress',
+      'Findings Ready for Selection',
+      'Remediation in Progress',
+      'Ready to Finish (No Findings)',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Thread Flags')).toStrictEqual([
       'Delegate to Worktree',
@@ -481,7 +503,8 @@ describe('app menu', () => {
       'separator',
       'Mark as Unread',
       'Execution Plan',
-      'Plan Review',
+      'Text Plan Review',
+      'Plan Review with Choices',
     ]);
     expect(nestedSubmenu(debugMenu, 'Debug', 'UI Previews').map(menuEntryLabel)).toStrictEqual([
       'Markdown',
@@ -503,7 +526,8 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Approval Request');
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Mark as Unread');
     clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Execution Plan');
-    clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Plan Review');
+    clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Text Plan Review');
+    clickNestedItem(debugMenu, 'Debug', 'Agent Fixtures', 'Plan Review with Choices');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Requirements');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Tickets');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Implementation');
@@ -512,10 +536,11 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Ship');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Suggestions');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Diagrams');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Findings While Reviewing');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Manual Review in Progress');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Findings Ready for Selection');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Remediation Mix');
-    clickNestedItem(debugMenu, 'Debug', 'Review', 'Completed Without Findings');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Remediation in Progress');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Ready to Finish (No Findings)');
+    clickNestedItem(debugMenu, 'Debug', 'Review', 'Automatic Review in Progress');
     clickThreadFlagItem(debugMenu, 'Delegate to Worktree', true);
     clickThreadFlagItem(debugMenu, 'Delegate to Worktree', false);
     clickThreadFlagItem(debugMenu, 'Ready for Review', true);
@@ -581,7 +606,8 @@ describe('app menu', () => {
     expect(electronClipboardMocks.readImage).toHaveBeenCalledOnce();
     expect(electronClipboardMocks.image.toDataURL).toHaveBeenCalledWith({ scaleFactor: 2 });
     expect(debugCallbacks.toggleDebugExecutionPlan).toHaveBeenCalledOnce();
-    expect(debugCallbacks.injectDebugPlanReview).toHaveBeenCalledOnce();
+    expect(debugCallbacks.injectDebugPlanReview).toHaveBeenNthCalledWith(1, 'text');
+    expect(debugCallbacks.injectDebugPlanReview).toHaveBeenNthCalledWith(2, 'choices');
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(1, 'requirements', undefined);
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(2, 'tickets', undefined);
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(3, 'implementation', undefined);
@@ -594,6 +620,7 @@ describe('app menu', () => {
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(2, 'ready');
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(3, 'fixing');
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(4, 'readyToFinish');
+    expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(5, 'automaticReviewing');
     expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(1, 'delegate_to_worktree', true);
     expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(2, 'delegate_to_worktree', false);
     expect(debugCallbacks.setDebugThreadFlag).toHaveBeenNthCalledWith(3, 'ready_for_review', true);

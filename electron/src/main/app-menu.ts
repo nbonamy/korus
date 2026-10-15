@@ -4,6 +4,7 @@ import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts'
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
+import { shortcutAccelerator } from '@workspace/core/keyboard-shortcuts';
 import { cycleTeamsAccelerator } from './app-shortcuts';
 import { detectPngRetinaPixelRatio, readClipboardPngBuffer } from './clipboard-image';
 import { sendAppCommand } from './ipc-events';
@@ -14,7 +15,7 @@ export type AppMenuOptions = {
   updateStatus?: DesktopUpdateStatus;
 };
 
-export type DebugCodeReviewScenario = 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
+export type DebugCodeReviewScenario = 'automaticReviewing' | 'reviewing' | 'ready' | 'fixing' | 'readyToFinish';
 
 export type AppMenuCallbacks = {
   checkForUpdates?: () => void;
@@ -22,7 +23,7 @@ export type AppMenuCallbacks = {
   sendDebugAgentMessage?: () => void;
   toggleDebugExecutionPlan?: () => void;
   hasDebugExecutionPlan?: () => boolean;
-  injectDebugPlanReview?: () => void;
+  injectDebugPlanReview?: (format: 'text' | 'choices') => void;
   populateDebugVisualize?: (scenario: VisualizeDebugScenario) => void;
   getDebugMissionStage?: () => MissionStage | undefined;
   getDebugMissionReviewState?: () => MissionReviewDebugState | undefined;
@@ -92,10 +93,28 @@ export function buildAppMenuTemplate(
   ];
 }
 
+function buildCommandDiscoveryItems(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: mainT('menu.commandPalette'),
+      accelerator: shortcutAccelerator('commands'),
+      registerAccelerator: false,
+      click: () => callbacks.sendAppCommand({ type: 'open-command-palette' }),
+    },
+    {
+      label: mainT('menu.keyboardShortcuts'),
+      accelerator: shortcutAccelerator('help'),
+      registerAccelerator: false,
+      click: () => callbacks.sendAppCommand({ type: 'open-keyboard-shortcuts' }),
+    },
+  ];
+}
+
 function buildHelpMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions, platform: NodeJS.Platform): MenuItemConstructorOptions {
   return {
     label: mainT('menu.help'),
     submenu: [
+      ...buildCommandDiscoveryItems(callbacks),
       {
         label: mainT('menu.whatsNew'),
         click: () => callbacks.sendAppCommand({ type: 'open-whats-new' }),
@@ -206,7 +225,20 @@ function buildDebugMissionFixtures(callbacks: AppMenuCallbacks): MenuItemConstru
 function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
   return [
     {
-      label: 'Findings While Reviewing',
+      label: 'Simulate Uncommitted Changes',
+      type: 'checkbox',
+      checked: callbacks.getDebugReviewUncommitted?.() ?? false,
+      enabled: Boolean(callbacks.setDebugReviewUncommitted),
+      click: item => callbacks.setDebugReviewUncommitted?.(item.checked),
+    },
+    { type: 'separator' },
+    {
+      label: 'Automatic Review in Progress',
+      enabled: Boolean(callbacks.injectDebugCodeReview),
+      click: () => callbacks.injectDebugCodeReview?.('automaticReviewing'),
+    },
+    {
+      label: 'Manual Review in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('reviewing'),
     },
@@ -216,22 +248,14 @@ function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemCons
       click: () => callbacks.injectDebugCodeReview?.('ready'),
     },
     {
-      label: 'Remediation Mix',
+      label: 'Remediation in Progress',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('fixing'),
     },
     {
-      label: 'Completed Without Findings',
+      label: 'Ready to Finish (No Findings)',
       enabled: Boolean(callbacks.injectDebugCodeReview),
       click: () => callbacks.injectDebugCodeReview?.('readyToFinish'),
-    },
-    { type: 'separator' },
-    {
-      label: 'Simulate Uncommitted Changes',
-      type: 'checkbox',
-      checked: callbacks.getDebugReviewUncommitted?.() ?? false,
-      enabled: Boolean(callbacks.setDebugReviewUncommitted),
-      click: item => callbacks.setDebugReviewUncommitted?.(item.checked),
     },
   ];
 }
@@ -264,9 +288,14 @@ function buildDebugAgentFixtures(callbacks: AppMenuCallbacks): MenuItemConstruct
       click: () => callbacks.toggleDebugExecutionPlan?.(),
     },
     {
-      label: 'Plan Review',
+      label: 'Text Plan Review',
       enabled: Boolean(callbacks.injectDebugPlanReview),
-      click: () => callbacks.injectDebugPlanReview?.(),
+      click: () => callbacks.injectDebugPlanReview?.('text'),
+    },
+    {
+      label: 'Plan Review with Choices',
+      enabled: Boolean(callbacks.injectDebugPlanReview),
+      click: () => callbacks.injectDebugPlanReview?.('choices'),
     },
   ];
 }
@@ -378,7 +407,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       { type: 'separator' },
       {
         label: mainT('menu.settings'),
-        accelerator: 'CommandOrControl+,',
+        accelerator: shortcutAccelerator('settings'),
         click: () => callbacks.sendAppCommand({ type: 'open-settings' }),
       },
       { type: 'separator' },
@@ -390,7 +419,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       { type: 'separator' },
       {
         label: mainT('menu.quitApp'),
-        accelerator: 'CommandOrControl+Q',
+        accelerator: shortcutAccelerator('quit'),
         click: () => callbacks.sendAppCommand({ type: 'quit' }),
       },
     ],
@@ -419,24 +448,24 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
     submenu: [
       {
         label: mainT('menu.newTeam'),
-        accelerator: 'CommandOrControl+N',
+        accelerator: shortcutAccelerator('newTeam'),
         click: () => callbacks.sendAppCommand({ type: 'new-team' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.closeAgent'),
-        accelerator: 'CommandOrControl+W',
+        accelerator: shortcutAccelerator('closeAgent'),
         click: () => callbacks.sendAppCommand({ type: 'close-active-agent' }),
       },
       {
         label: mainT('menu.closeTeam'),
-        accelerator: 'CommandOrControl+Shift+W',
+        accelerator: shortcutAccelerator('closeTeam'),
         click: () => callbacks.sendAppCommand({ type: 'close-active-team' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.quit'),
-        accelerator: 'CommandOrControl+Q',
+        accelerator: shortcutAccelerator('quit'),
         click: () => callbacks.sendAppCommand({ type: 'quit' }),
       },
     ],
@@ -455,12 +484,12 @@ function appendDraftActionsToEditMenu(menu: Menu, callbacks: AppMenuCallbacks): 
     { type: 'separator' as const },
     {
       label: mainT('menu.saveDraft'),
-      accelerator: 'CommandOrControl+Shift+X',
+      accelerator: shortcutAccelerator('saveDraft'),
       click: () => callbacks.sendAppCommand({ type: 'save-active-prompt-draft' }),
     },
     {
       label: mainT('menu.savedDrafts'),
-      accelerator: 'CommandOrControl+Shift+V',
+      accelerator: shortcutAccelerator('drafts'),
       click: () => callbacks.sendAppCommand({ type: 'open-saved-prompt-drafts' }),
     },
   ].forEach((item) => editMenu.append(new MenuItem(item)));
@@ -472,12 +501,12 @@ function buildAgentMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
     submenu: [
       {
         label: mainT('menu.editAgent'),
-        accelerator: 'CommandOrControl+E',
+        accelerator: shortcutAccelerator('edit'),
         click: () => callbacks.sendAppCommand({ type: 'edit-active-agent' }),
       },
       {
         label: mainT('menu.duplicateAgent'),
-        accelerator: 'CommandOrControl+D',
+        accelerator: shortcutAccelerator('duplicate'),
         click: () => callbacks.sendAppCommand({ type: 'duplicate-active-agent' }),
       },
       {
@@ -491,7 +520,7 @@ function buildAgentMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions
       { type: 'separator' },
       {
         label: mainT('menu.compactSession'),
-        accelerator: 'CommandOrControl+Shift+K',
+        accelerator: shortcutAccelerator('compact'),
         click: () => callbacks.sendAppCommand({ type: 'compact-active-session' }),
       },
       {
@@ -515,30 +544,32 @@ function buildViewMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Me
   return {
     label: mainT('menu.view'),
     submenu: [
+      ...buildCommandDiscoveryItems(callbacks),
+      { type: 'separator' },
       {
         label: mainT('menu.changes'),
-        accelerator: 'CommandOrControl+G',
+        accelerator: shortcutAccelerator('review'),
         click: () => callbacks.sendAppCommand({ type: 'open-review' }),
       },
       {
         label: mainT('menu.browser'),
-        accelerator: 'CommandOrControl+B',
+        accelerator: shortcutAccelerator('browser'),
         click: () => callbacks.sendAppCommand({ type: 'open-browser' }),
       },
       { type: 'separator' },
       {
         label: mainT('menu.goToAgent'),
-        accelerator: 'CommandOrControl+K',
+        accelerator: shortcutAccelerator('palette'),
         click: () => callbacks.sendAppCommand({ type: 'open-agent-palette' }),
       },
       {
         label: mainT('menu.nextAgent'),
-        accelerator: 'Control+Tab',
+        accelerator: shortcutAccelerator('nextAgent'),
         click: () => callbacks.sendAppCommand({ type: 'cycle-agents', direction: 1 }),
       },
       {
         label: mainT('menu.previousAgent'),
-        accelerator: 'Control+Shift+Tab',
+        accelerator: shortcutAccelerator('previousAgent'),
         click: () => callbacks.sendAppCommand({ type: 'cycle-agents', direction: -1 }),
       },
       { type: 'separator' },

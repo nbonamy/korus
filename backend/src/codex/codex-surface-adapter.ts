@@ -1,5 +1,8 @@
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { codexExecutionConsumption } from './execution-usage';
+import { bankedResetsFromSurface } from './banked-resets';
+import { randomUUID } from 'node:crypto';
+import { isBankedResetResult, isUseBankedResetInput, type BankedResetResult, type UseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { product } from '@workspace/core/product';
 import os from 'node:os';
 import { approvalAgentRequest, approvalOutcome, requestFromClientRequest, agentResponseFromClientResponse } from '@workspace/core/agent-request';
@@ -42,6 +45,7 @@ import type {
   CodexConversationSummary,
   CodexConversationSnapshot,
   CodexSurfaceEvent,
+  CodexSurfaceRateLimits,
   CodexSurfaceReviewTarget,
   CodexSurfaceSnapshot,
   CodexSurfaceSkill,
@@ -106,16 +110,100 @@ export class CodexSurfaceAgentAdapter {
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
   private readonly unsubscribeSurface: () => void;
   private closed = false;
+  private accountRevision = 0;
+  private accountIdentity = '';
+  private readonly resetReadCancellations = new Set<() => void>();
+  private resetCreditTokens = new Map<string, { token: string; idempotencyKey?: string; uncertain?: boolean }>();
 
   constructor(
     private readonly surface: CodexSurface,
     private readonly closeSurface: () => Promise<void> = () => surface.close(),
   ) {
+    this.accountIdentity = JSON.stringify(surface.getSnapshot().authentication.account);
     this.unsubscribeSurface = surface.onEvent((event) => this.handleSurfaceEvent(event));
   }
 
   async start(): Promise<void> {
     await this.surface.connect();
+  }
+
+  async getBankedResets(): Promise<import('@workspace/core/contracts/banked-resets').BankedResets> {
+    // Feature-detect the narrow public seam for older published SDKs.
+    const surface = this.surface as CodexSurface & {
+      readRateLimits?: (options: { excludeResetCreditDetails: boolean }) => Promise<CodexSurfaceRateLimits>;
+      consumeRateLimitResetCredit?: (options: { idempotencyKey: string; creditId?: string }) => Promise<BankedResetResult>;
+    };
+    if (!surface.readRateLimits) return { status: 'unsupported' };
+    const account = surface.getSnapshot().authentication.account;
+    if (account?.type !== 'chatgpt') return { status: account ? 'unsupported' : 'signedOut' };
+    const identity = JSON.stringify(account);
+    if (identity !== this.accountIdentity) { this.accountIdentity = identity; ++this.accountRevision; this.resetCreditTokens.clear(); }
+    const expected = this.accountRevision;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancel: (() => void) | undefined;
+    try {
+      const limits = await Promise.race([
+        surface.readRateLimits({ excludeResetCreditDetails: false }),
+        new Promise<never>((_resolve, reject) => {
+          cancel = () => reject(new Error('Banked reset account changed'));
+          this.resetReadCancellations.add(cancel);
+          timer = setTimeout(() => reject(new Error('Banked reset read timed out')), 15_000);
+        }),
+      ]);
+      if (this.closed || expected !== this.accountRevision || JSON.stringify(surface.getSnapshot().authentication.account) !== JSON.stringify(account)) {
+        throw new Error('Banked reset account changed');
+      }
+      const nextTokens = new Map<string, { token: string; idempotencyKey?: string; uncertain?: boolean }>();
+      const result = bankedResetsFromSurface(limits, typeof surface.consumeRateLimitResetCredit === 'function' ? id => {
+        const entry = this.resetCreditTokens.get(id) ?? { token: randomUUID() };
+        nextTokens.set(id, entry);
+        return entry.token;
+      } : undefined);
+      for (const [id, entry] of this.resetCreditTokens) {
+        if (entry.uncertain && !nextTokens.has(id)) nextTokens.set(id, entry);
+      }
+      this.resetCreditTokens = nextTokens;
+      return result;
+    } finally { clearTimeout(timer); if (cancel) this.resetReadCancellations.delete(cancel); }
+  }
+
+  async useBankedReset(input: UseBankedResetInput): Promise<BankedResetResult> {
+    if (!isUseBankedResetInput(input)) throw new Error('Reset confirmation is required');
+    const surface = this.surface as CodexSurface & {
+      consumeRateLimitResetCredit?: (options: { idempotencyKey: string; creditId?: string }) => Promise<BankedResetResult>;
+    };
+    if (!surface.consumeRateLimitResetCredit) throw new Error('Reset redemption is unsupported');
+    const account = surface.getSnapshot().authentication.account;
+    if (this.closed || account?.type !== 'chatgpt' || JSON.stringify(account) !== this.accountIdentity) {
+      this.resetCreditTokens.clear();
+      throw new Error('Banked reset account changed');
+    }
+    const selected = [...this.resetCreditTokens].find(([, entry]) => entry.token === input.redemptionToken);
+    if (!selected) throw new Error('Banked reset selection expired. Refresh and try again.');
+    const [creditId, entry] = selected;
+    // Retain the logical attempt after an uncertain response, including UI reloads.
+    entry.idempotencyKey ??= input.idempotencyKey;
+    entry.uncertain = true;
+    const expected = this.accountRevision;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancel: (() => void) | undefined;
+    try {
+      const result = await Promise.race([
+        surface.consumeRateLimitResetCredit({ creditId, idempotencyKey: entry.idempotencyKey }),
+        new Promise<never>((_resolve, reject) => {
+          cancel = () => reject(new Error('Banked reset account changed'));
+          this.resetReadCancellations.add(cancel);
+          timer = setTimeout(() => reject(new Error('Banked reset outcome is uncertain')), 15_000);
+        }),
+      ]);
+      if (this.closed || expected !== this.accountRevision || JSON.stringify(surface.getSnapshot().authentication.account) !== JSON.stringify(account)) {
+        throw new Error('Banked reset account changed');
+      }
+      if (!isBankedResetResult(result)) throw new Error('Invalid banked reset outcome');
+      entry.uncertain = false;
+      if (result.outcome === 'nothingToReset' || result.outcome === 'noCredit') delete entry.idempotencyKey;
+      return result;
+    } finally { clearTimeout(timer); if (cancel) this.resetReadCancellations.delete(cancel); }
   }
 
   async getAuthentication(): Promise<CodexAuthentication> {
@@ -639,14 +727,36 @@ export class CodexSurfaceAgentAdapter {
     }
   }
 
+  async forkWorktreeConversation(agent: Agent, targetAgent: Agent) {
+    const source = await this.ensureSession(agent);
+    const snapshot = source.handle.getSnapshot();
+    if (snapshot.busy || snapshot.activeTurnId) {
+      // The delegating turn contains an unfinished tool call. Fork only a
+      // completed native boundary; never interrupt or replay the parent.
+      const boundary = [...snapshot.turns].reverse().find(turn => turn.status === 'completed' && turn.id !== snapshot.activeTurnId);
+      if (!boundary) throw new Error('No completed conversation turn is available to continue from.');
+      return this.forkConversation(agent, targetAgent, boundary.id);
+    }
+    return this.forkConversation(agent, targetAgent);
+  }
+
   async forkConversation(agent: Agent, targetAgent: Agent, turnId?: string) {
     const source = await this.ensureSession(agent);
+    const defaults = targetAgent.backendDefaults?.kind === 'codex' ? targetAgent.backendDefaults : undefined;
+    const preset = effectiveApprovalPreset(codexApprovalPresetFromDefaults(defaults), this.surface.getSnapshot().approvalPresets);
+    const options = {
+      ...agentCwd(targetAgent),
+      ...(preset ? { approvalPreset: preset } : {}),
+      ...(defaults?.model ? { model: defaults.model } : {}),
+      ...(defaults?.reasoningEffort ? { reasoningEffort: defaults.reasoningEffort } : {}),
+      ...(defaults?.serviceTier !== undefined ? { serviceTier: defaults.serviceTier } : {}),
+    };
     const result = await (turnId === undefined ? source.handle.fork(
-      agentCwd(agent),
+      options,
       { extensionContext: targetAgent },
     ) : source.handle.forkTurn(
       turnId,
-      agentCwd(agent),
+      options,
       { extensionContext: targetAgent },
     ));
     this.bindRuntime(targetAgent, result.conversationId, false);
@@ -742,6 +852,9 @@ export class CodexSurfaceAgentAdapter {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.resetCreditTokens.clear();
+    for (const cancel of this.resetReadCancellations) cancel();
+    this.resetReadCancellations.clear();
     this.unsubscribeSurface();
     for (const session of this.sessionsByAgentId.values()) session.unsubscribe();
     this.sessionsByAgentId.clear();
@@ -1001,6 +1114,17 @@ export class CodexSurfaceAgentAdapter {
   }
 
   private handleSurfaceEvent(event: CodexSurfaceEvent): void {
+    if (event.type === 'authentication.changed') {
+      const identity = JSON.stringify(event.payload.authentication.account);
+      if (identity !== this.accountIdentity || event.origin === 'notification') {
+        this.accountIdentity = identity; ++this.accountRevision;
+        this.resetCreditTokens.clear();
+        for (const cancel of this.resetReadCancellations) cancel();
+        const state = authenticationFromSurface(event.payload.authentication);
+        this.emit({ backend: 'codex', type: 'provider.authenticationChanged', payload: { kind: 'codex', connected: Boolean(state.account || !state.requiresOpenaiAuth), state }, occurredAt: event.occurredAt });
+      }
+    }
+
     if (event.type === 'conversation.summaryUpserted') {
       this.conversationSummaries.set(event.conversationId, event.payload.summary);
       const rootAgentId = this.agentIdsByThreadId.get(event.conversationId);

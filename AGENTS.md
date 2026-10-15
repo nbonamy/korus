@@ -84,7 +84,8 @@ docs only when an architecture, process, or reusable convention changes.
   ownership, backend seam, persistence, remote teams, worktrees, durable tasks,
   Missions, code review, work providers.
 - `docs/backend-architecture.md`: `daemon` design rules, transports, runtime
-  packaging, GitHub desktop releases, auto-update, security.
+  packaging, GitHub desktop releases, auto-update, security. Read its companion
+  gateway and relay invariants before changing or reviewing mobile access.
 - `docs/protocol.md`: app-owned JSON-RPC conventions, synchronization, and
   lifecycles; the method catalog itself is in `core/src/backend-protocol/`.
 - `docs/codex.md`: read before changing Codex conversation state, rendering,
@@ -135,7 +136,8 @@ statement coverage. Lines, branches, and functions remain reported diagnostics
 without blocking thresholds. Do not lower the statement threshold or shrink
 the measured surface to land a change. Coverage does not replace meaningful
 behavioral/regression tests or verification at the owning runtime boundary.
-Before release, require the full test suite and all-workspace statement coverage.
+Quality CI enforces coverage on every push. Release CI independently requires the
+full test suite without coverage; it does not wait for Quality CI.
 
 Before editing code, read `docs/testing.md`. Before editing UI, also read
 `docs/frontend.md`.

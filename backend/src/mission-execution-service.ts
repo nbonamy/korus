@@ -710,9 +710,7 @@ export class MissionExecutionService {
 
 function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFinding[]): string {
   const workspacePaths = new Map((mission.execution?.workspaces ?? []).map(workspace => [workspace.repositoryPath, workspace.path]));
-  return [
-    `Fix the ${findings.length} selected Mission Review finding${findings.length === 1 ? '' : 's'}.`,
-    '',
+  const context = [
     ...findings.flatMap(finding => [
       `${finding.id}: [${finding.priority.toUpperCase()}] ${finding.title}`,
       `Repository: ${finding.repositoryPath}`,
@@ -723,4 +721,5 @@ function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFindin
     ]),
     'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
   ].join('\n');
+  return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} finding${findings.length === 1 ? '' : 's'} I selected.`;
 }

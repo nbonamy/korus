@@ -707,6 +707,12 @@ describe('AppBackendServer', () => {
       },
     });
     expect(handle).toHaveBeenCalledWith(backendMethods.remoteControlStatusGet, undefined);
+    server.setCompanionAccessEnabled(true);
+    server.setCompanionAccessEnabled(false);
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'codex-still-enabled', method: backendMethods.clientStateGet })).resolves.toMatchObject({
+      result: { shouldPreventDisplaySleepForRemoteAccess: true },
+    });
+    await server.close();
   });
 
   it('initializes source folder state from the backend when snapshots are requested', async () => {
