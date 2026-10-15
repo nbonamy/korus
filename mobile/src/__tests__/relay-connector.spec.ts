@@ -58,6 +58,25 @@ beforeEach(async () => {
 });
 const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7QD-M2XP') => connector.pair!(code, 'Phone', () => {});
 describe('native relay host adapter', () => {
+  it.each(['steer', 'queue'] as const)('sends %s using its compatible wire options without replay', async mode => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    const target = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: null };
+    const clientCommandId = randomUUID();
+    transport.response = (method, args) => {
+      if (method !== 'prompt.submit') return {};
+      // Released desktops steer by default and strictly reject the new option.
+      if (mode === 'steer' && args.options?.followUpBehavior !== undefined) throw new Error('Unknown prompt option');
+      return { clientCommandId, target, state: 'accepted' };
+    };
+    const session = await connector.connect(host.hostId);
+    try {
+      await expect(session.sendPrompt(target, 'Continue', clientCommandId, { followUpBehavior: mode, model: 'm' })).resolves.toBeUndefined();
+      expect(transport.requests.filter(request => request.method === 'prompt.submit').map(({ args }) => args)).toStrictEqual([
+        { target, text: 'Continue', clientCommandId, options: { model: 'm', ...(mode === 'queue' ? { followUpBehavior: 'queue' } : {}) } },
+      ]);
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
   it('reads account quotas through the paired laptop circuit without a selected conversation', async () => {
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
     const providers = [{ backend: 'codex', limits: { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null }, failed: false }];

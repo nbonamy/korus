@@ -88,6 +88,7 @@ struct ComposerView: View {
             if showSuggestions { loadSuggestions() }
         }
         .onChange(of: model.activeAgentID) { _, _ in selection = nil; activeQuery = nil; dismissedQuery = nil }
+        .onChange(of: model.drawerOpen) { _, open in if open { focused = false } }
         .onChange(of: model.composerText) { _, text in if text.isEmpty { activeQuery = nil; selection = nil } }
     }
 

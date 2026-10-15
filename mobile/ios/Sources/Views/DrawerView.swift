@@ -40,7 +40,7 @@ struct DrawerView: View {
             footer
         }
         .background(Color(.systemBackground))
-        .sheet(isPresented: $showingSettings) { SettingsView() }
+        .fullScreenCover(isPresented: $showingSettings) { SettingsView() }
         .sheet(item: Binding(get: { model.newProjectSource }, set: { if $0 == nil { model.closeProjectSheet() } })) { source in
             NewProjectSheet(source: source)
         }
