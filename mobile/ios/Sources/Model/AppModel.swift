@@ -10,6 +10,8 @@ final class AppModel {
     let push = PushNotifications.shared
     var notificationError: String?
     var pushRegistrationFailed = false
+    var usage = UsageState()
+    func loadUsage() { command("loadUsage") }
     private var pendingNotification: ChatNotification?
     private var foreground = true
     private var screenUnlocked = false
@@ -141,6 +143,7 @@ final class AppModel {
 
     private func apply(_ state: EngineState) {
         set(\.startup, state.startup)
+        set(\.usage, state.usage ?? UsageState())
         set(\.pushRegistrationFailed, state.pushRegistrationFailed ?? false)
         if activeAgentID != (state.agentId.isEmpty ? nil : state.agentId) || composerDrafts.target != state.composerTarget { conversationLoading.select() }
         let generation = state.conversationGeneration ?? 0

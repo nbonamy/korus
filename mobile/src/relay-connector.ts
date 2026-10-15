@@ -200,6 +200,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }
       const session: CompanionSession = {
         getWorkspace: read,
+        getUsage: () => request(host, 'usage.get', {}),
         async registerPush(registration) {
           if (!registration) { await request(host, 'notifications.register', null); return; }
           await network();

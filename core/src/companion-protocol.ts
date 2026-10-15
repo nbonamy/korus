@@ -1,6 +1,6 @@
 import type { CompanionNotification } from './companion-notification';
 import type { AgentRequest, AgentRequestResponse } from './agent-request';
-import type { Agent, AgentBackend, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
+import type { AccountRateLimits, Agent, AgentBackend, ModelFavorite, ProviderConversationFrame, Team } from './contracts';
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
@@ -18,6 +18,8 @@ export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree:
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
 export type CompanionWorkspace = { teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]> };
+/** Account quota windows on the paired laptop; billing and credit details stay on the host. */
+export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
 export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: boolean };
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */

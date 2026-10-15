@@ -18,6 +18,7 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  usage: ReturnType<typeof createCompanionState>['usage']['value'];
   pushRegistrationFailed: boolean;
   requests: ReturnType<typeof createCompanionState>['requests']['value'];
   respondingRequest: string | null;
@@ -83,6 +84,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
@@ -125,6 +127,9 @@ export function createEngine(port: EnginePort) {
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
   let foreground = port.initialActive ?? true;
+  let pendingNotification: CompanionTarget | null = null;
+  let notificationEpoch = 0;
+  let restoringSelection = 0;
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
@@ -139,19 +144,37 @@ export function createEngine(port: EnginePort) {
   }
 
   async function connect(laptopId: string) {
-    const epoch = ++selectionEpoch;
-    await state.connect(laptopId);
-    if (!port.selectionStore || disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
-    const saved = await port.selectionStore.read(laptopId).catch(() => null);
-    if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
-    const teams = state.workspace.value.teams;
-    const team = teams.find((candidate) => candidate.id === saved?.teamId) ?? teams[0];
-    await state.selectTeam(team?.id ?? '');
-    if (disposed || epoch !== selectionEpoch) return;
-    const agent = (team?.id === saved?.teamId ? state.agents.value.find((candidate) => candidate.id === saved?.agentId) : undefined) ?? state.agents.value[0];
-    await state.selectAgent(agent?.id ?? '');
-    if (!disposed && epoch === selectionEpoch) await rememberSelection();
+    ++restoringSelection;
+    try {
+      const epoch = ++selectionEpoch;
+      await state.connect(laptopId);
+      if (!port.selectionStore || disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
+      const saved = await port.selectionStore.read(laptopId).catch(() => null);
+      if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
+      const teams = state.workspace.value.teams;
+      const team = teams.find((candidate) => candidate.id === saved?.teamId) ?? teams[0];
+      await state.selectTeam(team?.id ?? '');
+      if (disposed || epoch !== selectionEpoch) return;
+      const agent = (team?.id === saved?.teamId ? state.agents.value.find((candidate) => candidate.id === saved?.agentId) : undefined) ?? state.agents.value[0];
+      await state.selectAgent(agent?.id ?? '');
+      if (!disposed && epoch === selectionEpoch) await rememberSelection();
+    } finally {
+      --restoringSelection;
+      if (!restoringSelection && state.status.value === 'connected') await openPendingNotification();
+    }
   }
+
+  // A push can arrive before iOS finishes activation/unlock or before saved pairings load.
+  // Keep that navigation intent until a foreground connection has its authoritative workspace.
+  async function openPendingNotification() {
+    if (disposed || !foreground || startup.value !== 'ready' || restoringSelection || !pendingNotification) return;
+    const target = pendingNotification;
+    pendingNotification = null;
+    await dispatch({ type: 'openNotification', target });
+  }
+  const stopNotificationReconnect = watch(state.status, status => {
+    if (status === 'connected') void openPendingNotification();
+  }, { flush: 'post' });
 
   // Only whether a conversation is open matters here: its content changing must not rebuild the state.
   const hasConversation = computed(() => Boolean(state.conversation.value));
@@ -166,6 +189,7 @@ export function createEngine(port: EnginePort) {
     return {
       pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
+      usage: state.usage.value,
       startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
@@ -305,15 +329,26 @@ export function createEngine(port: EnginePort) {
       case 'pushRegistration': return state.registerPush(command.registration);
       case 'openNotification': {
         const target = command.target;
+        const epoch = ++notificationEpoch;
+        pendingNotification = null;
+        if (!foreground || startup.value !== 'ready') { pendingNotification = target; return; }
         if (!port.connector.laptops.some(laptop => laptop.id === target.hostId)) { port.post({ type: 'notificationOpenFailed' }); return; }
         await port.connector.resume?.();
+        if (epoch !== notificationEpoch || disposed) return;
+        if (!foreground) { pendingNotification = target; return; }
         if (state.laptopId.value !== target.hostId || state.status.value !== 'connected') await connect(target.hostId);
+        if (epoch !== notificationEpoch || disposed) return;
+        if (!foreground || state.status.value !== 'connected') { pendingNotification = target; return; }
         const agent = state.workspace.value.agents.find(agent => agent.id === target.agentId);
         const team = state.workspace.value.teams.find(team => team.id === target.teamId);
-        if (state.status.value !== 'connected' || !agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
+        if (!agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
           port.post({ type: 'notificationOpenFailed' }); return;
         }
-        await state.selectTeam(target.teamId); await state.selectAgent(target.agentId); return rememberSelection();
+        await state.selectTeam(target.teamId);
+        if (epoch !== notificationEpoch || disposed) return;
+        await state.selectAgent(target.agentId);
+        if (epoch !== notificationEpoch || disposed) return;
+        return rememberSelection();
       }
       case 'readConversationContent': {
         try {
@@ -327,8 +362,9 @@ export function createEngine(port: EnginePort) {
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
-      case 'connect': return connect(command.laptopId);
-      case 'disconnect': ++selectionEpoch; return state.disconnect();
+      case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
+      case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
+      case 'loadUsage': return state.loadUsage();
       case 'read': {
         if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value || command.generation !== state.conversationGeneration.value) return;
         const read = state.agent.value?.readState;
@@ -345,20 +381,23 @@ export function createEngine(port: EnginePort) {
         foreground = command.active;
         if (command.active) {
           await port.connector.resume?.();
-          if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) return connect(laptops.value[0]!.id);
-          return state.reconnect();
+          if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
+          else await state.reconnect();
+          return openPendingNotification();
         }
         state.disconnect(); return port.connector.suspend?.();
-      case 'reconnect': return state.reconnect();
+      case 'reconnect': await state.reconnect(); return openPendingNotification();
       case 'forget': {
+        ++notificationEpoch; pendingNotification = null;
         ++selectionEpoch;
         const laptopId = state.laptopId.value;
         await state.revoke();
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
-      case 'selectTeam': ++selectionEpoch; await state.selectTeam(command.id); return rememberSelection();
+      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
+        ++notificationEpoch; pendingNotification = null;
         ++selectionEpoch;
         const loading = state.selectAgent(command.id);
         await rememberSelection();
@@ -414,7 +453,8 @@ export function createEngine(port: EnginePort) {
       startup.value = 'ready';
     } catch { startup.value = 'error'; }
     publish();
+    await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

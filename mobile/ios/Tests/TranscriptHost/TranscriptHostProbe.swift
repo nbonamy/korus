@@ -90,16 +90,12 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             try? image.pngData()?.write(to: url)
             return image.cgImage
         }
-        if let locked = await entryImage(LockView(lock: lock, showsUnlock: true).environment(AppModel()), name: "lock-locked.png"),
-           let covered = await entryImage(LockView(lock: lock, showsUnlock: false).environment(AppModel()), name: "lock-covered.png"),
+        if let locked = await entryImage(LockView(lock: lock).environment(AppModel()), name: "lock-locked.png"),
            let connecting = await entryImage(StartupView(productName: "Korus", connecting: true), name: "connecting.png") {
             let header = CGRect(x: 0, y: 0, width: locked.width, height: locked.height / 2)
             let lockedHeader = locked.cropping(to: header).map { UIImage(cgImage: $0).pngData() }
-            let coveredHeader = covered.cropping(to: header).map { UIImage(cgImage: $0).pngData() }
-            check(lockedHeader != nil && lockedHeader == coveredHeader, "branding stays in place when the unlock button hides")
             let connectingHeader = connecting.cropping(to: header).map { UIImage(cgImage: $0).pngData() }
             check(lockedHeader != nil && lockedHeader == connectingHeader, "unlock and connecting screens share the same logo and title position")
-            check(UIImage(cgImage: locked).pngData() != UIImage(cgImage: covered).pngData(), "privacy cover hides the unlock button")
         } else {
             check(false, "lock screen renders for the layout regression")
         }

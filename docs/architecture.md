@@ -70,8 +70,9 @@ runtime-thin so every client shares one contract without inheriting file authori
 
 The mobile companion engine is a narrow workspace/read/send port over the companion
 protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
-window above native sheets and full-screen presentations while locked or inactive;
-locked settings cannot disable protection. A background WKWebView hosts
+window above native sheets and full-screen presentations when authentication is
+required; brief app switches within the unlock grace period retain the last screen.
+Locked settings cannot disable protection. A background WKWebView hosts
 the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
@@ -101,8 +102,11 @@ mobile-originated work and unknown origins remain eligible. Prompt provenance is
 volatile, scoped to the turn, and carried through in-process queued admission.
 It never changes provider conversation state. Desktop focus failures leave push
 available rather than retaining stale focus. Suppressed alerts are not replayed.
-Banner dismissal does not acknowledge unread activity. Notification navigation validates
-the paired host and current full conversation target before opening it.
+Banner dismissal does not acknowledge unread activity. Notification navigation retains
+the latest tap through startup, app unlock and connection restoration, then validates
+the paired host and current full conversation target before opening it. Explicit
+navigation or forgetting the laptop cancels a pending tap; connection interruptions
+are not evidence that its conversation is missing.
 Push device tokens belong to each authenticated pairing and are persisted privately
 with its grant; revocation removes them. The relay holds the APNs signing keys and
 accepts bounded, rate-limited notification requests only from admitted laptops for

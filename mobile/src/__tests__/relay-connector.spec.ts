@@ -57,6 +57,17 @@ beforeEach(async () => {
 });
 const pairWith = (connector: ReturnType<typeof createRelayConnector>, code = 'K7QD-M2XP') => connector.pair!(code, 'Phone', () => {});
 describe('native relay host adapter', () => {
+  it('reads account quotas through the paired laptop circuit without a selected conversation', async () => {
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    const providers = [{ backend: 'codex', limits: { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null }, failed: false }];
+    transport.response = () => providers;
+    const session = await connector.connect(host.hostId);
+    try {
+      expect(await session.getUsage!()).toStrictEqual(providers);
+      expect(transport.requests.at(-1)).toMatchObject({ method: 'usage.get', args: {} });
+    } finally { session.close(); await connector.dispose!(); }
+  });
+
   it('keeps chat connected to older laptops that reject notification subscription flags', async () => {
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
     transport.response = (_method, args) => args.notifications ? new Error('Unknown field') : { teams: [], agents: [] };

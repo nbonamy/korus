@@ -3,7 +3,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
-import type { CompanionBranch, CompanionNewChat } from '@workspace/core/companion-protocol';
+import type { CompanionBranch, CompanionNewChat, CompanionUsage } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -24,6 +24,25 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
+  const usage = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; providers: CompanionUsage[] }>({ status: 'idle', providers: [] });
+  let usageEpoch = 0;
+  const stopUsage = watch(status, () => {
+    ++usageEpoch;
+    usage.value = { status: 'idle', providers: [] };
+  }, { flush: 'sync' });
+  async function loadUsage() {
+    const active = session;
+    if (status.value !== 'connected' || usage.value.status === 'loading') return;
+    const epoch = ++usageEpoch;
+    usage.value = { status: 'loading', providers: [] };
+    try {
+      if (!active?.getUsage) throw new Error('Usage is unavailable.');
+      const providers = await active.getUsage();
+      if (epoch === usageEpoch && active === session) usage.value = { status: 'loaded', providers };
+    } catch {
+      if (epoch === usageEpoch && active === session) usage.value = { status: 'failed', providers: [] };
+    }
+  }
   const respondingRequest = ref<string | null>(null);
   const failedRequest = ref<string | null>(null);
   const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
@@ -686,7 +705,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
+  return { usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     draft, deliveryUnknown, canSend, history, loadOlder, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    disconnect, reconnect, revoke, dispose() { receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

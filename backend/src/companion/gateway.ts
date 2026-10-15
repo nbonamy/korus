@@ -17,6 +17,7 @@ import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
+import type { CompanionUsage } from '@workspace/core/companion-protocol';
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 
@@ -54,6 +55,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  usage?(): Promise<CompanionUsage[]>;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(response: AgentRequestResponse): Promise<void>;
@@ -311,6 +313,13 @@ export class CompanionGateway {
    * inside the mutation lock.
    */
   private readonly operations: Record<string, Operation> = {
+    'usage.get': async (peer, args) => {
+      z.object({}).strict().parse(args);
+      if (!this.port.usage) throw new Error('Usage is unavailable.');
+      const usage = await this.port.usage();
+      this.requireGrant(peer);
+      return usage;
+    },
     'notifications.register': async (peer, args) => {
       const registration = z.object({ token: z.string().regex(/^[a-f0-9]{32,512}$/), environment: z.enum(['development', 'production']), authorization: z.object({ expiresAt: z.number().int().positive(), signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/) }).strict().optional() }).strict().nullable().parse(args);
       await this.mutate(async () => {

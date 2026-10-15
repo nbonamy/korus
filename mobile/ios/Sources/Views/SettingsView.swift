@@ -18,6 +18,12 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 Section {
+                    NavigationLink { UsageView() } label: {
+                        Label("Usage", systemImage: "gauge.with.dots.needle.33percent")
+                    }
+                }
+
+                Section {
                     Toggle(isOn: Binding(get: { lock.isEnabled }, set: { on in Task { await lock.setEnabled(on) } })) {
                         Label("Lock with Face ID", systemImage: "faceid")
                     }
@@ -26,7 +32,7 @@ struct SettingsView: View {
                     Text("Security")
                 } footer: {
                     Text(lock.canProtect
-                         ? "Ask for Face ID, Touch ID or your passcode when the app opens and after it has been away for 30 seconds."
+                         ? "Ask for Face ID, Touch ID or your passcode when the app opens and after five minutes away."
                          : "Set a passcode on this iPhone to lock the app.")
                 }
 

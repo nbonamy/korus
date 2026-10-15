@@ -2,6 +2,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
+import type { CompanionUsage } from '@workspace/core/companion-protocol';
 
 /** Only authoritative provider resets cross this bounded, read/send companion seam. */
 export type CompanionConversation = Extract<ProviderConversationFrame, {
@@ -20,6 +21,7 @@ export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: 
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
+  getUsage?(): Promise<CompanionUsage[]>;
   registerPush?(registration: CompanionPushRegistration | null): Promise<void>;
   onNotification?(listener: (notification: CompanionNotification) => void): () => void;
   markRead?(agentId: string, revision: number): Promise<void>;

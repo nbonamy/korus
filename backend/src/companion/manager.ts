@@ -9,7 +9,7 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { Agent, AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
+import type { AccountRateLimits, Agent, AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -157,6 +157,17 @@ export class CompanionManager {
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
+      usage: async () => {
+        const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
+        const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
+          && provider.backend !== 'antigravity' && !(provider.authentication?.kind === 'codex' && provider.authentication.state.account?.type === 'apiKey'));
+        return Promise.all(providers.map(async ({ backend }) => {
+          try {
+            const limits = await this.backend.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { backend });
+            return { backend, limits: limits ? { primary: limits.primary, secondary: limits.secondary } : null, failed: false };
+          } catch { return { backend, limits: null, failed: true }; }
+        }));
+      },
       markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
       loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),

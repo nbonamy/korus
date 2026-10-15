@@ -5,6 +5,8 @@ let package = Package(
     name: "CompanionDictation",
     platforms: [.macOS(.v14), .iOS("26.0")],
     targets: [
+        .target(name: "CompanionUsage", path: "Sources/Usage"),
+        .testTarget(name: "CompanionUsageTests", dependencies: ["CompanionUsage"], path: "Tests/Usage"),
         .target(name: "CompanionLock", path: "Sources/Lock"),
         .testTarget(name: "CompanionLockTests", dependencies: ["CompanionLock"], path: "Tests/Lock"),
         .target(name: "CompanionNotifications", path: "Sources/Notifications"),

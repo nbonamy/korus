@@ -13,8 +13,8 @@ struct CompanionApp: App {
                 .environment(model)
                 .environment(lock)
                 .background {
-                    AppLockCover(visible: lock.isProtecting && (lock.isLocked || scenePhase != .active),
-                                 content: LockView(lock: lock, showsUnlock: lock.isLocked).environment(model))
+                    AppLockCover(visible: lock.isProtecting && lock.isLocked,
+                                 content: LockView(lock: lock).environment(model))
                         .allowsHitTesting(false)
                 }
                 .task { await lock.unlock() }

@@ -75,6 +75,9 @@ final class AppLockTests: XCTestCase {
         let (lock, authenticator, clock) = make()
         let opening = Task { await lock.unlock() }
         await answer(authenticator); await opening.value
+        lock.didLeave(); clock.advance(5); lock.didReturn()
+        XCTAssertFalse(lock.isLocked)
+        XCTAssertEqual(authenticator.calls, 1)
         lock.didLeave(); clock.advance(299); lock.didReturn()
         XCTAssertFalse(lock.isLocked)
         lock.didLeave(); clock.advance(300); lock.didReturn()

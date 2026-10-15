@@ -137,6 +137,11 @@ a copy that has gone quiet for 30 seconds, sends the read back to the provider.
 Retained conversation routing data excludes app snapshots, is capped at 64 agents,
 and is pruned against workspace membership; disabling access or stopping the service
 clears it. The gateway exposes no generic RPC, filesystem or shell forwarding.
+Account usage is an on-demand read of the paired laptop's enabled, connected quota
+providers through the same backend operation as the desktop menu. Only quota windows
+cross the companion seam; billing and credit details stay on the laptop. Reads recheck
+the device grant before returning, and do not depend on the selected conversation.
+
 Every agent operation names a full target (host, location, team, agent and session); a
 session the laptop has replaced is stale and never retargeted. Prompts, goals and reviews
 carry the target the native composer captured; other commands use the engine's latest

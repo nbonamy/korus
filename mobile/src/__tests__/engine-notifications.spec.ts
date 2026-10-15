@@ -15,6 +15,86 @@ async function fixture() {
   return { engine, events, registerPush, notify: (notification: CompanionNotification) => notify(notification) };
 }
 describe('native notification bridge', () => {
+  it('keeps a cold-launch tap through pairing initialization and saved conversation restoration', async () => {
+    const connector = createDemoConnector();
+    const paired = connector.laptops;
+    connector.laptops = [];
+    let initialize!: () => void;
+    connector.initialize = async () => {
+      await new Promise<void>(resolve => { initialize = resolve; });
+      connector.laptops = paired;
+    };
+    const events: EngineEvent[] = [];
+    const write = vi.fn(async () => {});
+    const engine = createEngine({ connector, initialActive: false, post: event => events.push(event), selectionStore: {
+      read: async () => ({ teamId: 'demo-team', agentId: 'demo-reviewer' }), write, remove: async () => {},
+    } });
+    const target = { hostId: 'demo-laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null };
+    try {
+      const starting = engine.start();
+      await engine.dispatch({ type: 'openNotification', target });
+      await engine.dispatch({ type: 'activity', active: true });
+      initialize(); await starting;
+      expect(events.filter(event => event.type === 'notificationOpenFailed')).toStrictEqual([]);
+      expect(engine.snapshot().agentId).toBe(target.agentId);
+      expect(engine.snapshot().conversationReady).toBe(true);
+      expect(write).toHaveBeenLastCalledWith(target.hostId, { teamId: target.teamId, agentId: target.agentId });
+    } finally { initialize?.(); engine.dispose(); }
+  });
+
+  it.each(['background', 'reconnecting'] as const)('retains a tapped push across %s and foreground restoration', async phase => {
+    const connector = createDemoConnector();
+    const connect = connector.connect;
+    let release!: () => void;
+    let block = false;
+    connector.connect = async id => {
+      if (block) await new Promise<void>(resolve => { release = resolve; });
+      return connect(id);
+    };
+    const events: EngineEvent[] = [];
+    const engine = createEngine({ connector, post: event => events.push(event) });
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const target = engine.snapshot().composerTarget!;
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      if (phase === 'background') await engine.dispatch({ type: 'activity', active: false });
+      else await engine.dispatch({ type: 'disconnect' });
+      block = true;
+      let settled = false;
+      const tapped = engine.dispatch({ type: 'openNotification', target }).finally(() => { settled = true; });
+      await vi.waitFor(() => expect(settled || typeof release === 'function').toBe(true));
+      // iOS can deliver its notification response before the active/unlocked scene callbacks.
+      await engine.dispatch({ type: 'activity', active: false });
+      block = false;
+      release?.(); await tapped;
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(events.filter(event => event.type === 'notificationOpenFailed')).toStrictEqual([]);
+      expect(engine.snapshot().agentId).toBe(target.agentId);
+      expect(engine.snapshot().conversationReady).toBe(true);
+    } finally { release?.(); engine.dispose(); }
+  });
+
+  it('opens only the latest deferred notification and lets explicit navigation cancel it', async () => {
+    const f = await fixture();
+    try {
+      const target = f.engine.snapshot().composerTarget!;
+      const reviewer = { ...target, agentId: 'demo-reviewer' };
+      await f.engine.dispatch({ type: 'activity', active: false });
+      await f.engine.dispatch({ type: 'openNotification', target });
+      await f.engine.dispatch({ type: 'openNotification', target: reviewer });
+      await f.engine.dispatch({ type: 'activity', active: true });
+      expect(f.engine.snapshot().agentId).toBe(reviewer.agentId);
+      await f.engine.dispatch({ type: 'activity', active: false });
+      await f.engine.dispatch({ type: 'openNotification', target });
+      await f.engine.dispatch({ type: 'selectAgent', id: reviewer.agentId });
+      await f.engine.dispatch({ type: 'activity', active: true });
+      expect(f.engine.snapshot().agentId).toBe(reviewer.agentId);
+      expect(f.events.filter(event => event.type === 'notificationOpenFailed')).toStrictEqual([]);
+    } finally { f.engine.dispose(); }
+  });
+
   it('forwards live attention once per event and restores token registration on reconnect', async () => {
     const f = await fixture();
     try {
