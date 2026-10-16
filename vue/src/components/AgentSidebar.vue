@@ -34,6 +34,7 @@
           class="app-menu--embedded"
           :ariaLabel="t('sidebar.organizeBy')"
           :items="organizationMenuItems"
+          :show-selection-check="false"
           @select="organization.select($event); organizationMenuVisible = false"
           @keydown.esc.stop.prevent="organizationMenuVisible = false"
         />
@@ -386,6 +387,7 @@ import {
   ArrowsSortIcon,
   BellIcon,
   CarouselVerticalIcon,
+  CheckIcon,
   CircleCheckIcon,
   LoaderIcon,
   MoonIcon,
@@ -479,8 +481,8 @@ const missionsCollapsed = ref(false);
 const activityIcons = { attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon };
 const organizationMenuVisible = ref(false);
 const organizationMenuItems = computed<AppMenuItem[]>(() => [
-  { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
-  { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
+  { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: organizationMode.value === 'repository' ? CheckIcon : FolderIcon },
+  { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: organizationMode.value === 'activity' ? CheckIcon : BellIcon },
 ]);
 const minWidth = computed(() => props.minWidth ?? 200);
 const maxWidth = computed(() => props.maxWidth ?? 420);
