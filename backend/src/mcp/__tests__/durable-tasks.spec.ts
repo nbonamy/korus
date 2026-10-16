@@ -35,7 +35,7 @@ async function setup(parentBackend: 'codex' | 'claude') {
   parent.backendSession = parentBackend === 'codex' ? { kind: 'codex', threadId: 'codex-parent' } : { kind: 'claude', sessionId: 'claude-parent', transport: 'stdio' };
   parent.status = { type: 'idle' };
   const codex = codexSdkFixture();
-  const claudeSdk = createQueryHarness();
+  const claudeSdk = createQueryHarness([{ value: 'claude-sonnet-5-5', supportsFastMode: true }]);
   const claude = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: claudeSdk.createQuery }));
   const rpc = new BackendDriverRpc(new Map< 'codex' | 'claude', AgentBackendDriver>([['codex', codex.driver], ['claude', claude]]));
   const metadata = { seq: 1, origin: 'notification' as const, occurredAt: '2026-10-04T00:00:00Z', conversationId: 'codex-worker', turnId: 'codex-turn' };
@@ -81,7 +81,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     f.snapshot.general.providerModelDefaults = { claude: { model: 'opus', reasoningEffort: 'low', serviceTier: null } };
     f.parent.backendDefaults = parent === 'codex'
       ? { kind: 'codex', model: 'codex-parent-model', reasoningEffort: 'max' }
-      : { kind: 'claude', model: 'opus', reasoningEffort: 'max', permissionMode: 'bypassPermissions' };
+      : { kind: 'claude', model: 'opus', reasoningEffort: 'max', serviceTier: 'fast', permissionMode: 'bypassPermissions' };
     const creating = f.call(f.parent.id, 'create-agent', {
       repoPath: '/repo', backend: 'claude', prompt: 'Perform the assignment',
       model: 'claude-sonnet-5-5', reasoningEffort: 'high',
@@ -91,10 +91,10 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     f.claudeSdk.emit({ type: 'system', subtype: 'init', session_id: 'claude-worker', model: 'claude-sonnet-5-5' });
     const created = await creating;
     expect(created.isError).toBe(false);
-    expect(f.claudeSdk.options[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', permissionMode });
+    expect(f.claudeSdk.options[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', permissionMode, settings: { fastMode: parent === 'claude' } });
     const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
     expect(worker.backendDefaults).toStrictEqual({
-      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true, permissionMode,
+      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: parent === 'claude' ? 'fast' : null, userSelectedModel: true, permissionMode,
     });
     if (durable) expect((await f.store.load()).agents.find(agent => agent.id === worker.id)?.backendDefaults).toStrictEqual(worker.backendDefaults);
   });

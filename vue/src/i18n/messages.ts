@@ -3,6 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',
@@ -127,7 +128,7 @@ export const messages = {
       waiting: 'Waiting for {provider} authorization',
     },
     automationSources: { connect: 'Connect {provider} in Settings before saving an automation.', noSources: 'No accessible backlog sources.', codeRepositoryFor: 'Code repository for {source}', refresh: 'Refresh' },
-    backlogSource: { provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', viewProvider: 'View {identifier} in {provider}' },
+    backlogSource: { provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}' },
     linearIntegration: {
       name: 'Linear', connectLabel: 'Connect Linear', disconnectLabel: 'Disconnect Linear',
       cancelLabel: 'Cancel Linear authorization',
@@ -210,7 +211,7 @@ export const messages = {
       stageActivity: { requirements: 'Shaping requirements', tickets: 'Shaping tickets', implementation: 'Building tickets', review: 'Reviewing the work', ship: 'Shipping changes' },
       approveAndContinue: 'Approve and continue', reviewInConversation: 'Review the artifact or ask for changes in chat.',
       continueToReview: 'Continue to Review',
-      implementationStartEyebrow: 'Starting implementation', implementationStartTitle: 'Preparing Mission worktrees', implementationStartComplete: 'Implementation is ready',
+      implementationStartEyebrow: 'Starting work', implementationStartTitle: 'Preparing worktrees', implementationStartComplete: 'Agents are ready',
       implementationStartWorktrees: 'Creating isolated worktrees', implementationStartWorktreesDetail: '{count} repository | {count} repositories',
       implementationStartInitialize: 'Initializing repository workspaces', implementationStartAgents: 'Starting implementation agents', implementationStartAgentsDetail: '{count} ticket | {count} tickets',
       acceptedAtStage: 'Accepted at this stage', accepted: 'Accepted', noArtifactYet: 'No artifact yet',

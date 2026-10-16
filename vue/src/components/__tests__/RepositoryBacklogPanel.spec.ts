@@ -399,7 +399,7 @@ describe('RepositoryBacklogPanel', () => {
     const wrapper = await mountPanel({ startWorkAction });
 
     await wrapper.get('[aria-label="Work item actions #12"]').trigger('click');
-    await wrapper.get('.repository-backlog__start-work .app-button--secondary').trigger('click');
+    await wrapper.findAll('.repository-backlog__start-work button').find(button => button.text() === 'Investigate')!.trigger('click');
 
     expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'investigate' }));
   });
@@ -486,7 +486,7 @@ describe('RepositoryBacklogPanel', () => {
 
     await wrapper.get('[aria-label="Work item actions #12"]').trigger('click');
     expect(wrapper.text()).toContain('Start work on #12');
-    const startWorkPopover = wrapper.findAllComponents({ name: 'ElPopover' }).at(-1);
+    const startWorkPopover = wrapper.findAllComponents({ name: 'ElPopover' }).find(popover => popover.attributes('popper-class')?.includes('repository-backlog__start-popover'));
     expect(startWorkPopover?.props('trigger')).toBe('click');
 
     await wrapper.get('.repository-backlog__start-work').trigger('mouseleave');

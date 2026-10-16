@@ -1,12 +1,37 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import { backendChoicesKey } from '../backend-selection';
+import { createEmptySnapshot } from '@workspace/core/snapshot';
+import { backendSnapshotKey } from '../backend-selection';
+import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
 import type { Agent, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import CockpitWorkInbox from '../CockpitWorkInbox.vue';
 
 describe('CockpitWorkInbox', () => {
+  it('launches just the clicked ticket with the chosen model without changing the batch selection', async () => {
+    const first = item(21, 'First work', 'repo-one');
+    const second = item(22, 'Second work', 'repo-two');
+    let finish!: () => void;
+    const start = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const wrapper = mountInbox([first, second], {}, {}, start);
+    await wrapper.findAll('.cockpit-inbox__selection input')[0]!.setValue(true);
+    const row = wrapper.findAll('.cockpit-inbox__row')[1]!;
+    expect(row.findAll('button').map(button => button.attributes('aria-label'))).toEqual([
+      'View #22', 'Start work on #22', 'View #22 in GitHub',
+    ]);
+    await row.get('[aria-label="Start work on #22"]').trigger('click');
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    (Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(button => button.textContent?.includes('GPT Fast'))!).click();
+    await flushPromises();
+    await wrapper.findAll('.app-dialog__footer button').find(button => button.text() === 'Fix')!.trigger('click');
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ items: [second], backend: 'codex', model: 'gpt-fast' }));
+    expect(wrapper.find('.cockpit-inbox__start-dialog').exists()).toBe(false);
+    finish();
+    await flushPromises();
+    expect(wrapper.findAll<HTMLInputElement>('.cockpit-inbox__selection input')[0]!.element.checked).toBe(true);
+  });
   it('requires an explicit code repository for Linear batches and invalidates a submitted selection on source change', async () => {
     const selected = { ...item(12, 'Repair login', 'linear:team'), provider: 'linear' as const, id: 'linear:uuid', identifier: 'ENG-12' };
     const startWorkAction = vi.fn().mockResolvedValue(undefined);
@@ -93,7 +118,7 @@ describe('CockpitWorkInbox', () => {
     expect(wrapper.findAll('.cockpit-inbox__views > button')[1]?.attributes('aria-pressed')).toBe('true');
     expect(wrapper.text()).toContain('Ready item');
     expect(wrapper.text()).toContain('Completed item');
-    expect(wrapper.findAll('.cockpit-inbox__row-action').map((button) => button.attributes('aria-label'))).toStrictEqual([
+    expect(wrapper.findAll('.cockpit-inbox__row-action').filter(button => button.attributes('aria-label')?.startsWith('View ')).map((button) => button.attributes('aria-label'))).toStrictEqual([
       'View #21', 'View #22',
     ]);
   });
@@ -194,10 +219,13 @@ describe('CockpitWorkInbox', () => {
     const clientNavigationSelectTeam = wrapper.findAllComponents({ name: 'ElSelect' }).find(select => select.attributes('aria-label') === 'Team for new agents')!;
     expect(clientNavigationSelectTeam.props('modelValue')).toBe('team-one');
     await clientNavigationSelectTeam.vm.$emit('update:modelValue', 'team-two');
-    await wrapper.get('.app-dialog__footer .backend-selector select').setValue('claude');
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes('Claude Code'))!.click();
+    await flushPromises();
 
     await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Investigate')?.trigger('click');
-    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', backend: 'claude' });
+    expect(startWorkAction).toHaveBeenCalledWith({ action: 'investigate', items: [second], teamId: 'team-two', backend: 'claude', model: 'gpt-fast' });
   });
 
   it('guides unfiltered global views before loading cross-repository work', async () => {
@@ -243,7 +271,15 @@ function mountInbox(
   startWorkAction = vi.fn().mockResolvedValue(undefined),
 ) {
   return mount(CockpitWorkInbox, {
-    global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    global: { provide: {
+      [backendSnapshotKey as symbol]: () => ({
+        ...createEmptySnapshot(),
+        providerConnections: (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false })),
+        teams: [{ id: 'team-one', name: 'Team One', agentIds: ['agent-one'] }],
+        agents: [agent('agent-one', 'Dina')],
+      }),
+      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async () => [{ id: 'fast', model: 'gpt-fast', displayName: 'GPT Fast' }]) },
+    } },
     props: {
       agents: [agent('agent-one', 'Dina'), agent('agent-two', 'Jesse')], assignments,
       connection: { provider: 'github', status: 'connected', accountLabel: 'nicolas' },

@@ -4,6 +4,25 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.36.3] - 2026-10-16
+
+### New features
+
+- Choose the provider, model, and reasoning effort when launching backlog work.
+  Start an individual ticket directly from its play button, and follow worktree
+  creation progress for single or multiple agents.
+
+### Improvements and fixes
+
+- Activity view shortcuts follow the visible agent order. Hold Command to show
+  shortcut numbers in place of other indicators. Needs input, Done, and Working
+  sections put the longest-waiting agents first.
+- Ticket details stay vertically centered at a fixed viewport-relative height,
+  with a pinned header and scrollable description.
+- New Mission workers inherit the main Mission agent's provider, model,
+  reasoning effort, and speed setting. Same-provider delegated helpers also
+  preserve the creator's speed setting.
+
 ## [0.36.2] - 2026-10-16
 
 ### Improvements

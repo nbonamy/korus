@@ -58,7 +58,7 @@
           </div>
         </el-popover>
 
-        <el-button class="cockpit-inbox__start-work" type="primary" :icon="PlayerPlayIcon" :disabled="selectedItems.length === 0" @click="openStartWorkDialog"> {{ $t('surface.cockpitWorkInbox.startWork') }} </el-button>
+        <el-button class="cockpit-inbox__start-work" type="primary" :icon="PlayerPlayIcon" :disabled="startingWork || selectedItems.length === 0" @click="openStartWorkDialog()"> {{ $t('surface.cockpitWorkInbox.startWork') }} </el-button>
         <button class="cockpit-inbox__refresh" type="button" :disabled="status === 'loading'" :aria-label="$t('surface.cockpitWorkInbox.refreshWorkItems')" @click="emit('refresh', selectedRepositoryId)">
           <RefreshIcon aria-hidden="true" />
         </button>
@@ -152,6 +152,11 @@
                   <EyeIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
+              <el-tooltip v-if="!row.assignment" :content="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" placement="top" :show-after="300">
+                <button class="cockpit-inbox__row-action" type="button" :aria-label="$t('backlogSource.startItem', { identifier: workItemDisplayIdentifier(row.item) })" @click.stop="openStartWorkDialog(row.item)">
+                  <PlayerPlayIcon aria-hidden="true" />
+                </button>
+              </el-tooltip>
               <el-tooltip :content="$t('backlogSource.viewProvider', { identifier: workItemDisplayIdentifier(row.item), provider: providerLabel })" placement="top" :show-after="300">
                 <button
                   class="cockpit-inbox__external-action"
@@ -198,12 +203,12 @@
       </div>
     </footer>
 
-    <el-dialog :model-value="Boolean(detailItem)" class="app-dialog" @update:model-value="detailItem = null">
+    <el-dialog :model-value="Boolean(detailItem)" class="app-dialog cockpit-inbox__detail-dialog" width="760px" align-center @update:model-value="detailItem = null">
       <WorkItemDetail v-if="detailItem" :item="detailItem" />
     </el-dialog>
     <el-dialog
       class="app-dialog cockpit-inbox__start-dialog"
-      :model-value="startWorkDialogOpen"
+      :model-value="startWorkDialogOpen && !startingWork"
       :teleported="false"
       width="520px"
       :show-close="false"
@@ -217,7 +222,7 @@
       </template>
 
       <div class="cockpit-inbox__start-body">
-        <p> {{ $t('surface.cockpitWorkInbox.launch') }} <strong>{{ selectedItems.length }} {{ selectedItems.length === 1 ? 'agent' : 'agents' }}</strong>{{ $t('surface.cockpitWorkInbox.eachAgentWillWorkInADedicatedWorktree') }} </p>
+        <p> {{ $t('surface.cockpitWorkInbox.launch') }} <strong>{{ launchItems.length }} {{ launchItems.length === 1 ? 'agent' : 'agents' }}</strong>{{ $t('surface.cockpitWorkInbox.eachAgentWillWorkInADedicatedWorktree') }} </p>
         <label> {{ $t('surface.cockpitWorkInbox.team') }} <el-select v-model="selectedTeamId" :disabled="startingWork" :aria-label="$t('surface.cockpitWorkInbox.teamForNewAgents')">
             <el-option v-for="team in teams" :key="team.id" :label="team.name" :value="team.id" />
           </el-select>
@@ -229,11 +234,13 @@
             <el-option v-for="repository in codeRepositories" :key="repository.path" :label="repository.name" :value="repository.path" />
           </el-select>
         </label>
+        <label>{{ $t('repositoryBacklog.session') }}
+          <BackendModelSelector v-model:backend="selectedBackend" v-model:model="selectedModel" v-model:reasoning-effort="selectedEffort" :team-id="selectedTeamId" :disabled="startingWork" />
+        </label>
       </div>
 
       <template #footer>
         <div class="app-dialog__footer">
-          <BackendSelector v-model="selectedBackend" :team-id="selectedTeamId" :disabled="startingWork" class="cockpit-inbox__backend" />
           <button class="app-button app-button--tertiary" type="button" :disabled="startingWork" @click="closeStartWorkDialog(false)">{{ $t('surface.cockpitWorkInbox.cancel') }}</button>
           <button class="app-button app-button--secondary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('investigate')">{{ $t('surface.cockpitWorkInbox.investigate') }}</button>
           <button class="app-button app-button--primary" type="button" :disabled="startingWork || !selectedTeamId || !selectedBackend" @click="startSelectedWork('fix')">{{ $t('surface.cockpitWorkInbox.fix') }}</button>
@@ -256,7 +263,8 @@ import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
 import { ExternalLinkIcon, EyeIcon, GitBranchIcon, GitHubIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
 import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
-import BackendSelector from './BackendSelector.vue';
+import BackendModelSelector from './BackendModelSelector.vue';
+import type { StartWorkItemsInput } from './use-work-item-routing';
 
 type InboxView = 'all' | 'backlog' | 'wip' | 'focus';
 type SummaryFilter = 'inProgress' | 'blocked' | 'readyForReview';
@@ -287,7 +295,7 @@ const props = withDefaults(defineProps<{
   hasNextPage?: boolean;
   defaultTeamId?: string | null;
   listSourceRepositories?: (remoteConnectionId?: string) => Promise<import('@workspace/core/contracts').SourceRepository[]>;
-  startWorkAction: (input: { action: 'investigate' | 'fix'; items: WorkItem[]; teamId: string; backend?: Agent['backend']; repository?: import('@workspace/core/contracts').SourceRepository; isCurrent?: () => boolean }) => Promise<void>;
+  startWorkAction: (input: StartWorkItemsInput) => Promise<void>;
 }>(), { activeView: 'focus', defaultTeamId: null, globalScope: null, page: 1, pageLoading: false, pageSize: 50, repositoryIcons: () => ({}), searchQuery: '', selectedAssigneeLogin: null, selectedTagName: null, statusFilter: null });
 
 const emit = defineEmits<{
@@ -311,6 +319,10 @@ const startingWork = ref(false);
 const startWorkError = ref<string | null>(null);
 const selectedTeamId = ref('');
 const selectedBackend = ref<Agent['backend']>();
+const selectedModel = ref('');
+const selectedEffort = ref('');
+const singleLaunchItem = ref<WorkItem | null>(null);
+const launchItems = computed(() => singleLaunchItem.value ? [singleLaunchItem.value] : selectedItems.value);
 const codeRepositories = ref<import('@workspace/core/contracts').SourceRepository[]>([]);
 const selectedCodeRepositoryPath = ref('');
 const codeRepositoriesLoading = ref(false);
@@ -514,8 +526,10 @@ function toggleSelection(row: InboxRow): void {
   selectedItemIds.value = next;
 }
 
-function openStartWorkDialog(): void {
-  if (selectedItems.value.length === 0) return;
+function openStartWorkDialog(item?: WorkItem): void {
+  if (startingWork.value) return;
+  singleLaunchItem.value = item?.id ? item : null;
+  if (launchItems.value.length === 0) return;
   selectedTeamId.value = defaultTeamId();
   startWorkError.value = null;
   startWorkDialogOpen.value = true;
@@ -526,7 +540,7 @@ function closeStartWorkDialog(visible = false): void {
 }
 
 async function startSelectedWork(action: 'investigate' | 'fix'): Promise<void> {
-  const items = [...selectedItems.value];
+  const items = [...launchItems.value];
   if (!selectedTeamId.value || !selectedBackend.value || items.length === 0) return;
   const repository = codeRepositories.value.find(repository => repository.path === selectedCodeRepositoryPath.value);
   if (!workProviderDefinition(props.connection.provider).repositoryBacked && !repository) {
@@ -538,9 +552,11 @@ async function startSelectedWork(action: 'investigate' | 'fix'): Promise<void> {
   startWorkError.value = null;
   try {
     await props.startWorkAction({ action, items, teamId: selectedTeamId.value, backend: selectedBackend.value,
+      ...(selectedModel.value ? { model: selectedModel.value } : {}),
+      ...(selectedEffort.value ? { reasoningEffort: selectedEffort.value } : {}),
       ...(repository ? { repository, isCurrent: () => revision === contextRevision } : {}) });
     if (revision !== contextRevision) return;
-    selectedItemIds.value = new Set();
+    selectedItemIds.value = new Set([...selectedItemIds.value].filter(id => !items.some(item => item.id === id)));
     startWorkDialogOpen.value = false;
   } catch (error) {
     if (revision !== contextRevision) return;
@@ -579,8 +595,68 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
 </script>
 
 <style scoped>
-.cockpit-inbox__backend {
-  margin-right: auto;
+:global(.cockpit-inbox__detail-dialog.el-dialog) {
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  height: 85vh;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  margin: auto;
+}
+
+/* The ticket header stays pinned while only the description scrolls. */
+:global(.cockpit-inbox__detail-dialog.el-dialog .el-dialog__header) {
+  height: 0;
+  padding: 0;
+}
+
+:global(.cockpit-inbox__detail-dialog.el-dialog .el-dialog__headerbtn) {
+  z-index: 1;
+  /* Centered on the title row rather than on Element's default 54px square. */
+  top: var(--space-8);
+  right: var(--space-8);
+  width: 22px;
+  height: 22px;
+}
+
+:global(.cockpit-inbox__detail-dialog.el-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-xl);
+}
+
+:global(.cockpit-inbox__detail-dialog .work-item-detail) {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+:global(.cockpit-inbox__detail-dialog .work-item-detail__title) {
+  align-items: center;
+}
+
+:global(.cockpit-inbox__detail-dialog .work-item-detail__state) {
+  background: var(--color-surface-lowest);
+}
+
+:global(.cockpit-inbox__detail-dialog .work-item-detail__header) {
+  padding: var(--space-8) var(--space-24) var(--space-6) var(--space-12);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-low);
+}
+
+:global(.cockpit-inbox__detail-dialog .work-item-detail .work-item-detail__body) {
+  min-height: 0;
+  padding: var(--space-8) var(--space-12);
+  overflow-y: auto;
 }
 
 .cockpit-inbox {
@@ -881,7 +957,7 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   display: grid;
   grid-template-columns:
     28px minmax(180px, 1.1fr) 64px minmax(260px, 2fr) minmax(160px, 1fr)
-    minmax(150px, 1fr) minmax(100px, 0.65fr) 54px 70px;
+    minmax(150px, 1fr) minmax(100px, 0.65fr) 54px max-content;
   gap: var(--space-6);
   align-items: center;
   padding: 0 var(--space-8);
@@ -994,8 +1070,8 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2);
-  padding-left: var(--space-8);
+  gap: var(--space-4);
+  padding-left: var(--space-2);
 }
 
 .cockpit-inbox__row-action,
@@ -1078,7 +1154,7 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
 
 .cockpit-inbox__start-body {
   display: grid;
-  gap: var(--space-12);
+  gap: var(--space-8);
 }
 
 .cockpit-inbox__start-body p {
@@ -1094,10 +1170,10 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
 
 .cockpit-inbox__start-body label {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   color: var(--color-text-muted);
   font-size: var(--font-size-12);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
 }
 
 .cockpit-inbox__start-error {
@@ -1108,7 +1184,7 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   .cockpit-inbox__row {
     grid-template-columns:
       28px minmax(150px, 1fr) 58px minmax(200px, 1.5fr) minmax(130px, 1fr)
-      90px 70px;
+      90px max-content;
   }
   .cockpit-inbox__branch,
   .cockpit-inbox__elapsed {
@@ -1133,7 +1209,7 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   .cockpit-inbox__row {
     grid-template-columns:
       28px minmax(120px, 1fr) 50px minmax(160px, 1.5fr)
-      70px;
+      max-content;
   }
   .cockpit-inbox__context,
   .cockpit-inbox__status {

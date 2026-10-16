@@ -46,25 +46,7 @@
       <section class="work-item-assignment-picker__section">
         <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
         <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-          <BackendSelector v-model="backend" :disabled="busy" />
-          <el-select
-            v-model="model"
-            :empty-values="[null, undefined]"
-            :aria-label="t('automaticReview.model')"
-            :disabled="busy || modelsLoading"
-          >
-            <el-option value="" :label="t('automaticReview.defaultModel')" />
-            <el-option v-for="option in models" :key="option.id" :value="option.model" :label="option.displayName" />
-          </el-select>
-          <el-select
-            v-model="reasoningEffort"
-            :empty-values="[null, undefined]"
-            :aria-label="t('automaticReview.effort')"
-            :disabled="busy || modelsLoading || !effortOptions.length"
-          >
-            <el-option value="" :label="t('automaticReview.defaultEffort')" />
-            <el-option v-for="effort in effortOptions" :key="effort.reasoningEffort" :value="effort.reasoningEffort" :label="effort.reasoningEffort" />
-          </el-select>
+          <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" :agent-id="modelCatalogAgentId" :disabled="busy" />
         </div>
         <el-select
           v-else
@@ -125,11 +107,10 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconAlertTriangle, IconCopy, IconGitBranch, IconGitPullRequest, IconRobotFace } from '@tabler/icons-vue';
-import type { BackendModelOption, WorkItem } from '@workspace/core/contracts';
-import { useCodeReviewSettings } from './code-review-settings';
+import type { WorkItem } from '@workspace/core/contracts';
 import type { WorkItemAssignmentAction } from '@workspace/core/work-item-prompts';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
-import BackendSelector from './BackendSelector.vue';
+import BackendModelSelector from './BackendModelSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
 const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
 useNewAgentBackend(backend, useBackendChoices());
@@ -176,15 +157,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { listModels } = useCodeReviewSettings();
 const destination = ref<WorkItemAssignmentDestination>('new');
 const selectedAgentId = ref('');
 const model = ref('');
 const reasoningEffort = ref('');
-const models = ref<BackendModelOption[]>([]);
-const modelsLoading = ref(false);
 const modelCatalogAgentId = computed(() => props.modelAgentId || props.sessions[0]?.agentId || '');
-const effortOptions = computed(() => models.value.find(option => option.model === model.value)?.supportedReasoningEfforts ?? []);
 const reuseAction = ref<WorkItemAssignmentAction | 'custom' | null>(null);
 const secondaryAction = computed<WorkItemAssignmentAction>(() => props.item.kind === 'pullRequest' ? 'addressFeedback' : 'investigate');
 const primaryAction = computed<WorkItemAssignmentAction>(() => props.item.kind === 'pullRequest' ? 'review' : 'fix');
@@ -207,27 +184,6 @@ watch(() => [props.item.id, eligibleSessions.value.map((session) => session.agen
   selectedAgentId.value = eligibleSessions.value[0]?.agentId ?? '';
   reuseAction.value = null;
 }, { immediate: true });
-
-watch([backend, modelCatalogAgentId], async ([nextBackend, agentId], _previous, cleanup) => {
-  let current = true;
-  cleanup(() => { current = false; });
-  models.value = [];
-  model.value = '';
-  reasoningEffort.value = '';
-  if (!nextBackend || !agentId) return;
-  modelsLoading.value = true;
-  try {
-    const catalog = await listModels(agentId, nextBackend);
-    if (current) models.value = catalog.filter(option => !option.hidden);
-  } catch {
-    // The provider default stays selectable when the catalog cannot be loaded.
-  } finally {
-    if (current) modelsLoading.value = false;
-  }
-}, { immediate: true });
-watch(model, () => {
-  if (!effortOptions.value.some(option => option.reasoningEffort === reasoningEffort.value)) reasoningEffort.value = '';
-});
 
 function requestCustom(): void {
   if (!canSubmit.value) return;
@@ -283,7 +239,6 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
 
 .work-item-assignment-picker__model-selectors {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 

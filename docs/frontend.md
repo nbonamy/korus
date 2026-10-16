@@ -122,6 +122,7 @@ Search by behavior first.
 | Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |
 | Enabled coding backend picker | `BackendSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `vue/src/components/` |
+| New-work provider, model and effort picker | `BackendModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `vue/src/components/` |
 | Settings structure | `SettingsPanelFrame`, `SettingsTextareaField` (compose `FormSection`/`FormRow`) | `vue/src/components/` |
 | Dense structured data | `AppDataList` | `vue/src/components/` |
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |

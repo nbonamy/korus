@@ -54,6 +54,7 @@
         "src/companion-state.ts",
         "web/src/engine-main.ts",
         "web/src/transcript-main.ts",
+        "web/src/changes-main.ts",
         "scripts/*.mjs"
       ],
       "project": [
