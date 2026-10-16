@@ -4,6 +4,30 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.36.1] - 2026-10-16
+
+### New features
+
+- View Claude's native subagents from the conversation header and open their
+  individual threads, including background progress and completed work after a
+  reload.
+- Use Claude without a separate CLI installation through Korus's bundled
+  runtime. On macOS, Codex can also use the runtime included with ChatGPT when
+  no standalone CLI is available. Installed CLIs still take precedence.
+
+### Improvements and fixes
+
+- The Activity sidebar has a Done section, elapsed-time indicators, and
+  independently scrollable sections with a Show more control. Unread dots take
+  priority over elapsed times.
+- Analytics uses shared provider, date, and grouping controls across its charts.
+  The activity overview stays independent of those filters.
+- Repository image icons save correctly, with a square crop preview and subtly
+  rounded corners in the sidebar, conversation header, and Cockpit.
+- Dark and system appearance stay consistent across native window chrome,
+  provider icons, button hovers, and the conversation background. Switching from
+  Dark to System follows the operating system again.
+
 ## [0.36.0] - 2026-10-15
 
 ### New features

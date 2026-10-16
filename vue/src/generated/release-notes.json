@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.36.0",
+  "currentVersion": "0.36.1",
   "releases": [
+    {
+      "version": "0.36.1",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "41dcdfa6c0e509a461d065599affac6d289d4161b0d783003073f1510c72410f",
+      "markdown": "### New features\n\n- View Claude's native subagents from the conversation header and open their\n  individual threads, including background progress and completed work after a\n  reload.\n- Use Claude without a separate CLI installation through Korus's bundled\n  runtime. On macOS, Codex can also use the runtime included with ChatGPT when\n  no standalone CLI is available. Installed CLIs still take precedence.\n\n### Improvements and fixes\n\n- The Activity sidebar has a Done section, elapsed-time indicators, and\n  independently scrollable sections with a Show more control. Unread dots take\n  priority over elapsed times.\n- Analytics uses shared provider, date, and grouping controls across its charts.\n  The activity overview stays independent of those filters.\n- Repository image icons save correctly, with a square crop preview and subtly\n  rounded corners in the sidebar, conversation header, and Cockpit.\n- Dark and system appearance stay consistent across native window chrome,\n  provider icons, button hovers, and the conversation background. Switching from\n  Dark to System follows the operating system again."
+    },
     {
       "version": "0.36.0",
       "releasedAt": "2026-10-15",

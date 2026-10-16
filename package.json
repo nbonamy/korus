@@ -1,6 +1,6 @@
 {
   "name": "agent-workspace",
-  "version": "0.36.0",
+  "version": "0.36.1",
   "private": true,
   "packageManager": "npm@10.9.4",
   "overrides": {
