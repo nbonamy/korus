@@ -4,6 +4,15 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.37.1] - 2026-10-16
+
+### Improvements and fixes
+
+- Creating and editing automations saves correctly without an object-cloning error.
+- Analytics records token usage and output speed for the first turn in new Codex
+  conversations. Previously unmeasured turns remain unchanged.
+- Git diff controls use the same background as the other header controls.
+
 ## [0.37.0] - 2026-10-16
 
 ### New features

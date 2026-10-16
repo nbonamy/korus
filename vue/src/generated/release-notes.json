@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.37.0",
+  "currentVersion": "0.37.1",
   "releases": [
+    {
+      "version": "0.37.1",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "015234e50fb9e9ca85487bb8e74291ba2e3d3aba2eb8bb7d2aa11852ca03099a",
+      "markdown": "### Improvements and fixes\n\n- Creating and editing automations saves correctly without an object-cloning error.\n- Analytics records token usage and output speed for the first turn in new Codex\n  conversations. Previously unmeasured turns remain unchanged.\n- Git diff controls use the same background as the other header controls."
+    },
     {
       "version": "0.37.0",
       "releasedAt": "2026-10-16",
