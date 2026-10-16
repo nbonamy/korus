@@ -8,7 +8,7 @@ import { companionTarget, companionSessionId, type CompanionTarget, type Compani
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
-import { applyComposerChoice, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
+import { applyComposerChoice, composerCapabilitiesFor, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 import { reconcileWorkspace } from './workspace-reconcile';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
@@ -687,7 +687,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     catch { uncertain[draftKey] = false; sending[draftKey] = false; return 'rejected'; }
     try {
       const settings = composerSettings.value;
-      const composerOptions = settings && agent.value ? promptOptionsFor(settings, defaultBackendCapabilities(agent.value.backend)) : undefined;
+      const composerOptions = settings && agent.value ? promptOptionsFor(settings, composerCapabilitiesFor(agent.value.backend, models.value)) : undefined;
       const options = selectedSkills.length || sendOptions?.followUpBehavior ? { ...composerOptions, ...(selectedSkills.length ? { skills: selectedSkills } : {}), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
       const promptText = prompt.trim() ? prompt : '(no user instructions)';
       await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));

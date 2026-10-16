@@ -48,7 +48,7 @@
       </button>
     </header>
 
-    <div class="agent-sidebar__start-work">
+    <div class="agent-sidebar__start-work" :class="{ 'agent-sidebar__start-work--activity': organizationMode === 'activity' }">
       <StartWorkMenu @select="emit('start-work', $event)" />
       <button
         v-if="organizationMode === 'activity' || !quickChatGroup"
@@ -165,6 +165,22 @@
           <template v-if="group.activity">
             <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" aria-hidden="true" />
             <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
+            <el-tooltip
+              v-if="moreRowsLabel(group.id)"
+              :content="moreRowsLabel(group.id)"
+              placement="top"
+              :show-after="300"
+            >
+              <button
+                class="agent-sidebar__activity-more"
+                type="button"
+                tabindex="-1"
+                :aria-label="moreRowsLabel(group.id)"
+                @click.stop="rowsRefs.get(group.id)?.scrollMore()"
+              >
+                <CarouselVerticalIcon aria-hidden="true" />
+              </button>
+            </el-tooltip>
           </template>
           <button
             v-else
@@ -229,81 +245,88 @@
           </span>
         </header>
 
-        <div
-          v-for="session in group.sessions"
-          :key="session.agentId"
-          class="agent-sidebar__agent-row"
-          :data-motion-id="session.agentId"
+        <component
+          :is="group.activity ? ScrollHintRows : 'div'"
+          :ref="group.activity ? (rows: unknown) => setRowsRef(group.id, rows) : undefined"
+          class="agent-sidebar__group-rows"
+          @overflow="rowsOverflow[group.id] = $event"
         >
-          <component
-            :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
-            v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
-              ? { session, context: activityContext.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unread: group.activity === 'recent' && session.isUnread, unreadLabel: t('sidebar.unread') }
-              : { session, groupKind: group.kind }) }"
-            v-show="!isWorkspaceCollapsed(group)"
-            class="agent-sidebar__agent"
-            :class="[
-              { 'agent-sidebar__agent--active': session.isActive, 'agent-sidebar__agent--awaiting-input': session.status.type === 'awaitingInput' },
-              clientAgentOrderUpdate.dropTargetClass(session.agentId),
-            ]"
-            type="button"
-            :data-session-kind="session.kind"
-            :title="group.activity ? activityContext.get(session.agentId) : undefined"
-            :aria-pressed="session.isActive"
-            @click="selectAgent(session.agentId)"
-            @contextmenu.prevent="openAgentMenu(session.agentId, $event)"
-            @dragstart="clientAgentOrderUpdate.onDragStart(session.agentId, $event)"
-            @dragover="clientAgentOrderUpdate.onDragOver(session.agentId, $event)"
-            @dragleave="clientAgentOrderUpdate.onDragLeave(session.agentId, $event)"
-            @drop="clientAgentOrderUpdate.onDrop(session.agentId, $event)"
-            @dragend="clientAgentOrderUpdate.onDragEnd"
+          <div
+            v-for="session in group.sessions"
+            :key="session.agentId"
+            class="agent-sidebar__agent-row"
+            :data-motion-id="session.agentId"
           >
-            <span
-              v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity === 'recent' && session.isUnread)"
-              class="agent-sidebar__engine"
-              role="img"
-              :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-              :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
-            >
-              <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
-            </span>
-            <span
-              v-if="!group.activity && session.status.type === 'awaitingInput'"
-              class="agent-sidebar__input-needed"
-              :class="{ 'agent-sidebar__input-needed--with-cleanup': isPullRequestFinished(session) }"
-              :title="statusLabel(session.status.type)"
-              :aria-label="statusLabel(session.status.type)"
-            >{{ t('sidebar.input') }}</span>
-            <span
-              v-else-if="!isPullRequestFinished(session) && !session.isUnread && quickSwitchShortcutsVisible && session.quickSwitchIndex < 9"
-              class="agent-sidebar__quick-switch-shortcut"
-              :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
-            ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
-            <span
-              v-else-if="!group.activity && !isPullRequestFinished(session)"
-              class="agent-sidebar__status"
-              :class="{ 'agent-sidebar__status--unread': session.isUnread }"
-              :data-status="session.status.type"
-              :aria-label="session.isUnread ? t('sidebar.unread') : statusLabel(session.status.type)"
-            />
-          </component>
-          <el-tooltip
-            v-if="isPullRequestFinished(session)"
-            :content="pullRequestAttentionLabel(session)"
-            placement="right"
-            :show-after="300"
-          >
-            <button
+            <component
+              :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
+              v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
+                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unread: session.isUnread, unreadLabel: t('sidebar.unread') }
+                : { session, groupKind: group.kind }) }"
               v-show="!isWorkspaceCollapsed(group)"
-              class="agent-sidebar__pull-request-attention"
+              class="agent-sidebar__agent"
+              :class="[
+                { 'agent-sidebar__agent--active': session.isActive, 'agent-sidebar__agent--awaiting-input': session.status.type === 'awaitingInput' },
+                clientAgentOrderUpdate.dropTargetClass(session.agentId),
+              ]"
               type="button"
-              :aria-label="pullRequestAttentionLabel(session)"
-              @click.stop="emit('cleanup-pull-request', session.agentId)"
+              :data-session-kind="session.kind"
+              :title="group.activity ? activityContext.get(session.agentId) : undefined"
+              :aria-pressed="session.isActive"
+              @click="selectAgent(session.agentId)"
+              @contextmenu.prevent="openAgentMenu(session.agentId, $event)"
+              @dragstart="clientAgentOrderUpdate.onDragStart(session.agentId, $event)"
+              @dragover="clientAgentOrderUpdate.onDragOver(session.agentId, $event)"
+              @dragleave="clientAgentOrderUpdate.onDragLeave(session.agentId, $event)"
+              @drop="clientAgentOrderUpdate.onDrop(session.agentId, $event)"
+              @dragend="clientAgentOrderUpdate.onDragEnd"
             >
-              <AlertTriangleIcon aria-hidden="true" />
-            </button>
-          </el-tooltip>
-        </div>
+              <span
+                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && session.isUnread)"
+                class="agent-sidebar__engine"
+                role="img"
+                :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+                :title="backendDisplayName(agentsById.get(session.agentId)!.backend)"
+              >
+                <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
+              </span>
+              <span
+                v-if="!group.activity && session.status.type === 'awaitingInput'"
+                class="agent-sidebar__input-needed"
+                :class="{ 'agent-sidebar__input-needed--with-cleanup': isPullRequestFinished(session) }"
+                :title="statusLabel(session.status.type)"
+                :aria-label="statusLabel(session.status.type)"
+              >{{ t('sidebar.input') }}</span>
+              <span
+                v-else-if="!isPullRequestFinished(session) && !session.isUnread && quickSwitchShortcutsVisible && session.quickSwitchIndex < 9"
+                class="agent-sidebar__quick-switch-shortcut"
+                :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
+              ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
+              <span
+                v-else-if="!group.activity && !isPullRequestFinished(session)"
+                class="agent-sidebar__status"
+                :class="{ 'agent-sidebar__status--unread': session.isUnread }"
+                :data-status="session.status.type"
+                :aria-label="session.isUnread ? t('sidebar.unread') : statusLabel(session.status.type)"
+              />
+            </component>
+            <el-tooltip
+              v-if="isPullRequestFinished(session)"
+              :content="pullRequestAttentionLabel(session)"
+              placement="right"
+              :show-after="300"
+            >
+              <button
+                v-show="!isWorkspaceCollapsed(group)"
+                class="agent-sidebar__pull-request-attention"
+                type="button"
+                :aria-label="pullRequestAttentionLabel(session)"
+                @click.stop="emit('cleanup-pull-request', session.agentId)"
+              >
+                <AlertTriangleIcon aria-hidden="true" />
+              </button>
+            </el-tooltip>
+          </div>
+        </component>
       </section>
     </nav>
 
@@ -362,7 +385,8 @@ import {
   AlertTriangleIcon,
   ArrowsSortIcon,
   BellIcon,
-  HistoryIcon,
+  CarouselVerticalIcon,
+  CircleCheckIcon,
   LoaderIcon,
   MoonIcon,
   FolderIcon,
@@ -390,6 +414,7 @@ import { useRepositorySessionMenu } from './use-repository-session-menu';
 import { useAgentSidebarOrganization } from './use-agent-sidebar-organization';
 import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
 import ActivityAgentRow from './ActivityAgentRow.vue';
+import ScrollHintRows from './ScrollHintRows.vue';
 import RepositoryAgentRow from './RepositoryAgentRow.vue';
 
 const props = defineProps<{
@@ -451,7 +476,7 @@ const emit = defineEmits<{
 }>();
 
 const missionsCollapsed = ref(false);
-const activityIcons = { attention: BellIcon, recent: HistoryIcon, working: LoaderIcon, idle: MoonIcon };
+const activityIcons = { attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon };
 const organizationMenuVisible = ref(false);
 const organizationMenuItems = computed<AppMenuItem[]>(() => [
   { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
@@ -478,6 +503,19 @@ const organization = useAgentSidebarOrganization({
 const organizationMode = organization.mode;
 const workspaceGroups = organization.groups;
 const activityContext = computed(() => new Map(repositoryGroups.value.flatMap(group => group.sessions.map(session => [session.agentId, group.label]))));
+/** Repository sessions only; the value is that repository's custom icon, when it has one. */
+const activityRepository = computed(() => new Map(repositoryGroups.value.flatMap(group => group.kind !== 'repository' ? []
+  : group.sessions.map(session => [session.agentId, repositoryIcon(group.repositoryKey, group.repositoryRoot)] as const))));
+const rowsRefs = new Map<string, InstanceType<typeof ScrollHintRows>>();
+const rowsOverflow = ref<Record<string, { up: boolean; down: boolean }>>({});
+function setRowsRef(groupId: string, rows: unknown): void {
+  if (rows) rowsRefs.set(groupId, rows as InstanceType<typeof ScrollHintRows>);
+  else rowsRefs.delete(groupId);
+}
+function moreRowsLabel(groupId: string): string | undefined {
+  const state = rowsOverflow.value[groupId];
+  return state?.down ? t('sidebar.showMoreRows') : state?.up ? t('sidebar.backToTop') : undefined;
+}
 const sessionList = ref<HTMLElement | null>(null);
 useAgentSidebarMotion(sessionList,
   () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
@@ -956,12 +994,32 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__list:hover::-webkit-scrollbar-thumb,
-.agent-sidebar__list:focus-within::-webkit-scrollbar-thumb {
+.agent-sidebar__list:has(:focus-visible)::-webkit-scrollbar-thumb {
   background: var(--color-outline);
 }
 
+/*
+ * Activity sections take their natural height. When the list is too short they shrink, each down
+ * to a floor of two rows and scrolling its own rows: Idle first, then Working, Done and Needs
+ * input. Only when every floor is reached does the whole list scroll. Flex shrink is proportional,
+ * so the widely spaced factors below make the order effectively strict.
+ */
 .agent-sidebar__list--activity {
+  display: flex;
+  flex-direction: column;
   overflow-anchor: none;
+}
+
+.agent-sidebar__workspace-group:not([data-activity-group]) > .agent-sidebar__group-rows {
+  display: contents;
+}
+
+.agent-sidebar__workspace-group[data-activity-group] > .agent-sidebar__group-rows {
+  min-height: 0;
+}
+
+.agent-sidebar__workspace-group[data-activity-group] > .agent-sidebar__workspace-header {
+  flex: 0 0 auto;
 }
 
 .agent-sidebar__start-work {
@@ -969,6 +1027,43 @@ function onResizePointerEnd(event: PointerEvent): void {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-6) var(--space-8) var(--space-4);
+}
+
+/* Activity mode lays the actions out as a row of icon-over-label tiles. */
+.agent-sidebar__start-work--activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+.agent-sidebar__start-work--activity > button,
+.agent-sidebar__start-work--activity > :deep(.start-work-menu__trigger) {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2);
+  font-size: var(--font-size-12);
+  text-align: center;
+}
+
+/* min-content stacks each word on its own line, so two-word labels always take two lines. */
+.agent-sidebar__start-work--activity > button > span,
+.agent-sidebar__start-work--activity > :deep(.start-work-menu__trigger > span) {
+  display: -webkit-box;
+  width: min-content;
+  max-width: 100%;
+  min-height: calc(2 * var(--line-height-16));
+  overflow: hidden;
+  line-height: var(--line-height-16);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-sidebar__start-work--activity > .agent-sidebar__mission-error {
+  flex-basis: 100%;
 }
 
 .agent-sidebar__start-work:deep() button {
@@ -1023,11 +1118,31 @@ function onResizePointerEnd(event: PointerEvent): void {
   margin-top: var(--space-2);
 }
 
+/* Sections have no frame: a colored rail plus the tinted header band mark where each one starts and ends. */
 .agent-sidebar__workspace-group[data-activity-group] {
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-surface-lowest) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  min-height: var(--section-floor, 0);
+  margin-left: var(--space-2);
+  padding-left: var(--space-6);
+}
+
+/* Activity rows and sections never reorder. Their drop indicators would stick out 2px past each row, which counts as scroll overflow, so the rail reuses the section's ::before instead. */
+.agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__agent::before,
+.agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__agent::after {
+  display: none;
+}
+
+.agent-sidebar__workspace-group[data-activity-group]::before {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  height: auto;
+  background: color-mix(in srgb, var(--activity-color) 80%, transparent);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
 }
 
 .agent-sidebar__workspace-group[data-activity-group] + .agent-sidebar__workspace-group[data-activity-group] {
@@ -1146,6 +1261,31 @@ function onResizePointerEnd(event: PointerEvent): void {
   white-space: nowrap;
 }
 
+.agent-sidebar__activity-more {
+  display: grid;
+  width: var(--space-12);
+  height: var(--space-12);
+  margin-left: auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.agent-sidebar__activity-more:hover {
+  color: var(--color-text);
+  opacity: 1;
+}
+
+.agent-sidebar__activity-more svg {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+
 .agent-sidebar__activity-heading {
   transform: translateY(-1px);
   color: var(--color-text-muted);
@@ -1156,26 +1296,34 @@ function onResizePointerEnd(event: PointerEvent): void {
 .agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__workspace-header {
   display: flex;
   gap: var(--space-4);
-  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2);
-  padding: calc(var(--space-4) + var(--space-2) - 1px) calc(var(--space-6) + var(--space-2)) calc(var(--space-4) + 1px);
-  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  margin: 0 0 var(--space-2);
+  padding: calc(var(--space-4) + var(--space-2)) calc(var(--space-6) + var(--space-2));
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-border) 35%, transparent);
 }
 
 .agent-sidebar__workspace-group[data-activity-group="attention"] {
   --activity-color: var(--color-attention);
+
+  flex-shrink: 1;
 }
 
 .agent-sidebar__workspace-group[data-activity-group="working"] {
   --activity-color: var(--color-warning);
+
+  flex-shrink: 1000000;
 }
 
 .agent-sidebar__workspace-group[data-activity-group="recent"] {
-  --activity-color: var(--color-error);
+  --activity-color: var(--color-success);
+
+  flex-shrink: 1000;
 }
 
 .agent-sidebar__workspace-group[data-activity-group="idle"] {
   --activity-color: var(--color-outline);
+
+  flex-shrink: 1000000000;
 }
 
 .agent-sidebar__activity-icon {

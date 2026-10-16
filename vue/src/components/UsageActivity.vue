@@ -210,16 +210,13 @@ function show(cell: (typeof cells.value)[number], event: PointerEvent) {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-16);
-  align-items: center;
 }
 .activity-summary {
   display: grid;
-  gap: var(--space-6);
 }
 .activity-totals {
   display: grid;
   justify-items: end;
-  gap: var(--space-6);
   margin: 0;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -230,7 +227,7 @@ function show(cell: (typeof cells.value)[number], event: PointerEvent) {
 }
 .activity-totals dd {
   margin: 0;
-  font-size: 44px;
+  font-size: 38px;
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.035em;
   line-height: 1.05;

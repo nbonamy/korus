@@ -6,14 +6,13 @@ import type { Agent, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { companionBackgroundGraceMs, companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
-import type { ComposerChange } from './composer-settings';
-import { activeSession, projectMobileGroups, type MobileSidebarGroup } from './workspace-groups';
+import { composerCapabilitiesFor, type ComposerChange } from './composer-settings';
+import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
@@ -38,7 +37,9 @@ export type EngineState = {
   pairingError: string;
   teams: { id: string; name: string; avatar?: string; isUnread: boolean }[];
   teamId: string;
+  laptopId: string;
   groups: MobileSidebarGroup[];
+  activityGroups: MobileActivityGroup[];
   agentId: string;
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
@@ -139,6 +140,8 @@ export function createEngine(port: EnginePort) {
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
   let foreground = port.initialActive ?? true;
+  const sidebarNow = ref(Date.now());
+  const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
   let backgroundedAt: number | undefined;
   let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
@@ -208,10 +211,12 @@ export function createEngine(port: EnginePort) {
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = projectMobileGroups(state.agents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons);
     const active = activeSession(groups);
-    const capabilities = defaultBackendCapabilities(agent?.backend ?? 'codex');
+    const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      laptopId: state.laptopId.value,
+      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
       queuedPromptPending: state.queuedPromptPending.value,
       queuedPromptFailed: state.queuedPromptFailed.value,
@@ -423,6 +428,7 @@ export function createEngine(port: EnginePort) {
         connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });
         foreground = command.active;
         if (command.active) {
+          sidebarNow.value = Date.now();
           clearTimeout(backgroundTimer); backgroundTimer = undefined;
           if (backgroundedAt !== undefined && Date.now() - backgroundedAt >= companionBackgroundGraceMs) suspendAfterGrace();
           await suspension?.catch(() => {});
@@ -521,5 +527,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

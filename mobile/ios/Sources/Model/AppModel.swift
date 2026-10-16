@@ -34,6 +34,10 @@ final class AppModel {
     var teams: [Team] = []
     var teamID = ""
     var groups: [SidebarGroup] = []
+    var activityGroups: [SidebarGroup] = []
+    private(set) var laptopID = ""
+    private(set) var sidebarOrganization: SidebarOrganization = .activity
+    @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
     var activeAgentID: String?
     var header: ConversationHeader?
     var models: [ModelChoice] = []
@@ -195,6 +199,11 @@ final class AppModel {
         set(\.pairingError, state.pairingError)
         set(\.teams, state.teams)
         if teamID != state.teamId { existingBranchGroup = nil; newProjectSource = nil }
+        let hostID = state.laptopId ?? state.composerTarget?.hostId ?? ""
+        if laptopID != hostID || teamID != state.teamId {
+            sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: state.teamId)
+        }
+        set(\.laptopID, hostID)
         set(\.teamID, state.teamId)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
@@ -202,11 +211,8 @@ final class AppModel {
         set(\.backends, state.backends)
         if created { newWorktreeGroup = nil; existingBranchGroup = nil; newProjectSource = nil; drawerOpen = false }
         set(\.branches, state.branches ?? RepositoryBranches())
-        set(\.groups, state.groups.map { group in
-            SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
-                         sessions: group.sessions.map { SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind, status: $0.status.type, isUnread: $0.isUnread ?? false) },
-                         repositoryId: group.repositoryRoot)
-        })
+        set(\.groups, state.groups.map(Self.sidebarGroup))
+        set(\.activityGroups, (state.activityGroups ?? []).map(Self.sidebarGroup))
         let nextAgentID = state.agentId.isEmpty ? nil : state.agentId
         let agentChanged = activeAgentID != nextAgentID
         if agentChanged { dictation.cancel() }
@@ -243,6 +249,20 @@ final class AppModel {
         set(\.closePreview, state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil)
         notifications.visibleChanged(visibleNotificationTarget)
         if startup == .ready, let notification = pendingNotification { pendingNotification = nil; open(notification) }
+    }
+
+    private static func sidebarGroup(_ group: EngineState.Group) -> SidebarGroup {
+        SidebarGroup(id: group.id, kind: group.kind, label: group.label, icon: group.icon,
+                     sessions: group.sessions.map {
+                         SidebarSession(agentId: $0.agentId, title: $0.displayTitle, kind: $0.kind,
+                                        status: $0.status.type, isUnread: $0.isUnread ?? false,
+                                        subtitle: $0.subtitle, quickChat: $0.quickChat ?? false)
+                     }, repositoryId: group.repositoryRoot, activity: group.activity)
+    }
+
+    func chooseSidebarOrganization(_ organization: SidebarOrganization) {
+        sidebarOrganization = organization
+        sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: teamID)
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {

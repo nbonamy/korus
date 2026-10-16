@@ -14,6 +14,10 @@ import { installAppMenu, type AppMenuCallbacks, type AppMenuOptions } from './ap
 import { logRendererConsole, warnMain } from './log';
 import { sendAppCommand } from './ipc-events';
 
+/** Tall enough for every activity section in the agent sidebar to show two rows without scrolling the sidebar. */
+const MIN_WINDOW_HEIGHT = 800;
+const MIN_WINDOW_WIDTH = 1024;
+
 type MainWindowState = {
   bounds: Rectangle;
   isMaximized: boolean;
@@ -156,8 +160,8 @@ export function createMainWindowOptions(
     width: bounds?.width ?? 1440,
     height: bounds?.height ?? 960,
     ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
-    minWidth: 1024,
-    minHeight: 720,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     ...macOSWindowOptions,
     show: false,
     title: product.name,
@@ -197,7 +201,7 @@ export function parseWindowState(value: string): MainWindowState | null {
     if (!values.every((entry) => typeof entry === 'number' && Number.isFinite(entry))) {
       return null;
     }
-    if ((bounds.width ?? 0) < 1024 || (bounds.height ?? 0) < 720) {
+    if ((bounds.width ?? 0) < MIN_WINDOW_WIDTH || (bounds.height ?? 0) < MIN_WINDOW_HEIGHT) {
       return null;
     }
     return {

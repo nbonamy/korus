@@ -11,6 +11,8 @@ struct EngineState: Decodable {
         struct Status: Decodable { let type: AgentStatus }
         let agentId: String
         let displayTitle: String
+        let subtitle: String?
+        let quickChat: Bool?
         let kind: SessionKind
         let isUnread: Bool?
         let status: Status
@@ -22,6 +24,7 @@ struct EngineState: Decodable {
         let icon: String?
         let repositoryRoot: String?
         let sessions: [Session]
+        let activity: SidebarActivity?
     }
     struct Header: Decodable {
         let title: String
@@ -84,8 +87,10 @@ struct EngineState: Decodable {
     let pairing: Pairing
     let pairingError: String
     let teams: [Team]
+    let laptopId: String?
     let teamId: String
     let groups: [Group]
+    let activityGroups: [Group]?
     let agentId: String
     let header: Header?
     let loading: Bool

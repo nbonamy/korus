@@ -34,6 +34,8 @@ struct SidebarSession: Identifiable, Hashable, Codable, Sendable {
     let kind: SessionKind
     let status: AgentStatus
     var isUnread = false
+    var subtitle: String? = nil
+    var quickChat = false
     var id: String { agentId }
 }
 
@@ -46,6 +48,7 @@ struct SidebarGroup: Identifiable, Hashable, Codable, Sendable {
     var sessions: [SidebarSession]
     /// Names the repository to the laptop when a chat starts in it; folders and quick chats have none.
     var repositoryId: String? = nil
+    var activity: SidebarActivity? = nil
 
     var hasQuickChats: Bool { kind == .quickChats && !sessions.isEmpty }
 
@@ -94,6 +97,7 @@ struct RepositoryBranches: Decodable, Equatable {
         var id: String { name }
     }
     var repositoryId: String? = nil
+    var activity: SidebarActivity? = nil
     var status: Status = .idle
     var items: [Branch] = []
 

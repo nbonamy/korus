@@ -15,7 +15,7 @@ export function opaquePath(value: string): string {
 /** The composer's last model and permission choice; never sandbox paths or approval policies. */
 function projectDefaults(defaults: BackendDefaults): BackendDefaults {
   const { kind, model, reasoningEffort } = defaults;
-  const serviceTier = defaults.kind === 'codex' ? defaults.serviceTier : undefined;
+  const serviceTier = defaults.kind !== 'antigravity' ? defaults.serviceTier : undefined;
   const approvalPreset = defaults.kind === 'codex' ? defaults.approvalPreset : undefined;
   const permissionMode = defaults.kind === 'codex' ? undefined : defaults.permissionMode;
   return { kind, ...(model === undefined ? {} : { model }), ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
@@ -41,11 +41,12 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
     const workspace = agent.workspace ? projectWorkspace(agent.workspace) : undefined;
     const icon = agent.sessionKind === 'quickChat' ? undefined : repositoryIconForAgent(agent, source.repositoryIcons ?? {});
     if (icon && workspace?.kind === 'git') repositoryIcons[workspace.primaryWorktreeRoot] = icon;
-    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
+    const { id, teamId, name, avatar, backend, backendSession, status, statusText, createdAt, updatedAt, lastActivityAt, sessionKind, conversationTitle, backendDefaults, hasSubmittedPrompt } = agent;
     return { id, teamId, name, avatar, backend,
       backendSession: backendSession?.kind === 'claude' ? { kind: backendSession.kind, sessionId: backendSession.sessionId, transport: backendSession.transport } : backendSession,
       ...(agent.goal ? { goal: agent.goal } : {}),
       ...(agent.readState ? { readState: agent.readState } : {}),
+      ...(lastActivityAt === undefined ? {} : { lastActivityAt }),
       status, statusText, createdAt, updatedAt, sessionKind, conversationTitle, ...(hasSubmittedPrompt === undefined ? {} : { hasSubmittedPrompt }), workspace, folder: agent.folder ? opaquePath(agent.folder) : null,
       ...(backendDefaults ? { backendDefaults: projectDefaults(backendDefaults) } : {}) };
   });

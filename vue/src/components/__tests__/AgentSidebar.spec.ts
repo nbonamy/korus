@@ -187,7 +187,7 @@ describe('AgentSidebar sessions', () => {
       { ...base, id: 'plan', name: 'Plan', status: { type: 'idle' }, planReview: { id: 'plan', conversationId: null, turnId: 'turn', markdown: '# Plan', status: 'pending' } },
       { ...base, id: 'new', name: 'New', status: { type: 'idle' }, hasSubmittedPrompt: false, lastActivityAt: '2026-10-15T12:00:00Z' },
     ];
-    const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread', 'recent'], teamId: 'one', teamName: 'One' };
+    const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread', 'recent', 'waiting'], teamId: 'one', teamName: 'One', repositoryIcons: { 'remote:github.com/nbonamy/id8': '🦞' } };
     const wrapper = mount(AgentSidebar, {
       props,
       global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
@@ -201,26 +201,33 @@ describe('AgentSidebar sessions', () => {
       await choose('Activity');
       const sections = () => wrapper.findAll('[data-activity-group]');
       const ids = (group: string) => wrapper.get(`[data-activity-group="${group}"]`).findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'));
-      expect(sections().map(section => section.get('header').text())).toStrictEqual(['Needs input', 'Recently active', 'Working', 'Idle']);
+      expect(sections().map(section => section.get('header').text())).toStrictEqual(['Needs input', 'Done', 'Working', 'Idle']);
       expect(ids('attention')).toStrictEqual(['waiting']);
-      expect(ids('recent')).toStrictEqual(['recent', 'created']);
+      expect(wrapper.get('[data-reorder-id="waiting"] .agent-avatar').text()).toBe('🦞');
+      expect(wrapper.find('[data-reorder-id="waiting"] .agent-sidebar__session-icon').exists()).toBe(false);
+      expect(ids('recent')).toStrictEqual(['recent', 'created', 'unread']);
       expect(ids('working')).toStrictEqual(['working']);
-      const unreadRecent = wrapper.get('[data-reorder-id="recent"]');
-      expect(unreadRecent.find('.agent-sidebar__activity-unread').exists()).toBe(true);
-      expect(unreadRecent.findAll('.agent-sidebar__engine')).toHaveLength(0);
+      for (const id of ['recent', 'unread', 'waiting']) {
+        const row = wrapper.get(`[data-reorder-id="${id}"]`);
+        expect(row.find('.agent-sidebar__activity-unread').exists()).toBe(true);
+        expect(row.findAll('.agent-sidebar__engine')).toHaveLength(0);
+      }
       expect(wrapper.findAll('[data-reorder-id="created"] .agent-sidebar__engine')).toHaveLength(1);
       for (const [id, title, subtitle] of [['waiting', 'Waiting', 'id8 · main'], ['working', 'id8', 'main']]) {
         const row = wrapper.get(`[data-reorder-id="${id}"]`);
         expect(row.get('.agent-sidebar__session-title').text()).toBe(title);
         expect(row.get('.agent-sidebar__session-context').text()).toBe(subtitle);
       }
-      expect(ids('idle')).toStrictEqual(['new', 'idle', 'unread', 'review', 'error', 'plan']);
+      expect(ids('idle')).toStrictEqual(['new', 'idle', 'review', 'error', 'plan']);
       expect(wrapper.get('[data-reorder-id="working"]').attributes('draggable')).toBe('false');
       await vi.advanceTimersByTimeAsync(250);
       await wrapper.setProps({ agents: items.map(agent => agent.id === 'working' ? { ...agent, status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: new Date().toISOString() } : agent) });
       expect(ids('recent')).toContain('working');
       expect(wrapper.get('.agent-sidebar__agent--active').attributes('data-reorder-id')).toBe('working');
       await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
+      expect(ids('recent')).toStrictEqual(['recent', 'unread']);
+      expect(ids('idle').slice(0, 3)).toStrictEqual(['working', 'new', 'idle']);
+      await wrapper.setProps({ unreadAgentIds: [] });
       expect(wrapper.find('[data-activity-group="recent"]').exists()).toBe(false);
       expect(ids('idle').slice(0, 4)).toStrictEqual(['working', 'new', 'recent', 'idle']);
       await wrapper.setProps({ teamId: 'two', teamName: 'Two' });

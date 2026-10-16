@@ -203,3 +203,35 @@ function workspaceSessionKind(agent: Agent): WorkspaceSidebarSession['kind'] {
     : workspace.defaultBranch;
   return workspace.branch === defaultBranch ? 'main' : 'branch';
 }
+
+export type SidebarActivity = 'attention' | 'recent' | 'working' | 'idle';
+export type ActivitySidebarGroup = WorkspaceSidebarGroup & { activity: SidebarActivity };
+
+/** Shared priority and recency policy; clients own preferences, clocks and animation. */
+export function projectActivitySidebar(options: {
+  agents: readonly Agent[];
+  repositoryGroups: readonly WorkspaceSidebarGroup[];
+  now: number;
+  label: (activity: SidebarActivity) => string;
+}): ActivitySidebarGroup[] {
+  const recentDuration = 5 * 60_000;
+  const groups = (['attention', 'recent', 'working', 'idle'] as const).map(activity => ({
+    id: `activity:${activity}`, kind: 'folder' as const, activity, label: options.label(activity), sessions: [] as WorkspaceSidebarGroup['sessions'],
+  }));
+  const agents = new Map(options.agents.map(agent => [agent.id, agent]));
+  const observedNow = options.now;
+  for (const group of options.repositoryGroups) {
+    for (const session of group.sessions) {
+      const agent = agents.get(session.agentId)!;
+      const lastActivity = agent.hasSubmittedPrompt ? Date.parse(agent.lastActivityAt ?? '') || 0 : 0;
+      const age = observedNow - Math.max(Date.parse(agent.createdAt), lastActivity);
+      const activity: SidebarActivity = agent.status.type === 'awaitingInput' ? 'attention'
+        : agent.status.type === 'working' ? 'working'
+          : session.isUnread || (age >= 0 && age < recentDuration) ? 'recent' : 'idle';
+      groups.find(group => group.activity === activity)!.sessions.push(session);
+    }
+  }
+  const lastActive = (id: string) => Date.parse(agents.get(id)?.lastActivityAt ?? '') || 0;
+  groups.find(group => group.activity === 'idle')!.sessions.sort((a, b) => lastActive(b.agentId) - lastActive(a.agentId));
+  return groups.filter(group => group.sessions.length);
+}

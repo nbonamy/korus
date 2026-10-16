@@ -9,34 +9,14 @@ struct DrawerView: View {
     var body: some View {
         VStack(spacing: 0) {
             teams
-            if !model.groups.contains(where: \.hasQuickChats) { newChatButton }
-            List {
-                ForEach(model.groups) { group in
-                    Section {
-                        ForEach(group.sessions) { session in
-                            SessionRow(session: session, group: group, isActive: session.agentId == model.activeAgentID)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        model.select(agent: session.agentId)
-                                    }
-                                }
-                        }
-                    } header: {
-                        GroupHeader(group: group)
-                            .listRowInsets(.vertical, 0)
-                    }
-                    .listSectionMargins(.top, 12)
-                    .listSectionMargins(.bottom, 0)
-                }
+            organization
+            if model.sidebarOrganization == .activity {
+                ActivityDrawerList(groups: model.activityGroups)
+                    .id("\(model.laptopID):\(model.teamID)")
+            } else {
+                if !model.groups.contains(where: \.hasQuickChats) { newChatButton }
+                repositoryList
             }
-            .listStyle(.plain)
-            .listRowSpacing(4)
-            .environment(\.defaultMinListRowHeight, 44)
-            .scrollContentBackground(.hidden)
             footer
         }
         .background(Color(.systemBackground))
@@ -55,6 +35,73 @@ struct DrawerView: View {
         } message: {
             Text("Check the connection and try again.")
         }
+    }
+
+    private var organization: some View {
+        HStack {
+            Menu {
+                Picker("Agent view", selection: Binding(get: { model.sidebarOrganization }, set: model.chooseSidebarOrganization)) {
+                    ForEach(SidebarOrganization.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(model.sidebarOrganization.label)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 36)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Agent view: \(model.sidebarOrganization.label)")
+            Spacer()
+            if model.sidebarOrganization == .activity {
+                Button { model.startQuickChat() } label: {
+                    Group {
+                        if model.creatingChatGroupID == AppModel.quickChatID { ProgressView().controlSize(.small) }
+                        else { Image(systemName: "square.and.pencil") }
+                    }
+                    .frame(width: 44, height: 36).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .disabled(!model.canStartChat || model.chatCreation == .creating)
+                .accessibilityLabel("New chat")
+            }
+        }
+        .padding(.leading, 24).padding(.trailing, 12)
+    }
+
+    private var repositoryList: some View {
+        List {
+            ForEach(model.groups) { group in
+                Section {
+                    ForEach(group.sessions) { session in
+                        SessionRow(session: session, group: group, isActive: session.agentId == model.activeAgentID)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    model.select(agent: session.agentId)
+                                }
+                            }
+                    }
+                } header: {
+                    GroupHeader(group: group)
+                        .listRowInsets(.vertical, 0)
+                }
+                .listSectionMargins(.top, 12)
+                .listSectionMargins(.bottom, 0)
+            }
+        }
+        .listStyle(.plain)
+        .listRowSpacing(4)
+        .environment(\.defaultMinListRowHeight, 44)
+        .scrollContentBackground(.hidden)
     }
 
     private var teams: some View {

@@ -1,6 +1,9 @@
 <template>
   <button class="agent-sidebar__activity-agent" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
-    <component :is="icon" class="agent-sidebar__session-icon" aria-hidden="true" />
+    <span v-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
+      <AgentAvatar :avatar="repositoryIcon" :name="context ?? ''" />
+    </span>
+    <component :is="icon" v-else class="agent-sidebar__session-icon" aria-hidden="true" />
     <span class="agent-sidebar__meta">
       <strong class="agent-sidebar__session-title" :class="{ 'agent-sidebar__session-title--active': session.isActive }">{{ session.customName ?? (quickChat ? session.displayTitle : context) ?? session.displayTitle }}</strong>
       <span v-if="subtitle" class="agent-sidebar__session-context">{{ subtitle }}</span>
@@ -13,12 +16,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
-import { FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
+import AgentAvatar from './AgentAvatar.vue';
+import { FolderIcon, FolderRootIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
 
-const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string }>();
+const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; repository?: boolean; repositoryIcon?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string }>();
 const subtitle = computed(() => props.quickChat ? props.context
   : [props.session.customName ? props.context : null, props.session.branch].filter(Boolean).join(' · '));
 const icon = computed(() => props.quickChat ? MessageIcon
+  : props.repository ? FolderRootIcon
   : props.session.kind === 'worktree' ? GitForkIcon
     : props.session.kind === 'folder' ? FolderIcon : GitBranchIcon);
 </script>
@@ -43,6 +48,18 @@ const icon = computed(() => props.quickChat ? MessageIcon
 .agent-sidebar__session-icon {
   flex: 0 0 var(--agent-sidebar-repository-icon-column-width, 24px);
   margin-top: var(--space-1);
+}
+
+.agent-sidebar__repository-mark {
+  display: grid;
+  flex: 0 0 var(--agent-sidebar-repository-icon-column-width, 24px);
+  place-items: center;
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.agent-sidebar__repository-mark .agent-avatar {
+  --agent-avatar-size: 14px;
 }
 
 .agent-sidebar__activity-agent[data-session-kind="branch"] .agent-sidebar__session-icon {

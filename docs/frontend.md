@@ -91,6 +91,9 @@ sidebar follows the selected agent, keeping each agent's tabs separately.
 - **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are
   distinct global surfaces. Opening Cockpit must not load Backlog data. Projection
   and sorting live in a focused view model, not `AppShell`.
+- Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
+  desktop and mobile own their local view preference, clock and transitions. Native
+  activity rows share one identity space across groups so regrouping preserves rows.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team. Agent activity is stored apart from metadata so startup hydration
   does not make idle agents look active.

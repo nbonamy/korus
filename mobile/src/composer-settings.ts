@@ -1,4 +1,5 @@
-import type { Agent, AgentModelSelection, BackendCapabilities, BackendModelOption } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, AgentModelSelection, BackendCapabilities, BackendModelOption } from '@workspace/core/contracts';
+import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type { CompanionPromptOptions } from './companion-port';
 
 /** The phone's own choice for one agent; anything unset follows the agent's saved choice, then the provider default. */
@@ -8,6 +9,12 @@ export type ComposerChange = { modelId?: string; reasoningEffort?: string; servi
 
 const defaultEffort = (model: BackendModelOption) => model.defaultReasoningEffort || model.supportedReasoningEfforts?.[0]?.reasoningEffort || null;
 const matches = (model: BackendModelOption, selection: string | null | undefined) => Boolean(selection && (model.id === selection || model.model === selection));
+
+/** The laptop's model catalog can advertise controls beyond the provider's static defaults. */
+export function composerCapabilitiesFor(backend: AgentBackend, models: readonly BackendModelOption[]): BackendCapabilities {
+  const capabilities = defaultBackendCapabilities(backend);
+  return { ...capabilities, serviceTier: capabilities.serviceTier || models.some(model => Boolean(model.serviceTiers?.length)) };
+}
 
 export function resolveComposerSettings(agent: Agent, models: readonly BackendModelOption[], choice: ComposerChoice | undefined): ComposerSettings {
   const saved = agent.backendDefaults;
