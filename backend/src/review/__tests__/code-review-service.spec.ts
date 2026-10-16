@@ -584,6 +584,7 @@ describe('CodeReviewService', () => {
   });
   it('creates an independent reviewer as a normal adjacent agent for the same workspace', async () => {
     const test = harness([async () => ({ text: '', findingCount: 0 })]);
+    test.owner.name = null;
     const neighbor = agent('neighbor');
     test.owner.avatar = 'owl';
     test.owner.openInApplication = 'vscode';
@@ -611,7 +612,7 @@ describe('CodeReviewService', () => {
       test.owner.id, visibleReviewer.id, neighbor.id,
     ]);
     expect(visibleReviewer).toMatchObject({
-      name: 'Review', avatar: 'owl', folder: '/repo', workspace: test.owner.workspace,
+      name: '👀 feat/review', avatar: 'owl', folder: '/repo', workspace: test.owner.workspace,
       backend: test.owner.backend,
       backendDefaults: { kind: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high' },
       openInApplication: 'vscode', status: { type: 'idle' },
