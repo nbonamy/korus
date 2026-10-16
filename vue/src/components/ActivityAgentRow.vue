@@ -9,7 +9,7 @@
       <span v-if="subtitle" class="agent-sidebar__session-context">{{ subtitle }}</span>
     </span>
     <slot />
-    <span v-if="unread || age" class="agent-sidebar__activity-indicator" :class="{ 'agent-sidebar__activity-indicator--age': !unread && age }">
+    <span v-if="!shortcutVisible && (unread || age)" class="agent-sidebar__activity-indicator" :class="{ 'agent-sidebar__activity-indicator--age': !unread && age }">
       <span v-if="unread" class="agent-sidebar__activity-unread" :aria-label="unreadLabel" />
       <span v-else-if="age" class="agent-sidebar__session-context agent-sidebar__activity-time">{{ age }}</span>
     </span>
@@ -22,7 +22,7 @@ import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar'
 import AgentAvatar from './AgentAvatar.vue';
 import { FolderIcon, FolderRootIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
 
-const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; repository?: boolean; repositoryIcon?: string; age?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string }>();
+const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; repository?: boolean; repositoryIcon?: string; age?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string; shortcutVisible?: boolean }>();
 const subtitle = computed(() => props.quickChat ? props.context
   : [props.session.customName ? props.context : null, props.session.branch].filter(Boolean).join(' · '));
 const icon = computed(() => props.quickChat ? MessageIcon
@@ -120,7 +120,8 @@ const icon = computed(() => props.quickChat ? MessageIcon
 }
 
 .agent-sidebar__activity-agent :slotted(.agent-sidebar__quick-switch-shortcut) {
+  align-self: center;
   flex-shrink: 0;
-  margin: var(--space-1) 0 0 var(--space-4);
+  margin: 0 0 0 var(--space-4);
 }
 </style>

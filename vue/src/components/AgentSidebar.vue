@@ -281,7 +281,7 @@
             <component
               :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
               v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
-                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
+                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session) && !showQuickSwitchShortcut(session, group.activity), shortcutVisible: showQuickSwitchShortcut(session, group.activity), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
                 : { session, groupKind: group.kind }) }"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
@@ -302,7 +302,7 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="backendChoices.length > 1 && agentsById.get(session.agentId)"
+                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -318,7 +318,7 @@
                 :aria-label="statusLabel(session.status.type)"
               >{{ t('sidebar.input') }}</span>
               <span
-                v-else-if="!isPullRequestFinished(session) && !session.isUnread && quickSwitchShortcutsVisible && session.quickSwitchIndex < 9"
+                v-else-if="showQuickSwitchShortcut(session, group.activity)"
                 class="agent-sidebar__quick-switch-shortcut"
                 :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
               ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
@@ -331,7 +331,7 @@
               />
             </component>
             <el-tooltip
-              v-if="isPullRequestFinished(session)"
+              v-if="isPullRequestFinished(session) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
               :content="pullRequestAttentionLabel(session)"
               placement="right"
               :show-after="300"
@@ -530,7 +530,19 @@ const idleSortMenuItems = computed<AppMenuItem[]>(() => [
   { id: 'repository', type: 'radio', checked: organization.idleSort.value === 'repository', label: t('sidebar.repository'), icon: organization.idleSort.value === 'repository' ? CheckIcon : FolderIcon },
   { id: 'activity', type: 'radio', checked: organization.idleSort.value === 'activity', label: t('sidebar.recentActivity'), icon: organization.idleSort.value === 'activity' ? CheckIcon : ClockHour8Icon },
 ]);
-const workspaceGroups = organization.groups;
+const workspaceGroups = computed(() => {
+  let index = 0;
+  return organization.groups.value.map(group => group.activity
+    ? { ...group, sessions: group.sessions.map(session => ({ ...session, quickSwitchIndex: index++ })) }
+    : group);
+});
+const quickSwitchAgentIds = computed(() => workspaceGroups.value.flatMap(group => group.sessions)
+  .sort((a, b) => a.quickSwitchIndex - b.quickSwitchIndex).map(session => session.agentId));
+defineExpose({ quickSwitchAgentIds });
+function showQuickSwitchShortcut(session: WorkspaceSidebarSession, activity?: SidebarActivity): boolean {
+  return Boolean(props.quickSwitchShortcutsVisible && session.quickSwitchIndex < 9
+    && (activity || (!isPullRequestFinished(session) && !session.isUnread)));
+}
 function activityAge(agentId: string, activity: SidebarActivity | undefined): string | undefined {
   const agent = agentsById.value.get(agentId);
   if (!agent) return undefined;

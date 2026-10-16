@@ -56,6 +56,7 @@
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
     <AppShellNavigation
+      ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
@@ -2440,10 +2441,12 @@ const shortcutContext = computed<ShortcutContext>(() => ({
   browser: appHostCapabilities.embeddedBrowser,
   idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle' && defaultBackendCommands(currentAgent.value.backend).some(command => command.slashName === 'compact')),
 }));
+const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
     activeTeamAgents: () => activeTeamAgents.value,
+    quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
     composerAttachments: () => props.composerAttachments,

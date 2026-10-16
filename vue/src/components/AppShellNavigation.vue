@@ -35,6 +35,7 @@
   />
   <Transition name="agent-sidebar">
     <AgentSidebar
+      ref="agentSidebar"
       v-if="showAgentSidebar"
       :agents="sidebarAgents"
       :forkable-agent-ids="forkableAgentIds"
@@ -104,7 +105,7 @@ import type {
   SourceBranch,
   Team,
 } from '@workspace/core/contracts';
-import { computed, toRefs } from 'vue';
+import { computed, ref, toRefs } from 'vue';
 import AgentSidebar from './AgentSidebar.vue';
 import TeamRail from './TeamRail.vue';
 
@@ -198,6 +199,9 @@ const missionAgentIds = computed(() => new Set(
   )),
 ));
 const sidebarAgents = computed(() => props.activeTeamAgents.filter(agent => !missionAgentIds.value.has(agent.id)));
+const agentSidebar = ref<InstanceType<typeof AgentSidebar> | null>(null);
+const quickSwitchAgentIds = computed(() => agentSidebar.value?.quickSwitchAgentIds ?? sidebarAgents.value.map(agent => agent.id));
+defineExpose({ quickSwitchAgentIds });
 const teamMissions = computed(() => (props.snapshot.missions ?? []).filter(mission => mission.teamId === props.activeTeam?.id));
 
 const agentSidebarMinWidth = 200;

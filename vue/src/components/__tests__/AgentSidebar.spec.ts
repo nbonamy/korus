@@ -212,7 +212,7 @@ describe('AgentSidebar sessions', () => {
       expect(ids('attention')).toStrictEqual(['waiting']);
       expect(wrapper.get('[data-reorder-id="waiting"] .agent-avatar').text()).toBe('🦞');
       expect(wrapper.find('[data-reorder-id="waiting"] .agent-sidebar__session-icon').exists()).toBe(false);
-      expect(ids('recent')).toStrictEqual(['recent', 'created', 'unread']);
+      expect(ids('recent')).toStrictEqual(['unread', 'recent', 'created']);
       expect(ids('working')).toStrictEqual(['working']);
       const row = (id: string) => wrapper.get(`[data-reorder-id="${id}"]`);
       const hasUnread = (id: string) => row(id).find('.agent-sidebar__activity-unread').exists();
@@ -240,7 +240,7 @@ describe('AgentSidebar sessions', () => {
       expect(ids('recent')).toContain('working');
       expect(wrapper.get('.agent-sidebar__agent--active').attributes('data-reorder-id')).toBe('working');
       await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
-      expect(ids('recent')).toStrictEqual(['recent', 'unread']);
+      expect(ids('recent')).toStrictEqual(['unread', 'recent']);
       expect(ids('idle').slice(0, 3)).toStrictEqual(['working', 'new', 'idle']);
       await wrapper.setProps({ unreadAgentIds: [] });
       expect(wrapper.find('[data-activity-group="recent"]').exists()).toBe(false);

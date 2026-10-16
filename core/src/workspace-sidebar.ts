@@ -232,6 +232,13 @@ export function projectActivitySidebar(options: {
       groups.find(group => group.activity === activity)!.sessions.push(session);
     }
   }
+  const activityTime = (id: string) => {
+    const agent = agents.get(id)!;
+    return Date.parse(agent.hasSubmittedPrompt && agent.lastActivityAt ? agent.lastActivityAt : agent.createdAt) || 0;
+  };
+  for (const group of groups) {
+    if (group.activity !== 'idle') group.sessions.sort((a, b) => activityTime(a.agentId) - activityTime(b.agentId));
+  }
   const lastActive = (id: string) => Date.parse(agents.get(id)?.lastActivityAt ?? '') || 0;
   if (options.idleSort !== 'repository') groups.find(group => group.activity === 'idle')!.sessions.sort((a, b) => lastActive(b.agentId) - lastActive(a.agentId));
   return groups.filter(group => group.sessions.length);
