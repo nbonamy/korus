@@ -186,7 +186,7 @@ it("stacks only observed group contributions and leaves unsupported token series
     ],
   });
   expect(wrapper.find("svg").exists()).toBe(false);
-  expect(wrapper.text()).toContain("Unavailable");
+  expect(wrapper.text()).toContain("N/A");
   await wrapper.setProps({
     daily: [
       {

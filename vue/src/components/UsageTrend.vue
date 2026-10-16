@@ -10,7 +10,7 @@
       </header>
     </slot>
     <p v-if="!observed" class="chart-empty">
-      {{ $t("analytics.unknown") }}
+      {{ $t("analytics.notAvailable") }}
     </p>
     <div v-else ref="stage" class="chart-stage">
       <svg

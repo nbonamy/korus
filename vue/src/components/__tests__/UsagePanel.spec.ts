@@ -87,7 +87,7 @@ it("shows unknown consumption with measured denominators and filters the local o
   const wrapper = mount(UsagePanel);
   await flushPromises();
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
-    "Unavailable",
+    "N/A",
   );
   expect(wrapper.find('[role="meter"]').exists()).toBe(false);
   expect(wrapper.text()).not.toContain("0 of 3 turns measured");

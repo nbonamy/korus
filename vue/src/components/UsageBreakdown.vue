@@ -40,7 +40,7 @@
             <span class="breakdown-share"
               ><UsageBar :value="share(row)" :color="row.color" /><b>{{
                 share(row) === null
-                  ? $t("analytics.unknown")
+                  ? $t("analytics.notAvailable")
                   : chartFormat(share(row)) + "%"
               }}</b></span
             >

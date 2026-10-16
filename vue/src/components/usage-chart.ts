@@ -17,7 +17,7 @@ export const chartFormat = (
   compact = false,
 ): string =>
   value == null
-    ? translate("analytics.unknown")
+    ? translate("analytics.notAvailable")
     : new Intl.NumberFormat(undefined, {
         maximumFractionDigits: 1,
         ...(compact ? { notation: "compact" as const } : {}),

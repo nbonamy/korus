@@ -1,7 +1,7 @@
 <template>
   <UsageStatTile
     :label="$t('analytics.tokenMix')"
-    :value="parts.length ? undefined : $t('analytics.unknown')"
+    :value="parts.length ? undefined : $t('analytics.notAvailable')"
   >
     <template v-if="parts.length">
       <div class="mix-bar" role="img" :aria-label="$t('analytics.tokenMix')">
