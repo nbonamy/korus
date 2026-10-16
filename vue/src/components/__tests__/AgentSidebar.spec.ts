@@ -187,8 +187,11 @@ describe('AgentSidebar sessions', () => {
       { ...base, id: 'plan', name: 'Plan', status: { type: 'idle' }, planReview: { id: 'plan', conversationId: null, turnId: 'turn', markdown: '# Plan', status: 'pending' } },
       { ...base, id: 'new', name: 'New', status: { type: 'idle' }, hasSubmittedPrompt: false, lastActivityAt: '2026-10-15T12:00:00Z' },
     ];
-    const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread'], teamId: 'one', teamName: 'One' };
-    const wrapper = mount(AgentSidebar, { props });
+    const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread', 'recent'], teamId: 'one', teamName: 'One' };
+    const wrapper = mount(AgentSidebar, {
+      props,
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
     const choose = async (label: string) => {
       await wrapper.get('button[aria-label="Agent view"]').trigger('click');
       const option = wrapper.findAll('[role="menuitemradio"]').find(button => button.text() === label)!;
@@ -202,6 +205,10 @@ describe('AgentSidebar sessions', () => {
       expect(ids('attention')).toStrictEqual(['waiting']);
       expect(ids('recent')).toStrictEqual(['recent', 'created']);
       expect(ids('working')).toStrictEqual(['working']);
+      const unreadRecent = wrapper.get('[data-reorder-id="recent"]');
+      expect(unreadRecent.find('.agent-sidebar__activity-unread').exists()).toBe(true);
+      expect(unreadRecent.findAll('.agent-sidebar__engine')).toHaveLength(0);
+      expect(wrapper.findAll('[data-reorder-id="created"] .agent-sidebar__engine')).toHaveLength(1);
       for (const [id, title, subtitle] of [['waiting', 'Waiting', 'id8 · main'], ['working', 'id8', 'main']]) {
         const row = wrapper.get(`[data-reorder-id="${id}"]`);
         expect(row.get('.agent-sidebar__session-title').text()).toBe(title);

@@ -6,6 +6,7 @@
       <span v-if="subtitle" class="agent-sidebar__session-context">{{ subtitle }}</span>
     </span>
     <slot />
+    <span v-if="unread" class="agent-sidebar__activity-unread" :aria-label="unreadLabel" />
   </button>
 </template>
 
@@ -14,7 +15,7 @@ import { computed } from 'vue';
 import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { FolderIcon, GitBranchIcon, GitForkIcon, MessageIcon } from '../shared/icons/app-icons';
 
-const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; quickChat?: boolean; cleanup: boolean }>();
+const props = defineProps<{ session: WorkspaceSidebarSession; context?: string; quickChat?: boolean; cleanup: boolean; unread?: boolean; unreadLabel?: string }>();
 const subtitle = computed(() => props.quickChat ? props.context
   : [props.session.customName ? props.context : null, props.session.branch].filter(Boolean).join(' · '));
 const icon = computed(() => props.quickChat ? MessageIcon
@@ -54,7 +55,22 @@ const icon = computed(() => props.quickChat ? MessageIcon
   line-height: var(--line-height-16);
 }
 
-.agent-sidebar__activity-agent :slotted(.agent-sidebar__engine),
+.agent-sidebar__activity-unread {
+  align-self: center;
+  flex: 0 0 var(--agent-status-dot-size, 8px);
+  width: var(--agent-status-dot-size, 8px);
+  height: var(--agent-status-dot-size, 8px);
+  margin-left: var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--color-error);
+}
+
+.agent-sidebar__activity-agent :slotted(.agent-sidebar__engine) {
+  align-self: center;
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
 .agent-sidebar__activity-agent :slotted(.agent-sidebar__quick-switch-shortcut) {
   flex-shrink: 0;
   margin-top: var(--space-1);

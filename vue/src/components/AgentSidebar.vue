@@ -238,7 +238,7 @@
           <component
             :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
             v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
-              ? { session, context: activityContext.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session) }
+              ? { session, context: activityContext.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unread: group.activity === 'recent' && session.isUnread, unreadLabel: t('sidebar.unread') }
               : { session, groupKind: group.kind }) }"
             v-show="!isWorkspaceCollapsed(group)"
             class="agent-sidebar__agent"
@@ -259,7 +259,7 @@
             @dragend="clientAgentOrderUpdate.onDragEnd"
           >
             <span
-              v-if="backendChoices.length > 1 && agentsById.get(session.agentId)"
+              v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity === 'recent' && session.isUnread)"
               class="agent-sidebar__engine"
               role="img"
               :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
