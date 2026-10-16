@@ -52,6 +52,7 @@ final class AppModel {
     var activityGroups: [SidebarGroup] = []
     private(set) var laptopID = ""
     private(set) var sidebarOrganization: SidebarOrganization = .activity
+    private(set) var sidebarIdleSort: SidebarIdleSort = .activity
     @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
     var activeAgentID: String?
     var header: ConversationHeader?
@@ -219,6 +220,8 @@ final class AppModel {
         let hostID = state.laptopId ?? state.composerTarget?.hostId ?? ""
         if laptopID != hostID || teamID != state.teamId {
             sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: state.teamId)
+            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: state.teamId)
+            command("idleSort", ["order": sidebarIdleSort.rawValue])
         }
         set(\.laptopID, hostID)
         set(\.teamID, state.teamId)
@@ -280,6 +283,12 @@ final class AppModel {
     func chooseSidebarOrganization(_ organization: SidebarOrganization) {
         sidebarOrganization = organization
         sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: teamID)
+    }
+
+    func chooseSidebarIdleSort(_ order: SidebarIdleSort) {
+        sidebarIdleSort = order
+        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: teamID)
+        command("idleSort", ["order": order.rawValue])
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {

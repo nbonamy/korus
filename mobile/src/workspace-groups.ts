@@ -5,11 +5,11 @@ import { projectActivitySidebar, projectWorkspaceSidebar, type SidebarActivity, 
 export type MobileSidebarGroup = WorkspaceSidebarGroup & { icon: string | undefined; activity?: SidebarActivity };
 export type MobileActivityGroup = Omit<MobileSidebarGroup, 'sessions'> & { sessions: (WorkspaceSidebarSession & { subtitle: string; quickChat: boolean })[] };
 
-export function projectMobileActivityGroups(agents: readonly Agent[], repositoryGroups: MobileSidebarGroup[], now: number): MobileActivityGroup[] {
+export function projectMobileActivityGroups(agents: readonly Agent[], repositoryGroups: MobileSidebarGroup[], now: number, idleSort: 'activity' | 'repository' = 'activity'): MobileActivityGroup[] {
   const labels = { attention: 'Needs input', recent: 'Done', working: 'Working', idle: 'Idle' };
   const origins = new Map(repositoryGroups.flatMap(group => group.sessions.map(session => [session.agentId, group] as const)));
   const byId = new Map(agents.map(agent => [agent.id, agent]));
-  return projectActivitySidebar({ agents, repositoryGroups, now, label: activity => labels[activity] }).map(group => ({ ...group, icon: undefined,
+  return projectActivitySidebar({ agents, repositoryGroups, now, idleSort, label: activity => labels[activity] }).map(group => ({ ...group, icon: undefined,
     sessions: group.sessions.map(session => {
       const context = origins.get(session.agentId)!.label;
       const quickChat = byId.get(session.agentId)?.sessionKind === 'quickChat';

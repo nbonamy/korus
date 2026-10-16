@@ -85,9 +85,7 @@ struct DrawerView: View {
                             .listRowBackground(Color.clear)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    model.select(agent: session.agentId)
-                                }
+                                model.select(agent: session.agentId)
                             }
                     }
                 } header: {

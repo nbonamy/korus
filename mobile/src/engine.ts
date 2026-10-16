@@ -94,6 +94,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
@@ -144,6 +145,7 @@ export function createEngine(port: EnginePort) {
   let disposed = false;
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
+  const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
   const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
   let backgroundedAt: number | undefined;
@@ -221,7 +223,7 @@ export function createEngine(port: EnginePort) {
     return {
       git: state.git.view.value,
       laptopId: state.laptopId.value,
-      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value),
+      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
       queuedPromptPending: state.queuedPromptPending.value,
       queuedPromptFailed: state.queuedPromptFailed.value,
@@ -414,6 +416,7 @@ export function createEngine(port: EnginePort) {
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
       case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
       case 'loadUsage': return state.loadUsage();
+      case 'idleSort': if (command.order === 'activity' || command.order === 'repository') sidebarIdleSort.value = command.order; return;
       case 'loadChanges': return state.git.load(command.scopeId);
       case 'dismissChanges': return state.git.clear();
       case 'read': {

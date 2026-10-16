@@ -66,7 +66,7 @@ struct ConversationScreen: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        withAnimation(.smooth(duration: 0.32)) { model.drawerOpen.toggle() }
+                        model.drawerOpen.toggle()
                     } label: {
                         Image(systemName: "line.3.horizontal")
                     }
