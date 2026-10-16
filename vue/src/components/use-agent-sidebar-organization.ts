@@ -11,11 +11,15 @@ export function useAgentSidebarOrganization(options: {
   label: (activity: SidebarActivity) => string;
 }) {
   const mode = ref<'repository' | 'activity'>('repository');
+  const idleSort = ref<'activity' | 'repository'>('activity');
   const now = ref(Date.now());
   const preferenceKey = () => options.teamId() ? `app:agentOrganization:${options.teamId()}` : null;
+  const idleSortKey = () => options.teamId() ? `app:idleAgentSort:${options.teamId()}` : null;
   watch(options.teamId, () => {
-    try { mode.value = localStorage.getItem(preferenceKey() ?? '') === 'activity' ? 'activity' : 'repository'; }
-    catch { mode.value = 'repository'; }
+    try {
+      mode.value = localStorage.getItem(preferenceKey() ?? '') === 'activity' ? 'activity' : 'repository';
+      idleSort.value = localStorage.getItem(idleSortKey() ?? '') === 'repository' ? 'repository' : 'activity';
+    } catch { mode.value = 'repository'; idleSort.value = 'activity'; }
   }, { immediate: true });
   watch(mode, (value, _, cleanup) => {
     now.value = Date.now();
@@ -34,7 +38,13 @@ export function useAgentSidebarOrganization(options: {
   const groups = computed<SidebarGroup[]>(() => {
     if (mode.value === 'repository') return options.repositoryGroups();
     return projectActivitySidebar({ agents: options.agents(), repositoryGroups: options.repositoryGroups(),
-      now: Math.max(now.value, Date.now()), label: options.label });
+      now: Math.max(now.value, Date.now()), label: options.label, idleSort: idleSort.value });
   });
-  return { mode, groups, select, now };
+  function selectIdleSort(value: string): void {
+    if (value !== 'repository' && value !== 'activity') return;
+    idleSort.value = value;
+    const key = idleSortKey();
+    try { if (key) localStorage.setItem(key, value); } catch { /* Keep the session choice if storage is unavailable. */ }
+  }
+  return { mode, groups, select, now, idleSort, selectIdleSort };
 }

@@ -159,6 +159,10 @@ which retains ownership of operation state, confirmations and host routing.
   actions. Use Element Plus teleport/placement for popovers, Element Plus tabs for
   navigation, radio/segmented controls for exclusive form choices; pill tabs keep
   symmetric edge padding.
+  Exclusive-choice popup menus show the selected option with `CheckIcon` in place
+  of its leading icon; other options keep their normal icons. Use radio items
+  with `checked` for accessibility and `:show-selection-check="false"` on `AppMenu`
+  so the selected row has one leading checkmark, not an additional trailing one.
 - **Lists:** `AppDataList` for dense data, focused rows for navigation. Make the
   whole row the primary target with quiet, keyboard-reachable secondary actions;
   hover and focus keep geometry stable; titlebars align to the shared appbar height;

@@ -213,6 +213,7 @@ export function projectActivitySidebar(options: {
   repositoryGroups: readonly WorkspaceSidebarGroup[];
   now: number;
   label: (activity: SidebarActivity) => string;
+  idleSort?: 'activity' | 'repository';
 }): ActivitySidebarGroup[] {
   const recentDuration = 5 * 60_000;
   const groups = (['attention', 'recent', 'working', 'idle'] as const).map(activity => ({
@@ -232,6 +233,6 @@ export function projectActivitySidebar(options: {
     }
   }
   const lastActive = (id: string) => Date.parse(agents.get(id)?.lastActivityAt ?? '') || 0;
-  groups.find(group => group.activity === 'idle')!.sessions.sort((a, b) => lastActive(b.agentId) - lastActive(a.agentId));
+  if (options.idleSort !== 'repository') groups.find(group => group.activity === 'idle')!.sessions.sort((a, b) => lastActive(b.agentId) - lastActive(a.agentId));
   return groups.filter(group => group.sessions.length);
 }
