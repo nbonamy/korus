@@ -16,7 +16,7 @@ On the first-run screen, install your chosen engine if it is not detected, then 
 
 Select **Connect** for the engine and complete its authentication steps. Once at least one engine is connected and enabled, select **Continue**. You can manage these choices later in the engine's Settings page.
 
-The [provider guides](../providers/) explain setup and sign-in, including [Antigravity's external runtime](../providers/#antigravity). Model access and usage limits come from the provider account you connect.
+The [provider guides](../providers/) explain setup and sign-in, including bundled runtime options and [Antigravity installation](../providers/#antigravity). Model access and usage limits come from the provider account you connect.
 
 At the GitHub step, connect your account if you want GitHub workflows, or select **Skip for now** for a local repository task.
 

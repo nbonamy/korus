@@ -11,7 +11,7 @@ description: Download and install the Korus desktop app.
 1. Open [Downloads](__PRODUCT_DOWNLOAD_URL__) and choose the macOS DMG for Apple silicon.
 2. Open the DMG and double-click Korus. It installs in Applications and launches. If an installed copy needs replacing, confirm **Replace**; your chats and settings are kept.
 3. If Korus asks you to use Finder, choose **Open Applications**, drag Korus there from the DMG, and approve the installation in Finder. Then open Korus from Applications.
-4. The first-run screen checks your coding engines. **Install** opens instructions for missing runtimes; the refresh icon rechecks detection. Detected engines offer **Connect** and **Customize**.
+4. The first-run screen checks your coding engines. Detected engines offer **Connect** and **Customize**. If one is missing, use **Install** and follow its setup flow; the refresh icon rechecks detection.
 5. Choose how each engine should store its setup before connecting it. Follow the steps below, then open a repository.
 
 ## Install on Windows
@@ -42,6 +42,8 @@ Follow the [provider setup overview](../providers/) before changing an existing 
 ## Connect at least one engine
 
 Korus does not include a separate model subscription. Connect a provider account with access to the engine you want to use.
+
+A separate Claude Code installation is optional when Korus's bundled runtime is available. On macOS, Codex can use ChatGPT's runtime if there is no standalone CLI. These runtime choices do not replace provider sign-in or grant model access.
 
 1. Select **Connect** for your chosen engine and complete its provider-specific authentication steps.
 2. Confirm the engine is connected and enabled. The first-run **Continue** action becomes available when at least one installed engine is connected and enabled; additional engines are optional.

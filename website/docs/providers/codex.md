@@ -4,7 +4,9 @@ description: Set up Codex with separate Korus chats or your existing environment
 
 # Codex
 
-Install the Codex CLI using the [official installation instructions](https://learn.chatgpt.com/docs/codex/cli#getting-started). Korus detects it on PATH. Welcome and Settings offer **Install** and a refresh icon when Codex is not detected. You also need an account with Codex access.
+Korus uses the Codex CLI installed on your PATH. On macOS, it can also use the runtime included with ChatGPT in Applications when no standalone CLI is found. You still need an account with Codex access.
+
+If Codex is not detected, use **Install** in Welcome or Settings to open the [official installation instructions](https://learn.chatgpt.com/docs/codex/cli#getting-started), then select the refresh icon. An explicitly configured runtime takes precedence over automatic detection.
 
 ## Choose a separate or existing setup
 
@@ -88,7 +90,7 @@ To edit personal instructions, open **Settings → Personalization**, choose **C
 | The first screen says **Detected**, but work cannot start | Detection confirms the runtime, not authentication. Complete **Connect Codex**. |
 | Browser sign-in remains pending | Finish the flow in the browser or select **Cancel sign-in** and retry. |
 | A skill, plugin, or MCP server is missing | Check the selected home and whether resource reuse is enabled. Skills/plugin sharing does not copy all provider configuration. |
-| Codex is not detected | Install the CLI, make it available on PATH, then select the refresh icon. |
+| Codex is not detected | Install the CLI on PATH, or on macOS check that ChatGPT is installed in Applications with its Codex runtime, then select the refresh icon. Check any configured runtime path too. |
 | The engine is connected but unavailable for new work | Turn on **Enable engine**. **Disconnect** signs out of the selected Codex setup; connect again if you used it. |
 
 When reporting a problem, include the Korus version, displayed location, runtime choice, and the error message. See [Troubleshooting](../troubleshooting/) for the wider diagnostic checklist.

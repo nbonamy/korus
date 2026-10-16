@@ -23,6 +23,12 @@ Be explicit in the request. For example:
 
 The second request creates a separate Korus workspace. A native subagent request does not by itself create a Korus teammate or isolated Git checkout. Availability and behavior of native subagents depend on the selected provider.
 
+## Follow native subagents
+
+When a Codex or Claude agent starts native subagents, open **Subagents** in its conversation header to see their status and select an individual thread. This includes Claude tasks running in the background and completed work restored after a reload.
+
+The child thread is for inspection; send follow-up instructions through the parent conversation. A child appearing completed is not a substitute for reviewing its result. Native child threads are separate from the Korus teammates listed in the team sidebar and do not by themselves isolate files in a worktree.
+
 ## Start separate Korus teammates
 
 Before starting, connect the [provider](../providers/) each teammate will use and add the repository to the team.
@@ -50,6 +56,8 @@ Separate Korus teammates keep their own conversations and workspace associations
 ## Integrate the results
 
 Choose one integration owner. For each worktree, inspect the diff, ask for validation evidence, and run [Code Review](./code-review) where useful. Merge in dependency order, then verify the combined behavior. Follow [Worktrees](./worktrees) for merge and cleanup controls.
+
+After reviewing a delegated result, you can ask the agent that created the worker to close it once it is idle. Closing its worker preserves the worktree and branches; it does not merge, delete files, or perform Git cleanup. Request those delivery actions separately when you want them.
 
 If two agents edit the same checkout or overlap unexpectedly, pause one writer, inspect the current diff, and assign ownership before continuing. Preserve the existing changes while resolving the overlap. If a teammate is blocked, send the missing decision or prerequisite to that teammate rather than launching a duplicate implementation.
 

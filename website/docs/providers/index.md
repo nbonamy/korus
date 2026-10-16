@@ -4,17 +4,17 @@ description: Connect coding engines for agent work, and GitHub or Linear for bac
 
 # Provider guides
 
-Korus can run different coding engines in the same team. Each engine has its own installation, account, conversation location, and customization. Connecting one does not authenticate the others.
+Korus can run different coding engines in the same team. Each engine has its own account, conversation location, and customization. Connecting one does not authenticate the others.
 
 | Engine | Installation and sign-in |
 | --- | --- |
-| [Codex](./codex) | Install the CLI separately; browser sign-in from Korus |
-| [Claude Code](./claude-code) | Requires the Claude Code CLI; sign-in through a command copied from Korus |
+| [Codex](./codex) | Uses an installed CLI, or ChatGPT's runtime on macOS; browser sign-in from Korus |
+| [Claude Code](./claude-code) | Uses an installed CLI or Korus's bundled runtime; sign-in through a command copied from Korus |
 | [Antigravity](#antigravity) | Install its runtime from Korus; native Google sign-in |
 
 ## Choose where each engine keeps its setup
 
-Install the engine first: **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Once detected, select **Customize** beneath the engine before signing in. Later, open its Settings page and select **Customize** beside **Location**.
+Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Once detected, select **Customize** beneath the engine before signing in. Later, open its Settings page and select **Customize** beside **Location**.
 
 There are two choices under **Conversations**:
 
@@ -50,6 +50,8 @@ Uncheck **Reuse my existing skills** if you want to manage those resources separ
 ## Accounts and usage
 
 Authentication, model availability, and usage limits belong to the selected provider. Connecting an account to Korus does not create a new model subscription or transfer one provider's access to another. Claude subscription sign-in and Anthropic Console API billing are separate choices in its connection dialog.
+
+For usage recorded by Korus, open [Settings → Analytics](../features/workspace#understand-usage-and-performance). These local statistics are separate from your provider's remaining quota, credits, and billing.
 
 ## Antigravity
 

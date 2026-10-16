@@ -8,6 +8,14 @@ The workspace beside the conversation keeps the artifacts you need for decisions
 
 Use its **+** menu to open **Files**, **Changes**, **Review**, **Visualize**, **Simulator**, or **Browser** where supported. Tabs can be closed with their close button; right-click a tab for its tab actions.
 
+## Organize agents by activity
+
+Open **Agent view** at the top of the sidebar and choose **Repository** to keep sessions grouped by project, or **Activity** to follow work across repositories.
+
+Activity view groups agents into **Needs input**, **Done**, **Working**, and **Idle**. Check **Needs input** for questions and approvals, and **Done** for recent activity and unread updates. Agents move between sections as their state changes; a Done entry is not proof that its work is validated or ready to ship.
+
+Unread updates show a dot in place of the elapsed-time indicator. Each section scrolls independently; use **Show more** to reach additional agents. In **Idle**, open **Sort idle agents** and choose **Repository** or **Recent activity**. Each team remembers its view and idle sorting choices.
+
 ## Documents and plans
 
 Ask the agent to display Markdown in the side panel when a guide, report, or proposal should remain visible:
@@ -125,6 +133,18 @@ Use **Prune** to review local branches, remote branches, and linked worktrees fo
 Workspace tabs stay associated with their agent. Switching agents changes the context without combining their documents or browser work.
 
 In a split conversation layout, the artifact sidebar follows the focused agent.
+
+## Understand usage and performance
+
+Open **Settings → Analytics** to see usage recorded by Korus:
+
+- **Token activity** shows the past year across providers. This overview stays independent of the filters below it.
+- **Usage** shows token totals, input and output, usage share, and trends. Choose a provider, a 7-, 30-, or 90-day window or custom dates, and group the results by provider or model.
+- **Model performance** compares time to first token and output speed when measurements are available. **N/A** means a measurement is unavailable, not zero.
+
+Use these statistics to understand the work you run in Korus, not as an invoice or a complete account usage report. They cover recorded activity rather than importing earlier provider history; different providers may report different token details.
+
+Statistics stay local, are retained for up to a year, and do not include conversation text. **Refresh** reloads the view. **Clear** asks for confirmation before deleting recorded statistics; it does not delete conversations, change provider quotas, or stop agents. See [Analytics privacy](../troubleshooting/faq#does-korus-upload-my-analytics) for the distinction from provider access.
 
 ## Review before delivery
 

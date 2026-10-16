@@ -18,7 +18,7 @@ uncommitted so I can review it.
 
 Use the composer's available context controls to supply file mentions, skills, and attachments. Desktop Antigravity conversations support images, WAV audio, PDFs, and UTF-8 text; its remote-team and browser-hosted conversations do not support attachments. Each agent keeps its own conversation and draft as you switch agents.
 
-Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and service tier controls are Codex-specific; the choices shown depend on the provider's available catalog.
+Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Supported Claude models offer **Fast** in the speed selector; use the normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
 
 The composer's **+** menu includes **Review**, **Delegate**, and **Visualize** across supported engines. These open [Code Review](../workflows/code-review), request [worktree delegation](../workflows/worktrees#delegate-implementation), and open [Visualize](./visualize), respectively. The corresponding slash commands remain available.
 
