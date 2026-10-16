@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.35.1",
+  "currentVersion": "0.36.0",
   "releases": [
+    {
+      "version": "0.36.0",
+      "releasedAt": "2026-10-15",
+      "sourceSha256": "9d4254a8a875b42876b01dde82e56f8d42e23e911c37649262f5f3449f4a0f22",
+      "markdown": "### New features\n\n- Organize the agent sidebar by Activity, with Needs input, Recently active,\n  Working, and Idle sections. Agents animate between sections, and each team\n  remembers your organization choice.\n- Explore local usage statistics in Settings → Analytics, with token activity,\n  usage trends, provider and model breakdowns, and comparisons of time to first\n  token and output speed. Keep up to a year of statistics and clear them at any\n  time.\n- Use Fast mode for supported Claude models from the existing speed selector.\n- Delegating agents can close their own idle workers while preserving their\n  worktrees and branches.\n\n### Improvements and fixes\n\n- Recently active agents show unread indicators, and idle agents are ordered by\n  their latest activity.\n- The browser annotation Send button keeps its primary styling and stays on one\n  line in narrow panels."
+    },
     {
       "version": "0.35.1",
       "releasedAt": "2026-10-15",

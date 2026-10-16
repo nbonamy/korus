@@ -4,6 +4,28 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.36.0] - 2026-10-15
+
+### New features
+
+- Organize the agent sidebar by Activity, with Needs input, Recently active,
+  Working, and Idle sections. Agents animate between sections, and each team
+  remembers your organization choice.
+- Explore local usage statistics in Settings → Analytics, with token activity,
+  usage trends, provider and model breakdowns, and comparisons of time to first
+  token and output speed. Keep up to a year of statistics and clear them at any
+  time.
+- Use Fast mode for supported Claude models from the existing speed selector.
+- Delegating agents can close their own idle workers while preserving their
+  worktrees and branches.
+
+### Improvements and fixes
+
+- Recently active agents show unread indicators, and idle agents are ordered by
+  their latest activity.
+- The browser annotation Send button keeps its primary styling and stays on one
+  line in narrow panels.
+
 ## [0.35.1] - 2026-10-15
 
 ### New features
