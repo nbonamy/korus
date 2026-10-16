@@ -103,7 +103,7 @@ import FormGrid from '../shared/form/FormGrid.vue';
 import FormRow from '../shared/form/FormRow.vue';
 import FormSection from '../shared/form/FormSection.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
-import { appThemes, themeIdForAppearance } from '../theme/themes';
+import { appThemes, themeIdForAppearance, themeIdForSystemMode } from '../theme/themes';
 
 const props = defineProps<{
   settings: AppThemeSettings;
@@ -145,7 +145,8 @@ function updateMode(mode: string | number): void {
   }
 
   if (mode === 'system') {
-    updateTheme({ mode });
+    const systemThemeId = themeIdForSystemMode(props.settings.id);
+    updateTheme({ mode, ...(systemThemeId !== props.settings.id ? { id: systemThemeId } : {}) });
     return;
   }
 
