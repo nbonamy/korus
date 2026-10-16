@@ -1,13 +1,13 @@
 import { computed, inject, provide, ref, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { enabledAgentBackends, providerConnectionsForTeam } from '@workspace/core/agent-backends';
-import type { AgentBackend, AppSnapshot } from '@workspace/core/contracts';
+import type { AgentBackend, AgentModelSelection, AppSnapshot } from '@workspace/core/contracts';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import type { ProviderConnection } from '@workspace/core/contracts/provider-setup';
 
 export const backendChoicesKey: InjectionKey<ComputedRef<AgentBackend[]>> = Symbol('backendChoices');
 type BackendSwitch = ReturnType<typeof provideBackendSwitch>;
 const backendSwitchKey: InjectionKey<BackendSwitch> = Symbol('backendSwitch');
-const backendSnapshotKey: InjectionKey<() => AppSnapshot> = Symbol('backendSnapshot');
+export const backendSnapshotKey: InjectionKey<() => AppSnapshot> = Symbol('backendSnapshot');
 const connectEngineKey: InjectionKey<() => void> = Symbol('connectEngine');
 const backendHostKey: InjectionKey<() => { host: string; connections: ProviderConnection[] } | null> = Symbol('backendHost');
 const remembered = ref<Record<string, AgentBackend>>({});
@@ -65,6 +65,44 @@ export function useBackendChoices(teamId?: () => string | null | undefined): Com
     if (override) return preferredChoices(enabledAgentBackends({ providerConnections: override.connections }), override.host);
     const state = snapshot?.();
     return state ? preferredBackendChoices(state, teamId?.() ?? state.activeTeamId) : fallback.value;
+  });
+}
+
+/**
+ * An agent on the team, or failing that on its host, to read the model catalog through.
+ * An explicit id always wins so callers that already know the right agent stay in control.
+ */
+export function useCatalogAgentId(teamId?: () => string | null | undefined, explicit?: () => string | undefined): ComputedRef<string> {
+  const snapshot = inject(backendSnapshotKey, undefined);
+  return computed(() => {
+    const given = explicit?.();
+    if (given) return given;
+    const state = snapshot?.();
+    if (!state) return '';
+    const id = teamId?.() ?? state.activeTeamId;
+    const host = state.teams.find(team => team.id === id)?.remoteConnectionId;
+    return state.agents.find(agent => agent.teamId === id)?.id
+      ?? state.agents.find(agent => state.teams.find(team => team.id === agent.teamId)?.remoteConnectionId === host)?.id
+      ?? '';
+  });
+}
+
+/** The model and effort the user last chose for a provider; new agents start from it. */
+export function useSavedModelSelection(backend: () => AgentBackend | undefined): ComputedRef<AgentModelSelection | undefined> {
+  const snapshot = inject(backendSnapshotKey, undefined);
+  return computed(() => {
+    const current = backend();
+    return current ? snapshot?.().general.providerModelDefaults?.[current] : undefined;
+  });
+}
+
+/** The host an agent runs on; catalogs differ per host, so caches are keyed by it. */
+export function useAgentHost(agentId: () => string): ComputedRef<string> {
+  const snapshot = inject(backendSnapshotKey, undefined);
+  return computed(() => {
+    const state = snapshot?.();
+    const teamId = state?.agents.find(agent => agent.id === agentId())?.teamId;
+    return state?.teams.find(team => team.id === teamId)?.remoteConnectionId ?? 'local';
   });
 }
 

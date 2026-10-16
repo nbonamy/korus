@@ -111,6 +111,15 @@ describe('AppMenu', () => {
 
     expect(wrapper.emitted('select')).toStrictEqual([['plan-mode']]);
   });
+
+  it('keeps icon-less submenu rows aligned with icon-less rows beside them', () => {
+    const wrapper = mountMenu([
+      { id: 'plain', type: 'radio', label: 'Plain', checked: false },
+      { id: 'more', type: 'submenu', label: 'More', items: [{ id: 'one', type: 'action', label: 'One' }] },
+    ]);
+    const labelOffset = (row: string) => [...wrapper.get(row).element.children].findIndex(child => child.classList.contains('app-menu__copy'));
+    expect(labelOffset('.app-menu__item--submenu')).toBe(labelOffset('[role="menuitemradio"]'));
+  });
 });
 
 function mountMenu(items: AppMenuItem[]) {

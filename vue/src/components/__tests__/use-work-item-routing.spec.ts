@@ -5,6 +5,38 @@ import { describe, expect, it, vi } from 'vitest';
 import { useWorkItemRouting } from '../use-work-item-routing';
 
 describe('useWorkItemRouting', () => {
+  it('honors an explicit model when launching from a repository backlog', async () => {
+    const harness = createHarness();
+    await harness.routing.startRepositoryWork(harness.agent.id, {
+      item: harness.item, action: 'fix', target: 'duplicate', backend: 'claude', model: 'sonnet', reasoningEffort: 'high',
+      workspace: { kind: 'worktree', branchName: 'fix/gh-12' },
+    });
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ modelSelection: { model: 'sonnet', reasoningEffort: 'high' } }));
+  });
+  it.each([1, 2])('shows provisioning until all %i work items are handed over with their selected model', async count => {
+    const harness = createHarness();
+    let prepared!: () => void;
+    harness.createWorktree.mockImplementation(() => new Promise(resolve => { prepared = () => resolve({ name: 'work', path: '/code/work' }); }));
+    // One held worktree is enough to prove the operation remains running during provisioning.
+    if (count === 2) harness.createWorktree.mockResolvedValueOnce({ name: 'first', path: '/code/first' });
+    const running = harness.routing.startMany({ action: 'fix', items: Array.from({ length: count }, (_, i) => ({ ...harness.item, id: `issue-${i}`, number: i + 1 })), teamId: harness.teamId, backend: 'claude', model: 'sonnet', reasoningEffort: 'high' });
+    await vi.waitFor(() => expect(harness.createWorktree).toHaveBeenCalledTimes(count));
+    expect(harness.routing.creationProgress.value).toMatchObject({ mode: count === 1 ? 'single' : 'multiple' });
+    prepared();
+    await running;
+    expect(harness.createAgent).toHaveBeenCalledWith(expect.objectContaining({ backend: 'claude', modelSelection: { model: 'sonnet', reasoningEffort: 'high' } }));
+    const progress = harness.routing.creationProgress.value!;
+    expect(progress.mode === 'single' ? progress.progress.state : progress.state).toBe('success');
+    expect(harness.assign).toHaveBeenCalledTimes(count);
+  });
+
+  it('keeps provisioning failures visible without starting a prompt', async () => {
+    const harness = createHarness();
+    harness.createWorktree.mockRejectedValueOnce(new Error('Worktree preparation failed'));
+    await expect(harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId })).rejects.toThrow('Worktree preparation failed');
+    expect(harness.routing.creationProgress.value).toMatchObject({ mode: 'single', progress: { state: 'error', error: 'Worktree preparation failed' } });
+    expect(harness.assign).not.toHaveBeenCalled();
+  });
   it('does not start an agent after preparation fails, reassignment is cancelled, or selection changes', async () => {
     const listedItem = item({ provider: 'linear', id: 'linear:uuid', identifier: 'ENG-12' });
     const repository = { name: 'agent-workspace', path: '/code/app', worktrees: [] };

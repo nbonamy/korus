@@ -20,6 +20,8 @@ export function isRightWorkspaceBrowserTab(tab: RightWorkspaceTab): tab is Right
 export type RepositoryWorkStartInput = {
   isCurrent?: () => boolean;
   backend?: import('@workspace/core/contracts').AgentBackend;
+  model?: string;
+  reasoningEffort?: string;
   action: WorkItemAssignmentAction | 'custom';
   item: WorkItem;
   target: 'current' | 'duplicate';

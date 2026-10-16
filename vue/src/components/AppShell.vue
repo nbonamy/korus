@@ -561,7 +561,7 @@
       @save="saveImageAnnotation"
     />
     <WorkspaceProvisioningProgressDialog
-      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : null"
+      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : workItemCreationProgress"
       @close="closeProvisioningProgress"
     />
     <MissionDeleteDialog
@@ -1463,6 +1463,8 @@ const {
   assignExisting: assignExistingAgentWorkItem,
   clearNewAgent: clearPendingNewAgentWorkItem,
   createIsolatedAgent: createIsolatedWorkItemAgent,
+  creationProgress: workItemCreationProgress,
+  closeCreationProgress: closeWorkItemCreationProgress,
   newAgentItem: pendingNewAgentWorkItem,
   newAgentTeamName: pendingNewAgentTeamName,
   newAgentWorktreeBranchName: pendingWorkItemBranchName,
@@ -2684,6 +2686,7 @@ const provisioningProgress = computed(() => debugAgentCreationProgress.value ?? 
 function closeProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   closeRepositorySessionCreationProgress(id);
+  closeWorkItemCreationProgress(id);
 }
 
 function closeDebugAgentCreationProgress(id: string): void {

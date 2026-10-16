@@ -27,6 +27,7 @@ export function claudeModelOptionsFromSdk(models: readonly ClaudeAvailableModel[
       id: model.value,
       model: model.value,
       displayName: model.displayName || model.value,
+      ...(model.value === 'default' ? { isDefault: true } : {}),
       ...(model.description ? { description: model.description } : {}),
       ...(model.resolvedModel ? { providerMetadata: { resolvedModel: model.resolvedModel } } : {}),
       ...(model.supportsFastMode ? { serviceTiers: [{ id: 'fast', name: 'Fast', description: 'Faster responses at extra cost; not included in subscription usage.' }], defaultServiceTier: null } : {}),
