@@ -582,6 +582,11 @@ describe('mission execution', () => {
     const ticketsRun = h.current().execution!.runs[0]!;
     const missionLead = h.snapshot.agents.find(agent => agent.id === ticketsRun.workerId)!;
     missionLead.backendSession = { kind: 'codex', threadId: 'thread-mission-lead' };
+    // The live Mission choice can differ from both the original lead and assigned members.
+    missionLead.backendDefaults = { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' };
+    const otherMember = h.snapshot.agents.find(agent => agent.id === h.originalAgents[1]!.id)!;
+    otherMember.backend = 'claude';
+    otherMember.backendDefaults = { kind: 'claude', model: 'member-model', reasoningEffort: 'low' };
     await h.service.upsertTicket(ticketsRun.workerId!, {
       title: 'Checkout', body: 'Implement checkout.', repositoryPath: repositoryPaths[0]!,
     });
@@ -617,6 +622,13 @@ describe('mission execution', () => {
     expect(implementationRuns.map(run => run.repositoryPath)).toStrictEqual(repositoryPaths);
     expect(new Set(implementationRuns.map(run => run.workerId)).size).toBe(2);
     expect(implementationRuns.every(run => run.workerId !== ticketsRun.workerId)).toBe(true);
+    for (const run of implementationRuns) {
+      const worker = h.snapshot.agents.find(agent => agent.id === run.workerId)!;
+      expect({ backend: worker.backend, defaults: worker.backendDefaults }).toStrictEqual({
+        backend: 'codex', defaults: { kind: 'codex', model: 'mission-model', reasoningEffort: 'high', serviceTier: 'fast' },
+      });
+      expect(worker.backendDefaults).not.toBe(missionLead.backendDefaults);
+    }
 
     for (const [index, run] of implementationRuns.entries()) {
       const artifacts: MissionArtifacts = structuredClone(h.current().artifacts);

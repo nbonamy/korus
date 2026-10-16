@@ -677,6 +677,7 @@ function delegatedBackendDefaults(caller: Agent, input: McpCreateAgentInput): Ba
   const settings = {
     ...(model ? { model, userSelectedModel: true } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(callerDefaults && callerDefaults.kind !== 'antigravity' && callerDefaults.serviceTier !== undefined ? { serviceTier: callerDefaults.serviceTier } : {}),
   };
   return { kind: backend, ...settings };
 }

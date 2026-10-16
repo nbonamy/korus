@@ -1154,6 +1154,7 @@ describe('AppMcpService', () => {
         kind: 'codex',
         model: 'gpt-5.6-sol',
         reasoningEffort: 'high',
+        serviceTier: 'fast',
       },
     });
     expect(snapshot.activeAgentId).toBe('agent-dina');
@@ -1164,6 +1165,7 @@ describe('AppMcpService', () => {
           kind: 'codex',
           model: 'gpt-5.6-sol',
           reasoningEffort: 'high',
+          serviceTier: 'fast',
           userSelectedModel: true,
         },
       }),
@@ -1376,11 +1378,15 @@ describe('AppMcpService', () => {
     snapshot.providerConnections = (['codex', 'claude'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
     snapshot.general.claudeCodeEnabled = true;
     snapshot.general.providerApprovalDefaults = { claude: 'auto' };
-    snapshot.general.providerModelDefaults = { claude: { model: 'sonnet', reasoningEffort: 'medium', serviceTier: null } };
+    snapshot.general.providerModelDefaults = {
+      codex: { model: 'global-model', reasoningEffort: 'low', serviceTier: 'fast' },
+      claude: { model: 'sonnet', reasoningEffort: 'medium', serviceTier: null },
+    };
     snapshot.agents[0]!.backendDefaults = {
       kind: 'codex',
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
+      serviceTier: null,
     };
     service = new AppMcpService({ snapshot });
     const url = await service.start();
@@ -1402,6 +1408,7 @@ describe('AppMcpService', () => {
       model: 'gpt-6-astra',
       reasoningEffort: 'max',
       userSelectedModel: true,
+      serviceTier: null,
     });
     expect(snapshot.agents.find((agent) => agent.name === 'Claude worker')?.backendDefaults).toStrictEqual({
       kind: 'claude',
