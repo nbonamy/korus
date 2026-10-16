@@ -261,7 +261,7 @@
             <component
               :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
               v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
-                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unread: session.isUnread, unreadLabel: t('sidebar.unread') }
+                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
                 : { session, groupKind: group.kind }) }"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
@@ -282,7 +282,7 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && session.isUnread)"
+                v-if="backendChoices.length > 1 && agentsById.get(session.agentId)"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -381,7 +381,8 @@ import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsInput, ReorderRepositoriesInput, SourceBranch, Team } from '@workspace/core/contracts';
-import { projectWorkspaceSidebar, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
+import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
+import { formatCompactAge, formatElapsed } from '../shared/compact-age';
 import {
   AlertTriangleIcon,
   ArrowsSortIcon,
@@ -504,6 +505,22 @@ const organization = useAgentSidebarOrganization({
 });
 const organizationMode = organization.mode;
 const workspaceGroups = organization.groups;
+function activityAge(agentId: string, activity: SidebarActivity | undefined): string | undefined {
+  const agent = agentsById.value.get(agentId);
+  if (!agent) return undefined;
+  const last = agent.hasSubmittedPrompt && agent.lastActivityAt ? agent.lastActivityAt : agent.createdAt;
+  return activity === 'working' ? formatElapsed(last, organization.now.value)
+    : formatCompactAge(last, organization.now.value, t('sidebar.justNow'));
+}
+
+/**
+ * The single trailing indicator of an activity row: Done and Idle show an unread dot or else an
+ * age; Needs input and Working always show one (how long it has waited or been working).
+ */
+function activityIndicator(session: WorkspaceSidebarSession, activity: SidebarActivity | undefined): { unread?: boolean; age?: string } {
+  if (!activity) return {};
+  return (activity === 'recent' || activity === 'idle') && session.isUnread ? { unread: true } : { age: activityAge(session.agentId, activity) };
+}
 const activityContext = computed(() => new Map(repositoryGroups.value.flatMap(group => group.sessions.map(session => [session.agentId, group.label]))));
 /** Repository sessions only; the value is that repository's custom icon, when it has one. */
 const activityRepository = computed(() => new Map(repositoryGroups.value.flatMap(group => group.kind !== 'repository' ? []

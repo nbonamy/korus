@@ -430,6 +430,7 @@ export const messages = {
       workspaceSessions: 'Workspace sessions',
       showMoreRows: 'Show more',
       backToTop: 'Back to top',
+      justNow: 'now',
       welcome: `Welcome to ${product.name}`,
       welcomeDetail: 'Choose a source to start a session',
     },

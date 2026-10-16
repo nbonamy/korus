@@ -36,5 +36,5 @@ export function useAgentSidebarOrganization(options: {
     return projectActivitySidebar({ agents: options.agents(), repositoryGroups: options.repositoryGroups(),
       now: Math.max(now.value, Date.now()), label: options.label });
   });
-  return { mode, groups, select };
+  return { mode, groups, select, now };
 }

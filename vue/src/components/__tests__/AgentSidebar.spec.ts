@@ -214,12 +214,20 @@ describe('AgentSidebar sessions', () => {
       expect(wrapper.find('[data-reorder-id="waiting"] .agent-sidebar__session-icon').exists()).toBe(false);
       expect(ids('recent')).toStrictEqual(['recent', 'created', 'unread']);
       expect(ids('working')).toStrictEqual(['working']);
-      for (const id of ['recent', 'unread', 'waiting']) {
-        const row = wrapper.get(`[data-reorder-id="${id}"]`);
-        expect(row.find('.agent-sidebar__activity-unread').exists()).toBe(true);
-        expect(row.findAll('.agent-sidebar__engine')).toHaveLength(0);
-      }
-      expect(wrapper.findAll('[data-reorder-id="created"] .agent-sidebar__engine')).toHaveLength(1);
+      const row = (id: string) => wrapper.get(`[data-reorder-id="${id}"]`);
+      const hasUnread = (id: string) => row(id).find('.agent-sidebar__activity-unread').exists();
+      const age = (id: string) => row(id).find('.agent-sidebar__activity-time');
+      // Needs input: an age, never a dot (it is implicitly unread).
+      expect(hasUnread('waiting')).toBe(false);
+      expect(age('waiting').exists()).toBe(true);
+      // Done and Idle: the unread dot, or else an age.
+      for (const id of ['recent', 'unread']) expect([hasUnread(id), age(id).exists()]).toStrictEqual([true, false]);
+      expect([hasUnread('created'), age('created').text()]).toStrictEqual([false, 'now']);
+      expect(age('idle').text()).toBe('1h');
+      // Working: how long it has been working.
+      expect(age('working').exists()).toBe(true);
+      // Every row keeps its backend icon (revealed on hover), unread or not.
+      for (const id of ['waiting', 'recent', 'unread', 'created', 'working', 'idle']) expect(row(id).findAll('.agent-sidebar__engine')).toHaveLength(1);
       for (const [id, title, subtitle] of [['waiting', 'Waiting', 'id8 · main'], ['working', 'id8', 'main']]) {
         const row = wrapper.get(`[data-reorder-id="${id}"]`);
         expect(row.get('.agent-sidebar__session-title').text()).toBe(title);
