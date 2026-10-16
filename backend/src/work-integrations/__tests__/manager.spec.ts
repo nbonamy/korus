@@ -4,6 +4,7 @@ import type { AppSnapshot, WorkItem, WorkSource } from '@workspace/core/contract
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { WorkIntegrationManager } from '../manager';
 import { MemoryWorkIntegrationTokenStore } from '../memory-token-store';
+import type { GitHubCliWorkProviderDriver } from '../github-cli-driver';
 import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from '../types';
 
 describe('WorkIntegrationManager', () => {
@@ -112,6 +113,27 @@ describe('WorkIntegrationManager', () => {
       status: 'notConfigured',
       detail: { key: 'workProvider.oauthNotConfigured', params: { provider: 'GitHub' } },
     }]);
+  });
+
+  it.each<[string, { configured?: boolean; startError?: Error }, unknown]>([
+    ['OAuth is not configured', { configured: false }, { key: 'workProvider.oauthNotConfigured', params: { provider: 'GitHub' } }],
+    ['authorization cannot start', { startError: new Error('offline') }, 'offline'],
+  ])('keeps GitHub CLI access when direct connect fails because %s', async (_name, input, detail) => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', source: 'cli', status: 'connected', accountLabel: 'alice', connectedAt: 'then' }];
+    const driver = fakeDriver({ configured: input.configured });
+    if (input.startError) vi.mocked(driver.startAuthorization).mockRejectedValue(input.startError);
+    const manager = new WorkIntegrationManager({
+      drivers: [driver], githubCli: {} as GitHubCliWorkProviderDriver, getSnapshot: () => snapshot,
+      saveSnapshot: vi.fn().mockResolvedValue(undefined), tokenStore: new MemoryWorkIntegrationTokenStore(),
+    });
+
+    await manager.connect('github');
+
+    expect(snapshot.workBacklog.connections).toStrictEqual([{
+      provider: 'github', source: 'cli', status: 'connected', accountLabel: 'alice', connectedAt: 'then', detail,
+    }]);
+    expect(await manager.githubConnected()).toBe(true);
   });
 
   it('starts and completes GitHub device authorization', async () => {

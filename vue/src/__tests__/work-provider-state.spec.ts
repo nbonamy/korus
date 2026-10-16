@@ -8,6 +8,23 @@ import { createWorkProviderState } from '../work-provider-state';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); configureAppClient(); });
 
 describe('work provider authorization state', () => {
+  it('reports a failed direct GitHub connect while CLI access stays connected', async () => {
+    let snapshot = createInitialSnapshot();
+    const { api } = createClientApiMock(snapshot);
+    api.connectWorkProvider.mockImplementation(async () => {
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = [{ provider: 'github', source: 'cli', status: 'connected', accountLabel: 'alice', detail: 'GitHub OAuth is not configured.' }];
+      return { snapshot: next };
+    });
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: value => { snapshot = value; } });
+
+    await state.connect('github');
+
+    expect(state.status.value).toBe('error');
+    expect(state.error.value).toBe('GitHub OAuth is not configured.');
+  });
+
   it('keeps GitHub authorization alive when Linear is connected and then cancelled', async () => {
     vi.useFakeTimers();
     let snapshot = createInitialSnapshot();

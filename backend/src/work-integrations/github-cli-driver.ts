@@ -22,7 +22,7 @@ export class GitHubCliWorkProviderDriver extends GitHubWorkProviderDriver {
     if (!('kind' in credential)) throw new Error('GitHub CLI access requires its own connection.');
     // gh follows its active account. Refuse stale identity rather than crossing accounts.
     const current = await this.detectConnection();
-    if (!current || current.accountLabel !== credential.accountLabel) throw new Error('GitHub CLI authentication changed. Refresh the connection in Settings.');
+    if (!current || current.accountLabel !== credential.accountLabel) throw new Error('GitHub CLI authentication changed. Restart the app to use the new GitHub CLI account.');
     const args = ['api', endpoint, '--hostname', 'github.com', '--include', '--method', init.method ?? 'GET',
       '--header', 'Accept: application/vnd.github+json', '--header', 'X-GitHub-Api-Version: 2022-11-28'];
     if (init.body !== undefined && typeof init.body !== 'string') throw new Error('Invalid GitHub request body.');

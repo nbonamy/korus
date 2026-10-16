@@ -52,9 +52,11 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (result.authorization) scheduleAuthorizationPoll(provider);
       else clearAuthorizationPoll(provider);
       const current = result.snapshot.workBacklog.connections.find(value => value.provider === provider);
-      if (current?.status === 'notConfigured' || current?.status === 'error') {
+      // A failed direct connect leaves GitHub CLI access connected and reports why in detail.
+      const cliFallbackFailed = current?.source === 'cli' && current.status === 'connected' && !result.authorization && current.detail;
+      if (current?.status === 'notConfigured' || current?.status === 'error' || cliFallbackFailed) {
         status.value = 'error';
-        error.value = localizedText(current.detail, translate);
+        error.value = localizedText(current?.detail, translate);
         return;
       }
       if (result.authorization?.flow === 'browser') {

@@ -169,28 +169,24 @@ export class WorkIntegrationManager {
 
   async connect(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
     const driver = this.driver(provider);
+    const previous = this.connection(provider);
+    const cliFallback = provider === 'github' && previous?.source === 'cli' && previous.status === 'connected' ? previous : null;
+    // A failed direct connect must not cost the user working CLI access.
+    const fail = (connection: Pick<WorkIntegrationConnection, 'status' | 'detail'>) => this.setConnection(cliFallback
+      ? { ...cliFallback, detail: connection.detail }
+      : { provider, ...directConnectionSource(provider), ...connection });
     const generation = this.invalidate(provider);
     this.setConnection({ provider, ...directConnectionSource(provider), status: 'connecting' });
     await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
     if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
     if (!await this.options.tokenStore.canStoreTokens()) {
-      this.setConnection({
-        provider,
-        ...directConnectionSource(provider),
-        status: 'error',
-        detail: { key: 'workProvider.tokenStorageUnavailable' },
-      });
+      fail({ status: 'error', detail: { key: 'workProvider.tokenStorageUnavailable' } });
       await this.options.saveSnapshot();
       return { snapshot: this.snapshot() };
     }
 
     if (!driver.configured()) {
-      this.setConnection({
-        provider,
-        ...directConnectionSource(provider),
-        status: 'notConfigured',
-        detail: this.configurationDetail(provider),
-      });
+      fail({ status: 'notConfigured', detail: this.configurationDetail(provider) });
       await this.options.saveSnapshot();
       return { snapshot: this.snapshot() };
     }
@@ -200,7 +196,7 @@ export class WorkIntegrationManager {
       authorization = await driver.startAuthorization();
     } catch (error) {
       if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
-      this.setConnection({ provider, ...directConnectionSource(provider), status: 'error', detail: error instanceof Error ? error.message : 'Could not start authorization.' });
+      fail({ status: 'error', detail: error instanceof Error ? error.message : 'Could not start authorization.' });
       await this.options.saveSnapshot();
       return { snapshot: this.snapshot() };
     }
