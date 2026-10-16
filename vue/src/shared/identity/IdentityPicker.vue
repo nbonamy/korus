@@ -122,6 +122,7 @@
       :visible="Boolean(pendingImage)"
       :image="pendingImage"
       :title="resolvedCropTitle"
+      :shape="cropShape"
       @apply="applyCroppedAvatar"
       @cancel="cancelCrop"
     />
@@ -147,6 +148,7 @@ const props = withDefaults(defineProps<{
   chooseImageAriaLabel?: string;
   chooseImageLabel?: string;
   cropTitle?: string;
+  cropShape?: 'circle' | 'square';
   customApplyAriaLabel?: string;
   customCharacterAriaLabel?: string;
   dialogLabel?: string;

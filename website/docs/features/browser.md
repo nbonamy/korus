@@ -21,6 +21,14 @@ installation instructions.
 
 For a local preview, ask the agent to start the project's development server and open the URL it reports. If the page cannot load, check that the server is still running and that the URL and port are reachable from the desktop browser.
 
+## Save and reopen bookmarks
+
+Use the star in the address bar to bookmark the current page, give it a recognizable name, and choose **Save**. Use **Bookmarks** in the browser toolbar to search saved names or URLs and reopen a page in the current agent's browser.
+
+The bookmark list offers edit and delete actions. Editing changes the saved name; deleting removes the bookmark, not the page or project. Clicking the filled star also removes the current page's bookmark.
+
+Bookmarks are saved across restarts and support HTTP and HTTPS pages without credentials embedded in the URL. They save an address, not the page contents or a running development server.
+
 ## Verify a workflow
 
 Give the agent a concrete scenario to exercise:

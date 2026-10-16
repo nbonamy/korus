@@ -1,4 +1,5 @@
-import { isDelegationContext, isDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
+import { isAgentReadState } from './agent-read-state';
+import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
 import { normalizeAutomationSchedule } from './automation-schedule';
 import { isWorkProviderKind } from './work-providers';
@@ -111,7 +112,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'teamId', isString) &&
     optional(value, 'delegatedByAgentId', isString) &&
     optional(value, 'delegationContext', isDelegationContext) &&
-    optional(value, 'userDelegationOverrides', isDelegationOverrides) &&
+    optional(value, 'userDelegationOverrides', isTurnDelegationOverrides) &&
     optional(value, 'delegationUserInstructions', isDelegationUserInstructions) &&
     optional(value, 'handoff', isAgentHandoff) &&
     optional(value, 'pullRequest', isAgentPullRequestTracking) &&
@@ -130,6 +131,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'plan', isThreadPlan) &&
     optional(value, 'planReview', isPlanReview) &&
     optional(value, 'codeReview', isCodeReviewSession) &&
+    optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
@@ -227,6 +229,7 @@ function isBackendDefaults(value: unknown): boolean {
     optional(value, 'model', isString) &&
     optional(value, 'userSelectedModel', isBoolean) &&
     optional(value, 'reasoningEffort', isString) &&
+    optional(value, 'serviceTier', isNullableString) &&
     optional(value, 'permissionMode', isString) &&
     optional(value, 'thinking', isThinkingDefaults);
 }
@@ -319,7 +322,8 @@ function isAutomationExecution(value: unknown): boolean {
 function isBackendConversationRef(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.backend === 'codex') return typeof value.threadId === 'string';
-  return (value.backend === 'claude' || value.backend === 'antigravity') && isNullableString(value.folder) && typeof value.sessionId === 'string';
+  return (value.backend === 'claude' || value.backend === 'antigravity') && isNullableString(value.folder) && typeof value.sessionId === 'string'
+    && (value.backend !== 'claude' || optional(value, 'subagentId', isString));
 }
 
 function isBackendRuntimeStatus(value: unknown): boolean {
@@ -559,6 +563,7 @@ function isGeneralSettings(value: unknown): boolean {
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
+    optional(value, 'useInteractivePlans', isBoolean) &&
     optional(value, 'worktreeDelegationStartingContext', candidate => includes(['conversation', 'handoff'], candidate)) &&
     optional(value, 'worktreeDelegationInstructions', isString) &&
     isRecordMapOf(value.repositoryIcons, isString) &&

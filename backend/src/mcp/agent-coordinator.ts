@@ -173,6 +173,7 @@ export type AppMcpAgentCoordinatorOptions = {
   onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
   onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { backend: AgentBackend; teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
+  onCloseAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   createId?: () => string;
   now?: () => Date;
 };
@@ -198,6 +199,7 @@ export class AppMcpAgentCoordinator {
   private readonly onListSourceWorktrees?: (repoPath: string) => SourceWorktree[] | Promise<SourceWorktree[]>;
   private readonly onCreateSourceWorktree?: (input: CreateSourceWorktreeInput) => SourceWorktree | Promise<SourceWorktree>;
   private readonly onCreateAgent?: (agent: Agent, input: McpCreateAgentInput & { backend: AgentBackend; teamId?: string }) => McpCreateAgentResponse | Promise<McpCreateAgentResponse>;
+  private readonly onCloseAgent?: AppMcpAgentCoordinatorOptions['onCloseAgent'];
   private readonly createId: () => string;
   private readonly now: () => Date;
 
@@ -214,6 +216,7 @@ export class AppMcpAgentCoordinator {
     this.onListSourceWorktrees = options.onListSourceWorktrees;
     this.onCreateSourceWorktree = options.onCreateSourceWorktree;
     this.onCreateAgent = options.onCreateAgent;
+    this.onCloseAgent = options.onCloseAgent;
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
   }
@@ -518,6 +521,13 @@ export class AppMcpAgentCoordinator {
       destinationPath: input.destinationPath?.trim() || undefined,
       teamId: agent.teamId,
     });
+  }
+
+  async closeAgent(callerAgentId: string, agentId: string) {
+    this.requireAgent(callerAgentId);
+    if (!this.onCloseAgent) throw new McpToolError('Agent closing is not available.');
+    await this.onCloseAgent(callerAgentId, agentId);
+    return { success: true, agentId };
   }
 
   latestUnreadMessageId(agentId: string): string | null {

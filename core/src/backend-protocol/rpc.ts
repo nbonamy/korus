@@ -80,6 +80,7 @@ export type AppBackendRequestMap = {
   [backendMethods.agentRunProfileStart]: { params: { agentId: string; input: import('../run-profiles').RunProfileStartInput }; result: import('../run-profiles').ProfileRun };
   [backendMethods.agentProfileRunStop]: { params: { agentId: string; runId: string }; result: import('../run-profiles').ProfileRun };
   [backendMethods.agentProfileRunsStop]: { params: { agentId: string }; result: void };
+  [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
     result: AppSnapshot;
@@ -139,6 +140,18 @@ export type AppBackendRequestMap = {
   [backendMethods.clientStateGet]: {
     params: undefined;
     result: ClientState;
+  };
+  [backendMethods.agentGitLogGet]: {
+    params: { agentId: string; input?: import('../contracts').AgentGitLogInput };
+    result: import('../contracts').AgentGitLogPage;
+  };
+  [backendMethods.agentGitLogCommitGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogCommitInput };
+    result: import('../contracts').AgentGitLogDetails;
+  };
+  [backendMethods.agentGitLogFileGet]: {
+    params: { agentId: string; input: import('../contracts').AgentGitLogFileInput };
+    result: import('../contracts').AgentGitLogFileDiff;
   };
   [backendMethods.agentGitDiffGet]: {
     params: { agentId: string; target?: AgentGitDiffTarget };

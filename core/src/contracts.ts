@@ -24,6 +24,14 @@ import type {
   AgentGitStatus,
   AgentGitUpdateFromBaseInput,
   AgentGitUpdateFromBaseResult,
+  AgentGitLogInput,
+  AgentGitLogCommit,
+  AgentGitLogPage,
+  AgentGitLogCommitInput,
+  AgentGitLogFile,
+  AgentGitLogDetails,
+  AgentGitLogFileInput,
+  AgentGitLogFileDiff,
   AgentGitWorkflow,
   AgentPullRequestTracking,
   TurnGitDiff
@@ -126,6 +134,14 @@ export type {
   AgentGitStatus,
   AgentGitUpdateFromBaseInput,
   AgentGitUpdateFromBaseResult,
+  AgentGitLogInput,
+  AgentGitLogCommit,
+  AgentGitLogPage,
+  AgentGitLogCommitInput,
+  AgentGitLogFile,
+  AgentGitLogDetails,
+  AgentGitLogFileInput,
+  AgentGitLogFileDiff,
   AgentGitWorkflow,
   AgentPullRequestTracking,
   TurnGitDiff,
@@ -355,7 +371,7 @@ export type Agent = {
   delegatedByAgentId?: string;
   delegationContext?: import('./delegation-context').DelegationContext;
   /** User-entered controls for the current delegation turn; never supplied by create-agent. */
-  userDelegationOverrides?: import('./delegation-context').DelegationOverrides;
+  userDelegationOverrides?: import('./delegation-context').TurnDelegationOverrides;
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
@@ -368,6 +384,7 @@ export type Agent = {
   backendSession?: BackendSession;
   /** Locks provider choice as soon as the first prompt is admitted. */
   hasSubmittedPrompt?: boolean;
+  readState?: import('./agent-read-state').AgentReadState;
   backendDefaults?: BackendDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: AgentGitDiffTarget;
@@ -502,6 +519,10 @@ export type AppGeneralSettings = {
   modelFavorites: ModelFavorite[];
   backlogRepositoryFavorites: Partial<Record<WorkProviderKind, string[]>>;
   savedPromptDrafts: SavedPromptDraft[];
+  /** User-wide on the owning client, independent of browser tabs and agents. */
+  browserBookmarks?: import('./browser-bookmarks').BrowserBookmark[];
+  /** Adds optional Markdown choices to native plan review; defaults on. */
+  useInteractivePlans?: boolean;
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;
@@ -817,6 +838,8 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
+  getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
+  clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
   setVisualizeOpen(agentId: string, input: import('./visualize').SetVisualizeOpenInput): Promise<AppSnapshot>;
   generateVisualizationSuggestion(agentId: string, input: import('./visualize').GenerateVisualizationSuggestionInput): Promise<AppSnapshot>;
@@ -842,6 +865,7 @@ export type AppApi = {
   checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
+  companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
   getRemoteControlStatus(): Promise<DevicePairingStatus>;
   enableRemoteControl(): Promise<DevicePairingStatus>;
   disableRemoteControl(): Promise<DevicePairingStatus>;
@@ -878,6 +902,9 @@ export type AppApi = {
   getAgentGitDiff(agentId: string, target?: AgentGitDiffTarget): Promise<import('./contracts/git').AgentGitDiff>;
   previewBranchCurrentWork(agentId: string): Promise<import('./branch-current-work').BranchWorkPreview>;
   branchCurrentWork(agentId: string, input: import('./branch-current-work').BranchWorkInput): Promise<import('./branch-current-work').BranchWorkResult>;
+  getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;
+  getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
+  getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;
@@ -944,8 +971,10 @@ export type AppApi = {
   compressAgentSession(agentId: string): Promise<AppSnapshot>;
   loadConversationHistory(agentId: string): Promise<AppSnapshot>;
   loadOlderAgentHistory(agentId: string): Promise<AgentHistoryLoadResult>;
+  readConversationContent(agentId: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
   closeAgent(agentId: string, input?: AgentCloseInput): Promise<AppSnapshot>;
   selectAgent(agentId: string): Promise<AppSnapshot>;
+  markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
@@ -966,6 +995,7 @@ export type AppApi = {
   disconnectProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   authenticateProvider(backend: AgentBackend, action: 'login' | 'cancel'): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   configureProviderSetup(backend: AgentBackend, choice: import('./contracts/provider-setup').ProviderSetupChange): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
+  installProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   refreshProvider(backend: AgentBackend, remoteConnectionId?: string): Promise<import('./contracts/provider-setup').ProviderSetupStatus>;
   cancelCodexChatGptLogin(remoteConnectionId?: string, loginId?: string): Promise<CodexAuthentication>;
   startCodexChatGptDeviceCodeLogin(remoteConnectionId: string): Promise<CodexChatGptDeviceCodeLogin>;

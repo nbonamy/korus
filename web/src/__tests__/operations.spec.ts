@@ -120,6 +120,16 @@ describe(`${product.name} web operations`, () => {
       [backendMethods.teamConnect, { input }],
     ]);
   });
+  it.each([
+    ['getAgentGitLog', backendMethods.agentGitLogGet, { search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }],
+    ['getAgentGitLogCommit', backendMethods.agentGitLogCommitGet, { head: 'head', sha: 'sha' }],
+    ['getAgentGitLogFile', backendMethods.agentGitLogFileGet, { head: 'head', sha: 'sha', path: 'file.ts' }],
+  ] as const)('preserves historical selection through %s', async (operation, method, input) => {
+    const result = { history: 'owning host result' };
+    const request = vi.fn().mockResolvedValue(result);
+    await expect(invokeAppWebOperation({ request }, operation, ['agent-1', input])).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith(method, { agentId: 'agent-1', input });
+  });
   it('returns diff query data and preserves the selected target', async () => {
     const target = { type: 'commit', sha: 'abc123' };
     const diff = { target, summary: { addedLines: 1, removedLines: 0, changedFiles: 1 }, diff: 'patch', sections: [] };
@@ -167,6 +177,9 @@ describe(`${product.name} web operations`, () => {
   });
   it('maps allowlisted product operations to daemon methods', async () => {
     const request = vi.fn().mockResolvedValue({ ok: true });
+
+    await invokeAppWebOperation({ request }, 'installProvider', ['antigravity', 'remote-host']);
+    expect(request).toHaveBeenLastCalledWith(backendMethods.providerInstall, { backend: 'antigravity', remoteConnectionId: 'remote-host' });
 
     await expect(invokeAppWebOperation({ request }, 'createAgent', [{ name: 'Dina' }]))
       .resolves.toEqual({ ok: true });
@@ -283,4 +296,11 @@ describe(`${product.name} web operations`, () => {
     );
     expect(request).not.toHaveBeenCalled();
   });
+});
+
+it('preserves plan ownership, revision and explicit feedback action at the web bridge', async () => {
+  const request = vi.fn().mockResolvedValue({ agents: [] });
+  const response = { reviewId: 'plan', resolution: 'save', draftVersion: 3, draft: { choices: [], comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Add cancellation.' }] } };
+  await expect(invokeAppWebOperation({ request }, 'respondToPlanReview', ['owner', response])).resolves.toStrictEqual({ agents: [] });
+  expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentPlanReviewRespond, { agentId: 'owner', response });
 });

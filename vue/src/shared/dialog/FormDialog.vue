@@ -3,6 +3,7 @@
     class="app-dialog app-form-dialog-shell"
     :model-value="modelValue"
     :width="width"
+    :title="title"
     :append-to-body="teleported"
     :show-close="false"
     :destroy-on-close="destroyOnClose"

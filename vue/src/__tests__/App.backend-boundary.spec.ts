@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../App.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
@@ -10,6 +10,12 @@ import { clearFirstRunOnboardingStage } from '../onboarding-session';
 
 beforeEach(clearFirstRunOnboardingStage);
 afterEach(() => { delete window.app; });
+
+function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
+  const action = wrapper.get('.plan-review-footer').findAll('button').find(button => button.text() === label);
+  if (!action) throw new Error(`Missing plan action: ${label}`);
+  return action;
+}
 
 describe('Unified backend → mounted application', () => {
   it('shows and clears a finish-turn suggestion in the main composer through backend events', async () => {
@@ -123,23 +129,26 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
 
+    let rejectSend!: (error: Error) => void;
+    api.sendPrompt.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSend = reject; }));
+    await wrapper.get('.thread-flag-affordance__action').trigger('click');
+    await flushPromises();
     await wrapper.get('.thread-flag-affordance__action').trigger('click');
     await flushPromises();
     expect(api.respondToThreadFlag).not.toHaveBeenCalled();
-    expect(wrapper.get('[role="dialog"]').text()).toContain('Starting context');
-    expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
-    api.sendPrompt.mockRejectedValueOnce(new Error('backend unavailable'));
-    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
+    expect(api.sendPrompt).toHaveBeenCalledExactlyOnceWith(agent.id, '/delegate');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    rejectSend(new Error('backend unavailable'));
     await flushPromises();
-    expect(wrapper.get('[role="alert"]').text()).toContain('backend unavailable');
+    expect(document.body.textContent).toContain('backend unavailable');
     expect(wrapper.find('.thread-flag-affordance').exists()).toBe(true);
 
     const cleared = structuredClone(snapshot);
     delete cleared.agents[0]!.threadFlags;
     api.sendPrompt.mockResolvedValueOnce(cleared);
-    await wrapper.get('.app-form-dialog-shell .app-button--primary').trigger('click');
+    await wrapper.get('.thread-flag-affordance__action').trigger('click');
     await flushPromises();
-    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate', { delegation: { startingContext: 'handoff' } });
+    expect(api.sendPrompt).toHaveBeenLastCalledWith(agent.id, '/delegate');
     emit({ type: 'agent.updated', agentId: agent.id, payload: { id: agent.id, threadFlags: {} } });
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
@@ -262,9 +271,9 @@ describe('Unified backend → mounted application', () => {
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview = { id: reviewId, conversationId: null, turnId: 'turn', itemId: 'proposal', markdown: '# Review this', status: 'accept' };
     api.respondToPlanReview.mockResolvedValue(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept' });
+    expect(api.respondToPlanReview).toHaveBeenCalledExactlyOnceWith(agent.id, { reviewId, resolution: 'accept', draftVersion: 0 });
     expect(api.sendPrompt).not.toHaveBeenCalled();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     emit({ type: 'plan.readyForReview', agentId: agent.id, turnId: 'turn', payload: { itemId: 'proposal', markdown: '# Review this' } });
@@ -281,13 +290,13 @@ describe('Unified backend → mounted application', () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(wrapper.get('[aria-label="Right workspace"]').text()).toContain('Restored proposal');
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(wrapper.find('.plan-review-footer').exists()).toBe(true);
     const accepted = structuredClone(snapshot);
     accepted.agents[0]!.planReview!.status = 'accept';
     api.respondToPlanReview.mockResolvedValueOnce(accepted);
-    await wrapper.get('.plan-review-footer__button--primary').trigger('click');
+    await planAction(wrapper, 'Approve').trigger('click');
     await flushPromises();
     expect(api.respondToPlanReview).toHaveBeenCalledTimes(2);
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
@@ -306,9 +315,9 @@ describe('Unified backend → mounted application', () => {
     const cancelled = structuredClone(accepted);
     cancelled.agents[0]!.planReview = { id: cancelReviewId, conversationId: null, turnId: 'cancel-turn', itemId: 'cancel', markdown: '# Cancel this proposal', status: 'cancel' };
     api.respondToPlanReview.mockResolvedValueOnce(cancelled);
-    await wrapper.get('.plan-review-footer__button--cancel').trigger('click');
+    await planAction(wrapper, 'Cancel').trigger('click');
     await flushPromises();
-    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel' });
+    expect(api.respondToPlanReview).toHaveBeenNthCalledWith(3, agent.id, { reviewId: cancelReviewId, resolution: 'cancel', draftVersion: 0 });
     expect(wrapper.find('.plan-review-footer').exists()).toBe(false);
     expect(api.sendPrompt).not.toHaveBeenCalled();
   });
@@ -317,19 +326,23 @@ describe('Unified backend → mounted application', () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
     const agent = snapshot.agents[0]!;
+    // Other mounted workspaces must not determine which agent receives the review.
+    snapshot.agents.reverse();
     const { api } = installBackendFixture(snapshot);
     const wrapper = mount(App);
     await flushPromises();
 
-    await wrapper.findAll('.right-workspace-panel__launcher button')
+    const targetWorkspace = wrapper.findAllComponents({ name: 'RightWorkspacePanel' })
+      .find(panel => panel.props('agent').id === agent.id)!;
+    await targetWorkspace.findAll('.right-workspace-panel__launcher button')
       .find((button) => button.text().includes('Review'))!
       .trigger('click');
     await flushPromises();
-    expect(wrapper.get('.code-review-panel').text()).toContain('Start a review');
+    expect(targetWorkspace.get('.code-review-panel').text()).toContain('Start a review');
 
     const ready = structuredClone(snapshot);
     const reviewer = {
-      ...structuredClone(ready.agents[0]!),
+      ...structuredClone(agent),
       id: 'agent-review',
       name: 'Review',
       backendSession: { kind: 'codex' as const, threadId: 'reviewer-1' },
@@ -355,7 +368,7 @@ describe('Unified backend → mounted application', () => {
     ready.teams[0]!.activeAgentId = reviewer.id;
     ready.activeAgentId = reviewer.id;
     api.startCodeReview.mockResolvedValueOnce(ready);
-    await wrapper.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
+    await targetWorkspace.findAll('button').find((button) => button.text().includes('Start review'))!.trigger('click');
     await flushPromises();
 
     expect(api.startCodeReview).toHaveBeenCalledExactlyOnceWith(agent.id, {

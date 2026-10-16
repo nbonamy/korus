@@ -4,6 +4,14 @@ import { createEmptySnapshot } from '../snapshot';
 import { defaultAppshotSettings, defaultGeneralSettings, defaultPluginSettings, defaultSourceFolderState, defaultThemeSettings, normalizeAppshotSettings, normalizeGeneralSettings, normalizePluginSettings, normalizeSourceFolderState, normalizeThemeSettings, updateSettingsInSnapshot } from '../settings';
 
 describe('settings contracts', () => {
+  it('defaults interactive planning on and preserves an explicit opt-out', () => {
+    expect(normalizeGeneralSettings({}).useInteractivePlans).toBe(true);
+    expect(defaultGeneralSettings.useInteractivePlans).toBe(true);
+    expect(normalizeGeneralSettings({ useInteractivePlans: false }).useInteractivePlans).toBe(false);
+    const snapshot = createEmptySnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans: false } });
+    expect(snapshot.general.useInteractivePlans).toBe(false);
+  });
   it('defaults delegation to handoff, preserves a saved fork choice and normalizes instructions', () => {
     expect(normalizeGeneralSettings({}).worktreeDelegationStartingContext).toBe('handoff');
     expect(defaultGeneralSettings.worktreeDelegationStartingContext).toBe('handoff');
@@ -73,6 +81,7 @@ describe('settings contracts', () => {
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: true,
       cockpitAgentViewMode: 'recent',
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
@@ -179,6 +188,7 @@ describe('settings contracts', () => {
       agentListCompact: false,
       cockpitAgentViewMode: 'teams',
       sessionCompressionWarningEnabled: true,
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',

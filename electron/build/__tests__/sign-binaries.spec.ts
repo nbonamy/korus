@@ -34,6 +34,7 @@ describe('signDarwinBinaries', () => {
         `/build/${product.name}.app/Contents/Resources/${product.name} Computer Use.app`,
         `/build/${product.name}.app/Contents/Resources/app-tts-helper`,
         `/build/${product.name}.app/Contents/Resources/runtime/node`,
+        `/build/${product.name}.app/Contents/Resources/claude/claude`,
         `/build/${product.name}.app/Contents/Resources/mobile-simulator/idb_companion`,
       ].includes(filePath),
       logger: {
@@ -86,7 +87,8 @@ describe('signDarwinBinaries', () => {
       `Developer ID Application: ${product.name}`,
       `/build/${product.name}.app/Contents/Resources/mobile-simulator/idb_companion`,
     ], { stdio: 'inherit' });
-    expect(execFileSync).toHaveBeenCalledTimes(5);
+    expect(execFileSync).toHaveBeenCalledWith('codesign', expect.arrayContaining([`/build/${product.name}.app/Contents/Resources/claude/claude`, '--preserve-metadata=entitlements']), { stdio: 'inherit' });
+    expect(execFileSync).toHaveBeenCalledTimes(6);
   });
 
   it('supports the afterCopy app directory path used by older signing hooks', () => {
@@ -102,6 +104,7 @@ describe('signDarwinBinaries', () => {
         `/build/${product.name}.app/Contents/Resources/${product.name} Computer Use.app`,
         `/build/${product.name}.app/Contents/Resources/app-tts-helper`,
         `/build/${product.name}.app/Contents/Resources/runtime/node`,
+        `/build/${product.name}.app/Contents/Resources/claude/claude`,
         `/build/${product.name}.app/Contents/Resources/mobile-simulator/idb_companion`,
       ].includes(filePath),
       logger: {
@@ -121,7 +124,7 @@ describe('signDarwinBinaries', () => {
     ], {
       stdio: 'inherit',
     });
-    expect(execFileSync).toHaveBeenCalledTimes(5);
+    expect(execFileSync).toHaveBeenCalledTimes(6);
   });
 
   it('supports the afterCopyExtraResources staging root before the app is renamed', () => {
@@ -137,6 +140,7 @@ describe('signDarwinBinaries', () => {
         `/var/folders/electron-packager/tmp-123/Electron.app/Contents/Resources/${product.name} Computer Use.app`,
         '/var/folders/electron-packager/tmp-123/Electron.app/Contents/Resources/app-tts-helper',
         '/var/folders/electron-packager/tmp-123/Electron.app/Contents/Resources/runtime/node',
+        '/var/folders/electron-packager/tmp-123/Electron.app/Contents/Resources/claude/claude',
         '/var/folders/electron-packager/tmp-123/Electron.app/Contents/Resources/mobile-simulator/idb_companion',
       ].includes(filePath),
       logger: {
@@ -156,7 +160,7 @@ describe('signDarwinBinaries', () => {
     ], {
       stdio: 'inherit',
     });
-    expect(execFileSync).toHaveBeenCalledTimes(5);
+    expect(execFileSync).toHaveBeenCalledTimes(6);
   });
 
   it('fails when a required helper has not been copied yet', () => {
@@ -192,10 +196,11 @@ describe('signDarwinBinaries', () => {
         `/build/${product.name}.app/Contents/Resources/${product.name} Computer Use.app`,
         `/build/${product.name}.app/Contents/Resources/app-tts-helper`,
         `/build/${product.name}.app/Contents/Resources/runtime/node`,
+        `/build/${product.name}.app/Contents/Resources/claude/claude`,
       ].includes(filePath),
       logger: { log: vi.fn(), warn: vi.fn() },
     });
 
-    expect(execFileSync).toHaveBeenCalledTimes(4);
+    expect(execFileSync).toHaveBeenCalledTimes(5);
   });
 });

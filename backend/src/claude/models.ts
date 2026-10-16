@@ -29,6 +29,7 @@ export function claudeModelOptionsFromSdk(models: readonly ClaudeAvailableModel[
       displayName: model.displayName || model.value,
       ...(model.description ? { description: model.description } : {}),
       ...(model.resolvedModel ? { providerMetadata: { resolvedModel: model.resolvedModel } } : {}),
+      ...(model.supportsFastMode ? { serviceTiers: [{ id: 'fast', name: 'Fast', description: 'Faster responses at extra cost; not included in subscription usage.' }], defaultServiceTier: null } : {}),
       ...(model.supportsEffort && model.supportedEffortLevels?.length
         ? {
             supportedReasoningEfforts: model.supportedEffortLevels.map((reasoningEffort) => ({

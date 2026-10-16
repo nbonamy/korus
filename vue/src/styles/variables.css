@@ -19,6 +19,8 @@
   --color-on-secondary-container: #1159BC;
 
   /* Semantic */
+  --color-attention: #8054D9;
+  --color-bookmark-saved: #EAB308;
   --color-error: #D5351F;
   --color-on-error: #FFFFFF;
   --color-error-container: #FEF3F2;
@@ -33,6 +35,17 @@
   --color-on-success: #FFFFFF;
   --color-success-container: #E8FDF3;
   --color-on-success-container: #064E3B;
+
+
+  /* Data visualization — categorical slots in a fixed, CVD-validated order */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #4a3aa7;
+  --chart-8: #e34948;
 
   /* Surfaces — neutral gray scale */
   --color-surface: #F9F9F9;
@@ -179,6 +192,15 @@ html.dark {
 
   color-scheme: dark;
 
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #1a9a1a;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+
   /* Primary */
   --color-primary: #7DA6FF;
   --color-on-primary: #081B3F;
@@ -187,6 +209,7 @@ html.dark {
   --shell-glass-opacity: 88%;
   --color-shell-collapsed-header: var(--color-shell-main);
   /* Semantic */
+  --color-bookmark-saved: #FACC15;
   --color-error: #FF8A78;
   --color-on-error: #3D0B05;
   --color-error-container: #4A1710;

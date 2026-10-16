@@ -1,4 +1,8 @@
 export const backendMethods = {
+  usageGet: 'usage/get',
+  usageClear: 'usage/clear',
+  clientFocusGet: 'client/focus/get',
+  companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",
   clientWorkspaceApply: "client/workspace/apply",
   clientDocumentRead: "client/document/read",
@@ -53,6 +57,9 @@ export const backendMethods = {
   agentProfileRunsStop: 'agent/profileRuns/stop',
   agentFilesList: 'agent/files/list',
   workspaceFolderValidate: 'workspace/folder/validate',
+  agentGitLogGet: 'agent/git/log/get',
+  agentGitLogCommitGet: 'agent/git/log/commit/get',
+  agentGitLogFileGet: 'agent/git/log/file/get',
   agentGitDiffGet: 'agent/git/diff/get',
   agentGitBranchWorkPreview: 'agent/git/branchWork/preview',
   agentGitBranchWork: 'agent/git/branchWork',
@@ -71,8 +78,10 @@ export const backendMethods = {
   agentGitUpdateFromBase: 'agent/git/base/update',
   agentGoalClear: 'agent/goal/clear',
   agentGoalUpdate: 'agent/goal/update',
+  agentMarkRead: 'agent/read',
   agentConversationLoad: 'agent/conversation/load',
   agentConversationHistoryLoadOlder: 'agent/conversation/history/loadOlder',
+  agentConversationContentRead: 'agent/conversation/content/read',
   agentInterrupt: 'agent/interrupt',
   agentTurnDelete: 'agent/turn/delete',
   agentTurnEdit: 'agent/turn/edit',
@@ -135,6 +144,7 @@ export const backendMethods = {
   providerDisconnect: 'provider/disconnect',
   providerAuthenticate: 'provider/authenticate',
   providerSetupConfigure: 'provider/setup/configure',
+  providerInstall: 'provider/install',
   providerRefresh: 'provider/refresh',
   codexLoginCancel: 'codex/authentication/login/cancel',
   codexChatGptLoginStart: 'codex/authentication/chatgpt/start',
@@ -169,6 +179,7 @@ export const backendMethods = {
   driverGoalUpdate: 'driver/goal/update',
   driverConversationLoad: 'driver/conversation/load',
   driverConversationHistoryLoadOlder: 'driver/conversation/history/loadOlder',
+  driverConversationContentRead: 'driver/conversation/content/read',
   driverInterrupt: 'driver/interrupt',
   driverModelsList: 'driver/models/list',
   driverPluginsList: 'driver/plugins/list',
@@ -238,6 +249,7 @@ export const backendMethods = {
   workProviderAssignedItemsList: 'workProvider/assignedItems/list',
   workProviderItemsList: 'workProvider/items/list',
   workProviderSourcesList: 'workProvider/sources/list',
+  workProviderBranchesList: 'workProvider/branches/list',
 } as const;
 
 export type BackendMethod = (typeof backendMethods)[keyof typeof backendMethods];
@@ -245,6 +257,9 @@ export type BackendMethod = (typeof backendMethods)[keyof typeof backendMethods]
 export const backendMethodValues = Object.values(backendMethods) as BackendMethod[];
 
 export const agentGitBackendMethods = [
+  backendMethods.agentGitLogGet,
+  backendMethods.agentGitLogCommitGet,
+  backendMethods.agentGitLogFileGet,
   backendMethods.agentGitDiffGet,
   backendMethods.agentGitBranchWorkPreview,
   backendMethods.agentGitBranchWork,

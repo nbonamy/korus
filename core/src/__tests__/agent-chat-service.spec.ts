@@ -6,6 +6,22 @@ import type { AgentBackendDriver, BackendSendResult } from '../backend-driver';
 import { claudeBackendCapabilities, codexBackendCapabilities } from '../backend-capabilities';
 
 describe('agent chat service', () => {
+  it.each([{ interactive: true, planMode: true }, { interactive: false, planMode: true }, { interactive: true, planMode: false }, { interactive: true, planMode: undefined }])('adds hidden choice guidance only for interactive Plan-mode turns: %j', ({ interactive, planMode }) => {
+    const snapshot = createInitialSnapshot();
+    snapshot.general.useInteractivePlans = interactive;
+    const driver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'plan-thread' } }));
+    const options = planMode === undefined ? undefined : { planMode };
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'Plan the requested change.', options, vi.fn());
+    const [, prompt, deliveredOptions] = vi.mocked(driver.sendPrompt).mock.calls[0]!;
+    expect(deliveredOptions).toEqual(options);
+    if (interactive && planMode) {
+      expect(prompt).toContain('- [ ] / - [x]');
+      expect(prompt).toContain('- ( ) / - (x)');
+      expect(prompt).toContain('Do not call display-markdown for the proposal.');
+      expect(prompt.replace(/<context>[\s\S]*?<\/context>/gu, '').trim()).toBe('Plan the requested change.');
+    } else expect(prompt).toBe('Plan the requested change.');
+  });
+
   it('rejects malformed user delegation controls without changing agent state or executing a prompt', () => {
     const snapshot = createInitialSnapshot();
     const backendDriver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'unused' } }));
@@ -28,6 +44,22 @@ describe('agent chat service', () => {
     snapshot.agents[0].status = { type: 'idle' };
     sendAgentPrompt(snapshot, backendDriver, 'agent-dina', 'Continue with another task', undefined, vi.fn());
     expect(snapshot.agents[0].userDelegationOverrides).toBeUndefined();
+  });
+  it('does not let an older rejected prompt clear replacement delegation directions', async () => {
+    const snapshot = createInitialSnapshot();
+    const first = deferred<BackendSendResult>();
+    const second = deferred<BackendSendResult>();
+    const driver = createFakeBackendDriver(first.promise);
+    vi.mocked(driver.sendPrompt).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'First', { delegation: { startingContext: 'handoff', instructions: 'First directions' } }, vi.fn());
+    snapshot.agents[0]!.status = { type: 'idle' };
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'Second', { delegation: { startingContext: 'handoff', instructions: 'Second directions' } }, vi.fn());
+    first.reject(new Error('Late admission failure'));
+    await flushMicrotasks();
+    expect(snapshot.agents[0]!.userDelegationOverrides?.instructions).toBe('Second directions');
+    second.reject(new Error('Current admission failure'));
+    await flushMicrotasks();
+    expect(snapshot.agents[0]!.userDelegationOverrides).toBeUndefined();
   });
   it('queues a Claude prompt immediately and records the returned session later', async () => {
     const snapshot = createInitialSnapshot();

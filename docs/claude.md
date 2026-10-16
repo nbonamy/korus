@@ -24,7 +24,11 @@ adding steering, forks, goals, turn mutations or context controls.
   out of process logs. The executable is launched directly, not through a shell;
   the shared runtime resolver supplies the login-shell executable and child PATH
   because GUI-launched Electron can inherit a different environment.
-  `APP_CLAUDE_COMMAND` overrides resolution.
+  An installed CLI takes precedence over the SDK-owned native runtime packaged with
+  Korus; source development can use the SDK optional dependency directly.
+  `APP_CLAUDE_COMMAND` overrides resolution without falling back if it is broken.
+  Detection, queries, authentication and version inspection share this policy.
+  The packaged runtime updates with Korus, not through a CLI package manager.
 - The Claude conversation host is the sole owner of the normalized transcript. It
   maps SDK stream messages to immutable `ClaudeConversationEvent`s, keeps one
   snapshot per agent and publishes a bounded reset plus revisioned deltas
@@ -37,6 +41,11 @@ adding steering, forks, goals, turn mutations or context controls.
   into app-owned titles, paths and statistics for both live and historical
   records. Read/Write/Edit/NotebookEdit also emit file activity so file links and
   Git status stay current.
+- Native Agent/Task executions project into the shared subagent tree, including
+  completions after the parent turn ends. Child transcript reads carry the parent
+  session and child ID; sidechain messages stay out of the parent's conversation.
+  Cold history rebuilds children from structured native tool results and marks
+  unfinished workers interrupted when their owning query is gone.
 - Tool rows reach the renderer as the same status descriptors Codex produces, so
   both providers read alike. Simple read-only shell commands (`cat`, `ls`, `rg`,
   and similar) are classified into read, list and search; anything with shell
@@ -68,8 +77,9 @@ adding steering, forks, goals, turn mutations or context controls.
 - Credentials stay Claude-owned: Korus never copies tokens or settings, and they
   never enter IPC, snapshots or renderer state. Login is `claude auth login
   --claudeai` (subscription) or `--console` (API billing) run by the user on the
-  owning host, including SSH hosts, which each authenticate their own home. Expired
-  logins are renewed by Claude Code, not Korus.
+  owning host, including SSH hosts, which each authenticate their own home. Login
+  commands use the selected executable path, so a separate CLI install is optional
+  on desktop. Expired logins are renewed by Claude Code, not Korus.
 - Authentication failures emit `provider.authenticationChanged` with
   credential-free metadata; the daemon updates its observation and publishes
   immediately, leaving enablement and existing conversations intact (service errors
@@ -97,6 +107,33 @@ records. Queue operations, `last-prompt`, sidechains and meta command records ar
 ignored. Hydration also restores the latest model and effort, falling back to the
 agent's last used.
 
+The host opens the newest history window and prepends older pages through the
+driver history seam. Each page has both a message-count and serialized-byte
+budget; pages use immutable message/turn identities from one normalized transcript
+read, so appends cannot move the older-history cursor. Cold reads still parse the
+native file on the owning backend; the retained history and cursor are ephemeral
+and cleared on release or session replacement. Reads overtaken by a newer load,
+release, or live turn cannot replace that conversation.
+
+Oversized message content stays on the owning host behind an agent/session-scoped
+content reference. The conversation carries a preview; explicit reads retrieve the
+exact message JSON in bounded base64 chunks, including duplicated native tool
+fields and Unicode. Content updates invalidate superseded references. Clients
+render fetched content locally and never put it back into provider snapshots.
+History prepends and context updates are revisioned deltas. Reconnect snapshots
+contain a bounded recent window rather than accumulated scroll-back pages; the
+companion forwards older-page frames directly and rechecks authorization after
+content reads.
+
+A long conversation never travels whole: the daemon opens the most recent rows within a
+byte budget (so one event stays far under the 4 MiB limit and a phone never receives a
+frame it cannot take) and prepends older pages on demand. A row is shown as it is. Only a
+part that is huge on its own (a screenshot, a file dump) is cut to a preview, and a row
+that would still not fit is cut part by part, never dropped. The exact row stays readable
+by content ID in bounded chunks. The desktop pane reads a cut row in the background as it
+appears and shows nothing to press: a row too large to be worth reading keeps its preview,
+as does a client that cannot read content, such as the phone.
+
 **Canonical cwd gotcha:** Claude stores the resolved path (`/tmp` is
 `/private/tmp` on macOS), so history and Resume discovery check both the logical
 and the resolved path, dedupe session IDs, and keep reads working for removed
@@ -115,6 +152,11 @@ null folder reference.
   descriptions and supported efforts come from the SDK, so the effort selector
   appears only for models that advertise it. Effort is passed on the first turn and
   updated later via the runtime settings API.
+- **Speed:** models advertising native fast-mode support use the shared speed
+  selector. Speed changes resume the native session in a new query, since the SDK
+  requires launch-time opt-in. Managed/account restrictions remain authoritative;
+  explicit fast-mode unavailability fails before prompt submission. Usage stores the configured
+  tier, not a guarantee that every request avoids a provider cooldown.
 - **Permissions:** Claude's own modes (`default`, `acceptEdits`, `dontAsk`, `auto`,
   `bypassPermissions`) are exposed through a capability-driven submenu and routed
   as opaque mode IDs the driver validates against what it advertises;

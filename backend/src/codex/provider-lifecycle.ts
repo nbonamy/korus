@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { mkdir } from 'node:fs/promises';
-import { resolveRuntimeExecutable } from '@workspace/core/runtime-discovery';
+import { resolveCodexExecutable } from './codex-command';
 import { getCodexResourceSharingStatus, initializeCodexResourceSharing, setCodexResourceSharing } from '../codex-resource-sharing';
 import { providerHomePaths, type ProviderLifecycle } from '../provider-lifecycle';
 
@@ -11,7 +11,7 @@ export function createCodexLifecycle(): ProviderLifecycle {
     home: (_snapshot, choice = { isolated: true, shareSkills: true }) => ({
       ...choice, homePath: choice.isolated ? paths.isolated : paths.existing,
     }),
-    installed: snapshot => Boolean(resolveRuntimeExecutable(snapshot.general.codexBinaryPath?.trim() || 'codex')),
+    installed: snapshot => Boolean(resolveCodexExecutable(snapshot.general.codexBinaryPath)),
     async prepareHome(home, configuring) {
       await mkdir(home.homePath, { recursive: true, mode: 0o700 });
       if (!home.isolated) return;

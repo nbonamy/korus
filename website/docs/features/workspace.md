@@ -18,6 +18,8 @@ Show the implementation proposal in the side panel so we can discuss each step.
 
 Plans and displayed documents have their own tabs. Keep the artifact open while discussing revisions so feedback refers to a concrete result.
 
+Use **Outline** in a Markdown document to show its headings and jump to a section. It is available when the document has headings. For plan choices, section comments, and implementation approval, see [Interactive plans](./conversations#review-an-interactive-plan).
+
 ## Files and diffs
 
 Open **Files** to browse the agent's folder, expand directories, or search by path. Select a file to preview it. On macOS, **⌘P** opens the quick file picker; type part of the path and select the result.
@@ -39,6 +41,17 @@ Open **Changes** or press **⌘G** to inspect Git diffs. The agent header's diff
 The **Changes** pane's refresh action reloads the selected diff. Its **…** menu controls staged, unstaged, and untracked sections when available, word wrap, and expanding or collapsing files. Select a file in the diff to open its preview.
 
 Use the full repository diff before delivery so earlier or unrelated edits are accounted for.
+
+## Browse Git history
+
+Open **Git log** from the agent header's Git menu to browse the current branch's commits beside the conversation.
+
+- Search commit messages to find relevant work, or choose **Load older commits** to continue through the history.
+- Expand a commit to read its message and changed files, then select a file to inspect its historical diff inline.
+- Use **Copy commit hash** when referring to an exact change in the conversation.
+- Refresh the log after new commits or a branch change if the history is out of date.
+
+Inspecting a historical diff does not switch branches, restore files, or change your working tree. Use **Changes** to return to the current work.
 
 ## Mobile simulators
 
@@ -75,6 +88,8 @@ Connect [GitHub or Linear](../providers/#connect-github-or-linear) in Settings f
 
 Choose **GitHub** or **Linear** when both are connected, then a repository or Linear **Team / project**. A repository's GitHub backlog stays scoped to that repository. Selecting a Linear source changes the issues shown while keeping the code repository context. Linear issues display their identifier, such as `ENG-42`, and their native workflow status; pull-request choices apply only to GitHub.
 
+Use the star beside a repository or Linear source to keep it in **Favorites**. Drag a favorite by its handle to reorder it, or focus the handle and use the up and down arrow keys. Favorites and their order are saved separately for each backlog provider. Removing a favorite does not disconnect the source or remove its agents.
+
 In a repository backlog, search by issue identifier or title and use the state, assignee, and label filters to narrow the list. Open an item to read its details before assigning work. For an issue:
 
 1. Choose **New agent** for a new agent and worktree, or **Existing agent** when offered. An existing agent keeps working on its current branch; Korus never creates or switches a branch or worktree for it.
@@ -96,6 +111,14 @@ In **Commit**, review the message and change scope before choosing **Commit** or
 **Push** sends existing commits to the displayed destination. Uncommitted changes remain local. A remote and branch must be available; the push action becomes available when there are commits ahead to send.
 
 Linked worktrees can also offer an update from their base branch. See [Worktrees](../workflows/worktrees) for merge and cleanup, and [Code Review](../workflows/code-review) for the separate structured review workflow. **Changes** is the diff viewer; **Review** runs the review workflow.
+
+### Pull, update, or clean up
+
+Use **Pull** in the Git menu to fetch changes from the current branch's upstream. **Settings → Git → Workflow** lets you choose merge, rebase, fast-forward only, or the repository's Git configuration for pulls, and a strategy for updates from the base branch. If an update conflicts, resolve the reported conflicts and inspect the diff before continuing.
+
+**Revert changes** discards uncommitted work after confirmation. Including untracked files is off by default; leave it off unless you intend to delete those files too.
+
+Use **Prune** to review local branches, remote branches, and linked worktrees for removal. Merged, unused local branches are selected by default; remote branches are opt-in. Review unmerged work and uncommitted or ignored files before confirming. Deleting a worktree removes its files and can leave agents without their working folders.
 
 ## Agent workspace state
 

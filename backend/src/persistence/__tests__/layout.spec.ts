@@ -60,7 +60,7 @@ describe('store layout', () => {
     expect(roster.agents[0]!.engine).toStrictEqual({ kind: 'codex', settings: { approvalPolicy: 'on-request', sandboxMode: 'read-only' } });
   });
 
-  it('drops finished work but keeps what can still change', () => {
+  it('drops finished execution state but retains the latest plan decision', () => {
     const snapshot = createInitialSnapshot();
     const [finished, active] = snapshot.agents;
     finished!.plan = plan('completed');
@@ -74,7 +74,7 @@ describe('store layout', () => {
 
     expect(restored.agents[0]).not.toHaveProperty('plan');
     expect(restored.agents[0]).not.toHaveProperty('goal');
-    expect(restored.agents[0]).not.toHaveProperty('planReview');
+    expect(restored.agents[0]!.planReview?.status).toBe('accept');
     expect(restored.agents[1]!.plan?.status).toBe('inProgress');
     expect(restored.agents[1]!.goal?.status).toBe('active');
     expect(restored.agents[1]!.planReview?.status).toBe('pending');

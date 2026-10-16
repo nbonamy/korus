@@ -134,6 +134,36 @@ describe('AgentSidebar sessions', () => {
     });
 
     expect(wrapper.get('.agent-sidebar__header strong').text()).toBe(product.name);
+    const view = wrapper.get('button[aria-label="Agent view"]');
+    expect(view.find('svg').exists()).toBe(true);
+    expect(view.text()).toBe('');
+    await view.trigger('click');
+    await flushPromises();
+    expect(view.attributes('aria-expanded')).toBe('true');
+    expect(document.body.textContent).toContain('Organize agents by');
+    const menu = document.body.querySelector('[role="menu"][aria-label="Organize agents by"]')!;
+    const options = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+    expect(options.map(option => option.textContent?.trim())).toStrictEqual(['Repository', 'Activity']);
+    expect(options.every(option => option.querySelector('svg'))).toBe(true);
+    expect(options[0]!.querySelectorAll('svg')).toHaveLength(1);
+    expect(options[0]!.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
+    expect(options[1]!.firstElementChild?.classList.contains('tabler-icon-bell')).toBe(true);
+    options[1]!.click();
+    await flushPromises();
+    expect(view.attributes('aria-expanded')).toBe('false');
+    await view.trigger('click');
+    await flushPromises();
+    await vi.waitFor(() => expect(view.attributes('aria-expanded')).toBe('true'));
+    const selectedActivity = document.body.querySelector('[role="menuitemradio"][aria-checked="true"]')!;
+    expect(selectedActivity.textContent?.trim()).toBe('Activity');
+    expect(selectedActivity.querySelectorAll('svg')).toHaveLength(1);
+    expect(selectedActivity.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
+    await view.trigger('keydown', { key: 'Escape' });
+    expect(view.attributes('aria-expanded')).toBe('false');
+    await view.trigger('click');
+    await vi.waitFor(() => expect(view.attributes('aria-expanded')).toBe('true'));
+    [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'Repository')!.click();
+    await flushPromises();
     await wrapper.setProps({ teamName: 'Research' });
     expect(wrapper.get('.agent-sidebar__header strong').text()).toBe('Research');
     expect(wrapper.get('.agent-sidebar__header strong').attributes('title')).toBe('Research');
@@ -146,6 +176,84 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__session-title--active').text()).toBe('Dina');
     expect(wrapper.findAll('.agent-sidebar__session-title--active')).toHaveLength(1);
     expect(wrapper.find('[aria-label="Working"]').exists()).toBe(true);
+  });
+
+  it('organizes live activity in priority order, ages recent work, and restores each team’s client-local choice', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
+    const base = agents[0]!;
+    const items: Agent[] = [
+      { ...base, id: 'waiting', name: 'Waiting', status: { type: 'awaitingInput' } },
+      { ...base, id: 'recent', name: 'Recent', status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' },
+      { ...base, id: 'created', name: 'Created', status: { type: 'idle' }, hasSubmittedPrompt: false, createdAt: '2026-10-15T12:00:00Z' },
+      { ...base, id: 'working', name: '', conversationTitle: 'A conversation title', status: { type: 'working' } },
+      { ...base, id: 'idle', name: 'Idle', status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z' },
+      { ...base, id: 'unread', name: 'Unread', status: { type: 'idle' } },
+      { ...base, id: 'review', name: 'Review', status: { type: 'idle' }, threadFlags: { ready_for_review: true } },
+      { ...base, id: 'error', name: 'Error', status: { type: 'error', message: 'Turn failed' } },
+      { ...base, id: 'plan', name: 'Plan', status: { type: 'idle' }, planReview: { id: 'plan', conversationId: null, turnId: 'turn', markdown: '# Plan', status: 'pending' } },
+      { ...base, id: 'new', name: 'New', status: { type: 'idle' }, hasSubmittedPrompt: false, lastActivityAt: '2026-10-15T12:00:00Z' },
+    ];
+    const props = { agents: items, activeAgentId: 'working', unreadAgentIds: ['unread', 'recent', 'waiting'], teamId: 'one', teamName: 'One', repositoryIcons: { 'remote:github.com/nbonamy/id8': '🦞' } };
+    const wrapper = mount(AgentSidebar, {
+      props,
+      global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } },
+    });
+    const choose = async (label: string) => {
+      await wrapper.get('button[aria-label="Agent view"]').trigger('click');
+      const option = wrapper.findAll('[role="menuitemradio"]').find(button => button.text() === label)!;
+      await option.trigger('click');
+    };
+    try {
+      await choose('Activity');
+      const sections = () => wrapper.findAll('[data-activity-group]');
+      const ids = (group: string) => wrapper.get(`[data-activity-group="${group}"]`).findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'));
+      expect(sections().map(section => section.get('header').text())).toStrictEqual(['Needs input', 'Done', 'Working', 'Idle']);
+      expect(ids('attention')).toStrictEqual(['waiting']);
+      expect(wrapper.get('[data-reorder-id="waiting"] .agent-avatar').text()).toBe('🦞');
+      expect(wrapper.find('[data-reorder-id="waiting"] .agent-sidebar__session-icon').exists()).toBe(false);
+      expect(ids('recent')).toStrictEqual(['recent', 'created', 'unread']);
+      expect(ids('working')).toStrictEqual(['working']);
+      const row = (id: string) => wrapper.get(`[data-reorder-id="${id}"]`);
+      const hasUnread = (id: string) => row(id).find('.agent-sidebar__activity-unread').exists();
+      const age = (id: string) => row(id).find('.agent-sidebar__activity-time');
+      // Needs input: an age, never a dot (it is implicitly unread).
+      expect(hasUnread('waiting')).toBe(false);
+      expect(age('waiting').exists()).toBe(true);
+      // Done and Idle: the unread dot, or else an age.
+      for (const id of ['recent', 'unread']) expect([hasUnread(id), age(id).exists()]).toStrictEqual([true, false]);
+      expect([hasUnread('created'), age('created').text()]).toStrictEqual([false, 'now']);
+      expect(age('idle').text()).toBe('1h');
+      // Working: how long it has been working.
+      expect(age('working').exists()).toBe(true);
+      // Every row keeps its backend icon (revealed on hover), unread or not.
+      for (const id of ['waiting', 'recent', 'unread', 'created', 'working', 'idle']) expect(row(id).findAll('.agent-sidebar__engine')).toHaveLength(1);
+      for (const [id, title, subtitle] of [['waiting', 'Waiting', 'id8 · main'], ['working', 'id8', 'main']]) {
+        const row = wrapper.get(`[data-reorder-id="${id}"]`);
+        expect(row.get('.agent-sidebar__session-title').text()).toBe(title);
+        expect(row.get('.agent-sidebar__session-context').text()).toBe(subtitle);
+      }
+      expect(ids('idle')).toStrictEqual(['new', 'idle', 'review', 'error', 'plan']);
+      expect(wrapper.get('[data-reorder-id="working"]').attributes('draggable')).toBe('false');
+      await vi.advanceTimersByTimeAsync(250);
+      await wrapper.setProps({ agents: items.map(agent => agent.id === 'working' ? { ...agent, status: { type: 'idle' }, hasSubmittedPrompt: true, lastActivityAt: new Date().toISOString() } : agent) });
+      expect(ids('recent')).toContain('working');
+      expect(wrapper.get('.agent-sidebar__agent--active').attributes('data-reorder-id')).toBe('working');
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
+      expect(ids('recent')).toStrictEqual(['recent', 'unread']);
+      expect(ids('idle').slice(0, 3)).toStrictEqual(['working', 'new', 'idle']);
+      await wrapper.setProps({ unreadAgentIds: [] });
+      expect(wrapper.find('[data-activity-group="recent"]').exists()).toBe(false);
+      expect(ids('idle').slice(0, 4)).toStrictEqual(['working', 'new', 'recent', 'idle']);
+      await wrapper.setProps({ teamId: 'two', teamName: 'Two' });
+      expect(sections()).toHaveLength(0);
+      await wrapper.setProps({ teamId: 'one', teamName: 'One' });
+      expect(sections().length).toBeGreaterThan(0);
+      wrapper.unmount();
+      const restored = mount(AgentSidebar, { props });
+      expect(restored.find('[data-activity-group="attention"]').exists()).toBe(true);
+      restored.unmount();
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
   });
 
   it('collapses and expands a repository by clicking its title', async () => {

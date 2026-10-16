@@ -1,5 +1,5 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { app, shell } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import type { SystemPermissionsStatus } from '@workspace/core/contracts';
 import { type AnnouncementPhase, type SpokenAnnouncementRequest, type SpokenAnnouncementVoice } from '@workspace/core/contracts';
 import { executeComputerUseCommand, getComputerUseStatus, isComputerUseCommand, requestComputerUseAccessibility, requestComputerUseScreenCapture, stopComputerUseHelper, type ComputerUseOptions } from './computer-use-tools';
@@ -9,6 +9,7 @@ import { createRuntimeSpokenAnnouncementQueue, type SpokenAnnouncementQueue } fr
 export type ClientRequestHandler = (params: unknown) => unknown | Promise<unknown>;
 
 export type ClientRequestHandlersOptions = {
+  desktopFocused?: () => boolean;
   openExternal: (url: string) => Promise<unknown>;
   getSystemPermissionsStatus: () => SystemPermissionsStatus;
   openAccessibilitySettings: () => Promise<SystemPermissionsStatus>;
@@ -38,12 +39,14 @@ export function createRuntimeClientRequestHandlers(overrides: Pick<ClientRequest
       resourcesPath: process.resourcesPath,
     }),
     spokenAnnouncements,
+    desktopFocused: () => BrowserWindow.getFocusedWindow() !== null,
     ...overrides,
   });
 }
 
 export function createClientRequestHandlers(options: ClientRequestHandlersOptions): Record<string, ClientRequestHandler> {
   return {
+    [backendMethods.clientFocusGet]: () => ({ focused: options.desktopFocused?.() === true }),
     [backendMethods.clientExternalOpen]: async (params) => {
       const record = requireRecord(params);
       const url = requireString(record.url, 'url');

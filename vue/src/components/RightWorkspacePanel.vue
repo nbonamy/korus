@@ -41,6 +41,7 @@
                   <BacklogIcon v-if="tab === 'backlog'" aria-hidden="true" />
                   <IconChecklist v-if="tab === 'codeReview'" aria-hidden="true" />
                   <IconSitemap v-else-if="tab === 'visualize'" aria-hidden="true" />
+                  <ClockHour8Icon v-else-if="tab === 'gitLog'" aria-hidden="true" />
                   <FileDiffIcon v-else-if="tab === 'review'" aria-hidden="true" />
                   <IconDeviceMobile v-else-if="tab === 'simulator'" aria-hidden="true" />
                   <IconWorld v-else-if="tab === 'browser' || isRightWorkspaceBrowserTab(tab)" aria-hidden="true" />
@@ -171,6 +172,12 @@
       </button>
         </nav>
 
+    <GitLogPanel
+      v-if="tabs.includes('gitLog')"
+      v-show="activeTab === 'gitLog'"
+      :agent="agent"
+      :branch="gitStatus?.branch ?? (agent.workspace?.kind === 'git' ? agent.workspace.branch : undefined)"
+    />
     <GitReviewPanel
       v-if="tabs.includes('review')"
       v-show="activeTab === 'review'"
@@ -264,14 +271,15 @@
         </div>
 
     <PlanReviewPanel
-      v-if="tabs.includes('plan') && planPanel"
+      v-if="tabs.includes('plan') && currentNativeReview"
       v-show="activeTab === 'plan'"
-      :panel="planPanel"
+      :key="`${agent.id}:${currentNativeReview.id}`"
+      :review="currentNativeReview"
+      :interactive="interactivePlansEnabled !== false"
+      :respond="planReviewResponder"
       :plan-updating="planUpdating"
-      @cancel-plan="emit('cancelPlan')"
-      @comment-plan="emit('commentPlan', $event)"
-      @confirm-plan="emit('confirmPlan')"
     />
+    <MarkdownPanel v-else-if="tabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" />
 
     <template v-if="subagentTree && loadSubagentMessages">
       <SubagentPanel
@@ -377,7 +385,7 @@ import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentFileSearchItem, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
-import { ArrowUpRightIcon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -393,13 +401,15 @@ import VisualizePanel from './VisualizePanel.vue';
 import FileExplorerPanel from './FileExplorerPanel.vue';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import GitReviewPanel from './GitReviewPanel.vue';
+import GitLogPanel from './GitLogPanel.vue';
 import ImagePreviewPanel from './ImagePreviewPanel.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
+import { agentConversationId } from '@workspace/core/plan-review';
 import PlanReviewPanel from './PlanReviewPanel.vue';
 import RepositoryBacklogPanel from './RepositoryBacklogPanel.vue';
 import SourcePreviewPanel from './SourcePreviewPanel.vue';
 import SubagentPanel from './SubagentPanel.vue';
-import type { PlanReviewComment, SidePanelGitDiffState, SidePanelMarkdownState, SidePanelSourceState } from './side-panel';
+import type { SidePanelGitDiffState, SidePanelMarkdownState, SidePanelSourceState } from './side-panel';
 import {
   isRightWorkspaceBrowserTab,
   type RightWorkspaceBrowserPanel,
@@ -437,6 +447,9 @@ const props = withDefaults(defineProps<{
   gitStatus?: AgentGitStatus | null;
   planPanel?: SidePanelMarkdownState | null;
   planUpdating?: boolean;
+  interactivePlansEnabled?: boolean;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
+
   diffPanels?: Partial<Record<RightWorkspaceDiffTab, RightWorkspaceDiffPanel>>;
   filePanels?: Partial<Record<RightWorkspaceFileTab, RightWorkspaceFilePanel>>;
   imagePanels?: Partial<Record<RightWorkspaceImageTab, RightWorkspaceImagePanel>>;
@@ -482,7 +495,18 @@ const props = withDefaults(defineProps<{
   generateVisualizationSuggestion: async () => { throw new Error('Visualize is not available.'); },
   selectVisualization: async () => { throw new Error('Visualize is not available.'); },
   deleteVisualization: async () => { throw new Error('Visualize is not available.'); },
+  interactivePlansEnabled: true,
   readVisualizationAsset: async () => { throw new Error('Visualize is not available.'); },
+});
+
+const planReviewResponder = computed(() => {
+  const agentId = props.agent.id;
+  const respond = props.updatePlanReview;
+  return respond ? (response: import('@workspace/core/plan-review').PlanReviewResponse) => respond(agentId, response) : undefined;
+});
+const currentNativeReview = computed(() => {
+  const review = props.agent.planReview;
+  return (review?.status === 'pending' || review?.status === 'revise') && review.conversationId === agentConversationId(props.agent) ? review : null;
 });
 
 const codeReviewInstructions = defineModel<string>('codeReviewInstructions', { default: '' });
@@ -490,9 +514,6 @@ const emit = defineEmits<{
   annotateVisualization: [annotation: import('./use-visualization-annotations').VisualizationAnnotationInput];
   browserUrlChange: [tab: 'browser' | RightWorkspaceBrowserTab, url: string];
   closeTab: [tab: RightWorkspaceTab];
-  cancelPlan: [];
-  commentPlan: [comments: PlanReviewComment[]];
-  confirmPlan: [];
   openTab: [tab: RightWorkspaceTab];
   openIn: [payload: { application: OpenInApplication; filePath: string }];
   openLink: [link: CodexConversationLink];
@@ -671,6 +692,7 @@ function stopFilesPaneResize(): void {
 }
 
 function tabLabel(tab: RightWorkspaceTab): string {
+  if (tab === 'gitLog') return translate('gitLog.title');
   if (tab === 'simulator') return translate('surface.mobileSimulator.tab');
   if (tab === 'backlog') return translate('surface.rightWorkspacePanel.backlog');
   if (tab === 'codeReview') return translate('surface.rightWorkspacePanel.review');

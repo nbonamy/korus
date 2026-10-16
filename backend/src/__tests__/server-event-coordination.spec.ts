@@ -266,6 +266,7 @@ describe('AppBackendServer', () => {
     let emitAdapterEvent: (event: BackendEvent) => void = () => undefined;
     const respondToClientRequest = vi.fn().mockResolvedValue(undefined);
     const adapter = {
+      onUsage: () => () => undefined,
       onEvent: (listener: (event: BackendEvent) => void) => {
         emitAdapterEvent = listener;
         return () => undefined;

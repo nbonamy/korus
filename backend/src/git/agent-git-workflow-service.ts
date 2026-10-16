@@ -5,6 +5,12 @@ import { requireAgentFolder } from '@workspace/core/agent-folder';
 import type {
   Agent,
   AgentGitDiff,
+  AgentGitLogInput,
+  AgentGitLogCommitInput,
+  AgentGitLogFileInput,
+  AgentGitLogPage,
+  AgentGitLogDetails,
+  AgentGitLogFileDiff,
   AgentGitDiffTarget,
   AgentGitMessageGenerationResult,
   AgentGitOperationProgress,
@@ -54,7 +60,7 @@ export type AgentGitWorkflowServiceOptions = {
 export class AgentGitWorkflowService {
   constructor(private readonly options: AgentGitWorkflowServiceOptions) {}
 
-  async execute(request: AgentGitRequest, agent: Agent): Promise<BranchWorkPreview | BranchWorkResult | AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
+  async execute(request: AgentGitRequest, agent: Agent): Promise<AgentGitLogPage | AgentGitLogDetails | AgentGitLogFileDiff | BranchWorkPreview | BranchWorkResult | AgentGitDiff | AgentGitMessageGenerationResult | AgentGitWorkflow | AgentGitUpdateFromBaseResult | AgentGitPullResult | GitPruneInventory | GitPruneResult> {
     const { method, agentId, params } = request;
     switch (method) {
       case backendMethods.agentGitBranchWorkPreview:
@@ -73,6 +79,12 @@ export class AgentGitWorkflowService {
         const input = requireConfirmed(params.input, 'Pruning a repository');
         return this.options.git.pruning.prune(requireAgentFolder(agent), input as GitPruneInput, () => this.pruneOwners());
       }
+      case backendMethods.agentGitLogGet:
+        return this.options.git.history.list(requireAgentFolder(agent), params.input as AgentGitLogInput | undefined);
+      case backendMethods.agentGitLogCommitGet:
+        return this.options.git.history.commit(requireAgentFolder(agent), params.input as AgentGitLogCommitInput);
+      case backendMethods.agentGitLogFileGet:
+        return this.options.git.history.file(requireAgentFolder(agent), params.input as AgentGitLogFileInput);
       case backendMethods.agentGitDiffGet:
         return this.getDiff(agent, parseGitDiffTarget(params.target));
       case backendMethods.agentGitWorkflowGet:

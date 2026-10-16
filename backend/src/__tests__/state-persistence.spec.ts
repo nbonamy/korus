@@ -27,12 +27,29 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
-  it('retains delegation preferences and the worker effective context after reload', async () => {
+  it('retains read revisions across a fresh store restart', async () => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.readState = { revision: 7, readRevision: 5 };
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.agents[0]!.readState).toStrictEqual({ revision: 7, readRevision: 5 });
+    expect(isAppSnapshot(restored)).toBe(true);
+  });
+  it.each([true, false])('retains interactive Plan-mode preference after a host restart: %s', async useInteractivePlans => {
+    const home = await tempHome();
+    const snapshot = createInitialSnapshot();
+    updateSettingsInSnapshot(snapshot, { general: { useInteractivePlans } });
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.useInteractivePlans).toBe(useInteractivePlans);
+  });
+  it.each([false, true])('retains delegation preferences and worker context after reload (execution bound: %s)', async bound => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
     updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
     snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
-    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions' };
+    snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { backend: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
     snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
     snapshot.agents[1]!.backend = 'claude';
     snapshot.agents[1]!.backendDefaults = { kind: 'claude' };
@@ -216,13 +233,14 @@ describe('state persistence', () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0]!.backend = 'claude';
     snapshot.agents[0]!.backendDefaults = {
-      kind: 'claude', model: 'opus', reasoningEffort: 'high', userSelectedModel: true,
+      kind: 'claude', model: 'opus', reasoningEffort: 'high', serviceTier: 'fast', userSelectedModel: true,
     };
 
     await persistence.save(snapshot);
     const restored = await persistence.load();
 
     expect(restored.agents[0]!.backendDefaults).toStrictEqual(snapshot.agents[0]!.backendDefaults);
+    expect(isAppSnapshot(restored)).toBe(true);
   });
 
   it('restores saved prompt drafts after a restart', async () => {
@@ -1371,7 +1389,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

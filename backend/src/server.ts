@@ -1,4 +1,9 @@
 import { RunProfileService } from './run-profile-service';
+import { randomUUID } from 'node:crypto';
+import type { UsageService } from './usage/usage-service';
+import type { UsageFilter } from '@workspace/core/usage';
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
+import { PromptRejectedError } from './agents/prompt-rejected';
 import { isBankedResets, isBankedResetResult, isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { saveMarkdownFile } from './document-files';
@@ -8,7 +13,7 @@ import type { DocumentWorkspaceChange, DocumentSaveInput } from '@workspace/core
 import { isWorkProviderKind } from '@workspace/core/work-providers';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { product } from '@workspace/core/product';
-import { isDelegationOverrides } from '@workspace/core/delegation-context';
+import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from '@workspace/core/delegation-context';
 import { normalizeGitSettings } from '@workspace/core/git-preferences';
 import { readWorktreeHead } from './git-worktrees';
 import type { DurableTaskService } from './agents/durable-task-service';
@@ -91,6 +96,9 @@ import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace
 
 export type AppBackendServerOptions = {
   runProfiles?: RunProfileService;
+  usage?:UsageService;
+  onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
   tasks?: DurableTaskService;
   providerSetup?: import('./provider-setup').ProviderSetup;
@@ -167,6 +175,7 @@ export class AppBackendServer {
   private readonly missionArtifacts: MissionArtifactStorage;
   private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
   private remoteControlStatusLoaded = false;
+  private companionAccessEnabled = false;
   private readonly driverRpc?: BackendDriverRpc;
   private readonly onEvent?: (event: AppBackendEvent) => void;
   private readonly onBackendEventApplied?: (event: BackendPublishedEvent) => void;
@@ -184,6 +193,7 @@ export class AppBackendServer {
   private readonly remoteTeams: RemoteTeamService;
   private readonly runProfiles: RunProfileService;
   private readonly documents: DocumentWorkspaceService;
+  private unsubscribeUsage?:()=>void;
   private readonly clientPreferences: ClientPreferencesService;
   private readonly agentPrompts: AgentPromptManager;
   private readonly planReviews: AgentPlanReviewService;
@@ -253,6 +263,7 @@ export class AppBackendServer {
       startAgent: (agent, prompt) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt),
     });
     this.driverRpc = options.driverRpc;
+    this.unsubscribeUsage = options.driverRpc?.onUsage?.(event=>options.usage?.observe(event));
     this.onEvent = options.onEvent;
     this.onBackendEventApplied = options.onBackendEventApplied;
     this.saveSnapshot = options.saveSnapshot;
@@ -293,11 +304,12 @@ export class AppBackendServer {
     this.agentPrompts = new AgentPromptManager({
       isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
       getSnapshot: () => this.snapshot,
-      driverForAgent: (agent) => this.backendDriverForAgent(agent),
+      driverForAgent: (agent, expectedSessionId) => this.backendDriverForAgent(agent, expectedSessionId),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
       onPromptStarting: options.onPromptStarting,
+      onPromptSource: options.onPromptSource,
     });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
@@ -349,6 +361,7 @@ export class AppBackendServer {
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
     });
     this.planReviews = new AgentPlanReviewService({
+      persist: () => this.persistAndEmitSnapshot(),
       submit: (agent, prompt, planMode) => this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, { planMode }),
       emit: (event) => this.applyAndEmitBackendEvent(event),
     });
@@ -488,6 +501,24 @@ export class AppBackendServer {
 
   async submitMissionResult(agentId: string, input: MissionResultInput) {
     return this.missionExecution.submit(agentId, input);
+  }
+
+  async closeAgentFromMcp(callerAgentId: string, agentId: string): Promise<void> {
+    const caller = this.snapshot.agents.find(agent => agent.id === callerAgentId);
+    const agent = this.snapshot.agents.find(agent => agent.id === agentId);
+    if (!caller || !agent || agent.id === caller.id || agent.delegatedByAgentId !== caller.id) {
+      throw new Error('Only the creator of an agent can close it.');
+    }
+    if (agent.status.type !== 'idle' || handoffInProgress(agent)
+      || this.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)
+      || this.snapshot.agentRequests?.[agentId]?.length) {
+      throw new Error('Wait for the agent to become idle and resolve pending prompts or requests before closing it.');
+    }
+    if (this.tasks?.list(agentId).some(task => !['completed', 'cancelled', 'failed'].includes(task.state))) {
+      throw new Error('Complete or cancel unfinished tasks before closing this agent.');
+    }
+    const response = await this.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentDelete, params: { agentId } });
+    if (!response || 'error' in response) throw new Error(response && 'error' in response ? response.error.message : 'Agent closing failed.');
   }
 
   async startAutomaticReview(agentId: string, input: AutomaticReviewStartInput) {
@@ -645,6 +676,12 @@ export class AppBackendServer {
 
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
+    if (message.method === backendMethods.companionControl) {
+      try {
+        if (!this.options.companionControl) throw new Error('Mobile access is unavailable.');
+        return createAppRpcResult(message.id, await this.options.companionControl(requireRecord(message.params).input as import('@workspace/core/companion-protocol').CompanionControl));
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Mobile access operation failed. Check the relay configuration or pairing state.'); }
+    }
     if (this.providerSetup?.isChanging() && ![backendMethods.snapshotGet, backendMethods.providerSetupGet].some(method => method === message.method)) {
       return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Engine setup is changing. Try again when it finishes.');
     }
@@ -653,6 +690,14 @@ export class AppBackendServer {
     if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
     if (params) delete params._clientId;
     const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
+    if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
+      try {
+        const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
+        if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
+        if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
+      } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }
+    }
+
     if ([backendMethods.clientWorkspaceGet, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead, backendMethods.clientDocumentSave].some(method => method === message.method)) {
       try {
         if (message.method === backendMethods.clientWorkspaceGet) return createAppRpcResult(message.id, await this.documents.get(clientId));
@@ -714,7 +759,15 @@ export class AppBackendServer {
         }
       }
     }
-    const response = await this.dispatchMessage(request, (id) => { creation.id = id; });
+    const sourceAgentId=[backendMethods.agentPromptSend,backendMethods.agentTurnRetry,backendMethods.agentTurnContinueInterrupted].some(method=>method===message.method) && typeof params?.agentId==='string' ? params.agentId : null;
+    const source=sourceAgentId ? this.options.usage?.beginPrompt(sourceAgentId) : null;
+    let response:AppRpcResponse|undefined;
+    try { response = await this.dispatchMessage(request, (id) => { creation.id = id; }, clientId); }
+    catch(error) {
+      if(sourceAgentId)this.options.usage?.cancelPrompt(sourceAgentId,source);
+      throw error;
+    }
+    if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
         const created = (createsAgent ? response.result.agents : response.result.teams).find((item) => item.id === creation.id);
@@ -737,7 +790,12 @@ export class AppBackendServer {
     return response;
   }
 
-  private async dispatchMessage(message: AppRpcMessage, onCreated: (id: string) => void = () => undefined): Promise<AppRpcResponse | undefined> {
+  private async withPromptSource<T>(agent: Agent, clientId: string, run: () => T | Promise<T>): Promise<T> {
+    const rollback = this.options.onPromptSource?.(agent, clientId);
+    try { return await run(); } catch (error) { rollback?.(); throw error; }
+  }
+
+  private async dispatchMessage(message: AppRpcMessage, onCreated: (id: string) => void = () => undefined, clientId = 'desktop'): Promise<AppRpcResponse | undefined> {
     if (isAppRpcNotification(message)) {
       return undefined;
     }
@@ -758,6 +816,20 @@ export class AppBackendServer {
     }
 
     switch (message.method) {
+      case backendMethods.agentMarkRead: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        const revision = params.revision;
+        if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid read revision.');
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, revision }, async (agent) => {
+          const current = agent.readState ?? { revision: 0, readRevision: 0 };
+          if (revision > current.revision) throw new Error('Unknown read revision.');
+          if (revision <= current.readRevision) return null;
+          this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId, payload: { id: agentId, readState: { ...current, readRevision: revision } } });
+          await this.persistSnapshotOnly();
+          return null;
+        });
+      }
       case backendMethods.backendHealthGet:
         return createAppRpcResult(message.id, {
           ok: true,
@@ -827,14 +899,18 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.debugPlanReadyForReviewInject: {
-        const agentId = requireAgentId(message.params);
+        const params = requireRecord(message.params);
+        const format = params.format ?? 'text';
+        if (format !== 'text' && format !== 'choices') throw new Error('Plan fixture format must be text or choices.');
+        const agentId = requireAgentId(params);
         const agent = this.snapshot.agents.find((candidate) => candidate.id === agentId);
         if (!agent) {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, `Agent not found: ${agentId}`);
         }
 
         const markdown = [
-          '# Debug plan review',
+          format === 'choices' ? '# Review the proposed workflow' : '# Debug text plan review',
+          ...(format === 'choices' ? ['','## Which platforms should we support?', '', '- [x] macOS', '- [ ] Windows', '- [ ] Linux', '', '## Where should settings live?', '', '- ( ) In the project', '- (x) In the user home directory', '', '## Compatibility', '', '| Existing data | Proposed behavior |', '| --- | --- |', '| Settings | Preserve originals |', '| History | Retain all conversations |', '', '```text', '- ( ) This example is not an interactive choice', '```', ''] : []),
           '',
           '## Summary',
           '',
@@ -1663,6 +1739,13 @@ export class AppBackendServer {
           await this.handleAgentDriverRequest(agent, backendMethods.driverConversationHistoryLoadOlder, { agent }) as AgentHistoryLoadResult
         ));
       }
+      case backendMethods.agentConversationContentRead: {
+        const agentId = requireAgentId(message.params);
+        const input = requireRecord(message.params).input;
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentConversationContentRead, { agentId, input }, async (agent) => (
+          this.handleAgentDriverRequest(agent, backendMethods.driverConversationContentRead, { agent, input })
+        ));
+      }
       case backendMethods.agentConversationResume: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
@@ -1820,6 +1903,8 @@ export class AppBackendServer {
           reviewId: requireString(input.reviewId, 'reviewId'),
           resolution: requireString(input.resolution, 'resolution') as PlanReviewResponse['resolution'],
           ...(input.feedback === undefined ? {} : { feedback: requireString(input.feedback, 'feedback') }),
+          ...(input.draft === undefined ? {} : { draft: input.draft as PlanReviewResponse['draft'] }),
+          ...(input.draftVersion === undefined ? {} : { draftVersion: input.draftVersion as number }),
         };
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, response }, async (agent) => {
           await this.planReviews.respond(agent, response);
@@ -1842,7 +1927,9 @@ export class AppBackendServer {
       case backendMethods.agentPromptSend: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
-        const prompt = requireString(params.prompt, 'prompt');
+        const prompt = requirePromptText(params.prompt, params.options as SendPromptOptions | undefined);
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
         return this.routeAgentSnapshotRequest(
           message.id,
           agentId,
@@ -1851,41 +1938,78 @@ export class AppBackendServer {
             agentId,
             prompt,
             options: params.options as SendPromptOptions | undefined,
+            ...expectation,
           },
           async (agent) => {
+            assertPromptSession(agent, expectedSessionId);
             const options = params.options as SendPromptOptions | undefined;
-            const result = this.agentPrompts.send(agentId, prompt, options);
+            // Phone receipts await provider acceptance when idle; busy sends enter the desktop queue.
+            let result: AppSnapshot;
+            if (expectedSessionId !== undefined && this.agentPrompts.canStart(agent)) {
+              await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
+              result = this.snapshot;
+            } else result = this.agentPrompts.send(agentId, prompt, options, clientId);
             if (prompt.trim() || options?.attachments?.length) this.clearTurnSuggestionsForNewPrompt(agent);
             await this.persistSnapshotOnly();
             return result;
           },
-        );
+        ).catch(error => {
+          if (error instanceof PromptRejectedError) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error.message);
+          throw error;
+        });
       }
       case backendMethods.agentPromptSteer: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
-        const prompt = requireString(params.prompt, 'prompt').trim();
+        const prompt = requirePromptText(params.prompt, params.options as SendPromptOptions | undefined).trim();
         const options = params.options as SendPromptOptions | undefined;
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options }, async (agent) => {
+        if (params.startIfIdle !== undefined && typeof params.startIfIdle !== 'boolean') throw new Error('Invalid startIfIdle.');
+        const startIfIdle = params.startIfIdle === true;
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentPromptSteer, { agentId, prompt, options, ...expectation, ...(startIfIdle ? { startIfIdle } : {}) }, async (agent) => {
+          assertPromptSession(agent, expectedSessionId);
           if (!prompt && !options?.attachments?.length) {
+            return this.snapshot;
+          }
+          // Decide at the owning daemon, never from a phone's potentially stale snapshot.
+          // Receipt-based admission starts immediately or rejects; it cannot enqueue.
+          if (startIfIdle && this.agentPrompts.canStart(agent)) {
+            await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt, options, expectedSessionId, clientId);
+            this.clearTurnSuggestionsForNewPrompt(agent);
+            await this.persistSnapshotOnly();
             return this.snapshot;
           }
           if (options?.delegation !== undefined) {
             if (!isDelegationOverrides(options.delegation)) throw new Error('Invalid worktree delegation overrides.');
-            agent.userDelegationOverrides = structuredClone(options.delegation);
           }
-          const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options }) as BackendSendResult;
+          const previousControls = agent.userDelegationOverrides;
+          const controls = options?.delegation !== undefined ? captureUserDelegationOverrides(agent, options.delegation) : previousControls;
+          let result: BackendSendResult;
+          try {
+            result = await this.withPromptSource(agent, clientId, () => this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, { agent, prompt, options, ...expectation })) as BackendSendResult;
+            if (options?.delegation !== undefined) bindUserDelegationOverrides(agent, controls, result);
+          } catch (error) {
+            if (options?.delegation !== undefined && agent.userDelegationOverrides === controls) agent.userDelegationOverrides = previousControls;
+            throw error;
+          }
           agent.backendSession = result.backendSession;
           this.clearTurnSuggestionsForNewPrompt(agent);
           await this.persistSnapshotOnly();
           return this.snapshot;
+        }).catch(error => {
+          if (error instanceof PromptRejectedError) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error.message);
+          throw error;
         });
       }
       case backendMethods.agentQueuedPromptDelete: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptDelete, { agentId, promptId }, async () => {
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptDelete, { agentId, promptId, ...expectation }, async agent => {
+          assertPromptSession(agent, expectedSessionId);
           this.agentPrompts.dequeue(agentId, promptId);
           return this.snapshot;
         });
@@ -1907,11 +2031,15 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
         const replacement = params.prompt === undefined ? undefined : requireString(params.prompt, 'prompt').trim();
+        const expectedSessionId = requireExpectedSessionId(params);
+        const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptSteer, {
           agentId,
           promptId,
+          ...expectation,
           ...(replacement === undefined ? {} : { prompt: replacement }),
         }, async (agent) => {
+          assertPromptSession(agent, expectedSessionId);
           const queuedPrompt = (this.snapshot.queuedPrompts ?? []).find((prompt) => prompt.agentId === agentId && prompt.id === promptId);
           if (!queuedPrompt) return this.snapshot;
           const prompt = replacement ?? queuedPrompt.text;
@@ -1922,6 +2050,7 @@ export class AppBackendServer {
             agent,
             prompt,
             options: queuedPrompt.options,
+            ...expectation,
           }) as BackendSendResult;
           agent.backendSession = result.backendSession;
           this.agentPrompts.dequeue(agentId, promptId);
@@ -2319,9 +2448,10 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.providerConnections.refreshDisconnected());
       }
       case backendMethods.providerSetupConfigure:
+      case backendMethods.providerInstall:
       case backendMethods.providerRefresh: {
         const connectionId = requireOptionalConnectionId(message.params);
-        if (connectionId && message.method === backendMethods.providerRefresh) {
+        if (connectionId && message.method !== backendMethods.providerSetupConfigure) {
           const input = requireRecord(message.params);
           return createAppRpcResult(message.id, await this.remoteTeams.request(connectionId, message.method, { backend: input.backend }));
         }
@@ -2331,6 +2461,7 @@ export class AppBackendServer {
         if (!isAgentBackend(input.backend)) throw new Error('Unknown provider.');
         let result;
         if (message.method === backendMethods.providerRefresh) result = await this.providerSetup.refresh(input.backend);
+        else if (message.method === backendMethods.providerInstall) result = await this.providerSetup.install(input.backend);
         else {
           if (connectionId) throw new Error('Change remote engine setup on its owning host.');
           const choice = requireRecord(input.choice);
@@ -2539,6 +2670,13 @@ export class AppBackendServer {
       }
       case backendMethods.workProviderDisconnect:
         return createAppRpcResult(message.id, await this.requireWorkIntegrations().disconnect(requireWorkProvider(message.params)));
+      case backendMethods.workProviderBranchesList: {
+        const params = requireRecord(message.params);
+        const provider = requireWorkProvider(params);
+        const sourceId = requireString(params.sourceId, 'sourceId');
+        return this.respondInLocation(message.id, this.automationLocationFromParams(params), backendMethods.workProviderBranchesList,
+          { provider, sourceId }, () => this.requireWorkIntegrations().listBranches(provider, sourceId));
+      }
       case backendMethods.workProviderSourcesList: {
         return this.respondInLocation(
           message.id,
@@ -2739,6 +2877,7 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.unsubscribeUsage?.();
     await this.runProfiles.close();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
@@ -2748,10 +2887,17 @@ export class AppBackendServer {
     this.unsubscribeDriverEvents?.();
     await this.driverRpc?.close();
     await this.remoteClients.close();
+    await this.options.usage?.close();
   }
 
   emitEvent(event: BackendEvent): void {
     this.handleBackendEvent(event);
+  }
+
+  setCompanionAccessEnabled(enabled: boolean): void {
+    if (this.companionAccessEnabled === enabled) return;
+    this.companionAccessEnabled = enabled;
+    this.emitSnapshotUpdated(this.remoteTeams.clientSnapshotFromKnownRemotes());
   }
 
   private requireWorkIntegrations(): WorkIntegrationManager {
@@ -3006,7 +3152,7 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(event);
   }
 
-  private backendDriverForAgent(agent: Agent): AgentBackendDriver {
+  private backendDriverForAgent(agent: Agent, expectedSessionId?: string | null): AgentBackendDriver {
     return {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
@@ -3016,7 +3162,7 @@ export class AppBackendServer {
       ),
       preparePromptOptions: (_currentAgent, options) => options,
       sendPrompt: async (currentAgent, prompt, options) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options }) as BackendSendResult
+        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
       ),
       interrupt: async (currentAgent) => (
         await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult
@@ -3111,6 +3257,7 @@ export class AppBackendServer {
 
   private applyAndEmitBackendEvent(event: BackendEvent): void {
     const fullEvent = this.nextMainEvent(event);
+    this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
@@ -3149,6 +3296,7 @@ export class AppBackendServer {
       }
     }
     const fullEvent = this.nextMainEvent(event);
+    this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
@@ -3222,7 +3370,7 @@ export class AppBackendServer {
   }
 
   private clientStateFromSnapshot(snapshot: AppSnapshot): ClientState {
-    return clientStateFromSnapshot(snapshot, this.remoteControlStatus);
+    return clientStateFromSnapshot(snapshot, this.remoteControlStatus, this.companionAccessEnabled);
   }
 
   private async ensureRemoteControlStatus(): Promise<void> {
@@ -3249,6 +3397,14 @@ export class AppBackendServer {
 
   private emitDerivedDomainEvents(event: BackendPublishedEvent): void {
     this.emitPlanReadyForReview(event);
+    const type = providerConversationEventView(event).type;
+    if (!event.agentId || !['turn.completed', 'approval.requested', 'agentRequest.created', 'toolInput.requested', 'error'].includes(type)) return;
+    const agent = this.snapshot.agents.find((agent) => agent.id === event.agentId);
+    if (!agent) return;
+    const previous = agent.readState ?? { revision: 0, readRevision: 0 };
+    this.applyAndEmitBackendEvent({ type: 'agent.updated', agentId: agent.id,
+      payload: { id: agent.id, readState: { revision: previous.revision + 1, readRevision: previous.readRevision } } });
+    void this.persistSnapshotOnly().catch(error => warnMain('state', 'failed to persist read state', { message: String(error) }));
   }
 
   private emitPlanReadyForReview(event: BackendPublishedEvent): void {
@@ -3674,6 +3830,8 @@ function sourceWorktreeInputWithoutRemoteConnection(input: CreateSourceWorktreeI
     ...(input.baseBranch ? { baseBranch: input.baseBranch } : {}),
     ...(input.destinationPath ? { destinationPath: input.destinationPath } : {}),
     ...(input.reuseExisting ? { reuseExisting: true } : {}),
+    ...(input.fetchRemoteBranch ? { fetchRemoteBranch: true } : {}),
+    ...(input.requireNewBranch ? { requireNewBranch: true } : {}),
   };
 }
 
@@ -3914,7 +4072,8 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
   return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
     (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
     typeof candidate.sessionId === 'string' &&
-    candidate.sessionId.trim().length > 0;
+    candidate.sessionId.trim().length > 0 &&
+    (candidate.backend !== 'claude' || candidate.subagentId === undefined || typeof candidate.subagentId === 'string' && candidate.subagentId.trim().length > 0);
 }
 
 function requireStringParam(params: unknown, key: string): string {
@@ -3979,13 +4138,13 @@ function shouldRefreshGitStatusForEvent(event: BackendPublishedEvent): boolean {
     (view.payload.toolPart.kind === 'command' || view.payload.toolPart.kind === 'fileChange');
 }
 
-function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus): ClientState {
+function clientStateFromSnapshot(snapshot: AppSnapshot, remoteControlStatus: DevicePairingStatus, companionAccessEnabled: boolean): ClientState {
   return {
     sourceFolderPath: snapshot.sourceFolder.path,
     shouldPreventDisplaySleep: snapshot.general.preventSleepWhenAgentsRun &&
       snapshot.agents.some((agent) => isActiveAgentStatus(agent.status)),
     shouldPreventDisplaySleepForRemoteAccess: snapshot.general.preventSleepWhenRemoteAccessEnabled !== false &&
-      remoteControlStatus.status === 'connected',
+      (remoteControlStatus.status === 'connected' || companionAccessEnabled),
   };
 }
 

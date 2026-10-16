@@ -7,6 +7,7 @@ import { isApprovalPreset } from './approval-presets';
 import { claudeBackendCapabilities } from './backend-capabilities';
 import { isCodeReviewPreferences } from './code-review';
 import { normalizeGitSettings } from './git-preferences';
+import { normalizeBrowserBookmarks } from './browser-bookmarks';
 
 export const defaultPluginSettings: AppPluginSettings = {
   computerUseEnabled: false,
@@ -41,6 +42,7 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   modelFavorites: [],
   backlogRepositoryFavorites: {},
   savedPromptDrafts: [],
+  useInteractivePlans: true,
   worktreeInitializationMode: 'automatic',
   worktreeDelegationStartingContext: 'handoff',
   worktreeDelegationInstructions: '',
@@ -157,6 +159,8 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     modelFavorites: normalizeModelFavorites(value.modelFavorites),
     backlogRepositoryFavorites: normalizeBacklogRepositoryFavorites(value.backlogRepositoryFavorites),
     savedPromptDrafts: normalizeSavedPromptDrafts(value.savedPromptDrafts),
+    ...(value.browserBookmarks !== undefined ? { browserBookmarks: normalizeBrowserBookmarks(value.browserBookmarks) } : {}),
+    useInteractivePlans: value.useInteractivePlans !== false,
     worktreeInitializationMode: normalizeWorktreeInitializationMode(value.worktreeInitializationMode),
     worktreeDelegationStartingContext: value.worktreeDelegationStartingContext === 'conversation' ? 'conversation' : 'handoff',
     worktreeDelegationInstructions: normalizeString(value.worktreeDelegationInstructions)?.slice(0, MAX_DELEGATION_INSTRUCTIONS_LENGTH).trim() ?? '',
@@ -220,7 +224,8 @@ function normalizeRepositoryIcons(value: unknown): Record<string, string> {
     const rawKey = repositoryRoot.trim();
     const root = repositoryIconKeyForRemote(rawKey) ?? rawKey;
     const icon = typeof iconValue === 'string' ? iconValue.trim() : '';
-    if (!root || root.length > 4_096 || !icon || icon.length > 64) continue;
+    const image = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(icon);
+    if (!root || root.length > 4_096 || !icon || icon.length > (image ? 131_072 : 64)) continue;
     icons[root] = icon;
     if (Object.keys(icons).length >= 200) break;
   }

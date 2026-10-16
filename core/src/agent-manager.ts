@@ -221,7 +221,7 @@ function applyProviderDefaults(snapshot: AppSnapshot, agent: Agent): void {
     model: selection.model,
     userSelectedModel: true,
     ...(agent.backend !== 'antigravity' && selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
-    ...(agent.backend === 'codex' ? { serviceTier: selection.serviceTier } : {}),
+    ...(agent.backend !== 'antigravity' ? { serviceTier: selection.serviceTier } : {}),
   } as BackendDefaults;
   const approvals = snapshot.general.providerApprovalDefaults;
   if (agent.backend === 'codex' && approvals?.codex) {
@@ -243,7 +243,7 @@ function backendDefaultsWithModel(agent: Agent, selection: NonNullable<CreateAge
     model: selection.model,
     userSelectedModel: true,
     ...(agent.backend !== 'antigravity' && selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}),
-    ...(agent.backend === 'codex' && selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
+    ...(agent.backend !== 'antigravity' && selection.serviceTier !== undefined ? { serviceTier: selection.serviceTier } : {}),
   } as BackendDefaults;
 }
 

@@ -1,3 +1,5 @@
+import { appApi } from '../../platform-api';
+import { setElectronTestClient } from '../../test/client';
 import { product } from '@workspace/core/product';
 import { flushPromises } from '@vue/test-utils';
 import { ElMessageBox } from 'element-plus';
@@ -103,6 +105,7 @@ describe('AppShell dialogs and commands', () => {
   it('previews missing local engines in Welcome and Settings without changing real connections', async () => {
     let command: (value: AppCommand) => void = () => {};
     const refreshProvider = vi.fn();
+    const installProvider = vi.fn();
     const configureProviderSetup = vi.fn();
     const disconnectProvider = vi.fn();
     const backends = ['codex', 'claude', 'antigravity'] as const;
@@ -111,7 +114,7 @@ describe('AppShell dialogs and commands', () => {
       getProviderSetup: vi.fn().mockResolvedValue(backends.map(backend => ({
         backend, installed: true, isolated: true, shareSkills: true, homePath: '/home', locked: false,
       }))),
-      refreshProvider, configureProviderSetup, disconnectProvider,
+      refreshProvider, installProvider, configureProviderSetup, disconnectProvider,
     } as unknown as AppApi;
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = backends.map(backend => ({
@@ -123,7 +126,9 @@ describe('AppShell dialogs and commands', () => {
 
     command({ type: 'debug-missing-engines', enabled: true });
     await flushPromises();
-    expect(wrapper.findAll('.codex-login .provider-install-actions a')).toHaveLength(3);
+    expect(wrapper.findAll('.codex-login .provider-install-actions a')).toHaveLength(2);
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    expect(installProvider).not.toHaveBeenCalled();
     expect(wrapper.findAll('.codex-login__provider').slice(0, 2).some(provider => provider.text().includes('Customize'))).toBe(false);
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
     expect(wrapper.findAll('.codex-login__provider')[2]!.text()).toContain('Connect Antigravity');

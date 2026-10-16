@@ -14,6 +14,8 @@ export type MobileViewRequest =
   | { action: 'touch'; attachmentId: string; viewId: string; phase: 'down' | 'move' | 'up'; x: number; y: number; geometry: number };
 export type MobileViewResult = {
   viewId: string;
+  /** Normal teardown, not a stream failure. The pane must stop requesting frames. */
+  ended?: true;
   /** Native video image; coordinates use the full framebuffer, independent of encoding scale. */
   frame?: {
     data: Uint8Array;

@@ -49,6 +49,12 @@ Start with a request such as:
 
 Check that Codex responds and uses the intended folder. If a tool needs approval, review the request in the conversation. A successful sign-in alone does not prove that every repository, model, or external tool is available.
 
+## Credits and banked resets
+
+Open **Settings → Codex** to view the connected account's **Credits** and **Banked resets** when available. These are provider account balances, not a separate Korus subscription.
+
+Use **Refresh** to check banked resets. If an available reset offers **Use reset**, review the confirmation before applying it: this spends one reset to restore eligible Codex usage limits. Account and runtime support determine which details and actions appear.
+
 ## Skills, plugins, and MCP servers
 
 With **Separate Korus chats → Reuse my existing skills** enabled, Codex shares the `skills` and `plugins` resources from your existing Codex home. This is live sharing: installing or editing a shared resource can affect Codex sessions outside Korus too.

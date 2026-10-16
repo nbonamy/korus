@@ -191,6 +191,7 @@ describe('AppBackendServer', () => {
 
 
   it('separates backend policy from client presentation settings', async () => {
+    const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
     const snapshot = createTestSnapshot();
     const saveSnapshot = vi.fn().mockResolvedValue(undefined);
     const server = new AppBackendServer({
@@ -201,7 +202,7 @@ describe('AppBackendServer', () => {
     });
 
     await server.handleMessage({ jsonrpc: '2.0', id: 'preferences', method: 'client/preferences/update', params: { input: {
-      general: { repositoryIcons: { 'git@github.com:nbonamy/agent-workspace.git': '🦞' } },
+      general: { repositoryIcons: { 'git@github.com:nbonamy/agent-workspace.git': '🦞', '/src/image-repository': image } },
       theme: { id: 'app-dark', mode: 'dark', uiFontSize: 18 },
     } } });
     await expect(server.handleMessage({
@@ -224,6 +225,7 @@ describe('AppBackendServer', () => {
           preventSleepWhenAgentsRun: false,
           repositoryIcons: {
             'remote:github.com/nbonamy/agent-workspace': '🦞',
+            '/src/image-repository': image,
           },
         },
         sourceFolder: {
@@ -241,7 +243,7 @@ describe('AppBackendServer', () => {
 
     expect(saveSnapshot).toHaveBeenCalledWith(snapshot);
     expect(snapshot.general.repositoryIcons).toStrictEqual({});
-    expect(snapshot.clientPreferences?.desktop?.general?.repositoryIcons).toStrictEqual({ 'git@github.com:nbonamy/agent-workspace.git': '🦞' });
+    expect(snapshot.clientPreferences?.desktop?.general?.repositoryIcons).toStrictEqual({ 'git@github.com:nbonamy/agent-workspace.git': '🦞', '/src/image-repository': image });
   });
 
   it('changes Codex resource sharing only while chats are idle', async () => {

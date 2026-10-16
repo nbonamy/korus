@@ -370,6 +370,9 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
   expectString(value.agentId, `${path}.agentId`);
   expectLiteral(value.backend, ['claude'], `${path}.backend`);
   expectLiteral(value.type, [
+    'history.prepended',
+    'message.replaced',
+    'context.usageUpdated',
     'turn.started',
     'turn.proposedPlanDelta',
     'turn.proposedPlanCompleted',

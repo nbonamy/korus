@@ -7,6 +7,7 @@ import type {
 } from '@workspace/core/contracts';
 import type { BackendEvent, BackendTurnActionResult } from '@workspace/core/backend-driver';
 import { formatConversationTitle, shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { warnMain } from '../log';
 
 export type AgentConversationServiceOptions = {
@@ -78,6 +79,12 @@ export class AgentConversationService {
     const agent = this.agent(agentId);
     if (agent?.handoff && sameConversationRef(agent.handoff.sourceRef, ref)) return true;
     const tree = snapshot.subagentTrees[agentId];
+    if (ref.backend === 'claude' && agent?.backendSession?.kind === 'claude') {
+      const root = conversationRefFromAgent(agent);
+      return tree?.rootConversationId === agent.backendSession.sessionId && root?.backend === 'claude'
+        && root.folder === ref.folder && root.sessionId === ref.sessionId
+        && ref.subagentId !== undefined && Boolean(tree.nodes[ref.subagentId]);
+    }
     return ref.backend === 'codex' &&
       agent?.backendSession?.kind === 'codex' &&
       tree?.rootConversationId === agent.backendSession.threadId &&
@@ -195,6 +202,7 @@ function sameConversationRef(left: BackendConversationRef, right: BackendConvers
     left.backend === 'codex'
       ? right.backend === 'codex' && left.threadId === right.threadId
       : right.backend === left.backend && left.folder === right.folder && left.sessionId === right.sessionId
+        && (left.backend !== 'claude' || right.backend !== 'claude' || left.subagentId === right.subagentId)
   );
 }
 

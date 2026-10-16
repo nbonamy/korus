@@ -57,6 +57,7 @@ export type BackendConversationRef =
     backend: 'claude';
     folder: string | null;
     sessionId: string;
+    subagentId?: string;
   };
 
 export type ConversationStorageState = 'active' | 'archived';
@@ -323,7 +324,12 @@ export type RendererMessage = {
   turnId?: string;
   parts: RendererMessagePart[];
   createdAt: string;
+  /** Lossless JSON of this message, retrieved in bounded chunks from its owning session. */
+  deferredContent?: { contentId: string; byteLength: number };
 };
+
+export type ConversationContentInput = { sessionId: string; contentId: string; offset: number };
+export type ConversationContentChunk = { data: string; nextOffset: number | null; totalBytes: number };
 
 export type AgentFileActivity = {
   agentId: string;

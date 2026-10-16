@@ -1,41 +1,31 @@
-import { product } from '@workspace/core/product';
 import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { clearConfetti, useConfetti } from '../../shared/confetti/use-confetti';
 import OnboardingCompleteLanding from '../OnboardingCompleteLanding.vue';
 
-function mountLanding(props: Partial<InstanceType<typeof OnboardingCompleteLanding>['$props']> = {}) {
-  return mount(OnboardingCompleteLanding, {
-    props,
-  });
-}
+afterEach(() => { clearConfetti(); vi.useRealTimers(); });
 
-describe('OnboardingCompleteLanding', () => {
-  afterEach(() => {
-    clearConfetti();
-    vi.useRealTimers();
-  });
-
-  it('celebrates once and completes automatically', async () => {
-    vi.useFakeTimers();
-    const wrapper = mountLanding();
-
-    expect(wrapper.text()).toContain("You're all set.");
-    expect(wrapper.text()).toContain(`${product.name} is ready.`);
+it('keeps the final onboarding page open until the user continues', async () => {
+  vi.useFakeTimers();
+  const wrapper = mount(OnboardingCompleteLanding);
+  try {
     expect(useConfetti().bursts.value).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(wrapper.emitted('complete')).toStrictEqual([[]]);
-  });
-
-  it('can finish immediately without celebrating', async () => {
-    vi.useFakeTimers();
-    const wrapper = mountLanding({ celebrate: false });
-
-    expect(useConfetti().bursts.value).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(wrapper.emitted('complete')).toBeUndefined();
     await wrapper.get('.onboarding-complete__action').trigger('click');
-
     expect(wrapper.emitted('complete')).toStrictEqual([[]]);
-  });
+  } finally {
+    wrapper.unmount();
+  }
+});
+
+it('can continue without a celebration or a reporting preference request', async () => {
+  const wrapper = mount(OnboardingCompleteLanding, { props: { celebrate: false } });
+  try {
+    expect(useConfetti().bursts.value).toHaveLength(0);
+    await wrapper.get('button').trigger('click');
+    expect(wrapper.emitted('complete')).toStrictEqual([[]]);
+  } finally {
+    wrapper.unmount();
+  }
 });

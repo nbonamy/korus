@@ -29,6 +29,31 @@ export function applyClaudeConversationEvent(
 ): void {
   if (event.agentId !== snapshot.agentId) return;
 
+  if (event.type === 'history.prepended') {
+    if (event.backendSessionId !== snapshot.sessionId) return;
+    const known = new Set(snapshot.messages.map((message) => message.id));
+    const older = event.payload.messages.filter((message) => {
+      if (message.agentId !== snapshot.agentId || known.has(message.id)) return false;
+      known.add(message.id);
+      return true;
+    });
+    snapshot.messages = [...older, ...snapshot.messages];
+    snapshot.historyState = { hasOlder: event.payload.hasOlder, loadingOlder: false };
+    return;
+  }
+  if (event.type === 'message.replaced') {
+    const message = event.payload.message;
+    if (message.agentId !== snapshot.agentId || event.backendSessionId !== snapshot.sessionId) return;
+    const index = snapshot.messages.findIndex((candidate) => candidate.id === message.id);
+    if (index < 0) snapshot.messages.push(message);
+    else snapshot.messages[index] = message;
+    return;
+  }
+  if (event.type === 'context.usageUpdated') {
+    snapshot.contextUsage = event.payload.contextUsage;
+    return;
+  }
+
   if (event.type === 'turn.started') {
     ensureAssistantMessage(snapshot, event.agentId, event.turnId, assistantMessageId(event.turnId), event.occurredAt);
     pruneSupersededEmptyAssistantPlaceholders(snapshot, event.agentId);

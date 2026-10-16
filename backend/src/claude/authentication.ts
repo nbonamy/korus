@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ClaudeAuthentication } from '@workspace/core/contracts';
-import { resolveRuntimeLaunch } from '@workspace/core/runtime-discovery';
+import { resolveClaudeLaunch } from './claude-command';
 import { claudeConfigDirectoryOverride } from './config-directory';
 
 const run = promisify(execFile);
@@ -9,8 +9,8 @@ const run = promisify(execFile);
 /** Let Claude remove its own credentials from the same home used for sign-in. */
 export async function logoutLocalClaude(): Promise<ClaudeAuthentication> {
   const configDirectory = claudeConfigDirectoryOverride();
+  const launch = resolveClaudeLaunch(undefined, { CLAUDE_CONFIG_DIR: configDirectory });
   try {
-    const launch = resolveRuntimeLaunch(process.env.APP_CLAUDE_COMMAND || 'claude', { CLAUDE_CONFIG_DIR: configDirectory });
     await run(launch.command, ['auth', 'logout'], {
       env: launch.env,
       timeout: 15_000,
@@ -20,15 +20,15 @@ export async function logoutLocalClaude(): Promise<ClaudeAuthentication> {
   } catch {
     throw new Error('Could not sign out of Claude Code. Please try again.');
   }
-  return { loggedIn: false, configDirectory: configDirectory ?? null };
+  return { loggedIn: false, configDirectory: configDirectory ?? null, ...(launch.command !== 'claude' ? { executablePath: launch.command } : {}) };
 }
 
 /** Return only safe account metadata, never credential material or raw CLI output. */
 export async function getLocalClaudeAuthentication(): Promise<ClaudeAuthentication> {
   const configDirectory = claudeConfigDirectoryOverride();
   let stdout: string;
+  const launch = resolveClaudeLaunch(undefined, { CLAUDE_CONFIG_DIR: configDirectory });
   try {
-    const launch = resolveRuntimeLaunch(process.env.APP_CLAUDE_COMMAND || 'claude', { CLAUDE_CONFIG_DIR: configDirectory });
     ({ stdout } = await run(launch.command, ['auth', 'status', '--json'], {
       env: launch.env,
       timeout: 15_000,
@@ -56,5 +56,5 @@ export async function getLocalClaudeAuthentication(): Promise<ClaudeAuthenticati
       ...(typeof metadata.subscriptionType === 'string' ? { subscription: metadata.subscriptionType } : {}),
     }
     : metadata.authMethod === 'api_key' ? { type: 'apiKey' as const } : undefined;
-  return { loggedIn: status.loggedIn, configDirectory: configDirectory ?? null, ...(account ? { account } : {}) };
+  return { loggedIn: status.loggedIn, configDirectory: configDirectory ?? null, ...(launch.command !== 'claude' ? { executablePath: launch.command } : {}), ...(account ? { account } : {}) };
 }

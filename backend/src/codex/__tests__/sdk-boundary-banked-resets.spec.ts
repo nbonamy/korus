@@ -44,11 +44,18 @@ describe('Codex banked reset driver boundary', () => {
     finally { await old.adapter.close(); }
     const f = fixture();
     try {
+      f.read.mockResolvedValue(limits('1', [credit]));
+      const { id: _id, ...detail } = credit;
+      expect(await f.driver.getBankedResets()).toStrictEqual({
+        status: 'ready', accountCredits: null,
+        summary: { availableCount: '1', credits: [detail], detailCount: 1 },
+      });
+      await expect(f.driver.useBankedReset({ confirmed: true, redemptionToken: 'selection', idempotencyKey: 'attempt' })).rejects.toThrow('unsupported');
       f.snapshot.authentication.account = null;
       expect(await f.driver.getBankedResets()).toStrictEqual({ status: 'signedOut' });
       f.snapshot.authentication.account = { type: 'apiKey' };
       expect(await f.driver.getBankedResets()).toStrictEqual({ status: 'unsupported' });
-      expect(f.read).not.toHaveBeenCalled();
+      expect(f.read).toHaveBeenCalledOnce();
     } finally { await f.adapter.close(); }
   });
   it('surfaces provider and invalid-count errors rather than reporting zero', async () => {

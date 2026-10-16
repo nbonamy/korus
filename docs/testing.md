@@ -19,11 +19,15 @@ Real provider smoke tests are opt-in and never part of the normal gate.
 
 ## Quality Bar
 
-Every code change adds or updates tests for the behavior it changes; no small-change
-exemption. If a test cannot be run or a change is truly untestable or docs-only, say
+Every behavior change needs coverage at the owning runtime boundary; write the
+behavior test before the production change. Never write unit tests after code.
+Prefer E2E or integration tests as the sole testing mechanism, especially for
+complex features, and produce a verifiable, repeatable artifact from those tests.
+If a system must be tested in isolation, write down all the ways it could fail
+first. If a test cannot be run or a change is truly untestable or docs-only, say
 so explicitly and name what to run next.
 
-All five workspaces (`core`, `backend`, `vue`, `electron`, `web`) gate on exactly
+All six workspaces (`core`, `backend`, `vue`, `electron`, `web`, `mobile`) gate on exactly
 **85% statements**; lines, branches and functions are diagnostics. Never lower the
 threshold or shrink includes/exclusions to land a change. Coverage is evidence of
 exercised behavior, not a reason to invent a test. Leave no broad untested areas
@@ -33,8 +37,9 @@ approvals, diffs, filesystem, git or teams.
 ## Principles
 
 - Test behavior, not implementation: assert what users see, what IPC emits, what
-  state changes, what contracts return. Prefer workflows over isolated pings, and
-  follow a mutation with a read, list, event, persisted snapshot or cleanup check.
+  state changes, what contracts return. Prefer E2E or integration workflows over
+  isolated tests, and follow a mutation with a read, list, event, persisted
+  snapshot or cleanup check.
 - Use `toStrictEqual()` for app-owned contracts and fixtures; do not cherry-pick
   fields with scattered `toHaveProperty()` when the full shape is the contract.
 - Isolate and clean up: tests are idempotent, close streams, child processes, file
@@ -57,10 +62,11 @@ with a constant, or breaks on harmless rewording, fails the gate. Accepted tests
 protect a user-visible outcome, an owned or external contract, a state transition or
 persistence guarantee, or an error/security/architecture boundary.
 
-- Mount Vue components and assert rendered DOM, accessibility state, interactions,
-  emitted events or resulting behavior. When behavior depends on CSS, mount with the
-  production styles and assert the resolved result (proving the selector matches and
-  the cascade applies); use a real browser only for layout geometry.
+- Prefer rendered E2E or integration workflows for UI behavior. Isolate Vue
+  components only when a concrete regression cannot be reliably observed at a
+  higher boundary; first write down the failure modes, then assert rendered DOM,
+  accessibility state, interactions or resulting behavior. When behavior depends
+  on CSS, use the production styles; use a real browser for layout geometry.
 - Do not assert every sentence of tool descriptions, prompts or help text. Test
   interpolation, conditional sections, schemas and the behavior they enable; keep one
   assertion where exact copy is itself the contract.
@@ -69,8 +75,10 @@ persistence guarantee, or an error/security/architecture boundary.
   with lint, TypeScript, AST or dependency tooling. Tests may read source only when it
   is product input, via a fixture, and may inspect generated artifacts that are the
   output under test.
-- Give the detailed assertion to the owning unit and keep one representative smoke
-  test at the next boundary. Table-driven rows must be distinct behaviors.
+- Keep one strong test at the closest boundary that proves the observable
+  behavior. Add a lower-level test only for distinct behavior that the
+  higher-boundary test cannot reliably observe. Table-driven rows must be
+  distinct behaviors.
 - Keep snapshots rare; prefer explicit assertions.
 
 ## Main Process And Preload
@@ -91,12 +99,13 @@ behavior and renderer-safe errors. Never expose broad Electron or Node primitive
 
 ## Renderer
 
-Vue Test Utils, Vitest and jsdom. Co-locate specs in `__tests__/`, one same-named
-spec per component, no catch-all suites. Prefer direct props and emits over booting
-the shell; use small store fakes only when the contract depends on a store; stub IPC at
-the app boundary, not inside the tree; do not use Codex app-server fixtures for
-visual components. Test loading, empty, error, disabled, pending-approval and
-streaming states separately. If a component is too hard to isolate, split it first.
+Prefer rendered E2E or integration workflows for UI behavior. If a distinct
+rendering regression cannot be reliably observed there, component isolation may use
+Vue Test Utils, Vitest and jsdom. Co-locate specs in `__tests__/`; use small store
+fakes only when the contract depends on a store; stub IPC at the app boundary, not
+inside the tree; do not use Codex app-server fixtures for visual components. Test
+only the states that represent distinct, observable behavior. If isolation is
+necessary, write down the failure modes first.
 
 - The shared setup supplies lightweight Element Plus controls that preserve rendered
   and emitted contracts (DOM, classes, aria, slots, model events). A placeholder that
@@ -128,8 +137,9 @@ and await asynchronous initialization before exercising controls.
 `sdk-boundary-*.spec.ts`, Claude's `sdk-boundary.spec.ts` and `*backend-boundary.spec.ts`
 run in the normal glob and CI (`npm run test:integration` is a fast entry). Keep
 lower-level tests for Korus-owned algorithms, provider translation, wire security,
-persistence, filesystem and Git safety. A provider-independent service needs no
-artificial Codex and Claude variants.
+persistence, filesystem and Git safety only when an integrated workflow cannot
+reliably expose the regression. A provider-independent service needs no artificial
+Codex and Claude variants.
 
 - Store captured fixtures next to their tests; include malformed and partial-stream
   cases and enough original payload shape to catch protocol drift.
@@ -166,11 +176,14 @@ commands (`test:electron`, `typecheck:web`, …). For visual changes add a local
 app/screenshot check when the app can boot; for protocol or persistence changes run
 the touched module's tests plus the full coverage gate.
 
-Before release CI runs `npm run test:coverage` then `npm run test:scripts`
-(coverage already executes every workspace suite, and lint already covers
-typechecks). A failed test or any workspace below 85% statements blocks release. Run
-against the installed SDK package boundary; source aliases do not substitute for
-package verification. Desktop smoke (boot, create or select an agent, pick a folder,
-send, stream, interrupt or approve, restore after reload) and screenshot checks for
-shell, sidebars, composer, artifact panes, diffs and theme switching apply once the
+The independent Quality workflow runs on every push, PR and manual dispatch. It
+owns lint/typechecks, the full suite under coverage, script tests, and retained
+coverage reports. The release workflow runs ordinary workspace and script tests,
+without coverage, before builds and publication. The workflows are independent:
+Quality failures do not block releases; release test failures do. Run against the
+installed SDK package boundary; source aliases do not substitute for package
+verification. Desktop smoke (boot, create or
+select an agent, pick a folder, send, stream, interrupt or approve, restore after
+reload) and screenshot checks for shell, sidebars, composer, artifact panes, diffs
+and theme switching apply once the
 chosen desktop tool is configured.

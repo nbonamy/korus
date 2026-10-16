@@ -813,6 +813,11 @@ export function themeIdForAppearance(themeId: string, appearance: AppThemeDefini
   return appThemes.find((themeDefinition) => themeDefinition.appearance === appearance)?.id ?? appSystemPair.light;
 }
 
+// System mode only follows the OS for the default light/dark pair, which is keyed on its light member.
+export function themeIdForSystemMode(themeId: string): string {
+  return themeId === appSystemPair.dark ? appSystemPair.light : themeId;
+}
+
 export function effectiveTheme(settings: AppThemeSettings, prefersDark: boolean): AppThemeDefinition {
   if (settings.mode === 'system' && settings.id === appSystemPair.light) {
     return themeById(prefersDark ? appSystemPair.dark : appSystemPair.light);

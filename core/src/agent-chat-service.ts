@@ -2,7 +2,8 @@ import type { AgentStatus, AppSnapshot, SendPromptOptions } from './contracts';
 import type { AgentBackendDriver, BackendEvent, BackendSendResult } from './backend-driver';
 import { backendDisplayName } from './backend-driver';
 import { handoffInProgress } from './agent-handoff';
-import { isDelegationOverrides } from './delegation-context';
+import { interactivePlanPrompt } from './plan-review';
+import { bindUserDelegationOverrides, captureUserDelegationOverrides, isDelegationOverrides } from './delegation-context';
 
 export type AgentChatEventEmitter = (
   event: BackendEvent,
@@ -38,8 +39,7 @@ export function sendAgentPrompt(
   agent.hasSubmittedPrompt = true;
   // Only app-submitted controls can override saved user preferences. Agent-
   // generated create-agent instructions never populate this field.
-  if (options?.delegation) agent.userDelegationOverrides = structuredClone(options.delegation);
-  else delete agent.userDelegationOverrides;
+  const delegationControls = captureUserDelegationOverrides(agent, options?.delegation);
   const promptResult = backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
   const hadBackendSession = Boolean(agent.backendSession);
 
@@ -51,23 +51,26 @@ export function sendAgentPrompt(
     capabilities: backendDriver.getCapabilities(agent),
   }, emit, snapshot);
 
-  if (agent.backend === 'codex' && options?.serviceTier !== undefined) {
-    const defaults = agent.backendDefaults?.kind === 'codex'
+  if (agent.backend !== 'antigravity' && options?.serviceTier !== undefined) {
+    const defaults = agent.backendDefaults?.kind === agent.backend
       ? agent.backendDefaults
-      : { kind: 'codex' as const };
+      : { kind: agent.backend };
     agent.backendDefaults = { ...defaults, serviceTier: options.serviceTier };
   }
   const routedOptions = hooks?.appendUserMessage === false
     ? { ...options, recordUserMessage: false }
     : options;
   const preparedOptions = backendDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
+  const deliveredPrompt = options?.planMode === true && snapshot.general.useInteractivePlans !== false
+    ? interactivePlanPrompt(trimmedPrompt) : trimmedPrompt;
   const sendResult = promptResult
     ?? (hasPromptOptions(preparedOptions)
-      ? backendDriver.sendPrompt(agent, trimmedPrompt, preparedOptions)
-      : backendDriver.sendPrompt(agent, trimmedPrompt));
+      ? backendDriver.sendPrompt(agent, deliveredPrompt, preparedOptions)
+      : backendDriver.sendPrompt(agent, deliveredPrompt));
 
   void sendResult
     .then((result) => {
+      bindUserDelegationOverrides(agent, delegationControls, result);
       agent.backend = backendDriver.backend;
       agent.backendSession = result.backendSession;
       void Promise.resolve(hooks?.onBackendSessionUpdated?.(result, !hadBackendSession)).catch(() => undefined);
@@ -83,6 +86,7 @@ export function sendAgentPrompt(
       void Promise.resolve(hooks?.onPromptStarted?.(result)).catch(() => undefined);
     })
     .catch((error) => {
+      if (delegationControls && agent.userDelegationOverrides === delegationControls) delete agent.userDelegationOverrides;
       const normalizedError = error instanceof Error ? error : new Error(String(error));
       const message = normalizedError.message;
       updateAgentStatus(agentId, { type: 'error', message }, emit, snapshot);

@@ -4,6 +4,136 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.36.1] - 2026-10-16
+
+### New features
+
+- View Claude's native subagents from the conversation header and open their
+  individual threads, including background progress and completed work after a
+  reload.
+- Use Claude without a separate CLI installation through Korus's bundled
+  runtime. On macOS, Codex can also use the runtime included with ChatGPT when
+  no standalone CLI is available. Installed CLIs still take precedence.
+
+### Improvements and fixes
+
+- The Activity sidebar has a Done section, elapsed-time indicators, and
+  independently scrollable sections with a Show more control. Unread dots take
+  priority over elapsed times.
+- Analytics uses shared provider, date, and grouping controls across its charts.
+  The activity overview stays independent of those filters.
+- Repository image icons save correctly, with a square crop preview and subtly
+  rounded corners in the sidebar, conversation header, and Cockpit.
+- Dark and system appearance stay consistent across native window chrome,
+  provider icons, button hovers, and the conversation background. Switching from
+  Dark to System follows the operating system again.
+
+## [0.36.0] - 2026-10-15
+
+### New features
+
+- Organize the agent sidebar by Activity, with Needs input, Recently active,
+  Working, and Idle sections. Agents animate between sections, and each team
+  remembers your organization choice.
+- Explore local usage statistics in Settings → Analytics, with token activity,
+  usage trends, provider and model breakdowns, and comparisons of time to first
+  token and output speed. Keep up to a year of statistics and clear them at any
+  time.
+- Use Fast mode for supported Claude models from the existing speed selector.
+- Delegating agents can close their own idle workers while preserving their
+  worktrees and branches.
+
+### Improvements and fixes
+
+- Recently active agents show unread indicators, and idle agents are ordered by
+  their latest activity.
+- The browser annotation Send button keeps its primary styling and stays on one
+  line in narrow panels.
+
+## [0.35.1] - 2026-10-15
+
+### New features
+
+- Check remaining Codex and Claude usage and reset times from mobile Settings.
+- Create projects from your phone using a new repository, GitHub, or a repository
+  URL. Browse GitHub branches or create a new branch in its own worktree.
+
+### Improvements and fixes
+
+- Mobile reconnects silently after brief interruptions and app switching, keeping
+  your conversation visible. A Reconnect action appears after five seconds if
+  recovery takes longer.
+- Relay connections recover more reliably during active use.
+- Push notifications open the correct conversation, including while reconnecting.
+- Send image-only prompts from your phone, open image links, and view images
+  returned by tools. Image previews stay stable as conversations update and reload.
+- Project creation and worktree cleanup use consistent mobile sheets with clear
+  progress, searchable repository and branch lists, and simpler navigation.
+- Worktree cleanup only offers to delete the matching remote branch, protecting
+  main and other inherited upstream branches on desktop and mobile.
+
+## [0.35.0] - 2026-10-14
+
+### New features
+
+- Pair Korus Mobile for iPhone from Settings → Connections to follow your
+  agents, send prompts, and respond to questions and approvals away from your
+  desktop, without a VPN or router configuration.
+- Manage paired phones individually and revoke access from the desktop.
+- Open Git log from the Git menu to browse the current branch's history,
+  search commit messages, and inspect changed files and historical diffs inline.
+
+### Improvements and fixes
+
+- The command palette includes simulator and review workspace actions.
+- Delegate from the composer's + menu immediately using saved settings;
+  add task details after `/delegate` when needed.
+- Clear an agent's name directly from its text field.
+- Long Claude conversations load in bounded pages, with oversized content
+  available on demand. Unread activity stays synchronized across desktop and phone.
+- Conversations keep their reading position while scrolling, and completed
+  tool-only replies show their message actions.
+- Simulator views recover cleanly when apps restart or a view ends.
+- Mobile conversations load large histories reliably, retain visible content
+  while reconnecting, and offer recovery when rendering fails.
+- The mobile unlock screen matches the connecting screen without layout jumps,
+  with a five-minute grace period when returning from another app.
+
+## [0.34.0] - 2026-10-13
+
+### New features
+
+- Find contextual actions in the command palette with Cmd/Ctrl+Shift+P,
+  and browse a searchable keyboard shortcut reference from the View menu.
+- Branch current changes into a new worktree with an idle agent, preserving
+  staged and unstaged work and moving untracked files without creating a commit.
+- Favorite GitHub repositories and Linear sources in Backlog, with saved
+  per-provider ordering and drag-and-drop reordering.
+- Choose a fresh handoff or a native Codex/Claude conversation fork when
+  delegating work, with reusable instructions and per-task overrides.
+- Review plans with inline choices and section comments. Confirm your answers,
+  request revisions, and approve implementation with feedback preserved on reload.
+- Switch automatic reviews to manual while the current turn continues, or
+  stop a review while keeping its findings for later.
+- Save, search, rename, and reopen named bookmarks in the built-in browser.
+- Navigate Markdown documents with an optional heading outline.
+- Install the Antigravity runtime directly from provider setup.
+- View Codex credits and banked resets in Settings, and redeem an available
+  reset with explicit confirmation.
+
+### Improvements and fixes
+
+- Simulator video reconnects automatically after pauses without losing the
+  device attachment or replaying interrupted gestures.
+- Merge cleanup is enabled by default and remembers your worktree and branch
+  deletion choices.
+- Additional fields in saved workspace data no longer prevent startup.
+- Delegation instructions stay attached to the correct turn when queued or
+  overlapping turns complete. Favorites saves preserve other providers' ordering.
+- Selected review findings and delegated tasks use concise visible prompts,
+  keeping supporting context out of the conversation's main text.
+- Workflow guidance loads on demand to keep agent context smaller.
+
 ## [0.33.0] - 2026-10-09
 
 ### New features

@@ -10,11 +10,11 @@ Korus can run different coding engines in the same team. Each engine has its own
 | --- | --- |
 | [Codex](./codex) | Install the CLI separately; browser sign-in from Korus |
 | [Claude Code](./claude-code) | Requires the Claude Code CLI; sign-in through a command copied from Korus |
-| [Antigravity](#antigravity) | Requires the Antigravity ACP runtime and its companion executable; native Google sign-in from Korus |
+| [Antigravity](#antigravity) | Install its runtime from Korus; native Google sign-in |
 
 ## Choose where each engine keeps its setup
 
-Install the engine first: **Install** opens external instructions, and the refresh icon rechecks detection. Korus does not install provider runtimes automatically. Once detected, select **Customize** beneath the engine before signing in. Later, open its Settings page and select **Customize** beside **Location**.
+Install the engine first: **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Once detected, select **Customize** beneath the engine before signing in. Later, open its Settings page and select **Customize** beside **Location**.
 
 There are two choices under **Conversations**:
 
@@ -53,9 +53,9 @@ Authentication, model availability, and usage limits belong to the selected prov
 
 ## Antigravity
 
-Antigravity uses Google's ACP runtime, not the editor or the `agy` CLI. Install the runtime separately using **Install** in Welcome or **Settings → Antigravity**. The linked [ACP registry entry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json) lists the platform downloads for the supported runtime.
+Select **Install** in Welcome or **Settings → Antigravity**. Korus downloads the appropriate runtime directly from Google, verifies it, and enables **Connect** when it is ready. A spinner appears during installation. No terminal commands or PATH changes are needed. Installation supports Apple Silicon and Intel Macs, and Linux and Windows on x64 and ARM64.
 
-On macOS and Linux, extract `agy_acp_server.par` and `localharness_external` together into a directory on PATH and make both executable. Korus needs both files to detect the engine. Select the refresh icon after installation. Installing the editor alone does not establish that this runtime is available.
+Antigravity uses Google's ACP runtime, independently of the editor and the `agy` CLI. If you prefer to install it yourself, the [ACP registry entry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json) lists platform downloads. Extract the runtime and its companion executable together into a directory on PATH (`agy_acp_server.par` and `localharness_external` on macOS/Linux, or their `.exe` versions on Windows). Make both executable on macOS/Linux, then select the refresh icon in Korus.
 
 Once detected:
 

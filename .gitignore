@@ -7,6 +7,8 @@ out/
 coverage/
 *.log
 .env
+# Local Apple push signing keys
+/certs/*.p8
 .app-dev/
 .release/
 electron/.computer-use-artifacts/
@@ -30,3 +32,8 @@ electron/.development-shell/
 # Verified native simulator build resources
 electron/.mobile-simulator/
 electron/.mobile-simulator-artifacts/
+
+# Standalone companion relay bundle
+backend/relay-dist/
+
+/certs/apns-keys.json

@@ -1,5 +1,5 @@
 <template>
-  <span v-if="monochrome" class="backend-icon backend-icon--monochrome" :style="maskStyle" aria-hidden="true" />
+  <span v-if="themed" class="backend-icon backend-icon--monochrome" :style="maskStyle" aria-hidden="true" />
   <img v-else class="backend-icon" :src="source" alt="" aria-hidden="true" />
 </template>
 
@@ -13,6 +13,8 @@ const icons = {
   claude: new URL('../shared/icons/claude-code-icon.svg', import.meta.url).href,
   antigravity: new URL('../shared/icons/antigravity-icon.svg', import.meta.url).href,
 };
+// Claude keeps its brand colors; the other marks are single-color glyphs that must follow the theme text color.
+const themed = computed(() => props.monochrome || props.backend !== 'claude');
 const source = computed(() => icons[props.backend]);
 const maskStyle = computed(() => ({ maskImage: `url(${JSON.stringify(source.value)})` }));
 </script>

@@ -1,3 +1,4 @@
+import type { ExecutionObservation } from '@workspace/core/usage';
 import { mkdir, realpath } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -30,6 +31,9 @@ export class AntigravityHost implements AgentBackendDriver {
   private readonly resuming = new Map<string, Promise<void>>();
   private readonly auxiliary = new Set<AcpSession>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
+  private readonly usageListeners = new Set<(event: ExecutionObservation) => void>();
+  onUsage(listener: (event: ExecutionObservation) => void) { this.usageListeners.add(listener); return () => { this.usageListeners.delete(listener); }; }
+  private observeUsage(event: ExecutionObservation) { for (const listener of this.usageListeners) { try { listener(event); } catch { /* Observer isolation. */ } } }
   private authentication?: AcpRuntime;
   private auth?: { action: ProviderAuthenticationAction['action']; abort: AbortController; done: Promise<ProviderAuthentication> };
   private closed = false;
@@ -137,7 +141,7 @@ export class AntigravityHost implements AgentBackendDriver {
 
   async generateText(agent: Agent, input: BackendTextGenerationInput): Promise<{ text: string }> {
     if (this.closed) throw new Error('Antigravity host is closed.');
-    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: [], tools: false, ephemeral: true, changed: () => {} });
+    const session = await this.openSession({ agentId: `generation-${randomUUID()}`, cwd: input.cwd, mcpServers: [], tools: false, ephemeral: true, changed: () => {}, usage: event => this.observeUsage({ ...event, agentId: agent.id }) });
     this.auxiliary.add(session);
     try {
       if (this.closed) throw new Error('Antigravity host is closed.');
@@ -302,7 +306,7 @@ export class AntigravityHost implements AgentBackendDriver {
       ...(this.options.appMcpServerUrl ? [sessionMcpServer(appMcpUrlForAgent(this.options.appMcpServerUrl, agent))] : []),
       ...Object.entries(this.options.hostedMcpServerUrls?.() ?? {}).map(([name, url]) => sessionMcpServer(agentScopedMcpUrl(url, agent.id), name)),
     ];
-    return this.openSession({ agentId: agent.id, cwd, sessionId, mcpServers, ephemeral: Boolean(reviewUrl), changed: event => this.conversationEvent(event) });
+    return this.openSession({ agentId: agent.id, cwd, sessionId, mcpServers, ephemeral: Boolean(reviewUrl), changed: event => this.conversationEvent(event), usage: event => this.observeUsage(event) });
   }
 
   private async openSession(options: Parameters<typeof AcpSession.open>[0]): Promise<AcpSession> {

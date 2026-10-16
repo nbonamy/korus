@@ -91,6 +91,9 @@ sidebar follows the selected agent, keeping each agent's tabs separately.
 - **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are
   distinct global surfaces. Opening Cockpit must not load Backlog data. Projection
   and sorting live in a focused view model, not `AppShell`.
+- Activity sidebar grouping and recency belong to `core/src/workspace-sidebar.ts`;
+  desktop and mobile own their local view preference, clock and transitions. Native
+  activity rows share one identity space across groups so regrouping preserves rows.
 - Team-rail dot: red for unread, orange for working, unread wins, never on the
   selected team. Agent activity is stored apart from metadata so startup hydration
   does not make idle agents look active.
@@ -114,6 +117,7 @@ Search by behavior first.
 | Dialog chrome and footer actions | `.app-dialog`, `.app-button` | `vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `vue/src/shared/form/` |
+| Single-line text with an inline clear action | `ClearableTextInput` | `vue/src/shared/form/` |
 | Command palettes | `QuickOpenDialog` | `vue/src/shared/` |
 | Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |
@@ -132,6 +136,8 @@ The command palette and shortcut reference share the canonical quick-open dialog
 search, rows and key hints. The reference groups read-only rows; the palette invokes
 existing shell handlers. Their action icons share renderer presentation metadata;
 Git actions retain the icons supplied by their workflow control.
+Quick-open rows support sibling actions that appear on hover or keyboard focus,
+keeping secondary actions separate from the primary row target.
 Palette entries declare their sections explicitly and preserve owning-menu order.
 Settings destinations share their icons, labels and host/provider availability in
 `components/settings-tabs.ts`, consumed by both the sidebar and command search.
@@ -177,6 +183,17 @@ which retains ownership of operation state, confirmations and host routing.
   timing may smooth completion but must never imply a phase finished early.
 - The in-app browser's `<webview>` sits in the workspace DOM so menus and dialogs
   layer over it; never hide the page to expose an overlay.
+
+Native mobile sheets use an opaque, light neutral canvas with white grouped rows
+and subtle separators, adapting both surfaces in dark mode. A shared sheet style keeps settings destinations, forms and
+footers consistent in light and dark mode. Camera and image content retain their
+own contrast treatment; system pickers retain their native controls.
+Long-running operations replace their sheet forms with `AppSheetProgress`, using
+one centered layout for the operation, context and indeterminate indicator. Progress
+uses the medium sheet height; multi-step sheets keep Cancel at the trailing edge
+and Back at the leading edge throughout the flow.
+Actions and dismissal remain unavailable until the operation resolves; failures
+return to the form with its inputs preserved.
 
 ## Accessibility And Copy
 

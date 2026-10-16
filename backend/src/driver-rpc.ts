@@ -1,3 +1,5 @@
+import type { ExecutionObservation } from '@workspace/core/usage';
+import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
@@ -114,6 +116,10 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
+  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
+  private readonly unsubscribeUsage = new Map<AgentBackend,()=>void>();
+  private bindUsage(backend:AgentBackend,driver:AgentBackendDriver):void { this.unsubscribeUsage.get(backend)?.(); if(driver.onUsage) this.unsubscribeUsage.set(backend,driver.onUsage(o=>{for(const listener of this.usageListeners) {try{listener(o);}catch{/* Observer isolation. */}}})); }
+  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener);return ()=>this.usageListeners.delete(listener); }
   private readonly inFlight = new Map<AgentBackend, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly unsubscribeDriverEvents = new Map<AgentBackend, () => void>();
@@ -124,7 +130,7 @@ export class BackendDriverRpc {
     private readonly ensureConnected?: (backend: AgentBackend) => Promise<unknown>,
     private readonly blocked: (backend: AgentBackend) => boolean = () => false,
   ) {
-    for (const [backend, driver] of drivers) this.unsubscribeDriverEvents.set(backend, driver.onEvent((event) => this.emit(event)));
+    for (const [backend, driver] of drivers) { this.bindUsage(backend,driver); this.unsubscribeDriverEvents.set(backend, driver.onEvent((event) => this.emit(event))); }
   }
 
   async replaceDriver(backend: AgentBackend, create: () => AgentBackendDriver, maintenance?: () => Promise<void>): Promise<void> {
@@ -134,6 +140,7 @@ export class BackendDriverRpc {
     finally {
       const driver = create();
       this.drivers.set(backend, driver);
+      this.bindUsage(backend,driver);
       this.unsubscribeDriverEvents.set(backend, driver.onEvent(event => this.emit(event)));
     }
   }
@@ -295,7 +302,8 @@ export class BackendDriverRpc {
         const { agent } = requireAgentParams(params);
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
-        const rawPrompt = requireString(record.prompt, 'prompt');
+        assertPromptSession(agent, requireExpectedSessionId(record));
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
@@ -420,6 +428,14 @@ export class BackendDriverRpc {
         }
         return driver.loadOlderHistory(agent);
       }
+      case backendMethods.driverConversationContentRead: {
+        const { agent } = requireAgentParams(params);
+        const input = requireRecord(requireRecord(params).input);
+        if (typeof input.sessionId !== 'string' || typeof input.contentId !== 'string' || !Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error('Invalid conversation content request.');
+        const driver = this.requireDriver(agent.backend);
+        if (!driver.readConversationContent) throw unsupportedBackendFeature(agent, 'conversation content');
+        return driver.readConversationContent(agent, { sessionId: input.sessionId, contentId: input.contentId, offset: input.offset as number });
+      }
       case backendMethods.driverConversationsList: {
         const { agent } = requireAgentParams(params);
         const record = requireRecord(params);
@@ -478,11 +494,12 @@ export class BackendDriverRpc {
         if (handoffInProgress(agent)) throw new Error('Wait for the handoff to finish.');
         await this.requireNewWork(agent.backend);
         const record = requireRecord(params);
+        assertPromptSession(agent, requireExpectedSessionId(record));
         const driver = this.requireDriver(agent.backend);
         if (!driver.steerPrompt) {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
-        const rawPrompt = requireString(record.prompt, 'prompt');
+        const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
         const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
@@ -613,6 +630,7 @@ export class BackendDriverRpc {
   }
 
   async close(): Promise<void> {
+    for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
     }

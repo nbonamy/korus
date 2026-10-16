@@ -101,5 +101,9 @@ export type CreateSourceWorktreeInput = {
   baseBranch?: string;
   destinationPath?: string;
   reuseExisting?: boolean;
+  /** Refuse to reuse an existing branch when creating a new worktree. */
+  requireNewBranch?: boolean;
+  /** Refresh the remote branch, or the base when creating a new branch. */
+  fetchRemoteBranch?: boolean;
   remoteConnectionId?: string;
 };

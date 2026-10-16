@@ -567,7 +567,7 @@ describe('CodeReviewService', () => {
       scope: { type: 'uncommitted' }, threadMode: 'independent', backend: 'claude',
     });
     expect(reviewer(test, session)).toMatchObject({ backend: 'claude' });
-    expect(reviewer(test, session).backendDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', permissionMode: 'auto' });
+    expect(reviewer(test, session).backendDefaults).toStrictEqual({ kind: 'claude', model: 'sonnet', userSelectedModel: true, reasoningEffort: 'high', serviceTier: null, permissionMode: 'auto' });
     await vi.waitFor(() => expect(test.turns).toHaveLength(1));
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__report_finding`);
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__finish_review_round`);

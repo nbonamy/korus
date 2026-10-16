@@ -3,6 +3,8 @@ import { ElMessage } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import GitWorkflowControl from '../GitWorkflowControl.vue';
+import CommandPalette from '../CommandPalette.vue';
+import type { CommandPaletteAction } from '../command-palette-actions';
 import type { Agent, AgentGitStatus, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
 import type { BranchWorkInput } from '@workspace/core/branch-current-work';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
@@ -20,13 +22,36 @@ describe('GitWorkflowControl', () => {
   beforeEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => vi.useRealTimers());
+  it('opens Branch from the actual command palette and submits through its confirmation dialog', async () => {
+    const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
+    const branchCurrentWork = vi.fn(async () => ({ state: 'completed' as const, folder: '/new-worktree', branchName: 'fix', retainedPaths: [] }));
+    stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
+    const wrapper = mountControl();
+    await flushPromises();
+    const actions = (wrapper.vm as unknown as { getCommandActions(): CommandPaletteAction[] }).getCommandActions();
+    const palette = mount(CommandPalette, { props: { actions }, attrs: { onExecute: (action: CommandPaletteAction) => action.run() } });
+    try {
+      await palette.get('input').setValue('Branch');
+      const row = palette.findAll('button').find(button => button.text().includes('Branch'))!;
+      expect(row.element.disabled).toBe(false);
+      await row.trigger('click');
+      await flushPromises();
+      expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
+      expect(branchCurrentWork).not.toHaveBeenCalled();
+      await wrapper.get('[role="dialog"] input[name="branch"]').setValue('fix');
+      await submitButton(wrapper, 'Branch').trigger('click');
+      await flushPromises();
+      expect(branchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id, { confirmed: true, requestId: expect.any(String), snapshotId: 'snapshot', branchName: 'fix' });
+    } finally { palette.unmount(); wrapper.unmount(); }
+  });
+
   it('opens the branch transfer dialog through the Git menu without starting a transfer', async () => {
     const previewBranchCurrentWork = vi.fn(async () => ({ folder: '/repo', head: 'head', snapshotId: 'snapshot' }));
     const branchCurrentWork = vi.fn();
     stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork } });
     const wrapper = mountControl(); await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch')!.trigger('click'); await flushPromises();
     expect(wrapper.find('[role="dialog"] input[name="branch"]').exists()).toBe(true);
     expect(previewBranchCurrentWork).toHaveBeenCalledExactlyOnceWith(agent.id);
     expect(branchCurrentWork).not.toHaveBeenCalled(); wrapper.unmount();
@@ -41,7 +66,7 @@ describe('GitWorkflowControl', () => {
     stubElectronTestWindow({ app: { previewBranchCurrentWork, branchCurrentWork, onEvent: listener => { publish = listener; return () => undefined; } } });
     const wrapper = mountControl(); await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch…')!.trigger('click'); await flushPromises();
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Branch')!.trigger('click'); await flushPromises();
     await wrapper.get('input[name="branch"]').setValue('feature');
     await submitButton(wrapper, 'Branch').trigger('click'); await flushPromises();
     publish({ type: 'git.branchWorkProgress', agentId: agent.id, occurredAt: '', seq: 1, payload: { id: branchCurrentWork.mock.calls[0]![1].requestId, agentId: agent.id, branchName: 'feature', state: 'running', phase: 'creatingAgent' } });
@@ -70,7 +95,7 @@ describe('GitWorkflowControl', () => {
     const wrapper = mountControl({ revertChanges });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    const first = wrapper.findAll('[role="menuitem"]')[0]!;
+    const first = wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!;
     expect(first.text()).toBe('Revert');
     expect(first.find('svg.tabler-icon-arrow-back-up').exists()).toBe(true);
     await first.trigger('click');
@@ -79,7 +104,7 @@ describe('GitWorkflowControl', () => {
     await submitButton(wrapper, 'Cancel').trigger('click');
     expect(revertChanges).not.toHaveBeenCalled();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]')[0]!.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!.trigger('click');
     await wrapper.get('input[type="checkbox"]').setValue(includeUntracked);
     await submitButton(wrapper, 'Revert').trigger('click');
     await flushPromises();
@@ -93,7 +118,7 @@ describe('GitWorkflowControl', () => {
     const wrapper = mountControl({ revertChanges });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]')[0]!.trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Revert')!.trigger('click');
     await submitButton(wrapper, 'Revert').trigger('click');
     await flushPromises();
     expect(wrapper.get('[role="dialog"]').text()).toContain('Repository is locked');
@@ -327,9 +352,11 @@ describe('GitWorkflowControl', () => {
     expect(wrapper.findAll('[role="menuitem"], [role="separator"]').map((item) =>
       item.attributes('role') === 'separator' ? '---' : item.text(),
     )).toStrictEqual([
+      'Git log',
+      '---',
       'Revert',
       'Commit',
-      'Branch…',
+      'Branch',
       '---',
       'Pull',
       'Push',
@@ -338,7 +365,7 @@ describe('GitWorkflowControl', () => {
       'Merge',
       'Create PR',
       '---',
-      'Prune…',
+      'Prune',
     ]);
     expect(wrapper.find('.app-menu__description').exists()).toBe(false);
   });

@@ -1,0 +1,6 @@
+Generated.xcconfig
+Build/
+BuildPhone/
+Web/
+*.xcuserstate
+xcuserdata/

@@ -1,0 +1,32 @@
+[Unit]
+Description=__PRODUCT_NAME__ companion relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=companion-relay
+Group=companion-relay
+WorkingDirectory=/opt/companion-relay/current
+ExecStart=/usr/bin/node /opt/companion-relay/current/relay.mjs /etc/companion-relay/config.json
+Restart=always
+RestartSec=5
+StateDirectory=companion-relay
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+CPUQuota=100%
+LimitNOFILE=8192
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

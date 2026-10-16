@@ -15,7 +15,7 @@
     </template>
 
     <div class="agent-avatar-crop-dialog__body">
-      <div class="agent-avatar-crop-dialog__stage">
+      <div class="agent-avatar-crop-dialog__stage" :class="{ 'agent-avatar-crop-dialog__stage--square': shape === 'square' }">
         <img
           v-if="image"
           :src="image"
@@ -61,9 +61,11 @@ import { clampAvatarCropPan, cropImageDataUrl, type AvatarCropPan } from './agen
 const props = withDefaults(defineProps<{
   image: string | null;
   title?: string;
+  shape?: 'circle' | 'square';
   visible: boolean;
 }>(), {
   title: translate('surface.agentAvatarCropDialog.adjustAvatar'),
+  shape: 'circle',
 });
 
 const emit = defineEmits<{
@@ -180,6 +182,10 @@ function onVisibilityChanged(nextVisible: boolean): void {
   background: var(--color-surface-base);
   cursor: grab;
   user-select: none;
+}
+
+.agent-avatar-crop-dialog__stage--square {
+  border-radius: var(--radius-md);
 }
 
 .agent-avatar-crop-dialog__stage img {

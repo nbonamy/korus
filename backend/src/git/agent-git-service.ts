@@ -5,9 +5,10 @@ import { promisify } from 'node:util';
 import { normalizeGitSettings, type GitSettings } from '@workspace/core/git-preferences';
 import type { AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
 import { AppError } from '@workspace/core/app-error';
-import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
+import { matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import type { AgentGitStatus } from '@workspace/core/contracts';
 import { listSourceBranches, type GitWorktreeCreateInput } from '../git-worktrees';
+import { AgentGitHistoryService } from './agent-git-history-service';
 import { GitPruneService } from './git-prune-service';
 
 const execFileAsync = promisify(execFile);
@@ -27,6 +28,7 @@ export type AgentGitGenerationContext = {
 };
 
 export class AgentGitService {
+  readonly history = new AgentGitHistoryService();
   readonly pruning: GitPruneService;
   private settings: () => GitSettings = () => normalizeGitSettings(undefined);
 
@@ -495,7 +497,8 @@ export class AgentGitService {
     if (!target) throw new Error('A primary worktree is required before deleting this worktree.');
 
     if (deleteRemoteBranch) {
-      if (!current.remote || !current.upstream?.startsWith(`${current.remote}/`)) {
+      const upstream = matchingBranchUpstream(current.branch, current.upstream, current.baseBranch ?? target.branch);
+      if (!current.remote || !upstream?.startsWith(`${current.remote}/`)) {
         throw new Error('The branch does not have a remote branch to delete.');
       }
     }

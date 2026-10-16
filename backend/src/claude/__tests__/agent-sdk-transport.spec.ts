@@ -14,10 +14,11 @@ import type { ClaudeSdkMessage } from '../protocol';
 import { ClaudeBackendDriver } from '../claude-driver';
 import { createQueryHarness } from './sdk-query-fixture';
 
+const runtime = vi.hoisted(() => ({ missingCli: false }));
 vi.mock('@workspace/core/runtime-discovery', () => ({
   // Runtime discovery owns its shell integration tests; this suite tests the transport boundary.
   resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({
-    command: command === 'claude' ? '/resolved/bin/claude' : command,
+    command: command === 'claude' && !runtime.missingCli ? '/resolved/bin/claude' : command,
     env: { ...env, PATH: env?.PATH ?? '/resolved/bin' },
   }),
 }));
@@ -202,18 +203,42 @@ describe('ClaudeAgentSdkTransport', () => {
       description: 'Best for complex work',
       supportsEffort: true,
       supportedEffortLevels: ['medium', 'high'],
+      supportsFastMode: true,
     }]);
     const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
 
     await expect(transport.discoverModels({ cwd: '/tmp/project' })).resolves.toEqual([expect.objectContaining({
       value: 'claude-opus-4-6',
       displayName: 'Opus 4.6',
+      supportsFastMode: true,
     })]);
     expect(harness.options[0]).toMatchObject({
       cwd: '/tmp/project', persistSession: false,
       pathToClaudeCodeExecutable: '/resolved/bin/claude', env: { PATH: '/resolved/bin' },
     });
     expect(harness.runtimes[0]?.close).toHaveBeenCalledOnce();
+  });
+
+  it('opts fast mode in per query and refuses unavailable speed before sending a prompt', async () => {
+    const harness = createQueryHarness([{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);
+    const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+    const params = { cwd: '/tmp/project', sessionId: 'speed-session', model: 'opus', prompt: 'hello' };
+    try {
+      const normal = transport.startTurn(params, () => undefined);
+      await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+      expect(harness.options[0]?.settings).toEqual({ fastMode: false });
+      harness.emit({ type: 'result', subtype: 'success', session_id: params.sessionId, is_error: false });
+      await normal.done;
+      const fast = transport.startTurn({ ...params, fastMode: true }, () => undefined);
+      await vi.waitFor(() => expect(harness.inputs).toHaveLength(2));
+      expect(harness.options[1]).toMatchObject({ resume: params.sessionId, settings: { fastMode: true } });
+      harness.emit({ type: 'result', subtype: 'success', session_id: params.sessionId, is_error: false });
+      await fast.done;
+      await expect(transport.startTurn({ ...params, fastMode: true, model: 'sonnet' }, () => undefined).done).rejects.toThrow('does not support fast mode');
+      harness.runtimes[1]!.initializationResult.mockResolvedValue({ models: [{ value: 'opus', supportsFastMode: true }], fast_mode_state: 'off', fast_mode_disabled_reason: 'preference' });
+      await expect(transport.startTurn({ ...params, fastMode: true }, () => undefined).done).rejects.toThrow('Fast mode is unavailable');
+      expect(harness.inputs).toHaveLength(2);
+    } finally { await transport.close(); }
   });
 
   it('keeps one Agent SDK query alive across turns in the same session', async () => {
@@ -758,4 +783,17 @@ describe('ClaudeAgentSdkTransport', () => {
     });
     await transport.close();
   });
+});
+
+
+it('passes the SDK bundled runtime to queries when no CLI is installed', async () => {
+  runtime.missingCli = true;
+  vi.stubEnv('APP_CLAUDE_COMMAND', '');
+  const harness = createQueryHarness();
+  const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+  try {
+    transport.startTurn({ cwd: '/tmp/project', prompt: 'hello' }, () => undefined);
+    await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+    expect(harness.options[0]?.pathToClaudeCodeExecutable).toMatch(/claude-agent-sdk-[^/]+[/\\]claude(?:\.exe)?$/);
+  } finally { await transport.close(); runtime.missingCli = false; vi.unstubAllEnvs(); }
 });

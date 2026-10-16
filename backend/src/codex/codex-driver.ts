@@ -330,6 +330,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     });
   }
 
+  onUsage(listener: (observation: import('@workspace/core/usage').ExecutionObservation)=>void):()=>void { return this.sessionManager.onUsage(listener); }
+
   onEvent(listener: (event: BackendEvent) => void): () => void {
     return this.sessionManager.onEvent(listener);
   }

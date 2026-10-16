@@ -13,9 +13,10 @@
     />
 
     <main class="settings-view__content">
-      <div class="settings-view__panel">
+      <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
+        <UsagePanel v-if="activeTab === 'usage'" />
         <SettingsGeneralPanel
-          v-if="activeTab === 'general'"
+          v-else-if="activeTab === 'general'"
           :choose-source-folder="chooseSourceFolder"
           :daemon-status="daemonStatus"
           :daemon-status-error="daemonStatusError"
@@ -59,6 +60,7 @@
           v-else-if="activeTab === 'antigravity'"
           :installed="providerConnections?.find(engine => engine.backend === 'antigravity')?.installed ?? false"
           @refresh="refreshProvider?.('antigravity')"
+          @install="installProvider?.('antigravity')"
           :connected="providerConnections?.some(engine => engine.backend === 'antigravity' && engine.connected)"
           :authentication="providerConnections?.find(engine => engine.backend === 'antigravity')?.authentication"
           :home="generalSettings.providerHomes?.antigravity"
@@ -129,6 +131,7 @@
           :check-remote-connection="checkRemoteConnection"
           :update-remote-connection="updateRemoteConnection"
           :remove-remote-connection="removeRemoteConnection"
+          :companion-control="companionControl"
           :get-remote-control-status="getRemoteControlStatus"
           :enable-remote-control="enableRemoteControl"
           :disable-remote-control="disableRemoteControl"
@@ -146,6 +149,7 @@
 import { computed } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
+import UsagePanel from './UsagePanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
@@ -173,6 +177,7 @@ const props = withDefaults(defineProps<{
   remoteConnectionId?: string;
   providerConnections?: ProviderConnection[];
   refreshProvider?: (backend: AgentBackend) => Promise<void>;
+  installProvider?: (backend: AgentBackend) => Promise<void>;
   updatingProvider?: AgentBackend | null;
   providerSetupError?: string | null;
   customizeProvider?: (backend: AgentBackend) => unknown;
@@ -213,6 +218,7 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;
@@ -311,5 +317,8 @@ function selectTab(tab: SettingsTab): void {
 .settings-view__panel {
   max-width: 720px;
   margin: 0 auto;
+}
+.settings-view__panel--wide {
+  max-width: 1200px;
 }
 </style>

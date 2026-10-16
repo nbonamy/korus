@@ -64,6 +64,9 @@ export type ClaudeSdkMessage =
     is_error?: boolean;
     result?: string;
     error?: unknown;
+    executionModel?: string | null;
+    executionConsumption?: import('@workspace/core/usage').Consumption | null;
+    usage?: unknown;
     total_cost_usd?: number;
     duration_ms?: number;
     duration_api_ms?: number;

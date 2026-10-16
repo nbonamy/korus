@@ -1,0 +1,49 @@
+.agent-sidebar__session-icon {
+  width: var(--agent-sidebar-workspace-icon-size, 16px);
+  height: var(--agent-sidebar-workspace-icon-size, 16px);
+  stroke-width: 1.8;
+  justify-self: center;
+}
+
+.agent-sidebar__agent[data-session-kind="main"] .agent-sidebar__session-icon {
+  color: var(--color-primary);
+}
+
+.agent-sidebar__agent[data-session-kind="branch"] .agent-sidebar__session-icon {
+  color: var(--color-success);
+}
+
+.agent-sidebar__agent[data-session-kind="worktree"]
+  .agent-sidebar__session-icon {
+  color: var(--color-warning);
+}
+
+.agent-sidebar__agent[data-session-kind="detached"]
+  .agent-sidebar__session-icon,
+.agent-sidebar__agent[data-session-kind="folder"] .agent-sidebar__session-icon {
+  color: var(--color-text-muted);
+}
+
+.agent-sidebar__meta {
+  grid-column: 2;
+  min-width: 0;
+  display: grid;
+  gap: 1.5px;
+}
+
+.agent-sidebar__meta strong,
+.agent-sidebar__meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-sidebar__session-title {
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-18);
+}
+
+.agent-sidebar__session-title--active {
+  font-weight: var(--font-weight-bold);
+}

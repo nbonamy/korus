@@ -11,7 +11,7 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { encodedAppError } from '@workspace/core/app-error';
 import { mainT } from './i18n';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, shell } from 'electron';
 import path from 'node:path';
 import { CodexElectronAttachmentRegistry, registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
@@ -161,6 +161,7 @@ export class AppController {
     await this.initializeBackendClient();
     this.syncAppshotsKeyMonitor();
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     logMain('startup', 'application initialized');
   }
 
@@ -220,6 +221,7 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
     ipc.handle(ipcChannels.disableRemoteControl, () => this.disableRemoteControl());
@@ -497,14 +499,22 @@ export class AppController {
     ipc.handle(ipcChannels.loadOlderAgentHistory, async (_event, agentId: string) => {
       return this.loadOlderAgentHistory(agentId);
     });
+    ipc.handle(ipcChannels.readConversationContent, async (_event, agentId: string, input) => {
+      return this.requireBackendClient().request(backendMethods.agentConversationContentRead, { agentId, input });
+    });
 
     ipc.handle(ipcChannels.closeAgent, async (_event, agentId: string, input) => {
       return this.closeAgent(agentId, input);
     });
 
+    ipc.handle(ipcChannels.markAgentRead, (_event, agentId: string, revision: number) => this.requireBackendClient().request(backendMethods.agentMarkRead, { agentId, revision }));
+
     ipc.handle(ipcChannels.selectAgent, async (_event, agentId: string) => {
       return this.selectAgent(agentId);
     });
+
+    ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
+    ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
 
     ipc.handle(ipcChannels.updateSettings, async (_event, input: UpdateSettingsInput) => {
       return this.updateSettings(input);
@@ -532,6 +542,7 @@ export class AppController {
     ipc.handle(ipcChannels.disconnectProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerDisconnect, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.authenticateProvider, (_event, backend, action) => this.requireBackendClient().request(backendMethods.providerAuthenticate, { backend, action }));
     ipc.handle(ipcChannels.configureProviderSetup, (_event, backend, choice) => this.requireBackendClient().request(backendMethods.providerSetupConfigure, { backend, choice }));
+    ipc.handle(ipcChannels.installProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerInstall, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.refreshProvider, (_event, backend, remoteConnectionId) => this.requireBackendClient().request(backendMethods.providerRefresh, { backend, remoteConnectionId }));
     ipc.handle(ipcChannels.cancelCodexChatGptLogin, (_event, remoteConnectionId?: string, loginId?: string) => this.cancelCodexChatGptLogin(remoteConnectionId, loginId));
     ipc.handle(ipcChannels.startCodexChatGptDeviceCodeLogin, (_event, remoteConnectionId: string) => {
@@ -1209,6 +1220,7 @@ export class AppController {
     this.snapshot = snapshot;
     this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
     this.policyAwareSpokenAnnouncements.refresh();
+    this.syncNativeAppearance();
     this.transientSnapshots.add(snapshot);
     try {
       await this.refreshClientStateFromBackend();
@@ -1226,6 +1238,7 @@ export class AppController {
     this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
     this.policyAwareSpokenAnnouncements.refresh();
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     this.refreshDebugMenuIfChanged(previousDebugMenuState);
     return nextSnapshot;
   }
@@ -1288,7 +1301,7 @@ export class AppController {
       if (!agent) {
         throw new Error(`Agent not found: ${agentId}`);
       }
-      const state = await this.browserPane.open(this.mainWindow, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
+      const state = await this.browserPane.open(this.mainWindow!, agentId, browserId, url, agent.folder ?? '', guestWebContentsId);
       this.resolvePendingBrowserOpen(agentId, browserId, url, state);
       return state;
     } catch (error) {
@@ -1745,7 +1758,7 @@ export class AppController {
       sendDebugAgentMessage: () => this.sendDebugAgentMessage(),
       toggleDebugExecutionPlan: () => this.toggleDebugExecutionPlan(),
       hasDebugExecutionPlan: () => this.hasDebugExecutionPlan(),
-      injectDebugPlanReview: () => this.injectDebugPlanReview(),
+      injectDebugPlanReview: format => this.injectDebugPlanReview(format),
       populateDebugVisualize: (scenario) => this.populateDebugVisualize(scenario),
       getDebugMissionStage: () => this.debugMission()?.stage,
       getDebugMissionReviewState: () => this.debugMissionReviewState(),
@@ -1836,13 +1849,13 @@ export class AppController {
       }));
   }
 
-  private injectDebugPlanReview(): void {
+  private injectDebugPlanReview(format: 'text' | 'choices'): void {
     const agentId = this.snapshot?.activeAgentId;
     if (!agentId || !this.backendClient || app?.isPackaged) {
       return;
     }
 
-    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId })
+    void this.backendClient.request<AppSnapshot>(backendMethods.debugPlanReadyForReviewInject, { agentId, format })
       .then((snapshot) => this.adoptBackendSnapshot(snapshot))
       .catch((error) => warnMain('debug', 'failed to inject plan review fixture', {
         agentId,
@@ -1944,6 +1957,7 @@ export class AppController {
 
     this.lastBackendEventSeq = event.seq;
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     this.refreshDebugMenuIfChanged(previousDebugMenuState);
     if (notifyRenderer && this.mainWindow && !this.mainWindow.isDestroyed()) {
       sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
@@ -2026,6 +2040,12 @@ export class AppController {
       occurredAt: new Date().toISOString(),
     };
     sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
+  }
+
+  // Window vibrancy (rail and sidebar) is drawn by the OS, so it only follows the app's appearance setting through nativeTheme.
+  private syncNativeAppearance(): void {
+    const mode = this.snapshot?.theme?.mode;
+    if (nativeTheme && mode && nativeTheme.themeSource !== mode) nativeTheme.themeSource = mode;
   }
 
   private syncPowerSaveBlocker(): void {

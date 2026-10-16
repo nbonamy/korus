@@ -7,6 +7,21 @@ import { MemoryWorkIntegrationTokenStore } from '../memory-token-store';
 import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from '../types';
 
 describe('WorkIntegrationManager', () => {
+  it('requires a connected integration before branch browsing and rejects unsupported integrations', async () => {
+    const snapshot = createInitialSnapshot(), tokenStore = new MemoryWorkIntegrationTokenStore();
+    const driver = fakeDriver();
+    driver.listBranches = vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]);
+    const manager = createManager({ driver, snapshot, tokenStore });
+    await expect(manager.listBranches('github', 'org/repo')).rejects.toThrow('not connected');
+    expect(driver.listBranches).not.toHaveBeenCalled();
+    const token = { provider: 'github' as const, accessToken: 'connected', tokenType: 'bearer', connectedAt: 'now' };
+    await tokenStore.set(token);
+    expect(await manager.listBranches('github', 'org/repo')).toStrictEqual([{ name: 'main', isDefault: true }]);
+    expect(driver.listBranches).toHaveBeenCalledExactlyOnceWith(token, 'org/repo');
+    delete driver.listBranches;
+    await expect(manager.listBranches('github', 'org/repo')).rejects.toThrow('unavailable');
+  });
+
   describe.each(['request', 'hydration'] as const)('obsolete token read during %s', operation => {
     it.each(['disconnect', 'replacement authorization'] as const)('preserves %s without refreshing the old account', async transition => {
       const snapshot = createInitialSnapshot();

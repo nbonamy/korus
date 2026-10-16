@@ -1,7 +1,7 @@
 <template>
   <span
     class="agent-avatar"
-    :class="[`agent-avatar--${size}`, { 'agent-avatar--emoji': isEmojiAvatar }]"
+    :class="[`agent-avatar--${size}`, { 'agent-avatar--emoji': isEmojiAvatar, 'agent-avatar--square': shape === 'square' }]"
     :aria-label="label"
   >
     <img
@@ -28,9 +28,11 @@ const props = withDefaults(defineProps<{
   avatar?: string;
   name: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  shape?: 'circle' | 'square';
 }>(), {
   avatar: undefined,
   size: 'md',
+  shape: 'circle',
 });
 
 const isImageAvatar = computed(() => props.avatar?.startsWith('data:image/') ?? false);
@@ -70,6 +72,11 @@ function initials(name: string): string {
 .agent-avatar--xs {
   --agent-avatar-size: var(--space-8);
   --agent-avatar-font-size: var(--font-size-8);
+}
+
+.agent-avatar--square {
+  border: 0;
+  border-radius: var(--radius-sm);
 }
 
 .agent-avatar--sm {

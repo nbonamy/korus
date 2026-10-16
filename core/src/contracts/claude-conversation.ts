@@ -46,6 +46,18 @@ type ClaudeConversationEventBase = {
 
 export type ClaudeConversationEvent =
   | ClaudeConversationEventBase & {
+      type: 'history.prepended';
+      payload: { messages: RendererMessage[]; hasOlder: boolean };
+    }
+  | ClaudeConversationEventBase & {
+      type: 'message.replaced';
+      payload: { message: RendererMessage };
+    }
+  | ClaudeConversationEventBase & {
+      type: 'context.usageUpdated';
+      payload: { contextUsage: AgentContextUsage };
+    }
+  | ClaudeConversationEventBase & {
       type: 'turn.started';
       turnId: string;
       payload: { turn: { id: string; backend: 'claude' } };

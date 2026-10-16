@@ -550,7 +550,7 @@ describe('AppShell authentication and conversation', () => {
       },
     });
 
-    await nextTick();
+    await flushPromises();
 
     expect(wrapper.find('.github-onboarding').exists()).toBe(false);
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
@@ -558,6 +558,7 @@ describe('AppShell authentication and conversation', () => {
     expect(useConfetti().bursts.value).toHaveLength(1);
 
     await wrapper.get('.onboarding-complete .el-button').trigger('click');
+    await flushPromises();
 
     expect(wrapper.find('.onboarding-complete').exists()).toBe(false);
     expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');
@@ -680,6 +681,42 @@ describe('AppShell authentication and conversation', () => {
     expect(reloaded.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');
     expect(getCodexAuthentication).not.toHaveBeenCalled();
     reloaded.unmount();
+  });
+
+  it('keeps Antigravity Connect disabled during installation, recovers from failure, and enables it after a retry', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents = [];
+    const setup = { backend: 'antigravity' as const, installed: false, isolated: true, shareSkills: false, locked: false, homePath: '/app/antigravity-home' };
+    let succeed!: (value: typeof setup) => void;
+    let fail!: (error: Error) => void;
+    const installProvider = vi.fn(() => new Promise<typeof setup>((resolve, reject) => { succeed = resolve; fail = reject; }));
+    const authenticateProvider = vi.fn().mockResolvedValue({ kind: 'antigravity', connected: false, state: { loggedIn: false, homePath: setup.homePath } });
+    window.app = { getProviderSetup: vi.fn().mockResolvedValue([setup]), installProvider, authenticateProvider } as Partial<AppApi> as AppApi;
+    const wrapper = mountShell({ snapshot });
+    await flushPromises();
+    const connect = () => wrapper.findAll('.codex-login__provider button').find(button => button.text() === 'Connect Antigravity')!;
+    expect(connect().attributes('disabled')).toBeDefined();
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    await flushPromises();
+    expect(installProvider).toHaveBeenCalledExactlyOnceWith('antigravity');
+    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('aria-busy')).toBe('true');
+    await connect().trigger('click');
+    expect(authenticateProvider).not.toHaveBeenCalled();
+    fail(new Error('Download failed'));
+    await flushPromises();
+    expect(wrapper.get('.codex-login__error').text()).toContain('Download failed');
+    expect(wrapper.get('button[aria-label="Install Antigravity"]').attributes('disabled')).toBeUndefined();
+    expect(connect().attributes('disabled')).toBeDefined();
+    await wrapper.get('button[aria-label="Install Antigravity"]').trigger('click');
+    succeed({ ...setup, installed: true });
+    await flushPromises();
+    expect(wrapper.find('button[aria-label="Install Antigravity"]').exists()).toBe(false);
+    expect(wrapper.find('.codex-login__error').exists()).toBe(false);
+    expect(connect().attributes('disabled')).toBeUndefined();
+    expect(authenticateProvider).not.toHaveBeenCalled();
+    await connect().trigger('click');
+    await flushPromises();
+    expect(authenticateProvider).toHaveBeenCalledExactlyOnceWith('antigravity', 'login');
   });
 
   it.each([false, true])('redetects an externally installed provider without configuring its home (%s)', async (locked) => {
@@ -1129,12 +1166,15 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it.each(['Review', 'Delegate', 'Visualize'])('opens %s from the composer menu without consuming the draft or attachments', async label => {
+  it.each(['Review', 'Delegate', 'Visualize'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const startVisualize = vi.fn().mockResolvedValue(createInitialSnapshot());
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
     const attachment: CodexNativeAttachment = { id: 'notes', type: 'file', reference: '/tmp/notes.txt', name: 'notes.txt', mimeType: 'text/plain', size: 10 };
-    const wrapper = mountRealShell({ realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
+    const snapshot = createInitialSnapshot();
+    snapshot.general.worktreeDelegationStartingContext = 'conversation';
+    snapshot.general.worktreeDelegationInstructions = 'Keep the API stable';
+    const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
     await wrapper.setProps({ backendCapabilities: codexBackendCapabilities, backendCommands: defaultBackendCommands('codex'), approvalPreset: 'ask-for-approval' });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
     if (label === 'Review') {
@@ -1150,11 +1190,8 @@ describe('AppShell authentication and conversation', () => {
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
     if (label === 'Delegate') {
-      expect(sendPromptAction).not.toHaveBeenCalled();
-      await wrapper.get('[aria-label="Task-specific instructions"]').setValue('Keep the API stable');
-      await wrapper.get('.app-form-dialog__footer .app-button--primary').trigger('click');
-      await flushPromises();
-      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate', { delegation: { startingContext: 'handoff', instructions: 'Keep the API stable' } });
+      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate');
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     }
     else expect(sendPromptAction).not.toHaveBeenCalled();
     expect(wrapper.get('[role="textbox"][contenteditable]').text()).toBe(draft.text);
@@ -1162,7 +1199,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('update:composerAttachments')).toBeUndefined();
   });
 
-  it.each(['/review', '/reviewer focus on retries'])('intercepts only the exact /review command: %s', async prompt => {
+  it.each(['/review', '/reviewer focus on retries', '/delegate Keep the API stable\nRun focused tests'])('intercepts only the exact /review command: %s', async prompt => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountRealShell({ realConversationPane: true, sendPromptAction });
     const editor = wrapper.get('[role="textbox"][contenteditable]');

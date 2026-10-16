@@ -80,7 +80,9 @@ export class BranchCurrentWorkService {
       if (typeof input.branchName !== 'string' || !input.branchName.trim() || input.branchName.length > 200 || input.branchName !== input.branchName.trim() || input.branchName.startsWith('-')) throw new Error('Enter a valid branch name.');
       await git(source, ['check-ref-format', '--branch', input.branchName]);
       const refs = await git(source, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
-      if (refs.split('\n').some(ref => ref === `refs/heads/${input.branchName}` || ref.endsWith(`/${input.branchName}`))) throw new Error('That branch already exists.');
+      const remotes = (await git(source, ['remote'])).split('\n').filter(Boolean);
+      const existing = new Set(refs.split('\n'));
+      if (existing.has(`refs/heads/${input.branchName}`) || remotes.some(remote => existing.has(`refs/remotes/${remote}/${input.branchName}`))) throw new Error('That branch already exists.');
       const folder = suggestedSourceWorktreePath(source, input.branchName);
       if (await exists(folder)) throw new Error('The destination folder already exists. Choose another branch name.');
       const paths = captured.files.map(file => file.path);

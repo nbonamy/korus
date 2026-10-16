@@ -191,6 +191,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       backlogRepositoryFavorites: {},
       savedPromptDrafts: [],
       sessionCompressionWarningEnabled: true,
+      useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',

@@ -664,7 +664,7 @@ function selectionFromAgent(agent: Agent | undefined): {
   const claudeSession = agent.backendSession?.kind === 'claude' ? agent.backendSession : undefined;
   const model = preferred?.model ?? claudeSession?.model ?? defaults?.model ?? null;
   const reasoningEffort = preferred ? preferred.reasoningEffort ?? null : claudeSession?.reasoningEffort ?? defaults?.reasoningEffort ?? null;
-  const serviceTier = defaults?.kind === 'codex' ? defaults.serviceTier ?? null : null;
+  const serviceTier = defaults && defaults.kind !== 'antigravity' ? defaults.serviceTier ?? null : null;
   const sessionId = agent.backendSession?.kind === 'codex'
     ? agent.backendSession.threadId
     : agent.backendSession?.sessionId ?? 'new';

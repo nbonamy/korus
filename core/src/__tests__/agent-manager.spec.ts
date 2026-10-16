@@ -49,15 +49,15 @@ describe('agent-manager', () => {
     snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
     snapshot.general.providerModelDefaults = { claude: { model: 'sonnet', reasoningEffort: 'low', serviceTier: null } };
 
-    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', backend: 'claude', modelSelection: { model: 'opus', reasoningEffort: 'high' } }, undefined, 'picked');
+    createAgentInSnapshot(snapshot, { name: null, folder: '/repo', backend: 'claude', modelSelection: { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' } }, undefined, 'picked');
 
     expect(snapshot.agents.find(agent => agent.id === 'picked')!.backendDefaults)
-      .toStrictEqual({ kind: 'claude', model: 'opus', userSelectedModel: true, reasoningEffort: 'high', permissionMode: 'acceptEdits' });
+      .toStrictEqual({ kind: 'claude', model: 'opus', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast', permissionMode: 'acceptEdits' });
     expect(snapshot.general.providerModelDefaults?.claude).toStrictEqual({ model: 'sonnet', reasoningEffort: 'low', serviceTier: null });
 
     createAgentInSnapshot(snapshot, { name: null, folder: '/repo', backend: 'claude', modelSelection: { model: 'haiku' } }, undefined, 'model-only');
     expect(snapshot.agents.find(agent => agent.id === 'model-only')!.backendDefaults)
-      .toStrictEqual({ kind: 'claude', model: 'haiku', userSelectedModel: true, permissionMode: 'acceptEdits' });
+      .toStrictEqual({ kind: 'claude', model: 'haiku', userSelectedModel: true, serviceTier: null, permissionMode: 'acceptEdits' });
   });
   it('seeds new agents and quick chats with per-provider approvals without overriding explicit settings or existing chats', () => {
     const snapshot = createInitialSnapshot();

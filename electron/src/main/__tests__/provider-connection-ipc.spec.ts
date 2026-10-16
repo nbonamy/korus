@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AppApi } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { AppController } from '../app-controller';
-import { createBackendClient, fakeAppLifecycle } from './app-controller-test-harness';
+import { createBackendClient, fakeAppLifecycle, currentSnapshot } from './app-controller-test-harness';
 
 const bridge = vi.hoisted(() => ({
   exposed: new Map<string, unknown>(),
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
 }));
 vi.mock('electron', () => ({
-  app: {}, BrowserWindow: {}, clipboard: {}, dialog: {}, net: {}, powerMonitor: {}, protocol: {}, shell: {},
+  app: {}, BrowserWindow: {}, clipboard: {}, dialog: {}, nativeTheme: {}, net: {}, powerMonitor: {}, protocol: {}, shell: {},
   contextBridge: { exposeInMainWorld: (name: string, value: unknown) => bridge.exposed.set(name, value) },
   ipcMain: {
     handle: (channel: string, handler: (...args: unknown[]) => unknown) => bridge.handlers.set(channel, handler),
@@ -42,6 +42,19 @@ describe('provider sign-out IPC', () => {
     expect(request).toHaveBeenLastCalledWith('agent/profileRun/stop', { agentId: 'agent-remote', runId: 'run' });
   });
 
+  it('carries explicit installation through preload to the selected host and returns failures for retry', async () => {
+    const result = { backend: 'antigravity', installed: true, locked: false, isolated: true, shareSkills: false, homePath: '/app/antigravity-home' };
+    const request = vi.fn().mockResolvedValue(result);
+    const controller = new AppController(createInitialSnapshot(), createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    await expect(api.installProvider('antigravity', 'remote')).resolves.toStrictEqual(result);
+    expect(request).toHaveBeenCalledExactlyOnceWith('provider/install', { backend: 'antigravity', remoteConnectionId: 'remote' });
+    request.mockRejectedValueOnce(new Error('Download failed'));
+    await expect(api.installProvider('antigravity')).rejects.toThrow('Download failed');
+    expect(request).toHaveBeenLastCalledWith('provider/install', { backend: 'antigravity', remoteConnectionId: undefined });
+  });
   it('routes read-only banked reset reads through preload with owning-host identity and errors', async () => {
     const result = { status: 'ready', summary: { availableCount: '18446744073709551615', credits: null, detailCount: null } };
     const request = vi.fn().mockResolvedValue(result);
@@ -93,5 +106,25 @@ describe('provider sign-out IPC', () => {
     request.mockRejectedValueOnce(new Error('Sign-out failed'));
     await expect(api.disconnectProvider('codex')).rejects.toThrow('Sign-out failed');
     expect(request).toHaveBeenLastCalledWith('provider/disconnect', { backend: 'codex', remoteConnectionId: undefined });
+  });
+});
+
+describe('plan review IPC', () => {
+  it('preserves revision-owned feedback through real preload and adopts only successful daemon responses', async () => {
+    const snapshot = createInitialSnapshot();
+    const accepted = structuredClone(snapshot);
+    accepted.agents[0]!.statusText = 'Feedback submitted';
+    const response = { reviewId: 'plan', resolution: 'revise' as const, draftVersion: 3 };
+    const request = vi.fn().mockResolvedValue(accepted);
+    const controller = new AppController(snapshot, createBackendClient({ request }), fakeAppLifecycle());
+    controller.registerIpcHandlers();
+    await import('../../preload/index');
+    const api = bridge.exposed.get('app') as AppApi;
+    await expect(api.respondToPlanReview('remote-owner', response)).resolves.toBe(accepted);
+    expect(currentSnapshot(controller)).toBe(accepted);
+    expect(request).toHaveBeenCalledExactlyOnceWith('agent/planReview/respond', { agentId: 'remote-owner', response });
+    request.mockRejectedValueOnce(new Error('Plan revision changed'));
+    await expect(api.respondToPlanReview('remote-owner', response)).rejects.toThrow('Plan revision changed');
+    expect(currentSnapshot(controller)).toBe(accepted);
   });
 });

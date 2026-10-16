@@ -29,3 +29,17 @@ it('copies each displayed login command and reports clipboard failures', async (
     else Reflect.deleteProperty(navigator, 'clipboard');
   }
 });
+
+
+it('copies a quoted bundled executable path when no CLI is installed', async () => {
+  const wrapper = mount(LocalClaudeAuthenticationDialog, {
+    props: { modelValue: true, configDirectory: null, executablePath: "/Applications/Korus Beta's.app/Contents/Resources/claude/claude", loading: false, error: null },
+    global: { stubs: { teleport: true } },
+  });
+  await flushPromises();
+  expect(wrapper.findAll('code').map(row => row.text())).toStrictEqual([
+    "env -u CLAUDE_CONFIG_DIR '/Applications/Korus Beta'\\''s.app/Contents/Resources/claude/claude' auth login --claudeai",
+    "env -u CLAUDE_CONFIG_DIR '/Applications/Korus Beta'\\''s.app/Contents/Resources/claude/claude' auth login --console",
+  ]);
+  wrapper.unmount();
+});

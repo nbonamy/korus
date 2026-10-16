@@ -25,6 +25,16 @@
   --el-menu-item-height: auto;
 }
 
+/* Element Plus derives the default button hover from fixed primary tints, which read as saturated blue on dark surfaces. */
+.dark .el-button:not(.el-button--primary, .el-button--success, .el-button--warning, .el-button--danger, .el-button--info, .is-text, .is-link) {
+  --el-button-hover-text-color: var(--color-text);
+  --el-button-hover-bg-color: var(--color-surface-high);
+  --el-button-hover-border-color: var(--color-outline);
+  --el-button-active-text-color: var(--color-text);
+  --el-button-active-bg-color: var(--color-surface-highest);
+  --el-button-active-border-color: var(--color-outline);
+}
+
 .el-button--primary {
   --el-button-hover-bg-color: var(--color-secondary);
   --el-button-hover-border-color: var(--el-button-hover-bg-color);

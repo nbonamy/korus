@@ -31,7 +31,7 @@ use the release row instead of the implementation rows:
 | Imports, exports, dependencies, CSS, or shared config | Relevant lint command |
 | Cross-cutting | `npm run test:ai` and affected workspace typechecks |
 | Coverage-sensitive | Focused coverage; use `npm run test:coverage` only when repository-wide evidence is needed |
-| Release | Local metadata checks from `prepare-release`; GitHub CI owns lint, full coverage and script tests before builds/publication. Report CI as pending at dispatch, not locally validated. |
+| Release | Local metadata checks from `prepare-release`; release CI gates ordinary tests independently of Quality coverage. Report CI as pending at dispatch, not locally validated. |
 
 The coverage gate is exactly 85% statements in every workspace, including
 Electron. Lines, branches, and functions remain reported diagnostics. Meaningful

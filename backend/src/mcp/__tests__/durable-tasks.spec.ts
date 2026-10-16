@@ -94,7 +94,7 @@ describe('durable tasks through authenticated MCP and real provider adapters', (
     expect(f.claudeSdk.options[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', permissionMode });
     const worker = f.snapshot.agents.find(agent => agent.id === created.structuredContent.agentId)!;
     expect(worker.backendDefaults).toStrictEqual({
-      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', userSelectedModel: true, permissionMode,
+      kind: 'claude', model: 'claude-sonnet-5-5', reasoningEffort: 'high', serviceTier: null, userSelectedModel: true, permissionMode,
     });
     if (durable) expect((await f.store.load()).agents.find(agent => agent.id === worker.id)?.backendDefaults).toStrictEqual(worker.backendDefaults);
   });

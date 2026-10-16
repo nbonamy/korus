@@ -1,4 +1,9 @@
+import { UsageService } from './usage/usage-service';
+import { UsageLedger } from './usage/usage-ledger';
+import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
+import { CompanionManager } from './companion/manager';
+import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
@@ -11,6 +16,8 @@ import { BackendDriverRpc, createBackendDriver, createDefaultBackendDrivers, typ
 import { ProviderSetup } from './provider-setup';
 import { ProviderUpdates } from './provider-updates';
 import { ProviderUpdateRuntime } from './provider-update-runtime';
+import { resolveClaudeLaunch } from './claude/claude-command';
+import { resolveCodexExecutable } from './codex/codex-command';
 import { localProviderAgents } from './provider-roster-reset';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
@@ -115,6 +122,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     publish: () => server?.emitEvent({ type: 'snapshot.updated', payload: snapshot }),
   });
   const documents = new DocumentWorkspaceService(path.join(backendHomeDir(), "document-workspaces.json"));
+  const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
+  await localUsage.load();
+  const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
   const mcpService: AppMcpService = new AppMcpService({
     retainDocument: (agentId, request) => documents.display(agentId, request),
     tasks,
@@ -150,6 +160,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentCreation,
     createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
+    closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
@@ -174,7 +185,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const backendDrivers = createDefaultBackendDrivers(driverOptions);
   const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend));
   const updater = new ProviderUpdateRuntime({
-    command: backend => backend === 'codex' ? snapshot.general.codexBinaryPath?.trim() || 'codex' : process.env.APP_CLAUDE_COMMAND || 'claude',
+    command: backend => backend === 'codex'
+      ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
+      : resolveClaudeLaunch().command,
     claudeHome: () => snapshot.general.providerHomes?.claude?.homePath ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude'),
   });
   const providerUpdates: ProviderUpdates = new ProviderUpdates({
@@ -256,7 +269,20 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     runOnStart: true,
     run: () => pullRequestMonitor.check(),
   });
+  const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+    onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
+    desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet)).focused === true,
+    async request<Result>(method: string, params?: unknown): Promise<Result> {
+      const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
+      if (response && 'error' in response && method === backendMethods.agentPromptSteer && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError('Prompt was rejected before dispatch.');
+      if (!response || 'error' in response) throw new Error('Owning daemon operation failed.');
+      return response.result as Result;
+    },
+  });
   server = new AppBackendServer({
+    usage,
+    companionControl: (input) => companion.control(input),
+    onPromptSource: (agent, clientId) => companion.recordPrompt(agent, clientId),
     documents,
     tasks,
     providerSetup,
@@ -267,7 +293,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     agentCreation,
     visualizeService,
     driverRpc,
-    onEvent: options.emitEvent,
+    onEvent: (event) => { companion.event(event); options.emitEvent(event); },
     onBackendEventApplied: (event) => { mcpService.handleBackendEvent(event); tasks.handleEvent(event); automationRunner.handleEvent(event); },
     saveSnapshot: (nextSnapshot) => saveBackendSnapshot(nextSnapshot),
     ensureMissionHome: ensureBackendMissionHome,
@@ -311,6 +337,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   await automationRunner.recoverInterruptedRuns();
   await tasks.recover();
   scheduler.start();
+  void companion.control({ action: 'status' }).catch(() => warnMain('companion', 'identity or relay unavailable', {}));
   void server.initialize().catch((error) => warnMain('startup', 'backend initialization failed', {
     message: error instanceof Error ? error.message : String(error),
   }));
@@ -318,6 +345,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   return {
     server,
     async stop() {
+      await companion.stop();
       tasks.close();
       scheduler.stop();
       await server.close();

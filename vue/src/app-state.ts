@@ -221,15 +221,19 @@ const {
 export function useAppState() {
   watch(() => {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === snapshot.value.activeAgentId);
-    return agent?.planReview?.status === 'pending' ? agent.planReview.id : null;
+    return agent?.planReview && ['pending', 'revise'].includes(agent.planReview.status) ? agent.planReview.id : null;
   }, () => {
     const agent = snapshot.value.agents.find((candidate) => candidate.id === snapshot.value.activeAgentId);
-    if (agent?.planReview?.status === 'pending') showPlanReview(agent.planReview.markdown);
+    if (agent?.planReview && ['pending', 'revise'].includes(agent.planReview.status)) showPlanReview(agent.planReview.markdown);
   }, { immediate: true, flush: 'sync' });
 
-  async function respondToPlanReview(resolution: PlanReviewResolution, feedback?: string): Promise<void> {
-    const agentId = snapshot.value.activeAgentId;
-    if (agentId) await respondToPlanReviewForAgent(agentId, resolution, feedback);
+  async function updatePlanReview(agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse): Promise<import('@workspace/core/plan-review').PlanReview> {
+    if (!appApi) throw new Error('App is unavailable.');
+    const next = await appApi.respondToPlanReview(agentId, response);
+    adoptBackgroundSnapshot(next);
+    const plan = next.agents.find(agent => agent.id === agentId)?.planReview;
+    if (!plan) throw new Error('Plan is unavailable.');
+    return plan;
   }
 
   async function respondToPlanReviewForAgent(agentId: string, resolution: PlanReviewResolution, feedback?: string): Promise<void> {
@@ -1334,6 +1338,11 @@ export function useAppState() {
     adoptBackgroundSnapshot(await appApi.removeRemoteConnection(connectionId));
   }
 
+  async function companionControl(input: import('@workspace/core/companion-protocol').CompanionControl) {
+    if (!appApi?.companionControl) throw new Error('Mobile access is unavailable on this host.');
+    return appApi.companionControl(input);
+  }
+
   async function getRemoteControlStatus(): Promise<DevicePairingStatus> {
     if (!appApi?.getRemoteControlStatus) return { status: 'disabled' };
     return appApi.getRemoteControlStatus();
@@ -1722,7 +1731,7 @@ export function useAppState() {
     createSourceWorktree,
     previewAgentFile,
     getAgentGitDiff,
-    respondToPlanReview,
+    updatePlanReview,
     respondToPlanReviewForAgent,
     respondToThreadFlag,
     respondToThreadFlagForAgent,
@@ -1776,6 +1785,7 @@ export function useAppState() {
     checkRemoteConnection,
     updateRemoteConnection,
     removeRemoteConnection,
+    companionControl,
     getRemoteControlStatus,
     enableRemoteControl,
     disableRemoteControl,
@@ -1871,7 +1881,9 @@ function emptyComposerState(): CodexComposerState {
 function plainConversationRef(ref: BackendConversationRef): BackendConversationRef {
   return ref.backend === 'codex'
     ? { backend: 'codex', threadId: ref.threadId }
-    : { backend: ref.backend, folder: ref.folder, sessionId: ref.sessionId };
+    : { backend: ref.backend, folder: ref.folder, sessionId: ref.sessionId,
+      ...(ref.backend === 'claude' && ref.subagentId !== undefined ? { subagentId: ref.subagentId } : {}),
+    };
 }
 
 function plainDevicePairingSession(session: DevicePairingSession): DevicePairingSession {

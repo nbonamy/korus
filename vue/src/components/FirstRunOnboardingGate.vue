@@ -5,6 +5,7 @@
     :setup-error="setupError"
     @customize="emit('customize', $event)"
     @refresh-provider="emit('refresh-provider', $event)"
+    @install-provider="emit('install-provider', $event)"
     v-if="showLoginLanding"
     :variant="initialAuthenticationLoading ? 'connecting' : 'sign-in'"
     :loading="authenticationLoading || authentication?.login.status === 'pending'"
@@ -46,6 +47,7 @@
   />
   <LocalClaudeAuthenticationDialog
     :model-value="claudeDialogVisible"
+    :executable-path="claudeAuthentication?.executablePath"
     :config-directory="claudeAuthentication?.configDirectory !== undefined ? claudeAuthentication.configDirectory : providerSetup?.find(setup => setup.backend === 'claude')?.homePath"
     :loading="claudeLoading"
     :error="claudeError"
@@ -101,6 +103,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   customize: [backend: AgentBackend];
   'refresh-provider': [backend: AgentBackend];
+  'install-provider': [backend: AgentBackend];
   'close-setup': [];
   'save-setup': [choice: ProviderSetupChange];
   cancel: [];

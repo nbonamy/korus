@@ -14,6 +14,21 @@ import {
 
 describe('AppBackendServer', () => {
 
+  it('routes branch browsing to the selected host and keeps token reads on that host', async () => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    const branches = [{ name: 'main', isDefault: true }];
+    const listBranches = vi.fn().mockResolvedValue(branches);
+    const remoteClients = { request: vi.fn().mockResolvedValue(branches) };
+    const server = new AppBackendServer({ version: 'test', snapshot, workIntegrations: { listBranches } as never, remoteClients: remoteClients as never });
+    const params = { provider: 'github', sourceId: 'org/repo' };
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'workProvider/branches/list', params })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledExactlyOnceWith('github', 'org/repo');
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'workProvider/branches/list', params: { ...params, location: { kind: 'remote', remoteConnectionId: connection.id } } })).toMatchObject({ result: branches });
+    expect(listBranches).toHaveBeenCalledOnce();
+    expect(remoteClients.request).toHaveBeenCalledExactlyOnceWith(connection, 'workProvider/branches/list', { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+  });
+
   it('rechecks provider installation on the owning remote host without running a local installer', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection();
@@ -489,7 +504,11 @@ describe('AppBackendServer', () => {
     })).rejects.toThrow('This session does not have a project workspace.');
   });
 
-  it('routes remote agent prompts to the owning remote daemon', async () => {
+  it.each([
+    { method: 'agent/prompt/send', delivery: {} },
+    { method: 'agent/prompt/send', delivery: { expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
+    { method: 'agent/prompt/steer', delivery: { startIfIdle: true, expectedSessionId: JSON.stringify({ kind: 'antigravity', sessionId: 'remote-acp' }) } },
+  ])('routes remote agent prompts to the owning remote daemon ($method)', async ({ method, delivery }) => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
     snapshot.teams = [{
@@ -530,10 +549,11 @@ describe('AppBackendServer', () => {
     const response = await server.handleMessage({
       jsonrpc: '2.0',
       id: 'prompt',
-      method: 'agent/prompt/send',
+      method,
       params: {
         agentId: 'agent-remote',
         prompt: 'hello',
+        ...delivery,
       },
     });
     expect(response).toMatchObject({
@@ -557,11 +577,12 @@ describe('AppBackendServer', () => {
     expect(remoteClients.request).toHaveBeenNthCalledWith(
       2,
       snapshot.remoteConnections.connections[0],
-      'agent/prompt/send',
+      method,
       { ...{
         agentId: 'agent-remote',
         prompt: 'hello',
         options: undefined,
+        ...delivery,
       }, _clientId: 'remote-controller' },
       expect.any(Function),
     );
@@ -571,6 +592,21 @@ describe('AppBackendServer', () => {
       params: { agentId: 'agent-remote', prompt: 'Inspect', options: { attachments: [{ type: 'file', path: '/local-only.pdf' }] } },
     })).rejects.toThrow('trusted file transfer');
     expect(remoteClients.request.mock.calls.length).toBe(dispatched);
+  });
+
+  it.each(['agent/queuedPrompt/steer', 'agent/queuedPrompt/delete'])('preserves the captured queue session when routing %s remotely', async method => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    snapshot.teams = [{ id: 'team-pointer', name: 'Remote', remoteConnectionId: connection.id, remoteTeamId: 'team-remote', agentIds: [] }];
+    const agent = createRemoteAgent();
+    const remote = createRemoteTeamSnapshot([agent]);
+    const remoteClients = { close: vi.fn(async () => {}), request: vi.fn().mockResolvedValueOnce({ snapshot: remote, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }).mockResolvedValueOnce(remote) };
+    const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+    try {
+      const params = { agentId: agent.id, promptId: 'queued-on-host', expectedSessionId: 'captured-session' };
+      await server.handleMessage({ jsonrpc: '2.0', id: 'queue', method, params });
+      expect(remoteClients.request).toHaveBeenNthCalledWith(2, connection, method, { ...params, _clientId: 'remote-controller' }, expect.any(Function));
+    } finally { await server.close(); }
   });
 
   it('rejects malformed remote snapshots without adopting them', async () => {

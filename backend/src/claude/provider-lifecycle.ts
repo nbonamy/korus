@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { lstat, mkdir, readlink, symlink, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProviderHomeSettings } from '@workspace/core/contracts/provider-setup';
-import { resolveRuntimeExecutable } from '@workspace/core/runtime-discovery';
+import { resolveClaudeExecutable } from './claude-command';
 import { providerHomePaths, type ProviderLifecycle } from '../provider-lifecycle';
 
 export function createClaudeLifecycle(): ProviderLifecycle {
@@ -15,7 +15,7 @@ export function createClaudeLifecycle(): ProviderLifecycle {
       const homePath = preserve ? path.resolve(configured || paths.existing) : paths.isolated;
       return { homePath, isolated: homePath === paths.isolated, shareSkills: !preserve };
     },
-    installed: () => Boolean(resolveRuntimeExecutable(process.env.APP_CLAUDE_COMMAND || 'claude')),
+    installed: () => Boolean(resolveClaudeExecutable()),
     async prepareHome(home, configuring) {
       const requestedSharing = home.shareSkills;
       await prepareClaudeHome(home, paths.existing);

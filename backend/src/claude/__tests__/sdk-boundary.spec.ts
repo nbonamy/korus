@@ -1,5 +1,9 @@
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { decodeAppBackendEvent, type AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { getLocalClaudeAuthentication } from '../authentication';
@@ -9,6 +13,9 @@ import { createQueryHarness } from './sdk-query-fixture';
 import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
+import { UsageLedger } from '../../usage/usage-ledger';
+import { UsageService } from '../../usage/usage-service';
+import { TurnClock } from '../../usage/turn-clock';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
   resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }),
@@ -21,22 +28,149 @@ function agent(id = 'claude-a'): Agent {
 
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
-  function setup(withConnections = false) {
-    const sdk = createQueryHarness();
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
+  const homes: string[] = [];
+  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string) {
+    const sdk = createQueryHarness(models);
+    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), undefined, { homeDir });
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.agents = [agent(), agent('claude-b')];
     snapshot.teams[0]!.agentIds = snapshot.agents.map((item) => item.id);
     const events: AppBackendEvent[] = [];
-    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, usage,
       driverRpc: new BackendDriverRpc(new Map([['claude', driver]])), onEvent: (event) => events.push(event),
       ...(withConnections ? { providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/app/claude' }] } as never } : {}),
     });
     servers.push(server);
     return { sdk, driver, server, snapshot, events, send: (agentId: string, prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: `${agentId}-${prompt}`, method: 'agent/prompt/send', params: { agentId, prompt } }) };
   }
-  afterEach(async () => { await Promise.all(servers.splice(0).map((server) => server.close())); });
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map((server) => server.close()));
+    await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
+  });
+
+  it('discovers native subagents, reads their own sidechain, and retains completion after the parent turn and reload', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-subagents-'));
+    homes.push(home);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const childId = 'a1234567';
+    const project = path.join(home, '.claude', 'projects', '-tmp-project');
+    await mkdir(path.join(project, sessionId, 'subagents'), { recursive: true });
+    const tool = { type: 'tool_use', id: 'spawn-review', name: 'Agent', input: { description: 'Simplify review: reuse', subagent_type: 'general-purpose', prompt: 'Review reuse.' } };
+    const line = (entry: object) => JSON.stringify({ sessionId, timestamp: '2026-10-16T12:00:00Z', ...entry });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), [
+      line({ type: 'user', uuid: 'parent-prompt', message: { content: 'Parent prompt' } }),
+      line({ type: 'assistant', uuid: 'parent-call', message: { content: [tool] } }),
+      line({ type: 'user', uuid: 'parent-result', toolUseResult: { agentId: childId, status: 'completed' }, message: { content: [{ type: 'tool_result', tool_use_id: tool.id, content: 'Done' }] } }),
+    ].join('\n'));
+    await writeFile(path.join(project, sessionId, 'subagents', `agent-${childId}.jsonl`), [
+      line({ type: 'user', uuid: 'child-prompt', isSidechain: true, message: { content: 'Review reuse.' } }),
+      line({ type: 'assistant', uuid: 'child-reply', isSidechain: true, message: { content: [{ type: 'text', text: 'Child-only finding' }] } }),
+    ].join('\n'));
+    const { sdk, driver, server, snapshot, events, send } = setup(false, undefined, [], home);
+    const sending = send('claude-a', 'Parent prompt');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await sending;
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [tool] } });
+    sdk.emit({ type: 'system', subtype: 'task_started', task_id: childId, tool_use_id: tool.id, description: 'Simplify review: reuse', subagent_type: 'general-purpose', task_type: 'local_agent', session_id: sessionId, uuid: '22222222-2222-4222-8222-222222222222' } satisfies SDKTaskStartedMessage);
+    sdk.emit({ type: 'system', subtype: 'task_started', task_id: 'shell-task', tool_use_id: 'shell', description: 'Build project', task_type: 'local_bash', session_id: sessionId, uuid: '33333333-3333-4333-8333-333333333333' } satisfies SDKTaskStartedMessage);
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']?.nodes[childId]).toMatchObject({ status: 'running', agentNickname: 'Simplify review: reuse' }));
+    expect(Object.keys(snapshot.subagentTrees['claude-a']!.nodes)).toStrictEqual([childId]);
+    expect(snapshot.subagentTrees['claude-b']).toBeUndefined();
+    const ref = { backend: 'claude' as const, folder: '/tmp/project', sessionId, subagentId: childId };
+    const read = () => server.handleMessage({ jsonrpc: '2.0', id: 'child-history', method: 'agent/conversation/messages/get', params: { agentId: 'claude-a', ref } });
+    const history = await read();
+    expect(history).toMatchObject({ result: [expect.objectContaining({ role: 'user', parts: [{ type: 'text', text: 'Review reuse.' }] }), expect.objectContaining({ role: 'assistant', parts: [{ type: 'text', text: 'Child-only finding' }] })] });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 'other-agent', method: 'agent/conversation/messages/get', params: { agentId: 'claude-b', ref } })).toMatchObject({ error: { code: -32603 } });
+    for (const subagentId of ['', '../outside']) {
+      await expect(driver.readConversationMessages({ ...ref, subagentId }, 'claude-a')).rejects.toThrow('Invalid Claude subagent reference.');
+    }
+    sdk.emit({ type: 'assistant', session_id: sessionId, parent_tool_use_id: tool.id, message: { content: [{ type: 'text', text: 'Child-only live text' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    expect(JSON.stringify(await driver.readConversationMessages({ backend: 'claude', folder: '/tmp/project', sessionId }, 'claude-a'))).not.toContain('Child-only live text');
+    const lastUpdate = snapshot.subagentTrees['claude-a']!.nodes[childId]!.updatedAt;
+    sdk.emit({ type: 'system', subtype: 'task_progress', task_id: childId, tool_use_id: tool.id, description: 'Reviewing files', usage: { total_tokens: 4, tool_uses: 1, duration_ms: 20 }, session_id: sessionId });
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']!.nodes[childId]!.updatedAt).not.toBe(lastUpdate));
+    sdk.emit({ type: 'system', subtype: 'task_notification', task_id: childId, tool_use_id: tool.id, status: 'completed', summary: 'Review done', session_id: sessionId });
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']?.nodes[childId]?.status).toBe('completed'));
+    for (const event of events.filter(event => event.type.startsWith('subagent.'))) expect(() => decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).not.toThrow();
+    const reloaded = setup(false, undefined, [], home);
+    reloaded.snapshot.agents[0]!.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    await reloaded.driver.loadConversation(reloaded.snapshot.agents[0]!);
+    expect(reloaded.snapshot.subagentTrees['claude-a']?.nodes[childId]).toMatchObject({ status: 'completed', agentNickname: 'Simplify review: reuse' });
+    expect(reloaded.sdk.inputs).toHaveLength(0);
+  });
+
+  it.each([false, true])('times live Claude output and excludes tools (tool first: %s)', async (toolFirst) => {
+    const ledger = new UsageLedger(':memory:');
+    await ledger.load();
+    let now = 1000;
+    const usage = new UsageService(ledger, () => undefined, new TurnClock(() => now), () => now);
+    const { sdk, driver, snapshot, events } = setup(false, usage);
+    const received = (type: string) => events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === type);
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Inspect the project');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'timing', model: 'sonnet' });
+    await sending;
+    if (!toolFirst) {
+      now = 2000;
+      sdk.emit({ type: 'assistant', session_id: 'timing', message: { content: [{ type: 'text', text: 'Checking' }] } });
+      await vi.waitFor(() => expect(received('message.delta')).toBe(true));
+    }
+    now = 3000;
+    sdk.emit({ type: 'assistant', session_id: 'timing', message: { content: [{ type: 'tool_use', id: 'tool', name: 'Bash', input: { command: 'sleep 10' } }] } });
+    await vi.waitFor(() => expect(received('item.started')).toBe(true));
+    now = 13000;
+    sdk.emit({ type: 'user', session_id: 'timing', message: { content: [{ type: 'tool_result', tool_use_id: 'tool', content: 'done' }] } });
+    await vi.waitFor(() => expect(received('item.updated')).toBe(true));
+    now = 16000;
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'timing', is_error: false, usage: { input_tokens: 10, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+    await vi.waitFor(() => expect(received('turn.completed')).toBe(true));
+    await usage.drain();
+    expect(ledger.query().rows[0]?.speed).toStrictEqual({
+      turns: 1, outputTokens: 40, generationMs: toolFirst ? 3000 : 4000,
+      ttftMs: toolFirst ? 2000 : 1000, ttftTurns: 1,
+    });
+  });
+
+  it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{
+    const {sdk,driver,snapshot}=setup(false, undefined, [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]);const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt', { model: 'opus', reasoningEffort: 'high', serviceTier: 'fast' });
+    await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({type:'system',subtype:'init',session_id:'usage-session',model:'claude-sonnet-4-6'});await sending;
+    sdk.emit({type:'assistant',session_id:'usage-session',message:{content:[{type:'text',text:'chunk'}],usage:{input_tokens:9999}}});
+    await driver.steerPrompt(snapshot.agents[0]!, 'steering');
+    await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(2));
+    sdk.emit({type:'user',uuid:sdk.inputs[1]!.uuid,session_id:'usage-session',message:{content:'steering'}});
+    sdk.emit({type:'result',subtype:'success',session_id:'usage-session',is_error:false,usage:{input_tokens:10,output_tokens:20,cache_read_input_tokens:30,cache_creation_input_tokens:5}});
+    await vi.waitFor(()=>expect(observations).toHaveLength(2));
+    expect(observations.map(o=>o.phase)).toStrictEqual(['started','completed']);
+    expect(observations[1]?.tokens).toStrictEqual({input:45,output:20,cacheRead:30,cacheWrite:5,total:65});
+    expect(observations[0]?.model).toBe('claude-sonnet-4-6');
+    expect(observations[0]?.reasoningEffort).toBe('high');
+    expect(observations[0]?.serviceTier).toBe('fast');
+    expect(sdk.options[0]?.settings).toEqual({ fastMode: true });
+    expect(observations[1]?.model).toBe('claude-sonnet-4-6');
+  });
+
+  it('preserves actual model attribution across SDK blocks and suppressed steering results without inventing a second user turn',async()=>{
+    const {sdk,driver,snapshot}=setup();const observations:import('@workspace/core/usage').ExecutionObservation[]=[];driver.onUsage(o=>observations.push(o));
+    const sending=driver.sendPrompt(snapshot.agents[0]!, 'CANARY prompt');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({type:'system',subtype:'init',session_id:'behavior-session',model:'claude-sonnet-4-6'});await sending;
+    expect(observations[0]?.serviceTier).toBe('normal');
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-a',model:'claude-sonnet-4-6',content:[{type:'text',text:'CANARY'}]}});
+    await driver.steerPrompt(snapshot.agents[0]!, 'steering');await vi.waitFor(()=>expect(sdk.inputs).toHaveLength(2));
+    sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-b',model:'claude-sonnet-4-6',content:[{type:'tool_use',id:'tool',name:'CANARY',input:{text:'CANARY'}}]}});
+    sdk.emit({type:'assistant',session_id:'behavior-session',parent_tool_use_id:null,message:{id:'response-b',model:'claude-sonnet-4-6',content:[{type:'text',text:'CANARY'}]}});
+    sdk.emit({type:'user',uuid:sdk.inputs[1]!.uuid,session_id:'behavior-session',message:{content:'steering'}});
+    sdk.emit({type:'result',subtype:'success',session_id:'behavior-session',is_error:false});
+    await vi.waitFor(()=>expect(observations).toHaveLength(2));
+    expect(observations[1]!.model).toBe('claude-sonnet-4-6');
+    expect(JSON.stringify(observations)).not.toContain('CANARY');
+  });
 
   it('marks a Claude reviewer working for its turn and idle only after completion', async () => {
     const { sdk, driver, snapshot, events } = setup();

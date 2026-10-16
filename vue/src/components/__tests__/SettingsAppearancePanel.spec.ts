@@ -36,7 +36,7 @@ describe('SettingsAppearancePanel', () => {
     expect(updateSettings).toHaveBeenCalledWith({ theme: { codeFontSize: 15 } });
   });
 
-  it('updates system mode and keeps a matching theme when possible', async () => {
+  it('hands the default dark theme back to the system when switching to system mode, but keeps other explicit themes', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsAppearancePanel, {
       props: {
@@ -54,8 +54,12 @@ describe('SettingsAppearancePanel', () => {
     await wrapper.findComponent({ name: 'ElSegmented' }).vm.$emit('update:modelValue', 'system');
     await wrapper.findComponent({ name: 'ElSegmented' }).vm.$emit('update:modelValue', 'dark');
 
-    expect(updateSettings).toHaveBeenCalledWith({ theme: { mode: 'system' } });
+    expect(updateSettings).toHaveBeenCalledWith({ theme: { mode: 'system', id: 'app-light' } });
     expect(updateSettings).toHaveBeenCalledWith({ theme: { mode: 'dark', id: 'app-dark' } });
+
+    await wrapper.setProps({ settings: { ...defaultThemeSettings, id: 'one-dark-pro', mode: 'dark' } });
+    await wrapper.findComponent({ name: 'ElSegmented' }).vm.$emit('update:modelValue', 'system');
+    expect(updateSettings).toHaveBeenLastCalledWith({ theme: { mode: 'system' } });
   });
 
   it('ignores invalid mode and numeric updates', async () => {

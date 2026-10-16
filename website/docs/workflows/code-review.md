@@ -14,7 +14,7 @@ There must be something to review: staged, unstaged, or untracked changes, or a 
 
 ## Start a review
 
-1. Enter `/review` in the agent's composer to open Code Review.
+1. Enter `/review` in the agent's composer to open Code Review. Add instructions after the command to focus the review, such as `/review Focus on authorization and data loss risks.`
 2. Choose **Uncommitted changes** for the working diff, or **Current branch** for changes against the base shown in the panel, including uncommitted changes. Unavailable scopes are disabled. A clean checkout with no branch changes shows **Nothing to review**.
 3. Choose **Independent reviewer** for a separate Review agent and fresh conversation, or **Current thread** to use the current agent's existing conversation. Current thread requires an existing provider session.
 4. When using an independent reviewer, choose its connected provider. It can differ from the implementation agent's provider. Current thread uses the existing agent's provider.
@@ -25,7 +25,7 @@ Choose the scope deliberately. If the feature is committed on a branch, reviewin
 
 ## Automatic remediation
 
-Enable **Automatic remediation** to let an independent reviewer find, fix, and check issues over several rounds. In **Configure**, choose which priorities to fix and the maximum number of rounds. The defaults are P0–P2 and three rounds, including the final verification review.
+Enable **Automatic remediation** to let an independent reviewer find, fix, and check issues over several rounds. In **Configure**, choose which priorities to fix and the maximum number of rounds. The defaults are critical, high, and medium findings (P0–P2) and three rounds, including the final verification review.
 
 Fixes stay uncommitted unless you enable **Commit after each fix round**. That option includes existing uncommitted changes in the reviewed workspace, not just the reviewer's fixes. Check the full diff before enabling it. Automatic review never pushes or merges.
 
@@ -33,7 +33,9 @@ Each round uses a fresh review conversation. When no findings remain at the sele
 
 Avoid editing the reviewed files while it runs. Failed checks, repeated findings, conflicting workspace changes, or reaching the round limit pause the review and return a partial report. Inspect that report and the diff before continuing manually.
 
-Use **Stop automatic review** to interrupt the reviewer. Stopping does not undo edits or local commits. An interrupted review stays paused after restarting Korus.
+Choose **Switch to manual** to take over decisions without interrupting the current turn. The active inspection or fix finishes, but Korus does not automatically start the next step. Inspect the findings and changes before deciding what to do next.
+
+In manual mode, **Stop review** interrupts the active review or fix while keeping findings already collected. An interrupted inspection is incomplete; use **Retry review** to finish it. Stopping does not undo edits or local commits. Interrupting an automatic review pauses its loop; it stays paused after restarting Korus.
 
 ### Start from chat
 
@@ -48,7 +50,7 @@ The result returns to the same conversation. Ask specifically for an automatic r
 
 ## Inspect the findings
 
-Findings are ordered by priority, from P0 through P3. Read the reported impact and open the affected file where a location is available. Ask for clarification through the finding's discussion action before deciding whether to fix it.
+Findings are ordered by priority: critical (P0), high (P1), medium (P2), and low (P3). Read the reported impact and open the affected file where a location is available. Ask for clarification through the finding's discussion action before deciding whether to fix it.
 
 All findings are initially included for remediation. Deselect any you do not want changed. These selections are your approval boundary: starting a review gathers findings; choosing remediation authorizes the selected fixes.
 
@@ -63,6 +65,8 @@ If no findings are selected, choose **Complete review round**. Unselected findin
 ## Review again
 
 Once the round and any selected fixes are complete, choose **Review again** for another pass over the same scope, or **Finish review** when you accept the result. The round tabs let you compare earlier findings and decisions while the session is active.
+
+Enable **Commit changes** before either action when you want the review agent to create a local commit first. Review the full diff: this can include existing uncommitted work in the checkout, not only the reviewer's fixes. If the commit fails, the review stays open. This option does not push or merge.
 
 An independent reviewer starts a fresh review conversation for the next round. Finishing removes the temporary Review agent and sends a handoff to the original agent describing the remediated findings. Finishing a current-thread review clears its active review panel while leaving the agent's conversation available.
 

@@ -1,4 +1,4 @@
-import type { AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
+import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitHubOAuthClientId } from '../runtime-config';
 import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from './types';
@@ -188,6 +188,26 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
       const workItemsUpdatedAt = activityByRepository.get(repository.id);
       return workItemsUpdatedAt ? { ...repository, workItemsUpdatedAt } : repository;
     });
+  }
+
+  async listBranches(token: WorkProviderToken, repositoryId: string): Promise<SourceBranch[]> {
+    const repository = parseRepositoryId(repositoryId);
+    if (!repository) throw new Error('Invalid GitHub repository.');
+    const [primary, names] = await Promise.all([defaultBranch(token, repositoryId), (async () => {
+      const names = new Set<string>();
+      for (let page = 1; page <= 20; page++) {
+        const response = await githubApiPageRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/branches?per_page=100&page=${page}`);
+        if (!Array.isArray(response.value)) throw new Error('GitHub returned an invalid branches response.');
+        for (const entry of response.value) {
+          if (!isRecord(entry) || typeof entry.name !== 'string' || !entry.name) throw new Error('GitHub returned an invalid branch.');
+          names.add(entry.name);
+        }
+        if (!linkedPageUrl(response.linkHeader, 'next')) return [...names];
+      }
+      throw new Error('This repository has too many branches to browse.');
+    })()]);
+    return names.map(name => ({ name, isDefault: name === primary }))
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
   }
 
   async listGlobalItems(token: WorkProviderToken, query: GlobalWorkItemQuery = {}): Promise<WorkItemPage> {

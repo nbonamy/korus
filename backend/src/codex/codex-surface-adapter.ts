@@ -1,3 +1,5 @@
+import type { ExecutionObservation } from '@workspace/core/usage';
+import { codexExecutionConsumption } from './execution-usage';
 import { bankedResetsFromSurface } from './banked-resets';
 import { randomUUID } from 'node:crypto';
 import { isBankedResetResult, isUseBankedResetInput, type BankedResetResult, type UseBankedResetInput } from '@workspace/core/contracts/banked-resets';
@@ -71,6 +73,15 @@ const SESSION_HANDOFF_TIMEOUT_MS = 8 * 60 * 1_000;
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1_000;
 const SESSION_HANDOFF_MODEL = 'gpt-5.6-luna';
 const SESSION_HANDOFF_REASONING_EFFORT = 'low';
+
+function selectedCodexModel(snapshot: CodexConversationSnapshot): string | null {
+  const selected = snapshot.models.find(
+    (model) =>
+      model.id === snapshot.selectedModelId ||
+      model.model === snapshot.selectedModelId,
+  ) ?? snapshot.models.find((model) => model.isDefault) ?? snapshot.models[0];
+  return selected?.model ?? snapshot.selectedModelId;
+}
 const SESSION_HANDOFF_PROMPT = `Prepare a handoff for a fresh continuation of this coding session.
 
 Return only a concise Markdown handoff. Do not call tools, modify files, spawn agents, ask questions, or continue the implementation.
@@ -93,6 +104,7 @@ type SubagentOwner = {
 
 export class CodexSurfaceAgentAdapter {
   private readonly listeners = new Set<AdapterListener>();
+  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
   private readonly historyHydratedAtByAgentId = new Map<string, number>();
   private readonly agentIdsByThreadId = new Map<string, string>();
@@ -150,7 +162,7 @@ export class CodexSurfaceAgentAdapter {
         throw new Error('Banked reset account changed');
       }
       const nextTokens = new Map<string, { token: string; idempotencyKey?: string; uncertain?: boolean }>();
-      const result = bankedResetsFromSurface(limits, surface.consumeRateLimitResetCredit ? id => {
+      const result = bankedResetsFromSurface(limits, typeof surface.consumeRateLimitResetCredit === 'function' ? id => {
         const entry = this.resetCreditTokens.get(id) ?? { token: randomUUID() };
         nextTokens.set(id, entry);
         return entry.token;
@@ -833,6 +845,9 @@ export class CodexSurfaceAgentAdapter {
     await this.surface.respondToClientRequest(nativeResponse);
   }
 
+  private emitUsage(observation:ExecutionObservation):void { for(const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } } }
+  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener); return ()=>this.usageListeners.delete(listener); }
+
   onEvent(listener: AdapterListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -1207,6 +1222,69 @@ export class CodexSurfaceAgentAdapter {
     if (session.suppressEvents) return;
     if (isRendererConversationEvent(event)) this.publishConversationEvent(session, event);
     this.historyHydratedAtByAgentId.set(session.agent.id, Date.now());
+    const consumption=codexExecutionConsumption(event);
+    if ((event as {type:string}).type==='conversation.executionUsageChanged' && consumption) {
+      const turnId=(event as unknown as {turnId?:string}).turnId;
+      if (typeof turnId === 'string') {
+        this.emitUsage({
+          agentId: session.agent.id,
+          sessionId: session.handle.id,
+          turnId,
+          provider: 'codex',
+          phase: 'usage',
+          at: Date.parse(event.occurredAt),
+          ...consumption,
+        });
+      }
+    }
+    if (event.type === 'turn.modelRerouted') {
+      this.emitUsage({
+        agentId: session.agent.id,
+        sessionId: session.handle.id,
+        turnId: event.turnId,
+        provider: 'codex',
+        phase: 'usage',
+        at: Date.parse(event.occurredAt),
+        model: event.payload.toModel,
+      });
+    }
+    if (event.type === 'turn.error' && !event.payload.willRetry) {
+      this.emitUsage({agentId:session.agent.id,sessionId:session.handle.id,turnId:event.turnId,provider:'codex',phase:'failed',at:Date.parse(event.occurredAt),model:null});
+    }
+    if (event.type === 'turn.started' || event.type === 'turn.completed') {
+      const settings = event.type === 'turn.started' ? session.handle.getSnapshot() : null;
+      const phase =
+        event.type === 'turn.started'
+          ? 'started'
+          : event.payload.status === 'inProgress'
+            ? 'started'
+            : event.payload.status;
+      const observation: ExecutionObservation = {
+        agentId: session.agent.id,
+        sessionId: session.handle.id,
+        turnId: event.turnId,
+        provider: 'codex',
+        phase,
+        at: Date.parse(event.occurredAt),
+        model:
+          consumption?.model ??
+          (settings ? selectedCodexModel(settings) : null),
+        ...(settings
+          ? {
+              reasoningEffort: settings.selectedReasoningEffort,
+              serviceTier:
+                settings.selectedServiceTier === null
+                  ? 'normal'
+                  : settings.selectedServiceTier ?? null,
+            }
+          : {}),
+        ...(consumption ? { tokens: consumption.tokens } : {}),
+        ...(event.type === 'turn.completed' && event.payload.durationMs !== null
+          ? { durationMs: event.payload.durationMs }
+          : {}),
+      };
+      this.emitUsage(observation);
+    }
     const metadata = { occurredAt: event.occurredAt };
     switch (event.type) {
       case 'conversation.summaryUpserted':

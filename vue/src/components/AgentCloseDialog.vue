@@ -22,9 +22,9 @@
         <el-switch v-model="discardChanges" size="small" :disabled="busy" :aria-label="$t('surface.agentCloseDialog.discardChanges')" />
         <span>{{ $t('surface.agentCloseDialog.discardChanges') }}</span>
       </label>
-      <label v-if="workflow?.upstream" class="agent-close-dialog__remote">
+      <label v-if="remoteBranch" class="agent-close-dialog__remote">
         <el-switch v-model="deleteRemoteBranch" size="small" :disabled="busy" />
-        <span>{{ $t('surface.agentCloseDialog.alsoDelete') }} {{ workflow.upstream }}</span>
+        <span>{{ $t('surface.agentCloseDialog.alsoDelete') }} {{ remoteBranch }}</span>
       </label>
       <p v-if="error" class="agent-close-dialog__error" role="alert">{{ error }}</p>
     </div>
@@ -42,6 +42,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { Agent, AgentGitWorkflow } from '@workspace/core/contracts';
+import { matchingBranchUpstream } from '@workspace/core/git-remote';
 
 const props = withDefaults(defineProps<{
   agent?: Agent | null;
@@ -65,6 +66,7 @@ const emit = defineEmits<{
 const deleteRemoteBranch = ref(false);
 const discardChanges = ref(false);
 const hasChanges = computed(() => (props.workflow?.files.length ?? 0) > 0);
+const remoteBranch = computed(() => matchingBranchUpstream(props.workflow?.branch, props.workflow?.upstream, props.workflow?.baseBranch));
 
 watch(() => props.visible, (visible) => {
   if (visible) {
@@ -75,7 +77,7 @@ watch(() => props.visible, (visible) => {
 
 function deleteWorktree(): void {
   if (props.busy || (hasChanges.value && !discardChanges.value)) return;
-  emit('delete-worktree', deleteRemoteBranch.value, hasChanges.value && discardChanges.value);
+  emit('delete-worktree', Boolean(remoteBranch.value) && deleteRemoteBranch.value, hasChanges.value && discardChanges.value);
 }
 
 function onVisibilityChanged(visible: boolean): void {

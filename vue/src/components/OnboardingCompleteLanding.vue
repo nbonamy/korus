@@ -17,14 +17,14 @@
         class="onboarding-complete__action"
         type="primary"
         size="large"
-        @click="complete"
+        @click="emit('complete')"
       >{{ t('auth.completeAction') }}</el-button>
     </div>
   </OnboardingLandingFrame>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useConfetti } from '../shared/confetti/use-confetti';
 import OnboardingLandingFrame from './OnboardingLandingFrame.vue';
@@ -33,34 +33,17 @@ const appIconUrl = new URL('../../assets/icon.png', import.meta.url).href;
 
 const props = withDefaults(defineProps<{
   celebrate?: boolean;
-  durationMs?: number;
 }>(), {
   celebrate: true,
-  durationMs: 5000,
 });
 
 const emit = defineEmits<{
   complete: [];
 }>();
 const { t } = useI18n();
-let completionTimer: ReturnType<typeof setTimeout> | null = null;
-
 onMounted(() => {
   if (props.celebrate) useConfetti().celebrate();
-  completionTimer = globalThis.setTimeout(complete, props.durationMs);
 });
-
-onBeforeUnmount(clearCompletionTimer);
-
-function complete(): void {
-  clearCompletionTimer();
-  emit('complete');
-}
-
-function clearCompletionTimer(): void {
-  if (completionTimer !== null) globalThis.clearTimeout(completionTimer);
-  completionTimer = null;
-}
 </script>
 
 <style scoped>

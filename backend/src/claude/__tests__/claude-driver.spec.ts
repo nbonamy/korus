@@ -259,7 +259,7 @@ describe('ClaudeBackendDriver', () => {
     }));
     expect(events).toContainEqual(expect.objectContaining({
       type: 'conversation.settingsUpdated',
-      payload: { settings: { model: 'claude-sonnet-4-5' } },
+      payload: { settings: { model: 'claude-sonnet-4-5', serviceTier: null } },
     }));
     expect(events).toContainEqual(expect.objectContaining({
       agentId: 'agent-claude',
@@ -521,6 +521,7 @@ describe('ClaudeBackendDriver', () => {
       description: 'Experimental coding model',
       supportsEffort: true,
       supportedEffortLevels: ['low', 'medium'],
+      supportsFastMode: true,
     }]);
     const driver = new ClaudeBackendDriver(transport);
 
@@ -528,13 +529,14 @@ describe('ClaudeBackendDriver', () => {
       id: 'claude-fable-1',
       displayName: 'Fable',
       providerMetadata: { resolvedModel: 'claude-fable-1-20260810' },
+      serviceTiers: [{ id: 'fast', name: 'Fast', description: expect.any(String) }],
       supportedReasoningEfforts: [
         { reasoningEffort: 'low', description: expect.any(String) },
         { reasoningEffort: 'medium', description: expect.any(String) },
       ],
     })]);
     expect(transport.discoverModels).toHaveBeenCalledWith({ cwd: agent.folder });
-    expect(driver.getCapabilities(agent)).toMatchObject({ reasoningEffort: true });
+    expect(driver.getCapabilities(agent)).toMatchObject({ reasoningEffort: true, serviceTier: true });
   });
 
   it('publishes the live Agent SDK model catalog and supported reasoning efforts after initialization', async () => {
@@ -1026,13 +1028,9 @@ describe('ClaudeBackendDriver', () => {
       expect.objectContaining({
         agentId: 'agent-claude',
         backend: 'claude',
-        type: 'claude.conversationSnapshotChanged',
-        payload: expect.objectContaining({
-          snapshot: expect.objectContaining({
-            sessionId: 'claude-session-existing',
-            contextUsage: expect.objectContaining({ totalTokens: 33_120 }),
-          }),
-        }),
+        type: 'context.usageUpdated',
+        backendSessionId: 'claude-session-existing',
+        payload: { contextUsage: expect.objectContaining({ totalTokens: 33_120 }) },
       }),
     ]);
   });

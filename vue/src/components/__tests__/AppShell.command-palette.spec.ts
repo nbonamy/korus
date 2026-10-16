@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppApi, AppCommand, AgentGitWorkflow } from '@workspace/core/contracts';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { mountShell } from './app-shell-test-harness';
+import { setElectronTestClient } from '../../test/client';
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', metaKey: true, shiftKey: true, cancelable: true }));
@@ -108,6 +109,25 @@ describe('AppShell command palette', () => {
     await wrapper.findAll('.quick-open-dialog button').find(button => button.text() === 'Open files')!.trigger('click');
     await flushPromises();
     expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('sample.txt');
+    wrapper.unmount();
+  });
+  it.each([
+    ['ios simulator', 'Simulator', '.mobile-simulator'],
+    ['reviews', 'Review', '.code-review-panel'],
+  ])('opens the actual %s workspace from command search', async (query, tab, panel) => {
+    const snapshot = createInitialSnapshot();
+    const mobileSimulator = vi.fn().mockResolvedValue({ attachment: null, catalog: { devices: [], setup: [] } });
+    setElectronTestClient({ mobileSimulator });
+    const wrapper = mountShell({ snapshot });
+    await flushPromises();
+    await openPalette();
+    await wrapper.get('.quick-open-dialog input').setValue(query!);
+    await wrapper.get('.quick-open-dialog input').trigger('keydown.enter');
+    await flushPromises();
+    expect(wrapper.get(`[role="tab"][aria-label="${tab}"]`).attributes('aria-selected')).toBe('true');
+    expect(wrapper.get(panel!).isVisible()).toBe(true);
+    if (tab === 'Simulator') expect(mobileSimulator).toHaveBeenCalledWith(snapshot.agents[0]!.id, { action: 'list' });
+    else expect(mobileSimulator).not.toHaveBeenCalled();
     wrapper.unmount();
   });
   it('retains owning-host team lookup and the last remote team disconnect confirmation', async () => {

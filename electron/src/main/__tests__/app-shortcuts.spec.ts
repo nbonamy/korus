@@ -3,15 +3,10 @@ import {
   appCommandFromInput,
   cycleTeamsAccelerator,
   registerCycleTeamsShortcut,
-  unregisterCycleTeamsShortcut,
   type AppShortcutRegistrar,
 } from '../app-shortcuts';
 
 describe('appCommandFromInput', () => {
-  it('uses the native menu accelerator for command backtick', () => {
-    expect(cycleTeamsAccelerator).toBe('Command+`');
-  });
-
   it('maps command backtick keydown to cycle teams', () => {
     expect(appCommandFromInput({
       type: 'keyDown',
@@ -113,20 +108,5 @@ describe('appCommandFromInput', () => {
     callback();
 
     expect(commands).toStrictEqual([{ type: 'cycle-teams' }]);
-  });
-
-  it('unregisters command backtick when focus leaves the app', () => {
-    const registered = new Set([cycleTeamsAccelerator]);
-    const registrar: AppShortcutRegistrar = {
-      isRegistered: (accelerator) => registered.has(accelerator),
-      register: () => true,
-      unregister: (accelerator) => {
-        registered.delete(accelerator);
-      },
-    };
-
-    unregisterCycleTeamsShortcut(registrar);
-
-    expect(registered.has(cycleTeamsAccelerator)).toBe(false);
   });
 });

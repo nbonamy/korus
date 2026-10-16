@@ -11,7 +11,6 @@ type CommandRunner = {
 
 export type GitWorktreeCreateInput = CreateSourceWorktreeInput & {
   startPoint?: string;
-  requireNewBranch?: boolean;
 };
 
 type GitWorktreeCreateResult = {
@@ -52,7 +51,7 @@ export async function createGitWorktree(
     throw new Error('Branch name is required.');
   }
 
-  if (input.reuseExisting) {
+  if (input.reuseExisting && !input.requireNewBranch) {
     const existing = (await listSourceWorktrees(repoPath, runner)).find((worktree) => worktree.name === branchName);
     if (existing) return { worktree: existing, created: false };
   }
@@ -66,9 +65,18 @@ export async function createGitWorktree(
       await runner.run('git', ['merge', '--ff-only', input.startPoint], { cwd: worktreePath });
     }
   } else {
-    const remoteBranch = input.startPoint ? undefined : await findRemoteBranch(runner, repoPath, branchName);
     const baseBranch = input.baseBranch?.trim();
-    const startPoint = input.startPoint ?? remoteBranch ?? (baseBranch
+    let fetchedBase: string | undefined;
+    if (input.fetchRemoteBranch) {
+      const fetchBranch = input.requireNewBranch ? baseBranch : branchName;
+      if (!fetchBranch) throw new Error('Base branch is required.');
+      await runner.run('git', ['check-ref-format', `refs/heads/${fetchBranch}`], { cwd: repoPath });
+      await runner.run('git', ['fetch', '--no-tags', '--', 'origin', `+refs/heads/${fetchBranch}:refs/remotes/origin/${fetchBranch}`], { cwd: repoPath });
+      if (input.requireNewBranch) fetchedBase = `refs/remotes/origin/${fetchBranch}`;
+    }
+    const remoteBranch = input.startPoint ? undefined : await findRemoteBranch(runner, repoPath, branchName);
+    if (remoteBranch && input.requireNewBranch) throw new Error('That branch already exists.');
+    const startPoint = input.startPoint ?? fetchedBase ?? remoteBranch ?? (baseBranch
       ? await resolveBranchStartPoint(runner, repoPath, baseBranch)
       : undefined);
     await runner.run('git', remoteBranch
@@ -78,6 +86,7 @@ export async function createGitWorktree(
           'add',
           '-b',
           branchName,
+          '--no-track',
           worktreePath,
           ...(startPoint ? [startPoint] : []),
         ], { cwd: repoPath });

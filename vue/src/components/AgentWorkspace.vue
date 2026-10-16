@@ -54,6 +54,8 @@
       :git-panel="effectiveGitReviewPanelFor(agent)"
       :git-status="snapshot.agentGitStatuses[agent.id] ?? null"
       :plan-panel="rightWorkspaceFor(agent.id).planPanel"
+      :interactive-plans-enabled="snapshot.general.useInteractivePlans !== false"
+      :update-plan-review="props.updatePlanReview"
       :plan-updating="isPlanPreviewUpdatingFor(agent.id)"
       :file-panels="rightWorkspaceFor(agent.id).filePanels"
       :image-panels="rightWorkspaceFor(agent.id).imagePanels"
@@ -92,9 +94,6 @@
       :save-document="saveDocumentAs ? tab => saveDocumentAs!(agent.id, tab) : undefined"
       @close-tab="closeWorkspaceTab(agent, $event)"
       @browser-url-change="(tab, url) => updateBrowserUrl(agent.id, tab, url)"
-      @cancel-plan="cancelPlanReview(agent.id)"
-      @comment-plan="commentOnPlan"
-      @confirm-plan="confirmPlan"
       @open-tab="openRightWorkspaceTabFromMenu(agent.id, $event)"
       @open-in="openAgentIn(agent.id, $event.application, $event.filePath)"
       @preview-file="openFilePreviewForAgent(agent.id, $event)"
@@ -153,6 +152,7 @@ import type {
   WorkItem,
 } from '@workspace/core/contracts';
 import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
   CodexConversationLink,
   CodexConversationPaneController,
@@ -176,7 +176,7 @@ import RightWorkspacePanel from './RightWorkspacePanel.vue';
 import WorkspaceLinkDropTarget from './WorkspaceLinkDropTarget.vue';
 import { useWorkspaceLinkDrag } from './use-workspace-link-drag';
 import { constrainedRightWorkspaceWidth, type AgentRightWorkspaceState } from './use-right-workspace-state';
-import type { PlanReviewComment, SidePanelGitDiffState } from './side-panel';
+import type { SidePanelGitDiffState } from './side-panel';
 import type { ChatTextAnnotation } from './use-chat-text-annotations';
 import type { VisualizationAnnotation, VisualizationAnnotationInput } from './use-visualization-annotations';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
@@ -199,8 +199,7 @@ const props = defineProps<{
   agentSidebarCollapsed: boolean;
   saveDocumentAs?: (agentId: string, tabId: string) => Promise<void>;
   closeRightWorkspaceTab: (agentId: string, tab: RightWorkspaceTab) => void;
-  confirmPlan: () => void;
-  respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
   threadFlagBusy: boolean;
   conversationPaneController: CodexConversationPaneController;
@@ -304,7 +303,6 @@ const {
   agentFiles,
   saveDocumentAs,
   closeRightWorkspaceTab,
-  confirmPlan,
   conversationPaneController,
   currentAgent,
   forwardPrompt,
@@ -430,26 +428,6 @@ function closeExecutionPlan(): void {
   executionPlanStates[agentId] = { turnId: plan.turnId, open: false };
 }
 
-function cancelPlanReview(agentId: string): void {
-  if (agentId === currentAgent.value?.id) void props.respondToPlanReview?.('cancel');
-}
-
-function commentOnPlan(comments: PlanReviewComment[]): void {
-  if (comments.length === 0) {
-    return;
-  }
-
-  void props.respondToPlanReview?.('revise', formatPlanCommentPrompt(comments));
-}
-
-function formatPlanCommentPrompt(comments: PlanReviewComment[]): string {
-  const formattedComments = comments
-    .map((comment, index) => [`${index + 1}. On: "${comment.quote}"`, `   Comment: ${comment.body}`].join('\n'))
-    .join('\n\n');
-
-  return ['Refine the plan using these comments:', '', formattedComments].join('\n');
-}
-
 function rightWorkspaceFor(agentId: string): AgentRightWorkspaceState {
   return props.rightWorkspaceFor(agentId);
 }
@@ -511,6 +489,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     onExpandSidebar: () => emit('expand-sidebar'),
     onToggleExecutionPlan: toggleExecutionPlan,
     onToggleWorkspace: props.toggleRightWorkspace,
+    onOpenGitLog: () => agentId && openRightWorkspaceTab('gitLog', agentId),
     onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
     onOpenIn: (application: OpenInApplication) => agentId && props.openAgentIn(agentId, application),
@@ -665,7 +644,9 @@ function effectiveGitReviewPanelFor(agent: Agent): SidePanelGitDiffState {
 function subagentTreeFor(agentId: string): AgentSubagentTree | null {
   const agent = props.snapshot.agents.find((candidate) => candidate.id === agentId);
   const tree = props.snapshot.subagentTrees[agentId];
-  return agent?.backendSession?.kind === 'codex' && tree?.rootConversationId === agent.backendSession.threadId
+  const session = agent?.backendSession;
+  const rootId = session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null;
+  return rootId && tree?.rootConversationId === rootId
     ? tree
     : null;
 }
@@ -674,7 +655,7 @@ watch(
   () =>
     props.snapshot.agents.map(
       (agent) =>
-        `${agent.id}:${agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
+        `${agent.id}:${agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
           props.snapshot.subagentTrees[agent.id]?.nodes ?? {},
         )
           .sort()
@@ -707,7 +688,10 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
   const tree = subagentTreeFor(agentId);
   if (!tree?.nodes[conversationId])
     return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
-  return readConversationMessages({ backend: 'codex', threadId: conversationId }, agentId);
+  const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
+  const ref = agent ? conversationRefFromAgent(agent) : null;
+  if (!ref || ref.backend === 'antigravity') return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
+  return readConversationMessages(ref.backend === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
 }
 
 function openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void {

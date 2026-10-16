@@ -1,5 +1,6 @@
 {
   "name": "Korus",
+  "companionName": "Korus Mobile",
   "defaultTeamName": "Korus",
   "slug": "korus",
   "daemonName": "korusd",
@@ -12,5 +13,9 @@
   "websiteUrl": "https://meetkorus.dev",
   "updateBaseUrl": "https://update.electronjs.org",
   "deploymentRoot": "/var/www/korus",
-  "downloadFileName": "korus-macos-arm64.dmg"
+  "downloadFileName": "korus-macos-arm64.dmg",
+  "companionRelay": {
+    "origin": "wss://relay.meetkorus.dev",
+    "peerId": "12D3KooWKgzKeaxarcdmiyzTLSu2fmxxY6Nkj4CZKfvQGspLMG5S"
+  }
 }

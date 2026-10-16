@@ -1,4 +1,7 @@
+import { ClaudeModelObserver } from './claude-model-observer';
+import { validConsumption, type Consumption } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
+import { resolveClaudeLaunch } from './claude-command';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -16,7 +19,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { resolveRuntimeLaunch, type RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
+import type { RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
 import { debugMain, logMain } from '../log';
 import {
   type ClaudePermissionRequest,
@@ -53,6 +56,8 @@ export type ClaudeQueryFactory = (input: {
 }) => ClaudeQueryRuntime;
 
 type ActiveTransportTurn = {
+  model:ClaudeModelObserver;
+  consumption?:Consumption|null;
   done: Promise<void>;
   resolve: () => void;
   reject: (error: Error) => void;
@@ -72,6 +77,7 @@ type ClaudeSdkSession = {
   input: AsyncPushQueue<SDKUserMessage>;
   query: ClaudeQueryRuntime;
   activeTurn: ActiveTransportTurn | null;
+  onSubagentMessage: (message: ClaudeSdkMessage) => void;
   model: string | null;
   effort: ClaudeTurnParams['effort'];
   permissionMode: PermissionMode;
@@ -145,6 +151,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         throw new Error('Claude session already has an active turn.');
       }
       existingSession.activeTurn = activeTurn;
+      existingSession.onSubagentMessage = onMessage;
     }
 
     let submission = this.submitTurn(session, params);
@@ -364,6 +371,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       input,
       query: queryRuntime,
       activeTurn,
+      onSubagentMessage: activeTurn.onMessage,
       model: params.model ?? null,
       effort: params.effort ?? null,
       permissionMode: normalizedPermissionMode(params.permissionMode) ?? 'default',
@@ -373,13 +381,17 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     logMain('claude-agent-sdk', resumeSessionId ? 'resuming Claude SDK session' : 'starting Claude SDK session', {
       sessionId,
       cwd: session.cwd,
-      command: this.options.command ?? process.env.APP_CLAUDE_COMMAND ?? 'claude',
     });
     void this.consumeSession(session);
     return session;
   }
 
   private async submitTurn(session: ClaudeSdkSession, params: ClaudeTurnParams): Promise<void> {
+    if (params.fastMode) {
+      const init = await session.query.initializationResult();
+      if (!init.models.some(model => (model.value === params.model || model.resolvedModel === params.model) && model.supportsFastMode)) throw new Error('The selected Claude model does not support fast mode.');
+      if (init.fast_mode_state === 'off' && init.fast_mode_disabled_reason && init.fast_mode_disabled_reason !== 'pending') throw new Error(`Fast mode is unavailable for this Claude session (${init.fast_mode_disabled_reason}). Select normal speed or check your Claude account settings.`);
+    }
     const nextModel = params.model ?? null;
     if (session.model !== nextModel) {
       await session.query.setModel(nextModel ?? undefined);
@@ -407,11 +419,30 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         const message = sdkMessage as ClaudeSdkMessage;
         this.rekeySessionFromMessage(session, message);
         const activeTurn = session.activeTurn;
+        activeTurn?.model.observe(message);
         if (message.type === 'user' && typeof message.uuid === 'string') activeTurn?.pendingInputs.delete(message.uuid);
+        if (message.type === 'result' && activeTurn) {
+          const usage=message.usage as Record<string,unknown>|undefined;
+          const observed=usage && {input: typeof usage.input_tokens==='number' && typeof usage.cache_read_input_tokens==='number' && typeof usage.cache_creation_input_tokens==='number' ? usage.input_tokens+usage.cache_read_input_tokens+usage.cache_creation_input_tokens : undefined,output:usage.output_tokens,cacheRead:usage.cache_read_input_tokens,cacheWrite:usage.cache_creation_input_tokens};
+          if (activeTurn.consumption!==null && validConsumption(observed)) {
+            activeTurn.consumption ??= {input:0,output:0,cacheRead:0,cacheWrite:0};
+            for (const key of ['input','output','cacheRead'] as const) activeTurn.consumption[key]+=observed[key];
+            activeTurn.consumption.cacheWrite=observed.cacheWrite===null || activeTurn.consumption.cacheWrite===null ? null : activeTurn.consumption.cacheWrite+observed.cacheWrite;
+            if (!validConsumption(activeTurn.consumption)) activeTurn.consumption=null;
+            if(activeTurn.consumption)activeTurn.consumption.total=activeTurn.consumption.input+activeTurn.consumption.output;
+            if (message.is_error && observed.input===0 && observed.output===0) activeTurn.consumption=null;
+          } else activeTurn.consumption=null;
+          message.executionConsumption=activeTurn.consumption;
+          message.executionModel=activeTurn.model.snapshot();
+        }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;
         }
         activeTurn?.onMessage(message);
+        if (!activeTurn && (typeof (message as Record<string, unknown>).parent_tool_use_id === 'string'
+          || message.type === 'system' && ['task_started', 'task_progress', 'task_notification'].includes(String(message.subtype)))) {
+          session.onSubagentMessage(message);
+        }
         if (message.type === 'result' && activeTurn) {
           this.resolveTurn(session);
           this.denyPendingPermissions(session, 'Claude turn finished before permission was answered.');
@@ -573,6 +604,7 @@ function createActiveTurn(
     settled: false,
     pendingInputs: new Set(),
     steered: false,
+    model:new ClaudeModelObserver(),
     onMessage,
     ...(onPermissionRequest ? { onPermissionRequest } : {}),
     ...(onPermissionCancelled ? { onPermissionCancelled } : {}),
@@ -586,9 +618,8 @@ function claudeQueryOptions(
   canUseTool: CanUseTool,
   transportOptions: ClaudeAgentSdkTransportOptions,
 ): ClaudeQueryOptions {
-  const command = transportOptions.command ?? process.env.APP_CLAUDE_COMMAND ?? 'claude';
   const permissionMode = normalizedPermissionMode(params.permissionMode);
-  const launch = resolveRuntimeLaunch(command, transportOptions.env, transportOptions.runtimeDiscovery);
+  const launch = resolveClaudeLaunch(transportOptions.command, transportOptions.env, transportOptions.runtimeDiscovery);
   const env = claudeEnvironment(launch.env);
   return {
     cwd: expandHome(params.cwd),
@@ -601,6 +632,7 @@ function claudeQueryOptions(
     tools: { type: 'preset', preset: 'claude_code' },
     ...(params.mcpServerUrl ? { disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] } : {}),
     settingSources: ['user', 'project', 'local'],
+    settings: { fastMode: params.fastMode ?? false },
     includePartialMessages: true,
     extraArgs: { 'replay-user-messages': null },
     canUseTool,
@@ -644,6 +676,7 @@ function toClaudeAvailableModels(models: Awaited<ReturnType<Query['supportedMode
     ...(model.supportsEffort === undefined ? {} : { supportsEffort: model.supportsEffort }),
     ...(model.supportedEffortLevels ? { supportedEffortLevels: [...model.supportedEffortLevels] } : {}),
     ...(model.supportsAdaptiveThinking === undefined ? {} : { supportsAdaptiveThinking: model.supportsAdaptiveThinking }),
+    ...(model.supportsFastMode === undefined ? {} : { supportsFastMode: model.supportsFastMode }),
   }));
 }
 
@@ -677,6 +710,7 @@ function normalizedContextUsage(usage: Awaited<ReturnType<Query['getContextUsage
 function sessionConfigurationKey(params: ClaudeTurnParams): string {
   return JSON.stringify({
     ownerId: params.ownerId ?? null,
+    fastMode: params.fastMode ?? false,
     cwd: expandHome(params.cwd),
     appendSystemPrompt: params.appendSystemPrompt ?? null,
     mcpServerUrl: params.mcpServerUrl ?? null,

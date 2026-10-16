@@ -15,6 +15,10 @@ vi.mock('@workspace/core/runtime-discovery', () => ({
   withDiscoveredRuntimePath: () => ({}),
   resolveRuntimeLaunch: (command: string) => ({ command, env: {} }),
 }));
+vi.mock('../claude/claude-command', async original => ({
+  ...await original<typeof import('../claude/claude-command')>(),
+  resolveClaudeExecutable: () => cli.installed.has('claude') ? 'claude' : null,
+}));
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   execFile: Object.assign(() => undefined, {
@@ -65,6 +69,30 @@ function addRosterLinks(snapshot: import('@workspace/core/contracts').AppSnapsho
 }
 
 describe('provider onboarding setup', () => {
+  it('installs only on explicit RPC request, serializes setup, and publishes detected availability', async () => {
+    const snapshot = createTestSnapshot();
+    let installed = false;
+    let finish!: () => void;
+    const install = vi.fn(async () => { await new Promise<void>(resolve => { finish = resolve; }); installed = true; });
+    const lifecycle = { home: () => ({ isolated: true, shareSkills: false, homePath: root }), installed: () => installed,
+      prepareHome: vi.fn(), install, applyHome: vi.fn() };
+    const reconnect = vi.fn();
+    const setup = new ProviderSetup(snapshot, vi.fn(), reconnect, new Map([['antigravity', lifecycle]]));
+    await setup.initialize();
+    const server = new AppBackendServer({ version: 'test', snapshot, providerSetup: setup });
+    try {
+      expect(install).not.toHaveBeenCalled();
+      const request = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'provider/install', params: { backend: 'antigravity' } });
+      await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+      await expect(setup.refresh('antigravity')).rejects.toThrow('already in progress');
+      finish();
+      expect(await request).toMatchObject({ result: { backend: 'antigravity', installed: true } });
+      expect(setup.list()[0]?.installed).toBe(true);
+      expect(reconnect).toHaveBeenCalledWith('antigravity');
+      await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'provider/install', params: { backend: 'antigravity' } });
+      expect(install).toHaveBeenCalledOnce();
+    } finally { await server.close(); }
+  });
   it('requires exact confirmation, then removes only local engine agents and keeps provider history across reload', async () => {
     const snapshot = createTestSnapshot();
     const local = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend: 'claude' as const, status: { type: 'idle' as const } };
@@ -385,7 +413,7 @@ describe('provider onboarding setup', () => {
     expect((await loadBackendSnapshot()).general.providerHomes?.claude).toStrictEqual({ isolated: false, shareSkills: true, homePath: path.join(root, 'claude') });
   });
 
-  it('refreshes PATH detection over RPC after external installation and does not expose an installer', async () => {
+  it('refreshes external installation over RPC without installing providers that lack a managed installer', async () => {
     const snapshot = createTestSnapshot();
     cli.installed.add('codex');
     const setup = new ProviderSetup(snapshot, vi.fn(), vi.fn());
@@ -398,7 +426,7 @@ describe('provider onboarding setup', () => {
     cli.installed.add('claude');
     expect(await request('provider/refresh', { backend: 'claude' })).toMatchObject({ result: { backend: 'claude', installed: true } });
     expect(await request('provider/connections/get')).toMatchObject({ result: expect.arrayContaining([expect.objectContaining({ backend: 'claude', installed: true })]) });
-    expect(await request('provider/install', { backend: 'claude' })).toHaveProperty('error');
+    await expect(request('provider/install', { backend: 'claude' })).rejects.toThrow('official instructions');
     expect(cli.installs).toBe(0);
     await expect(request('provider/setup/configure', { backend: 'claude', choice: { isolated: 'yes' } })).rejects.toThrow('Invalid provider setup');
     await expect(request('settings/update', { input: { general: { providerHomes: { claude: { homePath: '/arbitrary' } } } } })).rejects.toThrow('provider setup');

@@ -1,3 +1,4 @@
+import { validConsumption, type Consumption, type ExecutionObservation } from '@workspace/core/usage';
 import path from 'node:path';
 import { isAppMcpServerName, product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
@@ -42,6 +43,8 @@ import {
 } from './transport';
 import { ClaudeProviderCatalog } from './claude-provider-catalog';
 import { listClaudeTranscriptSummaries, loadClaudeTranscriptHistory, type ClaudeTranscriptHistory } from './transcript-history-adapter';
+import { ClaudeHistoryWindow } from './history-window';
+import { ClaudeSubagents } from './claude-subagents';
 import { claudeToolResultText } from './claude-tool-result';
 import {
   claudeToolFileActivity,
@@ -72,6 +75,8 @@ type StreamedClaudeTool = {
 };
 
 type ActiveClaudeTurn = {
+  observedAt?:number;
+  consumption?:Consumption;
   agentId: string;
   cwd: string;
   turnId: string;
@@ -79,6 +84,7 @@ type ActiveClaudeTurn = {
   transcriptFolder?: string;
   model: string | null;
   reasoningEffort: ClaudeTurnParams['effort'];
+  serviceTier: 'fast' | null;
   handle: ClaudeTurnHandle;
   planMode: boolean;
   completed: boolean;
@@ -126,6 +132,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   readonly backend = 'claude' as const;
 
   private readonly listeners = new Set<EventListener>();
+  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private accountLimits: AccountRateLimits = {
     limitId: 'claude', limitName: null, primary: null, secondary: null,
     credits: null, individualLimit: null, planType: null, rateLimitReachedType: null,
@@ -137,8 +144,11 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private readonly goalRefreshIds = new Map<string, symbol>();
   private readonly conversationReplicasByAgentId = new Map<string, ClaudeConversationReplica>();
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
+  private readonly historyWindows = new Map<string, ClaudeHistoryWindow>();
+  private readonly historyLoads = new Map<string, symbol>();
   private readonly pendingRequestOwners = new Map<string, ActiveClaudeTurn>();
   private readonly liveSessionIdsByAgentId = new Map<string, string>();
+  private readonly subagents = new ClaudeSubagents(event => this.emit(event));
   private readonly catalog: ClaudeProviderCatalog;
   private readonly contextUsageRefreshesByAgentId = new Map<string, Promise<void>>();
   private readonly contextUsageSessionIdsByAgentId = new Map<string, string>();
@@ -373,6 +383,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         ...(agent.backendSession?.kind === 'claude' && agent.backendSession.transcriptFolder ? { transcriptFolder: agent.backendSession.transcriptFolder } : {}),
         model: turnParams.model ?? null,
         reasoningEffort: turnParams.effort ?? null,
+        serviceTier: turnParams.fastMode ? 'fast' : null,
         handle,
         planMode: Boolean(options.planMode),
         completed: false,
@@ -498,6 +509,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   }
 
   async releaseConversation(agentId: string): Promise<void> {
+    this.subagents.release(agentId);
+    this.historyWindows.delete(agentId);
+    this.historyLoads.delete(agentId);
     this.turnBoundariesByAgentId.delete(agentId);
     this.goalRefreshIds.delete(agentId);
     this.goalsByAgentId.delete(agentId);
@@ -519,14 +533,19 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
   async loadConversation(agent: Agent): Promise<BackendSession | null> {
     const sessionId = claudeSessionId(agent);
+    const load = Symbol();
+    this.historyLoads.set(agent.id, load);
+    const startingRevision = this.conversationRevisionsByAgentId.get(agent.id);
     const hasLiveSession = () => sessionId !== null && this.liveSessionIdsByAgentId.get(agent.id) === sessionId;
     const history = hasLiveSession() ? null : await this.loadHistory(agent);
+    if (this.historyLoads.get(agent.id) !== load) return null;
     const current = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
     // A turn can start while history is being read. Keep its live message identities.
     if (hasLiveSession() && current?.sessionId === sessionId) {
       this.publishConversationSnapshot(current);
       return agent.backendSession ?? null;
     }
+    if (this.conversationRevisionsByAgentId.get(agent.id) !== startingRevision && current) return null;
     if (!history) {
       return null;
     }
@@ -536,6 +555,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       history.backendSession.kind === 'claude' ? history.backendSession.sessionId : null,
       history.messages,
     );
+    for (const event of history.subagentEvents ?? []) this.emit(event);
 
     if (history.backendSession.kind === 'claude') {
       this.publishGoal(agent.id, history.goal);
@@ -543,6 +563,24 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     return history.backendSession;
+  }
+
+  async loadOlderHistory(agent: Agent): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> {
+    const window = this.historyWindows.get(agent.id);
+    const snapshot = this.conversationReplicasByAgentId.get(agent.id)?.getSnapshot();
+    if (!window || !snapshot || window.sessionId !== claudeSessionId(agent) || snapshot.sessionId !== window.sessionId) {
+      throw new Error('Claude history is no longer open. Reload the conversation.');
+    }
+    const page = window.older();
+    const frame = this.emitConversation({ agentId: agent.id, backend: 'claude', backendSessionId: window.sessionId ?? undefined,
+      type: 'history.prepended', payload: page });
+    return { hasOlder: page.hasOlder, frame };
+  }
+
+  async readConversationContent(agent: Agent, input: import('@workspace/core/contracts/conversation').ConversationContentInput): Promise<import('@workspace/core/contracts/conversation').ConversationContentChunk> {
+    const window = this.historyWindows.get(agent.id);
+    if (!window || input.sessionId !== claudeSessionId(agent)) throw new Error('Conversation content is no longer available.');
+    return window.read(input);
   }
 
   async listConversations(agent: Agent): Promise<ConversationSummary[]> {
@@ -562,10 +600,16 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     const backendSession = claudeBackendSession(ref.sessionId, undefined, undefined, currentTranscriptFolder);
+    const load = Symbol();
+    this.historyLoads.set(agent.id, load);
+    const revision = this.conversationRevisionsByAgentId.get(agent.id);
     const history = await this.loadHistory({
       ...agent,
       backendSession,
     });
+    if (this.historyLoads.get(agent.id) !== load || this.conversationRevisionsByAgentId.get(agent.id) !== revision) {
+      throw new Error('Claude conversation changed while loading history.');
+    }
     const resolvedBackendSession = history?.backendSession ?? backendSession;
     this.resetConversationReplica(
       agent,
@@ -633,9 +677,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     const current = this.conversationReplicasByAgentId.get(agentId)?.getSnapshot();
-    if (current?.sessionId === ref.sessionId) return structuredClone(current.messages);
+    if (ref.subagentId === undefined && current?.sessionId === ref.sessionId) return this.historyWindows.get(agentId)?.readMessages(current.messages) ?? structuredClone(current.messages);
 
-    const history = await this.loadHistory({
+    const historyAgent: Agent = {
       id: agentId,
       name: agentId,
       folder: ref.folder,
@@ -648,7 +692,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       status: { type: 'idle' },
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
-    });
+    };
+    const history = ref.subagentId === undefined ? await this.loadHistory(historyAgent)
+      : await loadClaudeTranscriptHistory(historyAgent, { projectsRoot: this.claudeProjectsRoot(), subagentId: ref.subagentId });
     return history?.messages ?? [];
   }
 
@@ -706,6 +752,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     return this.driverOptions.homeDir ? path.join(this.driverOptions.homeDir, '.claude', 'projects') : undefined;
   }
 
+  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener); return ()=>this.usageListeners.delete(listener); }
+
   onEvent(listener: EventListener): () => void {
     this.listeners.add(listener);
 
@@ -731,6 +779,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
     this.activeTurnsByAgentId.clear();
     this.conversationReplicasByAgentId.clear();
+    this.historyWindows.clear();
+    this.historyLoads.clear();
     this.conversationRevisionsByAgentId.clear();
     this.liveSessionIdsByAgentId.clear();
     await Promise.allSettled(interrupts);
@@ -738,6 +788,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   }
 
   private handleSdkMessage(activeTurn: ActiveClaudeTurn, message: ClaudeSdkMessage): void {
+    if (activeTurn.completed) {
+      if (activeTurn.sessionId && this.liveSessionIdsByAgentId.get(activeTurn.agentId) === activeTurn.sessionId) {
+        this.subagents.observe(activeTurn.agentId, activeTurn.sessionId, message);
+      }
+      return;
+    }
     if (message.type === 'rate_limit_event') {
       const info = 'rate_limit_info' in message ? message.rate_limit_info : undefined;
       if (!info || typeof info !== 'object') return;
@@ -757,7 +813,14 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (sessionId) {
       this.resolveTurnStart(activeTurn, sessionId);
     }
+    if (activeTurn.sessionId && this.subagents.observe(activeTurn.agentId, activeTurn.sessionId, message)) return;
 
+    if (activeTurn.sessionId && !activeTurn.observedAt && (message.type === 'assistant' || message.type === 'stream_event' || message.type === 'result' || message.type === 'system' && message.subtype === 'init')) {
+      activeTurn.observedAt = Date.now();
+      // The SDK init model is execution evidence. Requested defaults alone are not.
+      activeTurn.model = message.type === 'system' && typeof message.model === 'string' ? message.model : null;
+      this.emitUsage(activeTurn,'started');
+    }
     if (message.type === 'system') {
       if ((message as Record<string, unknown>).subtype === 'init') {
         void this.catalog.refreshModels().catch(() => undefined);
@@ -791,6 +854,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     if (message.type === 'result') {
+      if (message.executionModel !== undefined) activeTurn.model = typeof message.executionModel === 'string' && message.executionModel.length <= 200 ? message.executionModel : null;
+      if (validConsumption(message.executionConsumption)) activeTurn.consumption=message.executionConsumption;
       const errorMessage = claudeResultErrorMessage(message);
       if (errorMessage) {
         this.failTurn(activeTurn, new Error(normalizeClaudeErrorMessage(activeTurn.authenticationFailed ? 'authentication_failed' : errorMessage)));
@@ -935,7 +1000,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       payload: { contextUsage },
     });
     const current = this.conversationReplicasByAgentId.get(agentId)?.getSnapshot();
-    if (current) this.publishConversationSnapshot({ ...current, sessionId, contextUsage });
+    if (current?.sessionId === sessionId) this.emitConversation({ agentId, backend: 'claude', backendSessionId: sessionId,
+      type: 'context.usageUpdated', payload: { contextUsage } });
   }
 
   private emitAssistantMessage(activeTurn: ActiveClaudeTurn, message: ClaudeSdkMessage): void {
@@ -1374,6 +1440,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       payload: { settings: {
         ...(activeTurn.model ? { model: activeTurn.model } : {}),
         ...(activeTurn.reasoningEffort ? { reasoningEffort: activeTurn.reasoningEffort } : {}),
+        serviceTier: activeTurn.serviceTier,
       } },
     });
     if (!activeTurn.startResolved) {
@@ -1450,12 +1517,19 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     });
   }
 
+  private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
+    if (!turn.observedAt || !turn.sessionId) return;
+    const at=Date.now();
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,serviceTier:turn.serviceTier ?? 'normal',...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
+  }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {
     if (activeTurn.completed) {
       return;
     }
 
     activeTurn.completed = true;
+    this.emitUsage(activeTurn,activeTurn.interrupted ? 'interrupted' : activeTurn.error ? 'failed' : 'completed');
     this.resolvePendingRequests(activeTurn);
     this.emitConversation({
       agentId: activeTurn.agentId,
@@ -1517,7 +1591,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
   }
 
-  private emitConversation(input: UnsequencedClaudeConversationEvent, resolution?: import('@workspace/core/agent-request').AgentRequestOutcome): void {
+  private emitConversation(input: UnsequencedClaudeConversationEvent, resolution?: import('@workspace/core/agent-request').AgentRequestOutcome): NonNullable<import('@workspace/core/backend-driver').BackendHistoryLoadResult['frame']> {
     const revision = this.nextConversationRevision(input.agentId);
     const event = {
       ...input,
@@ -1529,12 +1603,42 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       throw new Error(`Claude conversation '${input.agentId}' has not been initialized.`);
     }
     replica.apply(event);
-    this.emit({
+    let publishedEvent = event;
+    if (input.type === 'message.delta' || input.type === 'message.userSubmitted' || input.type === 'item.started' || input.type === 'item.updated') {
+      const snapshot = replica.getSnapshot();
+      const itemId = input.type === 'item.started' ? input.payload.toolPart.id : input.type === 'item.updated' ? input.payload.itemId : null;
+      const message = input.type === 'message.userSubmitted' ? input.payload.message
+        : [...snapshot.messages].reverse().find((candidate) => candidate.role === 'assistant' && candidate.turnId === input.turnId
+          && (!itemId || candidate.parts.some((part) => part.type === 'tool' && part.id === itemId)));
+      const window = this.historyWindows.get(input.agentId);
+      if (message && window) {
+        const wasDeferred = window.isDeferred(message.id);
+        const projected = window.project(message);
+        if (projected.deferredContent || wasDeferred) publishedEvent = { ...event, backendSessionId: snapshot.sessionId ?? undefined,
+          type: input.type === 'message.userSubmitted' ? 'message.userSubmitted' : 'message.replaced', payload: { message: projected } };
+      }
+    }
+    const frame: NonNullable<import('@workspace/core/backend-driver').BackendHistoryLoadResult['frame']> = {
       agentId: input.agentId,
       backend: 'claude',
       type: 'claude.conversationEventReceived',
-      payload: { revision, event },
-    });
+      seq: revision,
+      occurredAt: event.occurredAt,
+      payload: { revision, event: publishedEvent },
+    };
+    this.emit(frame);
+    if (input.type === 'turn.completed') {
+      const snapshot = replica.getSnapshot();
+      const window = this.historyWindows.get(input.agentId);
+      for (const message of snapshot.messages) {
+        if (message.turnId !== input.turnId || !window?.isDeferred(message.id)) continue;
+        const revision = this.nextConversationRevision(input.agentId);
+        const update: ClaudeConversationEvent = { agentId: input.agentId, backend: 'claude', backendSessionId: snapshot.sessionId ?? undefined,
+          seq: revision, occurredAt: event.occurredAt, type: 'message.replaced', payload: { message: window.project(message) } };
+        // The server retains the full row; only the transport replica receives its preview.
+        this.emit({ agentId: input.agentId, backend: 'claude', type: 'claude.conversationEventReceived', payload: { revision, event: update } });
+      }
+    }
     if (input.type === 'toolInput.requested' || input.type === 'approval.requested') {
       this.emit({
         agentId: input.agentId, backend: 'claude', type: 'agentRequest.created',
@@ -1546,6 +1650,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     } else if (input.type === 'clientRequest.resolved') {
       this.emit({ agentId: input.agentId, backend: 'claude', type: 'agentRequest.resolved', payload: { id: input.payload.id, outcome: resolution ?? { kind: 'cancelled', reason: 'conversation_released' } } });
     }
+    return frame;
   }
 
   private ensureConversationReplica(agent: Agent): void {
@@ -1558,17 +1663,20 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     sessionId: string | null,
     messages: RendererMessage[],
   ): void {
+    const window = new ClaudeHistoryWindow(sessionId, messages);
+    this.historyWindows.set(agent.id, window);
+    const page = window.older();
     this.publishConversationSnapshot({
       agentId: agent.id,
       sessionId,
       activeTurnId: null,
       turnIds: [],
       turns: [],
-      messages,
+      messages: page.messages,
       answeredClientRequestIds: [],
       busy: false,
       historyLoading: false,
-      historyState: { hasOlder: false, loadingOlder: false },
+      historyState: { hasOlder: page.hasOlder, loadingOlder: false },
       contextUsage: agent.contextUsage ?? null,
       plan: agent.plan ?? null,
       error: null,
@@ -1578,10 +1686,20 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private rebindConversationSession(agentId: string, sessionId: string): void {
     const current = this.conversationReplicasByAgentId.get(agentId)?.getSnapshot();
     if (!current || current.sessionId === sessionId) return;
+    const window = this.historyWindows.get(agentId);
+    if (window?.sessionId === null) window.sessionId = sessionId;
+    else if (window?.sessionId !== sessionId) this.historyWindows.set(agentId, new ClaudeHistoryWindow(sessionId));
     this.publishConversationSnapshot({ ...current, sessionId });
   }
 
   private publishConversationSnapshot(snapshot: ClaudeConversationSnapshot): void {
+    const window = this.historyWindows.get(snapshot.agentId);
+    let publishedSnapshot = snapshot;
+    if (window) {
+      publishedSnapshot = { ...snapshot, messages: window.reopen(snapshot.messages),
+        historyState: { hasOlder: window.hasOlder, loadingOlder: false } };
+      snapshot = { ...snapshot, historyState: publishedSnapshot.historyState };
+    }
     const revision = this.nextConversationRevision(snapshot.agentId);
     this.conversationReplicasByAgentId.set(
       snapshot.agentId,
@@ -1591,7 +1709,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       agentId: snapshot.agentId,
       backend: 'claude',
       type: 'claude.conversationSnapshotChanged',
-      payload: { revision, snapshot },
+      payload: { revision, snapshot: publishedSnapshot },
     });
   }
 
@@ -1620,6 +1738,8 @@ function claudeTurnParams(
 ): ClaudeTurnParams {
   const claudeOptions = options.backendOptions?.kind === 'claude' ? options.backendOptions : undefined;
   const defaults = agent.backendDefaults?.kind === 'claude' ? agent.backendDefaults : undefined;
+  const tier = options.serviceTier !== undefined ? options.serviceTier : defaults?.serviceTier;
+  if (tier != null && !['normal', 'default', 'fast'].includes(tier)) throw new Error('Unsupported Claude service tier.');
   const mcpServerUrl = appMcpServerUrl ? appMcpUrlForAgent(appMcpServerUrl, agent) : null;
   return {
     ownerId: agent.id,
@@ -1628,6 +1748,7 @@ function claudeTurnParams(
     sessionId: existingSessionId ?? undefined,
     model: options.model ?? defaults?.model ?? null,
     effort: claudeEffort(options.reasoningEffort ?? defaults?.reasoningEffort),
+    fastMode: tier === 'fast',
     permissionMode: options.planMode ? 'plan' : claudeOptions?.permissionMode ?? defaults?.permissionMode ?? null,
     appendSystemPrompt: appDeveloperInstructions(agent, pluginSettings, effects),
     mcpServerUrl,

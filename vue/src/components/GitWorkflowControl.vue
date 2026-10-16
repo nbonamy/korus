@@ -392,7 +392,7 @@ import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitOperationProgress, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
-import { AlertTriangleIcon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -422,6 +422,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'open-git-diff': [];
+  'open-git-log': [];
   'inspect-agent': [agentId: string];
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
@@ -642,6 +643,8 @@ const updateEnabled = computed(() => Boolean(props.updateFromBase && workflow.va
 const pullEnabled = computed(() => Boolean(props.pullBranch && workflow.value?.upstream && currentBranchAvailable.value));
 const firstEnabledAction = computed(() => (commitEnabled.value ? 'commit' : pushEnabled.value ? 'push' : mergeEnabled.value && !mergeUnavailable.value ? 'merge' : prEnabled.value ? 'create-pr' : null));
 const menuItems = computed<AppMenuItem[]>(() => [
+  { id: 'log', type: 'action', label: translate('gitLog.menu'), icon: ClockHour8Icon },
+  { id: 'separator-log', type: 'separator' },
   { id: 'revert', type: 'action', label: translate('surface.gitWorkflowControl.revert'), icon: ArrowBackUpIcon, disabled: !props.revertChanges || !commitEnabled.value },
   { id: 'commit', type: 'action', label: translate('surface.gitWorkflowControl.commit'), icon: GitCommitIcon, disabled: !commitEnabled.value },
   { id: 'branch-work', type: 'action', label: translate('branchWork.menu'), icon: GitForkIcon, disabled: !workflow.value || !appApi },
@@ -801,6 +804,7 @@ function runFirstEnabled(): void { if (firstEnabledAction.value) selectAction(fi
 async function selectAction(action: string): Promise<void> {
   if (busy.value) return;
   menuOpen.value = false;
+  if (action === 'log') { emit('open-git-log'); return; }
   if (action === 'revert' && props.revertChanges && commitEnabled.value) {
     revertIncludeUntracked.value = false;
     revertError.value = null;
@@ -1312,16 +1316,17 @@ function clearDebugOperationTimers(): void {
 function getCommandActions(): import('./command-palette-actions').CommandPaletteAction[] {
   const agentId = props.agent.id;
   const supported: Record<string, boolean> = {
-    revert: Boolean(props.revertChanges), commit: Boolean(props.commitChanges), push: Boolean(props.pushBranch),
+    log: true, revert: Boolean(props.revertChanges), commit: Boolean(props.commitChanges), push: Boolean(props.pushBranch),
     'create-pr': Boolean(props.createPullRequest), merge: Boolean(props.mergeBranch),
     pull: Boolean(props.pullBranch), 'update-from-base': Boolean(props.updateFromBase), prune: Boolean(appApi),
+    'branch-work': Boolean(appApi),
   };
   return menuItems.value.filter(item => item.type === 'action').map(item => ({
     id: `git:${item.id}`,
     icon: item.icon,
     label: translate('commands.gitAction', { action: item.label }),
     aliases: item.id === 'create-pr' ? 'pull request github' : item.id === 'revert' ? 'discard changes' : item.id,
-    disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || workflowError.value ? translate('commands.gitUnavailable') : undefined,
+    disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || (workflowError.value && item.id !== 'log') ? translate('commands.gitUnavailable') : undefined,
     run: () => {
       const current = menuItems.value.find(candidate => candidate.id === item.id);
       if (props.agent.id === agentId && supported[item.id] && current?.type === 'action' && !current.disabled) return selectAction(item.id);

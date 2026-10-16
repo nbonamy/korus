@@ -16,7 +16,7 @@
     :is-conversation-load-failed="isActiveAgentHistoryFailed"
     :retry-agent-history="retryActiveAgentHistory"
     :send-prompt-action="sendPrompt"
-    :respond-to-plan-review="respondToPlanReview"
+    :update-plan-review="updatePlanReview"
     :respond-to-thread-flag-action="respondToThreadFlag"
     :agent-conversation-for="agentConversationFor"
     :agent-conversation-actions="agentConversationActions"
@@ -122,6 +122,7 @@
     :check-remote-connection="checkRemoteConnection"
     :update-remote-connection="updateRemoteConnection"
     :remove-remote-connection="removeRemoteConnection"
+    :companion-control="companionControl"
     :get-remote-control-status="getRemoteControlStatus"
     :enable-remote-control="enableRemoteControl"
     :disable-remote-control="disableRemoteControl"
@@ -382,6 +383,7 @@ const {
   checkRemoteConnection,
   updateRemoteConnection,
   removeRemoteConnection,
+  companionControl,
   getRemoteControlStatus,
   enableRemoteControl,
   disableRemoteControl,
@@ -436,7 +438,7 @@ const {
   selectTeam,
   sendPrompt,
   sendPromptToAgent,
-  respondToPlanReview,
+  updatePlanReview,
   respondToPlanReviewForAgent,
   respondToThreadFlag,
   respondToThreadFlagForAgent,

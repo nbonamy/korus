@@ -70,10 +70,29 @@ describe('BranchCurrentWorkService', () => {
 });
 
 describe('transfer safety and recovery', () => {
-  it.each(['invalid branch', 'branch collision', 'destination collision', 'stale preview', 'conflict'] as const)('rejects %s before creating work or provisioning', async scenario => {
+  it.each(['local', 'remote', 'slash-named remote'] as const)('does not mistake an existing %s branch suffix for the requested branch', async scenario => {
+    const f = await fixture();
+    if (scenario === 'local') await f.git('branch', 'team/fix');
+    else {
+      const remote = scenario === 'remote' ? 'origin' : 'team/origin';
+      await f.git('remote', 'add', remote, f.source);
+      await f.git('update-ref', `refs/remotes/${remote}/team/fix`, f.head);
+    }
+    const result = await f.service.execute(f.agent, { ...f.input, branchName: 'fix' });
+    expect(result.state, result.detail).toBe('completed');
+    expect((await exec('git', ['branch', '--show-current'], { cwd: result.folder })).stdout.trim()).toBe('fix');
+    expect(await readFile(join(result.folder, 'mixed'), 'utf8')).toBe('final\n');
+    expect(await f.git('status', '--porcelain')).toBe('');
+  });
+
+  it.each(['invalid branch', 'branch collision', 'remote branch collision', 'destination collision', 'stale preview', 'conflict'] as const)('rejects %s before creating work or provisioning', async scenario => {
     const f = await fixture();
     if (scenario === 'invalid branch') f.input.branchName = 'bad..name';
     if (scenario === 'branch collision') await f.git('branch', f.input.branchName);
+    if (scenario === 'remote branch collision') {
+      await f.git('remote', 'add', 'team/origin', f.source);
+      await f.git('update-ref', `refs/remotes/team/origin/${f.input.branchName}`, f.head);
+    }
     if (scenario === 'destination collision') await writeFile(join(f.root, 'source-feature-work'), 'occupied');
     if (scenario === 'stale preview') await writeFile(join(f.source, 'mixed'), 'new edit\n');
     if (scenario === 'conflict') await writeFile(join(f.source, '.git', 'MERGE_HEAD'), f.head);

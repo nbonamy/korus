@@ -12,6 +12,7 @@
       :setup-error="setupError"
       @customize="customizeProvider"
       @refresh-provider="refreshProvider"
+      @install-provider="installProvider"
       @close-setup="customizingProvider = null"
       @save-setup="saveProviderSetup"
       v-model:claude-dialog-visible="claudeDialogVisible"
@@ -139,6 +140,7 @@
         :codex-connected="!debugMissingEngines && codexConnected"
         :provider-connections="displayProviderConnections"
         :refresh-provider="refreshProvider"
+        :install-provider="installProvider"
         :provider-setup-error="setupError"
         :updating-provider="updatingProvider"
         :customize-provider="customizeProvider"
@@ -175,6 +177,7 @@
         :check-remote-connection="checkRemoteConnection"
         :update-remote-connection="updateRemoteConnection"
         :remove-remote-connection="removeRemoteConnection"
+        :companion-control="companionControl"
         :get-remote-control-status="getRemoteControlStatus"
         :enable-remote-control="enableRemoteControl"
         :disable-remote-control="disableRemoteControl"
@@ -299,8 +302,7 @@
         :close-right-workspace-tab="closeRightWorkspaceTab"
         :save-document-as="saveDocumentAs"
         :commit-agent-git-changes="props.commitAgentGitChanges"
-        :confirm-plan="confirmPlan"
-        :respond-to-plan-review="respondToPlanReview"
+        :update-plan-review="updatePlanReview"
         :respond-to-thread-flag="respondToThreadFlag"
         :thread-flag-busy="threadFlagBusy"
         :conversation-pane-controller="conversationPaneController"
@@ -497,13 +499,6 @@
       :read-messages="readConversationMessages"
       @close="handoffAgentId = null"
     />
-    <WorktreeDelegationDialog
-      v-if="delegationAgentId"
-      :key="delegationAgentId"
-      :starting-context="props.snapshot.general.worktreeDelegationStartingContext ?? 'handoff'"
-      :delegate="delegateFromDialog"
-      @close="delegationAgentId = null"
-    />
     <ModelFavoritesDialog
       :favorites="managedModelFavorites"
       :models="backendModels"
@@ -656,8 +651,6 @@ import WhatsNewDialog from './WhatsNewDialog.vue';
 import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
-import WorktreeDelegationDialog from './WorktreeDelegationDialog.vue';
-import type { DelegationOverrides } from '@workspace/core/delegation-context';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
@@ -819,6 +812,7 @@ const props = withDefaults(defineProps<{
   checkRemoteConnection?: (connectionId: string, inspectOnly?: boolean) => Promise<void>;
   updateRemoteConnection?: (connectionId: string, input: UpdateRemoteConnectionInput) => Promise<void>;
   removeRemoteConnection?: (connectionId: string) => Promise<void>;
+  companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   getRemoteControlStatus?: () => Promise<DevicePairingStatus>;
   enableRemoteControl?: () => Promise<DevicePairingStatus>;
   disableRemoteControl?: () => Promise<DevicePairingStatus>;
@@ -855,7 +849,7 @@ const props = withDefaults(defineProps<{
   agentConversationFor?: (agentId: string) => AgentConversationView | null;
   agentConversationActions?: AgentConversationActions;
   sendPromptAction?: (prompt: string, options?: RendererSendPromptOptions) => Promise<void>;
-  respondToPlanReview?: (resolution: 'accept' | 'revise' | 'cancel', feedback?: string) => Promise<void>;
+  updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlagAction?: (response: ThreadFlagResponse) => Promise<void>;
   deleteTurnAction?: (turnId: string) => Promise<void>;
   editTurnAction?: (payload: { content: string; turnId: string }) => Promise<void>;
@@ -1332,7 +1326,7 @@ const firstRunOnboarding = useFirstRunOnboarding({
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
   antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
-  providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, refreshProvider: refreshRealProvider,
+  providerSetup, customizedSetup, customizingProvider, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup, installProvider: installRealProvider, refreshProvider: refreshRealProvider,
   codexConnected, continuing, connectClaude, disconnectProvider, refreshClaude, continueWithProviders,
   authentication,
   authenticationCancelling,
@@ -1362,6 +1356,9 @@ const displayProviderSetup = computed(() => debugMissingEngines.value
 const displayProviderConnections = computed(() => debugMissingEngines.value
   ? props.snapshot.providerConnections?.map(engine => ({ ...engine, installed: false, connected: false, checking: false, authentication: undefined, error: undefined }))
   : props.snapshot.providerConnections);
+async function installProvider(backend: AgentBackend): Promise<void> {
+  if (!debugMissingEngines.value) await installRealProvider(backend);
+}
 async function refreshProvider(backend: AgentBackend): Promise<void> {
   if (!debugMissingEngines.value) await refreshRealProvider(backend);
 }
@@ -2268,24 +2265,29 @@ const conversationPaneActions: CodexConversationPaneActions = {
   },
 };
 
-const delegationAgentId = ref<string | null>(null);
-async function delegateFromDialog(delegation: DelegationOverrides): Promise<void> {
-  const agentId = delegationAgentId.value;
-  if (!agentId || !props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
-  await backendSwitch.settled();
-  if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate', { delegation });
-  else if (currentAgent.value?.id === agentId) {
-    requireConnectedConversation();
-    if (props.sendPromptAction) await props.sendPromptAction('/delegate', { delegation });
-    else emit('sendPrompt', '/delegate', { delegation });
-  } else throw new Error(t('delegation.agentUnavailable'));
+const delegatingAgentIds = new Set<string>();
+async function delegateAgent(agentId: string): Promise<void> {
+  if (delegatingAgentIds.has(agentId)) return;
+  delegatingAgentIds.add(agentId);
+  try {
+    await backendSwitch.settled();
+    if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
+    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate');
+    else if (currentAgent.value?.id === agentId) {
+      requireConnectedConversation();
+      if (props.sendPromptAction) await props.sendPromptAction('/delegate');
+      else emit('sendPrompt', '/delegate');
+    } else throw new Error(t('delegation.agentUnavailable'));
+  } finally {
+    delegatingAgentIds.delete(agentId);
+  }
 }
 
 async function runConversationMenuCommand(agentId: string, command: ConversationMenuCommand): Promise<void> {
   try {
     if (command === 'review') return await openCodeReviewForAgent(agentId);
     if (command === 'visualize') return await startVisualizeForAgent(agentId);
-    delegationAgentId.value = agentId;
+    await delegateAgent(agentId);
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -2514,6 +2516,7 @@ const paletteActions = computed(() => {
     capabilities: { ...defaultBackendCapabilities(agent?.backend ?? 'codex'), ...currentBackendRuntime.value.capabilities },
     gitAvailable: Boolean(currentAgentGitStatus.value && currentAgentGitStatus.value.state !== 'unknown'),
     planAvailable: Boolean(agent && rightWorkspaceFor(agent.id).planPanel),
+    simulatorAvailable: Boolean(appApi?.mobileSimulator),
     gitActions: agentWorkspace.value?.getCommandActions?.() ?? [],
   }, {
     command: executeAppCommand,
@@ -2526,6 +2529,7 @@ const paletteActions = computed(() => {
     files: () => { fileQuickOpenVisible.value = true; },
     filesPane: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'files'); },
     codeReview: () => { if (agent) return openCodeReviewForAgent(agent.id); },
+    simulator: () => { if (agent) agentWorkspace.value?.openRightWorkspaceTabFromMenu(agent.id, 'simulator'); },
     visualize: () => { if (agent) return startVisualizeForAgent(agent.id); },
     plan: () => openRightWorkspaceTab('plan', agent?.id),
   });
@@ -2952,24 +2956,20 @@ function openResumeSession(agentId: string): void {
   resumeSessionAgentId.value = agentId;
 }
 
-async function respondToPlanReview(resolution: 'accept' | 'revise' | 'cancel', feedback?: string): Promise<void> {
-  const agentId = currentAgent.value?.id;
-  if (!agentId || !props.respondToPlanReview) return;
-  try {
-    await props.respondToPlanReview(resolution, feedback);
-  } catch (error) {
-    ElMessage.error(localizedErrorMessage(error, t));
-    return;
+async function updatePlanReview(agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) {
+  if (!props.updatePlanReview) throw new Error('Plan review is unavailable.');
+  const review = await props.updatePlanReview(agentId, response);
+  if (response.resolution !== 'save') {
+    if (currentAgent.value?.id === agentId) emit('update:planMode', response.resolution === 'revise');
+    if (response.resolution !== 'revise') closeRightWorkspaceTab(agentId, 'plan');
   }
-  if (currentAgent.value?.id === agentId) emit('update:planMode', resolution === 'revise');
-  if (agentId) closeRightWorkspaceTab(agentId, 'plan');
+  return review;
 }
 
 const threadFlagBusy = ref(false);
 async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> {
   if (response.id === 'delegate_to_worktree' && response.action === 'execute' && currentAgent.value) {
-    delegationAgentId.value = currentAgent.value.id;
-    return;
+    return runConversationMenuCommand(currentAgent.value.id, 'delegate');
   }
   if (!props.respondToThreadFlagAction || threadFlagBusy.value) return;
   threadFlagBusy.value = true;
@@ -2983,10 +2983,6 @@ async function respondToThreadFlag(response: ThreadFlagResponse): Promise<void> 
   } finally {
     threadFlagBusy.value = false;
   }
-}
-
-function confirmPlan(): void {
-  void respondToPlanReview('accept');
 }
 
 function forwardApprovalResolution(
@@ -3213,10 +3209,7 @@ async function updateCollapsedRepositories(collapsedRepositoryKeys: string[]): P
 }
 
 async function updateBacklogRepositoryFavorites(repositoryIds: string[]): Promise<void> {
-  const backlogRepositoryFavorites = Object.fromEntries(
-    Object.entries(props.snapshot.general.backlogRepositoryFavorites).map(([provider, ids]) => [provider, [...(ids ?? [])]]),
-  );
-  backlogRepositoryFavorites[cockpitBacklogState.provider.value] = [...repositoryIds];
+  const backlogRepositoryFavorites = { [cockpitBacklogState.provider.value]: [...repositoryIds] };
   await updateSettings({ general: { backlogRepositoryFavorites } });
 }
 
@@ -3298,9 +3291,10 @@ watch(() => props.sidePanelRequest, (request) => {
   openSidePanelRequest(request);
 }, { immediate: true, flush: 'sync' });
 
-watch(() => props.snapshot.agents.map((agent) => [agent.id, agent.planReview?.status] as const), (reviews) => {
-  for (const [agentId, status] of reviews) {
-    if (status && status !== 'pending') closeRightWorkspaceTab(agentId, 'plan');
+watch(() => props.snapshot.agents.map(agent => [agent.id, agent.planReview?.id, agent.planReview?.status] as const), (reviews, previous) => {
+  for (const [agentId, id, status] of reviews) {
+    if (id && (status === 'pending' || status === 'revise') && !previous?.some(r => r[0] === agentId && r[1] === id)) openRightWorkspaceTab('plan', agentId);
+    if (status === 'accept' || status === 'cancel') closeRightWorkspaceTab(agentId, 'plan');
   }
 }, { immediate: true });
 

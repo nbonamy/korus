@@ -93,7 +93,7 @@ describe('AppBackendServer', () => {
     }
   });
 
-  it('withdraws review readiness after a successful steer but keeps it when steering fails', async () => {
+  it('updates review readiness and binds delegation controls only after a successful steer', async () => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -101,6 +101,7 @@ describe('AppBackendServer', () => {
       backendSession: { kind: 'codex', threadId: 'thread-dina' }, status: { type: 'working' },
       threadFlags: { ready_for_review: true },
       suggestedPrompt: 'Review the diff',
+      userDelegationOverrides: { startingContext: 'conversation', instructions: 'Existing user directions', execution: { backend: 'codex', conversationId: 'thread-dina', turnId: 'turn-original' } },
       createdAt: '2026-06-13T00:00:00.000Z', updatedAt: '2026-06-13T00:00:00.000Z',
     }];
     const steerPrompt = vi.fn()
@@ -125,17 +126,19 @@ describe('AppBackendServer', () => {
     });
     const request = (id: string) => ({
       jsonrpc: '2.0' as const, id, method: 'agent/prompt/steer',
-      params: { agentId: 'agent-dina', prompt: 'revert everything' },
+      params: { agentId: 'agent-dina', prompt: 'revert everything', options: { delegation: { startingContext: 'handoff', instructions: 'New user directions' } } },
     });
 
     await expect(server.handleMessage(request('failed'))).rejects.toThrow('offline');
     expect(snapshot.agents[0]?.threadFlags).toStrictEqual({ ready_for_review: true });
     expect(snapshot.agents[0]?.suggestedPrompt).toBe('Review the diff');
+    expect(snapshot.agents[0]?.userDelegationOverrides?.instructions).toBe('Existing user directions');
     expect(events.some(event => event.type === 'agent.updated')).toBe(false);
 
     const response = await server.handleMessage(request('accepted'));
     expect((response as { result: AppSnapshot }).result.agents[0]?.threadFlags).toBeUndefined();
     expect((response as { result: AppSnapshot }).result.agents[0]?.suggestedPrompt).toBeUndefined();
+    expect(snapshot.agents[0]?.userDelegationOverrides).toStrictEqual({ startingContext: 'handoff', instructions: 'New user directions', execution: { backend: 'codex', conversationId: 'thread-dina', turnId: 'turn-steered' } });
     expect(events).toContainEqual(expect.objectContaining({
       type: 'agent.updated', payload: expect.objectContaining({ id: 'agent-dina', threadFlags: null }),
     }));
@@ -292,9 +295,9 @@ describe('AppBackendServer', () => {
   });
 
   it.each([
-    { prompt: 'run next', delivered: 'run next' },
-    { prompt: '/worktree', delivered: WORKTREE_DELEGATION_PROMPT },
-  ])('owns queued prompt draining and dequeues $prompt only after backend acceptance', async ({ prompt, delivered }) => {
+    { prompt: 'run next', delivered: 'run next', clientId: 'desktop' },
+    { prompt: '/worktree', delivered: WORKTREE_DELEGATION_PROMPT, clientId: 'mobile-test' },
+  ])('owns queued prompt draining and dequeues $prompt only after backend acceptance', async ({ prompt, delivered, clientId }) => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -306,6 +309,8 @@ describe('AppBackendServer', () => {
     let acceptPrompt!: (value: { backendSession: { kind: 'codex'; threadId: string }; turnId: string }) => void;
     const sendPrompt = vi.fn().mockReturnValue(new Promise((resolve) => { acceptPrompt = resolve; }));
     const onPromptStarting = vi.fn();
+    const onPromptSource = vi.fn();
+    const delegation = prompt === 'run next' ? { delegation: { startingContext: 'handoff' as const, instructions: 'Queued user directions' } } : {};
     const events: Array<{ type: string; snapshot?: AppSnapshot; payload: unknown }> = [];
     const driver: AgentBackendDriver = {
       backend: 'codex',
@@ -322,11 +327,13 @@ describe('AppBackendServer', () => {
       driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
       onEvent: (event) => events.push(event),
       onPromptStarting,
+      onPromptSource,
     });
 
     await server.handleMessage({
       jsonrpc: '2.0', id: 'queue', method: 'agent/prompt/send',
       params: {
+        _clientId: clientId,
         agentId: 'agent-dina',
         prompt,
         options: {
@@ -335,9 +342,11 @@ describe('AppBackendServer', () => {
           serviceTier: 'fast',
           attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
           inputMethod: 'dictated',
+          ...delegation,
         },
       },
     });
+    expect(onPromptSource).not.toHaveBeenCalled();
     expect(snapshot.queuedPrompts).toEqual([expect.objectContaining({
       agentId: 'agent-dina',
       text: prompt,
@@ -347,11 +356,13 @@ describe('AppBackendServer', () => {
         serviceTier: 'fast',
         attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
         inputMethod: 'dictated',
+        ...delegation,
       },
     })]);
     expect(snapshot.agents[0]?.threadFlags).toBeUndefined();
     expect(sendPrompt).not.toHaveBeenCalled();
     expect(onPromptStarting).not.toHaveBeenCalled();
+    expect(snapshot.agents[0]?.userDelegationOverrides).toBeUndefined();
 
     // The provider conversation may already be idle before its completion event reaches App.
     snapshot.agents[0]!.status = { type: 'idle' };
@@ -380,12 +391,14 @@ describe('AppBackendServer', () => {
       payload: { type: 'idle' },
     });
     await flushMicrotasks();
+    expect(onPromptSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), clientId);
     expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), delivered, {
       model: 'sol',
       reasoningEffort: 'high',
       serviceTier: 'fast',
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
       inputMethod: 'dictated',
+      ...delegation,
     });
     expect(sendPrompt).toHaveBeenCalledTimes(1);
     expect(onPromptStarting).toHaveBeenCalledWith('agent-dina', {
@@ -394,11 +407,13 @@ describe('AppBackendServer', () => {
       serviceTier: 'fast',
       attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }],
       inputMethod: 'dictated',
+      ...delegation,
     });
     expect(snapshot.queuedPrompts).toHaveLength(1);
 
     acceptPrompt({ backendSession: { kind: 'codex', threadId: 'thread-dina' }, turnId: 'turn-next' });
     await vi.waitFor(() => expect(snapshot.queuedPrompts).toStrictEqual([]));
+    if (delegation.delegation) expect(snapshot.agents[0]?.userDelegationOverrides).toStrictEqual({ ...delegation.delegation, execution: { backend: 'codex', conversationId: 'thread-dina', turnId: 'turn-next' } });
     await server.close();
   });
 

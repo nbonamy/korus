@@ -186,12 +186,20 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     customizingProvider.value = backend;
   }
 
+  async function installProvider(backend: AgentBackend): Promise<void> {
+    await updateProvider(backend, () => requireApi().installProvider(backend));
+  }
+
   async function refreshProvider(backend: AgentBackend): Promise<void> {
+    await updateProvider(backend, () => requireApi().refreshProvider(backend));
+  }
+
+  async function updateProvider(backend: AgentBackend, action: () => Promise<ProviderSetupStatus>): Promise<void> {
     if (setupBusy.value) return;
     updatingProvider.value = backend;
     setupError.value = null;
     try {
-      const next = await requireApi().refreshProvider(backend);
+      const next = await action();
       if (disposed) return;
       providerSetup.value = [...providerSetup.value.filter(setup => setup.backend !== backend), next];
     } catch (error) {
@@ -329,7 +337,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     codexConnected, claudeConnected, canContinue, continuing,
     completeVisible, gated, githubVisible, initialAuthenticationLoading, showLogin,
     cancelChatGptLogin, completeGitHub, finish, load, startChatGptLogin,
-    connectClaude, disconnectProvider, refreshClaude, refreshConnections, refreshProvider, continueWithProviders,
+    connectClaude, disconnectProvider, refreshClaude, refreshConnections, installProvider, refreshProvider, continueWithProviders,
     providerSetup, customizingProvider, customizedSetup, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup,
   };
 }

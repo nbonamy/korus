@@ -25,6 +25,10 @@ describe('client preference projection', () => {
     expect(splitSettingsInput({ general: { followUpBehavior: 'steer' } })).toStrictEqual({
       policy: {}, preferences: { general: { followUpBehavior: 'steer' } },
     });
+    const browserBookmarks = [{ title: 'Preview', url: 'http://localhost:5173/' }];
+    expect(splitSettingsInput({ general: { browserBookmarks } })).toStrictEqual({
+      policy: {}, preferences: { general: { browserBookmarks } },
+    });
   });
 
   it('projects ordering, per-team selection and appearance without mutating the shared snapshot', () => {

@@ -60,7 +60,7 @@ type LoginOptionId = (typeof baseLoginOptions)[number]['id'];
 const authentication = ref<ClaudeAuthentication | null>(null);
 const loginOptions = computed(() => baseLoginOptions.map(option => ({
   ...option,
-  command: `${authentication.value?.configDirectory ? `CLAUDE_CONFIG_DIR='${authentication.value.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}${option.command}`,
+  command: `${authentication.value?.configDirectory ? `CLAUDE_CONFIG_DIR='${authentication.value.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}${authentication.value?.executablePath ? `'${authentication.value.executablePath.replaceAll("'", "'\\''")}' auth login --${option.id}` : option.command}`,
 })));
 const checking = ref(false);
 const error = ref('');

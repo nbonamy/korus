@@ -1,10 +1,11 @@
-import { isDelegationContext, isDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
+import { isAgentReadState } from '@workspace/core/agent-read-state';
+import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { isAgentHandoff } from '@workspace/core/agent-handoff';
 import { isMission } from '@workspace/core/missions';
 import { isThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
-import { isPlanReview } from '@workspace/core/plan-review';
+import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
 import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
@@ -62,6 +63,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   backend: AgentBackend;
   backendSession?: BackendSession;
   hasSubmittedPrompt?: boolean;
+  readState?: Agent['readState'];
   backendDefaults?: BackendDefaults;
   openInApplication?: OpenInApplication;
   gitDiffTarget?: Agent['gitDiffTarget'];
@@ -140,6 +142,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.workspace ? { workspace: { ...agent.workspace } } : {}),
     backend: agent.backend,
     ...(agent.backendSession ? { backendSession: cloneBackendSession(agent.backendSession) } : {}),
+    ...(agent.readState ? { readState: agent.readState } : {}),
     ...(agent.hasSubmittedPrompt ? { hasSubmittedPrompt: true } : {}),
     ...(agent.backendDefaults ? { backendDefaults: cloneBackendDefaults(agent.backendDefaults) } : {}),
     ...(agent.openInApplication ? { openInApplication: agent.openInApplication } : {}),
@@ -363,6 +366,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   const backendSession = sanitizeBackendSession(value.backendSession, backend);
   const backendDefaults = sanitizeBackendDefaults(value.backendDefaults, backend);
   const plan = sanitizeThreadPlan(value.plan);
+  const planReview = restorePlanReview(value, backendSession?.kind === 'codex' ? backendSession.threadId : backendSession?.sessionId ?? null);
   const goal = sanitizeThreadGoal(value.goal);
   const openInApplication = sanitizeOpenInApplication(value.openInApplication);
   const gitDiffTarget = isAgentGitDiffTarget(value.gitDiffTarget) ? { ...value.gitDiffTarget } : undefined;
@@ -375,7 +379,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(isAgentHandoff(value.handoff) ? { handoff: structuredClone(value.handoff) } : {}),
     teamId: typeof value.teamId === 'string' ? value.teamId : undefined,
     ...(isDelegationContext(value.delegationContext) ? { delegationContext: { ...value.delegationContext } } : {}),
-    ...(isDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: { ...value.userDelegationOverrides } } : {}),
+    ...(isTurnDelegationOverrides(value.userDelegationOverrides) ? { userDelegationOverrides: structuredClone(value.userDelegationOverrides) } : {}),
     ...(isDelegationUserInstructions(value.delegationUserInstructions) ? { delegationUserInstructions: { ...value.delegationUserInstructions } } : {}),
     ...(typeof value.delegatedByAgentId === 'string' && value.delegatedByAgentId.trim()
       ? { delegatedByAgentId: value.delegatedByAgentId.trim() }
@@ -391,6 +395,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(workspace ? { workspace } : {}),
     backend,
     ...(backendSession ? { backendSession } : {}),
+    ...(isAgentReadState(value.readState) ? { readState: value.readState } : {}),
     ...(value.hasSubmittedPrompt === true ? { hasSubmittedPrompt: true } : {}),
     ...(backendDefaults ? { backendDefaults } : {}),
     ...(openInApplication ? { openInApplication } : {}),
@@ -399,7 +404,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
-    ...(isPlanReview(value.planReview) ? { planReview: { ...value.planReview } } : {}),
+    ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)
       ? { codeReview: cloneCodeReviewSession(value.codeReview) }
       : {}),
@@ -1209,6 +1214,7 @@ function sanitizeBackendDefaults(value: unknown, expectedBackend: AgentBackend):
       ...(typeof value.model === 'string' ? { model: value.model } : {}),
       ...(value.userSelectedModel === true ? { userSelectedModel: true } : {}),
       ...(typeof value.reasoningEffort === 'string' ? { reasoningEffort: value.reasoningEffort } : {}),
+      ...(value.serviceTier === null || typeof value.serviceTier === 'string' ? { serviceTier: value.serviceTier } : {}),
       ...(typeof value.permissionMode === 'string' ? { permissionMode: value.permissionMode } : {}),
       ...(thinking ? { thinking } : {}),
     } satisfies BackendDefaults;

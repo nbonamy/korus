@@ -157,7 +157,7 @@ describe('AgentDialog', () => {
     });
   });
 
-  it('clears a custom name to restore the default name', async () => {
+  it('clears the name in place and restores the default only after saving', async () => {
     const updateAgent = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountDialog({
       agent: {
@@ -171,13 +171,14 @@ describe('AgentDialog', () => {
 
     expect(wrapper.text()).not.toContain('Backend');
     expect(wrapper.text()).not.toContain('Claude Code');
-    expect(wrapper.findAll('.app-dialog__footer .app-button').map((button) => button.classes())).toStrictEqual([
-      ['app-button', 'app-button--tertiary'],
-      ['app-button', 'app-button--secondary'],
-      ['app-button', 'app-button--primary'],
-    ]);
-    await wrapper.get('.app-dialog__footer .app-button--secondary').trigger('click');
+    await wrapper.get('button[aria-label="Clear text"]').trigger('click');
     await flushPromises();
+
+    expect(wrapper.get<HTMLInputElement>('#agent-dialog-name').element.value).toBe('');
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.findAll('.app-dialog__footer button').map((button) => button.text())).toStrictEqual(['Cancel', 'Save']);
+    await saveButton(wrapper).trigger('click');
 
     expect(updateAgent).toHaveBeenCalledWith({
       id: 'agent-dina',

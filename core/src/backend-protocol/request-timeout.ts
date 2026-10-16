@@ -15,7 +15,12 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
+  [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.clientFocusGet]: 1_000,
+  [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,
+  [backendMethods.companionControl]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientWorkspaceGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.clientWorkspaceApply]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.clientDocumentRead]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -39,6 +44,7 @@ const requestTimeoutByMethod = {
   [backendMethods.providerAuthenticate]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.providerSetupGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.providerSetupConfigure]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.providerInstall]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.providerRefresh]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.engineInstructionsRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.engineInstructionsSave]: IO_REQUEST_TIMEOUT_MS,
@@ -84,6 +90,9 @@ const requestTimeoutByMethod = {
   [backendMethods.agentProfileRunsStop]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentFilesList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFolderValidate]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentGitLogGet]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentGitLogCommitGet]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentGitLogFileGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitDiffGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitBranchWorkPreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitBranchWork]: EXTENDED_REQUEST_TIMEOUT_MS,
@@ -104,6 +113,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentGoalUpdate]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentConversationLoad]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentConversationHistoryLoadOlder]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentConversationContentRead]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentInterrupt]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentTurnDelete]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentTurnEdit]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -184,6 +194,7 @@ const requestTimeoutByMethod = {
   [backendMethods.driverGoalUpdate]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationLoad]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverConversationHistoryLoadOlder]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverConversationContentRead]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverInterrupt]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.driverModelsList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverPluginsList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
@@ -255,6 +266,7 @@ const requestTimeoutByMethod = {
   [backendMethods.workProviderAssignedItemsList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.workProviderItemsList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.workProviderSourcesList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.workProviderBranchesList]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
 } satisfies Record<BackendMethod, number>;
 
 export function backendRequestTimeoutMs(method: string): number {

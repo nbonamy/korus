@@ -13,6 +13,32 @@ import { CodexBackendDriver } from '../codex/codex-driver';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 describe('BackendDriverRpc', () => {
+  it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
+    const agent = { ...createAgent(), backendSession: { kind: 'codex' as const, threadId: 'original' } };
+    const sendPrompt = vi.fn(); const steerPrompt = vi.fn();
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]), undefined,
+      async () => { agent.backendSession = { kind: 'codex', threadId: 'replacement' }; });
+    try {
+      await expect(rpc.handle(method, { agent, prompt: 'Keep this in the original chat', expectedSessionId: JSON.stringify({ kind: 'codex', threadId: 'original' }) })).rejects.toThrow('stale');
+      expect(sendPrompt).not.toHaveBeenCalled(); expect(steerPrompt).not.toHaveBeenCalled();
+    } finally { await rpc.close(); }
+  });
+  it('routes bounded content reads through the owning driver and rejects invalid offsets', async () => {
+    const snapshot = createTestSnapshot(); const agent = { ...createAgent(), backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+    snapshot.agents = [agent]; snapshot.teams[0].agentIds = [agent.id];
+    const chunk = { data: 'e30=', totalBytes: 2, nextOffset: null };
+    const readConversationContent = vi.fn().mockResolvedValue(chunk);
+    const driver = createDriver({ backend: 'claude', readConversationContent });
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map([['claude', driver]])), saveSnapshot: vi.fn().mockResolvedValue(undefined) });
+    const input = { sessionId: 'session', contentId: 'a'.repeat(64), offset: 0 };
+    try {
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'read', method: 'agent/conversation/content/read', params: { agentId: agent.id, input } });
+      expect(result).toMatchObject({ result: chunk });
+      expect(readConversationContent).toHaveBeenCalledExactlyOnceWith(agent, input);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'invalid', method: 'agent/conversation/content/read', params: { agentId: agent.id, input: { ...input, offset: -1 } } })).rejects.toThrow('Invalid conversation content');
+      expect(readConversationContent).toHaveBeenCalledTimes(1);
+    } finally { await server.close(); }
+  });
   it('retains user-entered delegation controls through send and steering, then clears them for a new assignment', async () => {
     const snapshot = createTestSnapshot();
     const agent = createAgent();
@@ -24,16 +50,17 @@ describe('BackendDriverRpc', () => {
     try {
       const sent = await server.handleMessage({ jsonrpc: '2.0', id: 'send', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation } } });
       expect(sent).not.toHaveProperty('error');
-      expect(agent.userDelegationOverrides).toStrictEqual(delegation);
+      await vi.waitFor(() => expect(agent.userDelegationOverrides).toStrictEqual({ ...delegation, execution: { backend: 'codex', conversationId: 'thread-send', turnId: 'turn-send' } }));
       expect(driver.sendPrompt).toHaveBeenCalledWith(agent, expect.stringContaining('Say Hello only'), { delegation });
       const updated = { startingContext: 'conversation', instructions: 'Say Bonjour only' } as const;
       const steered = await server.handleMessage({ jsonrpc: '2.0', id: 'steer', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate Translate README', options: { delegation: updated } } });
       expect(steered).not.toHaveProperty('error');
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      const acceptedControls = { ...updated, execution: { backend: 'codex', conversationId: 'thread-send', turnId: 'turn-send' } };
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       await expect(server.handleMessage({ jsonrpc: '2.0', id: 'invalid', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: '/delegate task', options: { delegation: { startingContext: 'replay' } } } })).rejects.toThrow('Invalid worktree delegation overrides');
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       await server.handleMessage({ jsonrpc: '2.0', id: 'adjust', method: 'agent/prompt/steer', params: { agentId: agent.id, prompt: 'Keep the parent open' } });
-      expect(agent.userDelegationOverrides).toStrictEqual(updated);
+      expect(agent.userDelegationOverrides).toStrictEqual(acceptedControls);
       agent.status = { type: 'idle' };
       await server.handleMessage({ jsonrpc: '2.0', id: 'next', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Another task' } });
       expect(agent.userDelegationOverrides).toBeUndefined();

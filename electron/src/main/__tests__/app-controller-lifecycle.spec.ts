@@ -1,3 +1,4 @@
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 
 const native = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
+  nativeOptions: undefined as unknown,
   exposed: new Map<string, unknown>(),
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn(), showMessageBox: vi.fn(), showMessageBoxSync: vi.fn(), showErrorBox: vi.fn() },
   shell: { openExternal: vi.fn(), openPath: vi.fn(), beep: vi.fn() },
@@ -15,6 +17,12 @@ const native = vi.hoisted(() => ({
   factory: vi.fn(), createWindow: vi.fn(), maintenance: vi.fn(), capture: vi.fn(),
   keyStart: vi.fn((_hotkey: string, _capture: () => void) => true), keyStop: vi.fn(), ready: false,
 }));
+vi.mock('@codex-app-sdk/electron', async importOriginal => {
+  const sdk = await importOriginal<typeof import('@codex-app-sdk/electron')>();
+  return { ...sdk, registerCodexNativeIpc: (...args: Parameters<typeof sdk.registerCodexNativeIpc>) => {
+    native.nativeOptions = args[1]; return sdk.registerCodexNativeIpc(...args);
+  } };
+});
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   return {
@@ -34,6 +42,7 @@ vi.mock('electron', async () => {
     ipcRenderer: {
       invoke: async (channel: string, ...args: unknown[]) => native.handlers.get(channel)!({}, ...args),
     },
+    nativeTheme: { themeSource: 'system' },
     powerMonitor: Object.assign(new EventEmitter(), { isOnBatteryPower: () => false }),
     powerSaveBlocker: { start: vi.fn(() => 1), stop: vi.fn() },
     clipboard: {}, dialog: native.dialog, shell: native.shell,
@@ -160,6 +169,26 @@ afterEach(async () => {
 });
 
 describe('controller desktop lifecycle', () => {
+  it('exposes statistics deletion through preload and propagates backend failures',async()=>{
+    const {backend}=setup();
+    await import('../../preload');
+    const api=native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    backend.request.mockResolvedValueOnce(null);
+    await api.clearUsage();
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.usageClear);
+    backend.request.mockRejectedValueOnce(Error('storage unavailable'));
+    await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
+  });
+
+  it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
+    const { backend } = setup();
+    const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
+    backend.request.mockResolvedValueOnce(result);
+    const input = { action: 'decide', pendingId: 'pending-device', approve: true };
+    await expect(invoke(ipcChannels.companionControl, input)).resolves.toBe(result);
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.companionControl, { input });
+  });
+
   it('hands a review to manual through the preload and IPC without an interruption request', async () => {
     const { backend, state } = setup();
     backend.request.mockImplementation(async method => method === 'agent/codeReview/manual' ? state.snapshot : state.clientState);

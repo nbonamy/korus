@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>$(COMPANION_DISPLAY_NAME)</string>
+	<!-- Encryption is supplied by Apple CryptoKit and operating-system networking. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to attach to messages and scan the pairing code on your laptop.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate prompts with your voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn your dictation into text on this device.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach photos to a prompt.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock to see your conversations.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to the relay you selected.</string>
+	<key>CompanionPushEnvironment</key>
+	<string>$(COMPANION_PUSH_ENVIRONMENT)</string>
+	<key>CompanionRelayURL</key>
+	<string>$(COMPANION_RELAY_URL)</string>
+	<key>CompanionRelayPeerID</key>
+	<string>$(COMPANION_RELAY_PEER_ID)</string>
+</dict>
+</plist>
