@@ -1,7 +1,6 @@
 # Choosing The Coding Agent
 
-How Korus picks Codex, Claude Code or Antigravity for new work. Mission implementation
-and review role policy beyond the lead's backend is not decided.
+How Korus picks Codex, Claude Code or Antigravity for new work.
 
 ## Rules
 
@@ -18,7 +17,13 @@ and review role policy beyond the lead's backend is not decided.
   carries through acquisition and progress dialogs. Assigning to an existing session
   never implies a provider change.
 - **Duplicate and fork** keep the source backend. **MCP creation** (`create-agent`,
-  `create-project`) takes an optional backend defaulting to the caller's.
+  `create-project`) takes an optional backend defaulting to the caller's. Same-provider
+  helpers inherit the caller's model, effort and explicit service tier; cross-provider
+  creation uses the target provider's defaults instead.
+- **Missions:** new workers inherit the main Mission agent's current provider,
+  model, reasoning effort and service tier, not the assigned team member's profile.
+  The first Mission agent starts from the selected orchestrator member. Existing
+  workers retain their configuration and conversations.
 - **Review:** the reviewer's provider is an independent choice (Claude can review
   Codex work and vice versa). The panel remembers provider, model, effort and
   automation preferences. `start_automatic_review` inherits the caller's

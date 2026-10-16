@@ -46,6 +46,12 @@ Enable **Settings → General → Keep Korus ready in the background** to let ag
 
 The selected coding provider receives the prompts and context used for its session, which can include file content, diffs, command output, and tool results. Consider the provider's own data policies when choosing what to share.
 
+## Does Korus upload my analytics?
+
+Usage statistics in **Settings → Analytics** stay local; Korus does not send them to a hosted analytics service. They record usage and timing with provider, model, and workspace identifiers, not message contents. Statistics are retained for up to a year and can be deleted with **Clear**.
+
+This is separate from sending prompts and repository context to your selected coding provider. Clearing statistics does not delete conversations or change provider account usage. See [Usage and performance](../features/workspace#understand-usage-and-performance).
+
 ## Is a completed task already committed or deployed?
 
 Check the agent's result and Git state. Implementation, validation, commit, push, pull-request creation, merge, and deployment are separate outcomes. Ask explicitly for the delivery action you want.

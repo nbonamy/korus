@@ -6,6 +6,44 @@ import { chromium, webkit } from 'playwright';
 
 const browserEngine = process.env.TRANSCRIPT_BROWSER === 'webkit' ? webkit : chromium;
 
+// Protects mobile folding controls and the bounded, touch-scrollable file area.
+test('changes can collapse and expand every file without losing the phone layout', async () => {
+  const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen(); browser = await browserEngine.launch();
+    const page = await browser.newPage({ viewport: { width: 393, height: 680 } });
+    await page.addInitScript(() => { window.webkit = { messageHandlers: { changes: { postMessage() {} } } }; });
+    await page.goto(`${server.resolvedUrls.local[0]}changes.html`);
+    await page.waitForFunction(() => window.companionChanges);
+    await page.evaluate(() => window.companionChanges.setDiff(JSON.stringify({ diff: ['a.ts', 'b.ts'].map(name => [
+      `diff --git a/src/${name} b/src/${name}`, `--- a/src/${name}`, `+++ b/src/${name}`,
+      '@@ -1,61 +1,61 @@', '-const oldValue = 1;', '+const newValue = "a_very_long_identifier_that_should_wrap_inside_the_phone_without_horizontal_scrolling";',
+      ...Array.from({ length: 60 }, (_, i) => ` const context${i} = ${i};`),
+    ].join('\n')).join('\n') })));
+    const files = page.getByRole('button', { expanded: true });
+    await files.first().waitFor();
+    assert.equal(await files.count(), 2);
+    await page.getByRole('button', { name: 'Collapse all', exact: true }).click({ timeout: 2000 });
+    assert.equal(await page.getByRole('button', { expanded: false }).count(), 2);
+    assert.equal(await page.locator('.git-diff-preview-panel__line').count(), 0);
+    await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+    assert.equal(await files.count(), 2);
+    await files.first().click();
+    await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+    assert.equal(await files.count(), 2);
+    const geometry = await page.locator('.git-diff-preview-panel').evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
+    assert.equal(geometry.scroll, geometry.width, 'wrapped diffs must fit the file card');
+    await page.locator('.git-diff-preview-panel').hover();
+    await page.mouse.wheel(0, 10000);
+    await page.waitForFunction(() => document.querySelector('.git-diff-preview-panel').scrollTop > 0, null, { timeout: 2000 });
+    const lastFile = await files.last().boundingBox();
+    assert.ok(lastFile && lastFile.y >= 0 && lastFile.y + lastFile.height <= 680, 'the last file must be reachable');
+    assert.ok(await page.getByRole('button', { name: 'Collapse all', exact: true }).isVisible(), 'file controls stay above the scroll area');
+    await page.screenshot({ path: '/tmp/korus-mobile-changes-form.png', fullPage: true });
+  } finally { await browser?.close(); await server.close(); }
+});
+
 test('empty repository chats show the repository and branch without overlapping wrapped headings', async () => {
   const server = await createServer({ configFile: fileURLToPath(new URL('../web/vite.config.ts', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
   let browser;

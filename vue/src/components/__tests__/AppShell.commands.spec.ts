@@ -747,6 +747,59 @@ describe('AppShell dialogs and commands', () => {
     }
   });
 
+  it('numbers Activity rows in display order and replaces all trailing indicators while Command is held', async () => {
+    vi.useFakeTimers();
+    const snapshot = createInitialSnapshot();
+    const base = snapshot.agents[0]!;
+    snapshot.providerConnections = ['codex', 'claude'].map(backend => ({ backend: backend as 'codex' | 'claude', installed: true, connected: true, checking: false }));
+    snapshot.agents = ['idle', 'working', 'unread', 'waiting'].map((id) => ({
+      ...base, id, name: id, createdAt: '2026-01-01T00:00:00Z',
+      status: { type: id === 'working' ? 'working' as const : id === 'waiting' ? 'awaitingInput' as const : 'idle' as const },
+    }));
+    snapshot.activeAgentId = 'idle';
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    snapshot.teams[0]!.activeAgentId = 'idle';
+    const key = `app:agentOrganization:${snapshot.teams[0]!.id}`;
+    localStorage.setItem(key, 'activity');
+    const wrapper = mountShell({ snapshot, realAgentSidebar: true, unreadAgentIds: ['unread', 'waiting'] });
+    const holdCommand = async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Meta', metaKey: true }));
+      vi.advanceTimersByTime(350);
+      await nextTick();
+    };
+    const pressNumber = async (number: number) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: String(number), metaKey: true, cancelable: true }));
+      await nextTick();
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Meta' }));
+    };
+    try {
+      await flushPromises();
+      expect(wrapper.findAll('[data-activity-group] [data-reorder-id]').map(row => row.attributes('data-reorder-id')))
+        .toStrictEqual(['waiting', 'unread', 'working', 'idle']);
+      expect(wrapper.find('.agent-sidebar__activity-unread').exists()).toBe(true);
+      expect(wrapper.find('.agent-sidebar__activity-time').exists()).toBe(true);
+      expect(wrapper.find('.agent-sidebar__engine').exists()).toBe(true);
+      await holdCommand();
+      expect(wrapper.findAll('.agent-sidebar__quick-switch-shortcut').map(hint => hint.text())).toStrictEqual(['⌘1', '⌘2', '⌘3', '⌘4']);
+      expect(wrapper.find('.agent-sidebar__activity-indicator, .agent-sidebar__engine').exists()).toBe(false);
+      for (const number of [1, 2, 3, 4]) await pressNumber(number);
+      expect(wrapper.emitted('select-agent')).toStrictEqual([['waiting'], ['unread'], ['working'], ['idle']]);
+      expect(wrapper.find('.agent-sidebar__activity-unread').exists()).toBe(true);
+      expect(wrapper.find('.agent-sidebar__activity-time').exists()).toBe(true);
+
+      const updated = { ...snapshot, agents: snapshot.agents.map(agent => ({ ...agent, status: agent.id === 'idle' ? { type: 'awaitingInput' as const } : agent.id === 'waiting' ? { type: 'working' as const } : agent.status })) };
+      await wrapper.setProps({ snapshot: updated });
+      await holdCommand();
+      expect(wrapper.get('[data-reorder-id="idle"] .agent-sidebar__quick-switch-shortcut').text()).toBe('⌘1');
+      await pressNumber(1);
+      expect(wrapper.emitted('select-agent')?.at(-1)).toStrictEqual(['idle']);
+    } finally {
+      wrapper.unmount();
+      localStorage.removeItem(key);
+      vi.useRealTimers();
+    }
+  });
+
   it('handles active app commands from the main-process menu channel', async () => {
     vi.stubGlobal('ResizeObserver', class {
       observe() {}

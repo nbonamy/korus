@@ -102,6 +102,9 @@ content, capped at ten transfers per second during streaming (the provider repli
 has already applied every event), and changes around it (agent status, names, history, engine
 choice) travel as a small context message that never resends the transcript.
 Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+Git changes use a separate bundled web view with the shared desktop diff renderer.
+Native controls own its scope and presentation; patches cross a separate, on-demand
+bridge event rather than repeating in workspace or conversation state.
 The native side routes on an event type without parsing the transcript payload, hands
 the page one message at a time, and replaces anything that piled up with the newest.
 Unread activity belongs to the owning daemon and persists with each agent. Clients
@@ -315,7 +318,9 @@ Rules:
 
 ### Provider Homes
 
-Local providers use their selected isolated or existing home. Isolated homes
+Codex and Claude default to their existing CLI homes for unconfigured setups;
+saved home choices and legacy conversation locations are preserved. Local
+providers can use a separate home with its own provider sign-in. Isolated homes
 are `~/.korus/codex-home`, `~/.korus/claude-home`, and
 `~/.korus/antigravity-home`; existing homes follow provider-specific launch
 configuration. Antigravity uses `GEMINI_HOME`, otherwise `~/.gemini`, for its
@@ -560,7 +565,14 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   Only connection metadata is persisted. The local file store is owner-readable
   because encryption beside its own key adds no boundary; a keychain can replace
   the port without moving ownership to Electron.
-- GitHub uses OAuth device flow (public client ID only: Settings, then
+- GitHub auto-detects authenticated `gh` on the owning host and executes API
+  operations through CLI commands without extracting tokens. Saved API
+  connections take precedence; canceling or disconnecting a direct GitHub connection
+  falls back to authenticated GitHub CLI access when available, without logging out the CLI.
+  The CLI and direct API drivers share normalization and preserve the same
+  app-owned operations. CLI connections do not imply hosted MCP or Git transport
+  authentication. The direct API variant uses OAuth device flow (public client ID
+  only: Settings, then
   `APP_GITHUB_CLIENT_ID`, then a packaged default). Refresh-token rotation
   invalidates the old pair, so concurrent requests share one refresh. Opening the
   browser is a separate user action so the code is visible first.

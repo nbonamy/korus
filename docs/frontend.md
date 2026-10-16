@@ -122,6 +122,7 @@ Search by behavior first.
 | Voice multiline input | `VoiceTextarea` | `vue/src/shared/` |
 | Emoji, grapheme or cropped-image identity | `IdentityPicker` (product component despite its path; keep new product dependencies out of `shared/`) | `vue/src/shared/identity/` |
 | Enabled coding backend picker | `BackendSelector` (consumes the choices `AppShell` provides once through `backend-selection`; hides a single choice unless explicit provider identity is needed; dialogs never read backend settings) | `vue/src/components/` |
+| New-work provider, model and effort picker | `BackendModelSelector` (icon-only provider tabs in fixed order, cascading model → effort menu, owning-host catalog cached per provider and host with stale-response protection; the saved or provider default model and effort are selected explicitly, never a blank "default") | `vue/src/components/` |
 | Settings structure | `SettingsPanelFrame`, `SettingsTextareaField` (compose `FormSection`/`FormRow`) | `vue/src/components/` |
 | Dense structured data | `AppDataList` | `vue/src/components/` |
 | Operation feedback | `GitOperationFeedback` | `vue/src/components/` |
@@ -159,6 +160,10 @@ which retains ownership of operation state, confirmations and host routing.
   actions. Use Element Plus teleport/placement for popovers, Element Plus tabs for
   navigation, radio/segmented controls for exclusive form choices; pill tabs keep
   symmetric edge padding.
+  Exclusive-choice popup menus show the selected option with `CheckIcon` in place
+  of its leading icon; other options keep their normal icons. Use radio items
+  with `checked` for accessibility and `:show-selection-check="false"` on `AppMenu`
+  so the selected row has one leading checkmark, not an additional trailing one.
 - **Lists:** `AppDataList` for dense data, focused rows for navigation. Make the
   whole row the primary target with quiet, keyboard-reachable secondary actions;
   hover and focus keep geometry stable; titlebars align to the shared appbar height;

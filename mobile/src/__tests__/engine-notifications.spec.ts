@@ -7,12 +7,17 @@ async function fixture() {
   const connector = createDemoConnector(); const connect = connector.connect;
   const registerPush = vi.fn(async () => {});
   let notify: (notification: CompanionNotification) => void = () => {};
-  connector.connect = async id => ({ ...await connect(id), registerPush,
-    onNotification(listener) { notify = listener; return () => { notify = () => {}; }; } });
+  const loadedAgents: string[] = [];
+  connector.connect = async id => {
+    const session = await connect(id);
+    return { ...session, registerPush,
+      async loadConversation(agentId) { loadedAgents.push(agentId); return session.loadConversation(agentId); },
+      onNotification(listener) { notify = listener; return () => { notify = () => {}; }; } };
+  };
   const events: EngineEvent[] = [];
   const engine = createEngine({ connector, post: event => events.push(event) });
   await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-  return { engine, events, registerPush, notify: (notification: CompanionNotification) => notify(notification) };
+  return { engine, events, registerPush, loadedAgents, notify: (notification: CompanionNotification) => notify(notification) };
 }
 describe('native notification bridge', () => {
   it('keeps a cold-launch tap through pairing initialization and saved conversation restoration', async () => {
@@ -84,7 +89,9 @@ describe('native notification bridge', () => {
       await f.engine.dispatch({ type: 'activity', active: false });
       await f.engine.dispatch({ type: 'openNotification', target });
       await f.engine.dispatch({ type: 'openNotification', target: reviewer });
+      f.loadedAgents.length = 0;
       await f.engine.dispatch({ type: 'activity', active: true });
+      expect(f.loadedAgents).toStrictEqual([reviewer.agentId]);
       expect(f.engine.snapshot().agentId).toBe(reviewer.agentId);
       await f.engine.dispatch({ type: 'activity', active: false });
       await f.engine.dispatch({ type: 'openNotification', target });

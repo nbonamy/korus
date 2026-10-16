@@ -69,19 +69,20 @@ struct ConversationScreen: View {
                         withAnimation(.smooth(duration: 0.32)) { model.drawerOpen.toggle() }
                     } label: {
                         Image(systemName: "line.3.horizontal")
-                            .overlay(alignment: .topTrailing) {
-                                if model.teams.hasUnreadActivity {
-                                    UnreadDot().offset(x: 5, y: -5).accessibilityHidden(true)
-                                }
-                            }
                     }
                     .buttonBorderShape(.circle)
+                    .toolbarDot(model.teams.hasUnreadActivity)
                     .accessibilityLabel("Agents")
                     .accessibilityValue(model.teams.hasUnreadActivity ? "Unread activity" : "")
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        if model.git.available {
+                            Button("Changes", systemImage: "doc.text.magnifyingglass") { model.openChanges() }
+                                .disabled(!model.canManageSession)
+                            Divider()
+                        }
                         Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                             .disabled(!model.canManageSession || model.isWorking)
                         Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
@@ -91,13 +92,16 @@ struct ConversationScreen: View {
                         else { Image(systemName: "ellipsis") }
                     }
                     .buttonBorderShape(.circle)
+                    .toolbarDot(model.git.uncommitted?.state == "dirty")
                     .accessibilityLabel("Session actions")
+                    .accessibilityValue(model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
                 }
             }
             .toolbarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: Binding(get: { model.reviewOpen }, set: { model.reviewOpen = $0; if !$0 { model.command("dismissReview") } })) {
                 ReviewSetupView()
             }
+            .fullScreenCover(isPresented: Binding(get: { model.changesOpen }, set: { model.changesOpen = $0 })) { ChangesSheet() }
             .fullScreenCover(item: Binding(get: { model.presentedImage }, set: { model.presentedImage = $0 })) { image in
                 ImageViewer(preview: image)
             }
@@ -111,6 +115,22 @@ struct ConversationScreen: View {
                 Button("OK", role: .cancel) { model.dismissSessionError() }
             } message: { Text("The laptop couldn’t complete the action. Check the connection and try again.") }
         }
+    }
+}
+
+private extension View {
+    func toolbarDot(_ visible: Bool) -> some View {
+        self.frame(width: 44, height: 44)
+            .overlay(alignment: .topTrailing) {
+                if visible {
+                    UnreadDot()
+                        .overlay { Circle().stroke(Color(.systemBackground), lineWidth: 2) }
+                        // The dot center sits on the 44-point circle at its upper-right diagonal.
+                        .offset(x: -2.5, y: 2.5)
+                        .accessibilityHidden(true)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 }
 

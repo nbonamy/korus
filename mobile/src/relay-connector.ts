@@ -225,6 +225,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           await Promise.all([liveness, presence]);
         },
         getWorkspace: read,
+        gitDiff: (agentId, scope) => request(host, 'agent.git.diff', { target: target(agentId), scope }),
         readImage: (agentId, path) => request(host, 'conversation.image.read', { target: target(agentId), path }),
         getUsage: () => request(host, 'usage.get', {}),
         async registerPush(registration) {

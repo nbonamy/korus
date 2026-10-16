@@ -25,6 +25,18 @@ import {
 import { computed, ref } from 'vue';
 import { translate } from '../i18n';
 import type { RepositoryWorkStartInput } from './right-workspace';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+
+export type StartWorkItemsInput = {
+  action: WorkItemAssignmentAction;
+  items: WorkItem[];
+  teamId: string;
+  backend?: Agent['backend'];
+  model?: string;
+  reasoningEffort?: string;
+  repository?: SourceRepository;
+  isCurrent?: () => boolean;
+};
 
 export type WorkItemAssignmentIntent = {
   item: WorkItem;
@@ -68,6 +80,7 @@ export function useWorkItemRouting(options: {
   ui: WorkItemRoutingUi;
 }) {
   const pendingNewAgentItem = ref<WorkItem | null>(null);
+  const creationProgress = ref<Exclude<WorkspaceProvisioningOperation, { mode: 'branchMove' }> | null>(null);
 
   const newAgentTeamName = computed(() => (
     pendingNewAgentItem.value ? workItemTeamName(pendingNewAgentItem.value) : ''
@@ -93,10 +106,11 @@ export function useWorkItemRouting(options: {
     ensureCurrent(input.isCurrent);
 
     const targetAgent = input.target === 'duplicate'
-      ? input.backend && input.backend !== sourceAgent.backend
+      ? input.model || (input.backend && input.backend !== sourceAgent.backend)
         ? await options.actions.createAgent({
             name: `${sourceAgentName} ${workItemDisplayIdentifier(item)}`, folder: sourceAgent.folder ?? '',
             backend: input.backend, teamId: sourceAgent.teamId,
+            ...(input.model ? { modelSelection: { model: input.model, ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort as ReasoningEffort } : {}) } } : {}),
           })
         : await options.actions.duplicateAgent(sourceAgent.id, {
           select: false,
@@ -160,25 +174,55 @@ export function useWorkItemRouting(options: {
     clearNewAgent();
   }
 
-  async function startMany(input: {
-    action: WorkItemAssignmentAction;
-    items: WorkItem[];
-    teamId: string;
-    backend?: Agent['backend'];
-    repository?: SourceRepository;
-    isCurrent?: () => boolean;
-  }): Promise<void> {
+  async function startMany(input: StartWorkItemsInput): Promise<void> {
+    if (!input.items.length) return;
     const keys = new Set<string>();
     for (const item of input.items) {
       const key = `${item.provider}:${item.id}`;
       if (keys.has(key)) throw new Error('The same issue was selected more than once.');
       keys.add(key);
     }
-    await Promise.all(input.items.map(async (listedItem) => {
-      const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, { backend: input.backend, repository: input.repository, isCurrent: input.isCurrent });
+    const id = crypto.randomUUID();
+    const progress = input.items.length === 1
+      ? { mode: 'single' as const, progress: {
+          id, state: 'running' as const, backend: input.backend ?? 'codex',
+          repositoryName: input.repository?.name ?? workItemRepositoryName(input.items[0]!),
+          createWorktree: true, branchName: workItemBranchName(input.items[0]!), hasPrompt: true, phase: 'creatingWorktree' as const,
+        } }
+      : { mode: 'multiple' as const, id, state: 'running' as const, ticketCount: input.items.length,
+          repositories: input.items.map(item => input.repository?.name ?? workItemRepositoryName(item)), phase: 'creatingWorktrees' as const };
+    creationProgress.value = progress;
+    let prepared = 0;
+    let created = 0;
+    const results = await Promise.allSettled(input.items.map(async listedItem => {
+      const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
+        backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort,
+        repository: input.repository, isCurrent: input.isCurrent,
+        onPhase: () => {
+          if (++prepared !== input.items.length) return;
+          const current = creationProgress.value;
+          if (current?.mode === 'single') current.progress.phase = 'creatingAgent';
+          else if (current) current.phase = 'initializingWorkspaces';
+        },
+      });
+      if (++created === input.items.length) {
+        const current = creationProgress.value;
+        if (current?.mode === 'single') Object.assign(current.progress, { phase: 'startingPrompt', agentId: agent.id, agentName: agentDisplayName(agent) });
+        else if (current) current.phase = 'startingAgents';
+      }
       ensureCurrent(input.isCurrent);
       await assignWithPrompt(agent.id, item, input.action);
     }));
+    const failure = results.find(result => result.status === 'rejected');
+    const current = creationProgress.value;
+    const state = current?.mode === 'single' ? current.progress : current;
+    if (state) Object.assign(state, { state: failure ? 'error' : 'success', ...(failure ? { error: String(failure.reason instanceof Error ? failure.reason.message : failure.reason) } : {}) });
+    if (failure) throw failure.reason;
+  }
+
+  function closeCreationProgress(id: string): void {
+    const current = creationProgress.value;
+    if (current && (current.mode === 'single' ? current.progress.id : current.id) === id) creationProgress.value = null;
   }
 
   async function createIsolatedAgent(
@@ -300,6 +344,8 @@ export function useWorkItemRouting(options: {
     assignExisting,
     clearNewAgent,
     createIsolatedAgent,
+    creationProgress,
+    closeCreationProgress,
     newAgentItem: pendingNewAgentItem,
     newAgentTeamName,
     newAgentWorktreeBranchName,

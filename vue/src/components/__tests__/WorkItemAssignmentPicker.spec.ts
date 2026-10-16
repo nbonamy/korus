@@ -1,8 +1,9 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
 import { describe, expect, it, vi } from 'vitest';
-import { codeReviewSettingsKey } from '../code-review-settings';
+import { backendModelCatalogKey } from '../backend-model-catalog';
+import { ElPopover } from 'element-plus';
 import type { WorkItem } from '@workspace/core/contracts';
 import WorkItemAssignmentPicker from '../WorkItemAssignmentPicker.vue';
 
@@ -31,22 +32,22 @@ describe('WorkItemAssignmentPicker', () => {
     const wrapper = mount(WorkItemAssignmentPicker, {
       props: { item: issue, branchName: 'fix/gh-24', modelAgentId: 'agent-main' },
       slots: { default: '<p class="issue-body">Issue body</p>' },
-      global: { provide: {
+      global: { components: { ElPopover }, provide: {
         [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-        [codeReviewSettingsKey as symbol]: { preferences: () => undefined, listModels, switchToManual: vi.fn(), stop: vi.fn() },
+        [backendModelCatalogKey as symbol]: { listModels },
       } },
     });
     await vi.waitFor(() => expect(listModels).toHaveBeenCalledWith('agent-main', 'codex'));
-    await vi.waitFor(() => expect(wrapper.find('.work-item-assignment-picker__model-selectors').text()).toContain('GPT Fast'));
-    expect(wrapper.get('.work-item-assignment-picker__model-selectors').text()).not.toContain('Hidden');
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('GPT Fast'));
+    expect(document.body.textContent).not.toContain('Hidden');
 
     const html = wrapper.html();
     expect(html.indexOf('work-item-assignment-picker__target-options')).toBeLessThan(html.indexOf('issue-body'));
     expect(html.indexOf('issue-body')).toBeLessThan(html.indexOf('app-button--primary'));
 
-    const selects = wrapper.findAll('.work-item-assignment-picker__model-selectors select');
-    await selects[1]!.setValue('gpt-fast');
-    await selects[2]!.setValue('high');
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(option => option.textContent?.trim() === 'high')!.click();
+    await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('submit')).toStrictEqual([[
       { action: 'fix', destination: 'new', item: issue, backend: 'codex', model: 'gpt-fast', reasoningEffort: 'high' },
@@ -75,14 +76,17 @@ describe('WorkItemAssignmentPicker', () => {
     expect(wrapper.text()).not.toContain('Workspace');
     expect(wrapper.get('.work-item-assignment-picker__branch-warning').classes()).toContain('is-hidden');
     expect(wrapper.text()).not.toContain('New worktree');
-    await wrapper.get('.backend-selector select').setValue('claude');
+    await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes('Claude Code'))!.click();
+    await wrapper.vm.$nextTick();
     await wrapper.get('.app-button--primary').trigger('click');
 
     expect(wrapper.emitted('submit')).toStrictEqual([[
       { action: 'fix', destination: 'new', item: issue, backend: 'claude' },
     ]]);
     await destinationButtons[1]!.trigger('click');
-    expect(wrapper.find('.backend-selector').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
   });
 
   it('assigns an existing repository session without offering a worktree', async () => {

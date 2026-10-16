@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDemoConnector } from '../demo-connector';
 import { createEngine, type EngineEvent, type EngineState, type EnginePort } from '../engine';
 import { createSelectionStore } from '../selection-store';
-import type { CompanionHistoryPage } from '../companion-port';
+import type { CompanionHistoryPage, CompanionSession, CompanionWorkspace } from '../companion-port';
 
 /** What the transcript page shows: the last conversation it was sent, with the context updates that followed applied to it. */
 function shown(events: readonly EngineEvent[]) {
@@ -279,10 +279,12 @@ describe('companion engine', () => {
   });
   it.each([
     { name: 'missing agent', saved: { teamId: 'second-team', agentId: 'gone' }, teamId: 'second-team', agentId: 'second-agent' },
-    { name: 'agent moved to another team', saved: { teamId: 'demo-team', agentId: 'second-agent' }, teamId: 'demo-team', agentId: 'demo-reviewer' },
-    { name: 'missing team', saved: { teamId: 'gone', agentId: 'demo-agent' }, teamId: 'demo-team', agentId: 'demo-reviewer' },
+    { name: 'agent moved to another team', saved: { teamId: 'demo-team', agentId: 'second-agent' }, teamId: 'demo-team', agentId: 'demo-agent' },
+    { name: 'missing team', saved: { teamId: 'gone', agentId: 'demo-agent' }, teamId: 'demo-team', agentId: 'demo-agent' },
+    { name: 'no saved agent', saved: { teamId: 'demo-team', agentId: '' }, teamId: 'demo-team', agentId: 'demo-agent' },
+    { name: 'valid saved agent', saved: { teamId: 'demo-team', agentId: 'demo-reviewer' }, teamId: 'demo-team', agentId: 'demo-reviewer' },
     { name: 'empty team', saved: { teamId: 'empty-team', agentId: 'gone' }, teamId: 'empty-team', agentId: '' },
-  ])('restores the correct fallback for $name in desktop order', async ({ saved, teamId, agentId }) => {
+  ])('restores the saved selection or most recent fallback for $name', async ({ saved, teamId, agentId }) => {
     const store = selectionStorage(); await store.write('demo-laptop', saved);
     const connector = createDemoConnector(); const connect = connector.connect;
     connector.connect = async (id) => {
@@ -290,7 +292,10 @@ describe('companion engine', () => {
       return { ...session, loadConversation: async () => null, getWorkspace: async () => ({
         teams: [{ ...workspace.teams[0]!, agentIds: ['demo-reviewer', 'demo-agent'] },
           { id: 'second-team', name: 'Second', agentIds: ['second-agent'] }, { id: 'empty-team', name: 'Empty', agentIds: [] }],
-        agents: [...workspace.agents, { ...workspace.agents[0]!, id: 'second-agent', teamId: 'second-team' }],
+        agents: [...workspace.agents.map(agent => ({ ...agent,
+          lastActivityAt: agent.id === 'demo-agent' ? '2026-10-16T12:00:00Z' : '2026-10-16T11:00:00Z',
+          updatedAt: agent.id === 'demo-reviewer' ? '2027-01-01T00:00:00Z' : agent.updatedAt,
+        })), { ...workspace.agents[0]!, id: 'second-agent', teamId: 'second-team', lastActivityAt: '2026-10-16T13:00:00Z' }],
       }) };
     };
     const { engine, latest } = open(connector, store);
@@ -298,6 +303,53 @@ describe('companion engine', () => {
       await engine.start();
       expect(latest()).toMatchObject({ teamId, agentId });
       expect(await store.read('demo-laptop')).toEqual({ teamId, agentId });
+    } finally { engine.dispose(); }
+  });
+  it('opens the most recent conversation when selection is empty, preserving valid choices through updates and reconnects', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let workspace: CompanionWorkspace;
+    let update!: Parameters<NonNullable<CompanionSession['onUpdate']>>[0];
+    connector.connect = async id => {
+      const session = await connect(id);
+      workspace ??= await session.getWorkspace();
+      if (workspace.teams.length === 1) {
+        workspace = { ...workspace, teams: [...workspace.teams, { id: 'empty', name: 'Empty', agentIds: [] }],
+          agents: workspace.agents.map(agent => ({ ...agent, lastActivityAt: agent.id === 'demo-reviewer'
+            ? '2026-10-16T12:00:00Z' : '2026-10-16T11:00:00Z' })) };
+      }
+      return { ...session, getWorkspace: async () => workspace,
+        onUpdate(listener) { update = listener; return () => {}; } };
+    };
+    const { engine, latest } = open(connector);
+    const publish = async () => { update(workspace, null); await nextTick(); };
+    try {
+      // No selection store: fresh launch must still load a real conversation.
+      await engine.start();
+      expect(latest()).toMatchObject({ teamId: 'demo-team', agentId: 'demo-reviewer', conversationReady: true, canSend: true });
+      workspace = { ...workspace!, agents: workspace!.agents.map(agent => agent.id === 'demo-agent'
+        ? { ...agent, lastActivityAt: '2026-10-16T13:00:00Z' } : agent) };
+      await publish();
+      expect(latest().agentId).toBe('demo-reviewer');
+      await engine.dispatch({ type: 'selectTeam', id: 'empty' });
+      expect(latest()).toMatchObject({ teamId: 'empty', agentId: '', canSend: false });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(latest()).toMatchObject({ agentId: 'demo-agent', conversationReady: true });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(latest().agentId).toBe('demo-reviewer');
+      // A workspace push removes the selected agent; load the remaining conversation.
+      const reviewer = workspace.agents.find(agent => agent.id === 'demo-reviewer')!;
+      workspace = { ...workspace, agents: workspace.agents.filter(agent => agent.id !== reviewer.id) };
+      await publish();
+      await vi.waitFor(() => expect(latest()).toMatchObject({ agentId: 'demo-agent', conversationReady: true }));
+      await engine.dispatch({ type: 'disconnect' });
+      workspace = { ...workspace, agents: [reviewer] };
+      await engine.dispatch({ type: 'reconnect' });
+      expect(latest()).toMatchObject({ agentId: 'demo-reviewer', conversationReady: true });
+      await engine.dispatch({ type: 'selectTeam', id: 'empty' });
+      workspace = { ...workspace, agents: [...workspace.agents, { ...reviewer, id: 'demo-agent', teamId: 'empty' }] };
+      await publish();
+      await vi.waitFor(() => expect(latest()).toMatchObject({ teamId: 'empty', agentId: 'demo-agent', conversationReady: true }));
     } finally { engine.dispose(); }
   });
   it('does not replace a user selection when a slow saved-selection read completes', async () => {
@@ -397,8 +449,8 @@ describe('companion engine', () => {
       } };
     };
     const { engine, latest, events } = open(connector);
-    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
-    const first = engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+    const first = engine.start();
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
     expect(latest()).toMatchObject({ loading: true, canSend: false, agentId: 'demo-agent' });
     complete(); await first;
     expect(latest()).toMatchObject({ loading: false, canSend: true });

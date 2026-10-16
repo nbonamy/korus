@@ -12,7 +12,7 @@ export function createClaudeLifecycle(): ProviderLifecycle {
     home(snapshot, choice) {
       if (choice) return { ...choice, homePath: choice.isolated ? paths.isolated : paths.existing };
       const preserve = snapshot.general.claudeCodeEnabled || snapshot.agents.some(agent => agent.backend === 'claude');
-      const homePath = preserve ? path.resolve(configured || paths.existing) : paths.isolated;
+      const homePath = preserve ? path.resolve(configured || paths.existing) : paths.existing;
       return { homePath, isolated: homePath === paths.isolated, shareSkills: !preserve };
     },
     installed: () => Boolean(resolveClaudeExecutable()),

@@ -47,7 +47,8 @@ routing envelope (agent, thread, revision) and recovery.
   and refreshes a newly available driver without installing or updating a CLI.
 - Codex is an external prerequisite; development, packaging and release checks
   do not download or pin the CLI. The app packages its own Node runtime and daemon.
-- `CODEX_HOME` is always `$APP_HOME/codex-home`, ignoring any inherited home. Skills
+- `CODEX_HOME` follows the persisted provider home, defaulting to the existing CLI
+  home for a new setup. Separate setups use `$APP_HOME/codex-home`. Skills
   and plugins sharing, isolation and the roster-reset rules are in
   [architecture.md](architecture.md#provider-homes). Folder-changing actions restart
   `daemon` and need idle chats. Never copy normal Codex thread or auth files.

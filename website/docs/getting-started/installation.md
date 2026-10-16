@@ -11,7 +11,7 @@ description: Download and install the Korus desktop app.
 1. Open [Downloads](__PRODUCT_DOWNLOAD_URL__) and choose the macOS DMG for Apple silicon.
 2. Open the DMG and double-click Korus. It installs in Applications and launches. If an installed copy needs replacing, confirm **Replace**; your chats and settings are kept.
 3. If Korus asks you to use Finder, choose **Open Applications**, drag Korus there from the DMG, and approve the installation in Finder. Then open Korus from Applications.
-4. The first-run screen checks your coding engines. **Install** opens instructions for missing runtimes; the refresh icon rechecks detection. Detected engines offer **Connect** and **Customize**.
+4. The first-run screen checks your coding engines. Detected engines offer **Connect** and **Customize**. If one is missing, use **Install** and follow its setup flow; the refresh icon rechecks detection.
 5. Choose how each engine should store its setup before connecting it. Follow the steps below, then open a repository.
 
 ## Install on Windows
@@ -28,7 +28,7 @@ Packaged macOS and installed Windows apps receive stable releases through the ap
 
 ## Choose separate or existing provider setup
 
-Korus can keep its provider setup separate from your existing command-line tools. On the first-run screen, click **Customize** beneath the engine you want to configure.
+Korus uses your existing Codex and Claude Code setup by default, including their sign-in. To keep Korus chats separate, click **Customize** beneath the engine on the first-run screen and choose **Separate Korus chats**. Saved setup choices are preserved.
 
 | Choice | Use it when |
 | --- | --- |
@@ -43,7 +43,9 @@ Follow the [provider setup overview](../providers/) before changing an existing 
 
 Korus does not include a separate model subscription. Connect a provider account with access to the engine you want to use.
 
-1. Select **Connect** for your chosen engine and complete its provider-specific authentication steps.
+A separate Claude Code installation is optional when Korus's bundled runtime is available. On macOS, Codex can use ChatGPT's runtime if there is no standalone CLI. These runtime choices do not replace provider sign-in or grant model access.
+
+1. If your chosen engine already shows **Connected**, no sign-in is needed. Otherwise, select **Connect** and complete its authentication steps.
 2. Confirm the engine is connected and enabled. The first-run **Continue** action becomes available when at least one installed engine is connected and enabled; additional engines are optional.
 3. Select **Continue**.
 
@@ -51,7 +53,7 @@ Use the [provider guides](../providers/), including [Antigravity setup](../provi
 
 ## Connect GitHub, or skip it
 
-The next onboarding step offers GitHub authorization. Connect it if you want to browse GitHub repositories and use issue or pull-request workflows. Choose **Skip for now** to start with a local folder; you can connect GitHub later in **Settings → Integrations**.
+If GitHub CLI (`gh`) is authenticated to github.com on this computer, Korus detects that access. Choose **Connect GitHub** for faster direct access, or **Use GitHub CLI** to continue with your existing CLI sign-in. Without authenticated CLI access, choose **Skip for now** to start with a local folder. You can connect later in **Settings → Integrations**.
 
 GitHub authorization is separate from your coding provider's account. You can run a local repository task without connecting GitHub.
 

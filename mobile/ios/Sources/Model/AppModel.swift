@@ -10,6 +10,21 @@ final class AppModel {
     let push = PushNotifications.shared
     var notificationError: String?
     var pushRegistrationFailed = false
+    var git = GitChangesState()
+    @ObservationIgnored lazy var changesHost = ChangesHost()
+    var changesOpen = false {
+        didSet {
+            if oldValue && !changesOpen { command("dismissChanges"); acknowledgeRead() }
+            notifications.visibleChanged(visibleNotificationTarget)
+        }
+    }
+    func openChanges() {
+        guard git.available else { return }
+        dictation.cancel()
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        changesOpen = true
+    }
+    func loadChanges(_ scopeId: String? = nil) { command("loadChanges", scopeId.map { ["scopeId": $0] } ?? [:]) }
     var usage = UsageState()
     func loadUsage() { command("loadUsage") }
     private var pendingNotification: ChatNotification?
@@ -116,6 +131,7 @@ final class AppModel {
         push.flush()
 
         engine.onSendResult = { [weak self] result in self?.composerDrafts.completeSend(result) }
+        engine.onGitDiff = { [weak self] json in self?.changesHost.setDiff(json) }
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
         engine.onContent = { [weak self] json in self?.transcript.receiveContent(json) }
@@ -178,6 +194,7 @@ final class AppModel {
         set(\.queuedPrompts, state.queuedPrompts ?? [])
         set(\.queuedPromptPending, state.queuedPromptPending)
         set(\.queuedPromptFailed, state.queuedPromptFailed ?? false)
+        set(\.git, state.git ?? GitChangesState())
         set(\.startup, state.startup)
         set(\.usage, state.usage ?? UsageState())
         set(\.projectBranches, state.projectBranches ?? EngineState.ProjectBranches())
@@ -217,7 +234,7 @@ final class AppModel {
         let agentChanged = activeAgentID != nextAgentID
         if agentChanged { dictation.cancel() }
         set(\.activeAgentID, nextAgentID)
-        if agentChanged { reviewOpen = false; presentedImage = nil }
+        if agentChanged { reviewOpen = false; presentedImage = nil; changesOpen = false }
         set(\.header, state.header.map {
             ConversationHeader(title: $0.title, repository: $0.repository, status: $0.status,
                                statusText: $0.statusText == $0.status.rawValue ? $0.status.label : $0.statusText, icon: $0.icon)
@@ -232,7 +249,7 @@ final class AppModel {
         set(\.planMode, state.composer.planMode)
         set(\.approvalPreset, state.permissions.approvalPreset)
         set(\.approvalPresets, state.permissions.presets)
-        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil }
+        if let target = composerDrafts.target, target != state.composerTarget { reviewOpen = false; presentedImage = nil; changesOpen = false }
         composerDrafts.select(state.composerTarget)
         set(\.supportsGoals, state.capabilities.goals ?? false)
         set(\.goal, state.goal)
@@ -419,12 +436,12 @@ final class AppModel {
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,
-            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
+            foreground: foreground && UIApplication.shared.applicationState == .active, drawerOpen: drawerOpen, reviewOpen: reviewOpen || changesOpen, imageOpen: presentedImage != nil, unlocked: screenUnlocked) else { return }
         command("read", ["agentId": read.agentId, "revision": read.revision, "generation": conversationGeneration])
     }
 
     private var visibleNotificationTarget: ChatNotification.Target? {
-        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
+        guard screenUnlocked, foreground, !drawerOpen, !reviewOpen, !changesOpen, presentedImage == nil, let target = composerDrafts.target else { return nil }
         return .init(hostId: target.hostId, locationId: target.locationId, teamId: target.teamId, agentId: target.agentId, sessionId: target.sessionId)
     }
     func receive(_ notification: ChatNotification) {
@@ -435,7 +452,7 @@ final class AppModel {
         notifications.remember(notification.id)
         notifications.dismiss(id: notification.id)
         guard startup == .ready else { pendingNotification = notification; return }
-        drawerOpen = false; reviewOpen = false
+        drawerOpen = false; reviewOpen = false; changesOpen = false
         let target = notification.target
         command("openNotification", ["target": ["hostId": target.hostId, "locationId": target.locationId,
             "teamId": target.teamId, "agentId": target.agentId, "sessionId": target.sessionId as Any? ?? NSNull()]])

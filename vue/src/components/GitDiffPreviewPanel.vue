@@ -584,6 +584,12 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
   text-overflow: clip;
 }
 
+.git-diff-preview-panel--wrap .git-diff-preview-panel__chunks,
+.git-diff-preview-panel--wrap .git-diff-preview-panel__chunk {
+  width: 100%;
+  min-width: 0;
+}
+
 .git-diff-preview-panel--wrap .git-diff-preview-panel__line {
   grid-template-columns: 5ch 5ch 2ch minmax(0, 1fr);
   width: auto;
@@ -598,6 +604,8 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 
 .git-diff-preview-panel--wrap .git-diff-preview-panel__line code {
   overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .git-diff-preview-panel__empty {

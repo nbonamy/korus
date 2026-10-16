@@ -18,6 +18,7 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
   queuedPromptFailed: boolean;
@@ -72,6 +73,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'gitDiff'; diff: string }
   | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
   | { type: 'notification'; notification: CompanionNotification }
   | { type: 'notificationOpenFailed' }
@@ -92,6 +94,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories' } | { type: 'dismissProjectRepositories' }
@@ -176,15 +179,13 @@ export function createEngine(port: EnginePort) {
     try {
       const epoch = ++selectionEpoch;
       await state.connect(laptopId);
-      if (!port.selectionStore || disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
-      const saved = await port.selectionStore.read(laptopId).catch(() => null);
+      if (disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
+      const saved = await port.selectionStore?.read(laptopId).catch(() => null);
       if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
-      const team = teams.find((candidate) => candidate.id === saved?.teamId) ?? teams[0];
-      await state.selectTeam(team?.id ?? '');
-      if (disposed || epoch !== selectionEpoch) return;
-      const agent = (team?.id === saved?.teamId ? state.agents.value.find((candidate) => candidate.id === saved?.agentId) : undefined) ?? state.agents.value[0];
-      await state.selectAgent(agent?.id ?? '');
+      const team = teams.find((candidate) => candidate.id === saved?.teamId)
+        ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
+      await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
       if (!disposed && epoch === selectionEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
@@ -200,6 +201,9 @@ export function createEngine(port: EnginePort) {
     pendingNotification = null;
     await dispatch({ type: 'openNotification', target });
   }
+  const stopGitDiff = watch(state.git.result, result => {
+    if (!disposed) port.post({ type: 'gitDiff', diff: result?.diff ?? '' });
+  }, { flush: 'post' });
   const stopNotificationReconnect = watch(state.status, status => {
     if (status === 'connected') void openPendingNotification();
   }, { flush: 'post' });
@@ -215,6 +219,7 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      git: state.git.view.value,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
@@ -381,9 +386,7 @@ export function createEngine(port: EnginePort) {
         if (!agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
           port.post({ type: 'notificationOpenFailed' }); return;
         }
-        await state.selectTeam(target.teamId);
-        if (epoch !== notificationEpoch || disposed) return;
-        await state.selectAgent(target.agentId);
+        await state.selectTeam(target.teamId, target.agentId);
         if (epoch !== notificationEpoch || disposed) return;
         return rememberSelection();
       }
@@ -411,6 +414,8 @@ export function createEngine(port: EnginePort) {
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
       case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
       case 'loadUsage': return state.loadUsage();
+      case 'loadChanges': return state.git.load(command.scopeId);
+      case 'dismissChanges': return state.git.clear();
       case 'read': {
         if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value || command.generation !== state.conversationGeneration.value) return;
         const read = state.agent.value?.readState;
@@ -527,5 +532,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

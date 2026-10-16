@@ -166,6 +166,26 @@
           <template v-if="group.activity">
             <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" aria-hidden="true" />
             <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
+            <el-popover
+              v-if="group.activity === 'idle'"
+              v-model:visible="idleSortMenuVisible"
+              placement="bottom-end"
+              trigger="click"
+              :width="200"
+              popper-class="app-popover"
+            >
+              <template #reference>
+                <span>
+                  <button class="agent-sidebar__activity-more agent-sidebar__activity-sort" type="button" :aria-label="t('sidebar.sortIdle')" :title="t('sidebar.sortIdle')" aria-haspopup="menu" :aria-expanded="idleSortMenuVisible" @keydown.esc.stop.prevent="idleSortMenuVisible = false">
+                    <ArrowsSortIcon aria-hidden="true" />
+                  </button>
+                </span>
+              </template>
+              <div class="agent-sidebar__organize-heading">{{ t('sidebar.sortIdleBy') }}</div>
+              <AppMenu class="app-menu--embedded" :ariaLabel="t('sidebar.sortIdle')" :items="idleSortMenuItems" :show-selection-check="false"
+                @select="organization.selectIdleSort($event); idleSortMenuVisible = false"
+                @keydown.esc.stop.prevent="idleSortMenuVisible = false" />
+            </el-popover>
             <el-tooltip
               v-if="moreRowsLabel(group.id)"
               :content="moreRowsLabel(group.id)"
@@ -261,7 +281,7 @@
             <component
               :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
               v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
-                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
+                ? { session, context: activityContext.get(session.agentId), repository: activityRepository.has(session.agentId), repositoryIcon: activityRepository.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session) && !showQuickSwitchShortcut(session, group.activity), shortcutVisible: showQuickSwitchShortcut(session, group.activity), unreadLabel: t('sidebar.unread'), ...activityIndicator(session, group.activity) }
                 : { session, groupKind: group.kind }) }"
               v-show="!isWorkspaceCollapsed(group)"
               class="agent-sidebar__agent"
@@ -282,7 +302,7 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="backendChoices.length > 1 && agentsById.get(session.agentId)"
+                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -298,7 +318,7 @@
                 :aria-label="statusLabel(session.status.type)"
               >{{ t('sidebar.input') }}</span>
               <span
-                v-else-if="!isPullRequestFinished(session) && !session.isUnread && quickSwitchShortcutsVisible && session.quickSwitchIndex < 9"
+                v-else-if="showQuickSwitchShortcut(session, group.activity)"
                 class="agent-sidebar__quick-switch-shortcut"
                 :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
               ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
@@ -311,7 +331,7 @@
               />
             </component>
             <el-tooltip
-              v-if="isPullRequestFinished(session)"
+              v-if="isPullRequestFinished(session) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
               :content="pullRequestAttentionLabel(session)"
               placement="right"
               :show-after="300"
@@ -390,6 +410,7 @@ import {
   CarouselVerticalIcon,
   CheckIcon,
   CircleCheckIcon,
+  ClockHour8Icon,
   LoaderIcon,
   MoonIcon,
   FolderIcon,
@@ -481,6 +502,7 @@ const emit = defineEmits<{
 const missionsCollapsed = ref(false);
 const activityIcons = { attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon };
 const organizationMenuVisible = ref(false);
+const idleSortMenuVisible = ref(false);
 const organizationMenuItems = computed<AppMenuItem[]>(() => [
   { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: organizationMode.value === 'repository' ? CheckIcon : FolderIcon },
   { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: organizationMode.value === 'activity' ? CheckIcon : BellIcon },
@@ -504,7 +526,23 @@ const organization = useAgentSidebarOrganization({
   label: activity => t(`sidebar.activityGroups.${activity}`),
 });
 const organizationMode = organization.mode;
-const workspaceGroups = organization.groups;
+const idleSortMenuItems = computed<AppMenuItem[]>(() => [
+  { id: 'repository', type: 'radio', checked: organization.idleSort.value === 'repository', label: t('sidebar.repository'), icon: organization.idleSort.value === 'repository' ? CheckIcon : FolderIcon },
+  { id: 'activity', type: 'radio', checked: organization.idleSort.value === 'activity', label: t('sidebar.recentActivity'), icon: organization.idleSort.value === 'activity' ? CheckIcon : ClockHour8Icon },
+]);
+const workspaceGroups = computed(() => {
+  let index = 0;
+  return organization.groups.value.map(group => group.activity
+    ? { ...group, sessions: group.sessions.map(session => ({ ...session, quickSwitchIndex: index++ })) }
+    : group);
+});
+const quickSwitchAgentIds = computed(() => workspaceGroups.value.flatMap(group => group.sessions)
+  .sort((a, b) => a.quickSwitchIndex - b.quickSwitchIndex).map(session => session.agentId));
+defineExpose({ quickSwitchAgentIds });
+function showQuickSwitchShortcut(session: WorkspaceSidebarSession, activity?: SidebarActivity): boolean {
+  return Boolean(props.quickSwitchShortcutsVisible && session.quickSwitchIndex < 9
+    && (activity || (!isPullRequestFinished(session) && !session.isUnread)));
+}
 function activityAge(agentId: string, activity: SidebarActivity | undefined): string | undefined {
   const agent = agentsById.value.get(agentId);
   if (!agent) return undefined;
@@ -1305,7 +1343,18 @@ function onResizePointerEnd(event: PointerEvent): void {
   height: var(--space-8);
 }
 
+.agent-sidebar__activity-sort {
+  opacity: 0;
+}
+
+.agent-sidebar__workspace-header:hover .agent-sidebar__activity-sort,
+.agent-sidebar__activity-sort:focus-visible,
+.agent-sidebar__activity-sort[aria-expanded="true"] {
+  opacity: 1;
+}
+
 .agent-sidebar__activity-heading {
+  flex: 1;
   transform: translateY(-1px);
   color: var(--color-text-muted);
   font-size: var(--font-size-13);

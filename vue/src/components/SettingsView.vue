@@ -102,14 +102,15 @@
         <SettingsIntegrationsPanel
           v-else-if="activeTab === 'integrations'"
           :authorization="workProviderAuthorization"
+          :authorizations="workProviderAuthorizations"
+          :busy-providers="busyIntegrationProviders"
           :connections="workBacklogConnections"
           :error="workBacklogError"
           :provider-settings="workProviderSettings"
-          :status="workBacklogStatus"
           :update-settings="updateSettings"
           @complete="pollWorkProviderAuthorization"
-          @connect="connectWorkProvider"
-          @disconnect="disconnectWorkProvider"
+          @connect="provider => runIntegrationAction(provider, connectWorkProvider)"
+          @disconnect="provider => runIntegrationAction(provider, disconnectWorkProvider)"
           @open-authorization="openWorkProviderAuthorization"
         />
         <SettingsPluginsPanel
@@ -146,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
 import UsagePanel from './UsagePanel.vue';
@@ -210,6 +211,7 @@ const props = withDefaults(defineProps<{
   workBacklogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   workProviderSettings?: WorkBacklogState['providerSettings'];
   workProviderAuthorization?: WorkProviderAuthorization | null;
+  workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
   remoteConnections?: RemoteConnection[];
   teams?: Team[];
   listSourceFolders?: (input?: SourceFolderListInput) => Promise<SourceFolderListing>;
@@ -274,6 +276,14 @@ const emit = defineEmits<{
 }>();
 
 const activeTab = computed(() => props.activeTab === 'antigravity' && !props.providerConnections?.some(provider => provider.backend === 'antigravity') ? 'general' : props.activeTab);
+const busyIntegrationProviders = ref<WorkProviderKind[]>([]);
+
+async function runIntegrationAction(provider: WorkProviderKind, action: (provider: WorkProviderKind) => Promise<void>): Promise<void> {
+  if (busyIntegrationProviders.value.includes(provider)) return;
+  busyIntegrationProviders.value = [...busyIntegrationProviders.value, provider];
+  try { await action(provider); }
+  finally { busyIntegrationProviders.value = busyIntegrationProviders.value.filter(value => value !== provider); }
+}
 
 function selectTab(tab: SettingsTab): void {
   emit('selectTab', tab);

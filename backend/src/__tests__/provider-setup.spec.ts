@@ -69,6 +69,31 @@ function addRosterLinks(snapshot: import('@workspace/core/contracts').AppSnapsho
 }
 
 describe('provider onboarding setup', () => {
+  it('reuses CLI homes by default and preserves an explicit isolated choice across restart', async () => {
+    const snapshot = createTestSnapshot();
+    const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), vi.fn());
+    await setup.initialize();
+    expect(snapshot.general.providerHomes).toMatchObject({
+      codex: { isolated: false, homePath: path.join(root, 'codex') },
+      claude: { isolated: false, homePath: path.join(root, 'claude') },
+    });
+    await setup.configure('codex', { isolated: true, shareSkills: false });
+    await setup.configure('claude', { isolated: true, shareSkills: false });
+    const reloaded = await loadBackendSnapshot();
+    await new ProviderSetup(reloaded, vi.fn(), vi.fn()).initialize();
+    expect(reloaded.general.providerHomes).toMatchObject({
+      codex: { isolated: true, shareSkills: false, homePath: path.join(root, 'app/codex-home') },
+      claude: { isolated: true, shareSkills: false, homePath: path.join(root, 'app/claude-home') },
+    });
+  });
+
+  it('keeps legacy Codex conversations in their original isolated home', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ ...createRemoteAgent(), backend: 'codex' }];
+    await new ProviderSetup(snapshot, vi.fn(), vi.fn()).initialize();
+    expect(snapshot.general.providerHomes?.codex).toMatchObject({ isolated: true, homePath: path.join(root, 'app/codex-home') });
+  });
+
   it('installs only on explicit RPC request, serializes setup, and publishes detected availability', async () => {
     const snapshot = createTestSnapshot();
     let installed = false;
@@ -281,6 +306,7 @@ describe('provider onboarding setup', () => {
     await mkdir(path.join(root, backend, 'skills'), { recursive: true });
     await writeFile(path.join(root, backend, 'skills/existing.md'), 'keep my skill');
     await setup.initialize();
+    await setup.configure(backend, { isolated: true, shareSkills: true });
     const agent: Agent = { ...createRemoteAgent(), id: 'local', teamId: 'team-test', backend, status: { type: 'working' } };
     snapshot.agents = [agent];
     snapshot.teams[0]!.agentIds = [agent.id];
@@ -315,6 +341,7 @@ describe('provider onboarding setup', () => {
     await mkdir(path.join(root, backend, 'skills'), { recursive: true });
     await writeFile(path.join(root, backend, 'skills/existing.md'), 'keep my skill');
     await setup.initialize();
+    await setup.configure(backend, { isolated: true, shareSkills: true });
     const home = { ...snapshot.general.providerHomes![backend]! };
     fail = true;
     await expect(setup.configure(backend, { isolated: true, shareSkills: false })).rejects.toThrow('disk full');
@@ -349,6 +376,8 @@ describe('provider onboarding setup', () => {
     await writeFile(path.join(root, 'claude/auth.json'), 'private');
     const setup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), vi.fn());
     await setup.initialize();
+    await setup.configure('codex', { isolated: true, shareSkills: true });
+    await setup.configure('claude', { isolated: true, shareSkills: true });
     expect(await readFile(path.join(root, 'app/claude-home/skills/example.md'), 'utf8')).toBe('my skill');
     await expect(readFile(path.join(root, 'app/claude-home/auth.json'))).rejects.toMatchObject({ code: 'ENOENT' });
     const reloaded = await loadBackendSnapshot();
@@ -382,7 +411,9 @@ describe('provider onboarding setup', () => {
     const privateSkills = path.join(root, 'app/claude-home/skills');
     await mkdir(privateSkills, { recursive: true });
     await writeFile(path.join(privateSkills, 'mine.md'), 'keep');
-    const setup = new ProviderSetup(createTestSnapshot(), vi.fn(), vi.fn());
+    const snapshot = createTestSnapshot();
+    snapshot.general.providerHomes = { claude: { isolated: true, shareSkills: true, homePath: path.join(root, 'app/claude-home') } };
+    const setup = new ProviderSetup(snapshot, vi.fn(), vi.fn());
     await setup.initialize();
     expect(await readFile(path.join(privateSkills, 'mine.md'), 'utf8')).toBe('keep');
     expect(setup.list().find(item => item.backend === 'claude')?.shareSkills).toBe(false);

@@ -158,6 +158,7 @@ export class CompanionManager {
     this.notifications = new CompanionNotifications(peerIdFromPrivateKey(this.key).toString());
     const projects = new CompanionProjectAcquisition(this.backend);
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
       githubRepositories: remote => projects.list(remote),
       githubBranches: (repositoryId, remote) => projects.branches(repositoryId, remote),

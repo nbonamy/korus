@@ -533,11 +533,16 @@ export class MissionExecutionService {
     let worker = this.agent(run.workerId);
     const reusedWorker = !!worker;
     if (!worker) {
+      const leadRun = mission.execution!.runs.slice().reverse().find(candidate => (
+        (candidate.stage === 'requirements' || candidate.stage === 'tickets') && candidate.workerId
+      ));
+      const lead = leadRun ? this.agent(leadRun.workerId) : member;
+      if (!lead) throw new Error('The main Mission agent is unavailable.');
       const workerId = createEntityId('agent');
       createAgentInSnapshot(this.ports.snapshot, {
         name: `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`,
         teamId: mission.execution!.teamId, folder: workingFolder,
-        backend: member.backend, backendDefaults: structuredClone(member.backendDefaults), avatar: member.avatar,
+        backend: lead.backend, backendDefaults: structuredClone(lead.backendDefaults), avatar: member.avatar,
       }, undefined, workerId, { select: false });
       worker = this.agent(workerId)!;
       await this.ports.missions.change(id, current => {

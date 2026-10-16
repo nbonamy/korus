@@ -9,10 +9,12 @@ describe('shared activity sidebar across the companion boundary', () => {
     const agent = (id: string, patch: Partial<Agent> = {}): Agent => ({ id, name: id, teamId: 'team', folder: null, backend: 'codex',
       createdAt: '2026-10-14T12:00:00Z', updatedAt: '2026-10-15T12:00:00Z', status: { type: 'idle' }, ...patch });
     const source = { teams: [{ id: 'team', name: 'Team', agentIds: [] }], agents: [
-      agent('waiting', { status: { type: 'awaitingInput' } }),
-      agent('recent', { hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' }),
-      agent('working', { status: { type: 'working' } }),
+      agent('waiting-new', { status: { type: 'awaitingInput' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' }),
+      agent('waiting', { status: { type: 'awaitingInput' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z' }),
       agent('created', { createdAt: '2026-10-15T12:00:00Z' }),
+      agent('recent', { hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' }),
+      agent('working-new', { status: { type: 'working' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:59:00Z' }),
+      agent('working', { status: { type: 'working' }, hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z' }),
       agent('idle', { backend: 'claude', hasSubmittedPrompt: true, lastActivityAt: '2026-10-15T11:00:00Z',
         backendDefaults: { kind: 'claude', model: 'opus', serviceTier: 'fast', permissionMode: 'default' } }),
     ] };
@@ -22,12 +24,12 @@ describe('shared activity sidebar across the companion boundary', () => {
     const groups = (agents: Agent[], time: number) => projectActivitySidebar({ agents, now: time,
       repositoryGroups: projectWorkspaceSidebar({ agents, activeAgentId: 'working', quickChatsLabel: 'Chats' }), label: activity => activity });
     const ids = (agents: Agent[], time: number) => groups(agents, time).map(group => [group.activity, group.sessions.map(s => s.agentId)]);
-    const expected = [['attention', ['waiting']], ['recent', ['recent', 'created']], ['working', ['working']], ['idle', ['idle']]];
+    const expected = [['attention', ['waiting', 'waiting-new']], ['recent', ['recent', 'created']], ['working', ['working', 'working-new']], ['idle', ['idle']]];
     expect(ids(source.agents, now)).toStrictEqual(expected);
     expect(ids(wire.agents, now)).toStrictEqual(expected);
     const finished = wire.agents.map(a => a.id === 'working' ? { ...a, status: { type: 'idle' as const }, hasSubmittedPrompt: true, lastActivityAt: new Date(now).toISOString() } : a);
-    expect(ids(finished, now)).toStrictEqual([['attention', ['waiting']], ['recent', ['recent', 'working', 'created']], ['idle', ['idle']]]);
-    expect(ids(finished, now + 300_001)).toStrictEqual([['attention', ['waiting']], ['idle', ['working', 'recent', 'idle', 'created']]]);
+    expect(ids(finished, now)).toStrictEqual([['attention', ['waiting', 'waiting-new']], ['recent', ['recent', 'created', 'working']], ['working', ['working-new']], ['idle', ['idle']]]);
+    expect(ids(finished, now + 300_001)).toStrictEqual([['attention', ['waiting', 'waiting-new']], ['working', ['working-new']], ['idle', ['working', 'recent', 'idle', 'created']]]);
     expect(groups(finished, now).flatMap(g => g.sessions).find(s => s.agentId === 'working')!.isActive).toBe(true);
   });
 });

@@ -310,6 +310,8 @@ integration enables its entry; sessions see local servers named `github` /
   authorization header on every upstream request, replaces any caller
   `Authorization`, and on upstream `401` rotates the credential and retries
   **once**. A refresh failure marks only that provider as needing reconnection.
+- GitHub CLI connections supply app-owned GitHub operations through `gh`, not
+  bearer credentials. They do not enable the hosted GitHub MCP gateway.
 - Never configure a provider's remote URL or bearer token directly in Codex, Claude
   or user-global MCP settings: that exposes a rotating secret to the harness and
   prevents safe refresh. Tokens never appear in session config, URLs, tool I/O,

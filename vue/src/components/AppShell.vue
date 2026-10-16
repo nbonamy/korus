@@ -56,6 +56,7 @@
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
     <AppShellNavigation
+      ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
       :mission-creation-error="missionCreationError"
       :mission-creation-pending="missionCreationPending"
@@ -169,6 +170,7 @@
         :work-backlog-status="workBacklogStatus"
         :work-provider-settings="snapshot.workBacklog.providerSettings"
         :work-provider-authorization="workProviderAuthorization"
+        :work-provider-authorizations="workProviderAuthorizations"
         :remote-connections="snapshot.remoteConnections.connections"
         :teams="snapshot.teams"
         :list-source-folders="listSourceFolders"
@@ -560,7 +562,7 @@
       @save="saveImageAnnotation"
     />
     <WorkspaceProvisioningProgressDialog
-      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : null"
+      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : workItemCreationProgress"
       @close="closeProvisioningProgress"
     />
     <MissionDeleteDialog
@@ -758,6 +760,7 @@ const props = withDefaults(defineProps<{
   markdownDisplayRequests?: Array<Extract<SidePanelRequest, { kind: 'markdown' }>>;
   fileActivity?: AgentFileActivity | null;
   workProviderAuthorization?: WorkProviderAuthorization | null;
+  workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
   workRepositoriesByProvider?: Partial<Record<WorkProviderKind, WorkSource[]>>;
   workItemsByRepository?: Record<string, WorkItem[]>;
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
@@ -1321,7 +1324,7 @@ const firstRunOnboarding = useFirstRunOnboarding({
   getApi: () => appApi,
   getConnections: () => props.snapshot.providerConnections ?? [],
   hasExistingWorkspace: () => props.snapshot.agents.length > 0 || props.snapshot.general.providerOnboardingComplete === true,
-  isGitHubConnected: () => githubConnection.value.status === 'connected',
+  isGitHubConnected: () => githubConnection.value.status === 'connected' && githubConnection.value.source !== 'cli',
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
@@ -1462,6 +1465,8 @@ const {
   assignExisting: assignExistingAgentWorkItem,
   clearNewAgent: clearPendingNewAgentWorkItem,
   createIsolatedAgent: createIsolatedWorkItemAgent,
+  creationProgress: workItemCreationProgress,
+  closeCreationProgress: closeWorkItemCreationProgress,
   newAgentItem: pendingNewAgentWorkItem,
   newAgentTeamName: pendingNewAgentTeamName,
   newAgentWorktreeBranchName: pendingWorkItemBranchName,
@@ -2440,10 +2445,12 @@ const shortcutContext = computed<ShortcutContext>(() => ({
   browser: appHostCapabilities.embeddedBrowser,
   idleSession: Boolean(currentAgent.value?.backendSession && currentAgent.value.status.type === 'idle' && defaultBackendCommands(currentAgent.value.backend).some(command => command.slashName === 'compact')),
 }));
+const navigation = ref<InstanceType<typeof AppShellNavigation> | null>(null);
 const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
   state: {
     activeTeam: () => activeTeam.value,
     activeTeamAgents: () => activeTeamAgents.value,
+    quickSwitchAgentIds: () => navigation.value?.quickSwitchAgentIds ?? activeTeamAgents.value.map(agent => agent.id),
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
     composerAttachments: () => props.composerAttachments,
@@ -2681,6 +2688,7 @@ const provisioningProgress = computed(() => debugAgentCreationProgress.value ?? 
 function closeProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   closeRepositorySessionCreationProgress(id);
+  closeWorkItemCreationProgress(id);
 }
 
 function closeDebugAgentCreationProgress(id: string): void {
@@ -2788,8 +2796,8 @@ function completeGitHubOnboardingStep(): void {
   firstRunOnboarding.completeGitHub();
 }
 
-watch(() => githubConnection.value.status, (status) => {
-  if (githubOnboardingVisible.value && status === 'connected') {
+watch(() => [githubConnection.value.status, githubConnection.value.source] as const, ([status, source]) => {
+  if (githubOnboardingVisible.value && status === 'connected' && source !== 'cli') {
     completeGitHubOnboardingStep();
   }
 });

@@ -31,6 +31,11 @@
             v-if="item.icon"
             class="app-menu__icon"
           />
+          <span
+            v-else
+            class="app-menu__icon app-menu__icon--empty"
+            aria-hidden="true"
+          />
           <span class="app-menu__copy">
             <span class="app-menu__label">{{ item.label }}</span>
             <span

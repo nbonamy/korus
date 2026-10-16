@@ -212,7 +212,7 @@ describe('AgentSidebar sessions', () => {
       expect(ids('attention')).toStrictEqual(['waiting']);
       expect(wrapper.get('[data-reorder-id="waiting"] .agent-avatar').text()).toBe('🦞');
       expect(wrapper.find('[data-reorder-id="waiting"] .agent-sidebar__session-icon').exists()).toBe(false);
-      expect(ids('recent')).toStrictEqual(['recent', 'created', 'unread']);
+      expect(ids('recent')).toStrictEqual(['unread', 'recent', 'created']);
       expect(ids('working')).toStrictEqual(['working']);
       const row = (id: string) => wrapper.get(`[data-reorder-id="${id}"]`);
       const hasUnread = (id: string) => row(id).find('.agent-sidebar__activity-unread').exists();
@@ -240,7 +240,7 @@ describe('AgentSidebar sessions', () => {
       expect(ids('recent')).toContain('working');
       expect(wrapper.get('.agent-sidebar__agent--active').attributes('data-reorder-id')).toBe('working');
       await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
-      expect(ids('recent')).toStrictEqual(['recent', 'unread']);
+      expect(ids('recent')).toStrictEqual(['unread', 'recent']);
       expect(ids('idle').slice(0, 3)).toStrictEqual(['working', 'new', 'idle']);
       await wrapper.setProps({ unreadAgentIds: [] });
       expect(wrapper.find('[data-activity-group="recent"]').exists()).toBe(false);
@@ -254,6 +254,53 @@ describe('AgentSidebar sessions', () => {
       expect(restored.find('[data-activity-group="attention"]').exists()).toBe(true);
       restored.unmount();
     } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
+
+  it('sorts only Idle by normal repository order or recent activity and remembers each team’s choice', async () => {
+    const items: Agent[] = [
+      { ...agents[0]!, id: 'old', name: 'Older', status: { type: 'idle' }, lastActivityAt: '2026-01-01T10:00:00Z' },
+      { ...agents[1]!, id: 'latest', name: 'Latest', status: { type: 'idle' }, lastActivityAt: '2026-01-03T10:00:00Z' },
+      { ...agents[0]!, id: 'middle', name: 'Middle', status: { type: 'idle' }, lastActivityAt: '2026-01-02T10:00:00Z' },
+      { ...agents[0]!, id: 'working', status: { type: 'working' } },
+    ];
+    const props = { agents: items, activeAgentId: null, teamId: 'idle-one', teamName: 'One' };
+    const wrapper = mount(AgentSidebar, { props, attachTo: document.body, global: { components: { ElPopover } } });
+    const choose = async (menu: string, label: string) => {
+      await wrapper.get(`button[aria-label="${menu}"]`).trigger('click');
+      const menuLabel = menu === 'Agent view' ? 'Organize agents by' : menu;
+      await flushPromises();
+      await vi.waitFor(() => expect(wrapper.get(`button[aria-label="${menu}"]`).attributes('aria-expanded')).toBe('true'));
+      const options = document.body.querySelector(`[role="menu"][aria-label="${menuLabel}"]`)!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+      if (menu === 'Sort idle agents') {
+        const selected = [...options].find(button => button.getAttribute('aria-checked') === 'true')!;
+        expect(selected.querySelectorAll('svg')).toHaveLength(1);
+        expect(selected.firstElementChild?.classList.contains('tabler-icon-check')).toBe(true);
+      }
+      [...options].find(button => button.textContent?.trim() === label)!.click();
+      await flushPromises();
+    };
+    const idleIds = () => wrapper.get('[data-activity-group="idle"]').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'));
+    try {
+      expect(wrapper.find('button[aria-label="Sort idle agents"]').exists()).toBe(false);
+      await choose('Agent view', 'Activity');
+      expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);
+      await choose('Sort idle agents', 'Repository');
+      expect(idleIds()).toStrictEqual(['old', 'middle', 'latest']);
+      expect(wrapper.get('[data-activity-group="working"] [data-reorder-id]').attributes('data-reorder-id')).toBe('working');
+      await choose('Sort idle agents', 'Recent activity');
+      expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);
+      await choose('Sort idle agents', 'Repository');
+      await wrapper.setProps({ teamId: 'idle-two' });
+      await choose('Agent view', 'Activity');
+      expect(idleIds()).toStrictEqual(['latest', 'middle', 'old']);
+      await wrapper.setProps({ teamId: 'idle-one' });
+      expect(idleIds()).toStrictEqual(['old', 'middle', 'latest']);
+      wrapper.unmount();
+      const restored = mount(AgentSidebar, { props });
+      try {
+        expect(restored.get('[data-activity-group="idle"]').findAll('[data-reorder-id]').map(row => row.attributes('data-reorder-id'))).toStrictEqual(['old', 'middle', 'latest']);
+      } finally { restored.unmount(); }
+    } finally { wrapper.unmount(); }
   });
 
   it('collapses and expands a repository by clicking its title', async () => {

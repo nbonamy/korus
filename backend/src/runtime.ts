@@ -33,6 +33,7 @@ import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, bac
 import { saveCodeReviewReport } from './review/review-report';
 import { FileWorkIntegrationTokenStore } from './work-integrations/file-token-store';
 import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
+import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
 import { warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
@@ -73,6 +74,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
   const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
+    if (backend === 'codex') {
+      pluginStatus = await loadPluginStatus(snapshot.general.providerHomes?.codex?.homePath);
+    }
     await driverRpc.replaceDriver(backend, () => createBackendDriver(backend, { ...driverOptions, generalSettings: snapshot.general }));
   }, undefined, () => backupProviderSetup(snapshot));
   await providerSetup.initialize();
@@ -96,6 +100,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       new GitHubWorkProviderDriver(() => runtimeGitHubOAuthClientId(snapshot.workBacklog.providerSettings.github)),
       new LinearWorkProviderDriver(() => runtimeLinearOAuthSettings(snapshot.workBacklog.providerSettings.linear)),
     ],
+    githubCli: new GitHubCliWorkProviderDriver(),
     getSnapshot: () => snapshot,
     saveSnapshot: () => saveBackendSnapshot(snapshot),
     tokenStore: new FileWorkIntegrationTokenStore(backendProviderTokensFilePath()),

@@ -9,6 +9,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
     var onSendResult: ((ComposerSendResult) -> Void)?
     var onNotification: ((ChatNotification) -> Void)?
     var onNotificationOpenFailed: (() -> Void)?
+    var onGitDiff: ((String) -> Void)?
     var onState: ((EngineState) -> Void)?
     var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
@@ -98,6 +99,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             webView.callAsyncJavaScript("await window.companionEngine.start()", arguments: [:], in: nil, in: .page) { _ in }
             for command in pending { dispatch(command) }
             pending.removeAll()
+        case "gitDiff": if let json { onGitDiff?(json) }
         case "notification":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(NotificationEvent.self, from: data) { onNotification?(decoded.notification) }
         case "notificationOpenFailed": onNotificationOpenFailed?()

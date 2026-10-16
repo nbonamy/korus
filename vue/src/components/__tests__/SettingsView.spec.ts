@@ -9,6 +9,37 @@ import { configureAppClient } from '../../platform-api';
 import { setElectronTestClient } from '../../test/client';
 
 describe('SettingsView', () => {
+  it('keeps GitHub and Linear connection buttons independent of backlog loading and each other', async () => {
+    let finishGitHub!: () => void;
+    let finishLinear!: () => void;
+    const connect = vi.fn((provider: string) => new Promise<void>(resolve => {
+      if (provider === 'github') finishGitHub = resolve;
+      else finishLinear = resolve;
+    }));
+    const wrapper = mount(SettingsView, { props: {
+      activeTab: 'integrations', settings: defaultThemeSettings, generalSettings: defaultGeneralSettings,
+      workBacklogStatus: 'loading',
+      workBacklogConnections: [{ provider: 'github', source: 'cli', status: 'connected' }, { provider: 'linear', status: 'disconnected' }],
+      connectWorkProvider: connect,
+    } });
+    const github = wrapper.get('[aria-label="Connect GitHub"]');
+    const linear = wrapper.get('[aria-label="Connect Linear"]');
+    expect(github.attributes('disabled')).toBeUndefined();
+    expect(linear.attributes('disabled')).toBeUndefined();
+    expect(wrapper.find('[aria-label="Disconnect GitHub"]').exists()).toBe(false);
+    expect(wrapper.get('.status-pill--warning').text()).toBe('Using GitHub CLI');
+    await github.trigger('click');
+    expect(github.attributes('disabled')).toBeDefined();
+    expect(linear.attributes('disabled')).toBeUndefined();
+    await linear.trigger('click');
+    expect(connect.mock.calls).toStrictEqual([['github'], ['linear']]);
+    finishGitHub(); await flushPromises();
+    expect(github.attributes('disabled')).toBeUndefined();
+    expect(linear.attributes('disabled')).toBeDefined();
+    finishLinear(); await flushPromises();
+    expect(linear.attributes('disabled')).toBeUndefined();
+  });
+
   it('places Workflows in Workspace and opens its Delegation section with saved preferences', () => {
     setElectronTestClient({});
     const wrapper = mount(SettingsView, { props: {

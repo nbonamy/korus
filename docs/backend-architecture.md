@@ -141,6 +141,10 @@ Account usage is an on-demand read of the paired laptop's enabled, connected quo
 providers through the same backend operation as the desktop menu. Only quota windows
 cross the companion seam; billing and credit details stay on the laptop. Reads recheck
 the device grant before returning, and do not depend on the selected conversation.
+Git status counts and available diff scopes cross as presentation metadata, without
+host paths or patch contents. Diffs are fetched through a target-bound, read-only
+gateway operation that uses the owning daemon’s Git service; the gateway rechecks
+the device grant and conversation identity before returning the patch.
 Project acquisition uses the owning team's desktop operations for new repositories,
 GitHub discovery and URL cloning. The phone sends names, catalog IDs or network Git
 URLs rather than filesystem paths. GitHub credentials and checkout paths stay on

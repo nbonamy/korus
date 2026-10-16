@@ -263,13 +263,14 @@ describe('companion state', () => {
   it('retains the loaded transcript when reconnect hydration fails, then recovers without leaking it to another agent', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const initial = await connect('demo-laptop');
-    const loadConversation = vi.fn(initial.loadConversation).mockImplementationOnce(initial.loadConversation).mockRejectedValueOnce(new Error('History response interrupted'));
+    const loadConversation = vi.fn(initial.loadConversation);
     connector.connect = async (id) => ({ ...await connect(id), loadConversation });
     const state = createCompanionState(connector);
     try {
       await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
       const original = state.conversation.value;
       expect(original?.payload.snapshot.messages.length).toBeGreaterThan(0);
+      loadConversation.mockRejectedValueOnce(new Error('History response interrupted'));
       state.disconnect(); await state.reconnect();
       expect(state.conversation.value).toEqual(original);
       expect(state.canSend.value).toBe(false);
@@ -362,7 +363,8 @@ describe('companion state', () => {
     await state.selectAgent('demo-agent');
     state.updateDraft({ text: 'Dictated prompt', selectionStart: 15, selectionEnd: 15 });
     await state.selectAgent('other-agent');
-    expect(state.agent.value).toBeNull();
+    expect(state.agent.value?.id).toBe('demo-agent');
+    expect(state.conversation.value?.agentId).toBe('demo-agent');
     await state.selectAgent('demo-agent');
     expect(state.draft.value.text).toBe('Dictated prompt');
     await state.revoke();
@@ -427,9 +429,8 @@ describe('companion state', () => {
     };
     const state = createCompanionState(connector);
     await state.connect('demo-laptop');
-    await state.selectTeam('demo-team');
-    const firstLoad = state.selectAgent('demo-agent');
-    await Promise.resolve();
+    const firstLoad = state.selectTeam('demo-team');
+    await vi.waitFor(() => expect(finishLoad).toBeTypeOf('function'));
     await state.selectAgent('demo-reviewer');
     finishLoad();
     await firstLoad;

@@ -28,6 +28,7 @@ type AppShellCommandOptions = {
   state: {
     activeTeam: () => Team | null;
     activeTeamAgents: () => Agent[];
+    quickSwitchAgentIds: () => string[];
     agents: () => Agent[];
     attachmentsEnabled: () => boolean;
     composerAttachments: () => readonly CodexNativeAttachment[];
@@ -153,10 +154,10 @@ export function useAppShellCommands(options: AppShellCommandOptions) {
     }
 
     if (matchesShellShortcut(`agent${event.key}`, input)) {
-      const agent = activeTeamAgents.value[Number(event.key) - 1];
-      if (agent) {
+      const agentId = options.state.quickSwitchAgentIds()[Number(event.key) - 1];
+      if (agentId) {
         event.preventDefault();
-        options.actions.selectAgent(agent.id);
+        options.actions.selectAgent(agentId);
       }
       return;
     }

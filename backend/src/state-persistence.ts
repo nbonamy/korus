@@ -948,6 +948,7 @@ function sanitizeWorkIntegrationConnection(value: unknown): WorkIntegrationConne
   return {
     provider: value.provider,
     status: value.status,
+    ...(value.source === 'api' || value.source === 'cli' || value.source === 'none' ? { source: value.source } : {}),
     ...(typeof value.accountLabel === 'string' ? { accountLabel: value.accountLabel } : {}),
     ...(appText(value.detail) ? { detail: appText(value.detail)! } : {}),
     ...(typeof value.connectedAt === 'string' ? { connectedAt: value.connectedAt } : {}),

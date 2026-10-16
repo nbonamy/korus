@@ -200,7 +200,7 @@ describe('MissionWorkspace', () => {
 
     expect(continueButton.attributes('aria-busy')).toBe('true');
     const progress = wrapper.getComponent(WorkspaceProvisioningProgressDialog);
-    expect(progress.text()).toContain('Preparing Mission worktrees');
+    expect(progress.text()).toContain('Preparing worktrees');
     expect(progress.text()).toContain('2 repositories');
     expect(progress.text()).toContain('billing-api, billing-web');
     expect(progress.text()).toContain('2 tickets');

@@ -21,6 +21,7 @@ export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: 
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 export type CompanionSession = {
+  gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;

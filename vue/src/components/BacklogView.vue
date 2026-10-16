@@ -178,6 +178,7 @@ import { ExternalLinkIcon } from '../shared/icons/app-icons';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
+import type { StartWorkItemsInput } from './use-work-item-routing';
 
 type CockpitWorkBacklog = {
   assignments: Record<string, WorkBacklogAssignment>;
@@ -213,7 +214,7 @@ const props = defineProps<{
   teams: Team[];
   defaultTeamId?: string | null;
   listSourceRepositories?: (remoteConnectionId?: string) => Promise<import('@workspace/core/contracts').SourceRepository[]>;
-  startWorkItemsAction: (input: { action: 'investigate' | 'fix'; items: WorkItem[]; teamId: string; backend?: Agent['backend']; repository?: import('@workspace/core/contracts').SourceRepository; isCurrent?: () => boolean }) => Promise<void>;
+  startWorkItemsAction: (input: StartWorkItemsInput) => Promise<void>;
   workBacklog?: CockpitWorkBacklog | null;
 }>();
 
