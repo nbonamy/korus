@@ -44,6 +44,7 @@ import {
 import { ClaudeProviderCatalog } from './claude-provider-catalog';
 import { listClaudeTranscriptSummaries, loadClaudeTranscriptHistory, type ClaudeTranscriptHistory } from './transcript-history-adapter';
 import { ClaudeHistoryWindow } from './history-window';
+import { ClaudeSubagents } from './claude-subagents';
 import { claudeToolResultText } from './claude-tool-result';
 import {
   claudeToolFileActivity,
@@ -147,6 +148,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private readonly historyLoads = new Map<string, symbol>();
   private readonly pendingRequestOwners = new Map<string, ActiveClaudeTurn>();
   private readonly liveSessionIdsByAgentId = new Map<string, string>();
+  private readonly subagents = new ClaudeSubagents(event => this.emit(event));
   private readonly catalog: ClaudeProviderCatalog;
   private readonly contextUsageRefreshesByAgentId = new Map<string, Promise<void>>();
   private readonly contextUsageSessionIdsByAgentId = new Map<string, string>();
@@ -507,6 +509,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   }
 
   async releaseConversation(agentId: string): Promise<void> {
+    this.subagents.release(agentId);
     this.historyWindows.delete(agentId);
     this.historyLoads.delete(agentId);
     this.turnBoundariesByAgentId.delete(agentId);
@@ -552,6 +555,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       history.backendSession.kind === 'claude' ? history.backendSession.sessionId : null,
       history.messages,
     );
+    for (const event of history.subagentEvents ?? []) this.emit(event);
 
     if (history.backendSession.kind === 'claude') {
       this.publishGoal(agent.id, history.goal);
@@ -673,9 +677,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     const current = this.conversationReplicasByAgentId.get(agentId)?.getSnapshot();
-    if (current?.sessionId === ref.sessionId) return this.historyWindows.get(agentId)?.readMessages(current.messages) ?? structuredClone(current.messages);
+    if (ref.subagentId === undefined && current?.sessionId === ref.sessionId) return this.historyWindows.get(agentId)?.readMessages(current.messages) ?? structuredClone(current.messages);
 
-    const history = await this.loadHistory({
+    const historyAgent: Agent = {
       id: agentId,
       name: agentId,
       folder: ref.folder,
@@ -688,7 +692,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       status: { type: 'idle' },
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
-    });
+    };
+    const history = ref.subagentId === undefined ? await this.loadHistory(historyAgent)
+      : await loadClaudeTranscriptHistory(historyAgent, { projectsRoot: this.claudeProjectsRoot(), subagentId: ref.subagentId });
     return history?.messages ?? [];
   }
 
@@ -782,6 +788,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   }
 
   private handleSdkMessage(activeTurn: ActiveClaudeTurn, message: ClaudeSdkMessage): void {
+    if (activeTurn.completed) {
+      if (activeTurn.sessionId && this.liveSessionIdsByAgentId.get(activeTurn.agentId) === activeTurn.sessionId) {
+        this.subagents.observe(activeTurn.agentId, activeTurn.sessionId, message);
+      }
+      return;
+    }
     if (message.type === 'rate_limit_event') {
       const info = 'rate_limit_info' in message ? message.rate_limit_info : undefined;
       if (!info || typeof info !== 'object') return;
@@ -801,6 +813,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (sessionId) {
       this.resolveTurnStart(activeTurn, sessionId);
     }
+    if (activeTurn.sessionId && this.subagents.observe(activeTurn.agentId, activeTurn.sessionId, message)) return;
 
     if (activeTurn.sessionId && !activeTurn.observedAt && (message.type === 'assistant' || message.type === 'stream_event' || message.type === 'result' || message.type === 'system' && message.subtype === 'init')) {
       activeTurn.observedAt = Date.now();

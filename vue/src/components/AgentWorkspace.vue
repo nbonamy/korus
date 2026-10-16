@@ -152,6 +152,7 @@ import type {
   WorkItem,
 } from '@workspace/core/contracts';
 import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
+import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
   CodexConversationLink,
   CodexConversationPaneController,
@@ -637,7 +638,9 @@ function effectiveGitReviewPanelFor(agent: Agent): SidePanelGitDiffState {
 function subagentTreeFor(agentId: string): AgentSubagentTree | null {
   const agent = props.snapshot.agents.find((candidate) => candidate.id === agentId);
   const tree = props.snapshot.subagentTrees[agentId];
-  return agent?.backendSession?.kind === 'codex' && tree?.rootConversationId === agent.backendSession.threadId
+  const session = agent?.backendSession;
+  const rootId = session?.kind === 'codex' ? session.threadId : session?.kind === 'claude' ? session.sessionId : null;
+  return rootId && tree?.rootConversationId === rootId
     ? tree
     : null;
 }
@@ -646,7 +649,7 @@ watch(
   () =>
     props.snapshot.agents.map(
       (agent) =>
-        `${agent.id}:${agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
+        `${agent.id}:${agent.backendSession?.kind === 'codex' ? agent.backendSession.threadId : agent.backendSession?.kind === 'claude' ? agent.backendSession.sessionId : ''}:${props.snapshot.subagentTrees[agent.id]?.rootConversationId ?? ''}:${Object.keys(
           props.snapshot.subagentTrees[agent.id]?.nodes ?? {},
         )
           .sort()
@@ -679,7 +682,10 @@ function loadSubagentMessages(agentId: string, conversationId: string): Promise<
   const tree = subagentTreeFor(agentId);
   if (!tree?.nodes[conversationId])
     return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
-  return readConversationMessages({ backend: 'codex', threadId: conversationId }, agentId);
+  const agent = props.snapshot.agents.find(candidate => candidate.id === agentId);
+  const ref = agent ? conversationRefFromAgent(agent) : null;
+  if (!ref || ref.backend === 'antigravity') return Promise.reject(new Error(translate('surface.appShell.subagentConversationIsUnavailable')));
+  return readConversationMessages(ref.backend === 'codex' ? { ...ref, threadId: conversationId } : { ...ref, subagentId: conversationId }, agentId);
 }
 
 function openRightWorkspaceTabFromMenu(agentId: string, tab: RightWorkspaceTab): void {

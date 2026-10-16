@@ -102,6 +102,7 @@ describe('AgentConversationService', () => {
 
     expect(service.isStoredConversationRef({ backend: 'codex', threadId: 'thread-child' }, agent.id)).toBe(true);
     expect(service.isStoredConversationRef({ backend: 'claude', folder: '/repo', sessionId: 'session-1' }, agent.id)).toBe(true);
+    expect(service.isStoredConversationRef({ backend: 'claude', folder: '/repo', sessionId: 'session-1', subagentId: 'unknown-child' }, agent.id)).toBe(false);
     expect(service.isStoredConversationRef({ backend: 'codex', threadId: 'thread-unknown' }, agent.id)).toBe(false);
   });
 

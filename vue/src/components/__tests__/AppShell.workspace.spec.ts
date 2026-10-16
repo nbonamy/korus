@@ -514,9 +514,14 @@ describe('AppShell workspace and plans', () => {
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
   });
 
-  it('opens each selected header subagent in an independent right-workspace tab', async () => {
+  it.each(['codex', 'claude'] as const)('opens each selected %s header subagent in an independent right-workspace tab', async (backend) => {
     const snapshot = createInitialSnapshot();
-    snapshot.agents[0].backendSession = { kind: 'codex', threadId: 'thread-root' };
+    snapshot.general.claudeCodeEnabled = true;
+    snapshot.agents[0].backend = backend;
+    snapshot.agents[0].backendDefaults = { kind: backend };
+    snapshot.agents[0].backendSession = backend === 'codex'
+      ? { kind: 'codex', threadId: 'thread-root' }
+      : { kind: 'claude', sessionId: 'thread-root', transport: 'stdio' };
     snapshot.subagentTrees[snapshot.agents[0].id] = {
       rootConversationId: 'thread-root',
       nodes: {
@@ -555,11 +560,13 @@ describe('AppShell workspace and plans', () => {
     ]);
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['scout', 'reviewer']);
     expect(readConversationMessages).toHaveBeenCalledWith(
-      { backend: 'codex', threadId: 'thread-scout' },
+      backend === 'codex' ? { backend, threadId: 'thread-scout' }
+        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-scout' },
       snapshot.agents[0].id,
     );
     expect(readConversationMessages).toHaveBeenCalledWith(
-      { backend: 'codex', threadId: 'thread-reviewer' },
+      backend === 'codex' ? { backend, threadId: 'thread-reviewer' }
+        : { backend, folder: snapshot.agents[0].folder, sessionId: 'thread-root', subagentId: 'thread-reviewer' },
       snapshot.agents[0].id,
     );
   });

@@ -8,6 +8,7 @@ import { claudeConfigDirectory } from './config-directory';
 import { claudeToolPart, completedClaudeToolPart } from './claude-tool-part-adapter';
 import { claudeToolResultText } from './claude-tool-result';
 import { claudeMessageContentBlocks, parseClaudeSdkMessage, type ClaudeSdkContentBlock, type ClaudeSdkMessage } from './protocol';
+import { claudeSubagentHistoryEvents } from './claude-subagents';
 
 export type ClaudeTranscriptHistory = {
   backendSession: BackendSession;
@@ -15,10 +16,12 @@ export type ClaudeTranscriptHistory = {
   turnBoundaries?: Record<string, string>;
   nativeMessageTurnIds?: Record<string, string>;
   goal?: ThreadGoal | null;
+  subagentEvents?: import('@workspace/core/backend-driver').BackendEvent[];
 };
 
 export type ClaudeTranscriptHistoryOptions = {
   projectsRoot?: string;
+  subagentId?: string;
 };
 
 export type ClaudeTranscriptSettings = {
@@ -58,12 +61,26 @@ export async function loadClaudeTranscriptHistory(
     };
   }
 
+  if (options.subagentId !== undefined) {
+    if (typeof options.subagentId !== 'string' || !isSafeSessionId(options.subagentId)) throw new Error('Invalid Claude subagent reference.');
+    const directory = path.join(path.dirname(transcriptPath), sessionId, 'subagents');
+    const childPath = path.join(directory, `agent-${options.subagentId}.jsonl`);
+    if (!await fileExists(childPath)) return { backendSession: agent.backendSession, messages: [] };
+    const [project, child] = await Promise.all([realpath(path.dirname(transcriptPath)), realpath(childPath)]);
+    if (!isPathInside(path.join(project, sessionId, 'subagents'), child)) throw new Error('Claude subagent transcript is outside its session.');
+    const content = await readFile(child, 'utf8');
+    return { backendSession: agent.backendSession,
+      messages: claudeTranscriptToRendererMessages(content, agent.id, `${sessionId}-${options.subagentId}`, undefined, undefined, true),
+    };
+  }
+
   const content = await readFile(transcriptPath, 'utf8');
   const settings = claudeTranscriptSettings(content);
   const { model: _model, reasoningEffort: _reasoningEffort, ...session } = agent.backendSession;
   const turnBoundaries: Record<string, string> = {};
   const nativeMessageTurnIds: Record<string, string> = {};
   const goal = claudeTranscriptGoal(content, agent.backendSession.sessionId);
+  const subagentEvents = claudeSubagentHistoryEvents(content, agent.id, agent.backendSession.sessionId);
   return {
     backendSession: {
       ...session,
@@ -73,6 +90,7 @@ export async function loadClaudeTranscriptHistory(
     messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds),
     turnBoundaries,
     nativeMessageTurnIds,
+    ...(subagentEvents.length ? { subagentEvents } : {}),
     ...(goal !== undefined ? { goal } : {}),
   };
 }
@@ -204,7 +222,7 @@ export async function listClaudeTranscriptSummaries(
   return summaries;
 }
 
-export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>): RendererMessage[] {
+export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false): RendererMessage[] {
   const messages: RendererMessage[] = [];
   let currentTurnId: string | null = null;
   let currentTurnCreatedAt: string | null = null;
@@ -242,7 +260,7 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
 
   for (const line of content.split(/\r?\n/)) {
     const entry = parseClaudeSdkMessage(line) as TranscriptLine | null;
-    if (!entry || entry.isSidechain) {
+    if (!entry || entry.isSidechain && !includeSidechain) {
       continue;
     }
 

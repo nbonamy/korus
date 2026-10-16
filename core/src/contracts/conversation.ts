@@ -57,6 +57,7 @@ export type BackendConversationRef =
     backend: 'claude';
     folder: string | null;
     sessionId: string;
+    subagentId?: string;
   };
 
 export type ConversationStorageState = 'active' | 'archived';

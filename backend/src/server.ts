@@ -4021,7 +4021,8 @@ function isBackendConversationRef(value: unknown): value is BackendConversationR
   return (candidate.backend === 'claude' || candidate.backend === 'antigravity') &&
     (candidate.folder === null || (typeof candidate.folder === 'string' && candidate.folder.trim().length > 0)) &&
     typeof candidate.sessionId === 'string' &&
-    candidate.sessionId.trim().length > 0;
+    candidate.sessionId.trim().length > 0 &&
+    (candidate.backend !== 'claude' || candidate.subagentId === undefined || typeof candidate.subagentId === 'string' && candidate.subagentId.trim().length > 0);
 }
 
 function requireStringParam(params: unknown, key: string): string {

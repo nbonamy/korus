@@ -41,6 +41,11 @@ adding steering, forks, goals, turn mutations or context controls.
   into app-owned titles, paths and statistics for both live and historical
   records. Read/Write/Edit/NotebookEdit also emit file activity so file links and
   Git status stay current.
+- Native Agent/Task executions project into the shared subagent tree, including
+  completions after the parent turn ends. Child transcript reads carry the parent
+  session and child ID; sidechain messages stay out of the parent's conversation.
+  Cold history rebuilds children from structured native tool results and marks
+  unfinished workers interrupted when their owning query is gone.
 - Tool rows reach the renderer as the same status descriptors Codex produces, so
   both providers read alike. Simple read-only shell commands (`cat`, `ls`, `rg`,
   and similar) are classified into read, list and search; anything with shell

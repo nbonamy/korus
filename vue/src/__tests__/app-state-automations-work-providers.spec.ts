@@ -596,6 +596,7 @@ describe('useAppState', () => {
       backend: 'claude' as const,
       folder: '/Users/nbonamy/src/agent-workspace',
       sessionId: 'session-dina',
+      subagentId: 'child-explore',
     });
     await expect(state.readConversationMessages(reactiveConversationRef as BackendConversationRef, 'agent-dina')).resolves.toStrictEqual(conversationMessages);
 
@@ -615,6 +616,7 @@ describe('useAppState', () => {
       backend: 'claude',
       folder: '/Users/nbonamy/src/agent-workspace',
       sessionId: 'session-dina',
+      subagentId: 'child-explore',
     }, 'agent-dina');
     expect(readConversationMessages.mock.calls.at(-1)?.[0]).not.toBe(reactiveConversationRef);
     expect(state.snapshot.value).toStrictEqual(deletedSnapshot);

@@ -322,7 +322,8 @@ function isAutomationExecution(value: unknown): boolean {
 function isBackendConversationRef(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.backend === 'codex') return typeof value.threadId === 'string';
-  return (value.backend === 'claude' || value.backend === 'antigravity') && isNullableString(value.folder) && typeof value.sessionId === 'string';
+  return (value.backend === 'claude' || value.backend === 'antigravity') && isNullableString(value.folder) && typeof value.sessionId === 'string'
+    && (value.backend !== 'claude' || optional(value, 'subagentId', isString));
 }
 
 function isBackendRuntimeStatus(value: unknown): boolean {

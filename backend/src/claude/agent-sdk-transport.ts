@@ -77,6 +77,7 @@ type ClaudeSdkSession = {
   input: AsyncPushQueue<SDKUserMessage>;
   query: ClaudeQueryRuntime;
   activeTurn: ActiveTransportTurn | null;
+  onSubagentMessage: (message: ClaudeSdkMessage) => void;
   model: string | null;
   effort: ClaudeTurnParams['effort'];
   permissionMode: PermissionMode;
@@ -150,6 +151,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         throw new Error('Claude session already has an active turn.');
       }
       existingSession.activeTurn = activeTurn;
+      existingSession.onSubagentMessage = onMessage;
     }
 
     let submission = this.submitTurn(session, params);
@@ -369,6 +371,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       input,
       query: queryRuntime,
       activeTurn,
+      onSubagentMessage: activeTurn.onMessage,
       model: params.model ?? null,
       effort: params.effort ?? null,
       permissionMode: normalizedPermissionMode(params.permissionMode) ?? 'default',
@@ -436,6 +439,10 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
           continue;
         }
         activeTurn?.onMessage(message);
+        if (!activeTurn && (typeof (message as Record<string, unknown>).parent_tool_use_id === 'string'
+          || message.type === 'system' && ['task_started', 'task_progress', 'task_notification'].includes(String(message.subtype)))) {
+          session.onSubagentMessage(message);
+        }
         if (message.type === 'result' && activeTurn) {
           this.resolveTurn(session);
           this.denyPendingPermissions(session, 'Claude turn finished before permission was answered.');

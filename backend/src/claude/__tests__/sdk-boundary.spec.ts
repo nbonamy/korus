@@ -1,5 +1,9 @@
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { decodeAppBackendEvent, type AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { getLocalClaudeAuthentication } from '../authentication';
@@ -24,9 +28,10 @@ function agent(id = 'claude-a'): Agent {
 
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
-  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = []) {
+  const homes: string[] = [];
+  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string) {
     const sdk = createQueryHarness(models);
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }));
+    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), undefined, { homeDir });
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.agents = [agent(), agent('claude-b')];
@@ -39,7 +44,64 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     servers.push(server);
     return { sdk, driver, server, snapshot, events, send: (agentId: string, prompt: string) => server.handleMessage({ jsonrpc: '2.0', id: `${agentId}-${prompt}`, method: 'agent/prompt/send', params: { agentId, prompt } }) };
   }
-  afterEach(async () => { await Promise.all(servers.splice(0).map((server) => server.close())); });
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map((server) => server.close()));
+    await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
+  });
+
+  it('discovers native subagents, reads their own sidechain, and retains completion after the parent turn and reload', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-subagents-'));
+    homes.push(home);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const childId = 'a1234567';
+    const project = path.join(home, '.claude', 'projects', '-tmp-project');
+    await mkdir(path.join(project, sessionId, 'subagents'), { recursive: true });
+    const tool = { type: 'tool_use', id: 'spawn-review', name: 'Agent', input: { description: 'Simplify review: reuse', subagent_type: 'general-purpose', prompt: 'Review reuse.' } };
+    const line = (entry: object) => JSON.stringify({ sessionId, timestamp: '2026-10-16T12:00:00Z', ...entry });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), [
+      line({ type: 'user', uuid: 'parent-prompt', message: { content: 'Parent prompt' } }),
+      line({ type: 'assistant', uuid: 'parent-call', message: { content: [tool] } }),
+      line({ type: 'user', uuid: 'parent-result', toolUseResult: { agentId: childId, status: 'completed' }, message: { content: [{ type: 'tool_result', tool_use_id: tool.id, content: 'Done' }] } }),
+    ].join('\n'));
+    await writeFile(path.join(project, sessionId, 'subagents', `agent-${childId}.jsonl`), [
+      line({ type: 'user', uuid: 'child-prompt', isSidechain: true, message: { content: 'Review reuse.' } }),
+      line({ type: 'assistant', uuid: 'child-reply', isSidechain: true, message: { content: [{ type: 'text', text: 'Child-only finding' }] } }),
+    ].join('\n'));
+    const { sdk, driver, server, snapshot, events, send } = setup(false, undefined, [], home);
+    const sending = send('claude-a', 'Parent prompt');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await sending;
+    sdk.emit({ type: 'assistant', session_id: sessionId, message: { content: [tool] } });
+    sdk.emit({ type: 'system', subtype: 'task_started', task_id: childId, tool_use_id: tool.id, description: 'Simplify review: reuse', subagent_type: 'general-purpose', task_type: 'local_agent', session_id: sessionId, uuid: '22222222-2222-4222-8222-222222222222' } satisfies SDKTaskStartedMessage);
+    sdk.emit({ type: 'system', subtype: 'task_started', task_id: 'shell-task', tool_use_id: 'shell', description: 'Build project', task_type: 'local_bash', session_id: sessionId, uuid: '33333333-3333-4333-8333-333333333333' } satisfies SDKTaskStartedMessage);
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']?.nodes[childId]).toMatchObject({ status: 'running', agentNickname: 'Simplify review: reuse' }));
+    expect(Object.keys(snapshot.subagentTrees['claude-a']!.nodes)).toStrictEqual([childId]);
+    expect(snapshot.subagentTrees['claude-b']).toBeUndefined();
+    const ref = { backend: 'claude' as const, folder: '/tmp/project', sessionId, subagentId: childId };
+    const read = () => server.handleMessage({ jsonrpc: '2.0', id: 'child-history', method: 'agent/conversation/messages/get', params: { agentId: 'claude-a', ref } });
+    const history = await read();
+    expect(history).toMatchObject({ result: [expect.objectContaining({ role: 'user', parts: [{ type: 'text', text: 'Review reuse.' }] }), expect.objectContaining({ role: 'assistant', parts: [{ type: 'text', text: 'Child-only finding' }] })] });
+    expect(await server.handleMessage({ jsonrpc: '2.0', id: 'other-agent', method: 'agent/conversation/messages/get', params: { agentId: 'claude-b', ref } })).toMatchObject({ error: { code: -32603 } });
+    for (const subagentId of ['', '../outside']) {
+      await expect(driver.readConversationMessages({ ...ref, subagentId }, 'claude-a')).rejects.toThrow('Invalid Claude subagent reference.');
+    }
+    sdk.emit({ type: 'assistant', session_id: sessionId, parent_tool_use_id: tool.id, message: { content: [{ type: 'text', text: 'Child-only live text' }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    expect(JSON.stringify(await driver.readConversationMessages({ backend: 'claude', folder: '/tmp/project', sessionId }, 'claude-a'))).not.toContain('Child-only live text');
+    const lastUpdate = snapshot.subagentTrees['claude-a']!.nodes[childId]!.updatedAt;
+    sdk.emit({ type: 'system', subtype: 'task_progress', task_id: childId, tool_use_id: tool.id, description: 'Reviewing files', usage: { total_tokens: 4, tool_uses: 1, duration_ms: 20 }, session_id: sessionId });
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']!.nodes[childId]!.updatedAt).not.toBe(lastUpdate));
+    sdk.emit({ type: 'system', subtype: 'task_notification', task_id: childId, tool_use_id: tool.id, status: 'completed', summary: 'Review done', session_id: sessionId });
+    await vi.waitFor(() => expect(snapshot.subagentTrees['claude-a']?.nodes[childId]?.status).toBe('completed'));
+    for (const event of events.filter(event => event.type.startsWith('subagent.'))) expect(() => decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).not.toThrow();
+    const reloaded = setup(false, undefined, [], home);
+    reloaded.snapshot.agents[0]!.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    await reloaded.driver.loadConversation(reloaded.snapshot.agents[0]!);
+    expect(reloaded.snapshot.subagentTrees['claude-a']?.nodes[childId]).toMatchObject({ status: 'completed', agentNickname: 'Simplify review: reuse' });
+    expect(reloaded.sdk.inputs).toHaveLength(0);
+  });
 
   it.each([false, true])('times live Claude output and excludes tools (tool first: %s)', async (toolFirst) => {
     const ledger = new UsageLedger(':memory:');

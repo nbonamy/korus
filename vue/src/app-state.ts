@@ -1881,7 +1881,9 @@ function emptyComposerState(): CodexComposerState {
 function plainConversationRef(ref: BackendConversationRef): BackendConversationRef {
   return ref.backend === 'codex'
     ? { backend: 'codex', threadId: ref.threadId }
-    : { backend: ref.backend, folder: ref.folder, sessionId: ref.sessionId };
+    : { backend: ref.backend, folder: ref.folder, sessionId: ref.sessionId,
+      ...(ref.backend === 'claude' && ref.subagentId !== undefined ? { subagentId: ref.subagentId } : {}),
+    };
 }
 
 function plainDevicePairingSession(session: DevicePairingSession): DevicePairingSession {
