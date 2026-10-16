@@ -518,6 +518,11 @@ defineExpose({ focusComposer, openSavedDraftPicker, saveCurrentDraft });
   min-height: 0;
 }
 
+/* The SDK pane paints its own surface token while its composer fade ends in the shell color; in dark themes they differ. */
+.conversation-pane .conversation-pane__surface {
+  background: var(--color-shell-main);
+}
+
 .conversation-pane__draft-anchor {
   position: relative;
   z-index: 10;
