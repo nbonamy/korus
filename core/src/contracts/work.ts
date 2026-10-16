@@ -9,6 +9,8 @@ export type WorkIntegrationStatus = 'notConfigured' | 'disconnected' | 'connecti
 export type WorkIntegrationConnection = {
   provider: WorkProviderKind;
   status: WorkIntegrationStatus;
+  /** Missing uses automatic detection; none has no direct connection and can fall back to CLI access. */
+  source?: 'api' | 'cli' | 'none';
   accountLabel?: string;
   detail?: AppText;
   connectedAt?: string;

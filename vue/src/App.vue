@@ -69,6 +69,7 @@
     @consume-markdown-displays="consumeMarkdownDisplayRequests"
     :file-activity="fileActivity"
     :work-provider-authorization="workProviderAuthorization"
+    :work-provider-authorizations="workProviderAuthorizations"
     :work-repositories-by-provider="workRepositoriesByProvider"
     :work-items-by-repository="workItemsByRepository"
     :assigned-work-items-by-provider="assignedWorkItemsByProvider"
@@ -311,6 +312,7 @@ const {
   consumeMarkdownDisplayRequests,
   fileActivity,
   workProviderAuthorization,
+  workProviderAuthorizations,
   workRepositoriesByProvider,
   workItemsByRepository,
   assignedWorkItemsByProvider,

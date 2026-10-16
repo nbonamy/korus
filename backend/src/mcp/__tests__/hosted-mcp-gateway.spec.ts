@@ -5,7 +5,7 @@ import { HostedMcpGateway, hostedMcpServerUrl } from '../hosted-mcp-gateway';
 describe('HostedMcpGateway', () => {
   it(`publishes connected provider servers under the ${product.name} loopback origin`, () => {
     const credentials = {
-      isConnected: vi.fn(() => true),
+      isHostedMcpConnected: vi.fn(() => true),
       authorizationHeader: vi.fn(),
     };
     const gateway = new HostedMcpGateway({ credentials });
@@ -24,7 +24,7 @@ describe('HostedMcpGateway', () => {
   it('does not configure hosted servers whose shared integration is disconnected', () => {
     const gateway = new HostedMcpGateway({
       credentials: {
-        isConnected: () => false,
+        isHostedMcpConnected: () => false,
         authorizationHeader: vi.fn(),
       },
     });
@@ -35,7 +35,7 @@ describe('HostedMcpGateway', () => {
   it('rejects unknown catalog entries', async () => {
     const gateway = new HostedMcpGateway({
       credentials: {
-        isConnected: () => true,
+        isHostedMcpConnected: () => true,
         authorizationHeader: vi.fn(),
       },
     });
@@ -49,7 +49,7 @@ describe('HostedMcpGateway', () => {
   it('injects a current provider credential without forwarding client authorization', async () => {
     const fetchUpstream = vi.fn<typeof fetch>().mockResolvedValue(new Response('{}', { status: 200 }));
     const credentials = {
-      isConnected: vi.fn(() => true),
+      isHostedMcpConnected: vi.fn(() => true),
       authorizationHeader: vi.fn().mockResolvedValue('bearer ghu_fresh'),
     };
     const gateway = new HostedMcpGateway({ credentials, fetch: fetchUpstream });
@@ -78,7 +78,7 @@ describe('HostedMcpGateway', () => {
       .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
       .mockResolvedValueOnce(new Response('ok', { status: 200 }));
     const credentials = {
-      isConnected: vi.fn(() => true),
+      isHostedMcpConnected: vi.fn(() => true),
       authorizationHeader: vi.fn()
         .mockResolvedValueOnce('bearer ghu_stale')
         .mockResolvedValueOnce('bearer ghu_rotated'),

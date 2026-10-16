@@ -963,6 +963,7 @@ export const surfaceMessages = {
   },
   "settingsIntegrationsPanel": {
     "integrations": "Integrations",
+    "usingGitHubCli": "Using GitHub CLI",
     "introTitle": "Connect your work tools",
     "introDescription": "Bring GitHub and Linear work into your backlog and hand it to agents",
     "gitHub": "GitHub",

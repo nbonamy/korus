@@ -34,6 +34,7 @@
   <GitHubOnboardingLanding
     v-else-if="githubOnboardingVisible"
     :authorization="workProviderAuthorization"
+    :cli-detected="snapshot.workBacklog.connections.some(connection => connection.provider === 'github' && connection.source === 'cli' && connection.status === 'connected')"
     :busy="repositoryAcquireBusy"
     :error="repositoryAcquireError ?? workBacklogError"
     @connect="connectGitHub"

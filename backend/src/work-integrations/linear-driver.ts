@@ -1,9 +1,9 @@
 import { product } from '@workspace/core/product';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
-import type { WorkProviderSettings } from '@workspace/core/contracts';
+import type { GlobalWorkItemQuery, WorkItemQuery, WorkProviderSettings } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
-import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from './types';
+import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
 import { linearAssignedItems, linearGlobalItems, linearItems, linearSources } from './linear-backlog';
 
 type Attempt = {
@@ -161,7 +161,8 @@ export class LinearWorkProviderDriver implements WorkProviderDriver {
     return { ...token, ...await this.requestToken({ grant_type: 'refresh_token', client_id: clientId, refresh_token: token.refreshToken }) };
   }
 
-  async currentAccountLabel(token: WorkProviderToken): Promise<string> {
+  async currentAccountLabel(credential: WorkProviderCredential): Promise<string> {
+    const token = requireWorkProviderToken(credential);
     const response = await fetch('https://api.linear.app/graphql', {
       method: 'POST', headers: { Authorization: `Bearer ${token.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: '{ viewer { name organization { name } } }' }), signal: AbortSignal.timeout(30_000),
@@ -173,8 +174,16 @@ export class LinearWorkProviderDriver implements WorkProviderDriver {
     return viewer.organization?.name ? `${viewer.name} · ${viewer.organization.name}` : viewer.name;
   }
 
-  listSources = linearSources;
-  listGlobalItems = linearGlobalItems;
-  listItems = linearItems;
-  listAssignedItems = linearAssignedItems;
+  listSources(credential: WorkProviderCredential) {
+    return linearSources(requireWorkProviderToken(credential));
+  }
+  listGlobalItems(credential: WorkProviderCredential, query?: GlobalWorkItemQuery) {
+    return linearGlobalItems(requireWorkProviderToken(credential), query);
+  }
+  listItems(credential: WorkProviderCredential, sourceId: string, query?: WorkItemQuery) {
+    return linearItems(requireWorkProviderToken(credential), sourceId, query);
+  }
+  listAssignedItems(credential: WorkProviderCredential) {
+    return linearAssignedItems(requireWorkProviderToken(credential));
+  }
 }

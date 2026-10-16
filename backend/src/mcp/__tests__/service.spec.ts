@@ -538,7 +538,7 @@ describe('AppMcpService', () => {
     ));
     const hostedMcpGateway = new HostedMcpGateway({
       credentials: {
-        isConnected: provider => provider === 'github',
+        isHostedMcpConnected: provider => provider === 'github',
         authorizationHeader: vi.fn().mockResolvedValue('bearer ghu_secret'),
       },
       fetch: fetchUpstream,

@@ -42,7 +42,7 @@
         <p class="codex-login__description">{{ t('auth.signInDescription') }}</p>
         <div class="codex-login__providers">
           <div class="codex-login__provider">
-          <el-button size="large" :disabled="missing('codex') || loading || (codexConnected && codexEnabled) || continuing || Boolean(updatingProvider)" @click="emit('login')">
+          <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('codex', codexConnected) }" :disabled="missing('codex') || loading || (codexConnected && codexEnabled) || continuing || Boolean(updatingProvider)" @click="emit('login')">
             <BackendIcon backend="codex" />
             {{ t(codexConnected ? (codexEnabled ? 'auth.codexConnected' : 'auth.enableCodex') : 'auth.connectCodex') }}
           </el-button>
@@ -57,7 +57,7 @@
           </div>
           </div>
           <div class="codex-login__provider">
-          <el-button size="large" :disabled="missing('claude') || claudeLoading || (claudeConnected && claudeEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-claude')">
+          <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('claude', claudeConnected) }" :disabled="missing('claude') || claudeLoading || (claudeConnected && claudeEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-claude')">
             <BackendIcon backend="claude" />
             {{ t(claudeConnected ? (claudeEnabled ? 'auth.claudeConnected' : 'auth.enableClaude') : 'auth.connectClaude') }}
           </el-button>
@@ -69,7 +69,7 @@
           </div>
           </div>
           <div v-if="antigravityAvailable" class="codex-login__provider">
-            <el-button size="large" :disabled="missing('antigravity') || antigravityLoading || antigravityPending || (antigravityConnected && antigravityEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-antigravity')">
+            <el-button size="large" :class="{ 'codex-login__connect--required': needsSignIn('antigravity', antigravityConnected) }" :disabled="missing('antigravity') || antigravityLoading || antigravityPending || (antigravityConnected && antigravityEnabled) || continuing || Boolean(updatingProvider)" @click="emit('connect-antigravity')">
               <BackendIcon backend="antigravity" />
               {{ t(antigravityConnected ? (antigravityEnabled ? 'antigravity.connected' : 'antigravity.enable') : 'antigravity.connect') }}
             </el-button>
@@ -141,6 +141,8 @@ const { t } = useI18n();
 const detected = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && setup.installed);
 const antigravityAvailable = computed(() => props.providerSetup?.some(setup => setup.backend === 'antigravity') ?? false);
 const missing = (backend: AgentBackend) => props.providerSetup?.some(setup => setup.backend === backend && !setup.installed);
+const needsSignIn = (backend: AgentBackend, connected?: boolean) => !connected
+  && props.providerSetup?.some(setup => setup.backend === backend && setup.installed && setup.isolated);
 </script>
 
 <style scoped>
@@ -187,6 +189,11 @@ const missing = (backend: AgentBackend) => props.providerSetup?.some(setup => se
 .codex-login .el-button {
   margin-top: var(--space-12);
   -webkit-app-region: no-drag;
+}
+
+.codex-login__provider .el-button.codex-login__connect--required {
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
 
 .codex-login__providers {

@@ -454,6 +454,7 @@ function isWorkIntegrationConnection(value: unknown): boolean {
   return isRecord(value) &&
     isWorkProviderKind(value.provider) &&
     includes(['notConfigured', 'disconnected', 'connecting', 'connected', 'error'], value.status) &&
+    optional(value, 'source', source => includes(['api', 'cli', 'none'], source)) &&
     optional(value, 'accountLabel', isString) &&
     optional(value, 'detail', isAppText) &&
     optional(value, 'connectedAt', isString);

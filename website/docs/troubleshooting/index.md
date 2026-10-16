@@ -29,7 +29,7 @@ Read the [provider setup overview](../providers/) before making another change. 
 
 ## GitHub works in another app but not in Korus
 
-Provider authentication and Korus's GitHub integration are separate connections. Open **Settings → Integrations** and complete Korus's GitHub authorization. Check that the authorized account can access the intended repository.
+Coding-provider authentication is separate from GitHub access. Korus can use GitHub CLI authenticated to github.com on the computer hosting the workspace, or its own GitHub connection. Check that the selected account can access the repository, then restart Korus if you changed the GitHub CLI account after launching it. If CLI access is unavailable, complete GitHub authorization in **Settings → Integrations**.
 
 If you skipped GitHub during onboarding, local folder tasks still work. Connect GitHub when you need repository browsing or issue and pull-request workflows. Automations only need GitHub if their prompt calls for it.
 

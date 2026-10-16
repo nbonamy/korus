@@ -1,6 +1,15 @@
 import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 
+/** CLI access carries identity only. It can never supply a bearer token. */
+export type GitHubCliCredential = { kind: 'cli'; provider: 'github'; accountLabel: string; connectedAt: string };
+export type WorkProviderCredential = WorkProviderToken | GitHubCliCredential;
+
+export function requireWorkProviderToken(credential: WorkProviderCredential): WorkProviderToken {
+  if ('kind' in credential) throw new Error('This operation requires an API connection.');
+  return credential;
+}
+
 export type WorkProviderDeviceAuthorization = WorkProviderAuthorization & {
   deviceCode: string;
   intervalSeconds: number;
@@ -34,13 +43,13 @@ export interface WorkProviderDriver {
   startAuthorization(): Promise<WorkProviderDeviceAuthorization>;
   pollAuthorization(deviceCode: string): Promise<WorkProviderDeviceTokenResult>;
   refreshToken?(token: WorkProviderToken): Promise<WorkProviderToken>;
-  currentAccountLabel(token: WorkProviderToken): Promise<string>;
-  listBranches?(token: WorkProviderToken, repositoryId: string): Promise<SourceBranch[]>;
-  listSources(token: WorkProviderToken): Promise<WorkSource[]>;
-  listGlobalItems(token: WorkProviderToken, query?: GlobalWorkItemQuery): Promise<WorkItemPage>;
-  listItems(token: WorkProviderToken, repositoryId: string, query?: WorkItemQuery): Promise<WorkItem[]>;
-  listAssignedItems?(token: WorkProviderToken): Promise<WorkItem[]>;
-  findPullRequest?(token: WorkProviderToken, repositoryId: string, branch: string): Promise<AgentGitPullRequest | null>;
-  getPullRequest?(token: WorkProviderToken, repositoryId: string, number: number): Promise<AgentGitPullRequest | null>;
-  createPullRequest?(token: WorkProviderToken, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest>;
+  currentAccountLabel(token: WorkProviderCredential): Promise<string>;
+  listBranches?(token: WorkProviderCredential, repositoryId: string): Promise<SourceBranch[]>;
+  listSources(token: WorkProviderCredential): Promise<WorkSource[]>;
+  listGlobalItems(token: WorkProviderCredential, query?: GlobalWorkItemQuery): Promise<WorkItemPage>;
+  listItems(token: WorkProviderCredential, repositoryId: string, query?: WorkItemQuery): Promise<WorkItem[]>;
+  listAssignedItems?(token: WorkProviderCredential): Promise<WorkItem[]>;
+  findPullRequest?(token: WorkProviderCredential, repositoryId: string, branch: string): Promise<AgentGitPullRequest | null>;
+  getPullRequest?(token: WorkProviderCredential, repositoryId: string, number: number): Promise<AgentGitPullRequest | null>;
+  createPullRequest?(token: WorkProviderCredential, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest>;
 }

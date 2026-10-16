@@ -1,7 +1,7 @@
 import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, WorkItemLabel, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitHubOAuthClientId } from '../runtime-config';
-import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from './types';
+import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 const GITHUB_OAUTH_BASE_URL = 'https://github.com/login';
@@ -160,8 +160,8 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     return refreshedToken;
   }
 
-  async currentAccountLabel(token: WorkProviderToken): Promise<string> {
-    const user = await githubApiRequest(token, '/user');
+  async currentAccountLabel(token: WorkProviderCredential): Promise<string> {
+    const user = await this.apiRequest(token, '/user');
     if (!isRecord(user) || typeof user.login !== 'string') {
       throw new Error('GitHub returned an invalid user response.');
     }
@@ -169,10 +169,10 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     return user.login;
   }
 
-  async listSources(token: WorkProviderToken): Promise<WorkSource[]> {
+  async listSources(token: WorkProviderCredential): Promise<WorkSource[]> {
     const [repositoryResponse, activityResponse] = await Promise.all([
-      githubApiRequest(token, '/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=100'),
-      githubApiRequest(token, '/issues?filter=all&state=open&sort=updated&direction=desc&per_page=100', {
+      this.apiRequest(token, '/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=100'),
+      this.apiRequest(token, '/issues?filter=all&state=open&sort=updated&direction=desc&per_page=100', {
         signal: AbortSignal.timeout(2_000),
       }).catch(() => null),
     ]);
@@ -190,13 +190,13 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     });
   }
 
-  async listBranches(token: WorkProviderToken, repositoryId: string): Promise<SourceBranch[]> {
+  async listBranches(token: WorkProviderCredential, repositoryId: string): Promise<SourceBranch[]> {
     const repository = parseRepositoryId(repositoryId);
     if (!repository) throw new Error('Invalid GitHub repository.');
-    const [primary, names] = await Promise.all([defaultBranch(token, repositoryId), (async () => {
+    const [primary, names] = await Promise.all([this.defaultBranch(token, repositoryId), (async () => {
       const names = new Set<string>();
       for (let page = 1; page <= 20; page++) {
-        const response = await githubApiPageRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/branches?per_page=100&page=${page}`);
+        const response = await this.apiPageRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/branches?per_page=100&page=${page}`);
         if (!Array.isArray(response.value)) throw new Error('GitHub returned an invalid branches response.');
         for (const entry of response.value) {
           if (!isRecord(entry) || typeof entry.name !== 'string' || !entry.name) throw new Error('GitHub returned an invalid branch.');
@@ -210,14 +210,14 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
   }
 
-  async listGlobalItems(token: WorkProviderToken, query: GlobalWorkItemQuery = {}): Promise<WorkItemPage> {
+  async listGlobalItems(token: WorkProviderCredential, query: GlobalWorkItemQuery = {}): Promise<WorkItemPage> {
     const page = query.cursor === undefined ? 1 : Number(query.cursor);
     if (!Number.isSafeInteger(page) || page < 1) throw new Error('Invalid work item page.');
     const pageSize = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
     const assignment = query.assignment === 'viewer' ? 'assigned' : 'all';
     const state = query.state ?? 'open';
     const path = `/issues?filter=${assignment}&state=${state}&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`;
-    const response = await githubApiPageRequest(
+    const response = await this.apiPageRequest(
       token,
       path,
     );
@@ -234,7 +234,7 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     };
   }
 
-  async listItems(token: WorkProviderToken, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {
+  async listItems(token: WorkProviderCredential, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {
     const repository = parseRepositoryId(repositoryId);
     if (!repository) {
       return [];
@@ -243,14 +243,14 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     const state = query.state ?? 'open';
     const items: WorkItem[] = [];
     if (query.kind !== 'pullRequest') {
-      const issues = await githubApiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues?state=${state}&per_page=100`);
+      const issues = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues?state=${state}&per_page=100`);
       if (!Array.isArray(issues)) throw new Error('GitHub returned an invalid issues response.');
       items.push(...issues
         .map((issue) => githubIssue(issue, repositoryId, repository.fullName))
         .filter((item): item is WorkItem => item !== null && item.kind !== 'pullRequest'));
     }
     if (query.kind !== 'issue') {
-      const pulls = await githubApiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls?state=${state}&per_page=100`);
+      const pulls = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls?state=${state}&per_page=100`);
       if (!Array.isArray(pulls)) throw new Error('GitHub returned an invalid pull request response.');
       items.push(...pulls
         .map((pullRequest) => githubPullRequestItem(pullRequest, repositoryId, repository.fullName))
@@ -259,42 +259,63 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     return items.map(item => ({ ...item, assignedToViewer: Boolean(token.accountLabel && item.assignees?.includes(token.accountLabel)) }));
   }
 
-  async listAssignedItems(token: WorkProviderToken): Promise<WorkItem[]> {
-    const issues = await githubApiRequest(token, '/issues?filter=assigned&state=open&per_page=100');
+  async listAssignedItems(token: WorkProviderCredential): Promise<WorkItem[]> {
+    const issues = await this.apiRequest(token, '/issues?filter=assigned&state=open&per_page=100');
     if (!Array.isArray(issues)) throw new Error('GitHub returned an invalid assigned issues response.');
     return issues
       .map(githubAssignedIssue)
       .filter((item): item is WorkItem => item !== null);
   }
 
-  async findPullRequest(token: WorkProviderToken, repositoryId: string, branch: string): Promise<AgentGitPullRequest | null> {
+  async findPullRequest(token: WorkProviderCredential, repositoryId: string, branch: string): Promise<AgentGitPullRequest | null> {
     const repository = parseRepositoryId(repositoryId);
     if (!repository) return null;
-    const pulls = await githubApiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls?state=open&head=${encodeURIComponent(`${repository.owner}:${branch}`)}&per_page=1`);
+    const pulls = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls?state=open&head=${encodeURIComponent(`${repository.owner}:${branch}`)}&per_page=1`);
     if (!Array.isArray(pulls)) throw new Error('GitHub returned an invalid pull request response.');
     return githubPullRequest(pulls[0]) ?? null;
   }
 
-  async getPullRequest(token: WorkProviderToken, repositoryId: string, number: number): Promise<AgentGitPullRequest | null> {
+  async getPullRequest(token: WorkProviderCredential, repositoryId: string, number: number): Promise<AgentGitPullRequest | null> {
     const repository = parseRepositoryId(repositoryId);
     if (!repository || !Number.isInteger(number) || number <= 0) return null;
-    const pullRequest = await githubApiRequest(
+    const pullRequest = await this.apiRequest(
       token,
       `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls/${number}`,
     );
     return githubPullRequest(pullRequest);
   }
 
-  async createPullRequest(token: WorkProviderToken, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest> {
+  async createPullRequest(token: WorkProviderCredential, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest> {
     const repository = parseRepositoryId(repositoryId);
     if (!repository) throw new Error('The Git remote is not a GitHub repository.');
-    const response = await githubApiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls`, {
+    const response = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/pulls`, {
       method: 'POST',
-      body: JSON.stringify({ title: input.title, body: input.body, head: input.branch, base: await defaultBranch(token, repositoryId), draft: true }),
+      body: JSON.stringify({ title: input.title, body: input.body, head: input.branch, base: await this.defaultBranch(token, repositoryId), draft: true }),
     });
     const pullRequest = githubPullRequest(response);
     if (!pullRequest) throw new Error('GitHub returned an invalid pull request response.');
     return pullRequest;
+  }
+
+  private async apiRequest(token: WorkProviderCredential, path: string, init: RequestInit = {}): Promise<unknown> {
+    return (await this.apiResponse(token, path, init)).json();
+  }
+
+  private async apiPageRequest(token: WorkProviderCredential, path: string): Promise<{ linkHeader: string | null; value: unknown }> {
+    const response = await this.apiResponse(token, path);
+    return { value: await response.json(), linkHeader: response.headers.get('link') };
+  }
+
+  protected async apiResponse(token: WorkProviderCredential, path: string, init: RequestInit = {}): Promise<Response> {
+    return githubApiResponse(requireWorkProviderToken(token), path, init);
+  }
+
+  private async defaultBranch(token: WorkProviderCredential, repositoryId: string): Promise<string> {
+    const repository = parseRepositoryId(repositoryId);
+    if (!repository) throw new Error('The Git remote is not a GitHub repository.');
+    const response = await this.apiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`);
+    if (!isRecord(response) || typeof response.default_branch !== 'string') throw new Error('GitHub returned an invalid repository response.');
+    return response.default_branch;
   }
 
   private clientId(): string {
@@ -334,10 +355,6 @@ function githubOAuthErrorMessage(response: Record<string, unknown>): string {
     : 'GitHub authorization failed.';
 }
 
-async function githubApiRequest(token: WorkProviderToken, path: string, init: RequestInit = {}): Promise<unknown> {
-  const response = await githubApiResponse(token, path, init);
-  return response.json();
-}
 
 function githubRepositoryWorkItemActivity(items: unknown[]): Map<string, string> {
   const activityByRepository = new Map<string, string>();
@@ -358,13 +375,6 @@ function repositoryIdFromUrl(url: string): string | null {
   return parseRepositoryId(repositoryId)?.fullName ?? null;
 }
 
-async function githubApiPageRequest(token: WorkProviderToken, path: string): Promise<{ linkHeader: string | null; value: unknown }> {
-  const response = await githubApiResponse(token, path);
-  return {
-    value: await response.json(),
-    linkHeader: response.headers.get('link'),
-  };
-}
 
 async function githubApiResponse(token: WorkProviderToken, path: string, init: RequestInit = {}): Promise<Response> {
   const response = await fetch(`${GITHUB_API_BASE_URL}${path}`, {
@@ -418,13 +428,6 @@ async function githubApiError(response: Response): Promise<Error> {
     : `GitHub request failed with ${response.status}.`);
 }
 
-async function defaultBranch(token: WorkProviderToken, repositoryId: string): Promise<string> {
-  const repository = parseRepositoryId(repositoryId);
-  if (!repository) throw new Error('The Git remote is not a GitHub repository.');
-  const response = await githubApiRequest(token, `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`);
-  if (!isRecord(response) || typeof response.default_branch !== 'string') throw new Error('GitHub returned an invalid repository response.');
-  return response.default_branch;
-}
 
 function githubPullRequest(value: unknown): AgentGitPullRequest | null {
   if (

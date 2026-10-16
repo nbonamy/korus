@@ -8,9 +8,11 @@ export function createCodexLifecycle(): ProviderLifecycle {
   const paths = providerHomePaths('codex', process.env.CODEX_HOME);
   const resources = (homePath: string) => ({ appCodexHome: homePath, userCodexHome: paths.existing });
   return {
-    home: (_snapshot, choice = { isolated: true, shareSkills: true }) => ({
-      ...choice, homePath: choice.isolated ? paths.isolated : paths.existing,
-    }),
+    home(snapshot, choice) {
+      // Older installations without a saved choice already own isolated threads.
+      const selected = choice ?? { isolated: snapshot.agents.some(agent => agent.backend === 'codex') || snapshot.general.providerOnboardingComplete === true, shareSkills: true };
+      return { ...selected, homePath: selected.isolated ? paths.isolated : paths.existing };
+    },
     installed: snapshot => Boolean(resolveCodexExecutable(snapshot.general.codexBinaryPath)),
     async prepareHome(home, configuring) {
       await mkdir(home.homePath, { recursive: true, mode: 0o700 });

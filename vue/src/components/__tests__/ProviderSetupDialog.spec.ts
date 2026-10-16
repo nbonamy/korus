@@ -24,7 +24,7 @@ describe('ProviderSetupDialog', () => {
       props: { setup, allowReset: true, busy: false, error: null },
       global: { components: { ElCheckbox, ElRadio, ElRadioGroup }, stubs: { teleport: true } },
     });
-    await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+    await wrapper.get('input[type="radio"][value="false"]').setValue();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('save')).toBeUndefined();
     expect(wrapper.text()).toContain('all 2 local Codex agents');
@@ -36,11 +36,11 @@ describe('ProviderSetupDialog', () => {
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('save')).toEqual([[{ isolated: false, shareSkills: true, removeAgentIds: ['agent-one', 'quick-chat'] }]]);
     await wrapper.setProps({ setup: { ...setup } });
-    await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+    await wrapper.get('input[type="radio"][value="false"]').setValue();
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty('checked', false);
   });
-  it('defaults a missing CLI to separate chats/shared skills and submits explicit installation', async () => {
+  it('offers existing setup first while retaining the selected separate setup and skills when a CLI is missing', async () => {
     const wrapper = mount(ProviderSetupDialog, {
       attachTo: document.body,
       props: { setup: { backend: 'claude', installed: false, isolated: true, shareSkills: true, homePath: '/app/claude-home', locked: false }, busy: false, error: null },
@@ -48,12 +48,13 @@ describe('ProviderSetupDialog', () => {
     });
     expect(getComputedStyle(wrapper.getComponent(ElRadioGroup).element).flexDirection).toBe('column');
     expect(wrapper.getComponent(ElRadioGroup).findAll('input').map(input => input.attributes('type')))
-      .toStrictEqual(['radio', 'checkbox', 'radio']);
-    expect(wrapper.get('input[type="radio"]').element).toHaveProperty('checked', true);
+      .toStrictEqual(['radio', 'radio', 'checkbox']);
+    expect(wrapper.findAll('input[type="radio"]').map(input => input.attributes('value'))).toStrictEqual(['false', 'true']);
+    expect(wrapper.get('input[type="radio"][value="true"]').element).toHaveProperty('checked', true);
     expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty('checked', true);
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('save')).toStrictEqual([[{ isolated: true, shareSkills: true }]]);
-    await wrapper.findAll('input[type="radio"]')[1]!.setValue();
+    await wrapper.get('input[type="radio"][value="false"]').setValue();
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('save')?.[1]).toStrictEqual([{ isolated: false, shareSkills: true }]);
