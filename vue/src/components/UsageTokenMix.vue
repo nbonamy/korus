@@ -22,24 +22,6 @@
         </li>
       </ul>
     </template>
-    <div class="mix-coverage">
-      <div
-        class="mix-meter"
-        role="meter"
-        :aria-valuenow="Math.round(coverage)"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        :aria-label="$t('analytics.tokenCoverage')"
-      >
-        <span :style="{ width: coverage + '%' }" />
-      </div>
-      <small>{{
-        $t("analytics.measuredOf", {
-          measured: chartFormat(measured),
-          turns: chartFormat(turns),
-        })
-      }}</small>
-    </div>
   </UsageStatTile>
 </template>
 <script setup lang="ts">
@@ -50,8 +32,6 @@ import UsageStatTile from "./UsageStatTile.vue";
 import { chartFormat, sumValues } from "./usage-chart";
 const props = defineProps<{
   rows: UsageSummary["rows"];
-  measured: number;
-  turns: number;
 }>();
 // Only inclusive input/output form the mix; other counters are compared to input/output separately.
 const kinds = [
@@ -105,9 +85,6 @@ const parts = computed(() => {
       : [];
   });
 });
-const coverage = computed(() =>
-  props.turns ? (100 * props.measured) / props.turns : 0,
-);
 </script>
 <style scoped>
 .mix-bar {
@@ -141,30 +118,5 @@ const coverage = computed(() =>
   width: 8px;
   height: 8px;
   border-radius: 3px;
-}
-.mix-coverage {
-  margin-top: auto;
-  padding-top: var(--space-4);
-}
-.mix-meter {
-  height: 6px;
-  margin-bottom: var(--space-2);
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--chart-3) 14%, transparent);
-}
-.mix-meter > span {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-full);
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--chart-3) 55%, transparent),
-    var(--chart-3)
-  );
-}
-small {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
 }
 </style>

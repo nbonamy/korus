@@ -35,13 +35,51 @@ it("uses measured values as the donut denominator without drawing unknown measur
   );
   expect(wrapper.text()).toContain("400");
   expect(wrapper.text()).toContain("Unknown model");
-  expect(wrapper.text()).toContain("Unavailable");
+  expect(wrapper.text()).toContain("N/A");
   await wrapper.setProps({ series: [series[2]!] });
   expect(wrapper.findAll("circle[tabindex]")).toHaveLength(0);
   expect(wrapper.get(".ring-total").text()).toBe("—");
   await wrapper.setProps({ series: [{ ...series[0]!, value: 0 }] });
   expect(wrapper.get(".ring-total").text()).toBe("0");
   expect(wrapper.findAll("circle[tabindex]")).toHaveLength(0);
+  wrapper.unmount();
+});
+
+it("compacts large token values and labels unknown values N/A", () => {
+  const series = [
+    {
+      key: "large",
+      label: "Large model",
+      color: "blue",
+      value: 19_223_027,
+      turns: 1,
+      tokens: 19_223_027,
+    },
+    {
+      key: "small",
+      label: "Small model",
+      color: "orange",
+      value: 236_216,
+      turns: 1,
+      tokens: 236_216,
+    },
+    {
+      key: "unknown",
+      label: "Unknown model",
+      color: "gray",
+      value: null,
+      turns: 1,
+      tokens: null,
+    },
+  ];
+  const wrapper = mount(UsageShare, { props: { series, measure: "total" } });
+  const values = wrapper.findAll(".share-value").map((value) => value.text());
+  expect(values).toStrictEqual(["19.2M", "236.2K", "N/A"]);
+  expect(wrapper.findAll(".share-percent").map((value) => value.text())).toStrictEqual([
+    "98.8%",
+    "1.2%",
+    "N/A",
+  ]);
   wrapper.unmount();
 });
 

@@ -9,7 +9,7 @@ const metadata = {
   conversationId: "conversation-a",
   turnId: "turn-a",
 };
-it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserves nullable cache write and actual-model unknown", async () => {
+it("attributes usage to the selected and rerouted model while preserving token semantics", async () => {
   const { driver, conversation } = codexSdkFixture();
   const observations: ExecutionObservation[] = [];
   driver.onUsage((e) => observations.push(e));
@@ -17,13 +17,22 @@ it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserv
     await driver.loadConversation(sdkAgent());
     expect(observations).toStrictEqual([]);
     const c = conversation("conversation-a");
-    c.setSnapshot({ selectedReasoningEffort: "high", selectedServiceTier: "fast" });
+    c.setSnapshot({
+      models: [{ id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" }],
+      selectedModelId: "gpt-5.6-sol",
+      selectedReasoningEffort: "high",
+      selectedServiceTier: "fast",
+    });
     c.emit({
       ...metadata,
       type: "turn.started",
       payload: { startedAt: metadata.occurredAt },
     } as CodexConversationEvent);
-    expect(observations[0]).toMatchObject({ reasoningEffort: "high", serviceTier: "fast" });
+    expect(observations[0]).toMatchObject({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      serviceTier: "fast",
+    });
     const count = {
       totalTokens: 120,
       inputTokens: 100,
@@ -61,6 +70,16 @@ it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserv
     });
     c.emit({
       ...metadata,
+      type: "turn.modelRerouted",
+      payload: {
+        fromModel: "gpt-5.6-sol",
+        toModel: "gpt-6.1",
+        reason: "highRiskCyberActivity",
+      },
+    } as CodexConversationEvent);
+    expect(observations[2]).toMatchObject({ phase: "usage", model: "gpt-6.1" });
+    c.emit({
+      ...metadata,
       type: "turn.completed",
       payload: {
         status: "completed",
@@ -76,6 +95,7 @@ it("uses only SDK-owner live replacements, ignores replay/occupancy, and preserv
     expect(observations.at(-1)).toMatchObject({ phase: "usage", tokens: null });
     expect(observations.map((e) => e.phase)).toStrictEqual([
       "started",
+      "usage",
       "usage",
       "completed",
       "usage",

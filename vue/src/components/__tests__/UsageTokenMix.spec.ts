@@ -21,7 +21,7 @@ it("stacks inclusive input and output once and labels cache/reasoning shares aga
     },
   };
   const wrapper = mount(UsageTokenMix, {
-    props: { rows: [row], measured: 1, turns: 1 },
+    props: { rows: [row] },
   });
   try {
     expect(

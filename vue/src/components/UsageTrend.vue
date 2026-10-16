@@ -89,7 +89,7 @@
                 ' · ' +
                 layer.series.label +
                 ': ' +
-                chartFormat(layer.vals[point.index])
+                chartFormat(layer.vals[point.index], true)
               "
               @focus="active = point.index"
               @blur="active = null"
@@ -127,12 +127,12 @@
           >
             <i :style="{ background: segment.color }" />
             <span class="tooltip-name">{{ segment.label }}</span>
-            <b>{{ chartFormat(segment.value) }}</b>
+            <b>{{ chartFormat(segment.value, true) }}</b>
           </li>
         </ul>
         <div v-if="hovered.segments.length > 1" class="tooltip-total">
           <span>{{ $t("analytics.total") }}</span>
-          <b>{{ chartFormat(hovered.total) }}</b>
+          <b>{{ chartFormat(hovered.total, true) }}</b>
         </div>
       </div>
     </div>

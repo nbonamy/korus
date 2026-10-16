@@ -2,7 +2,7 @@
   <UsageTileGrid :aria-label="$t('analytics.totals')">
     <UsageStatTile
       :label="$t('analytics.turnsPerDay')"
-      :value="chartFormat(Math.round((turns / periodDays) * 10) / 10)"
+      :value="chartFormat(Math.round((turns / periodDays) * 10) / 10, true)"
       :spark="dailySeries((row) => row.started)"
       spark-color="var(--chart-1)"
     />
@@ -17,7 +17,7 @@
       :spark="dailySeries((row) => row.tokens?.total)"
       spark-color="var(--chart-7)"
     />
-    <UsageTokenMix :rows="summary.rows" :measured="measured" :turns="turns" />
+    <UsageTokenMix :rows="summary.rows" />
   </UsageTileGrid>
 </template>
 <script setup lang="ts">
@@ -36,9 +36,6 @@ const props = defineProps<{
 }>();
 const turns = computed(() =>
   props.summary.rows.reduce((n, row) => n + row.started, 0),
-);
-const measured = computed(() =>
-  props.summary.rows.reduce((n, row) => n + row.measuredTurns, 0),
 );
 /** One value per day of the period, zero where nothing was recorded. */
 function dailySeries(pick: (row: DailyRow) => number | null | undefined) {

@@ -168,7 +168,7 @@ export class UsageLedger {
       startedAt: previous?.startedAt ?? event.at,
       teamId: previous?.teamId ?? attribution.teamId,
       repository: previous?.repository ?? attribution.repository,
-      ...(previous ? { ...previous, model: event.model } : {}),
+      ...(previous ? { ...previous, model: event.model ?? previous.model } : {}),
       ...(event.phase !== "usage" ? { phase: event.phase, at: event.at } : {}),
       ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
       ...(event.timing !== undefined ? { timing: event.timing } : {}),

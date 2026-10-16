@@ -15,13 +15,15 @@ it("persists turn-start effort and service tier without replacing them on later 
     await ledger.load();
     for (const [i, serviceTier] of ["normal", "fast", "ultrafast", null].entries()) {
       const turn = { ...event, turnId: String(i) };
-      await ledger.observe({ ...turn, phase: "started", reasoningEffort: i < 3 ? "high" : null, serviceTier }, { teamId: null, repository: null });
+      await ledger.observe({ ...turn, model: i === 0 ? "gpt-5.6-sol" : null, phase: "started", reasoningEffort: i < 3 ? "high" : null, serviceTier }, { teamId: null, repository: null });
+      if (i === 0) await ledger.observe({ ...turn, model: "gpt-6.1", phase: "usage" }, { teamId: null, repository: null });
       await ledger.observe({ ...turn, phase: "completed", reasoningEffort: "low", serviceTier: "changed" }, { teamId: null, repository: null });
       await ledger.observe({ ...turn, phase: "usage" }, { teamId: null, repository: null });
     }
     await ledger.close();
     const db = new DatabaseSync(file, { readOnly: true });
     try {
+      expect({ ...db.prepare("SELECT model FROM executions WHERE turn_id='0'").get() }).toStrictEqual({ model: "gpt-6.1" });
       expect(db.prepare("SELECT reasoning_effort,service_tier FROM executions ORDER BY turn_id").all().map(row => ({ ...row }))).toStrictEqual([
         { reasoning_effort: "high", service_tier: "normal" },
         { reasoning_effort: "high", service_tier: "fast" },

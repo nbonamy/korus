@@ -9,11 +9,11 @@
         <dl class="activity-totals">
           <div>
             <dt>{{ $t("analytics.activityLifetime") }}</dt>
-            <dd>{{ chartFormat(lifetime, true) }}</dd>
+            <dd>{{ activityFormat(lifetime) }}</dd>
           </div>
           <div>
             <dt>{{ $t("analytics.activityPeak") }}</dt>
-            <dd>{{ chartFormat(peak, true) }}</dd>
+            <dd>{{ activityFormat(peak) }}</dd>
           </div>
         </dl>
       </div>
@@ -64,6 +64,8 @@ import { ACTIVITY_WEEKS, activityWindow, chartFormat } from "./usage-chart";
 const props = defineProps<{
   days: { day: string; tokens: number | null }[] | null;
 }>();
+const activityFormat = (value: number | null) =>
+  value === null ? translate("analytics.activityNoData") : chartFormat(value, true);
 const MIN_CELL = 6,
   GAP = 3;
 const body = ref<HTMLElement | null>(null);
@@ -172,7 +174,7 @@ const months = computed(() => {
 });
 const summary = computed(() =>
   lifetime.value === null
-    ? translate("analytics.unknown")
+    ? translate("analytics.activityNoData")
     : translate("analytics.activitySummary", {
         tokens: chartFormat(lifetime.value, true),
       }),
@@ -185,7 +187,7 @@ function show(cell: (typeof cells.value)[number], event: PointerEvent) {
     y: target.offsetTop - 8,
     value:
       cell.tokens === null
-        ? translate("analytics.unknown")
+        ? translate("analytics.activityNoData")
         : translate("analytics.tokensValue", {
             count: chartFormat(cell.tokens, true),
           }),

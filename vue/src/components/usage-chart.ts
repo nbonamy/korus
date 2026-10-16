@@ -35,7 +35,7 @@ const providerSlots: Record<string, number> = {
 // Models take their provider's hue, shaded per model, so a model list reads
 // as families; unrecognized models fall on the remaining slots.
 const modelFamilies: Array<[RegExp, number]> = [
-  [/claude|opus|sonnet|haiku/i, 2],
+  [/claude|opus|sonnet|haiku|fable/i, 2],
   [/gpt|codex|^o\d/i, 1],
   [/gemini|antigravity/i, 3],
 ];
@@ -54,6 +54,12 @@ function seriesColor(label: string, group: UsageGrouping): string {
   return family
     ? shades[hash % shades.length]!(slot(family))
     : slot(4 + (hash % 5));
+}
+/** Returns the shared provider hue for a known model family. */
+export function providerColorForModel(label: string): string {
+  if (label === "Unknown") return "var(--color-text-muted)";
+  const family = modelFamilies.find(([pattern]) => pattern.test(label))?.[1];
+  return family ? slot(family) : "var(--chart-4)";
 }
 /** Rounds an axis maximum up to a clean tick step. */
 export function niceScale(

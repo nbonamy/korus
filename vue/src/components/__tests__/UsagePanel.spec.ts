@@ -6,7 +6,7 @@ import { ElMessageBox } from "element-plus";
 import { activityWindow } from "../usage-chart";
 
 it.each(["unmeasured", "partial", "unavailable"])(
-  "keeps %s activity unavailable instead of displaying zero",
+  "shows only the known token total for %s activity",
   async (state) => {
     const row = {
       label: "claude",
@@ -38,12 +38,16 @@ it.each(["unmeasured", "partial", "unavailable"])(
     await flushPromises();
     expect(
       wrapper.findAll(".activity-totals dd").map((value) => value.text()),
-    ).toStrictEqual(["Unavailable", "Unavailable"]);
+    ).toStrictEqual(
+      state === "partial" ? ["10", "10"] : ["N/A", "N/A"],
+    );
     await wrapper
       .findAll(".activity-cell:not(.activity-cell--future)")
       .at(-1)!
       .trigger("pointerenter");
-    expect(wrapper.get(".activity-tooltip strong").text()).toBe("Unavailable");
+    expect(wrapper.get(".activity-tooltip strong").text()).toBe(
+      state === "partial" ? "10 tokens" : "N/A",
+    );
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   },
 );
@@ -81,7 +85,8 @@ it("shows unknown consumption with measured denominators and filters the local o
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
     "Unavailable",
   );
-  expect(wrapper.text()).toContain("0 of 3 turns measured");
+  expect(wrapper.find('[role="meter"]').exists()).toBe(false);
+  expect(wrapper.text()).not.toContain("0 of 3 turns measured");
   await choose(wrapper, "#usage-provider", "Claude Code");
   await flushPromises();
   expect(getUsage).toHaveBeenCalledWith(
@@ -154,7 +159,7 @@ it("changes each chart breakdown independently and shares the selected token mea
   await choose(wrapper, "#usage-measure", "Total");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
-    "Unavailable",
+    "N/A",
   );
   expect(
     wrapper
@@ -170,8 +175,167 @@ it("changes each chart breakdown independently and shares the selected token mea
   await flushPromises();
   // 100 provider-reported tokens over 4 working seconds after the first token.
   expect(wrapper.text()).toContain("25");
-  expect(wrapper.text()).toContain("tokens/s");
-  expect(wrapper.text()).toContain("1.5 s to first token");
+  expect(wrapper.text()).toContain("tok/sec");
+  expect(wrapper.findAll(".performance-grid table")).toHaveLength(2);
+  const totals = wrapper.get('[aria-label="Analytics totals"]');
+  expect(
+    totals.findAll(".usage-stat__label").map((label) => label.text()),
+  ).toStrictEqual(["Time to First Token (TTFT)", "Output Speed"]);
+  const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
+  const speed = wrapper.get('[aria-label="Output Speed"]');
+  expect(ttft.get("header").text()).toBe("Time to First Token (TTFT)");
+  expect(speed.get("header").text()).toBe("Output Speed");
+  expect(ttft.findAll("thead th").map((heading) => heading.text())).toStrictEqual([
+    "Model",
+    "sec",
+  ]);
+  expect(speed.findAll("thead th").map((heading) => heading.text())).toStrictEqual([
+    "Model",
+    "tok/sec",
+  ]);
+  expect(ttft.find("tbody tr").findAll("td").map((cell) => cell.text())).toStrictEqual([
+    "sonnet",
+    "1.5",
+  ]);
+  expect(
+    speed.find("tbody tr").text(),
+  ).toContain("sonnet");
+  expect(totals.text()).not.toContain("Timed turns");
+  wrapper.unmount();
+});
+
+it("scales model behavior bars by value and uses each model provider color", async () => {
+  const row = (label: string, generationMs: number, ttftMs: number) => ({
+    label,
+    started: 1,
+    completed: 1,
+    failed: 0,
+    interrupted: 0,
+    inProgress: 0,
+    measuredTurns: 0,
+    tokens: null,
+    speed: {
+      turns: 1,
+      outputTokens: 100,
+      generationMs,
+      ttftMs,
+      ttftTurns: 1,
+    },
+  });
+  const summary = {
+    recordedSince: 1,
+    retainedSince: 1,
+    rows: [
+      row("claude-sonnet-5-5", 2000, 2000),
+      row("gpt-6-luna", 1000, 4000),
+      row("antigravity-gemini-1", 4000, 1000),
+    ],
+  };
+  setElectronTestClient({ getUsage: vi.fn(async () => summary) });
+  const wrapper = mount(UsagePanel);
+  await flushPromises();
+  await wrapper
+    .findAll('[role="tab"]')
+    .find((tab) => tab.text() === "Model performance")!
+    .trigger("click");
+  await flushPromises();
+
+  const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
+  const speed = wrapper.get('[aria-label="Output Speed"]');
+  const ttftRows = ttft.findAll("tbody tr");
+  const speedRows = speed.findAll("tbody tr");
+  expect(
+    ttft.findAll("thead th").map((heading) => heading.text()),
+  ).toStrictEqual(["Model", "sec"]);
+  expect(
+    speed.findAll("thead th").map((heading) => heading.text()),
+  ).toStrictEqual(["Model", "tok/sec"]);
+  expect(ttftRows.map((row) => row.findAll("td")[1]?.text())).toStrictEqual([
+    "1",
+    "2",
+    "4",
+  ]);
+  expect(speedRows.map((row) => row.findAll("td")[1]?.text())).toStrictEqual([
+    "100",
+    "50",
+    "25",
+  ]);
+  expect(ttftRows.map((row) => row.findAll("td")[0]?.text())).toStrictEqual([
+    "antigravity-gemini-1",
+    "claude-sonnet-5-5",
+    "gpt-6-luna",
+  ]);
+  expect(speedRows.map((row) => row.findAll("td")[0]?.text())).toStrictEqual([
+    "gpt-6-luna",
+    "claude-sonnet-5-5",
+    "antigravity-gemini-1",
+  ]);
+  expect(ttftRows[0]?.get(".value-fill").attributes("style")).toContain(
+    "width: 25%",
+  );
+  expect(ttftRows[0]?.get(".value-fill").attributes("style")).toContain(
+    "var(--chart-3)",
+  );
+  expect(ttftRows[1]?.get(".value-fill").attributes("style")).toContain("width: 50%");
+  expect(ttftRows[1]?.get(".value-fill").attributes("style")).toContain("var(--chart-2)");
+  expect(ttftRows[2]?.get(".value-fill").attributes("style")).toContain("width: 100%");
+  expect(ttftRows[2]?.get(".value-fill").attributes("style")).toContain("var(--chart-1)");
+  expect(speedRows[0]?.get(".value-fill").attributes("style")).toContain(
+    "width: 100%",
+  );
+  expect(speedRows[0]?.get(".value-fill").attributes("style")).toContain(
+    "var(--chart-1)",
+  );
+  expect(speedRows[1]?.get(".value-fill").attributes("style")).toContain("width: 50%");
+  expect(speedRows[1]?.get(".value-fill").attributes("style")).toContain("var(--chart-2)");
+  expect(speedRows[2]?.get(".value-fill").attributes("style")).toContain("width: 25%");
+  expect(speedRows[2]?.get(".value-fill").attributes("style")).toContain("var(--chart-3)");
+  expect(ttft.text()).not.toContain("Samples");
+  expect(speed.text()).not.toContain("Timed turns");
+  wrapper.unmount();
+});
+
+it("keeps TTFT available and shows N/A when speed is unavailable", async () => {
+  const summary = {
+    recordedSince: 1,
+    retainedSince: 1,
+    rows: [{
+      label: "gpt-6-luna",
+      started: 1,
+      completed: 1,
+      failed: 0,
+      interrupted: 0,
+      inProgress: 0,
+      measuredTurns: 0,
+      tokens: null,
+      speed: {
+        turns: 0,
+        outputTokens: 0,
+        generationMs: 0,
+        ttftMs: 56800,
+        ttftTurns: 1,
+      },
+    }],
+  };
+  setElectronTestClient({ getUsage: vi.fn(async () => summary) });
+  const wrapper = mount(UsagePanel);
+  await flushPromises();
+  await wrapper
+    .findAll('[role="tab"]')
+    .find((t) => t.text() === "Model performance")!
+    .trigger("click");
+  await flushPromises();
+  const ttft = wrapper.get('[aria-label="Time to First Token (TTFT)"]');
+  const speed = wrapper.get('[aria-label="Output Speed"]');
+  expect(ttft.findAll("tbody tr")[0]?.findAll("td").map((cell) => cell.text())).toStrictEqual([
+    "gpt-6-luna",
+    "56.8",
+  ]);
+  expect(speed.findAll("tbody tr")[0]?.findAll("td").map((cell) => cell.text())).toStrictEqual([
+    "gpt-6-luna",
+    "N/A",
+  ]);
+  expect(speed.text()).not.toContain("A turn is timed only");
   wrapper.unmount();
 });
 
@@ -258,10 +422,21 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
   const wrapper = mount(UsagePanel);
   await flushPromises();
   try {
+    const headerActions = wrapper.get(".settings-panel__actions");
+    expect(
+      headerActions.findAll("button").map((button) => button.text()),
+    ).toStrictEqual(["Clear", "Refresh"]);
+    const refresh = headerActions.get('[aria-label="Refresh"]');
+    const clearButton = headerActions
+      .findAll("button")
+      .find((button) => button.text() === "Clear")!;
+    expect(refresh.classes()).toContain("app-button--secondary");
+    expect(clearButton.classes()).toContain("app-button--tertiary");
+    expect(wrapper.find(".analytics-data-actions").exists()).toBe(false);
     const clear = () =>
-      wrapper
+      headerActions
         .findAll("button")
-        .find((button) => button.text() === "Clear statistics")!;
+        .find((button) => button.text() === "Clear")!;
     await clear().trigger("click");
     await flushPromises();
     expect(clearUsage).not.toHaveBeenCalled();

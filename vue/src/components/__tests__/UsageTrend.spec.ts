@@ -33,6 +33,48 @@ it("includes the end of a custom range longer than 90 days", async () => {
   expect(wrapper.get(".chart-tooltip").text()).toContain("Jun 30");
 });
 
+it("uses compact notation for large chart values and hover labels", async () => {
+  const total = 19_223_027;
+  const tokens = {
+    input: total,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total,
+  };
+  const wrapper = mount(UsageTrend, {
+    props: {
+      from: "2026-06-30",
+      to: "2026-06-30",
+      measure: "total",
+      series: [
+        {
+          key: "claude",
+          label: "Claude",
+          color: "blue",
+          value: total,
+          turns: 1,
+          tokens: total,
+        },
+      ],
+      daily: [
+        {
+          day: "2026-06-30",
+          started: 1,
+          measuredTurns: 1,
+          tokens,
+          groups: [{ label: "claude", started: 1, measuredTurns: 1, tokens }],
+        },
+      ],
+    },
+  });
+  const marker = wrapper.get("circle.marker");
+  expect(marker.attributes("aria-label")).toBe("2026-06-30 · Claude: 19.2M");
+  await marker.trigger("focus");
+  expect(wrapper.get(".chart-tooltip").text()).toContain("19.2M");
+  wrapper.unmount();
+});
+
 it("follows the current chart width after empty states and measure changes", async () => {
   const targets = new Set<Element>();
   let resize!: (width: number) => void;

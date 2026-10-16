@@ -85,10 +85,7 @@ export function useUsageAnalytics() {
     () =>
       projections.value?.activity?.daily?.map((row) => ({
         day: row.day,
-        tokens:
-          row.measuredTurns === row.started
-            ? (row.tokens?.total ?? null)
-            : null,
+        tokens: row.tokens?.total ?? null,
       })) ?? null,
   );
 

@@ -6,7 +6,15 @@
   >
     <template #actions>
       <button
-        class="app-button analytics-refresh"
+        class="app-button app-button--tertiary"
+        type="button"
+        :disabled="busy || clearing"
+        @click="clearStatistics"
+      >
+        {{ $t(clearing ? "analytics.clearing" : "analytics.clear") }}
+      </button>
+      <button
+        class="app-button app-button--secondary analytics-refresh"
         type="button"
         :aria-label="$t('analytics.refresh')"
         :disabled="busy"
@@ -29,6 +37,9 @@
       @date="setDate"
       @update:provider="setProvider"
     />
+    <p v-if="clearError" class="analytics-clear-error" role="alert">
+      {{ $t("analytics.clearError") }}
+    </p>
     <p v-if="error" class="analytics-note" role="alert">
       {{ $t("analytics.loadError") }}
     </p>
@@ -78,17 +89,6 @@
         <UsageBreakdown :series="shareSeries" :grouping="shareGroup" />
       </template>
       <UsagePerformance v-else :summary="projections.model" />
-    </div>
-    <div class="analytics-data-actions">
-      <button
-        class="app-button app-button--tertiary"
-        type="button"
-        :disabled="busy || clearing"
-        @click="clearStatistics"
-      >
-        {{ $t(clearing ? "analytics.clearing" : "analytics.clear") }}
-      </button>
-      <p v-if="clearError" role="alert">{{ $t("analytics.clearError") }}</p>
     </div>
   </SettingsPanelFrame>
 </template>
@@ -165,12 +165,8 @@ const {
   font-size: var(--font-size-12);
   text-align: center;
 }
-.analytics-data-actions {
-  margin-top: var(--space-6);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--color-border);
-}
-.analytics-data-actions p {
+.analytics-clear-error {
+  margin: var(--space-4) 0 0;
   color: var(--color-error);
   font-size: var(--font-size-12);
 }

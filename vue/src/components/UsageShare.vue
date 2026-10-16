@@ -51,7 +51,7 @@
           :aria-label="
             slice.label +
             ': ' +
-            chartFormat(slice.value) +
+            chartFormat(slice.value, true) +
             ' · ' +
             chartFormat(slice.percent) +
             '%'
@@ -94,10 +94,14 @@
           <strong :title="row.label">{{ row.label }}</strong>
           <span class="share-percent">{{
             row.value === null || !total
-              ? $t("analytics.unknown")
+              ? $t("analytics.notAvailable")
               : chartFormat((100 * row.value) / total) + "%"
           }}</span>
-          <span class="share-value">{{ chartFormat(row.value) }}</span>
+          <span class="share-value">{{
+            row.value === null
+              ? $t("analytics.notAvailable")
+              : chartFormat(row.value, true)
+          }}</span>
         </li>
       </ul>
     </div>

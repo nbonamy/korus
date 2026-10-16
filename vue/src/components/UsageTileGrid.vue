@@ -4,7 +4,7 @@
 <style scoped>
 .usage-tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--usage-tile-columns, 3), minmax(0, 1fr));
   gap: var(--space-8);
 }
 @media (max-width: 1100px) {

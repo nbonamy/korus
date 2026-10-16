@@ -2,7 +2,7 @@ import { validConsumption, type Consumption } from "@workspace/core/usage";
 /** Optional SDK-owner contract; older packages expose no execution projection. No raw notifications/history parsing. */
 export function codexExecutionConsumption(
   event: unknown,
-): { tokens: Consumption | null } | undefined {
+): { tokens: Consumption | null; model: string | null } | undefined {
   if (!event || typeof event !== "object") return;
   const { type, payload } = event as {
     type?: string;
@@ -15,9 +15,10 @@ export function codexExecutionConsumption(
         ? payload?.executionUsage
         : undefined;
   if (!projection || typeof projection !== "object") return;
-  const usage = projection as { observedStart?: boolean; execution?: unknown };
+  const usage = projection as { observedStart?: boolean; execution?: unknown; model?: unknown };
   if (usage.observedStart !== true) return; // Reopen/attach replay must not erase retained live evidence.
-  if (usage.execution === null) return { tokens: null };
+  const model = typeof usage.model === 'string' ? usage.model : null;
+  if (usage.execution === null) return { tokens: null, model };
   if (!usage.execution || typeof usage.execution !== "object") return;
   const raw = usage.execution as Record<string, unknown>;
   const tokens = {
@@ -28,5 +29,5 @@ export function codexExecutionConsumption(
     cacheWrite: raw.cacheWriteInputTokens,
     reasoning: raw.reasoningOutputTokens,
   };
-  if (validConsumption(tokens)) return { tokens };
+  if (validConsumption(tokens)) return { tokens, model };
 }

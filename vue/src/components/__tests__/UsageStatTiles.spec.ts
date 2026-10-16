@@ -31,3 +31,33 @@ it("includes late activity in sparklines for the whole custom range", () => {
   });
   expect(wrapper.findAll(".sparkline .spark-line")).toHaveLength(2);
 });
+
+it("compacts large daily turn counts", () => {
+  const wrapper = mount(UsageStatTiles, {
+    props: {
+      from: "2026-06-30",
+      to: "2026-06-30",
+      periodDays: 1,
+      summary: {
+        recordedSince: 0,
+        retainedSince: 0,
+        rows: [
+          {
+            label: "claude",
+            started: 19_223_027,
+            completed: 19_223_027,
+            failed: 0,
+            interrupted: 0,
+            inProgress: 0,
+            measuredTurns: 0,
+            tokens: null,
+          },
+        ],
+        daily: [],
+      },
+    },
+  });
+
+  expect(wrapper.find(".usage-stat__value").text()).toBe("19.2M");
+  wrapper.unmount();
+});

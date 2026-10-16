@@ -35,7 +35,7 @@
               row.label
             }}
           </td>
-          <td class="num">{{ chartFormat(row.turns) }}</td>
+          <td class="num">{{ chartFormat(row.turns, true) }}</td>
           <td>
             <span class="breakdown-share"
               ><UsageBar :value="share(row)" :color="row.color" /><b>{{

@@ -12,7 +12,7 @@
           <div class="hero-figure">
             <span class="hero-label">{{ measureLabel(measure) }}</span>
             <div class="hero-number">
-              <strong>{{ chartFormat(total, measure !== "turns") }}</strong>
+              <strong>{{ chartFormat(total, true) }}</strong>
               <span
                 v-if="delta"
                 class="hero-delta"
