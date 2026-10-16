@@ -2,7 +2,7 @@ import { PromptRejectedError } from './companion-port';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
-import type { AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
 import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
@@ -167,6 +167,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
   const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  function mostRecentAgent(): Agent | undefined {
+    const activity = (candidate: Agent) => Math.max(Date.parse(candidate.lastActivityAt ?? '') || 0, Date.parse(candidate.createdAt) || 0);
+    return agents.value.reduce<Agent | undefined>((latest, candidate) =>
+      !latest || activity(candidate) > activity(latest) ? candidate : latest, undefined);
+  }
   const plugins = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendPluginSummary[] }>({ status: 'idle', items: [] });
   const skills = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendSkillSummary[] }>({ status: 'idle', items: [] });
   const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null }>({ status: 'idle', setup: null });
@@ -309,7 +314,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   function applyWorkspace(next: CompanionWorkspace): boolean {
     workspace.value = reconcileWorkspace(workspace.value, next);
-    if (agentId.value && selectedConversationKey !== conversationIdentity()) {
+    if ((!agentId.value && agents.value.length) || (agentId.value && selectedConversationKey !== conversationIdentity())) {
       permissionRequests.delete(agentId.value); delete permissionChoices[agentId.value];
       void selectAgent(agentId.value);
       return true;
@@ -387,7 +392,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';
       await reconcileReceipts();
-      if (agentId.value) await selectAgent(agentId.value);
+      if (teamId.value) await selectAgent(agentId.value);
       if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) retryCount = 0;
     } catch {
       opened?.close();
@@ -426,9 +431,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (receiptTimer || disposed) return;
     receiptTimer = setTimeout(() => { receiptTimer = undefined; void reconcileReceipts(); }, 2000);
   }
-  async function selectTeam(id: string) {
+  async function selectTeam(id: string, preferredAgentId = agentId.value) {
     teamId.value = workspace.value.teams.some((team) => team.id === id) ? id : '';
-    await selectAgent('');
+    await selectAgent(preferredAgentId);
   }
   async function loadModels(id: string, capturedSession: CompanionSession) {
     const backendOf = () => workspace.value.agents.find((candidate) => candidate.id === id)?.backend;
@@ -531,7 +536,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch !== selectionEpoch) return;
       if (action !== 'interrupt') {
         conversation.value = null; selectedConversationKey = '';
-        await selectAgent(action === 'restart' ? id : agents.value[0]?.id ?? '');
+        await selectAgent(action === 'restart' ? id : '');
       }
     } catch {
       if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
@@ -563,13 +568,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
   const dismissSessionError = () => { sessionActionFailed.value = false; };
   async function selectAgent(id: string) {
+    const nextAgent = agents.value.find((a) => a.id === id) ?? mostRecentAgent();
+    id = nextAgent?.id ?? '';
     if (id !== agentId.value) queuedPromptFailed.value = false;
     goalError.value = false;
     closePreview.value = null;
     sessionActionFailed.value = false;
     const epoch = ++selectionEpoch;
     ++conversationGeneration.value;
-    const nextAgent = agents.value.find((a) => a.id === id);
     const nextKey = conversationIdentity(nextAgent ?? null);
     const cached = nextAgent && session && status.value === 'connected' ? session.cachedConversation?.(id) : undefined;
     const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;

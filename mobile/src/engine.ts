@@ -176,15 +176,13 @@ export function createEngine(port: EnginePort) {
     try {
       const epoch = ++selectionEpoch;
       await state.connect(laptopId);
-      if (!port.selectionStore || disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
-      const saved = await port.selectionStore.read(laptopId).catch(() => null);
+      if (disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
+      const saved = await port.selectionStore?.read(laptopId).catch(() => null);
       if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
-      const team = teams.find((candidate) => candidate.id === saved?.teamId) ?? teams[0];
-      await state.selectTeam(team?.id ?? '');
-      if (disposed || epoch !== selectionEpoch) return;
-      const agent = (team?.id === saved?.teamId ? state.agents.value.find((candidate) => candidate.id === saved?.agentId) : undefined) ?? state.agents.value[0];
-      await state.selectAgent(agent?.id ?? '');
+      const team = teams.find((candidate) => candidate.id === saved?.teamId)
+        ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
+      await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
       if (!disposed && epoch === selectionEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
@@ -381,9 +379,7 @@ export function createEngine(port: EnginePort) {
         if (!agent || !team || (Object.entries(companionTarget(target.hostId, team, agent)) as [keyof CompanionTarget, unknown][]).some(([key, value]) => target[key] !== value)) {
           port.post({ type: 'notificationOpenFailed' }); return;
         }
-        await state.selectTeam(target.teamId);
-        if (epoch !== notificationEpoch || disposed) return;
-        await state.selectAgent(target.agentId);
+        await state.selectTeam(target.teamId, target.agentId);
         if (epoch !== notificationEpoch || disposed) return;
         return rememberSelection();
       }
