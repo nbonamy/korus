@@ -3,7 +3,7 @@ import { reactive } from 'vue';
 import { ElInput, ElSelect, ElOption, ElOptionGroup, ElSwitch, ElButton, ElPopover, ElMessageBox } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
-import type { Automation, RemoteConnection } from '@workspace/core/contracts';
+import type { Automation, CreateAutomationInput, RemoteConnection, UpdateAutomationInput } from '@workspace/core/contracts';
 import AutomationsView from '../AutomationsView.vue';
 
 const snapshot = createInitialSnapshot();
@@ -35,8 +35,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('AutomationsView', () => {
   it('creates and edits scheduled prompts through the real editor', async () => {
     const warnings = vi.spyOn(console, 'warn');
-    const createAutomation = vi.fn().mockResolvedValue(undefined);
-    const updateAutomation = vi.fn().mockResolvedValue(undefined);
+    // Electron IPC rejects reactive proxies, including nested schedule values.
+    const createAutomation = vi.fn(async (input: CreateAutomationInput) => { structuredClone(input); });
+    const updateAutomation = vi.fn(async (input: UpdateAutomationInput) => { structuredClone(input); });
     const wrapper = view({ createAutomation, updateAutomation });
     expect(wrapper.findAll('h1, h2, h3').filter(heading => heading.text() === 'Automations')).toHaveLength(1);
     expect(wrapper.get('header h1').text()).toBe('Automations');
@@ -50,6 +51,8 @@ describe('AutomationsView', () => {
     await flushPromises();
     await wrapper.get('form').trigger('submit'); await flushPromises();
     expect(createAutomation).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Check tasks', target: { kind: 'newQuickChat', teamId: 'team-app', backend: 'codex' } }));
+    expect(wrapper.findAll('[role="alert"]').map(alert => alert.text())).toStrictEqual([]);
+    expect(wrapper.find('form').exists()).toBe(false);
     await wrapper.setProps({ automations: [automation()] });
     await menu(wrapper, 'Edit');
     await wrapper.get('textarea').setValue('Summarize tasks');
