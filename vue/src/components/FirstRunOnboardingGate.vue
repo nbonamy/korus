@@ -47,6 +47,7 @@
   />
   <LocalClaudeAuthenticationDialog
     :model-value="claudeDialogVisible"
+    :executable-path="claudeAuthentication?.executablePath"
     :config-directory="claudeAuthentication?.configDirectory !== undefined ? claudeAuthentication.configDirectory : providerSetup?.find(setup => setup.backend === 'claude')?.homePath"
     :loading="claudeLoading"
     :error="claudeError"

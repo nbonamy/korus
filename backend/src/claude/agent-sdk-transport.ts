@@ -1,6 +1,7 @@
 import { ClaudeModelObserver } from './claude-model-observer';
 import { validConsumption, type Consumption } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
+import { resolveClaudeLaunch } from './claude-command';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -18,7 +19,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { resolveRuntimeLaunch, type RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
+import type { RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
 import { debugMain, logMain } from '../log';
 import {
   type ClaudePermissionRequest,
@@ -377,7 +378,6 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     logMain('claude-agent-sdk', resumeSessionId ? 'resuming Claude SDK session' : 'starting Claude SDK session', {
       sessionId,
       cwd: session.cwd,
-      command: this.options.command ?? process.env.APP_CLAUDE_COMMAND ?? 'claude',
     });
     void this.consumeSession(session);
     return session;
@@ -611,9 +611,8 @@ function claudeQueryOptions(
   canUseTool: CanUseTool,
   transportOptions: ClaudeAgentSdkTransportOptions,
 ): ClaudeQueryOptions {
-  const command = transportOptions.command ?? process.env.APP_CLAUDE_COMMAND ?? 'claude';
   const permissionMode = normalizedPermissionMode(params.permissionMode);
-  const launch = resolveRuntimeLaunch(command, transportOptions.env, transportOptions.runtimeDiscovery);
+  const launch = resolveClaudeLaunch(transportOptions.command, transportOptions.env, transportOptions.runtimeDiscovery);
   const env = claudeEnvironment(launch.env);
   return {
     cwd: expandHome(params.cwd),

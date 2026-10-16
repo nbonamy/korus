@@ -24,7 +24,11 @@ adding steering, forks, goals, turn mutations or context controls.
   out of process logs. The executable is launched directly, not through a shell;
   the shared runtime resolver supplies the login-shell executable and child PATH
   because GUI-launched Electron can inherit a different environment.
-  `APP_CLAUDE_COMMAND` overrides resolution.
+  An installed CLI takes precedence over the SDK-owned native runtime packaged with
+  Korus; source development can use the SDK optional dependency directly.
+  `APP_CLAUDE_COMMAND` overrides resolution without falling back if it is broken.
+  Detection, queries, authentication and version inspection share this policy.
+  The packaged runtime updates with Korus, not through a CLI package manager.
 - The Claude conversation host is the sole owner of the normalized transcript. It
   maps SDK stream messages to immutable `ClaudeConversationEvent`s, keeps one
   snapshot per agent and publishes a bounded reset plus revisioned deltas
@@ -68,8 +72,9 @@ adding steering, forks, goals, turn mutations or context controls.
 - Credentials stay Claude-owned: Korus never copies tokens or settings, and they
   never enter IPC, snapshots or renderer state. Login is `claude auth login
   --claudeai` (subscription) or `--console` (API billing) run by the user on the
-  owning host, including SSH hosts, which each authenticate their own home. Expired
-  logins are renewed by Claude Code, not Korus.
+  owning host, including SSH hosts, which each authenticate their own home. Login
+  commands use the selected executable path, so a separate CLI install is optional
+  on desktop. Expired logins are renewed by Claude Code, not Korus.
 - Authentication failures emit `provider.authenticationChanged` with
   credential-free metadata; the daemon updates its observation and publishes
   immediately, leaving enablement and existing conversations intact (service errors

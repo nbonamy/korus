@@ -378,7 +378,12 @@ conversation or sequence cursor outlives the backend instance.
 - The bundle imports no `electron`, leaves Node built-ins external, ships
   sourcemaps, and avoids native dependencies unless their packaging and signing
   are designed.
-- Provider CLIs are external prerequisites discovered on the owning host's PATH.
+- Provider selection prefers an installed CLI on the owning host. Codex can use
+  the CLI embedded in ChatGPT on macOS when no CLI is found. Claude falls back to
+  the SDK-matched native executable shipped beside the daemon, outside ASAR, with
+  its license and release metadata. Packaging requires the target platform/architecture
+  optional SDK dependency at the matching SDK version; it never substitutes the
+  build host's executable. macOS signing preserves the runtime's native entitlements.
   Development and packaging do not download, pin or bundle Codex. Release smoke
   checks reject a bundled Codex resource directory and probe the packaged daemon's
   health and provider detection without requiring a provider installation or login.

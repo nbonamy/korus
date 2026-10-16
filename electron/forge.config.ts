@@ -14,6 +14,7 @@ import path from 'node:path';
 import desktopPackage from './package.json';
 import { signDarwinBinaries } from './build/sign-binaries';
 import { copyPackagedNativeDependencies } from './build/package-native-dependencies';
+import { copyPackagedClaudeRuntime } from './build/package-claude-runtime';
 import { copyPackagedNodeRuntime } from './build/package-node-runtime';
 import { desktopMetadata, writePackagedDesktopIdentity } from './build/product-metadata';
 import { prepareNativePrebuilds } from './build/prepare-native-prebuilds';
@@ -63,6 +64,8 @@ if (isDarwin && !skipMacSigning) {
   osxPackagerConfig = {
     osxSign: {
       identity: process.env.IDENTITY_DARWIN_CODE,
+      // Signed explicitly with its SDK entitlements before the outer app pass.
+      ignore: (filePath: string) => filePath.endsWith(path.join('Resources', 'claude', 'claude')),
       optionsForFile: () => { return {
         hardenedRuntime: true,
         entitlements: './build/Entitlements.darwin.plist',
@@ -106,6 +109,7 @@ const config: ForgeConfig = {
       (buildPath: string, _electronVersion: string, platform: string, arch: string, callback: (error?: Error) => void) => {
         try {
           copyPackagedNodeRuntime(buildPath, platform, arch);
+          copyPackagedClaudeRuntime(buildPath, platform, arch);
           if (platform === 'darwin' && !skipMacSigning) {
             signDarwinBinaries(buildPath, arch);
           }

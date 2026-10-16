@@ -16,6 +16,8 @@ import { BackendDriverRpc, createBackendDriver, createDefaultBackendDrivers, typ
 import { ProviderSetup } from './provider-setup';
 import { ProviderUpdates } from './provider-updates';
 import { ProviderUpdateRuntime } from './provider-update-runtime';
+import { resolveClaudeLaunch } from './claude/claude-command';
+import { resolveCodexExecutable } from './codex/codex-command';
 import { localProviderAgents } from './provider-roster-reset';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { RemoteDaemonClientManager } from './connections/remote-daemon-client';
@@ -183,7 +185,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const backendDrivers = createDefaultBackendDrivers(driverOptions);
   const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend));
   const updater = new ProviderUpdateRuntime({
-    command: backend => backend === 'codex' ? snapshot.general.codexBinaryPath?.trim() || 'codex' : process.env.APP_CLAUDE_COMMAND || 'claude',
+    command: backend => backend === 'codex'
+      ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
+      : resolveClaudeLaunch().command,
     claudeHome: () => snapshot.general.providerHomes?.claude?.homePath ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude'),
   });
   const providerUpdates: ProviderUpdates = new ProviderUpdates({

@@ -23,7 +23,7 @@ import { CheckIcon, CopyIcon } from '../shared/icons/app-icons';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 
-const props = defineProps<{ modelValue: boolean; configDirectory?: string | null; loading: boolean; error: string | null }>();
+const props = defineProps<{ modelValue: boolean; configDirectory?: string | null; executablePath?: string; loading: boolean; error: string | null }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; refresh: [] }>();
 const copiedCommand = ref<string | null>(null);
 const copyFailedCommand = ref<string | null>(null);
@@ -32,7 +32,7 @@ const options = computed(() => props.configDirectory === undefined ? [] : ['clau
   label: kind === 'console' ? 'surface.remoteClaudeAuth.consoleLabel' : 'surface.remoteClaudeAuth.subscriptionLabel',
   copyKey: kind === 'console' ? 'surface.remoteClaudeAuth.copyConsole' : 'surface.remoteClaudeAuth.copySubscription',
   copiedKey: kind === 'console' ? 'surface.remoteClaudeAuth.copiedConsole' : 'surface.remoteClaudeAuth.copiedSubscription',
-  command: `${props.configDirectory ? `CLAUDE_CONFIG_DIR='${props.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}claude auth login --${kind}`,
+  command: `${props.configDirectory ? `CLAUDE_CONFIG_DIR='${props.configDirectory.replaceAll("'", "'\\''")}' ` : 'env -u CLAUDE_CONFIG_DIR '}${props.executablePath ? `'${props.executablePath.replaceAll("'", "'\\''")}'` : 'claude'} auth login --${kind}`,
 })));
 
 async function copyCommand(command: string): Promise<void> {

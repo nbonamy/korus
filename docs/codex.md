@@ -39,8 +39,10 @@ routing envelope (agent, thread, revision) and recovery.
 
 - Executable selection uses the host's discovered PATH, including login-shell and common
   user bin directories for GUI launches, unless an explicit backend
-  `codexBinaryPath` override is saved. Korus supplies an explicit command to
-  the SDK rather than enabling app-bundle fallback. Welcome and Settings link to
+  `codexBinaryPath` override is saved. Without an override, macOS falls back to
+  `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex` when no CLI is found.
+  Detection, launch and version inspection use the same selection policy. Korus
+  supplies an explicit command to the SDK to preserve that precedence. Welcome and Settings link to
   official installation documentation; the backend rechecks external installs
   and refreshes a newly available driver without installing or updating a CLI.
 - Codex is an external prerequisite; development, packaging and release checks

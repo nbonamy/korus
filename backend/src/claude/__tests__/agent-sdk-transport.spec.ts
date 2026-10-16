@@ -14,10 +14,11 @@ import type { ClaudeSdkMessage } from '../protocol';
 import { ClaudeBackendDriver } from '../claude-driver';
 import { createQueryHarness } from './sdk-query-fixture';
 
+const runtime = vi.hoisted(() => ({ missingCli: false }));
 vi.mock('@workspace/core/runtime-discovery', () => ({
   // Runtime discovery owns its shell integration tests; this suite tests the transport boundary.
   resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({
-    command: command === 'claude' ? '/resolved/bin/claude' : command,
+    command: command === 'claude' && !runtime.missingCli ? '/resolved/bin/claude' : command,
     env: { ...env, PATH: env?.PATH ?? '/resolved/bin' },
   }),
 }));
@@ -782,4 +783,17 @@ describe('ClaudeAgentSdkTransport', () => {
     });
     await transport.close();
   });
+});
+
+
+it('passes the SDK bundled runtime to queries when no CLI is installed', async () => {
+  runtime.missingCli = true;
+  vi.stubEnv('APP_CLAUDE_COMMAND', '');
+  const harness = createQueryHarness();
+  const transport = new ClaudeAgentSdkTransport({ createQuery: harness.createQuery });
+  try {
+    transport.startTurn({ cwd: '/tmp/project', prompt: 'hello' }, () => undefined);
+    await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+    expect(harness.options[0]?.pathToClaudeCodeExecutable).toMatch(/claude-agent-sdk-[^/]+[/\\]claude(?:\.exe)?$/);
+  } finally { await transport.close(); runtime.missingCli = false; vi.unstubAllEnvs(); }
 });

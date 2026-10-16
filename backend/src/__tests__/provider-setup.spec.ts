@@ -15,6 +15,10 @@ vi.mock('@workspace/core/runtime-discovery', () => ({
   withDiscoveredRuntimePath: () => ({}),
   resolveRuntimeLaunch: (command: string) => ({ command, env: {} }),
 }));
+vi.mock('../claude/claude-command', async original => ({
+  ...await original<typeof import('../claude/claude-command')>(),
+  resolveClaudeExecutable: () => cli.installed.has('claude') ? 'claude' : null,
+}));
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   execFile: Object.assign(() => undefined, {

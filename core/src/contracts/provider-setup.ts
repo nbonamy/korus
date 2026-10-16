@@ -35,6 +35,7 @@ export function isProviderAuthentication(value: unknown): value is ProviderAuthe
   const state = value.state;
   if (value.kind === 'antigravity') return typeof state.loggedIn === 'boolean' && typeof state.homePath === 'string';
   if (value.kind === 'claude') return typeof state.loggedIn === 'boolean'
+    && (state.executablePath === undefined || typeof state.executablePath === 'string')
     && (state.configDirectory === undefined || state.configDirectory === null || typeof state.configDirectory === 'string')
     && (state.account === undefined || (record(state.account) && ['subscription', 'apiKey'].includes(String(state.account.type))
       && (state.account.email === undefined || typeof state.account.email === 'string')
