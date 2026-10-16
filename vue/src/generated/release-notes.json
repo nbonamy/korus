@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.36.3",
+  "currentVersion": "0.37.0",
   "releases": [
+    {
+      "version": "0.37.0",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "5eb3bece1513cbdb5e8c8de3e970755f8c70498f41431f016f6b722231c599ec",
+      "markdown": "### New features\n\n- Get started with your existing Codex and Claude CLI sign-ins and settings.\n  New setups reuse your CLI configuration by default; saved choices and existing\n  conversations stay intact. Separate setups remain available with their own sign-in.\n- Use an authenticated GitHub CLI for repositories, backlog, and pull requests\n  without signing in again. Direct GitHub access remains available, and canceling\n  or disconnecting it preserves available CLI access. Hosted GitHub MCP requires\n  a direct connection.\n\n### Improvements and fixes\n\n- Onboarding highlights separate setups that still need sign-in and warns before\n  continuing without connecting them.\n- GitHub and Linear connection flows load independently.\n- Switching Codex configurations refreshes plugin availability, avoiding\n  tool startup failures such as `node_repl`.\n- Independent review threads use `👀 <thread name>`, or the branch name when\n  the source thread has no custom name."
+    },
     {
       "version": "0.36.3",
       "releasedAt": "2026-10-16",

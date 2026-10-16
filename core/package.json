@@ -1,6 +1,6 @@
 {
   "name": "@workspace/core",
-  "version": "0.36.3",
+  "version": "0.37.0",
   "description": "Platform-neutral Application product contracts and state primitives.",
   "private": true,
   "type": "module",

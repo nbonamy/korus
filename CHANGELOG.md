@@ -4,6 +4,28 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.37.0] - 2026-10-16
+
+### New features
+
+- Get started with your existing Codex and Claude CLI sign-ins and settings.
+  New setups reuse your CLI configuration by default; saved choices and existing
+  conversations stay intact. Separate setups remain available with their own sign-in.
+- Use an authenticated GitHub CLI for repositories, backlog, and pull requests
+  without signing in again. Direct GitHub access remains available, and canceling
+  or disconnecting it preserves available CLI access. Hosted GitHub MCP requires
+  a direct connection.
+
+### Improvements and fixes
+
+- Onboarding highlights separate setups that still need sign-in and warns before
+  continuing without connecting them.
+- GitHub and Linear connection flows load independently.
+- Switching Codex configurations refreshes plugin availability, avoiding
+  tool startup failures such as `node_repl`.
+- Independent review threads use `👀 <thread name>`, or the branch name when
+  the source thread has no custom name.
+
 ## [0.36.3] - 2026-10-16
 
 ### New features
