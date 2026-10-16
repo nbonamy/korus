@@ -14,7 +14,6 @@ struct DrawerView: View {
                 ActivityDrawerList(groups: model.activityGroups)
                     .id("\(model.laptopID):\(model.teamID)")
             } else {
-                if !model.groups.contains(where: \.hasQuickChats) { newChatButton }
                 repositoryList
             }
             footer
@@ -141,27 +140,6 @@ struct DrawerView: View {
         .padding(.bottom, 4)
     }
 
-    /// The one entry point for a conversation that isn't about a repository: a plain link, like a row in the list.
-    private var newChatButton: some View {
-        Button { model.startQuickChat() } label: {
-            HStack(spacing: 12) {
-                Group {
-                    if model.creatingChatGroupID == AppModel.quickChatID { ProgressView().controlSize(.small) }
-                    else { Image(systemName: "square.and.pencil").font(.system(size: 17, weight: .medium)) }
-                }
-                .frame(width: 22)
-                Text("New Chat").font(.body)
-                Spacer()
-            }
-            .padding(.horizontal, 22).frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .disabled(!model.canStartChat || model.chatCreation == .creating)
-        .opacity(model.canStartChat ? 1 : 0.4)
-    }
-
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Said only when something is wrong; a healthy link needs no words.
@@ -169,7 +147,8 @@ struct DrawerView: View {
                 ConnectionLostNotice(reconnect: model.reconnect)
             }
             HStack(spacing: 10) {
-                NewAgentMenu(enabled: model.canStartChat && model.chatCreation != .creating, select: model.openProject)
+                NewAgentMenu(enabled: model.canStartChat && model.chatCreation != .creating,
+                             quickChat: model.startQuickChat, select: model.openProject)
                 Spacer()
                 Button { showingSettings = true } label: {
                     Image(systemName: "gearshape").font(.body.weight(.semibold)).frame(width: 40, height: 40)

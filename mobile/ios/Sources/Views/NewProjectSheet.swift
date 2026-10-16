@@ -16,10 +16,13 @@ enum NewProjectSource: String, Identifiable, CaseIterable {
 
 struct NewAgentMenu: View {
     let enabled: Bool
+    let quickChat: () -> Void
     let select: (NewProjectSource) -> Void
 
     var body: some View {
         Menu {
+            Button("Quick Chat", systemImage: "square.and.pencil", action: quickChat)
+            Divider()
             ForEach(NewProjectSource.allCases) { source in
                 Button(source.menuTitle, systemImage: source.symbol) { select(source) }
             }
