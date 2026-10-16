@@ -164,12 +164,12 @@ describe('workspace sidebar projection', () => {
       .toStrictEqual(agent.pullRequest);
   });
 
-  it('prefers the persisted current conversation title', () => {
+  it('prefers the explicit agent name over the conversation title', () => {
     const agent = gitAgent('agent-one', 'Custom agent', '/src/repo-one', 'feat/one', true);
     agent.conversationTitle = 'Current thread title';
 
     expect(projectSidebar({ agents: [agent], activeAgentId: null })[0]?.sessions[0])
-      .toMatchObject({ customName: 'Custom agent', conversationTitle: 'Current thread title', displayTitle: 'Current thread title' });
+      .toMatchObject({ customName: 'Custom agent', conversationTitle: 'Current thread title', displayTitle: 'Custom agent' });
   });
 
   it('disambiguates duplicate session and mention labels deterministically', () => {

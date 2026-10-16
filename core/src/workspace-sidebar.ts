@@ -112,7 +112,7 @@ export function projectWorkspaceSidebar(input: {
     const conversationTitle = agent.conversationTitle?.trim() || null;
     const sessionLabel = isQuickChat
       ? customName ?? conversationTitle ?? agentDisplayName(agent)
-      : customName ? conversationTitle ?? customName : agentDisplayName(agent);
+      : customName ?? agentDisplayName(agent);
     group.sessions.push({
       agentId: agent.id,
       customName,

@@ -7,6 +7,37 @@
   >
     <header class="agent-sidebar__header">
       <strong :title="teamName">{{ teamName }}</strong>
+      <el-popover
+        v-model:visible="organizationMenuVisible"
+        placement="bottom-end"
+        trigger="click"
+        :width="200"
+        popper-class="app-popover"
+      >
+        <template #reference>
+          <span>
+            <button
+              class="agent-sidebar__header-action"
+              type="button"
+              :aria-label="t('sidebar.view')"
+              :title="t('sidebar.view')"
+              aria-haspopup="menu"
+              :aria-expanded="organizationMenuVisible"
+              @keydown.esc.stop.prevent="organizationMenuVisible = false"
+            >
+              <ArrowsSortIcon aria-hidden="true" />
+            </button>
+          </span>
+        </template>
+        <div class="agent-sidebar__organize-heading">{{ t('sidebar.organizeBy') }}</div>
+        <AppMenu
+          class="app-menu--embedded"
+          :ariaLabel="t('sidebar.organizeBy')"
+          :items="organizationMenuItems"
+          @select="organization.select($event); organizationMenuVisible = false"
+          @keydown.esc.stop.prevent="organizationMenuVisible = false"
+        />
+      </el-popover>
       <button
         class="agent-sidebar__collapse"
         type="button"
@@ -20,7 +51,7 @@
     <div class="agent-sidebar__start-work">
       <StartWorkMenu @select="emit('start-work', $event)" />
       <button
-        v-if="!quickChatGroup"
+        v-if="organizationMode === 'activity' || !quickChatGroup"
         class="agent-sidebar__quick-chat-action"
         type="button"
         @click="emit('create-quick-chat')"
@@ -44,7 +75,7 @@
       </p>
     </div>
 
-    <nav class="agent-sidebar__list" :aria-label="t('sidebar.workspaceSessions')">
+    <nav ref="sessionList" class="agent-sidebar__list" :class="{ 'agent-sidebar__list--activity': organizationMode === 'activity' }" :aria-label="t('sidebar.workspaceSessions')">
       <section v-if="!phoneScope && missions?.length" class="agent-sidebar__workspace-group" data-group-kind="missions">
         <header class="agent-sidebar__workspace-header">
           <TargetArrowIcon class="agent-sidebar__workspace-icon" data-icon="target-arrow" aria-hidden="true" />
@@ -100,12 +131,14 @@
         class="agent-sidebar__workspace-group"
         :class="clientRepositoryOrderUpdate.dropTargetClass(group.id)"
         :data-group-kind="group.kind"
+        :data-activity-group="group.activity"
         @dragover="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragOver(group.id, $event)"
         @dragleave="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragLeave(group.id, $event)"
         @drop="group.kind === 'repository' && clientRepositoryOrderUpdate.onDrop(group.id, $event)"
       >
         <header
           class="agent-sidebar__workspace-header"
+          :data-motion-id="group.id"
           v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
           @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
           @dragend="clientRepositoryOrderUpdate.onDragEnd"
@@ -117,19 +150,24 @@
             aria-hidden="true"
           />
           <FolderIcon
-            v-else-if="group.kind === 'folder'"
+            v-else-if="group.kind === 'folder' && !group.activity"
             class="agent-sidebar__workspace-icon"
             data-icon="folder"
             aria-hidden="true"
           />
           <RepositoryIconPicker
-            v-else
+            v-else-if="group.kind === 'repository'"
             :label="group.label"
             :expanded="!isWorkspaceCollapsed(group)"
             :model-value="repositoryIcon(group.repositoryKey, group.repositoryRoot)"
             @update:model-value="updateRepositoryIcon(group.repositoryKey, group.repositoryRoot, $event)"
           />
+          <template v-if="group.activity">
+            <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" aria-hidden="true" />
+            <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
+          </template>
           <button
+            v-else
             class="agent-sidebar__workspace-label"
             type="button"
             :aria-label="workspaceToggleLabel(group)"
@@ -195,8 +233,13 @@
           v-for="session in group.sessions"
           :key="session.agentId"
           class="agent-sidebar__agent-row"
+          :data-motion-id="session.agentId"
         >
-          <button
+          <component
+            :is="group.activity ? ActivityAgentRow : RepositoryAgentRow"
+            v-bind="{ ...clientAgentOrderUpdate.dragItemAttributes(session.agentId), ...(group.activity
+              ? { session, context: activityContext.get(session.agentId), quickChat: agentsById.get(session.agentId)?.sessionKind === 'quickChat', cleanup: isPullRequestFinished(session) }
+              : { session, groupKind: group.kind }) }"
             v-show="!isWorkspaceCollapsed(group)"
             class="agent-sidebar__agent"
             :class="[
@@ -204,8 +247,8 @@
               clientAgentOrderUpdate.dropTargetClass(session.agentId),
             ]"
             type="button"
-            v-bind="clientAgentOrderUpdate.dragItemAttributes(session.agentId)"
             :data-session-kind="session.kind"
+            :title="group.activity ? activityContext.get(session.agentId) : undefined"
             :aria-pressed="session.isActive"
             @click="selectAgent(session.agentId)"
             @contextmenu.prevent="openAgentMenu(session.agentId, $event)"
@@ -215,22 +258,6 @@
             @drop="clientAgentOrderUpdate.onDrop(session.agentId, $event)"
             @dragend="clientAgentOrderUpdate.onDragEnd"
           >
-            <GitForkIcon
-              v-if="group.kind === 'repository' && session.kind === 'worktree'"
-              class="agent-sidebar__session-icon"
-              aria-hidden="true"
-            />
-            <GitBranchIcon
-              v-else-if="group.kind === 'repository'"
-              class="agent-sidebar__session-icon"
-              aria-hidden="true"
-            />
-            <span class="agent-sidebar__meta">
-              <strong
-                class="agent-sidebar__session-title"
-                :class="{ 'agent-sidebar__session-title--active': session.isActive }"
-              >{{ session.displayTitle }}</strong>
-            </span>
             <span
               v-if="backendChoices.length > 1 && agentsById.get(session.agentId)"
               class="agent-sidebar__engine"
@@ -241,7 +268,7 @@
               <BackendIcon :backend="agentsById.get(session.agentId)!.backend" monochrome />
             </span>
             <span
-              v-if="session.status.type === 'awaitingInput'"
+              v-if="!group.activity && session.status.type === 'awaitingInput'"
               class="agent-sidebar__input-needed"
               :class="{ 'agent-sidebar__input-needed--with-cleanup': isPullRequestFinished(session) }"
               :title="statusLabel(session.status.type)"
@@ -253,13 +280,13 @@
               :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
             ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
             <span
-              v-else-if="!isPullRequestFinished(session)"
+              v-else-if="!group.activity && !isPullRequestFinished(session)"
               class="agent-sidebar__status"
               :class="{ 'agent-sidebar__status--unread': session.isUnread }"
               :data-status="session.status.type"
               :aria-label="session.isUnread ? t('sidebar.unread') : statusLabel(session.status.type)"
             />
-          </button>
+          </component>
           <el-tooltip
             v-if="isPullRequestFinished(session)"
             :content="pullRequestAttentionLabel(session)"
@@ -333,6 +360,11 @@ import type { Agent, OpenInApplication, OpenInApplicationCatalog, ReorderAgentsI
 import { projectWorkspaceSidebar, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import {
   AlertTriangleIcon,
+  ArrowsSortIcon,
+  BellIcon,
+  HistoryIcon,
+  LoaderIcon,
+  MoonIcon,
   FolderIcon,
   GitBranchIcon,
   GitForkIcon,
@@ -355,6 +387,10 @@ import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { useRepositorySessionMenu } from './use-repository-session-menu';
+import { useAgentSidebarOrganization } from './use-agent-sidebar-organization';
+import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
+import ActivityAgentRow from './ActivityAgentRow.vue';
+import RepositoryAgentRow from './RepositoryAgentRow.vue';
 
 const props = defineProps<{
   agents: Agent[];
@@ -415,6 +451,12 @@ const emit = defineEmits<{
 }>();
 
 const missionsCollapsed = ref(false);
+const activityIcons = { attention: BellIcon, recent: HistoryIcon, working: LoaderIcon, idle: MoonIcon };
+const organizationMenuVisible = ref(false);
+const organizationMenuItems = computed<AppMenuItem[]>(() => [
+  { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
+  { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
+]);
 const minWidth = computed(() => props.minWidth ?? 200);
 const maxWidth = computed(() => props.maxWidth ?? 420);
 const resizeStep = 16;
@@ -423,15 +465,26 @@ const resolvedOpenInCatalog = computed<OpenInApplicationCatalog>(() => props.ope
   defaultApplication: 'finder',
   applications: [],
 }));
-const workspaceGroups = computed(() => projectWorkspaceSidebar({
+const repositoryGroups = computed(() => projectWorkspaceSidebar({
   agents: props.agents,
   activeAgentId: props.activeAgentId,
   quickChatsLabel: t('sidebar.chats'),
   unreadAgentIds: props.unreadAgentIds,
 }).sort((left, right) => Number(right.kind === 'quickChats') - Number(left.kind === 'quickChats')));
+const organization = useAgentSidebarOrganization({
+  teamId: () => props.teamId, agents: () => props.agents, repositoryGroups: () => repositoryGroups.value,
+  label: activity => t(`sidebar.activityGroups.${activity}`),
+});
+const organizationMode = organization.mode;
+const workspaceGroups = organization.groups;
+const activityContext = computed(() => new Map(repositoryGroups.value.flatMap(group => group.sessions.map(session => [session.agentId, group.label]))));
+const sessionList = ref<HTMLElement | null>(null);
+useAgentSidebarMotion(sessionList,
+  () => organizationMode.value === 'activity' ? props.teamId ?? '' : null,
+  () => workspaceGroups.value.map(group => `${group.id}:${group.sessions.map(session => session.agentId).join(',')}`).join('|'));
 const agentsById = computed(() => new Map(props.agents.map(agent => [agent.id, agent])));
 const backendChoices = useBackendChoices(() => props.teamId);
-const quickChatGroup = computed(() => workspaceGroups.value.find((group) => group.kind === 'quickChats') ?? null);
+const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
@@ -482,7 +535,7 @@ const contextMenuMoveTargets = computed(() => {
 });
 const clientAgentOrderUpdate = useListReorderDrag<string>({
   itemIds: () => props.agents.map((agent) => agent.id),
-  scopeForId: (agentId) => agentWorkspaceGroupIds.value.get(agentId) ?? agentId,
+  scopeForId: (agentId) => organizationMode.value === 'activity' ? agentId : agentWorkspaceGroupIds.value.get(agentId) ?? agentId,
   onDrop: ({ draggedId, beforeId }) => {
     if (!props.teamId) {
       return;
@@ -541,6 +594,7 @@ function workspaceCollapseKey(group: WorkspaceSidebarGroup): string {
 }
 
 function isWorkspaceCollapsed(group: WorkspaceSidebarGroup): boolean {
+  if (group.id.startsWith('activity:')) return false;
   return collapsedRepositoryKeys.value.has(workspaceCollapseKey(group));
 }
 
@@ -759,6 +813,7 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 </script>
 
+<style scoped src="./agent-row.css"></style>
 <style scoped>
 .agent-sidebar {
   --agent-sidebar-width: 260px;
@@ -828,6 +883,13 @@ function onResizePointerEnd(event: PointerEvent): void {
   -webkit-app-region: no-drag;
 }
 
+.agent-sidebar__organize-heading {
+  padding: var(--space-3) var(--space-6) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-medium);
+}
+
 .agent-sidebar__header-action:hover {
   color: var(--color-text);
   background: var(--color-surface-base);
@@ -881,6 +943,25 @@ function onResizePointerEnd(event: PointerEvent): void {
   min-height: 0;
   overflow: auto;
   padding: var(--space-3) var(--space-4);
+}
+
+.agent-sidebar__list::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.agent-sidebar__list::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+
+.agent-sidebar__list:hover::-webkit-scrollbar-thumb,
+.agent-sidebar__list:focus-within::-webkit-scrollbar-thumb {
+  background: var(--color-outline);
+}
+
+.agent-sidebar__list--activity {
+  overflow-anchor: none;
 }
 
 .agent-sidebar__start-work {
@@ -940,6 +1021,17 @@ function onResizePointerEnd(event: PointerEvent): void {
 
 .agent-sidebar__workspace-group + .agent-sidebar__workspace-group {
   margin-top: var(--space-2);
+}
+
+.agent-sidebar__workspace-group[data-activity-group] {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface-lowest) 55%, transparent);
+}
+
+.agent-sidebar__workspace-group[data-activity-group] + .agent-sidebar__workspace-group[data-activity-group] {
+  margin-top: var(--space-6);
 }
 
 .agent-sidebar__workspace-group {
@@ -1054,6 +1146,76 @@ function onResizePointerEnd(event: PointerEvent): void {
   white-space: nowrap;
 }
 
+.agent-sidebar__activity-heading {
+  transform: translateY(-1px);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-bold);
+}
+
+.agent-sidebar__workspace-group[data-activity-group] .agent-sidebar__workspace-header {
+  display: flex;
+  gap: var(--space-4);
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2);
+  padding: calc(var(--space-4) + var(--space-2) - 1px) calc(var(--space-6) + var(--space-2)) calc(var(--space-4) + 1px);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  background: color-mix(in srgb, var(--color-border) 35%, transparent);
+}
+
+.agent-sidebar__workspace-group[data-activity-group="attention"] {
+  --activity-color: var(--color-attention);
+}
+
+.agent-sidebar__workspace-group[data-activity-group="working"] {
+  --activity-color: var(--color-warning);
+}
+
+.agent-sidebar__workspace-group[data-activity-group="recent"] {
+  --activity-color: var(--color-error);
+}
+
+.agent-sidebar__workspace-group[data-activity-group="idle"] {
+  --activity-color: var(--color-outline);
+}
+
+.agent-sidebar__activity-icon {
+  flex: 0 0 auto;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--activity-color);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-activity-group="attention"] .agent-sidebar__activity-icon {
+    transform-origin: 50% 10%;
+    animation: activity-attention-ring 6s ease-in-out infinite;
+  }
+
+  [data-activity-group="working"] .agent-sidebar__activity-icon {
+    animation: activity-working-spin 1.2s linear infinite;
+  }
+}
+
+@keyframes activity-attention-ring {
+  0%, 14%, 100% { transform: rotate(0deg); }
+  2%, 6% { transform: rotate(-16deg); }
+  4%, 8% { transform: rotate(16deg); }
+  10% { transform: rotate(-8deg); }
+  12% { transform: rotate(8deg); }
+}
+
+@keyframes activity-working-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.agent-sidebar__activity-moving {
+  z-index: 1;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-base);
+}
+
 .agent-sidebar__agent {
   position: relative;
   width: 100%;
@@ -1124,9 +1286,9 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__workspace-group[data-group-kind="quickChats"]
-  .agent-sidebar__agent,
+  .agent-sidebar__repository-agent,
 .agent-sidebar__workspace-group[data-group-kind="folder"]
-  .agent-sidebar__agent,
+  .agent-sidebar__repository-agent,
 .agent-sidebar__workspace-group[data-group-kind="missions"]
   .agent-sidebar__agent {
   grid-template-columns: 0 minmax(0, 1fr)
@@ -1184,55 +1346,6 @@ function onResizePointerEnd(event: PointerEvent): void {
   background: color-mix(in srgb, var(--color-surface-base) 72%, transparent);
 }
 
-.agent-sidebar__session-icon {
-  width: var(--agent-sidebar-workspace-icon-size);
-  height: var(--agent-sidebar-workspace-icon-size);
-  stroke-width: 1.8;
-  justify-self: center;
-}
-
-.agent-sidebar__agent[data-session-kind="main"] .agent-sidebar__session-icon {
-  color: var(--color-primary);
-}
-
-.agent-sidebar__agent[data-session-kind="branch"] .agent-sidebar__session-icon {
-  color: var(--color-success);
-}
-
-.agent-sidebar__agent[data-session-kind="worktree"]
-  .agent-sidebar__session-icon {
-  color: var(--color-warning);
-}
-
-.agent-sidebar__agent[data-session-kind="detached"]
-  .agent-sidebar__session-icon,
-.agent-sidebar__agent[data-session-kind="folder"] .agent-sidebar__session-icon {
-  color: var(--color-text-muted);
-}
-
-.agent-sidebar__meta {
-  grid-column: 2;
-  min-width: 0;
-  display: grid;
-  gap: 1.5px;
-}
-
-.agent-sidebar__meta strong,
-.agent-sidebar__meta span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-sidebar__session-title {
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-18);
-}
-
-.agent-sidebar__session-title--active {
-  font-weight: var(--font-weight-bold);
-}
 
 .agent-sidebar__status {
   grid-column: -2;
@@ -1319,11 +1432,11 @@ function onResizePointerEnd(event: PointerEvent): void {
   padding-bottom: 1px;
 }
 
-.agent-sidebar--compact .agent-sidebar__meta {
+.agent-sidebar--compact :deep(.agent-sidebar__meta) {
   display: block;
 }
 
-.agent-sidebar--compact .agent-sidebar__session-title {
+.agent-sidebar--compact :deep(.agent-sidebar__session-title) {
   display: block;
   font-size: var(--font-size-14);
   line-height: var(--line-height-18);
@@ -1412,7 +1525,7 @@ function onResizePointerEnd(event: PointerEvent): void {
     justify-content: center;
   }
 
-  .agent-sidebar__meta {
+  :deep(.agent-sidebar__meta) {
     display: none;
   }
 

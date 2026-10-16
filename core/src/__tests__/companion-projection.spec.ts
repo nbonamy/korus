@@ -52,7 +52,7 @@ describe('companion workspace projection', () => {
     const repository = groups.find((group) => group.kind === 'repository')!;
     expect(repository.label).toBe('codex-app-sdk');
     expect(repository.sessions.map((session) => [session.agentId, session.displayTitle, session.kind])).toStrictEqual([
-      ['sdk', 'sdk', 'worktree'], ['builder', 'app-builder', 'worktree'], ['sherpa', 'Sherpa helper lifecycle', 'main']]);
+      ['sdk', 'sdk', 'worktree'], ['builder', 'app-builder', 'worktree'], ['sherpa', 'Sherpa', 'main']]);
     expect(groups.find((group) => group.kind === 'quickChats')!.sessions[0]!.displayTitle).toBe('Plan the trip');
     expect(groups.find((group) => group.kind === 'folder')!.label).toBe('notes');
   });
