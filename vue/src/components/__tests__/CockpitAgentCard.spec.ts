@@ -16,9 +16,9 @@ type CockpitAgentCardProps = {
 
 describe('CockpitAgentCard', () => {
   it.each([
-    ['codex', 'Codex', new URL('../../shared/icons/chatgpt-icon.svg', import.meta.url).href],
-    ['claude', 'Claude Code', new URL('../../shared/icons/claude-code-icon.svg', import.meta.url).href],
-  ] as const)('shows the %s icon above status only with multiple enabled backends', async (backend, label, icon) => {
+    ['codex', 'Codex', '.backend-icon--monochrome'],
+    ['claude', 'Claude Code', 'img.backend-icon'],
+  ] as const)('shows the %s icon above status only with multiple enabled backends', async (backend, label, iconSelector) => {
     const enabled = ref<AgentBackend[]>([backend]);
     const wrapper = mount(CockpitAgentCard, {
       props: { agent: { ...idleAgent(), backend }, draggedWorkItem: null, dropTarget: false },
@@ -30,7 +30,7 @@ describe('CockpitAgentCard', () => {
     await nextTick();
     const backendIcon = wrapper.get(`[role="img"][aria-label="${label}"]`);
     expect(backendIcon.attributes('title')).toBe(label);
-    expect(backendIcon.get('img').attributes('src')).toBe(icon);
+    expect(backendIcon.find(iconSelector).exists()).toBe(true);
     expect(backendIcon.element.nextElementSibling?.textContent?.trim()).toBe('Idle');
 
     enabled.value = [backend];

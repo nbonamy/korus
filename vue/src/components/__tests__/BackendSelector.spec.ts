@@ -15,14 +15,13 @@ describe('BackendSelector', () => {
         provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) },
       },
     });
-    const codexIcon = new URL('../../shared/icons/chatgpt-icon.svg', import.meta.url).href;
     const claudeIcon = new URL('../../shared/icons/claude-code-icon.svg', import.meta.url).href;
-    expect(wrapper.get('.el-select__prefix img').attributes('src')).toBe(codexIcon);
+    expect(wrapper.get('.el-select__prefix .backend-icon--monochrome').exists()).toBe(true);
     await wrapper.setProps({ modelValue: 'claude' });
     expect(wrapper.get('.el-select__prefix img').attributes('src')).toBe(claudeIcon);
     await wrapper.get('.el-select__wrapper').trigger('click');
     const options = [...document.querySelectorAll('[role="option"]')];
-    expect(options.find(option => option.textContent?.includes('Codex'))?.querySelector('img')?.getAttribute('src')).toBe(codexIcon);
+    expect(options.find(option => option.textContent?.includes('Codex'))?.querySelector('.backend-icon--monochrome')).not.toBeNull();
     expect(options.find(option => option.textContent?.includes('Claude Code'))?.querySelector('img')?.getAttribute('src')).toBe(claudeIcon);
   });
 

@@ -42,6 +42,7 @@ vi.mock('electron', async () => {
     ipcRenderer: {
       invoke: async (channel: string, ...args: unknown[]) => native.handlers.get(channel)!({}, ...args),
     },
+    nativeTheme: { themeSource: 'system' },
     powerMonitor: Object.assign(new EventEmitter(), { isOnBatteryPower: () => false }),
     powerSaveBlocker: { start: vi.fn(() => 1), stop: vi.fn() },
     clipboard: {}, dialog: native.dialog, shell: native.shell,

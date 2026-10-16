@@ -9,7 +9,7 @@ const bridge = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
 }));
 vi.mock('electron', () => ({
-  app: {}, BrowserWindow: {}, clipboard: {}, dialog: {}, net: {}, powerMonitor: {}, protocol: {}, shell: {},
+  app: {}, BrowserWindow: {}, clipboard: {}, dialog: {}, nativeTheme: {}, net: {}, powerMonitor: {}, protocol: {}, shell: {},
   contextBridge: { exposeInMainWorld: (name: string, value: unknown) => bridge.exposed.set(name, value) },
   ipcMain: {
     handle: (channel: string, handler: (...args: unknown[]) => unknown) => bridge.handlers.set(channel, handler),

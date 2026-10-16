@@ -11,7 +11,7 @@ import { projectClientSnapshot, splitSettingsInput } from '@workspace/core/clien
 import { requireAgentFolder } from '@workspace/core/agent-folder';
 import { encodedAppError } from '@workspace/core/app-error';
 import { mainT } from './i18n';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, shell } from 'electron';
 import path from 'node:path';
 import { CodexElectronAttachmentRegistry, registerCodexNativeIpc, TypedIpcMain } from '@codex-app-sdk/electron';
 import { AgentActivityPowerSaveBlocker } from './agent-activity-power-save-blocker';
@@ -161,6 +161,7 @@ export class AppController {
     await this.initializeBackendClient();
     this.syncAppshotsKeyMonitor();
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     logMain('startup', 'application initialized');
   }
 
@@ -1212,6 +1213,7 @@ export class AppController {
     this.snapshot = snapshot;
     this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
     this.policyAwareSpokenAnnouncements.refresh();
+    this.syncNativeAppearance();
     this.transientSnapshots.add(snapshot);
     try {
       await this.refreshClientStateFromBackend();
@@ -1229,6 +1231,7 @@ export class AppController {
     this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
     this.policyAwareSpokenAnnouncements.refresh();
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     this.refreshDebugMenuIfChanged(previousDebugMenuState);
     return nextSnapshot;
   }
@@ -1947,6 +1950,7 @@ export class AppController {
 
     this.lastBackendEventSeq = event.seq;
     this.syncPowerSaveBlocker();
+    this.syncNativeAppearance();
     this.refreshDebugMenuIfChanged(previousDebugMenuState);
     if (notifyRenderer && this.mainWindow && !this.mainWindow.isDestroyed()) {
       sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
@@ -2029,6 +2033,12 @@ export class AppController {
       occurredAt: new Date().toISOString(),
     };
     sendRendererEvent(this.mainWindow.webContents, withRendererMediaUrls(rendererEvent, this.localMediaRegistry));
+  }
+
+  // Window vibrancy (rail and sidebar) is drawn by the OS, so it only follows the app's appearance setting through nativeTheme.
+  private syncNativeAppearance(): void {
+    const mode = this.snapshot?.theme?.mode;
+    if (nativeTheme && mode && nativeTheme.themeSource !== mode) nativeTheme.themeSource = mode;
   }
 
   private syncPowerSaveBlocker(): void {
