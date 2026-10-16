@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { Agent, AppSnapshot } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, AppSnapshot } from '@workspace/core/contracts';
+import type { ProviderLifecycle } from '../provider-lifecycle';
+import type { ProviderSetup } from '../provider-setup';
+import { createCodexLifecycle } from '../codex/provider-lifecycle';
+import { buildAppMcpConfigOverrides } from '../mcp/codex-config';
 import { ProviderUpdateRuntime } from '../provider-update-runtime';
 import type { ProviderUpdates } from '../provider-updates';
 import { createTestSnapshot } from './server-test-fixtures';
@@ -40,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   loadPluginStatus: vi.fn(),
   saveBackendSnapshot: vi.fn(),
   backendCodexHomeDir: vi.fn(() => '/tmp/codex-home'),
+  backendHomeDir: vi.fn(() => '/tmp/runtime-test-home'),
   backendProviderTokensFilePath: vi.fn(),
   mcpStart: vi.fn(),
   mcpStop: vi.fn(),
@@ -62,6 +70,7 @@ const mocks = vi.hoisted(() => ({
   createDefaultBackendDrivers: vi.fn(),
   createBackendDriver: vi.fn(),
   useRealDriverRpc: false,
+  providerLifecycles: null as ReadonlyMap<AgentBackend, ProviderLifecycle> | null,
   runtimeGitHubOAuthClientId: vi.fn(),
   warnMain: vi.fn(),
 }));
@@ -72,7 +81,7 @@ vi.mock('@workspace/core/agent-chat-service', () => ({
 
 
 vi.mock('../state', () => ({
-  backendHomeDir: () => '/tmp/runtime-test-home',
+  backendHomeDir: mocks.backendHomeDir,
   loadBackendTasks: vi.fn().mockResolvedValue([]),
   saveBackendTasks: vi.fn().mockResolvedValue(undefined),
   loadBackendSnapshot: mocks.loadBackendSnapshot,
@@ -84,7 +93,16 @@ vi.mock('../state', () => ({
   backendProviderTokensFilePath: mocks.backendProviderTokensFilePath,
 }));
 
-vi.mock('../provider-setup', () => ({ ProviderSetup: class { initialize = mocks.initializeProviderSetup; isChanging = () => false; } }));
+vi.mock('../provider-setup', async importOriginal => {
+  const actual = await importOriginal<typeof import('../provider-setup')>();
+  return { ProviderSetup: class {
+    constructor(...args: ConstructorParameters<typeof actual.ProviderSetup>) {
+      if (mocks.providerLifecycles) return new actual.ProviderSetup(args[0], args[1], args[2], mocks.providerLifecycles, args[4]);
+    }
+    initialize: () => Promise<void> = mocks.initializeProviderSetup;
+    isChanging = () => false;
+  } };
+});
 
 vi.mock('../plugin-status', () => ({
   loadPluginStatus: mocks.loadPluginStatus,
@@ -262,6 +280,7 @@ describe('daemon runtime', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.useRealDriverRpc = false;
+    mocks.providerLifecycles = null;
     mocks.mcpOptions.length = 0;
     mocks.serverOptions.length = 0;
     mocks.automationRunnerOptions.length = 0;
@@ -279,6 +298,7 @@ describe('daemon runtime', () => {
     mocks.loadPluginStatus.mockResolvedValue({ chromeEnabled: false });
     mocks.saveBackendSnapshot.mockResolvedValue(undefined);
     mocks.backendProviderTokensFilePath.mockReturnValue('/tmp/provider-tokens.json');
+    mocks.backendHomeDir.mockReturnValue('/tmp/runtime-test-home');
     mocks.mcpStart.mockResolvedValue('http://127.0.0.1:4242/mcp');
     mocks.mcpStop.mockResolvedValue(undefined);
     mocks.mcpHostedServerUrls.mockReturnValue({
@@ -482,6 +502,59 @@ describe('daemon runtime', () => {
       computerUseEnabled: false,
       chromeEnabled: false,
     });
+  });
+
+  it('uses the selected home Chrome configuration when switching Codex homes and rolling back a failed save', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'korus-home-switch-'));
+    const existingHome = path.join(root, 'existing');
+    const isolatedHome = path.join(root, 'app', 'codex-home');
+    vi.stubEnv('APP_HOME', path.join(root, 'app'));
+    vi.stubEnv('CODEX_HOME', existingHome);
+    mocks.backendHomeDir.mockReturnValue(path.join(root, 'app'));
+    try {
+      await mkdir(existingHome);
+      await writeFile(path.join(existingHome, 'config.toml'), '[plugins."chrome@openai-bundled"]\nenabled = true\n');
+      const snapshot = createTestSnapshot();
+      snapshot.general.providerHomes = { codex: { isolated: false, shareSkills: false, homePath: existingHome } };
+      mocks.loadBackendSnapshot.mockResolvedValue(snapshot);
+      mocks.providerLifecycles = new Map([['codex', createCodexLifecycle()]]);
+      mocks.useRealDriverRpc = true;
+      const { loadPluginStatus } = await vi.importActual<typeof import('../plugin-status')>('../plugin-status');
+      mocks.loadPluginStatus.mockImplementation(loadPluginStatus);
+      const host = () => ({ backend: 'codex', onEvent: () => () => {}, close: vi.fn() });
+      mocks.drivers.set('codex', host());
+      const launches: Array<{ home: string; chromeEnabled: boolean; configOverrides: string[] }> = [];
+      mocks.createBackendDriver.mockImplementation((_backend, options) => {
+        const settings = options.pluginSettings();
+        launches.push({
+          home: options.generalSettings.providerHomes.codex.homePath,
+          chromeEnabled: settings.chromeEnabled,
+          configOverrides: buildAppMcpConfigOverrides(settings),
+        });
+        return host();
+      });
+      const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: 'test' });
+      try {
+        const setup = (mocks.serverOptions[0] as { providerSetup: ProviderSetup }).providerSetup;
+        await setup.configure('codex', { isolated: true, shareSkills: false });
+        expect(launches[0]).toMatchObject({ home: isolatedHome, chromeEnabled: false });
+        expect(launches[0]!.configOverrides).not.toContain('mcp_servers.node_repl.enabled=true');
+
+        await setup.configure('codex', { isolated: false, shareSkills: false });
+        expect(launches[1]).toMatchObject({ home: existingHome, chromeEnabled: true });
+
+        mocks.saveBackendSnapshot.mockRejectedValueOnce(new Error('save failed'));
+        await expect(setup.configure('codex', { isolated: true, shareSkills: false })).rejects.toThrow('save failed');
+        expect(launches.slice(2).map(({ home, chromeEnabled }) => ({ home, chromeEnabled }))).toStrictEqual([
+          { home: isolatedHome, chromeEnabled: false },
+          { home: existingHome, chromeEnabled: true },
+        ]);
+        expect(snapshot.general.providerHomes.codex).toMatchObject({ homePath: existingHome });
+      } finally { await runtime.stop(); }
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('runs automation prompts, records new conversations, and emits snapshot updates', async () => {

@@ -7,6 +7,35 @@ import { MemoryWorkIntegrationTokenStore } from '../memory-token-store';
 import type { WorkProviderDeviceAuthorization, WorkProviderDeviceTokenResult, WorkProviderDriver } from '../types';
 
 describe('WorkIntegrationManager', () => {
+  it('blocks new access while a disconnect is still deleting its stored credential', async () => {
+    const snapshot = createInitialSnapshot();
+    const tokenStore = new MemoryWorkIntegrationTokenStore();
+    await tokenStore.set({ provider: 'github', accessToken: 'old-access', tokenType: 'bearer', connectedAt: 'now' });
+    const driver = fakeDriver();
+    const manager = createManager({ driver, snapshot, tokenStore });
+    await manager.hydrateConnections();
+    let finishDelete!: () => void;
+    const remove = tokenStore.delete.bind(tokenStore);
+    vi.spyOn(tokenStore, 'delete').mockImplementationOnce(async provider => {
+      await new Promise<void>(resolve => { finishDelete = resolve; });
+      await remove(provider);
+    });
+    const disconnect = manager.disconnect('github');
+    try {
+      await vi.waitFor(() => expect(finishDelete).toBeTypeOf('function'));
+      await manager.hydrateConnections();
+      expect(await manager.githubConnected()).toBe(false);
+      expect(manager.isHostedMcpConnected('github')).toBe(false);
+      await expect(manager.listSources('github')).rejects.toThrow('not connected');
+      expect(driver.listSources).not.toHaveBeenCalled();
+    } finally {
+      finishDelete();
+      await disconnect;
+      manager.close();
+    }
+    expect(snapshot.workBacklog.connections[0]).toMatchObject({ source: 'none', status: 'disconnected' });
+  });
+
   it('requires a connected integration before branch browsing and rejects unsupported integrations', async () => {
     const snapshot = createInitialSnapshot(), tokenStore = new MemoryWorkIntegrationTokenStore();
     const driver = fakeDriver();
@@ -79,6 +108,7 @@ describe('WorkIntegrationManager', () => {
     expect(saveSnapshot).toHaveBeenCalledOnce();
     expect(snapshot.workBacklog.connections).toStrictEqual([{
       provider: 'github',
+      source: 'api',
       status: 'notConfigured',
       detail: { key: 'workProvider.oauthNotConfigured', params: { provider: 'GitHub' } },
     }]);
@@ -126,6 +156,7 @@ describe('WorkIntegrationManager', () => {
 
     expect(snapshot.workBacklog.connections).toStrictEqual([{
       provider: 'github',
+      source: 'api',
       status: 'connected',
       accountLabel: 'nbonamy',
       connectedAt: expect.any(String),
@@ -220,6 +251,7 @@ describe('WorkIntegrationManager', () => {
     expect(manager.isConnected('github')).toBe(false);
     expect(snapshot.workBacklog.connections).toStrictEqual([{
       provider: 'github',
+      source: 'api',
       status: 'disconnected',
       detail: { key: 'workProvider.authorizationExpired', params: { provider: 'GitHub' } },
     }]);
@@ -313,6 +345,7 @@ describe('WorkIntegrationManager', () => {
     await expect(manager.listSources('github')).rejects.toThrow('GitHub needs to be reconnected.');
     expect(snapshot.workBacklog.connections).toStrictEqual([{
       provider: 'github',
+      source: 'api',
       status: 'disconnected',
       detail: { key: 'workProvider.authorizationExpired', params: { provider: 'GitHub' } },
     }]);
@@ -346,6 +379,7 @@ describe('WorkIntegrationManager', () => {
     expect(saveSnapshot).toHaveBeenCalledTimes(2);
     expect(snapshot.workBacklog.connections).toStrictEqual([{
       provider: 'github',
+      source: 'api',
       status: 'error',
       detail: { key: 'workProvider.verificationExpired' },
     }]);
@@ -479,6 +513,7 @@ describe('WorkIntegrationManager', () => {
     expect(snapshot.workBacklog).toStrictEqual({
       connections: [{
         provider: 'github',
+        source: 'none',
         status: 'disconnected',
       }],
       providerConfigurations: {},

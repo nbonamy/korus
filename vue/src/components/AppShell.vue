@@ -170,6 +170,7 @@
         :work-backlog-status="workBacklogStatus"
         :work-provider-settings="snapshot.workBacklog.providerSettings"
         :work-provider-authorization="workProviderAuthorization"
+        :work-provider-authorizations="workProviderAuthorizations"
         :remote-connections="snapshot.remoteConnections.connections"
         :teams="snapshot.teams"
         :list-source-folders="listSourceFolders"
@@ -759,6 +760,7 @@ const props = withDefaults(defineProps<{
   markdownDisplayRequests?: Array<Extract<SidePanelRequest, { kind: 'markdown' }>>;
   fileActivity?: AgentFileActivity | null;
   workProviderAuthorization?: WorkProviderAuthorization | null;
+  workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
   workRepositoriesByProvider?: Partial<Record<WorkProviderKind, WorkSource[]>>;
   workItemsByRepository?: Record<string, WorkItem[]>;
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
@@ -1322,7 +1324,7 @@ const firstRunOnboarding = useFirstRunOnboarding({
   getApi: () => appApi,
   getConnections: () => props.snapshot.providerConnections ?? [],
   hasExistingWorkspace: () => props.snapshot.agents.length > 0 || props.snapshot.general.providerOnboardingComplete === true,
-  isGitHubConnected: () => githubConnection.value.status === 'connected',
+  isGitHubConnected: () => githubConnection.value.status === 'connected' && githubConnection.value.source !== 'cli',
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
@@ -2791,8 +2793,8 @@ function completeGitHubOnboardingStep(): void {
   firstRunOnboarding.completeGitHub();
 }
 
-watch(() => githubConnection.value.status, (status) => {
-  if (githubOnboardingVisible.value && status === 'connected') {
+watch(() => [githubConnection.value.status, githubConnection.value.source] as const, ([status, source]) => {
+  if (githubOnboardingVisible.value && status === 'connected' && source !== 'cli') {
     completeGitHubOnboardingStep();
   }
 });

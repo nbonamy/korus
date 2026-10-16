@@ -4,7 +4,7 @@ import { workProviderDefinition, workProviderKinds } from '@workspace/core/work-
 export type HostedMcpServerId = WorkProviderKind;
 
 export type HostedMcpCredentialProvider = {
-  isConnected(provider: WorkProviderKind): boolean;
+  isHostedMcpConnected(provider: WorkProviderKind): boolean;
   authorizationHeader(
     provider: WorkProviderKind,
     options?: { forceRefresh?: boolean },
@@ -51,7 +51,7 @@ export class HostedMcpGateway {
   enabledServerUrls(appMcpServerUrl: string): Partial<Record<HostedMcpServerId, string>> {
     return Object.fromEntries(
       hostedMcpServers
-        .filter(({ provider }) => this.credentials.isConnected(provider))
+        .filter(({ provider }) => this.credentials.isHostedMcpConnected(provider))
         .map(({ id }) => [id, hostedMcpServerUrl(appMcpServerUrl, id)]),
     ) as Partial<Record<HostedMcpServerId, string>>;
   }

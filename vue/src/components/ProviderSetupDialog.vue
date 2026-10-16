@@ -9,9 +9,9 @@
     <div v-else class="app-form-dialog">
       <FormField :label="t('auth.conversations')" :help="t('auth.separateExplanation')">
         <el-radio-group v-model="isolated" class="provider-setup__choices" :disabled="busy || (setup?.locked && !allowReset)">
-          <el-radio :value="true">{{ t('auth.separateChats') }}</el-radio>
+          <el-radio :value="false">{{ t('auth.existingSetup') }}</el-radio>
+          <el-radio :value="true" class="provider-setup__separate">{{ t('auth.separateChats') }}</el-radio>
           <el-checkbox v-if="isolated" v-model="shareSkills" class="provider-setup__skills" :disabled="busy || (setup?.locked && !allowReset)">{{ t('auth.shareSkills') }}</el-checkbox>
-          <el-radio :value="false" class="provider-setup__existing">{{ t('auth.existingSetup') }}</el-radio>
         </el-radio-group>
       </FormField>
       <p v-if="setup?.locked && !allowReset">{{ t('auth.setupLocked') }}</p>
@@ -79,10 +79,6 @@ function save() {
 
 .provider-setup__skills {
   margin-left: var(--space-12);
-}
-
-.provider-setup__existing {
-  margin-top: var(--space-6);
 }
 
 .provider-setup__acknowledgment {

@@ -27,26 +27,28 @@ const authorizationPollMs = 5_000;
 /** Owns provider authorization, polling, repository catalogs, and backlog state. */
 export function createWorkProviderState(options: WorkProviderStateOptions) {
   const authorization = ref<WorkProviderAuthorization | null>(null);
+  const authorizations = ref<Partial<Record<WorkProviderKind, WorkProviderAuthorization>>>({});
   const repositoriesByProvider = ref<Partial<Record<WorkProviderKind, WorkSource[]>>>({});
   const itemsByRepository = ref<Record<string, WorkItem[]>>({});
   const assignedItemsByProvider = ref<Partial<Record<WorkProviderKind, WorkItem[]>>>({});
   const status = ref<'notLoaded' | 'loading' | 'loaded' | 'error'>('notLoaded');
   const error = ref<string | null>(null);
   const authorizationPollTimers = new Map<WorkProviderKind, ReturnType<typeof globalThis.setTimeout>>();
-  let authorizationRevision = 0;
+  const authorizationRevisions = new Map<WorkProviderKind, number>();
   const catalogRevisions = new Map<WorkProviderKind, number>();
   const itemRevisions = new Map<string, number>();
 
   async function connect(provider: WorkProviderKind): Promise<void> {
     if (!appApi?.connectWorkProvider) return;
-    const revision = ++authorizationRevision;
+    const revision = (authorizationRevisions.get(provider) ?? 0) + 1;
+    authorizationRevisions.set(provider, revision);
     status.value = 'loading';
     error.value = null;
     try {
       const result = await appApi.connectWorkProvider(provider);
-      if (revision !== authorizationRevision) return;
+      if (revision !== authorizationRevisions.get(provider)) return;
       options.adoptSnapshot(result.snapshot);
-      authorization.value = result.authorization ?? null;
+      setAuthorization(provider, result.authorization ?? null);
       if (result.authorization) scheduleAuthorizationPoll(provider);
       else clearAuthorizationPoll(provider);
       const current = result.snapshot.workBacklog.connections.find(value => value.provider === provider);
@@ -57,11 +59,11 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       }
       if (result.authorization?.flow === 'browser') {
         await appPlatformActions.openExternal?.(result.authorization.verificationUri);
-        if (revision !== authorizationRevision) return;
+        if (revision !== authorizationRevisions.get(provider)) return;
       }
       status.value = 'loaded';
     } catch (cause) {
-      if (revision !== authorizationRevision) return;
+      if (revision !== authorizationRevisions.get(provider)) return;
       status.value = 'error';
       error.value = errorMessage(cause);
       throw cause;
@@ -72,7 +74,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     status.value = 'loading';
     error.value = null;
     try {
-      const pending = authorization.value;
+      const pending = authorizations.value[provider];
       if (pending?.provider === provider && appPlatformActions.openExternal) {
         await appPlatformActions.openExternal(pending.verificationUri);
       } else {
@@ -95,14 +97,15 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
 
   async function disconnect(provider: WorkProviderKind): Promise<void> {
     if (!appApi?.disconnectWorkProvider) return;
-    const revision = ++authorizationRevision;
+    const revision = (authorizationRevisions.get(provider) ?? 0) + 1;
+    authorizationRevisions.set(provider, revision);
     catalogRevisions.set(provider, (catalogRevisions.get(provider) ?? 0) + 1);
     for (const [key, value] of itemRevisions) if (key.startsWith(`${provider}:`)) itemRevisions.set(key, value + 1);
     clearAuthorizationPoll(provider);
     const snapshot = await appApi.disconnectWorkProvider(provider);
-    if (revision !== authorizationRevision) return;
+    if (revision !== authorizationRevisions.get(provider)) return;
     options.adoptSnapshot(snapshot);
-    if (authorization.value?.provider === provider) authorization.value = null;
+    setAuthorization(provider, null);
     repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
     itemsByRepository.value = {};
     status.value = 'notLoaded';
@@ -222,32 +225,32 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
 
   async function pollConnection(provider: WorkProviderKind, pollOptions: { userInitiated?: boolean } = {}): Promise<void> {
     if (!appApi?.pollWorkProviderAuthorization) return;
-    const revision = authorizationRevision;
+    const revision = authorizationRevisions.get(provider);
     if (pollOptions.userInitiated) status.value = 'loading';
     error.value = null;
     try {
       const snapshot = await appApi.pollWorkProviderAuthorization(provider);
-      if (revision !== authorizationRevision) return;
+      if (revision !== authorizationRevisions.get(provider)) return;
       options.adoptSnapshot(snapshot);
       const current = connection(provider);
       if (current?.status === 'connected') {
         clearAuthorizationPoll(provider);
-        if (authorization.value?.provider === provider) authorization.value = null;
+        setAuthorization(provider, null);
         if (!isFirstRunOnboardingActive()) useConfetti().celebrate();
         await loadRepositories(provider);
         return;
       }
-      if (current?.status === 'connecting' && authorization.value?.provider === provider) {
+      if (current?.status === 'connecting' && authorizations.value[provider]) {
         status.value = 'loaded';
         scheduleAuthorizationPoll(provider);
         return;
       }
       clearAuthorizationPoll(provider);
-      if (authorization.value?.provider === provider) authorization.value = null;
+      setAuthorization(provider, null);
       status.value = current?.status === 'error' ? 'error' : 'loaded';
       error.value = current?.status === 'error' ? localizedText(current.detail, translate) : null;
     } catch (cause) {
-      if (revision !== authorizationRevision) return;
+      if (revision !== authorizationRevisions.get(provider)) return;
       clearAuthorizationPoll(provider);
       status.value = 'error';
       error.value = errorMessage(cause);
@@ -257,7 +260,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
 
   function scheduleAuthorizationPoll(provider: WorkProviderKind): void {
     clearAuthorizationPoll(provider);
-    if (authorization.value?.provider !== provider || connection(provider)?.status !== 'connecting') return;
+    if (!authorizations.value[provider] || connection(provider)?.status !== 'connecting') return;
     const timer = globalThis.setTimeout(() => {
       authorizationPollTimers.delete(provider);
       void pollConnection(provider);
@@ -276,9 +279,19 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     return options.getSnapshot().workBacklog.connections.find((candidate) => candidate.provider === provider) ?? null;
   }
 
+  function setAuthorization(provider: WorkProviderKind, pending: WorkProviderAuthorization | null): void {
+    const next = { ...authorizations.value };
+    if (pending) next[provider] = pending;
+    else delete next[provider];
+    authorizations.value = next;
+    if (pending) authorization.value = pending;
+    else if (authorization.value?.provider === provider) authorization.value = Object.values(next)[0] ?? null;
+  }
+
   return {
     assignedItemsByProvider,
     authorization,
+    authorizations,
     error,
     itemsByRepository,
     repositoriesByProvider,

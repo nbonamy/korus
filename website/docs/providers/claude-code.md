@@ -8,6 +8,8 @@ Claude Code runs as an independent engine with its own authentication. Korus use
 
 ## Install and choose a setup
 
+Korus defaults to your existing Claude Code setup. If it already shows **Connected**, select **Continue** without signing in again. To choose a separate setup:
+
 1. Check Claude Code on the first connection screen or in **Settings → Claude Code**. When detected, select **Customize**, or use **Location → Customize** in Settings.
 2. Select **Separate Korus chats** or **Use existing setup**.
 3. For separate chats, leave **Reuse my existing skills** checked if you want to share existing Claude Code skills; uncheck it to keep skills separate too.
@@ -17,7 +19,7 @@ You do not need a separate CLI installation when the bundled runtime is availabl
 
 ### Separate Korus chats
 
-With the standard installation, this uses `~/.korus/claude-home`. Claude authentication, saved conversations, and user configuration follow that home. Your usual terminal setup remains separate, so signing in there does not automatically sign in to Korus's setup.
+Choosing **Separate Korus chats** uses `~/.korus/claude-home` with the standard installation. Claude authentication, saved conversations, and user configuration follow that home. Your usual terminal setup remains separate, so signing in there does not automatically sign in to Korus's setup.
 
 **Reuse my existing skills** shares your existing Claude `skills` directory with the separate home. Changes are shared rather than copied once. This option does not import credentials, conversations, plugins, or the rest of your Claude configuration.
 

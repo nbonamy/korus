@@ -7,7 +7,7 @@ import type {
 } from '@codex-app-sdk/vue';
 import type { CodexSurfaceClientRequest } from '@codex-app-sdk/core/surface';
 import { nextTick, reactive } from 'vue';
-import { ElRadio, ElRadioGroup } from 'element-plus';
+import { ElMessageBox, ElRadio, ElRadioGroup } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from '../AppShell.vue';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
@@ -59,6 +59,110 @@ afterEach(() => {
 });
 
 describe('AppShell authentication and conversation', () => {
+  it.each(['codex', 'claude'] as const)('warns before continuing without a separate, signed-out %s setup and offers Review first', async backend => {
+    const snapshot = createEmptySnapshot();
+    const connectedBackend = backend === 'codex' ? 'claude' : 'codex';
+    const providerName = backend === 'codex' ? 'Codex' : 'Claude Code';
+    snapshot.providerConnections = [
+      { backend, installed: true, connected: false, checking: false },
+      { backend: connectedBackend, installed: true, connected: true, checking: false },
+    ];
+    const updateSettings = vi.fn().mockResolvedValue(snapshot);
+    const startCodexChatGptLogin = vi.fn();
+    setElectronTestClient({
+      getProviderSetup: vi.fn().mockResolvedValue(snapshot.providerConnections.map(connection => ({
+        backend: connection.backend, installed: true, isolated: connection.backend === backend,
+        shareSkills: true, homePath: `/setup/${connection.backend}`, locked: false,
+      }))),
+      updateSettings, startCodexChatGptLogin,
+    });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      await wrapper.get('.codex-login__continue').trigger('click');
+      await flushPromises();
+      const warning = new DOMWrapper(document.querySelector('.el-message-box')!);
+      expect(warning.text()).toContain(providerName);
+      expect(warning.text()).toContain('separate setup');
+      expect(warning.text()).toContain('unavailable');
+      expect(warning.get('.el-button--primary').text()).toBe('Review');
+      expect(warning.get('.app-button--tertiary').text()).toBe('Continue');
+      expect(updateSettings).not.toHaveBeenCalled();
+
+      await warning.get('.el-button--primary').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('.codex-login').exists()).toBe(true);
+      expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
+      expect(updateSettings).not.toHaveBeenCalled();
+      expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+
+      await wrapper.get('.codex-login__continue').trigger('click');
+      await flushPromises();
+      const repeatedWarning = new DOMWrapper(Array.from(document.querySelectorAll('.el-message-box')).at(-1)!);
+      await repeatedWarning.get('.app-button--tertiary').trigger('click');
+      await flushPromises();
+      expect(updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { providerOnboardingComplete: true } });
+      expect(wrapper.find('.github-onboarding').exists()).toBe(true);
+    } finally { ElMessageBox.close(); wrapper.unmount(); }
+  });
+
+  it.each([
+    { isolated: false, installed: true, connected: false },
+    { isolated: true, installed: true, connected: true },
+    { isolated: true, installed: false, connected: false },
+  ])('continues without a separate sign-in warning for $isolated/$installed/$connected', async setup => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [
+      { backend: 'codex', installed: true, connected: true, checking: false },
+      { backend: 'claude', installed: setup.installed, connected: setup.connected, checking: false },
+    ];
+    const updateSettings = vi.fn().mockResolvedValue(snapshot);
+    setElectronTestClient({
+      getProviderSetup: vi.fn().mockResolvedValue([
+        { backend: 'codex', installed: true, isolated: false, shareSkills: true, homePath: '/existing/codex', locked: false },
+        { backend: 'claude', ...setup, shareSkills: true, homePath: '/setup/claude', locked: false },
+      ]), updateSettings,
+    });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises();
+      await wrapper.get('.codex-login__continue').trigger('click');
+      await flushPromises();
+      expect(document.querySelector('.el-message-box')).toBeNull();
+      expect(updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { providerOnboardingComplete: true } });
+      expect(wrapper.find('.github-onboarding').exists()).toBe(true);
+    } finally { ElMessageBox.close(); wrapper.unmount(); }
+  });
+
+  it.each(['codex', 'claude'] as const)('continues with an existing %s login and offers direct GitHub access when gh is ready', async backend => {
+    const snapshot = createEmptySnapshot();
+    snapshot.providerConnections = [{ backend, installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', source: 'cli', accountLabel: 'alice' }];
+    const getCodexAuthentication = vi.fn();
+    const getClaudeAuthentication = vi.fn();
+    const startCodexChatGptLogin = vi.fn();
+    const connectWorkProvider = vi.fn();
+    const updateSettings = vi.fn().mockResolvedValue(snapshot);
+    setElectronTestClient({
+      getProviderSetup: vi.fn().mockResolvedValue([{ backend, installed: true, isolated: false, shareSkills: true, homePath: `/cli/${backend}`, locked: false }]),
+      getCodexAuthentication, getClaudeAuthentication, startCodexChatGptLogin, connectWorkProvider, updateSettings,
+    });
+    const wrapper = mountShell({ snapshot });
+    await flushPromises();
+    expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
+    await wrapper.get('.codex-login__continue').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('.github-onboarding').text()).toContain('authenticated GitHub CLI');
+    expect(updateSettings).toHaveBeenCalledWith({ general: { providerOnboardingComplete: true } });
+    expect(getCodexAuthentication).not.toHaveBeenCalled();
+    expect(getClaudeAuthentication).not.toHaveBeenCalled();
+    expect(startCodexChatGptLogin).not.toHaveBeenCalled();
+    expect(connectWorkProvider).not.toHaveBeenCalled();
+    await wrapper.get('.github-onboarding').findAll('button').find(button => button.text() === 'Use GitHub CLI')!.trigger('click');
+    expect(wrapper.find('.onboarding-complete').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it('opens handoff from the sidebar through shell navigation', async () => {
     const wrapper = mountShell({ realAgentSidebar: true });
     await flushPromises();
@@ -480,7 +584,7 @@ describe('AppShell authentication and conversation', () => {
     const dialog = wrapper.getComponent({ name: 'ProviderSetupDialog' });
     // Real controls own exclusive selection and the acknowledgment gate.
     expect(dialog.findAll('input[type="radio"]')).toHaveLength(2);
-    await dialog.findAll('input[type="radio"]')[1]!.setValue();
+    await dialog.get('input[type="radio"][value="false"]').setValue();
     await dialog.get('.app-button--primary').trigger('click');
     expect(configureProviderSetup).not.toHaveBeenCalled();
     await dialog.get('input[type="checkbox"]').setValue(true);
@@ -512,6 +616,9 @@ describe('AppShell authentication and conversation', () => {
       });
     window.app = {
       getCodexAuthentication,
+      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(backend => ({
+        backend, installed: true, isolated: false, shareSkills: true, homePath: `/existing/${backend}`, locked: false,
+      }))),
       setMenuBarVisible,
       startCodexChatGptLogin: vi.fn().mockResolvedValue(undefined),
       updateSettings: vi.fn().mockResolvedValue(snapshot),
@@ -643,7 +750,12 @@ describe('AppShell authentication and conversation', () => {
       .mockReturnValueOnce(new Promise(resolve => { finishClaudeCheck = resolve; }))
       .mockResolvedValue({ loggedIn: true, configDirectory: '/tmp/private-claude-home' });
     const updateSettings = vi.fn().mockResolvedValue(snapshot);
-    window.app = { getCodexAuthentication, getClaudeAuthentication, updateSettings } as Partial<AppApi> as AppApi;
+    window.app = {
+      getCodexAuthentication, getClaudeAuthentication, updateSettings,
+      getProviderSetup: vi.fn().mockResolvedValue((['codex', 'claude'] as const).map(backend => ({
+        backend, installed: true, isolated: backend === 'claude', shareSkills: true, homePath: `/app/${backend}-home`, locked: false,
+      }))),
+    } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeDefined();
@@ -835,7 +947,12 @@ describe('AppShell authentication and conversation', () => {
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected, enabled: false, checking: false }];
     const setProviderEnabled = vi.fn().mockResolvedValue([{ ...snapshot.providerConnections[0], enabled: true }]);
     const startCodexChatGptLogin = vi.fn().mockResolvedValue(undefined);
-    window.app = { setProviderEnabled, startCodexChatGptLogin, updateSettings: vi.fn().mockResolvedValue(snapshot) } as Partial<AppApi> as AppApi;
+    window.app = {
+      setProviderEnabled, startCodexChatGptLogin, updateSettings: vi.fn().mockResolvedValue(snapshot),
+      getProviderSetup: vi.fn().mockResolvedValue([
+        { backend: 'codex', installed: true, isolated: true, shareSkills: true, homePath: '/app/codex-home', locked: false },
+      ]),
+    } as Partial<AppApi> as AppApi;
     const wrapper = mountShell({ snapshot });
     await flushPromises();
 

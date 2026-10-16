@@ -96,6 +96,7 @@ const workProviders = createWorkProviderState({
 const {
   assignedItemsByProvider: assignedWorkItemsByProvider,
   authorization: workProviderAuthorization,
+  authorizations: workProviderAuthorizations,
   completeConnection: pollWorkProviderAuthorization,
   configure: configureWorkBacklog,
   connect: connectWorkProvider,
@@ -1691,6 +1692,7 @@ export function useAppState() {
     consumeMarkdownDisplayRequests,
     fileActivity,
     workProviderAuthorization,
+    workProviderAuthorizations,
     workRepositoriesByProvider,
     workItemsByRepository,
     assignedWorkItemsByProvider,

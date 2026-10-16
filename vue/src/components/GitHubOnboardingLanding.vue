@@ -22,7 +22,7 @@
             class="github-onboarding__skip-link"
             :underline="false"
             @click="emit('skip')"
-          >{{ t('auth.githubSkip') }}</el-link>
+          >{{ t(cliDetected ? 'auth.githubUseCli' : 'auth.githubSkip') }}</el-link>
         </div>
       </template>
 
@@ -34,6 +34,7 @@
             {{ t('auth.githubTitleDetailSecond') }}
           </span>
         </h1>
+        <p v-if="cliDetected" class="github-onboarding__description">{{ t('auth.githubCliDetected') }}</p>
         <div class="github-onboarding__actions">
           <el-button
             type="primary"
@@ -44,7 +45,7 @@
           <el-button
             size="large"
             @click="emit('skip')"
-          >{{ t('auth.githubSkip') }}</el-button>
+          >{{ t(cliDetected ? 'auth.githubUseCli' : 'auth.githubSkip') }}</el-button>
         </div>
       </template>
       <p v-if="error" class="github-onboarding__error" role="alert">{{ error }}</p>
@@ -61,10 +62,12 @@ import OnboardingLandingFrame from './OnboardingLandingFrame.vue';
 
 withDefaults(defineProps<{
   authorization?: WorkProviderAuthorization | null;
+  cliDetected?: boolean;
   busy?: boolean;
   error?: string | null;
 }>(), {
   authorization: null,
+  cliDetected: false,
   busy: false,
   error: null,
 });
@@ -92,6 +95,12 @@ const { t } = useI18n();
 
 .github-onboarding__title {
   max-width: 720px;
+}
+
+.github-onboarding__description {
+  margin: var(--space-12) 0 0;
+  color: var(--color-text-muted);
+  line-height: var(--line-height-20);
 }
 
 .github-onboarding__actions {

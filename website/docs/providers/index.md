@@ -14,7 +14,7 @@ Korus can run different coding engines in the same team. Each engine has its own
 
 ## Choose where each engine keeps its setup
 
-Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Once detected, select **Customize** beneath the engine before signing in. Later, open its Settings page and select **Customize** beside **Location**.
+Korus checks for an available runtime first. Installed Codex and Claude Code CLIs take precedence over their fallback runtimes. If an engine is missing, **Install** opens external instructions for Codex and Claude Code, or downloads the Antigravity runtime directly. The refresh icon rechecks detection. Codex and Claude Code reuse their existing setup by default. Select **Continue** when an engine is already connected, or **Customize** beneath it to choose a separate setup. Later, open its Settings page and select **Customize** beside **Location**.
 
 There are two choices under **Conversations**:
 
@@ -23,7 +23,7 @@ There are two choices under **Conversations**:
 | **Separate Korus chats** | Korus uses its own provider home. Sign in for that setup, even if the engine already works in your terminal. | **Reuse my existing skills** can share skills with that home. Other provider configuration remains separate. |
 | **Use existing setup** | Korus uses the provider home you already use outside Korus, including its sign-in and conversation storage. | Skills and configuration belong to that existing setup; changes can affect sessions outside Korus too. |
 
-For a new setup, the default is **Separate Korus chats**. Check **Reuse my existing skills** to choose whether skills are shared. You can choose differently for each engine. Check **Location** to see the setup retained for your engine.
+New Codex and Claude Code setups default to **Use existing setup**. **Separate Korus chats** uses its own sign-in; **Reuse my existing skills** controls skill sharing for that separate setup. Choose independently for each engine. Existing installations keep their saved choices; check **Location** to see the selected setup.
 
 A provider home is the folder where that engine keeps its account state, conversations, and user configuration. With the standard Korus installation, separate homes are:
 
@@ -70,6 +70,8 @@ Antigravity supports streaming conversations, history, approvals, interruption, 
 Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for remote teams and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 
 ## Connect GitHub or Linear
+
+Korus detects GitHub CLI (`gh`) authenticated to github.com on the workspace host. During onboarding, connect Korus directly for faster access or choose **Use GitHub CLI**. Settings shows **Using GitHub CLI** with a **Connect** button for direct authorization. Canceling or disconnecting a direct GitHub connection returns to authenticated CLI access when available. Existing direct connections keep their account. CLI access supports repository, issue, and pull-request workflows; hosted GitHub MCP tools require a direct connection.
 
 Coding engines and backlog integrations are separate choices. The selected engine runs the agent; GitHub or Linear supplies the work items.
 

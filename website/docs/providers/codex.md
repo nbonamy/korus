@@ -10,7 +10,7 @@ If Codex is not detected, use **Install** in Welcome or Settings to open the [of
 
 ## Choose a separate or existing setup
 
-Once Codex is detected, select **Customize** beneath it on the first connection screen. If you are already in the workspace, open **Settings → Codex → Location → Customize**.
+Korus defaults to your existing Codex setup and recognizes its sign-in. If Codex shows **Connected**, select **Continue**. To choose a separate setup, select **Customize** beneath it on the first connection screen. If you are already in the workspace, open **Settings → Codex → Location → Customize**.
 
 For a separate environment:
 
@@ -18,7 +18,7 @@ For a separate environment:
 2. Leave **Reuse my existing skills** checked to share your existing Codex skills and plugins, or uncheck it to manage them separately.
 3. Select **Save**.
 
-With the standard installation, Korus uses `~/.korus/codex-home`. Your normal Codex conversations and account configuration remain in their existing home. The separate setup requires its own sign-in; Korus does not copy your existing credentials.
+When you choose **Separate Korus chats**, Korus uses `~/.korus/codex-home` with the standard installation. Your normal Codex conversations and account configuration remain in their existing home. The separate setup requires its own sign-in; Korus does not copy your existing credentials.
 
 For your existing environment:
 

@@ -1,10 +1,12 @@
 import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
-import type { WorkProviderDeviceAuthorization, WorkProviderDriver } from './types';
+import type { WorkProviderCredential, WorkProviderDeviceAuthorization, WorkProviderDriver } from './types';
+import type { GitHubCliWorkProviderDriver } from './github-cli-driver';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
   drivers: WorkProviderDriver[];
+  githubCli?: GitHubCliWorkProviderDriver;
   getSnapshot: () => AppSnapshot;
   saveSnapshot: () => Promise<void>;
   tokenStore: WorkIntegrationTokenStore;
@@ -21,6 +23,7 @@ export class WorkIntegrationManager {
   private readonly generations = new Map<WorkProviderKind, number>();
   private readonly tokenWrites = new Map<WorkProviderKind, Promise<void>>();
   private readonly polls = new Map<WorkProviderKind, Promise<AppSnapshot>>();
+  private readonly disconnects = new Map<WorkProviderKind, number>();
 
   constructor(private readonly options: WorkIntegrationManagerOptions) {
     for (const driver of options.drivers) {
@@ -40,10 +43,11 @@ export class WorkIntegrationManager {
     ]);
 
     for (const provider of providers) {
+      if (this.disconnects.has(provider)) continue;
       const generation = this.generation(provider);
       const driver = this.driver(provider);
       const connection = this.snapshot().workBacklog.connections.find((candidate) => candidate.provider === provider);
-      const storedToken = await this.options.tokenStore.get(provider);
+      const storedToken = connection?.source === 'none' ? null : await this.options.tokenStore.get(provider);
       if (this.generation(provider) !== generation) continue;
       if (storedToken) {
         let token = storedToken;
@@ -59,6 +63,7 @@ export class WorkIntegrationManager {
         if (this.generation(provider) !== generation) continue;
         changed = this.setConnection({
           provider,
+          ...(connection?.source ? directConnectionSource(provider) : {}),
           status: 'connected',
           ...(token.accountLabel ? { accountLabel: token.accountLabel } : {}),
           connectedAt: token.connectedAt,
@@ -67,6 +72,21 @@ export class WorkIntegrationManager {
       }
 
       if (this.generation(provider) !== generation) continue;
+
+      if (provider === 'github' && this.options.githubCli && connection?.source !== 'api'
+        && (connection?.source === 'cli' || !connection?.accountLabel && !connection?.connectedAt)) {
+        const cli = await this.options.githubCli.detectConnection();
+        if (this.generation(provider) !== generation) continue;
+        if (cli) {
+          changed = this.setConnection({ provider, source: 'cli', status: 'connected', accountLabel: cli.accountLabel,
+            connectedAt: connection?.source === 'cli' && connection.accountLabel === cli.accountLabel ? connection.connectedAt ?? cli.connectedAt : cli.connectedAt }) || changed;
+          continue;
+        }
+        if (connection?.source === 'cli') {
+          changed = this.setConnection({ provider, source: 'cli', status: 'disconnected' }) || changed;
+          continue;
+        }
+      }
 
       if (!driver.configured()) {
         changed = this.setConnection({
@@ -103,25 +123,29 @@ export class WorkIntegrationManager {
   }
 
   async findPullRequest(repositoryId: string, branch: string): Promise<AgentGitPullRequest | null> {
-    const driver = this.driver('github');
+    const token = await this.connectedCredential('github');
+    const driver = this.driver('github', token);
     if (!driver.findPullRequest) return null;
-    return driver.findPullRequest(await this.connectedToken('github'), repositoryId, branch);
+    return driver.findPullRequest(token, repositoryId, branch);
   }
 
   async getPullRequest(repositoryId: string, number: number): Promise<AgentGitPullRequest | null> {
-    const driver = this.driver('github');
+    const token = await this.connectedCredential('github');
+    const driver = this.driver('github', token);
     if (!driver.getPullRequest) return null;
-    return driver.getPullRequest(await this.connectedToken('github'), repositoryId, number);
+    return driver.getPullRequest(token, repositoryId, number);
   }
 
   async createPullRequest(repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest> {
-    const driver = this.driver('github');
+    const token = await this.connectedCredential('github');
+    const driver = this.driver('github', token);
     if (!driver.createPullRequest) throw new Error('GitHub pull request creation is unavailable.');
-    return driver.createPullRequest(await this.connectedToken('github'), repositoryId, input);
+    return driver.createPullRequest(token, repositoryId, input);
   }
 
   async githubConnected(): Promise<boolean> {
-    return Boolean(await this.options.tokenStore.get('github'));
+    if (this.connection('github')?.source === 'none') return false;
+    return this.connection('github')?.source === 'cli' && this.isConnected('github') || Boolean(await this.options.tokenStore.get('github'));
   }
 
   isConnected(provider: WorkProviderKind): boolean {
@@ -130,10 +154,15 @@ export class WorkIntegrationManager {
     );
   }
 
+  isHostedMcpConnected(provider: WorkProviderKind): boolean {
+    return this.isConnected(provider) && this.connection(provider)?.source !== 'cli';
+  }
+
   async authorizationHeader(
     provider: WorkProviderKind,
     options: { forceRefresh?: boolean } = {},
   ): Promise<string> {
+    if (this.connection(provider)?.source === 'cli') throw new Error(`${providerLabel(provider)} API authorization is not connected.`);
     const token = await this.connectedToken(provider, options.forceRefresh === true);
     return `${token.tokenType || 'Bearer'} ${token.accessToken}`;
   }
@@ -141,11 +170,13 @@ export class WorkIntegrationManager {
   async connect(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
     const driver = this.driver(provider);
     const generation = this.invalidate(provider);
+    this.setConnection({ provider, ...directConnectionSource(provider), status: 'connecting' });
     await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
     if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
     if (!await this.options.tokenStore.canStoreTokens()) {
       this.setConnection({
         provider,
+        ...directConnectionSource(provider),
         status: 'error',
         detail: { key: 'workProvider.tokenStorageUnavailable' },
       });
@@ -156,6 +187,7 @@ export class WorkIntegrationManager {
     if (!driver.configured()) {
       this.setConnection({
         provider,
+        ...directConnectionSource(provider),
         status: 'notConfigured',
         detail: this.configurationDetail(provider),
       });
@@ -168,7 +200,7 @@ export class WorkIntegrationManager {
       authorization = await driver.startAuthorization();
     } catch (error) {
       if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
-      this.setConnection({ provider, status: 'error', detail: error instanceof Error ? error.message : 'Could not start authorization.' });
+      this.setConnection({ provider, ...directConnectionSource(provider), status: 'error', detail: error instanceof Error ? error.message : 'Could not start authorization.' });
       await this.options.saveSnapshot();
       return { snapshot: this.snapshot() };
     }
@@ -179,6 +211,7 @@ export class WorkIntegrationManager {
     });
     this.setConnection({
       provider,
+      ...directConnectionSource(provider),
       status: 'connecting',
       detail: authorization.flow === 'browser'
         ? { key: 'workProvider.authorizationPending', params: { provider: providerLabel(provider) } }
@@ -214,6 +247,7 @@ export class WorkIntegrationManager {
     if (waitMs > 0) {
       this.setConnection({
         provider,
+        ...directConnectionSource(provider),
         status: 'connecting',
         detail: { key: 'workProvider.authorizationWaiting', params: { seconds: Math.ceil(waitMs / 1000) } },
       });
@@ -230,6 +264,7 @@ export class WorkIntegrationManager {
       }
       this.setConnection({
         provider,
+        ...directConnectionSource(provider),
         status: 'connecting',
         detail: { key: 'workProvider.authorizationPending', params: { provider: providerLabel(provider) } },
       });
@@ -242,6 +277,7 @@ export class WorkIntegrationManager {
       this.driver(provider).cancelAuthorization?.();
       this.setConnection({
         provider,
+        ...directConnectionSource(provider),
         status: result.code === 'not_configured' ? 'notConfigured' : 'error',
         detail: workProviderAuthorizationError(result.code, providerLabel(provider)),
       });
@@ -264,7 +300,7 @@ export class WorkIntegrationManager {
       if (this.generation(provider) !== generation) return this.snapshot();
       this.pendingAuthorizations.delete(provider);
       this.driver(provider).cancelAuthorization?.();
-      this.setConnection({ provider, status: 'error', detail: workProviderAuthorizationError('unavailable', providerLabel(provider)) });
+      this.setConnection({ provider, ...directConnectionSource(provider), status: 'error', detail: workProviderAuthorizationError('unavailable', providerLabel(provider)) });
       await this.options.saveSnapshot();
       return this.snapshot();
     }
@@ -273,6 +309,7 @@ export class WorkIntegrationManager {
     this.driver(provider).cancelAuthorization?.();
     this.setConnection({
       provider,
+      ...directConnectionSource(provider),
       status: 'connected',
       accountLabel,
       connectedAt: token.connectedAt,
@@ -284,26 +321,37 @@ export class WorkIntegrationManager {
 
   async disconnect(provider: WorkProviderKind): Promise<AppSnapshot> {
     const generation = this.invalidate(provider);
-    await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
-    if (this.generation(provider) !== generation) return this.snapshot();
-    delete this.snapshot().workBacklog.providerConfigurations[provider];
-    this.setConnection({
-      provider,
-      status: this.driver(provider).configured() ? 'disconnected' : 'notConfigured',
-    });
-    await this.options.saveSnapshot();
-    return this.snapshot();
+    this.disconnects.set(provider, generation);
+    try {
+      const source = provider === 'github' ? { source: 'none' as const } : {};
+      this.setConnection({ provider, ...source, status: 'disconnected' });
+      await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
+      if (this.generation(provider) !== generation) return this.snapshot();
+      delete this.snapshot().workBacklog.providerConfigurations[provider];
+      const cli = provider === 'github' ? await this.options.githubCli?.detectConnection() : null;
+      if (this.generation(provider) !== generation) return this.snapshot();
+      if (cli) {
+        this.setConnection({ provider, source: 'cli', status: 'connected', accountLabel: cli.accountLabel, connectedAt: cli.connectedAt });
+      } else {
+        this.setConnection({ provider, ...source, status: this.driver(provider).configured() ? 'disconnected' : 'notConfigured' });
+      }
+      await this.options.saveSnapshot();
+      return this.snapshot();
+    } finally {
+      if (this.disconnects.get(provider) === generation) this.disconnects.delete(provider);
+    }
   }
 
   async listBranches(provider: WorkProviderKind, repositoryId: string): Promise<SourceBranch[]> {
-    const driver = this.driver(provider);
+    const token = await this.connectedCredential(provider);
+    const driver = this.driver(provider, token);
     if (!driver.listBranches) throw new Error('Branch browsing is unavailable for this integration.');
-    return driver.listBranches(await this.connectedToken(provider), repositoryId);
+    return driver.listBranches(token, repositoryId);
   }
 
   async listSources(provider: WorkProviderKind): Promise<WorkSource[]> {
-    const token = await this.connectedToken(provider);
-    return this.driver(provider).listSources(token);
+    const token = await this.connectedCredential(provider);
+    return this.driver(provider, token).listSources(token);
   }
 
   async configureBacklog(input: WorkBacklogConfigurationInput): Promise<AppSnapshot> {
@@ -326,22 +374,22 @@ export class WorkIntegrationManager {
   }
 
   async listItems(provider: WorkProviderKind, repositoryId: string, query?: WorkItemQuery): Promise<WorkItem[]> {
-    const token = await this.connectedToken(provider);
+    const token = await this.connectedCredential(provider);
     return query
-      ? this.driver(provider).listItems(token, repositoryId, query)
-      : this.driver(provider).listItems(token, repositoryId);
+      ? this.driver(provider, token).listItems(token, repositoryId, query)
+      : this.driver(provider, token).listItems(token, repositoryId);
   }
 
   async listGlobalItems(provider: WorkProviderKind, query?: GlobalWorkItemQuery): Promise<WorkItemPage> {
-    const token = await this.connectedToken(provider);
+    const token = await this.connectedCredential(provider);
     return query
-      ? this.driver(provider).listGlobalItems(token, query)
-      : this.driver(provider).listGlobalItems(token);
+      ? this.driver(provider, token).listGlobalItems(token, query)
+      : this.driver(provider, token).listGlobalItems(token);
   }
 
   async listAssignedItems(provider: WorkProviderKind): Promise<WorkItem[]> {
-    const token = await this.connectedToken(provider);
-    const driver = this.driver(provider);
+    const token = await this.connectedCredential(provider);
+    const driver = this.driver(provider, token);
     if (!driver.listAssignedItems) throw new Error(`${providerLabel(provider)} cannot list assigned work across repositories.`);
     return driver.listAssignedItems(token);
   }
@@ -362,7 +410,20 @@ export class WorkIntegrationManager {
     return null;
   }
 
+  private connection(provider: WorkProviderKind): WorkIntegrationConnection | undefined {
+    return this.snapshot().workBacklog.connections.find(connection => connection.provider === provider);
+  }
+
+  private async connectedCredential(provider: WorkProviderKind): Promise<WorkProviderCredential> {
+    const connection = this.connection(provider);
+    if (provider === 'github' && connection?.source === 'cli' && connection.status === 'connected' && connection.accountLabel && this.options.githubCli) {
+      return { kind: 'cli', provider, accountLabel: connection.accountLabel, connectedAt: connection.connectedAt ?? '' };
+    }
+    return this.connectedToken(provider);
+  }
+
   private async connectedToken(provider: WorkProviderKind, forceRefresh = false): Promise<WorkProviderToken> {
+    if (this.connection(provider)?.source === 'none') throw new Error(`${providerLabel(provider)} is not connected.`);
     const generation = this.generation(provider);
     const token = await this.options.tokenStore.get(provider);
     if (this.generation(provider) !== generation) throw new Error('Authorization was cancelled.');
@@ -425,6 +486,7 @@ export class WorkIntegrationManager {
     if (this.generation(provider) !== generation) return;
     this.setConnection({
       provider,
+      ...directConnectionSource(provider),
       status: 'disconnected',
       detail: { key: 'workProvider.authorizationExpired', params: { provider: providerLabel(provider) } },
     });
@@ -455,7 +517,8 @@ export class WorkIntegrationManager {
     return workProviderDefinition(provider).configurationDetail;
   }
 
-  private driver(provider: WorkProviderKind): WorkProviderDriver {
+  private driver(provider: WorkProviderKind, credential?: WorkProviderCredential): WorkProviderDriver {
+    if (credential && 'kind' in credential && this.options.githubCli) return this.options.githubCli;
     const driver = this.drivers.get(provider);
     if (!driver) {
       throw new Error(`Unsupported work provider: ${provider}`);
@@ -476,6 +539,8 @@ export class WorkIntegrationManager {
     }
 
     const previous = snapshot.workBacklog.connections[index];
+    // Status refreshes must not erase an explicit source or disconnect preference.
+    if (connection.source === undefined && previous?.source) connection = { ...connection, source: previous.source };
     if (previous && JSON.stringify(previous) === JSON.stringify(connection)) {
       return false;
     }
@@ -512,6 +577,10 @@ function publicAuthorization(authorization: WorkProviderDeviceAuthorization): Wo
     verificationUri: authorization.verificationUri,
     expiresAt: authorization.expiresAt,
   };
+}
+
+function directConnectionSource(provider: WorkProviderKind): { source?: 'api' } {
+  return provider === 'github' ? { source: 'api' } : {};
 }
 
 function providerLabel(provider: WorkProviderKind): string {

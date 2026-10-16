@@ -16,16 +16,20 @@
           </div>
         </div>
         <div class="settings-integrations-panel__actions">
-          <template v-if="connection.status === 'connected'">
-            <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>
-            <el-button size="small" :aria-label="actionLabel('disconnect', connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
+          <template v-if="connection.provider === 'github' && connection.source === 'cli' && connection.status === 'connected'">
+            <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingGitHubCli') }}</StatusPill>
+            <el-button size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
-          <el-button v-else-if="connection.status === 'connecting'" size="small" :aria-label="actionLabel('cancel', connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('linearIntegration.cancel') }}</el-button>
-          <el-button v-else size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="status === 'loading'" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
+          <template v-else-if="connection.status === 'connected'">
+            <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>
+            <el-button size="small" :aria-label="actionLabel('disconnect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
+          </template>
+          <el-button v-else-if="connection.status === 'connecting'" size="small" :aria-label="actionLabel('cancel', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('linearIntegration.cancel') }}</el-button>
+          <el-button v-else size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
         </div>
       </article>
-      <div v-if="authorization?.provider === connection.provider && authorization.userCode && connection.status === 'connecting'" class="settings-integrations-panel__authorization">
-        <WorkAuthorizationSteps :authorization="authorization" @open="emit('open-authorization', connection.provider)" />
+      <div v-if="pendingAuthorization(connection.provider)?.userCode && connection.status === 'connecting'" class="settings-integrations-panel__authorization">
+        <WorkAuthorizationSteps :authorization="pendingAuthorization(connection.provider)!" @open="emit('open-authorization', connection.provider)" />
       </div>
     </FormSection>
     <p v-if="error" class="settings-integrations-panel__detail">{{ error }}</p>
@@ -47,10 +51,11 @@ import FormSection from '../shared/form/FormSection.vue';
 
 const props = withDefaults(defineProps<{
   authorization?: WorkProviderAuthorization | null;
+  authorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
+  busyProviders?: WorkProviderKind[];
   connections: WorkIntegrationConnection[];
   error?: string | null;
-  status?: 'notLoaded' | 'loading' | 'loaded' | 'error';
-}>(), { authorization: null, error: null, status: 'notLoaded' });
+}>(), { authorization: null, authorizations: () => ({}), busyProviders: () => [], error: null });
 const emit = defineEmits<{
   connect: [provider: WorkProviderKind];
   disconnect: [provider: WorkProviderKind];
@@ -58,6 +63,8 @@ const emit = defineEmits<{
 }>();
 const providerIcons: Partial<Record<WorkProviderKind, Component>> = { github: GitHubIcon, linear: LinearIcon };
 const integrations = computed(() => workProviderKinds.map(provider => props.connections.find(connection => connection.provider === provider) ?? { provider, status: 'notConfigured' } as WorkIntegrationConnection));
+const pendingAuthorization = (provider: WorkProviderKind) => props.authorizations[provider]
+  ?? (props.authorization?.provider === provider ? props.authorization : null);
 function description(connection: WorkIntegrationConnection): string {
   if (connection.status === 'connected') return connection.accountLabel
     ? translate('linearIntegration.signedInAs', { account: connection.accountLabel })

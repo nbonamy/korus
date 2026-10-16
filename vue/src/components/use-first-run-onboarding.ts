@@ -1,6 +1,8 @@
 import type { AgentBackend, ClaudeAuthentication, CodexAuthentication, AppApi } from '@workspace/core/contracts';
 import type { ProviderConnection, ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import { computed, onScopeDispose, ref, watch } from 'vue';
+import { ElMessageBox } from 'element-plus';
+import { backendDisplayName } from '@workspace/core/backend-driver';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
 import { clearFirstRunOnboardingStage, getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../onboarding-session';
@@ -240,6 +242,33 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     continuing.value = true;
     authenticationError.value = null;
     try {
+      const unsignedSeparateSetups = providerSetup.value.filter(setup => setup.isolated && setup.installed
+        && !options.getConnections().some(connection => connection.backend === setup.backend && connection.connected));
+      if (unsignedSeparateSetups.length) {
+        try {
+          await ElMessageBox.confirm(
+            translate('auth.separateSignInWarning', {
+              providers: unsignedSeparateSetups.map(setup => backendDisplayName(setup.backend)).join(', '),
+              count: unsignedSeparateSetups.length,
+            }),
+            translate('auth.separateSignInTitle'),
+            {
+              type: 'warning',
+              confirmButtonText: translate('auth.reviewSetup'),
+              cancelButtonText: translate('auth.continue'),
+              confirmButtonClass: 'app-button app-button--primary',
+              cancelButtonClass: 'app-button app-button--tertiary',
+              distinguishCancelAndClose: true,
+              closeOnClickModal: false,
+              showClose: false,
+            },
+          );
+          return;
+        } catch (action) {
+          if (action !== 'cancel') return;
+        }
+      }
+      if (disposed || !canContinue.value) return;
       if (authentication.value?.login.status === 'pending') {
         await cancelChatGptLogin();
         if (authenticationError.value) return;
