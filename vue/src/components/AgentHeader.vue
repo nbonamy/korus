@@ -19,6 +19,7 @@
         class="agent-header__avatar"
         :avatar="repositoryIcon"
         :name="displayName"
+        shape="square"
         size="sm"
       />
       <div class="agent-header__agent-line">

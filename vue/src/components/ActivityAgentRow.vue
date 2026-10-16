@@ -1,7 +1,7 @@
 <template>
   <button class="agent-sidebar__activity-agent" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
     <span v-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
-      <AgentAvatar :avatar="repositoryIcon" :name="context ?? ''" />
+      <AgentAvatar :avatar="repositoryIcon" :name="context ?? ''" shape="square" />
     </span>
     <component :is="icon" v-else class="agent-sidebar__session-icon" aria-hidden="true" />
     <span class="agent-sidebar__meta">

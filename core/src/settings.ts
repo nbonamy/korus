@@ -224,7 +224,8 @@ function normalizeRepositoryIcons(value: unknown): Record<string, string> {
     const rawKey = repositoryRoot.trim();
     const root = repositoryIconKeyForRemote(rawKey) ?? rawKey;
     const icon = typeof iconValue === 'string' ? iconValue.trim() : '';
-    if (!root || root.length > 4_096 || !icon || icon.length > 64) continue;
+    const image = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(icon);
+    if (!root || root.length > 4_096 || !icon || icon.length > (image ? 131_072 : 64)) continue;
     icons[root] = icon;
     if (Object.keys(icons).length >= 200) break;
   }

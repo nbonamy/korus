@@ -5,6 +5,7 @@
     :choose-image-aria-label="t('repositories.icon.chooseImage')"
     :choose-image-label="t('repositories.icon.chooseImageAction')"
     :crop-title="t('repositories.icon.cropTitle')"
+    crop-shape="square"
     :custom-apply-aria-label="t('repositories.icon.customApply')"
     :custom-character-aria-label="t('repositories.icon.customCharacter')"
     :dialog-label="t('repositories.icon.dialog', { repository: label })"

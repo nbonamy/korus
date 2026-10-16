@@ -17,6 +17,7 @@
         v-if="repositoryIcon"
         :avatar="repositoryIcon"
         :name="displayName"
+        shape="square"
         size="lg"
       />
       <FolderRootIcon
