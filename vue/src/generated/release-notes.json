@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.36.1",
+  "currentVersion": "0.36.2",
   "releases": [
+    {
+      "version": "0.36.2",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "0b9ba1f51a8d16cce91682468ddfd5e754c70bf9a9f9ca06b9038615a4ff2dcc",
+      "markdown": "### Improvements\n\n- Sort Idle agents in Activity view by repository order or recent activity.\n  Each team remembers its choice, and agents animate into the new order."
+    },
     {
       "version": "0.36.1",
       "releasedAt": "2026-10-16",

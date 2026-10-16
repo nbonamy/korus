@@ -1,6 +1,6 @@
 {
   "name": "@workspace/mobile",
-  "version": "0.36.1",
+  "version": "0.36.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,8 +27,8 @@
     "@libp2p/utils": "7.4.2",
     "@libp2p/websockets": "10.1.22",
     "@multiformats/multiaddr": "13.0.3",
-    "@workspace/core": "0.36.1",
-    "@workspace/vue": "0.36.1",
+    "@workspace/core": "0.36.2",
+    "@workspace/vue": "0.36.2",
     "element-plus": "^2.13.6",
     "libp2p": "3.3.12",
     "multiformats": "14.0.5",

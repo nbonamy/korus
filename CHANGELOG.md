@@ -4,6 +4,13 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.36.2] - 2026-10-16
+
+### Improvements
+
+- Sort Idle agents in Activity view by repository order or recent activity.
+  Each team remembers its choice, and agents animate into the new order.
+
 ## [0.36.1] - 2026-10-16
 
 ### New features
