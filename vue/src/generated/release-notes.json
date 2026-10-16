@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.36.2",
+  "currentVersion": "0.36.3",
   "releases": [
+    {
+      "version": "0.36.3",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "f29710548ae2bf30e9eb16c3045c1497ddc643177b66609e0fa150fc7afcb828",
+      "markdown": "### New features\n\n- Choose the provider, model, and reasoning effort when launching backlog work.\n  Start an individual ticket directly from its play button, and follow worktree\n  creation progress for single or multiple agents.\n\n### Improvements and fixes\n\n- Activity view shortcuts follow the visible agent order. Hold Command to show\n  shortcut numbers in place of other indicators. Needs input, Done, and Working\n  sections put the longest-waiting agents first.\n- Ticket details stay vertically centered at a fixed viewport-relative height,\n  with a pinned header and scrollable description.\n- New Mission workers inherit the main Mission agent's provider, model,\n  reasoning effort, and speed setting. Same-provider delegated helpers also\n  preserve the creator's speed setting."
+    },
     {
       "version": "0.36.2",
       "releasedAt": "2026-10-16",
