@@ -7,7 +7,7 @@ import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { CompanionSubscription } from './subscription';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AgentBackend, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
+import type { AgentBackend, AgentGitDiff, AgentGitDiffTarget, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
@@ -66,6 +66,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
@@ -144,6 +145,23 @@ function currentReset(frame: CompanionReset, current: CompanionAgent, target: Co
 }
 /** Every operation a phone may call on an agent; none can bypass the dispatcher's target and grant checks. */
 const agentOperations = {
+  'agent.git.diff': agentOperation(withTarget(z.object({ scope: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('unstaged') }).strict(), z.object({ type: z.literal('staged') }).strict(),
+    z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(1024) }).strict(),
+    z.object({ type: z.literal('commit'), sha: z.string().regex(/^[a-f0-9]{40,64}$/i) }).strict(),
+    z.object({ type: z.literal('turn'), turnId: identity }).strict(),
+  ]) }).strict()))({
+    check: (agent, { scope }, workspace) => {
+      const status = workspace.gitStatuses?.[agent.id];
+      if ((scope.type === 'branch' && scope.baseRef !== status?.diffCatalog?.branch?.baseRef)
+        || (scope.type === 'commit' && !status?.diffCatalog?.commits.some(commit => commit.sha === scope.sha))
+        || (scope.type === 'turn' && scope.turnId !== status?.lastTurn?.turnId)) throw new Error('Git scope is unavailable.');
+    },
+    act: async (port, agent, { scope }) => {
+      if (!port.gitDiff) throw new Error('Git changes unavailable.');
+      return port.gitDiff(agent.id, scope);
+    }, read: {},
+  }),
   'agent.queuedPrompt.steer': queuedPromptOperation('steer'),
   'agent.queuedPrompt.delete': queuedPromptOperation('delete'),
   'conversation.image.read': agentOperation(withTarget(z.object({ path: z.string().min(1).max(4096) }).strict()))({

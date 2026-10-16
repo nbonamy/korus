@@ -83,6 +83,9 @@ content, capped at ten transfers per second during streaming (the provider repli
 has already applied every event), and changes around it (agent status, names, history, engine
 choice) travel as a small context message that never resends the transcript.
 Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+Git changes use a separate bundled web view with the shared desktop diff renderer.
+Native controls own its scope and presentation; patches cross a separate, on-demand
+bridge event rather than repeating in workspace or conversation state.
 The native side routes on an event type without parsing the transcript payload, hands
 the page one message at a time, and replaces anything that piled up with the newest.
 Unread activity belongs to the owning daemon and persists with each agent. Clients

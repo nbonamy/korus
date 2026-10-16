@@ -3,6 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       title:'Analytics',refresh:'Refresh',notAvailable:'N/A',from:'From',to:'To',provider:'Provider',model:'Model',teamId:'Team',repository:'Repository',agentId:'Agent',
       clear:'Clear',clearConfirm:'Clear',clearing:'Clearing…',clearTitle:'Clear statistics?',clearConfirmation:'All recorded statistics will be deleted.',clearError:'Could not clear statistics. Try again.',

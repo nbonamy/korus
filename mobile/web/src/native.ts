@@ -3,6 +3,7 @@ type Handler = { postMessage(message: unknown): Promise<unknown> | void };
 declare global {
   interface Window {
     webkit?: { messageHandlers: Record<string, Handler | undefined> };
+    companionChanges?: { setDiff(json: string): void };
     companionEngine?: { dispatch(command: string): Promise<void>; start(): Promise<void> };
     companionTranscript?: { setConversation(json: string): Promise<{ agentId: string; revision: number } | null>; setContext(json: string): Promise<{ agentId: string; revision: number } | null>; setContent(json: string): void; setImage(json: string): void; setInsets(top: number, bottom: number): void };
   }

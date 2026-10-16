@@ -18,6 +18,7 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 export type EngineState = {
+  git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
   queuedPromptFailed: boolean;
@@ -72,6 +73,7 @@ export type EngineState = {
 };
 
 export type EngineEvent =
+  | { type: 'gitDiff'; diff: string }
   | { type: 'conversationImage'; requestId: string; agentId: string; dataUrl?: string; error?: string }
   | { type: 'notification'; notification: CompanionNotification }
   | { type: 'notificationOpenFailed' }
@@ -92,6 +94,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
   | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories' } | { type: 'dismissProjectRepositories' }
@@ -198,6 +201,9 @@ export function createEngine(port: EnginePort) {
     pendingNotification = null;
     await dispatch({ type: 'openNotification', target });
   }
+  const stopGitDiff = watch(state.git.result, result => {
+    if (!disposed) port.post({ type: 'gitDiff', diff: result?.diff ?? '' });
+  }, { flush: 'post' });
   const stopNotificationReconnect = watch(state.status, status => {
     if (status === 'connected') void openPendingNotification();
   }, { flush: 'post' });
@@ -213,6 +219,7 @@ export function createEngine(port: EnginePort) {
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
+      git: state.git.view.value,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
@@ -407,6 +414,8 @@ export function createEngine(port: EnginePort) {
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
       case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
       case 'loadUsage': return state.loadUsage();
+      case 'loadChanges': return state.git.load(command.scopeId);
+      case 'dismissChanges': return state.git.clear();
       case 'read': {
         if (!foreground || command.agentId !== state.agentId.value || !state.conversationReady.value || command.generation !== state.conversationGeneration.value) return;
         const read = state.agent.value?.readState;
@@ -523,5 +532,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

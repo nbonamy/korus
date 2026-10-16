@@ -16,6 +16,21 @@ const teams = [{ id: 'team', name: 'Korus', agentIds: [] }];
 const sidebar = (projected: ReturnType<typeof projectCompanionWorkspace>) => projectWorkspaceSidebar({ agents: projected.agents, activeAgentId: null, quickChatsLabel: 'Chats' });
 
 describe('companion workspace projection', () => {
+  it('shares Git counts and desktop scopes without host paths or eager diff contents', () => {
+    const summary = { changedFiles: 2, addedLines: 7, removedLines: 3 };
+    const catalog = { defaultTarget: { type: 'uncommitted' as const }, uncommitted: summary, staged: summary,
+      unstaged: summary, branch: { ...summary, baseRef: 'origin/main' }, commits: [{ ...summary, sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'A commit' }] };
+    const source = companionWorkspaceOf({ teams, agents: [git('a', '/Users/me/work', 'feature')], general: {} as AppSnapshot['general'],
+      agentGitStatuses: { a: { folder: '/Users/me/work', repository: '/Users/me', branch: 'feature', ahead: 1, behind: 0,
+        ...summary, hasUntracked: true, state: 'dirty', diffCatalog: catalog, updatedAt: now, error: '/Users/me/private' } },
+      turnGitDiffs: { turn: { agentId: 'a', turnId: 'turn', addedLines: 4, removedLines: 1, diff: 'private patch', updatedAt: now } },
+    });
+    const wire = projectCompanionWorkspace(source);
+    expect(wire.gitStatuses).toStrictEqual({ a: { branch: 'feature', state: 'dirty', ...summary, diffCatalog: catalog,
+      lastTurn: { turnId: 'turn', addedLines: 4, removedLines: 1 } } });
+    expect(JSON.stringify(wire.gitStatuses)).not.toContain('/Users/me');
+    expect(JSON.stringify(wire.gitStatuses)).not.toContain('private patch');
+  });
   it('shares queued text for visible agents without prompt options or attachment paths', () => {
     const workspace = companionWorkspaceOf({ teams, agents: [agent('keep', {}), agent('worker', {})], general: {} as AppSnapshot['general'],
       queuedPrompts: ['keep', 'worker', 'missing'].map(agentId => ({ id: agentId, agentId, text: 'Follow up', createdAt: now, options: { attachments: [{ type: 'file' as const, name: 'note.txt', path: '/private/note.txt' }] } })),

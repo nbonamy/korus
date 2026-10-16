@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AgentBackendDriver } from '@workspace/core/backend-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/events';
@@ -76,6 +77,30 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
 }
 
 describe('mobile requests across the owning daemon', () => {
+  it('reads real workspace Git status and patches through the paired, read-only gateway', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-git-'));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' });
+    git('init', '--initial-branch=main');
+    await writeFile(path.join(directory, 'tracked.txt'), 'before\n'); git('add', 'tracked.txt');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-m', 'seed');
+    await writeFile(path.join(directory, 'tracked.txt'), 'after\n');
+    await writeFile(path.join(directory, 'new.txt'), 'new\n');
+    const sdk = codexSdkFixture();
+    const f = await fixture(sdk.driver, { ...sdkAgent(), teamId: 'team-test', folder: directory, workspace: undefined });
+    let wire = await f.workspace();
+    await f.gateway.request('phone', 'conversation.subscribe', companionTarget(f.hostId, wire.teams[0]!, wire.agents[0]!));
+    await vi.waitFor(async () => {
+      wire = await f.workspace();
+      expect(wire.gitStatuses?.[wire.agents[0]!.id]).toMatchObject({ state: 'dirty', changedFiles: 2, addedLines: 2, removedLines: 1 });
+    });
+    const target = companionTarget(f.hostId, wire.teams[0]!, wire.agents[0]!);
+    const diff = await f.gateway.request('phone', 'agent.git.diff', { target, scope: { type: 'uncommitted' } }) as import('@workspace/core/contracts').AgentGitDiff;
+    expect(diff.summary).toStrictEqual({ changedFiles: 2, addedLines: 2, removedLines: 1 });
+    expect(diff.diff).toContain('+after'); expect(diff.diff).toContain('+new');
+    expect(JSON.stringify(wire.gitStatuses)).not.toContain(directory);
+    expect(git('status', '--porcelain').toString()).toContain('?? new.txt');
+  });
   it.each([
     { clientId: 'desktop', focused: true, expectedPush: false, method: backendMethods.agentPromptSend },
     { clientId: 'desktop', focused: false, expectedPush: true, method: backendMethods.agentPromptSend },
