@@ -53,12 +53,33 @@
           /></label>
         </div>
       </el-popover>
-      <div id="usage-provider" class="usage-provider">
+      <el-select
+        id="usage-provider"
+        class="usage-provider"
+        :model-value="filter.provider"
+        :aria-label="$t('analytics.provider')"
+        @update:model-value="emit('update:provider', $event)"
+      >
+        <el-option
+          v-for="option in providerOptions"
+          :key="option.value"
+          :value="option.value"
+          :label="option.label"
+        >
+          <span class="usage-provider-option"
+            ><i
+              v-if="option.color"
+              :style="{ background: option.color }"
+            />{{ option.label }}</span
+          >
+        </el-option>
+      </el-select>
+      <div v-if="view === 'usage'" id="usage-grouping">
         <UsageToggle
-          :model-value="filter.provider"
-          :options="providerOptions"
-          :label="$t('analytics.provider')"
-          @update:model-value="emit('update:provider', $event)"
+          :model-value="grouping"
+          :options="groupingOptions()"
+          :label="$t('analytics.groupBy')"
+          @update:model-value="emit('update:grouping', $event)"
         />
       </div>
     </div>
@@ -69,15 +90,18 @@ import { computed } from "vue";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
 import UsageToggle from "./UsageToggle.vue";
+import { groupingOptions, type UsageGrouping } from "./usage-chart";
 import type { UsageView } from "./use-usage-analytics";
 defineProps<{
   view: UsageView;
+  grouping: UsageGrouping;
   filter: { from: string; to: string; provider: string };
   selectedPeriod: number | null;
   dateLabel: string;
 }>();
 const emit = defineEmits<{
   "update:view": [view: UsageView];
+  "update:grouping": [grouping: UsageGrouping];
   "update:provider": [provider: string];
   range: [days: number];
   date: [key: "from" | "to", value: string];
@@ -91,7 +115,9 @@ const tabs = computed(() => [
   { name: "usage" as const, label: translate("analytics.usageOverview") },
   { name: "performance" as const, label: translate("analytics.performance") },
 ]);
-const providerOptions = computed(() => [
+const providerOptions = computed<
+  { value: string; label: string; color?: string }[]
+>(() => [
   { value: "", label: translate("analytics.allProviders") },
   ...providers.map(([value, slot]) => ({
     value: value as string,
@@ -148,7 +174,17 @@ const providerOptions = computed(() => [
   white-space: nowrap;
 }
 .usage-provider {
-  display: flex;
+  width: 160px;
+}
+.usage-provider-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.usage-provider-option i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
 }
 .usage-date-fields {
   display: flex;

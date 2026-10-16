@@ -1,9 +1,10 @@
 <template>
   <UsageCard as="article" class="usage-stat">
     <span class="usage-stat__label">{{ label }}</span>
-    <strong v-if="value !== undefined" class="usage-stat__value">{{
-      value
-    }}</strong>
+    <div v-if="value !== undefined" class="usage-stat__figure">
+      <strong class="usage-stat__value">{{ value }}</strong>
+      <span v-if="unit" class="usage-stat__unit">{{ unit }}</span>
+    </div>
     <UsageSparkline
       v-if="spark"
       class="usage-stat__spark"
@@ -19,6 +20,7 @@ import UsageSparkline from "./UsageSparkline.vue";
 defineProps<{
   label: string;
   value?: string;
+  unit?: string;
   spark?: number[];
   sparkColor?: string;
 }>();
@@ -41,6 +43,17 @@ defineProps<{
   letter-spacing: -0.02em;
   line-height: var(--line-height-32);
   white-space: nowrap;
+}
+.usage-stat__figure {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.usage-stat__unit {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0;
 }
 .usage-stat__spark {
   margin-top: var(--space-6);

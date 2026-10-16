@@ -62,6 +62,10 @@ const choose = async (
     .find((option) => option.text() === label)!
     .get('input[type="radio"]')
     .setValue();
+const chooseProvider = async (wrapper: ReturnType<typeof mount>, value: string) =>
+  wrapper
+    .getComponent({ name: "ElSelect" })
+    .vm.$emit("update:modelValue", value);
 it("shows unknown consumption with measured denominators and filters the local owning API", async () => {
   const getUsage = vi.fn().mockResolvedValue({
     recordedSince: 1,
@@ -87,14 +91,14 @@ it("shows unknown consumption with measured denominators and filters the local o
   );
   expect(wrapper.find('[role="meter"]').exists()).toBe(false);
   expect(wrapper.text()).not.toContain("0 of 3 turns measured");
-  await choose(wrapper, "#usage-provider", "Claude Code");
+  await chooseProvider(wrapper, "claude");
   await flushPromises();
   expect(getUsage).toHaveBeenCalledWith(
     expect.objectContaining({ group: "provider", provider: "claude" }),
   );
   wrapper.unmount();
 });
-it("changes each chart breakdown independently and shares the selected token measure", async () => {
+it("opens on total tokens by provider and regroups every chart from one toolbar control", async () => {
   const row = (label: string, started: number, known: boolean) => ({
     label,
     started,
@@ -139,28 +143,18 @@ it("changes each chart breakdown independently and shares the selected token mea
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await flushPromises();
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
-    "Claude Code",
-  );
-  expect(wrapper.get('[aria-label="Activity over time"]').text()).toContain(
-    "Claude Code",
-  );
-  await choose(wrapper, "#usage-trend-group", "Model");
-  expect(wrapper.get('[aria-label="Activity over time"]').text()).toContain(
-    "sonnet",
-  );
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
-    "Claude Code",
-  );
-  await choose(wrapper, "#usage-share-group", "Model");
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("sonnet");
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("75%");
-  expect(wrapper.get('#usage-measure [role="radiogroup"]').attributes("aria-label")).toBe("Measure");
-  await choose(wrapper, "#usage-measure", "Total");
+  expect(wrapper.get('[aria-label="Usage share"] p').text()).toBe("Total tokens");
+  for (const label of ["Usage share", "Activity over time", "Usage breakdown"])
+    expect(wrapper.get(`[aria-label="${label}"]`).text()).toContain("sonnet");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
-  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain(
-    "N/A",
-  );
+  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("N/A");
+  expect(wrapper.get('#usage-grouping [role="radiogroup"]').attributes("aria-label")).toBe("Group by");
+  await choose(wrapper, "#usage-grouping", "Provider");
+  for (const label of ["Usage share", "Activity over time", "Usage breakdown"])
+    expect(wrapper.get(`[aria-label="${label}"]`).text()).toContain("Claude Code");
+  await choose(wrapper, "#usage-grouping", "Model");
+  await choose(wrapper, "#usage-measure", "Turns");
+  expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("75%");
   expect(
     wrapper
       .get('[aria-label="Activity over time"]')
@@ -200,6 +194,9 @@ it("changes each chart breakdown independently and shares the selected token mea
   expect(
     speed.find("tbody tr").text(),
   ).toContain("sonnet");
+  expect(
+    totals.findAll(".usage-stat__unit").map((unit) => unit.text()),
+  ).toStrictEqual(["s", "tokens/s"]);
   expect(totals.text()).not.toContain("Timed turns");
   wrapper.unmount();
 });
@@ -346,7 +343,7 @@ it("ignores stale filter responses and clears previous statistics when a new que
     .mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
-  await choose(wrapper, "#usage-provider", "Claude Code");
+  await chooseProvider(wrapper, "claude");
   const summary = (label: string) => ({
     recordedSince: 1,
     retainedSince: 1,
@@ -374,10 +371,10 @@ it("ignores stale filter responses and clears previous statistics when a new que
   pending[3]!(summary("codex"));
   await flushPromises();
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
-    "Claude",
+    "sonnet",
   );
   expect(wrapper.get('[aria-label="Usage breakdown"]').text()).not.toContain(
-    "Codex",
+    "Unknown model",
   );
   getUsage.mockRejectedValueOnce(Error("offline"));
   await wrapper
@@ -444,7 +441,7 @@ it("requires confirmation before clearing statistics, keeps data on failure and 
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain("Could not clear");
     expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
-      "Codex",
+      "codex",
     );
     await clear().trigger("click");
     await flushPromises();
@@ -479,6 +476,7 @@ it("compares the selection with the previous period and still renders when that 
   setElectronTestClient({ getUsage });
   const wrapper = mount(UsagePanel);
   await flushPromises();
+  await choose(wrapper, "#usage-measure", "Turns");
   expect(wrapper.get(".hero-delta").text()).toContain("50%");
   expect(wrapper.get(".hero-delta").text()).toContain("previous 7 days");
   getUsage.mockImplementation(async ({ to }) => {
@@ -493,5 +491,22 @@ it("compares the selection with the previous period and still renders when that 
   expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   expect(wrapper.find(".hero-delta").exists()).toBe(false);
   expect(wrapper.get(".hero-number").text()).toContain("150");
+  wrapper.unmount();
+});
+
+it("keeps the activity grid outside the provider and date filters", async () => {
+  const empty = { recordedSince: 1, retainedSince: 1, rows: [] };
+  const getUsage = vi.fn(async (_filter: Record<string, unknown>) => empty);
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  await flushPromises();
+  await chooseProvider(wrapper, "claude");
+  await flushPromises();
+  const window = activityWindow();
+  const activityCalls = getUsage.mock.calls.filter(
+    ([filter]) => filter.from === window.from,
+  );
+  expect(activityCalls.length).toBeGreaterThan(1);
+  expect(activityCalls.every(([filter]) => !("provider" in filter))).toBe(true);
   wrapper.unmount();
 });

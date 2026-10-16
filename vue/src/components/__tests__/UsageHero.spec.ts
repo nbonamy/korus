@@ -40,7 +40,6 @@ it("compacts large turn totals in the hero", () => {
       ],
       daily,
       measure: "turns",
-      trendGroup: "provider",
       from: "2026-06-30",
       to: "2026-06-30",
       periodDays: 1,

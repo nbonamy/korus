@@ -30,6 +30,7 @@
     />
     <UsageToolbar
       v-model:view="view"
+      v-model:grouping="grouping"
       :filter="filter"
       :selected-period="selectedPeriod"
       :date-label="dateLabel"
@@ -55,9 +56,8 @@
         <div class="analytics-bento">
           <UsageHero
             v-model:measure="measure"
-            v-model:trend-group="trendGroup"
-            :series="trendSeries"
-            :daily="trendData?.daily ?? []"
+            :series="series"
+            :daily="daily"
             :from="filter.from"
             :to="filter.to"
             :period-days="periodDays"
@@ -65,20 +65,10 @@
             :previous="projections.previous"
           />
           <UsageShare
-            :series="shareSeries"
+            :series="series"
             :measure="measure"
             :subtitle="measureLabel(measure)"
-          >
-            <template #controls>
-              <div id="usage-share-group">
-                <UsageToggle
-                  v-model="shareGroup"
-                  :options="groupingOptions()"
-                  :label="$t('analytics.shareBreakdown')"
-                />
-              </div>
-            </template>
-          </UsageShare>
+          />
         </div>
         <UsageStatTiles
           :summary="projections.provider"
@@ -86,7 +76,7 @@
           :to="filter.to"
           :period-days="periodDays"
         />
-        <UsageBreakdown :series="shareSeries" :grouping="shareGroup" />
+        <UsageBreakdown :series="series" :grouping="grouping" />
       </template>
       <UsagePerformance v-else :summary="projections.model" />
     </div>
@@ -101,15 +91,13 @@ import UsageHero from "./UsageHero.vue";
 import UsagePerformance from "./UsagePerformance.vue";
 import UsageShare from "./UsageShare.vue";
 import UsageStatTiles from "./UsageStatTiles.vue";
-import UsageToggle from "./UsageToggle.vue";
 import UsageToolbar from "./UsageToolbar.vue";
-import { groupingOptions, measureLabel } from "./usage-chart";
+import { measureLabel } from "./usage-chart";
 import { useUsageAnalytics } from "./use-usage-analytics";
 const {
   view,
   measure,
-  trendGroup,
-  shareGroup,
+  grouping,
   filter,
   projections,
   busy,
@@ -119,9 +107,8 @@ const {
   selectedPeriod,
   periodDays,
   dateLabel,
-  trendData,
-  trendSeries,
-  shareSeries,
+  daily,
+  series,
   activityDays,
   load,
   setRange,

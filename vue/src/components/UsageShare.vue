@@ -9,7 +9,6 @@
         <h3>{{ $t("analytics.share") }}</h3>
         <p v-if="subtitle">{{ subtitle }}</p>
       </div>
-      <slot name="controls" />
     </header>
     <div class="share-content">
       <svg viewBox="0 0 160 160" role="img" :aria-label="$t('analytics.share')">

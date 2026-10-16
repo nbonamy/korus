@@ -17,7 +17,7 @@ export type UsageProjections = {
   model: UsageSummary;
   /** The period before the selection, for the change badge. */
   previous: UsageSummary | null;
-  /** The activity grid's own window, under the provider filter only. */
+  /** The activity grid's own window, independent of every filter. */
   activity: UsageSummary | null;
 };
 
@@ -31,9 +31,8 @@ const POLL_MS = 5000;
  */
 export function useUsageAnalytics() {
   const view = ref<UsageView>("usage");
-  const measure = ref<UsageMeasure>("turns");
-  const trendGroup = ref<UsageGrouping>("provider");
-  const shareGroup = ref<UsageGrouping>("provider");
+  const measure = ref<UsageMeasure>("total");
+  const grouping = ref<UsageGrouping>("model");
   const filter = ref({
     from: day(Date.now() - 6 * 86400000),
     to: day(Date.now()),
@@ -73,14 +72,11 @@ export function useUsageAnalytics() {
         year: "numeric",
       }),
   );
-  const trendData = computed(() => projections.value?.[trendGroup.value]);
-  const shareData = computed(() => projections.value?.[shareGroup.value]);
-  const trendSeries = computed(() =>
-    chartSeries(trendData.value, measure.value, trendGroup.value),
+  const grouped = computed(() => projections.value?.[grouping.value]);
+  const series = computed(() =>
+    chartSeries(grouped.value, measure.value, grouping.value),
   );
-  const shareSeries = computed(() =>
-    chartSeries(shareData.value, measure.value, shareGroup.value),
-  );
+  const daily = computed(() => grouped.value?.daily ?? []);
   const activityDays = computed(
     () =>
       projections.value?.activity?.daily?.map((row) => ({
@@ -112,13 +108,10 @@ export function useUsageAnalytics() {
       const [provider, model, activity, previous] = await Promise.all([
         appApi!.getUsage({ ...query, group: "provider" }),
         appApi!.getUsage({ ...query, group: "model" }),
-        // Context only: failing to read these never blocks the view.
+        // Context only: failing to read these never blocks the view. The
+        // activity grid is a lifetime overview, so no filter applies to it.
         appApi!
-          .getUsage({
-            ...activityWindow(),
-            ...providerQuery(),
-            group: "provider",
-          })
+          .getUsage({ ...activityWindow(), group: "provider" })
           .catch(() => null),
         appApi!
           .getUsage({
@@ -203,8 +196,7 @@ export function useUsageAnalytics() {
   return {
     view,
     measure,
-    trendGroup,
-    shareGroup,
+    grouping,
     filter,
     projections,
     busy,
@@ -214,9 +206,8 @@ export function useUsageAnalytics() {
     selectedPeriod,
     periodDays,
     dateLabel,
-    trendData,
-    trendSeries,
-    shareSeries,
+    daily,
+    series,
     activityDays,
     load,
     setRange,

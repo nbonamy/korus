@@ -36,14 +36,6 @@
                 @update:model-value="emit('update:measure', $event)"
               />
             </div>
-            <div id="usage-trend-group">
-              <UsageToggle
-                :model-value="trendGroup"
-                :options="groupingOptions()"
-                :label="$t('analytics.dailyBreakdown')"
-                @update:model-value="emit('update:trendGroup', $event)"
-              />
-            </div>
           </div>
         </header>
       </template>
@@ -60,10 +52,8 @@ import UsageTrend from "./UsageTrend.vue";
 import {
   chartFormat,
   chartSeries,
-  groupingOptions,
   measureLabel,
   sumValues,
-  type UsageGrouping,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
@@ -71,7 +61,6 @@ const props = defineProps<{
   series: UsageSeries[];
   daily: NonNullable<UsageSummary["daily"]>;
   measure: UsageMeasure;
-  trendGroup: UsageGrouping;
   from: string;
   to: string;
   periodDays: number;
@@ -81,7 +70,6 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   "update:measure": [measure: UsageMeasure];
-  "update:trendGroup": [group: UsageGrouping];
 }>();
 const measureOptions = computed(() => [
   { value: "turns" as const, label: translate("analytics.turns") },

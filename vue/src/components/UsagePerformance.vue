@@ -10,10 +10,12 @@
           ? $t('analytics.notAvailable')
           : chartFormat(ttft, true)
       "
+      :unit="ttft === null ? undefined : $t('analytics.secondsUnit')"
     />
     <UsageStatTile
       :label="$t('analytics.tokenSpeed')"
-      :value="performanceValue(tokensPerSecond(overall))"
+      :value="performanceValue(speed)"
+      :unit="speed === null ? undefined : $t('analytics.tokensPerSecond')"
     />
   </UsageTileGrid>
   <div class="performance-grid">
@@ -120,6 +122,7 @@ const overall = computed(() =>
   sumSpeed(props.summary.rows.map((row) => row.speed)),
 );
 const ttft = computed(() => averageTtftSeconds(overall.value));
+const speed = computed(() => tokensPerSecond(overall.value));
 const performanceValue = (value: number | null): string =>
   value === null
     ? translate("analytics.notAvailable")
