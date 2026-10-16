@@ -945,8 +945,11 @@ export class CodeReviewService {
     const sourceDefaults = target.backendDefaults?.kind === backend
       ? target.backendDefaults
       : undefined;
+    const name = target.name?.trim()
+      || (target.workspace?.kind === 'git' ? target.workspace.branch : undefined)
+      || this.options.snapshot.agentGitStatuses[target.id]?.branch;
     const reviewer = this.options.createAgent({
-      name: 'Review',
+      name: name ? `👀 ${name}` : 'Review',
       folder: target.folder ?? '',
       avatar: target.avatar,
       backend,

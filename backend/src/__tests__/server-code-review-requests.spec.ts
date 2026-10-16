@@ -324,6 +324,7 @@ describe('AppBackendServer code review workflow', () => {
     expect(started.activeAgentId).toBe(reviewer.id);
     expect(session).toMatchObject({ targetAgentId: owner.id, reviewerAgentId: reviewer.id, threadMode: 'independent' });
     expect(reviewer).toMatchObject({
+      name: '👀 Owner',
       folder: owner.folder,
       backend,
       backendDefaults: { kind: backend, model: 'review-model', ...(backend === 'antigravity' ? {} : { reasoningEffort: 'low' }) },
@@ -499,7 +500,7 @@ describe('AppBackendServer code review workflow', () => {
     let reviewTools!: ReviewToolHandlers;
     const snapshot = createTestSnapshot();
     const owner: Agent = {
-      id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: 'Owner', folder: '/repo',
+      id: 'agent-owner', teamId: snapshot.teams[0]!.id, name: null, folder: '/repo',
       backend: 'codex', status: { type: 'idle' },
       createdAt: '2026-09-19T10:00:00.000Z', updatedAt: '2026-09-19T10:00:00.000Z',
     };
@@ -543,6 +544,7 @@ describe('AppBackendServer code review workflow', () => {
     const reviewer = snapshot.agents.find((candidate) => candidate.id !== owner.id)!;
     await vi.waitFor(() => expect(reviewer.codeReview?.status).toBe('ready'));
 
+    expect(reviewer.name).toBe('Review');
     await request(server, backendMethods.agentDelete, { agentId: reviewer.id });
 
     expect(closeReviewToolContext).toHaveBeenCalledExactlyOnceWith('review-context');
