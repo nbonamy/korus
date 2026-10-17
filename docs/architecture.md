@@ -384,6 +384,10 @@ clears or changes it, Korus never re-detects.
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+  A merge without a delegator can opt into reporting to another conversation in
+  the same repository on the owning host. The daemon refreshes workspace identity
+  before accepting the recipient; this delivery choice never changes delegation
+  ownership. Reporting remains off until the user enables it and chooses a recipient.
 - Worktree delegation preferences belong to app settings. A delegation can
   override its starting context and add task instructions. App-submitted user
   overrides retain their provenance through prompt admission and persistence.

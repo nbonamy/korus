@@ -269,6 +269,7 @@
         <template #ship="{ openConversation }">
           <MissionShipBoard
             :agents="snapshot.agents"
+            :teams="snapshot.teams"
             :mission="selectedMission"
             :execute-mission="executeMission"
             :git-statuses="snapshot.agentGitStatuses"

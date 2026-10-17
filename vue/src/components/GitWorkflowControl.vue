@@ -328,6 +328,16 @@
         <el-switch v-model="reportBack" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.reportBackTo', { name: reportBackAgentName }) }}</span>
       </label>
+      <template v-else>
+        <label class="git-workflow-control__check git-workflow-control__report-back">
+          <el-switch v-model="reportBack" size="small" :disabled="!reportBack && !reportBackAgents.length" :aria-label="$t('surface.gitWorkflowControl.reportToAnotherAgent')" />
+          <span>{{ $t('surface.gitWorkflowControl.reportToAnotherAgent') }}</span>
+        </label>
+        <el-select v-if="reportBack" v-model="selectedReportBackAgentId" filterable clearable
+          :aria-label="$t('surface.gitWorkflowControl.reportRecipient')" :placeholder="$t('surface.gitWorkflowControl.reportRecipient')">
+          <el-option v-for="recipient in reportBackAgents" :key="recipient.id" :value="recipient.id" :label="recipient.name" />
+        </el-select>
+      </template>
       <label v-if="workflow?.isLinkedWorktree" class="git-workflow-control__check git-workflow-control__merge-cleanup">
         <el-switch v-model="deleteWorktree" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.deleteWorktreeAfterMerging') }}</span>
@@ -418,7 +428,8 @@ const props = withDefaults(defineProps<{
   updateFromBase?: (agentId: string, input: AgentGitUpdateFromBaseInput) => Promise<AgentGitUpdateFromBaseResult>;
   pullBranch?: (agentId: string, input: import('@workspace/core/contracts').AgentGitPullInput) => Promise<import('@workspace/core/contracts').AgentGitPullResult>;
   reportBackAgentName?: string | null;
-}>(), { presentation: 'menu' });
+  reportBackAgents?: { id: string; name: string }[];
+}>(), { presentation: 'menu', reportBackAgents: () => [] });
 
 const emit = defineEmits<{
   'open-git-diff': [];
@@ -456,6 +467,8 @@ const deleteBranch = ref(false);
 const deleteWorktree = ref(false);
 const mergeCleanupPreferenceKey = 'app:mergeCleanup';
 const reportBack = ref(true);
+const selectedReportBackAgentId = ref('');
+const selectedReportBackAgent = computed(() => props.reportBackAgents.find(agent => agent.id === selectedReportBackAgentId.value));
 const gitOperationProgress = ref<AgentGitOperationProgress | null>(null);
 const committedMessage = ref('');
 const generatingKind = ref<'commit' | 'pullRequest' | null>(null);
@@ -637,7 +650,8 @@ const pushCapable = computed(() => Boolean(workflow.value?.branch && workflow.va
 const currentBranchAvailable = computed(() => Boolean(workflow.value?.branch && !workflow.value?.detached));
 const integrationBranch = computed(() => ['main', 'master', 'develop', 'development', 'trunk'].includes(workflow.value?.branch ?? ''));
 const mergeEnabled = computed(() => currentBranchAvailable.value && !integrationBranch.value);
-const canMerge = computed(() => mergeStrategy.value === 'merge' || Boolean(squashCommitMessage.value.trim()));
+const canMerge = computed(() => (mergeStrategy.value === 'merge' || Boolean(squashCommitMessage.value.trim()))
+  && (!reportBack.value || Boolean(props.reportBackAgentName) || Boolean(selectedReportBackAgent.value)));
 const prEnabled = computed(() => currentBranchAvailable.value && !integrationBranch.value);
 const updateEnabled = computed(() => Boolean(props.updateFromBase && workflow.value?.isLinkedWorktree && workflow.value.baseBranch && currentBranchAvailable.value));
 const pullEnabled = computed(() => Boolean(props.pullBranch && workflow.value?.upstream && currentBranchAvailable.value));
@@ -684,7 +698,8 @@ watch(pullRequestDialogOpen, (open) => {
 watch(mergeDialogOpen, (open) => {
   if (open) {
     resetMergeOperation();
-    reportBack.value = true;
+    reportBack.value = Boolean(props.reportBackAgentName);
+    selectedReportBackAgentId.value = '';
     squashCommitMessage.value = '';
     let saved: { deleteWorktree?: unknown; deleteBranch?: unknown } | null = null;
     try { saved = JSON.parse(window.localStorage.getItem(mergeCleanupPreferenceKey) ?? 'null'); } catch { /* Optional client preference. */ }
@@ -1042,7 +1057,7 @@ async function merge(pushAfter: boolean): Promise<void> {
   workflowError.value = null;
   gitOperationProgress.value = {
     operation: 'merge',
-    phase: props.reportBackAgentName && reportBack.value ? 'handoff' : 'delivery',
+    phase: reportBack.value && (props.reportBackAgentName || selectedReportBackAgent.value) ? 'handoff' : 'delivery',
   };
   let mergeCreated = false;
   let cleanupWarning: MergeCleanupWarning | undefined;
@@ -1055,7 +1070,8 @@ async function merge(pushAfter: boolean): Promise<void> {
       deleteBranch: deleteBranch.value,
       deleteWorktree: deleteWorktree.value,
       ...(pushAfter ? { pushAfter: true } : {}),
-      ...(props.reportBackAgentName ? { reportBack: reportBack.value } : {}),
+      ...(props.reportBackAgentName ? { reportBack: reportBack.value }
+        : reportBack.value && selectedReportBackAgent.value ? { reportBack: true, reportBackAgentId: selectedReportBackAgent.value.id } : {}),
       confirmed: true,
     });
     cleanupWarning = mergeResult.warning;

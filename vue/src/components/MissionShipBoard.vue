@@ -42,6 +42,7 @@
               :push-branch="pushBranch"
               :create-pull-request="createPullRequest"
               :merge-branch="mergeBranch"
+              :report-back-agents="reportRecipients(delivery.agentId)"
               :update-from-base="updateFromBase"
               @delivery-complete="recordDelivery(delivery.repositoryPath, $event)"
             />
@@ -60,7 +61,9 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, OpenInApplicationCatalog, Team } from '@workspace/core/contracts';
+import { repositoryPeersForAgent } from '@workspace/core/agent-folder';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import type { Mission } from '@workspace/core/missions';
 import type { MissionDelivery, MissionExecutionInput } from '@workspace/core/mission-execution';
 import { ArrowRightIcon, CheckIcon, GitForkIcon } from '../shared/icons/app-icons';
@@ -69,6 +72,7 @@ import MissionWorkspaceOpenIn, { type MissionWorkspaceOpenRequest } from './Miss
 
 const props = defineProps<{
   agents: Agent[];
+  teams?: Team[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   gitStatuses: Record<string, AgentGitStatus | null | undefined>;
   mission: Mission;
@@ -93,6 +97,11 @@ const completedCount = computed(() => deliveries.value.filter(delivery => delive
 const progressPercent = computed(() => deliveries.value.length ? Math.round(completedCount.value / deliveries.value.length * 100) : 0);
 
 function agent(agentId: string): Agent | undefined { return props.agents.find(candidate => candidate.id === agentId); }
+function reportRecipients(agentId: string) {
+  const source = agent(agentId);
+  return source ? repositoryPeersForAgent(source, { agents: props.agents, teams: props.teams ?? [] })
+    .map(candidate => ({ id: candidate.id, name: agentDisplayName(candidate) })) : [];
+}
 function repositoryName(path: string): string { return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path; }
 function workspacePath(repositoryPath: string): string | undefined { return props.mission.execution?.workspaces?.find(workspace => workspace.repositoryPath === repositoryPath)?.path; }
 function workspaceBranch(repositoryPath: string): string { return props.mission.execution?.workspaces?.find(workspace => workspace.repositoryPath === repositoryPath)?.branch ?? repositoryPath; }

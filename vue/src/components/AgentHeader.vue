@@ -76,6 +76,7 @@
         :pull-branch="pullGitBranch"
         :revert-changes="revertGitChanges"
         :report-back-agent-name="reportBackAgentName"
+        :report-back-agents="reportBackAgents"
         @open-git-log="emit('open-git-log')"
         @inspect-agent="emit('select-agent', $event)"
       />
@@ -162,6 +163,7 @@ const props = withDefaults(defineProps<{
   subagentTree?: AgentSubagentTree | null;
   selectedSubagentConversationId?: string | null;
   reportBackAgentName?: string | null;
+  reportBackAgents?: { id: string; name: string }[];
   getGitWorkflow?: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   generateGitMessage?: (agentId: string, input: import('@workspace/core/contracts').AgentGitMessageGenerationInput) => Promise<import('@workspace/core/contracts').AgentGitMessageGenerationResult>;
   commitGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitCommitInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;

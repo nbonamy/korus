@@ -166,6 +166,7 @@ import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, toRefs, watch, type ComponentPublicInstance } from 'vue';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
+import { repositoryPeersForAgent } from '@workspace/core/agent-folder';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
 import { appHostCapabilities } from '../platform-api';
@@ -480,6 +481,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     pullGitBranch: props.pullAgentGitBranch,
     revertGitChanges: props.revertAgentGitChanges,
     reportBackAgentName: recipient ? agentDisplayName(recipient) : null,
+    reportBackAgents: agent ? repositoryPeersForAgent(agent, props.snapshot).map(candidate => ({ id: candidate.id, name: agentDisplayName(candidate) })) : [],
     onExpandSidebar: () => emit('expand-sidebar'),
     onToggleExecutionPlan: toggleExecutionPlan,
     onToggleWorkspace: props.toggleRightWorkspace,

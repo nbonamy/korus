@@ -19,6 +19,37 @@ function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('GitWorkflowControl', () => {
+  it('lets a merge without an originator report to a selected repository peer only after opting in', async () => {
+    const mergeBranch = vi.fn(async () => workflow);
+    const recipients = [{ id: 'recipient', name: 'Main' }];
+    const wrapper = mountControl({ mergeBranch, reportBackAgents: recipients });
+    await flushPromises();
+    await wrapper.get('.git-workflow-control__trigger').trigger('click');
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text().includes('Merge'))!.trigger('click');
+    await flushPromises();
+    const toggle = wrapper.get<HTMLInputElement>('[role="switch"][aria-label="Report to another agent"]');
+    expect(toggle.element.checked).toBe(false);
+    expect(wrapper.find('[aria-label="Report recipient"]').exists()).toBe(false);
+    await toggle.setValue(true);
+    expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeDefined();
+    await wrapper.get('[aria-label="Report recipient"] select').setValue('recipient');
+    expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeUndefined();
+    await wrapper.setProps({ reportBackAgents: [] });
+    expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeDefined();
+    expect(toggle.element.disabled).toBe(false);
+    await toggle.setValue(false);
+    expect(submitButton(wrapper, 'Merge').attributes('disabled')).toBeUndefined();
+    await wrapper.setProps({ reportBackAgents: recipients });
+    await toggle.setValue(true);
+    await wrapper.get('[aria-label="Report recipient"] select').setValue('recipient');
+    await submitButton(wrapper, 'Merge').trigger('click');
+    await flushPromises();
+    expect(mergeBranch).toHaveBeenCalledExactlyOnceWith(agent.id, {
+      strategy: 'merge', deleteBranch: true, deleteWorktree: true,
+      reportBack: true, reportBackAgentId: 'recipient', confirmed: true,
+    });
+  });
+
   beforeEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => window.localStorage.removeItem('app:mergeCleanup'));
   afterEach(() => vi.useRealTimers());
@@ -617,16 +648,16 @@ describe('GitWorkflowControl', () => {
     expect(choices[1]?.text()).toContain('Combine all changes into a single commit.');
     expect(wrapper.findAll('.git-workflow-control__merge-icon')).toHaveLength(2);
     expect(choices[0]?.classes()).toContain('git-workflow-control__merge-option--selected');
-    expect(wrapper.findAllComponents({ name: 'ElSwitch' })).toHaveLength(2);
+    expect(wrapper.findAll('.git-workflow-control__merge-cleanup')).toHaveLength(2);
     expect(wrapper.findAll('.git-workflow-control__merge-cleanup')[1]?.text()).toBe('Delete local and origin branches');
     const cleanup = wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]');
     expect(cleanup.map(control => control.element.checked)).toStrictEqual([true, true]);
     await cleanup[0]!.setValue(false);
     expect(cleanup[1]!.element.checked).toBe(false);
     expect(cleanup[1]!.element.disabled).toBe(true);
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(true);
-    expect(wrapper.findAllComponents({ name: 'ElSwitch' })[1]?.props('disabled')).toBe(false);
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[1]!.setValue(true);
+    await cleanup[0]!.setValue(true);
+    expect(cleanup[1]!.element.disabled).toBe(false);
+    await cleanup[1]!.setValue(true);
     await choices[1]?.find('input').setValue(true);
     expect(choices[1]?.classes()).toContain('git-workflow-control__merge-option--selected');
     const message = wrapper.get<HTMLTextAreaElement>('.git-workflow-control__merge-message');
@@ -693,7 +724,7 @@ describe('GitWorkflowControl', () => {
 
     expect(wrapper.text()).not.toContain('Delete worktree after merging');
     expect(wrapper.text()).not.toContain('Delete local and origin branches');
-    expect(wrapper.findAllComponents({ name: 'ElSwitch' })).toHaveLength(0);
+    expect(wrapper.findAll('.git-workflow-control__merge-cleanup')).toHaveLength(0);
   });
 
   it.each(['getItem', 'setItem'] as const)('keeps merging usable when preference %s fails', async method => {
@@ -758,7 +789,7 @@ describe('GitWorkflowControl', () => {
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await wrapper.findAll('[role="menuitem"]').find((item) => item.text().includes('Merge'))?.trigger('click');
     await flushPromises();
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(true);
+    await wrapper.get<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]').setValue(true);
     await submitButton(wrapper, 'Merge').trigger('click');
     await flushPromises();
 
@@ -780,8 +811,7 @@ describe('GitWorkflowControl', () => {
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await wrapper.findAll('[role="menuitem"]').find((item) => item.text().includes('Merge'))?.trigger('click');
     await flushPromises();
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(true);
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[1]!.setValue(true);
+    for (const toggle of wrapper.findAll<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]')) await toggle.setValue(true);
     await submitButton(wrapper, 'Merge and push').trigger('click');
     await flushPromises();
 
@@ -815,7 +845,7 @@ describe('GitWorkflowControl', () => {
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
     await wrapper.findAll('[role="menuitem"]').find((item) => item.text().includes('Merge'))?.trigger('click');
     await flushPromises();
-    await wrapper.findAllComponents({ name: 'ElSwitch' })[0]!.setValue(true);
+    await wrapper.get<HTMLInputElement>('.git-workflow-control__merge-cleanup input[role="switch"]').setValue(true);
     await submitButton(wrapper, 'Merge and push').trigger('click');
     await flushPromises();
 

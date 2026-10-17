@@ -131,7 +131,7 @@ export type AgentCloseInput = { deleteWorktree: boolean; deleteRemoteBranch?: bo
 
 export type AgentGitPullRequestInput = { title: string; body: string; reportBack?: boolean; confirmed: boolean };
 
-export type AgentGitMergeInput = { strategy: 'merge' | 'squash'; commitMessage?: string; deleteBranch: boolean; deleteWorktree: boolean; pushAfter?: boolean; reportBack?: boolean; confirmed: boolean };
+export type AgentGitMergeInput = { strategy: 'merge' | 'squash'; commitMessage?: string; deleteBranch: boolean; deleteWorktree: boolean; pushAfter?: boolean; reportBack?: boolean; reportBackAgentId?: string; confirmed: boolean };
 
 export type AgentGitUpdateFromBaseInput = { confirmed: boolean; allowDirty?: boolean };
 

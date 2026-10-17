@@ -548,6 +548,8 @@ export const surfaceMessages = {
     "deleteWorktreeAfterMerging": "Delete worktree after merging",
     "deleteBranchAfterRemovingWorktree": "Delete local and origin branches",
     "reportBackTo": "Report to {name} agent",
+    "reportToAnotherAgent": "Report to another agent",
+    "reportRecipient": "Report recipient",
     "runInBackground": "Run in background",
     "buildingHandoffReport": "Building handoff report",
     "waitingForWorkerSummary": "Waiting for the worker’s final summary.",

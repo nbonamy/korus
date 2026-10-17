@@ -3,10 +3,73 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { Agent } from '@workspace/core/contracts';
 import type { DelegatedWorkReportPort } from '../../agents/delegated-work-report-service';
+import { DelegatedWorkReportService } from '../../agents/delegated-work-report-service';
 import type { AgentGitService } from '../agent-git-service';
 import { AgentGitWorkflowService, parseAgentGitRequest } from '../agent-git-workflow-service';
 
+function mergeReportFixture() {
+  const snapshot = createInitialSnapshot();
+  const source: Agent = { ...snapshot.agents[0]!, id: 'source', folder: '/repo-feature', status: { type: 'idle' },
+    workspace: { kind: 'git', folder: '/repo-feature', repositoryName: 'repo', repositoryRoot: '/repo-feature',
+      primaryWorktreeRoot: '/repo', branch: 'feature', isLinkedWorktree: true, updatedAt: '' } };
+  snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: ['remote'], remoteConnectionId: 'ssh' });
+  snapshot.agents = [source, { ...source, id: 'recipient', folder: '/repo' }, { ...source, id: 'moved' },
+    { ...source, id: 'remote', teamId: 'remote-team' },
+    { ...source, id: 'other-repo', workspace: { ...source.workspace!, primaryWorktreeRoot: '/other' } } as Agent];
+  const sendPrompt = vi.fn();
+  const sendMessage = vi.fn();
+  const reports = new DelegatedWorkReportService({ getSnapshot: () => snapshot, sendPrompt, sendMessage,
+    readConversationMessages: async () => [{ id: 'summary', agentId: source.id, turnId: 'report', role: 'assistant',
+      status: 'complete', parts: [{ type: 'text', text: 'Implemented and tested.' }], createdAt: '' }],
+  });
+  const merge = vi.fn().mockResolvedValue({ targetFolder: '/repo' });
+  const refreshWorkspaceIdentity = vi.fn(async (_id: string) => false);
+  const service = new AgentGitWorkflowService({ applyEvent: vi.fn(), archiveConversation: vi.fn(), delegatedWorkReports: reports,
+    driverRequest: vi.fn(), releaseConversation: vi.fn(), getSnapshot: () => snapshot,
+    getWorkIntegrations: () => ({ githubConnected: async () => false }) as never,
+    git: { merge, workflow: async () => ({ repository: 'owner/repo', branch: 'feature', files: [] }) } as unknown as AgentGitService,
+    persistAndEmitSnapshot: vi.fn().mockResolvedValue(snapshot), refreshGitStatus: vi.fn(), refreshWorkspaceIdentity, sendPrompt: vi.fn(),
+  });
+  const request = (recipient: string) => ({ method: backendMethods.agentGitMerge, agentId: source.id,
+    params: { input: { strategy: 'merge', deleteBranch: true, deleteWorktree: true, reportBack: true, reportBackAgentId: recipient, confirmed: true } } });
+  return { snapshot, source, service, reports, request, sendPrompt, sendMessage, merge, refreshWorkspaceIdentity };
+}
+
 describe('AgentGitWorkflowService', () => {
+  it('captures a handoff before merge cleanup and sends it to an explicitly selected repository peer', async () => {
+    const test = mergeReportFixture();
+    try {
+      const merging = test.service.execute(test.request('recipient'), test.source);
+      await vi.waitFor(() => expect(test.sendPrompt).toHaveBeenCalledOnce());
+      expect(test.merge).not.toHaveBeenCalled();
+      test.reports.handleEvent({
+        type: 'codex.conversationEventReceived', agentId: test.source.id, backend: 'codex',
+        threadId: 'handoff', seq: 1, occurredAt: '', payload: { revision: 1, event: {
+          type: 'turn.completed', seq: 1, occurredAt: '', origin: 'notification', conversationId: 'handoff', turnId: 'report',
+          payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
+        } },
+      });
+      await merging;
+      expect(test.sendMessage).toHaveBeenCalledExactlyOnceWith(test.source.id, 'recipient', expect.stringContaining('Implemented and tested.'));
+      expect(test.snapshot.agents.some(agent => agent.id === test.source.id)).toBe(false);
+      expect(test.source.delegatedByAgentId).toBeUndefined();
+    } finally { test.reports.close(); }
+  });
+
+  it.each(['source', 'missing', 'other-repo', 'remote', 'moved'])('rejects the invalid %s merge report recipient before handoff or Git mutation', async recipient => {
+    const test = mergeReportFixture();
+    if (recipient === 'moved') test.refreshWorkspaceIdentity.mockImplementation(async id => {
+      if (id === 'moved') test.snapshot.agents.find(agent => agent.id === id)!.workspace = { kind: 'folder', folder: '/gone', label: 'Gone', updatedAt: '' };
+      return true;
+    });
+    try {
+      await expect(test.service.execute(test.request(recipient), test.source)).rejects.toThrow('same repository');
+      expect(test.sendPrompt).not.toHaveBeenCalled();
+      expect(test.merge).not.toHaveBeenCalled();
+      expect(test.sendMessage).not.toHaveBeenCalled();
+    } finally { test.reports.close(); }
+  });
+
   it('guards prune consent and supplies fresh local agent ownership, without treating PR badges as merge proof', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

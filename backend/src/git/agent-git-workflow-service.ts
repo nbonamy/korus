@@ -1,7 +1,7 @@
 import { closeAgentInSnapshot, updateAgentFolder } from '@workspace/core/agent-manager';
 import type { BackendEvent } from '@workspace/core/backend-driver';
 import { agentGitBackendMethods, backendMethods, type AgentGitBackendMethod } from '@workspace/core/backend-protocol/methods';
-import { requireAgentFolder } from '@workspace/core/agent-folder';
+import { repositoryPeersForAgent, requireAgentFolder } from '@workspace/core/agent-folder';
 import type {
   Agent,
   AgentGitDiff,
@@ -330,6 +330,19 @@ export class AgentGitWorkflowService {
     const strategy = input.strategy === 'squash' ? 'squash' : 'merge';
     const commitMessage = strategy === 'squash' ? requireString(input.commitMessage, 'commitMessage') : undefined;
     const deleteWorktree = input.deleteWorktree === true;
+    let reportBackAgentId: string | undefined;
+    if (input.reportBack === true && input.reportBackAgentId !== undefined) {
+      reportBackAgentId = requireString(input.reportBackAgentId, 'reportBackAgentId');
+      const recipient = this.options.getSnapshot().agents.find(candidate => candidate.id === reportBackAgentId);
+      if (!recipient || recipient.id === agent.id
+        || this.options.getSnapshot().teams.some(team => team.id === recipient.teamId && team.remoteConnectionId)) {
+        throw new Error('Choose another agent in the same repository for the merge report.');
+      }
+      await Promise.all([this.options.refreshWorkspaceIdentity(agentId), this.options.refreshWorkspaceIdentity(recipient.id)]);
+      if (!repositoryPeersForAgent(agent, this.options.getSnapshot()).some(candidate => candidate.id === reportBackAgentId)) {
+        throw new Error('Choose another agent in the same repository for the merge report.');
+      }
+    }
     const sourceWorkflow = input.reportBack === true ? await this.workflow(agent) : null;
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'handoff');
     const handoff = input.reportBack === true
@@ -337,6 +350,7 @@ export class AgentGitWorkflowService {
         kind: 'merge',
         branch: sourceWorkflow?.branch ?? 'branch',
         repository: sourceWorkflow?.repository ?? 'the base branch',
+        ...(reportBackAgentId ? { reportBackAgentId } : {}),
       })
       : null;
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'delivery');
@@ -346,6 +360,7 @@ export class AgentGitWorkflowService {
       kind: 'merge' as const,
       branch: sourceWorkflow?.branch ?? 'branch',
       repository: sourceWorkflow?.repository ?? 'the base branch',
+      ...(reportBackAgentId ? { reportBackAgentId } : {}),
     };
     if (deleteWorktree) {
       updateAgentFolder(this.options.getSnapshot(), agentId, targetFolder);
