@@ -18,6 +18,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/nbonamy/korus/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nbonamy/korus" alt="Latest Korus release" />
+  </a>
+  <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
+    <img src="https://github.com/nbonamy/korus/actions/workflows/quality.yml/badge.svg?branch=main&amp;event=push" alt="Quality checks" />
+  </a>
+  <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fcoverage.json" alt="Statement coverage across all workspaces" />
+  </a>
   <a href="https://tooomm.github.io/github-release-stats/?username=nbonamy&amp;repository=korus">
     <img src="https://img.shields.io/github/downloads/nbonamy/korus/total.svg?color=orange" alt="GitHub release asset downloads" />
   </a>
