@@ -4,6 +4,10 @@ import type { AccountRateLimits, Agent, AgentBackend, AgentGitStatus, ModelFavor
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
+/** Gzip responses are negotiated separately so older paired apps keep their JSON framing. */
+export const companionCompressedProtocol = '/workspace/companion/2.0.0';
+export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/2.0.0';
+export const companionDecodedResponseLimit = 128 * 1024 * 1024;
 /** Match the native app lock: quick app switches retain the authenticated connection. */
 export const companionBackgroundGraceMs = 5 * 60_000;
 export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
@@ -65,6 +69,9 @@ export function companionTarget(hostId: string, team: Team, agent: Agent): Compa
 /** App framing only. Cryptographic authentication and encryption are owned by Noise/libp2p. */
 export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit): Uint8Array {
   const payload = new TextEncoder().encode(JSON.stringify(value));
+  return encodeCompanionPayload(payload, limit);
+}
+export function encodeCompanionPayload(payload: Uint8Array, limit: number): Uint8Array {
   if (payload.byteLength > limit) throw new Error('Companion frame too large.');
   const frame = new Uint8Array(4 + payload.byteLength);
   new DataView(frame.buffer).setUint32(0, payload.byteLength);
@@ -73,7 +80,7 @@ export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit
 }
 export class CompanionFrameDecoder {
   private buffered = new Uint8Array(0);
-  constructor(private readonly limit = companionFrameLimit) {}
+  constructor(private readonly limit = companionFrameLimit, private readonly decode: (payload: Uint8Array) => unknown = decodeCompanionPayload) {}
   push(chunk: Uint8Array): unknown[] {
     const combined = new Uint8Array(this.buffered.byteLength + chunk.byteLength);
     combined.set(this.buffered); combined.set(chunk, this.buffered.byteLength);
@@ -83,8 +90,7 @@ export class CompanionFrameDecoder {
       const size = new DataView(combined.buffer, combined.byteOffset + offset, 4).getUint32(0);
       if (size > this.limit || size === 0) throw new Error('Invalid companion frame length.');
       if (combined.byteLength - offset - 4 < size) break;
-      const payload = new TextDecoder('utf-8', { fatal: true }).decode(combined.subarray(offset + 4, offset + 4 + size));
-      frames.push(JSON.parse(payload));
+      frames.push(this.decode(combined.subarray(offset + 4, offset + 4 + size)));
       offset += size + 4;
     }
     this.buffered = combined.slice(offset);
@@ -101,4 +107,9 @@ export async function* readCompanionFrames(source: AsyncIterable<Uint8Array | { 
 export async function readFirstCompanionFrame(source: AsyncIterable<Uint8Array | { subarray(): Uint8Array }>, limit = companionFrameLimit): Promise<unknown> {
   for await (const frame of readCompanionFrames(source, limit)) return frame;
   throw new Error('Stream closed without a frame.');
+}
+
+/** Strict JSON decoding shared by plain and negotiated compressed responses. */
+export function decodeCompanionPayload(payload: Uint8Array): unknown {
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload));
 }

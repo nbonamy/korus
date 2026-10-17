@@ -125,6 +125,9 @@ parallel check, counter or state flag:
 - Rate limits: `WindowBudget`. Limits that protect other clients are keyed by
   `sourceNetwork`; counters keyed by a peer identity only reduce noise.
 - Stream framing and backpressure: the shared frame readers and `sendWithBackpressure`.
+  Companion peers negotiate compressed response protocols with legacy JSON fallback.
+  Gzip preserves provider payloads, including screenshot data, within separate wire
+  and decoded-response bounds; requests retain their smaller inbound limit.
 
 A review finding against this area names the invariant below that it breaks. Behavior
 listed as outside the relay's guarantees is not a defect.

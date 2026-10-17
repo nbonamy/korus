@@ -1,7 +1,8 @@
+import { readCompanionResponses } from '@workspace/core/companion-response';
 import { isCompanionNotification } from '@workspace/core/companion-notification';
 import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import type { Stream } from '@libp2p/interface';
-import { companionBackgroundGraceMs, companionResponseLimit, encodeCompanionFrame, readCompanionFrames, type CompanionUpdate } from '@workspace/core/companion-protocol';
+import { companionBackgroundGraceMs, companionResponseLimit, encodeCompanionFrame, type CompanionUpdate } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 export class CompanionOperationDenied extends Error {
@@ -54,7 +55,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
   async function receive(source: Stream) {
     let stage = 'read';
     try {
-      for await (const raw of readCompanionFrames(source, companionResponseLimit)) {
+      for await (const raw of readCompanionResponses(source)) {
         if (closed) return;
         lastReceived = Date.now();
         stage = 'envelope';

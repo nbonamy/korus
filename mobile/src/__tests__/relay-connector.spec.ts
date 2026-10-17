@@ -29,7 +29,9 @@ beforeEach(async () => {
   transport.response = (method, args) => method === 'pair.claim'
     ? (args.code === host.code ? { pendingId: randomUUID(), state: 'awaitingApproval' } : (() => { throw new Error('denied'); })())
     : method === 'pair.status' ? { state: 'approved', grant: {} } : {};
-  transport.dial.mockReset().mockImplementation(async (_address: unknown, protocol: string) => {
+  transport.dial.mockReset().mockImplementation(async (_address: unknown, offered: string | string[]) => {
+    // This fixture is an older host: multistream negotiation chooses its legacy protocol.
+    const protocol = Array.isArray(offered) ? offered.at(-1)! : offered;
     if (protocol === companionUpdatesProtocol) {
       let done = false; let wake = () => {}; let seq = 0; const queued: Uint8Array[] = [];
       const push = (value: unknown) => { queued.push(encodeCompanionFrame(value, companionResponseLimit)); wake(); };
@@ -203,7 +205,7 @@ describe('native relay host adapter', () => {
       expect(transport.rendezvous).toStrictEqual([{ code: 'K7QDM2XP' }]);
       expect(transport.requests.map((request) => request.method)).toStrictEqual(['pair.claim', 'pair.status']);
       expect(reused).toHaveBeenCalledTimes(2);
-      expect(reused).toHaveBeenCalledWith('/workspace/companion/1.0.0', expect.objectContaining({ runOnLimitedConnection: true }));
+      expect(reused).toHaveBeenCalledWith(['/workspace/companion/2.0.0', '/workspace/companion/1.0.0'], expect.objectContaining({ runOnLimitedConnection: true }));
       expect(wrongPath).not.toHaveBeenCalled(); expect(transport.dial).toHaveBeenCalledTimes(1);
       expect(pending).toHaveBeenCalledOnce();
       expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({ event: 'transport.stream-open', reused: true, connectionId: 'circuit', remainingBytes: '67108864', remainingSeconds: 120 }));

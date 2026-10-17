@@ -1,5 +1,6 @@
+import { readFirstCompanionResponse } from '@workspace/core/companion-response';
 import type { Stream } from '@libp2p/interface';
-import { companionFrameLimit, companionResponseLimit, encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
+import { companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 /** One request on an already authenticated laptop stream. */
@@ -16,7 +17,7 @@ export async function requestCompanionStream<Result>(stream: Stream, method: str
     stage = 'half-close';
     await stream.close({ signal: AbortSignal.timeout(5000) });
     stage = 'read';
-    const value = await readFirstCompanionFrame(stream, companionResponseLimit);
+    const value = await readFirstCompanionResponse(stream);
     stage = 'response';
     if (!value || typeof value !== 'object' || !('v' in value) || value.v !== 1 || !('id' in value) || value.id !== id) throw new Error('Invalid companion response.');
     if ('error' in value) { stage = 'operation-denied'; throw new Error('Laptop denied the operation or is unavailable.'); }

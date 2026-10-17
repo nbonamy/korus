@@ -8,7 +8,9 @@ import { identify } from '@libp2p/identify';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
 import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
 import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
@@ -74,6 +76,47 @@ describe('encrypted companion circuit', () => {
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
     expect(await rpc(phone, `${address}/p2p-circuit/p2p/${hostId}`, 'conversation.loadOlder', {})).toMatchObject({ result: large });
   }, 15_000);
+  it('loads screenshot-heavy provider data beyond the legacy response limit over a negotiated circuit', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!.toString(); const port = address.match(/\/tcp\/(\d+)/)![1];
+    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
+    stops.push(() => phone.stop());
+    const image = `data:image/png;base64,${randomBytes(26 * 1024 * 1024).toString('base64')}`;
+    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] }) } } as unknown as CompanionReset;
+    expect(Buffer.byteLength(JSON.stringify(frame))).toBeGreaterThan(companionResponseLimit);
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => frame,
+      loadOlderHistory: async () => ({ hasOlder: false }), save: async () => {},
+    } as unknown as ConstructorParameters<typeof CompanionGateway>[2]);
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const circuit = multiaddr(`${address}/p2p-circuit/p2p/${hostId}`);
+    const stream = await phone.dialProtocol(circuit, ['/workspace/companion-updates/2.0.0', companionUpdatesProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    stream.maxReadBufferLength = companionResponseLimit + 4;
+    const received: any[] = []; let ended = false;
+    const reader = (async () => { try { for await (const value of readCompanionResponses(stream)) received.push(value); } catch { /* Peer reset is observed through ended. */ } finally { ended = true; } })();
+    stops.push(async () => { stream.abort(new Error('Test complete')); await reader.catch(() => {}); });
+    const request = async (method: string, args: unknown) => {
+      const id = randomUUID(); stream.send(encodeCompanionFrame({ v: 1, id, method, args }));
+      await expect.poll(() => ended ? 'stream-ended' : received.some(value => value.id === id), { timeout: 15_000 }).toBe(true);
+    };
+    await request('snapshot.get', {});
+    await request('conversation.subscribe', { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) });
+    expect(received.find(value => value.update?.type === 'conversation')?.update.frame).toStrictEqual(frame);
+    expect(ended).toBe(false);
+    // History reads use the same codec on the one-shot protocol.
+    const historyStream = await phone.dialProtocol(circuit, ['/workspace/companion/2.0.0', companionProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    historyStream.maxReadBufferLength = companionResponseLimit + 4;
+    const id = randomUUID();
+    historyStream.send(encodeCompanionFrame({ v: 1, id, method: 'conversation.loadOlder', args: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } }));
+    await historyStream.close();
+    const page = await readFirstCompanionResponse(historyStream);
+    historyStream.abort(new Error('Test complete'));
+    expect(page).toStrictEqual({ v: 1, id, result: { frame, hasOlder: false } });
+  }, 30_000);
   it('pushes provider events over one authenticated duplex stream and closes it on revocation', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });

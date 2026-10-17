@@ -13,7 +13,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { companionProtocol, companionUpdatesProtocol, companionTarget, encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionUpdatesProtocol, companionCompressedProtocol, companionCompressedUpdatesProtocol, companionTarget, encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
@@ -94,9 +94,10 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     const options = { signal: AbortSignal.timeout(15_000), runOnLimitedConnection: true };
     const existing = networkNode.getConnections(peerIdFromString(host.hostId)).find((connection) => connection.status === 'open' && connection.remoteAddr.toString() === address);
     try {
+      const protocols = protocol === companionUpdatesProtocol ? [companionCompressedUpdatesProtocol, protocol] : [companionCompressedProtocol, protocol];
       const stream: Stream = existing
-        ? await existing.newStream(protocol, options)
-        : await networkNode.dialProtocol(multiaddr(address), protocol, options);
+        ? await existing.newStream(protocols, options)
+        : await networkNode.dialProtocol(multiaddr(address), protocols, options);
       const connection = existing ?? networkNode.getConnections(peerIdFromString(host.hostId)).find(candidate => candidate.remoteAddr.toString() === address);
       connectionDiagnostic('transport.stream-open', { stage: protocol === companionUpdatesProtocol ? 'updates' : 'rpc', reused: Boolean(existing), elapsedMs: Date.now() - started, connectionCount: networkNode.getConnections().length,
         connectionId: connection?.id, remainingBytes: connection?.limits?.bytes?.toString(), remainingSeconds: connection?.limits?.seconds });

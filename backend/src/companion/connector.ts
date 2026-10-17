@@ -8,11 +8,12 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, PrivateKey, Stream } from '@libp2p/interface';
-import { readCompanionFrames, readFirstCompanionFrame, companionBackgroundGraceMs, companionProtocol, companionUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
+import { readCompanionFrames, readFirstCompanionFrame, companionBackgroundGraceMs, companionProtocol, companionUpdatesProtocol, companionCompressedProtocol, companionCompressedUpdatesProtocol, companionFrameLimit, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
 import { relayAddress, companionAdmissionProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import type { CompanionGateway } from './gateway';
 import { sendWithBackpressure } from './stream-io';
+import { encodeCompanionResponse } from './response';
 import { logMain, warnMain } from '../log';
 
 const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method: z.string().min(1).max(80), args: z.unknown() }).strict();
@@ -41,6 +42,10 @@ export class CompanionOutboundConnector {
     await this.node.handle(companionProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), this.serve),
       { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
     await this.node.handle(companionUpdatesProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), this.serveUpdates),
+      { maxInboundStreams: 1, maxOutboundStreams: 1, runOnLimitedConnection: true });
+    await this.node.handle(companionCompressedProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), function (s, peer) { return this.serve(s, peer, true); }),
+      { maxInboundStreams: 4, maxOutboundStreams: 1, runOnLimitedConnection: true });
+    await this.node.handle(companionCompressedUpdatesProtocol, (stream, connection) => this.track(stream, connection.remotePeer.toString(), function (s, peer) { return this.serveUpdates(s, peer, true); }),
       { maxInboundStreams: 1, maxOutboundStreams: 1, runOnLimitedConnection: true });
     this.node.addEventListener('connection:close', () => {
       if (!this.node?.getConnections().some((connection) => connection.remotePeer.toString() === relayPeerId)) {
@@ -102,7 +107,7 @@ export class CompanionOutboundConnector {
     this.timer = setTimeout(() => { this.timer = undefined; void this.reserve(address); }, delay);
     this.timer.unref();
   }
-  private async serveUpdates(stream: Stream, peerId: string) {
+  private async serveUpdates(stream: Stream, peerId: string, compressed = false) {
     stream.maxReadBufferLength = companionFrameLimit + 4;
     stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = companionBackgroundGraceMs + 45_000;
@@ -116,7 +121,7 @@ export class CompanionOutboundConnector {
     const send = (value: unknown) => {
       if (closed) return;
       let bytes: Uint8Array;
-      try { bytes = encodeCompanionFrame(value, companionResponseLimit); } catch { fail('encode-failed'); return; }
+      try { bytes = encodeCompanionResponse(value, compressed); } catch { fail('encode-failed'); return; }
       queuedBytes += bytes.byteLength; queuedFrames++;
       if (queuedBytes > companionResponseLimit * 2 || queuedFrames > 256) { fail('send-queue-limit'); return; }
       pending = pending.then(async () => {
@@ -148,7 +153,7 @@ export class CompanionOutboundConnector {
     } catch { fail('receive-failed'); }
     finally { logMain('companion', 'updates ended', diagnostic()); cleanup(); stream.removeEventListener('close', cleanup); stream.abort(new Error('Updates ended.')); }
   }
-  private async serve(stream: Stream, peerId: string) {
+  private async serve(stream: Stream, peerId: string, compressed = false) {
     stream.maxReadBufferLength = companionFrameLimit + 4;
     stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = 30_000;
@@ -158,7 +163,7 @@ export class CompanionOutboundConnector {
       try {
         const result = await this.gateway.request(peerId, request.method, request.args);
         if (request.method === 'pair.claim') await this.advertise();
-        response = encodeCompanionFrame({ v: 1, id: request.id, result }, companionResponseLimit);
+        response = encodeCompanionResponse({ v: 1, id: request.id, result }, compressed);
       }
       catch { response = encodeCompanionFrame({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
       if (stream.status !== 'open') return;
