@@ -7,6 +7,14 @@ description: Inspect code, register structured findings, or remediate selected f
 
 Run prompt owns scope, ledger and authority. This skill grants no editing or delivery permission.
 
+## Tool contracts
+
+If tools are deferred or lack input schemas, load them with ToolSearch or your provider's tool discovery before calling them. Use the Korus MCP finding tools in this round. Native ReportFindings uses a different schema and does not save findings to the Korus ledger; summary, failure_scenario, category and verdict are not report_finding fields.
+
+- report_finding requires priority (p0–p3 or P0–P3), an imperative title of at most 80 characters, and body with evidence and impact. Optional file is repository-relative; line/endLine are positive one-based integers. Example: `{"priority":"p2","title":"Validate ownership before writing","body":"An unowned request can write files.","file":"src/handler.ts","line":42}`.
+- update_finding requires findingId. For a verified fix use `{"findingId":"<ledger ID>","status":"fixed","evidence":"npm test: 12 tests passed."}`. Corrections may set priority, title, body, file, line and endLine under the same constraints. Unknown keys, including outcome and note, are rejected.
+- finish_review_round takes the total saved current-round findingCount. Example for a clean inspection: `{"findingCount":0}`.
+
 ## Inspect
 
 - Use provider repository tools. Review the fixed baseline plus subsequent review commits/working changes.

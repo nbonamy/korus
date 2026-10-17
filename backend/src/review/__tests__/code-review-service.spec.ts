@@ -284,6 +284,8 @@ describe('CodeReviewService', () => {
     await vi.waitFor(() => expect(session.automation?.state).toBe('paused'));
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__report_finding`);
     expect(test.turns[0]!.prompt).toContain(`mcp__${product.mcpServerName}__finish_review_round`);
+    expect(test.turns[0]!.prompt).toContain('ToolSearch');
+    expect(test.turns[0]!.prompt).toContain('ReportFindings');
     expect(session.status).toBe('failed');
     expect(session.automation?.reason).toContain('finish_review_round');
     expect(test.deleted).toEqual([]);

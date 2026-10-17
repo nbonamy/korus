@@ -46,7 +46,10 @@ by mutating user-global tool config.
   engine-native subagents (inside the Codex/Claude session) from Korus co-agents
   (`create-agent`); ambiguous requests to delegate require a clarifying question.
 - App-owned procedures are bundled Markdown skills, loaded on demand through
-  `read-skill`. Injected instructions contain their catalog and essential policy,
+  `read-skill`. Its response carries the full procedure in both text content and
+  `structuredContent.markdown`, so clients that prefer structured results still
+  deliver the instructions. The body is not injected separately. Injected
+  instructions contain their catalog and essential policy,
   not full skill bodies or filesystem paths. The reader serves only registered
   names and rechecks tool-module availability, feature enablement, active review
   context and the caller's Mission stage. It cannot read personal skills or
@@ -169,7 +172,11 @@ Each review session gets a stable URL derived from its durable session ID (provi
 conversations may retain their initial MCP config) adding `report_finding`,
 `update_finding`, `delete_finding` and `finish_review_round`. They mutate the
 persisted ledger before returning and are model-only; user decisions are backend
-commands. `finish_review_round({ findingCount })` must equal the round's saved
+commands. Finding updates reject unknown arguments before mutating the ledger;
+provider-native finding tools do not populate it. Tool deferral belongs to the
+provider: review prompts require schema discovery before calls when schemas are
+deferred or absent, rather than changing provider-wide discovery behavior.
+`finish_review_round({ findingCount })` must equal the round's saved
 finding count across all priorities (zero must be confirmed explicitly); a mismatch
 errors and tells the model to reconcile via `report_finding`. A later finding
 mutation invalidates an earlier acknowledgment, restarted inspections need a fresh

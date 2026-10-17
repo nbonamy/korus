@@ -106,7 +106,14 @@ describe('AppMcpService', () => {
       params: { name: 'read-skill', arguments: { name: 'korus-reviewer' } },
     })).result;
     expect((await readReview(`${url}?agentId=${owner.id}`)).isError).toBe(true);
-    expect(await readReview(context.url)).toMatchObject({ isError: false, structuredContent: { name: 'korus-reviewer', loaded: true } });
+    const procedure = await readReview(context.url);
+    expect(procedure.structuredContent).toStrictEqual({
+      name: 'korus-reviewer', loaded: true, markdown: expect.stringContaining('report_finding'),
+    });
+    expect(procedure).toStrictEqual({
+      isError: false, structuredContent: procedure.structuredContent,
+      content: [{ type: 'text', text: procedure.structuredContent.markdown }],
+    });
     const otherUrl = new URL(context.url);
     otherUrl.searchParams.set('agentId', snapshot.agents[1]!.id);
     expect((await readReview(otherUrl.toString())).isError).toBe(true);
@@ -437,13 +444,16 @@ describe('AppMcpService', () => {
       jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
         name: 'report_finding',
         arguments: {
-          priority: 'p1', title: 'Authorize before writing',
+          priority: 'P1', title: 'Authorize before writing',
           body: 'The mutation writes before checking ownership.',
         },
       },
     });
     expect(called.result.isError).toBe(false);
     expect(reportFinding).toHaveBeenCalledOnce();
+    expect(reportFinding).toHaveBeenCalledWith({
+      priority: 'p1', title: 'Authorize before writing', body: 'The mutation writes before checking ownership.',
+    });
 
     const verbose = await postJson(review.url, {
       jsonrpc: '2.0', id: 4, method: 'tools/call', params: {
@@ -456,6 +466,24 @@ describe('AppMcpService', () => {
     expect(verbose.result.isError).toBe(true);
     expect(reportFinding).toHaveBeenCalledOnce();
 
+    for (const arguments_ of [
+      { findingId: 'finding-1', outcome: 'fixed', note: 'Verified.' },
+      { findingId: 'finding-1', status: 'fixed', evidence: 'Verified.', outcome: 'fixed', note: 'Verified.' },
+    ]) {
+      const rejected = await postJson(review.url, {
+        jsonrpc: '2.0', id: 5, method: 'tools/call',
+        params: { name: 'update_finding', arguments: arguments_ },
+      });
+      expect(rejected.result.isError).toBe(true);
+      const error = rejected.result.content[0].text;
+      expect(error).toContain('outcome');
+      expect(error).toContain('note');
+      expect(error).toContain('Valid keys:');
+      expect(error).toContain('status');
+      expect(error).toContain('evidence');
+    }
+    expect(updateFinding).not.toHaveBeenCalled();
+
     const updated = await postJson(review.url, {
       jsonrpc: '2.0', id: 5, method: 'tools/call', params: {
         name: 'update_finding',
@@ -467,6 +495,20 @@ describe('AppMcpService', () => {
     expect(updated.result.isError).toBe(false);
     expect(updateFinding).toHaveBeenCalledWith({
       findingId: 'finding-1', status: 'fixed', evidence: 'Focused test passes.',
+    });
+
+    const corrected = await postJson(review.url, {
+      jsonrpc: '2.0', id: 6, method: 'tools/call', params: {
+        name: 'update_finding', arguments: {
+          findingId: 'finding-1', priority: 'P2', title: 'Validate request ownership',
+          body: 'The write accepts an unowned request.', file: 'src/handler.ts', line: 42, endLine: 43,
+        },
+      },
+    });
+    expect(corrected.result.isError).toBe(false);
+    expect(updateFinding).toHaveBeenLastCalledWith({
+      findingId: 'finding-1', priority: 'p2', title: 'Validate request ownership',
+      body: 'The write accepts an unowned request.', location: { file: 'src/handler.ts', line: 42, endLine: 43 },
     });
 
     const deleted = await postJson(review.url, {
