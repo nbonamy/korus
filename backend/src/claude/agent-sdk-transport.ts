@@ -81,6 +81,7 @@ type ClaudeSdkSession = {
   model: string | null;
   effort: ClaudeTurnParams['effort'];
   permissionMode: PermissionMode;
+  allowedTools: readonly string[];
   closed: boolean;
 };
 
@@ -375,6 +376,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       model: params.model ?? null,
       effort: params.effort ?? null,
       permissionMode: normalizedPermissionMode(params.permissionMode) ?? 'default',
+      allowedTools: params.allowedTools ?? [],
       closed: false,
     };
     this.sessions.set(sessionId, session);
@@ -483,6 +485,11 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     input: Record<string, unknown>,
     options: Parameters<CanUseTool>[2],
   ): Promise<PermissionResult> {
+    // Handled here rather than via the SDK's allowedTools, which would shadow canUseTool for every tool.
+    if (session.allowedTools.some(pattern => toolMatchesPattern(toolName, pattern))) {
+      return Promise.resolve({ behavior: 'allow', updatedInput: input });
+    }
+
     const activeTurn = session.activeTurn;
     const onPermissionRequest = activeTurn?.onPermissionRequest;
     if (!onPermissionRequest) {
@@ -660,7 +667,6 @@ function claudeQueryOptions(
           },
         }
       : {}),
-    ...(params.allowedTools?.length ? { allowedTools: [...params.allowedTools] } : {}),
     stderr: (data) => {
       debugMain('claude-agent-sdk', 'Claude SDK process wrote stderr', { bytes: data.length });
     },
@@ -705,6 +711,10 @@ function normalizedContextUsage(usage: Awaited<ReturnType<Query['getContextUsage
     maxTokens: usage.maxTokens,
     percentage: usage.percentage,
   };
+}
+
+function toolMatchesPattern(toolName: string, pattern: string): boolean {
+  return pattern.endsWith('*') ? toolName.startsWith(pattern.slice(0, -1)) : toolName === pattern;
 }
 
 function sessionConfigurationKey(params: ClaudeTurnParams): string {
