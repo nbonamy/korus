@@ -17,6 +17,7 @@ import { normalizeGitSettings } from '@workspace/core/git-preferences';
 import { readWorktreeHead } from './git-worktrees';
 import type { DurableTaskService } from './agents/durable-task-service';
 import { ProviderConnections } from './provider-connections';
+import type { Requirements } from './requirements';
 import { backendCodexHomeDir } from './state';
 import { isProviderConnection, type ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
@@ -94,6 +95,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  requirements?: Requirements;
   usage?:UsageService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
@@ -223,7 +225,7 @@ export class AppBackendServer {
     if (options.providerSetup) {
       this.providerConnections = new ProviderConnections({
         detect: () => options.providerSetup!.list(),
-        enabled: backend => this.snapshot.general.providerEnabled?.[backend] !== false,
+        enabled: backend => options.requirements?.models?.[backend]?.length !== 0 && this.snapshot.general.providerEnabled?.[backend] !== false,
         authenticate: backend => this.authenticateProvider(backend),
         changed: connections => {
           const reconnected = connections.filter(connection => connection.connected && connection.installed && connection.enabled !== false && !connection.checking

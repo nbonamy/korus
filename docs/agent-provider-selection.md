@@ -33,6 +33,36 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
 - Validation gives a clear error for an unavailable explicit provider instead of
   silently using another.
 
+## Host Requirements
+
+An operator can limit the model choices offered by desktop and mobile with
+`$APP_HOME/requirements.json` (normally `~/.korus/requirements.json`). The daemon
+reads this optional file at startup, independently of saved preferences, and never
+rewrites it. Restart the daemon after editing it. Invalid JSON, unknown fields or
+providers, and invalid model lists stop startup with an error.
+
+For a demo that offers only Codex Luna:
+
+```json
+{
+  "models": {
+    "codex": ["gpt-6-luna"],
+    "claude": [],
+    "antigravity": []
+  }
+}
+```
+
+Entries match provider catalog model identifiers (`model` or `id`), not display
+names. Omitted providers keep their full catalog; an empty list disables that
+provider for new work while preserving its conversations. Settings cannot re-enable
+a provider disabled by requirements. Filtered catalogs retain an allowed provider
+default or select the first remaining model as the default. Catalog updates use the
+same filter, so discovery cannot restore excluded choices. Each host owns its
+requirements; remote clients receive the owning host's filtered catalog and
+availability. The file controls Korus model choices, not the provider's own CLI or
+native subagents.
+
 ## Switching Before The First Prompt
 
 A fresh conversation can change backend from a composer-shelf control, even after

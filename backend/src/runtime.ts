@@ -27,6 +27,7 @@ import { RuntimeScheduler } from './scheduling/runtime-scheduler';
 import { AppMcpService } from './mcp/service';
 import { HostedMcpGateway } from './mcp/hosted-mcp-gateway';
 import { runtimeGitHubOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
+import { loadRequirements } from './requirements';
 import { LinearWorkProviderDriver } from './work-integrations/linear-driver';
 import { AppBackendServer } from './server';
 import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, backupProviderSetup, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from './state';
@@ -70,6 +71,7 @@ export type DaemonRuntime = {
 };
 
 export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promise<DaemonRuntime> {
+  const requirements = await loadRequirements(backendHomeDir());
   const computerUseAvailable = options.features?.computerUse !== false;
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
   const snapshot = await loadBackendSnapshot();
@@ -194,7 +196,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     ].filter(Boolean).join('\n\n') || undefined,
   };
   const backendDrivers = createDefaultBackendDrivers(driverOptions);
-  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend));
+  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend), requirements);
   const updater = new ProviderUpdateRuntime({
     command: backend => backend === 'codex'
       ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
@@ -291,6 +293,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    requirements,
     usage,
     companionControl: (input) => companion.control(input),
     onPromptSource: (agent, clientId) => companion.recordPrompt(agent, clientId),

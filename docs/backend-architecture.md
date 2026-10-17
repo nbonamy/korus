@@ -47,6 +47,11 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   user messages.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
+- Optional operator requirements load from `$APP_HOME/requirements.json` before
+  services start, separately from app-written settings. Invalid requirements stop
+  startup. Model catalog filtering and provider availability belong to the owning
+  daemon; clients consume the filtered results. See
+  [host requirements](agent-provider-selection.md#host-requirements).
 
 ## Antigravity
 

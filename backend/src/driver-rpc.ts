@@ -26,6 +26,7 @@ import { listSourceFolders } from './source-folders';
 import { detectSourceFolder, scanSourceRepositories } from './source-repositories';
 import { cloneSourceRepository } from './clone-source-repository';
 import { createSourceRepository } from './create-source-repository';
+import { filterRequiredModels, type Requirements } from './requirements';
 
 export type BackendDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
@@ -129,6 +130,7 @@ export class BackendDriverRpc {
     private readonly worktreeManager = new WorktreeManager(),
     private readonly ensureConnected?: (backend: AgentBackend) => Promise<unknown>,
     private readonly blocked: (backend: AgentBackend) => boolean = () => false,
+    private readonly requirements: Requirements = {},
   ) {
     for (const [backend, driver] of drivers) { this.bindUsage(backend,driver); this.unsubscribeDriverEvents.set(backend, driver.onEvent((event) => this.emit(event))); }
   }
@@ -560,7 +562,7 @@ export class BackendDriverRpc {
       case backendMethods.driverModelsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.backend);
-        return driver.listModels ? driver.listModels(agent) : [];
+        return filterRequiredModels(this.requirements, agent.backend, driver.listModels ? await driver.listModels(agent) : []);
       }
       case backendMethods.driverPluginsList: {
         const { agent } = requireAgentParams(params);
@@ -668,6 +670,9 @@ export class BackendDriverRpc {
   }
 
   private emit(event: BackendEvent): void {
+    if (event.type === 'models.changed') {
+      event = { ...event, payload: { ...event.payload, models: filterRequiredModels(this.requirements, event.backend, event.payload.models) } };
+    }
     for (const listener of this.listeners) {
       listener(event);
     }
