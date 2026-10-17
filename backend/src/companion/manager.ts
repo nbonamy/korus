@@ -23,6 +23,7 @@ import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
 import { readConversationImage } from './images';
+import { readConfiguredPairing } from './configured-pairing';
 
 type Saved = { v: 1; identity: string; enabled: boolean; relayOrigin: string; relayPeerId: string; gateway: GatewayState };
 const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.literal('status') }).strict(),
@@ -66,7 +67,7 @@ export class CompanionManager {
   private ready: Promise<void> | null = null;
   private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
-  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, env: NodeJS.ProcessEnv = process.env) {
+  constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
     this.environment = relayFromEnvironment(env);
   }
   /** Explicit deployment choices take precedence over the bundled public relay. */
@@ -143,6 +144,7 @@ export class CompanionManager {
   }
   private initialize() { return this.ready ??= this.load(); }
   private async load() {
+    const pairing = await readConfiguredPairing(this.env);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     let saved: Saved;
     try {
@@ -260,7 +262,7 @@ export class CompanionManager {
       selectModel: async (agentId, modelSelection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, modelSelection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),
-    });
+    }, Date.now, pairing?.hostId === peerIdFromPrivateKey(this.key).toString() ? pairing.code : undefined);
     this.connector = new CompanionOutboundConnector(this.key, this.gateway);
     await this.persist();
     const relay = this.relay;

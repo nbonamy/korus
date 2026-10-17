@@ -14,7 +14,7 @@ const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: '
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
   return gateway.request(peerId, 'pair.claim', { code: normalizePairingCode(shown)!, name }) as Promise<{ pendingId: string; state: string }>;
 }
-function fixture() {
+function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
   const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
@@ -27,7 +27,7 @@ function fixture() {
     startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
-  const gateway = new CompanionGateway('host', saved, port, () => now);
+  const gateway = new CompanionGateway('host', saved, port, () => now, autoAcceptCode);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
     async pair() {
       const invite = gateway.invite();
@@ -37,6 +37,32 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('serializes automatic grants and keeps them unauthorized until persistence finishes', async () => {
+    const code = 'ABCDEFGH';
+    const f = fixture(code);
+    let release!: () => void;
+    const pendingSave = new Promise<void>(resolve => { release = resolve; });
+    f.port.save.mockImplementationOnce(async () => { await pendingSave; });
+    const first = claim(f.gateway, 'phone', code);
+    const retry = claim(f.gateway, 'phone', code);
+    const second = claim(f.gateway, 'second', code);
+    await expect(f.gateway.request('phone', 'snapshot.get', {})).rejects.toThrow('authorized');
+    release();
+    for (const admitted of await Promise.all([first, retry, second])) expect(admitted.state).toBe('approved');
+    expect(f.gateway.grants.map(grant => grant.peerId)).toStrictEqual(['phone', 'second']);
+    expect(f.gateway.pendingRequests).toStrictEqual([]);
+    await expect(f.gateway.request('phone', 'snapshot.get', {})).resolves.toMatchObject({ teams: expect.any(Array) });
+  });
+
+  it('applies the existing device limit to automatic grants while allowing a paired phone to retry', async () => {
+    const code = 'ABCDEFGH';
+    const f = fixture(code);
+    for (let index = 0; index < 20; index++) await claim(f.gateway, `phone-${index}`, code);
+    await expect(claim(f.gateway, 'overflow', code)).rejects.toThrow('Too many paired devices');
+    expect((await claim(f.gateway, 'phone-0', code)).state).toBe('approved');
+    expect(f.gateway.grants).toHaveLength(20);
+  });
+
   it('reads only scoped Git diffs and rejects extra filesystem authority', async () => {
     const f = fixture(); await f.pair();
     const result = await f.gateway.request('phone', 'agent.git.diff', { target, scope: { type: 'uncommitted' } });

@@ -14,6 +14,7 @@ import { encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/c
 import { companionAdmissionProtocol, companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { normalizePairingCode, pairingLifetimeMs, type PairingInvitation } from '@workspace/core/companion-pairing';
+import type { ConfiguredPairing } from './configured-pairing';
 
 /** Relay policy sees authenticated peer identities, never the encrypted companion payload. */
 export class CompanionRelayPolicy {
@@ -21,15 +22,18 @@ export class CompanionRelayPolicy {
   private readonly invitations = new Map<string, PairingInvitation & { host: string; claimant?: string; withdrawn: boolean }>();
   private readonly leases = new Map<string, { until: number; source: string }>();
   private readonly lookups: WindowBudget;
-  constructor(private readonly hosts?: Set<string>, private readonly now = Date.now) {
+  private readonly configuredClaims = new Map<string, number>();
+  constructor(private readonly hosts?: Set<string>, private readonly now = Date.now, private readonly pairing?: ConfiguredPairing) {
     this.lookups = new WindowBudget(10, pairingLifetimeMs, 200, now);
     if (hosts && (!hosts.size || hosts.size > 100)) throw new Error('Configure between 1 and 100 admitted laptop identities.');
   }
   private prune() {
     for (const [host, lease] of this.leases) if (lease.until <= this.now()) {
       this.leases.delete(host); this.routes.delete(host);
+      if (host === this.pairing?.hostId) this.configuredClaims.clear();
       for (const owner of this.invitations.values()) if (owner.host === host) owner.withdrawn = true;
     }
+    for (const [peer, until] of this.configuredClaims) if (until <= this.now()) this.configuredClaims.delete(peer);
   }
   private admitted(host: string) { this.prune(); return this.hosts ? this.hosts.has(host) : this.leases.has(host); }
   reserve(host: string, source = host) {
@@ -48,6 +52,7 @@ export class CompanionRelayPolicy {
       || invitations.length > 5 || invitations.some(invite => normalizePairingCode(invite.code) !== invite.code
         || !Number.isSafeInteger(invite.expiresAt) || invite.expiresAt > this.now() + pairingLifetimeMs)) throw new Error('Invalid relay admission.');
     const fresh = invitations.filter(invite => invite.expiresAt > this.now());
+    if (fresh.some(invite => invite.code === this.pairing?.code)) throw new Error('Pairing code is reserved by relay configuration.');
     if (fresh.some(invite => this.invitations.has(invite.code) && this.invitations.get(invite.code)!.host !== host)) throw new Error('Pairing code already registered.');
     const additions = fresh.filter(invite => !this.invitations.has(invite.code)).length;
     if (this.invitations.size + additions > 5000
@@ -65,6 +70,14 @@ export class CompanionRelayPolicy {
   resolve(source: string, code: string) {
     this.prune();
     if (!this.lookups.take(source)) return null;
+    if (this.pairing && code === this.pairing.code) {
+      if (!this.admitted(this.pairing.hostId)) return null;
+      this.configuredClaims.delete(source);
+      // Lookup permissions are temporary; evicting the oldest never grants access to another host.
+      if (this.configuredClaims.size >= 200) this.configuredClaims.delete(this.configuredClaims.keys().next().value!);
+      this.configuredClaims.set(source, this.now() + pairingLifetimeMs);
+      return this.pairing.hostId;
+    }
     const owner = this.invitations.get(code);
     if (!owner || owner.withdrawn || owner.expiresAt <= this.now() || !this.admitted(owner.host)
       || (owner.claimant && owner.claimant !== source)) return null;
@@ -75,13 +88,14 @@ export class CompanionRelayPolicy {
   route(source: string, destination: string) {
     if (!this.admitted(destination)) return false;
     if (this.routes.get(destination)?.has(source)) return true;
+    if (destination === this.pairing?.hostId && (this.configuredClaims.get(source) ?? 0) > this.now()) return true;
     return [...this.invitations.values()].some(invite => invite.host === destination && invite.claimant === source
       && !invite.withdrawn && invite.expiresAt > this.now());
   }
 }
-export async function createCompanionRelay(options: { key: PrivateKey; listen: string; trustedProxy?: boolean; hostIds?: string[]; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> }) {
+export async function createCompanionRelay(options: { key: PrivateKey; listen: string; trustedProxy?: boolean; hostIds?: string[]; pairing?: ConfiguredPairing; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> }) {
   const ingress = new RelayIngress(options.trustedProxy);
-  const policy = new CompanionRelayPolicy(options.hostIds ? new Set(options.hostIds) : undefined);
+  const policy = new CompanionRelayPolicy(options.hostIds ? new Set(options.hostIds) : undefined, Date.now, options.pairing);
   const relay = await createLibp2p({ privateKey: options.key, addresses: { listen: [options.listen] },
     transports: [webSockets({ http: { IncomingMessage: ingress.IncomingMessage }, https: options.tls ? { ...options.tls, IncomingMessage: ingress.IncomingMessage } : undefined, maxBufferedAmount: 1024 * 1024 })], connectionEncrypters: [noise()], streamMuxers: [yamux()],
     // The transport socket address is nginx’s loopback address. RelayIngress owns real-source rate limits.

@@ -155,7 +155,11 @@ export class CompanionOutboundConnector {
     try {
       const request = requestSchema.parse(await readFirstCompanionFrame(stream));
       let response;
-      try { response = encodeCompanionFrame({ v: 1, id: request.id, result: await this.gateway.request(peerId, request.method, request.args) }, companionResponseLimit); }
+      try {
+        const result = await this.gateway.request(peerId, request.method, request.args);
+        if (request.method === 'pair.claim') await this.advertise();
+        response = encodeCompanionFrame({ v: 1, id: request.id, result }, companionResponseLimit);
+      }
       catch { response = encodeCompanionFrame({ v: 1, id: request.id, error: 'Operation denied or unavailable.' }); }
       if (stream.status !== 'open') return;
       await sendWithBackpressure(stream, response);

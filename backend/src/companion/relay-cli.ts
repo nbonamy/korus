@@ -6,6 +6,7 @@ import { createCompanionRelay } from './relay';
 import { z } from 'zod';
 import { startRelayHealth } from './relay-health';
 import { RelayStartupError } from './relay-startup-error';
+import { readConfiguredPairing } from './configured-pairing';
 
 const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
 const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
@@ -27,9 +28,11 @@ export function parseRelayConfig(source: string) {
     throw new RelayStartupError('Invalid operator configuration. Provide valid JSON with a listen address and stateDirectory (hostIds optionally restricts laptops); public listeners require TLS certificateFile and privateKeyFile, and plaintext listeners must use loopback.', { cause });
   }
 }
-export async function runCompanionRelay(configFile: string) {
+export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessEnv = process.env) {
   if (!configFile) throw new RelayStartupError('Provide the relay operator configuration file as the first argument, or use npm run dev:relay for local development.');
   const config = parseRelayConfig(await readFile(configFile, 'utf8'));
+  const pairing = await readConfiguredPairing(env);
+  if (pairing && config.hostIds && !config.hostIds.includes(pairing.hostId)) throw new RelayStartupError('The configured pairing destination must be included in hostIds when laptop admission is restricted.');
   await mkdir(config.stateDirectory, { recursive: true, mode: 0o700 });
   const identityFile = path.join(config.stateDirectory, 'identity.key');
   let identity;
@@ -49,7 +52,7 @@ export async function runCompanionRelay(configFile: string) {
   }
   const push = config.apns ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
     senders[registration.environment]?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
-  const relay = await createCompanionRelay({ push, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
+  const relay = await createCompanionRelay({ push, pairing, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }

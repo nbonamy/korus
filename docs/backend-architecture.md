@@ -219,7 +219,7 @@ paired routes derive from daemon grants. Endpoints enforce companion methods aft
 Noise authentication; the relay cannot inspect encrypted application frames. Circuit
 duration and data budgets force an explicit reconnect and authoritative rehydrate.
 An optional nonempty `hostIds` configuration restricts a privately operated relay.
-Public admission never replaces pairing proof or explicit desktop approval.
+Public admission never replaces endpoint authorization.
 
 The relay is untrusted infrastructure. It must preserve confidentiality, endpoint
 authentication and authorization, and bound its own memory, sockets and outbound APNs
@@ -270,11 +270,33 @@ laptop identity. Repeated lookups by that phone recover a lost reply; another ph
 cannot claim it. Advertisements cannot extend expiry or rearm withdrawn codes.
 Lookup attempts, invitations and temporary routes are bounded.
 
+A shared review environment can use an operator-configured reusable code. Both the
+relay and the destination daemon read the JSON file named by
+`APP_COMPANION_PAIRING_CONFIG` at startup. The file contains `code` and `hostId`;
+when the variable is unset, no pairing configuration is read and ordinary
+invitation pairing works without a reusable code or operator repository.
+[the example](../backend/companion-relay/pairing.example.json) shows the format, with
+`hostId` replaced by the destination daemon's companion identity. Deployment codes,
+identities and service configuration belong in the operator's private inventory.
+Point both services to the same file so routing and approval use one definition.
+Malformed configuration fails closed. A restricted
+relay's `hostIds` must include the destination; the configured code does not bypass
+normal host admission or circuit reservations.
+
+Resolving that code grants a bounded, five-minute circuit permission to the named
+host. Other hosts cannot advertise invitations with the reserved code. Only a daemon
+whose own identity matches `hostId` automatically accepts claims for that code. It
+serializes and atomically persists normal device grants before confirming approval,
+then advertises them to the relay. Existing device limits and revocation apply; a
+holder of the reusable code can pair again after revocation. Mobile access must be
+enabled on that daemon, and its companion identity and grants must survive restarts.
+Every approved device shares access to the daemon's workspace.
+
 The phone pins the introduced laptop identity when establishing its Noise circuit.
-The laptop independently consumes the invitation for that authenticated phone and
-requires explicit desktop approval before granting app access. Approval persists the
-phone identity; the phone stores the laptop and relay identities in protected storage,
-never the code. Rejection, expiry and daemon restart invalidate pending invitations.
+For ordinary invitations, the laptop independently consumes the invitation for that
+authenticated phone and requires explicit desktop approval before granting app access.
+Approval persists the phone identity; the phone stores the laptop and relay identities
+in protected storage, never the code. Rejection, expiry and daemon restart invalidate pending invitations.
 Relay restarts cannot bypass the laptop's single-use claim. Subsequent reconnects
 use saved pins without another introduction. A compromised relay during initial
 pairing could substitute identities; after correct pairing it can disrupt delivery

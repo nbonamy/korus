@@ -274,7 +274,7 @@ export class CompanionGateway {
   private readonly creations = new ChatCreations();
   private readonly ledger = new CommandLedger((key) => this.state.commands[key]);
   private readonly pairingAttempts: WindowBudget;
-  constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {
+  constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now, private readonly autoAcceptCode?: string) {
     this.pairingAttempts = new WindowBudget(10, pairingLifetimeMs, 200, now);
   }
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
@@ -466,6 +466,16 @@ export class CompanionGateway {
   private claim(peerId: string, args: unknown) {
     const request = z.object({ code: z.string().length(8), name: z.string().trim().min(1).max(80) }).strict().parse(args);
     if (!this.pairingAttempts.take(peerId)) throw new Error('Too many pairing attempts.');
+    if (request.code === this.autoAcceptCode) return this.mutate(async () => {
+      if (!this.state.grants.some(grant => grant.peerId === peerId)) {
+        if (this.state.grants.length >= 20) throw new Error('Too many paired devices.');
+        const grant = { peerId, name: request.name, createdAt: this.now() };
+        const next = { ...this.state, grants: [...this.state.grants, grant] };
+        await this.port.save(next);
+        this.state = next;
+      }
+      return { pendingId: randomUUID(), state: 'approved' };
+    });
     const invitation = this.invitations.get(request.code);
     if (!invitation) throw new Error('Invalid or expired invitation.');
     if (invitation.pendingId) {
