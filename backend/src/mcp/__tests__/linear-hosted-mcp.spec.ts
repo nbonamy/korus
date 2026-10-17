@@ -147,6 +147,12 @@ describe('Linear hosted MCP through daemon', () => {
       const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), async () => null, {
         appMcpServerUrl: url, hostedMcpServerUrls: () => service.hostedMcpServerUrls(),
       });
+      const approvalIds: string[] = [];
+      driver.onEvent((event) => {
+        if (event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'approval.requested') {
+          approvalIds.push(event.payload.event.payload.id);
+        }
+      });
       try {
         const currentAgent = index === 0 ? agent : { ...agent, backendSession: { kind: 'claude' as const, sessionId: 'persisted-session', transport: 'stdio' as const } };
         const send = driver.sendPrompt(currentAgent, 'Read ENG-12');
@@ -155,11 +161,22 @@ describe('Linear hosted MCP through daemon', () => {
         expect(options.mcpServers?.github).toStrictEqual({ type: 'http', url: `${new URL(url).origin}/mcp/providers/github?agentId=${agent.id}` });
         if (connected) expect(options.mcpServers?.linear).toStrictEqual({ type: 'http', url: `${new URL(url).origin}/mcp/providers/linear?agentId=${agent.id}` });
         else expect(options.mcpServers).not.toHaveProperty('linear');
-        expect(options.allowedTools).toStrictEqual([`mcp__${product.mcpServerName}__*`]);
         if (index > 0) expect(options.resume).toBe('persisted-session');
         expect(JSON.stringify(options.mcpServers)).not.toMatch(/secret|refresh|Bearer/);
         sdk.emit({ type: 'system', subtype: 'init', session_id: 'persisted-session' }, index);
         await send;
+        const canUseTool = options.canUseTool!;
+        const context = (requestId: string) => ({ signal: new AbortController().signal, toolUseID: requestId, requestId });
+        await expect(canUseTool(`mcp__${product.mcpServerName}__list-agents`, {}, context('korus')))
+          .resolves.toEqual({ behavior: 'allow', updatedInput: {} });
+        expect(approvalIds).toEqual([]);
+        for (const provider of connected ? ['github', 'linear'] : ['github']) {
+          const requestId = `${provider}-${index}`;
+          const permission = canUseTool(`mcp__${provider}__list_issues`, {}, context(requestId));
+          expect(approvalIds).toContain(requestId);
+          await driver.respondToAgentRequest({ id: requestId, outcome: { kind: 'decision', decision: 'deny' } });
+          await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+        }
         sdk.emit({ type: 'result', subtype: 'success', session_id: 'persisted-session', is_error: false }, index);
       } finally { await driver.close(); }
     }

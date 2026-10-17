@@ -35,9 +35,10 @@ by mutating user-global tool config.
 - **Codex:** `thread/start|resume` config sets `mcp_servers.korus.url` and
   `default_tools_approval_mode = "approve"`, scoped to Korus tools; the rest of the
   session keeps normal approvals.
-- **Claude:** the Agent SDK gets the same URL in `mcpServers` and an
-  `allowedTools: ["mcp__korus__*"]` rule. Hosted servers are added without
-  allowlisting, so their normal permission flow remains.
+- **Claude:** the Agent SDK gets the same URL in `mcpServers`. Korus approves
+  `mcp__korus__*` in its `canUseTool` callback rather than the SDK's `allowedTools`
+  option, which would bypass the callback for other tools. Hosted servers keep
+  their normal permission flow.
 - **Antigravity:** the daemon selects native `allow_once` for MCP calls whose
   metadata identifies the session-supplied Korus server. Questions, built-in tools
   and other servers keep native approvals; tool titles never establish trust.
