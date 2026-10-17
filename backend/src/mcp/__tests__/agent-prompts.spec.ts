@@ -15,6 +15,11 @@ describe('appDeveloperInstructions', () => {
     expect(instructions).not.toContain('<artifact');
     expect(instructions).not.toContain('korus-computer-use');
     expect(instructions).not.toContain('User delegation controls:');
+    expect(instructions).not.toContain('generate-image');
+    const claudeInstructions = appDeveloperInstructions({ ...agent, backend: 'claude' });
+    expect(claudeInstructions).toContain('generate-image');
+    expect(claudeInstructions).toContain('korus-imagegen');
+    expect(instructions).not.toContain('korus-imagegen');
     expect(appDeveloperInstructions(agent, { computerUseEnabled: true, chromeEnabled: false })).toContain('korus-computer-use');
   });
 

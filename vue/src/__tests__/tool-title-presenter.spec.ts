@@ -6,6 +6,9 @@ import { presentAppToolTitle } from '../tool-title-presenter';
 
 describe(`${product.name} tool title presenter`, () => {
   it.each([
+    ['korus.generate-image', { prompt: 'Private prompt' }, 'running', 'Generating images'],
+    ['mcp__korus__generate_image', {}, 'completed', 'Generated images'],
+    ['korus.generate-image', {}, 'error', 'Could not generate images'],
     ['korus.simulator', { action: 'list' }, 'completed', 'Listed simulators'],
     ['korus.simulator', { action: 'status' }, 'completed', 'Checked simulator status'],
     ['korus.simulator', { action: 'attach', deviceId: 'private-device-id' }, 'running', 'Opening simulator'],

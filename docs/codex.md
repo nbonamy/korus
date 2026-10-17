@@ -107,6 +107,11 @@ threads, routed by `threadId` and `agentId`.
   home on the owning host; changes apply when sessions start or resume, never as a
   message in an active turn. Mission contracts and developer instructions are
   applied at session configuration, never injected as user messages.
+- Image generation requested by another engine is a Korus-owned internal Luna job.
+  It uses existing SDK conversation creation, events and generated media; no
+  protocol parsing or transcript reduction belongs in the bridge. The conversation
+  is never bound to a roster agent and is deleted after the job. Model selection
+  comes from the current catalog and never falls back to a different model family.
 
 ## Settings And Policy
 

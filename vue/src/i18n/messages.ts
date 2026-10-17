@@ -1381,6 +1381,11 @@ export const messages = {
               failed: 'Failed creating agent {target}',
               running: 'Creating agent {target}',
             },
+            generateImage: {
+              completed: 'Generated images',
+              failed: 'Could not generate images',
+              running: 'Generating images',
+            },
             closeAgent: {
               completed: 'Closed agent',
               failed: 'Could not close agent',

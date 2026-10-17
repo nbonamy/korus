@@ -86,6 +86,12 @@ the focused conversation handles global composer and interrupt shortcuts; hydrat
 watches stable conversation identity, not snapshot object identity. One artifact
 sidebar follows the selected agent, keeping each agent's tabs separately.
 
+Desktop conversation image previews preserve the native host's attachment
+capabilities. Local paths in assistant image Markdown use the daemon file-preview
+API with the containing pane's agent identity, so project and remote-host files
+are resolved on their owning host. The renderer receives bounded image data URLs;
+it does not read the filesystem or treat project paths as attachment capabilities.
+
 ### Surfaces
 
 - **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are

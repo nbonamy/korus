@@ -40,6 +40,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import { agentFolder } from '@workspace/core/agent-folder';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
+import { CodexImageGeneration } from './codex-image-generation';
 import type {
   CodexConversationEvent,
   CodexConversationSummary,
@@ -103,6 +104,7 @@ type SubagentOwner = {
 };
 
 export class CodexSurfaceAgentAdapter {
+  private readonly imageGeneration: CodexImageGeneration;
   private readonly listeners = new Set<AdapterListener>();
   private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
@@ -127,6 +129,7 @@ export class CodexSurfaceAgentAdapter {
     private readonly surface: CodexSurface,
     private readonly closeSurface: () => Promise<void> = () => surface.close(),
   ) {
+    this.imageGeneration = new CodexImageGeneration(surface);
     this.accountIdentity = JSON.stringify(surface.getSnapshot().authentication.account);
     this.unsubscribeSurface = surface.onEvent((event) => this.handleSurfaceEvent(event));
   }
@@ -357,6 +360,10 @@ export class CodexSurfaceAgentAdapter {
       ...(input.developerInstructions ? { developerInstructions: input.developerInstructions } : {}),
       ...(input.outputSchema ? { outputSchema: input.outputSchema } : {}),
     });
+  }
+
+  generateImage(input: import('@workspace/core/backend-driver').BackendImageGenerationInput, signal?: AbortSignal) {
+    return this.imageGeneration.generate(input, signal);
   }
 
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {
@@ -856,6 +863,7 @@ export class CodexSurfaceAgentAdapter {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.imageGeneration.close();
     this.resetCreditTokens.clear();
     for (const cancel of this.resetReadCancellations) cancel();
     this.resetReadCancellations.clear();

@@ -158,7 +158,7 @@ export class BackendDriverRpc {
     await this.ensureConnected?.(backend);
   }
 
-  async handle(method: string, params: unknown): Promise<unknown> {
+  async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
     const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
@@ -166,11 +166,11 @@ export class BackendDriverRpc {
       if (this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
     }
-    try { return await this.dispatch(method, params); }
+    try { return await this.dispatch(method, params, options.signal); }
     finally { if (backend) this.inFlight.set(backend, (this.inFlight.get(backend) ?? 1) - 1); }
   }
 
-  private async dispatch(method: string, params: unknown): Promise<unknown> {
+  private async dispatch(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
     switch (method) {
       case backendMethods.driverProviderAuthentication: {
         const record = requireRecord(params);
@@ -269,6 +269,15 @@ export class BackendDriverRpc {
           ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
           ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),
         });
+      }
+      case backendMethods.driverImageGenerate: {
+        const { agent } = requireAgentParams(params);
+        if (agent.backend !== 'codex') throw new Error('Image generation requires the Codex driver.');
+        await this.requireNewWork('codex');
+        const driver = this.requireDriver('codex');
+        if (!driver.generateImage) throw unsupportedBackendFeature(agent, 'image generation');
+        const record = requireRecord(params);
+        return driver.generateImage(agent, { prompt: requireString(record.prompt, 'prompt'), cwd: requireString(record.cwd, 'cwd') }, signal);
       }
       case backendMethods.driverCodeReviewRun: {
         const { agent } = requireAgentParams(params);

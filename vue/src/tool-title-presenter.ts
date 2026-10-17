@@ -12,6 +12,7 @@ const SIMULATOR_ACTIONS = new Set([
 ]);
 
 const TOOL_KEYS: Record<string, string> = {
+  'generate-image': 'generateImage',
   simulator: 'simulator',
   'read-skill': 'readSkill',
   'wait-tasks': 'waitTasks',

@@ -76,6 +76,10 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return this.sessionManager.generateText(agent, input);
   }
 
+  generateImage(_agent: Agent, input: import('@workspace/core/backend-driver').BackendImageGenerationInput, signal?: AbortSignal) {
+    return this.sessionManager.generateImage(input, signal);
+  }
+
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput) {
     return this.sessionManager.runCodeReview(agent, input);
   }

@@ -166,6 +166,7 @@ export const backendMethods = {
   workspaceFileChunkRead: 'workspace/file/chunk/read',
   workspaceFilesList: 'workspace/files/list',
   driverTextGenerate: 'driver/text/generate',
+  driverImageGenerate: 'driver/image/generate',
   driverCodeReviewRun: 'driver/codeReview/run',
   driverCodeReviewDispose: 'driver/codeReview/dispose',
   driverGoalClear: 'driver/goal/clear',

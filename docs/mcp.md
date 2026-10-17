@@ -220,6 +220,26 @@ Registered per authenticated request by independent modules
   dimensions. Hidden/closed panes cannot report a successful resize. Device presets
   change viewport size only, not user agent, touch input or pixel density.
 
+## Image generation
+
+Non-Codex agents can request raster images through an internal Codex Luna
+conversation on the owning daemon. Codex must be enabled and connected. The job
+uses the existing SDK conversation operations without creating a Korus teammate
+or changing the caller's conversation or model settings. Only media attached to
+completed image-generation items is returned; assistant-authored image links
+are not generation results.
+
+The tool points agents to the bundled `korus-imagegen` procedure for generation,
+asset placement and inline image responses. Its result includes Markdown image
+syntax with the actual saved path, so the requesting agent can embed its selected
+output in the answer rather than only reading the image or reporting a filename.
+
+The daemon saves images with unique filenames under the app-owned Codex home's
+generated-images folder and returns image content with those paths. Provider file
+results must resolve inside that folder. Project assets are copied into the
+workspace by the requesting agent. Cancellation interrupts the internal turn,
+and completion or failure deletes its conversation.
+
 ## Mobile Simulators
 
 The provider-independent simulator tool routes authenticated caller identity through

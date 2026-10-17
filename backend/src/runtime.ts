@@ -45,6 +45,8 @@ import { VisualizeService } from './visualize-service';
 import { createVisualizeToolModuleProvider } from './mcp/visualize-tools';
 import { DurableTaskService } from './agents/durable-task-service';
 import { createTaskToolModuleProvider } from './mcp/task-tools';
+import { createImageGenerationToolModuleProvider } from './mcp/image-generation-tools';
+import { ImageGenerationService } from './image-generation-service';
 import { loadBackendTasks, saveBackendTasks } from './state';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -167,6 +169,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
+      createImageGenerationToolModuleProvider(new ImageGenerationService({
+        snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
+        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,
+      })),
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),

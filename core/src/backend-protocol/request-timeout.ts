@@ -181,6 +181,7 @@ const requestTimeoutByMethod = {
   [backendMethods.workspaceFileChunkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFilesList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverTextGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverImageGenerate]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.driverCodeReviewRun]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverCodeReviewDispose]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.driverGoalClear]: QUICK_REQUEST_TIMEOUT_MS,
