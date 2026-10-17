@@ -18,6 +18,12 @@
 </p>
 
 <p align="center">
+  <a href="https://tooomm.github.io/github-release-stats/?username=nbonamy&amp;repository=korus">
+    <img src="https://img.shields.io/github/downloads/nbonamy/korus/total.svg?color=orange" alt="GitHub release asset downloads" />
+  </a>
+</p>
+
+<p align="center">
   <img src="website/assets/app-screenshot.png" alt="Korus with repository-grouped agents, a conversation, and input-needed status, shown with demo data" width="960" />
 </p>
 
