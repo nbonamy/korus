@@ -1458,11 +1458,17 @@ export function useAppState() {
       return;
     }
 
+    const previousAgentIds = new Set(snapshot.value.agents.map((agent) => agent.id));
     const nextSnapshot = turnId === undefined
       ? await appApi.forkAgent(agentId)
       : await appApi.forkAgent(agentId, turnId);
     adoptNavigationSnapshot(nextSnapshot);
-    await loadActiveAgentCatalogs();
+    const fork = nextSnapshot.agents.find((agent) => !previousAgentIds.has(agent.id));
+    await Promise.all([
+      loadActiveAgentCatalogs(),
+      // A fork has a session but no conversation frame yet; load it so it doesn't show as an empty chat.
+      ...(fork && agentNeedsHistory(fork.id) ? [hydrateAgentHistory(fork.id)] : []),
+    ]);
   }
 
   async function handoffAgent(agentId: string, input: import('@workspace/core/agent-handoff').AgentHandoffInput): Promise<void> {
@@ -1540,6 +1546,8 @@ export function useAppState() {
     }
 
     adoptBackgroundSnapshot(await appApi.restartAgent(agentId));
+    const { [agentId]: _discarded, ...claudeFrames } = claudeConversationFramesByAgentId.value;
+    claudeConversationFramesByAgentId.value = claudeFrames;
     resetAgentHistory(agentId);
   }
 
