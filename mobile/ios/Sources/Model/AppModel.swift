@@ -163,6 +163,10 @@ final class AppModel {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? "Companion"
     }
 
+    var privacyPolicyURL: URL? {
+        (Bundle.main.object(forInfoDictionaryKey: "CompanionPrivacyPolicyURL") as? String).flatMap(URL.init(string:))
+    }
+
     var selectedModel: ModelChoice? { models.first { $0.id == selectedModelID } }
 
     /// Temporary connection loss does not require pairing again.

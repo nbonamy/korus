@@ -37,6 +37,8 @@
 	<string>Connect to the relay you selected.</string>
 	<key>CompanionPushEnvironment</key>
 	<string>$(COMPANION_PUSH_ENVIRONMENT)</string>
+	<key>CompanionPrivacyPolicyURL</key>
+	<string>$(COMPANION_PRIVACY_POLICY_URL)</string>
 	<key>CompanionRelayURL</key>
 	<string>$(COMPANION_RELAY_URL)</string>
 	<key>CompanionRelayPeerID</key>
