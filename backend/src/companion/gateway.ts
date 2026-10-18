@@ -21,6 +21,7 @@ import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, 
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
+import { pushRegistrationSchema } from './push-registration';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -401,7 +402,7 @@ export class CompanionGateway {
       return usage;
     },
     'notifications.register': async (peer, args) => {
-      const registration = z.object({ token: z.string().regex(/^[a-f0-9]{32,512}$/), environment: z.enum(['development', 'production']), authorization: z.object({ expiresAt: z.number().int().positive(), signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/) }).strict().optional() }).strict().nullable().parse(args);
+      const registration = pushRegistrationSchema.nullable().parse(args);
       await this.mutate(async () => {
         this.requireGrant(peer);
         const push = { ...this.state.push };

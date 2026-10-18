@@ -342,6 +342,25 @@ before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
 
+Android push uses the relay's optional `fcm.serviceAccountFile`, an operator-managed
+Google service-account JSON file with permission to send FCM messages in its project.
+The Android client configuration must name that project and the product application
+ID; the build accepts `APP_COMPANION_FIREBASE_CONFIG` or an ignored local
+`mobile/android/app/google-services.json`. Client configuration never contains the
+service-account key. FCM registrations carry an installation ID in the opaque token
+field and bind the push service in the phone's consent signature. The relay sends
+data-only attention metadata through the HTTP v1 API with bounded, scoped OAuth
+authentication. Only an explicit unregistered-device response invalidates a saved
+registration; payload, authentication and temporary failures remain retryable.
+Without FCM configuration, companion connectivity and foreground alerts remain
+available. The relay remains a standalone artifact with its dependencies bundled.
+
+Android release signing uses operator-provided environment credentials; signing keys
+and passwords belong outside the public checkout and generated client assets. The
+release build command requires a complete signing configuration and produces both
+an APK and App Bundle with the supplied certificate. Debug and isolated native-test
+builds retain their development identities and require no upload key.
+
 `npm run dev:relay` reads `APP_COMPANION_APNS_KEY_ID`,
 `APP_COMPANION_APNS_TEAM_ID`, `APP_COMPANION_APNS_KEY_FILE` and
 `APP_COMPANION_APNS_ENVIRONMENT` (`development` or `production`) from the environment

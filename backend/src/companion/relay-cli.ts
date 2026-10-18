@@ -1,4 +1,5 @@
 import { ApnsSender } from './apns';
+import { FcmSender } from './fcm';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
@@ -14,6 +15,7 @@ const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d
   trustedProxy: z.boolean().optional(),
   hostIds: z.array(peerId).min(1).max(100).optional(),
   apns: z.object({ teamId: z.string().regex(/^[A-Z0-9]{10}$/), topic: z.string().min(1).max(200), development: apnsKey.optional(), production: apnsKey.optional() }).strict().refine(value => value.development || value.production).optional(),
+  fcm: z.object({ serviceAccountFile: z.string().min(1) }).strict().optional(),
   stateDirectory: z.string().min(1), certificateFile: z.string().min(1).optional(), privateKeyFile: z.string().min(1).optional(), healthPort: z.number().int().min(1024).max(65535).optional() }).strict()
   .superRefine((config, context) => {
     const secure = config.listen.endsWith('/tls/ws');
@@ -50,8 +52,14 @@ export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessE
     const key = config.apns[environment];
     if (key) senders[environment] = new ApnsSender({ ...key, teamId: config.apns.teamId, topic: config.apns.topic, environment, privateKey: await readFile(key.privateKeyFile, 'utf8') });
   }
-  const push = config.apns ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
-    senders[registration.environment]?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
+  let firebase: FcmSender | undefined;
+  if (config.fcm) {
+    const credentials = z.object({ project_id: z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/), client_email: z.email(), private_key: z.string().min(1) })
+      .parse(JSON.parse(await readFile(config.fcm.serviceAccountFile, 'utf8')));
+    firebase = new FcmSender({ projectId: credentials.project_id, clientEmail: credentials.client_email, privateKey: credentials.private_key });
+  }
+  const push = config.apns || firebase ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
+    (registration.transport === 'fcm' ? firebase : senders[registration.environment])?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
   const relay = await createCompanionRelay({ push, pairing, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;

@@ -3,11 +3,10 @@ import { peerIdFromString } from '@libp2p/peer-id';
 import { companionPushAuthorizationMessage, isCompanionNotification, type CompanionNotification } from '@workspace/core/companion-notification';
 import type { ApnsSender, PushResult } from './apns';
 import { WindowBudget } from './source-budget';
+import { pushRegistrationSchema } from './push-registration';
 
-const request = z.object({ peerId: z.string().min(32).max(128), registration: z.object({
-  token: z.string().regex(/^[a-f0-9]{32,512}$/), environment: z.enum(['development', 'production']),
-  authorization: z.object({ expiresAt: z.number().int().positive(), signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/) }).strict(),
-}).strict(), notification: z.custom<CompanionNotification>(isCompanionNotification) }).strict();
+const request = z.object({ peerId: z.string().min(32).max(128), registration: pushRegistrationSchema,
+  notification: z.custom<CompanionNotification>(isCompanionNotification) }).strict();
 
 /**
  * Public laptops need the phone's signed consent in addition to a current device route. Budgets
@@ -31,12 +30,13 @@ export class CompanionPushRelay {
   async send(host: string, source: string, input: unknown): Promise<PushResult> {
     const { peerId, registration, notification } = request.parse(input);
     const now = this.now();
+    if (!registration.authorization) throw new Error('Push denied.');
     const { expiresAt, signature } = registration.authorization;
     if (!this.allowed(host, peerId) || notification.target.hostId !== host
       || Math.abs(now - notification.createdAt) > 300_000 || expiresAt <= now || expiresAt > now + 31 * 86400_000) throw new Error('Push denied.');
     if (!this.sender) return 'unavailable';
     for (const [key, until] of this.recent) { if (until > now) break; this.recent.delete(key); }
-    if (this.active >= 20 || !this.sources.take(source) || !this.tokens.take(`${registration.environment}/${registration.token}`) || !this.global.take('global')) return 'unavailable';
+    if (this.active >= 20 || !this.sources.take(source) || !this.tokens.take(`${registration.transport ?? 'apns'}/${registration.environment}/${registration.token}`) || !this.global.take('global')) return 'unavailable';
     const key = `${host}/${peerId}/${notification.id}`;
     this.active++;
     try {

@@ -164,12 +164,14 @@ describe('companion authorization gateway', () => {
     } finally { subscription.close(); }
   });
 
-  it('persists push registration only for its authenticated phone and revokes both delivery paths', async () => {
+  it.each([
+    { token: 'ab'.repeat(32), environment: 'development' },
+    { token: 'device-token:APA91b-example_-registration', environment: 'production', transport: 'fcm' },
+  ])('persists push registration only for its authenticated phone and revokes both delivery paths ($transport)', async (registration) => {
     const f = fixture();
-    const registration = { token: 'ab'.repeat(32), environment: 'development' };
     await expect(f.gateway.request('phone', 'notifications.register', registration)).rejects.toThrow('authorized');
     await f.pair();
-    await expect(f.gateway.request('phone', 'notifications.register', { ...registration, token: 'bad' })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'notifications.register', { ...registration, token: '' })).rejects.toThrow();
     await f.gateway.request('phone', 'notifications.register', registration);
     expect(f.saved().push?.phone).toStrictEqual(registration);
     await f.gateway.request('phone', 'notifications.register', null);

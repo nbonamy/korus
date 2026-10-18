@@ -45,6 +45,12 @@ approvals, diffs, filesystem, git or teams.
 - Isolate and clean up: tests are idempotent, close streams, child processes, file
   handles and subscriptions in `finally`.
 - Mock external boundaries, never the logic under test.
+- Native Compose effect deadlines use the Compose test clock. Let lifecycle and
+  composition updates settle before advancing it; real elapsed waits belong to
+  platform handlers and WebView deadlines that use elapsed time.
+- Native touch automation waits for stable screen coordinates when opening
+  system-animated sheets. Compose idleness does not settle window or keyboard
+  animations.
 
 ## Test Value Gate
 

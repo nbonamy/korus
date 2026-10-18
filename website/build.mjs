@@ -127,4 +127,12 @@ await writeFile(
 await cp(new URL("docs/.vitepress/dist/", source), new URL("docs/", output), {
   recursive: true,
 });
+await mkdir(new URL("privacy/", output));
+await writeFile(
+  new URL("privacy/index.html", output),
+  (await readFile(new URL("privacy/index.html", source), "utf8"))
+    .replaceAll("__PRODUCT_NAME__", product.name)
+    .replaceAll("__PRODUCT_COMPANION_NAME__", product.companionName)
+    .replaceAll("__PRODUCT_WEBSITE_URL__", product.websiteUrl),
+);
 console.log("Website and documentation built in dist/website");

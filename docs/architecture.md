@@ -63,20 +63,61 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
-| `mobile` | native iOS shell, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
+| `mobile` | native mobile shells, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
 
 The mobile companion engine is a narrow workspace/read/send port over the companion
-protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
-window above native sheets and full-screen presentations when authentication is
-required; brief app switches within the unlock grace period retain the last screen.
+protocol. SwiftUI and Jetpack Compose own native navigation and the composer. On iOS,
+app-lock protection uses a separate scene window above native sheets and full-screen
+presentations when authentication is required; brief app switches within the unlock
+grace period retain the last screen.
 Locked settings cannot disable protection. A background WKWebView hosts
 the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
-control. History requests route through the owning daemon to provider-owned paging.
+control. Android uses separate engine, transcript and changes WebViews at a bundled
+HTTPS asset origin. Its main-frame message port is restricted to that origin and
+page; encrypted pairing storage uses AndroidKeyStore.
+Retained Android pages use application-derived themed contexts with the native
+window's configuration. Appearance changes preserve the transport and provider
+replica without retaining the window's Activity. Transcript presentation waits
+for a mounted, measured native viewport before requesting a paint acknowledgment.
+Read acknowledgments also require the engine's current ready generation. Native
+loading presentation lasts through the selected frame's paint; a retained transcript
+stays usable during reconnects. Android bounds page startup and rendering by foreground
+visibility, replaces failed WebViews for retry, and retains native composer drafts across engine
+recovery without replaying uncertain sends.
+The bundled native bridge initializes the transport's required browser compatibility
+APIs before the companion starts; an older system WebView must not silently lose pairing.
+Android app lock uses system device-owner authentication and the same unlock grace.
+Application activity visibility owns that grace so transferring to the internal
+scanner does not count as backgrounding. Camera frames are decoded locally through
+a bundled QR decoder; only a complete pairing code can leave the scanner. Analysis
+releases every frame and rejects queued results after a pause or dismissal.
+Locked presentation removes native sheets and image dialogs; navigation remains
+model-owned. Both native shells gate activity and read acknowledgments
+on an unlocked screen; notification navigation waits for authentication.
+Android instrumentation uses a separate application ID so tests cannot replace a
+paired development installation. Native drafts and attachment imports retain the
+complete host/conversation target through navigation and delivery acknowledgment.
+Android reads picker-granted content URIs on a worker, normalizes photos before
+upload, and exposes only its temporary camera directory through FileProvider.
+Camera source files are removed after processing or cancellation. History requests
+route through the owning daemon to provider-owned paging.
+Native image viewers consume displayed image bytes or web URLs, never laptop paths.
+The transcript resolves host files through the engine before opening the viewer.
+Android shares its bounded worker-based loader and native zoom surface between
+conversation images and composer attachments; late image events cannot open over a
+different selected conversation or a locked screen.
+Native composer completions use the engine's scoped skill and mention catalogs.
+Chips are presentation metadata over canonical prompt text; editing and copying
+preserve full tokens and their UTF-16 selections. Catalog loading and target
+invalidation stay in the engine rather than a second native catalog cache.
+Native sidebar organization and idle-sort preferences belong to a host/team pair.
+The engine projects activity groups and their order; native clients render those
+groups with stable agent identity across activity transitions.
 A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
 rather than per-update: the engine sends the transcript once per change of its own
 content, capped at ten transfers per second during streaming (the provider replica
@@ -84,8 +125,10 @@ has already applied every event), and changes around it (agent status, names, hi
 choice) travel as a small context message that never resends the transcript.
 Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
 Git changes use a separate bundled web view with the shared desktop diff renderer.
-Native controls own its scope and presentation; patches cross a separate, on-demand
-bridge event rather than repeating in workspace or conversation state.
+Native controls own its scope and presentation, bound to the captured conversation.
+Closing or replacing that conversation clears Android's native patch cache. Patches
+cross a separate, on-demand bridge event rather than repeating in workspace or
+conversation state.
 The native side routes on an event type without parsing the transcript payload, hands
 the page one message at a time, and replaces anything that piled up with the newest.
 Unread activity belongs to the owning daemon and persists with each agent. Clients
@@ -93,12 +136,15 @@ acknowledge the attention revision they displayed; older acknowledgments cannot
 clear newer activity. Desktop and companion indicators consume the same metadata.
 The phone acknowledges only its rendered, unlocked foreground conversation with the drawer
 closed; cached subscriptions and background updates never count as reading.
+Android suspends read acknowledgments while a notification target is being validated.
+A failed navigation can reuse the painted receipt only while its full conversation
+identity and generation remain current.
 
 Mobile attention alerts originate from live completed-turn and normalized request
 creation events in the owning daemon. Snapshots do not create alerts. An event ID
-binds the host, conversation and turn/request across the foreground stream and APNs;
+binds the host, conversation and turn/request across the foreground stream and push;
 native presentation suppresses duplicates and the visible conversation. A live
-foreground phone receives only the in-app stream, not an APNs push. Stream closure
+foreground phone receives only the in-app stream, without a system push. Stream closure
 or an expired inbound heartbeat restores push eligibility independently per device.
 Desktop-originated turns suppress push while Electron reports current focus;
 mobile-originated work and unknown origins remain eligible. Prompt provenance is
@@ -111,20 +157,34 @@ the paired host and current full conversation target before opening it. Explicit
 navigation or forgetting the laptop cancels a pending tap; connection interruptions
 are not evidence that its conversation is missing.
 Push device tokens belong to each authenticated pairing and are persisted privately
-with its grant; revocation removes them. The relay holds the APNs signing keys and
-accepts bounded, rate-limited notification requests only from admitted laptops for
+with its grant; revocation removes them. The relay holds APNs signing keys and FCM
+service-account credentials and accepts bounded, rate-limited requests only from admitted laptops for
 their registered phones, with phone-signed consent scoped to the relay, laptop,
-token, environment and expiration. Public relay admission needs no account or
-operator enrollment; pairing proof and desktop approval still gate access.
-APNs receives agent names, attention kinds and opaque navigation IDs, never
+token, push service, environment and expiration. Existing Apple consent bytes remain
+compatible; FCM consent explicitly binds the push service. Public relay admission
+needs no account or operator enrollment; pairing proof and desktop approval still
+gate access.
+Push providers receive agent names, attention kinds and opaque navigation IDs, never
 conversation text, prompts, approvals or tool arguments.
 Foreground APNs delivery uses the same native banner path with system presentation
 suppressed; background delivery belongs to iOS. The native app bundle ID and APNs
 topic both use the product app ID. Sandbox and production credentials are separate.
+Android initializes Firebase only with configured client metadata and notification
+consent. It registers the installation with FCM and presents data-only messages
+through the same native inbox as foreground events. System notification taps retain
+the captured target; opening or dismissing an alert does not substitute for the
+engine's validated navigation and rendered-conversation read acknowledgment.
+Firebase initialization, registration and revocation run on a serial worker;
+completion returns to the main thread and cannot override newer consent state.
 
 Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
 events: those projections are absent from the mobile workspace, and conversation
 content travels through the subscribed provider stream.
+Native request forms consume the engine's app-owned questions and approvals. Replies
+retain the request's full host, location, team, agent and session identity; the engine
+owns delivery and reconciliation. Android holds answer drafts, including secret fields,
+only in its ViewModel and invalidates them when the request disappears or changes its
+questions. Opening a request suspends dictation and conversation read acknowledgments.
 Mobile prompts start a turn when idle. For active work, the phone defaults to
 steering and supports a saved queue preference and per-message overrides. The owning
 daemon decides at admission time and owns the same queue shown by desktop and mobile;
@@ -138,16 +198,18 @@ provider outcome. The phone reconciles timed-out admissions while connected,
 without replaying them; late acceptance clears only the captured native draft
 and attachments. An unresolved outcome keeps its warning and draft but permits
 an explicit new send after the user checks the conversation.
-The composer microphone uses Apple's Speech framework with on-device recognition
-required and native microphone permissions. Audio stays on the phone; partial and
-final transcripts update only the active draft. On-device results can reset after
+The composer microphone uses Apple's Speech framework on iOS and Android's on-device
+recognizer on Android 12 or later, with native microphone permission. An unavailable
+local recognizer never falls back to a network service. Audio stays on the phone;
+partial and final transcripts update only the captured active draft. Results can reset after
 silence, so completed utterances are retained separately from the current hypothesis.
 Successful recognition rollover preserves the draft and keeps listening until stopped.
-Sending, navigation, and backgrounding stop capture and invalidate late recognition
-callbacks. Keyboard dictation remains
-available through the system text field.
+Sending, navigation, backgrounding and locking stop capture and invalidate late
+permission and recognition callbacks. Startup and final recognition waits are bounded;
+a stalled recognizer releases the editor with its latest words intact.
+Keyboard dictation remains available through the system text field.
 
-Pairing identities, laptop records, and each laptop's last-opened team and agent use
+On iOS, pairing identities, laptop records, and each laptop's last-opened team and agent use
 device-only Keychain entries accessible while unlocked. Selection restoration checks
 the connected workspace and falls back in desktop team/agent order. The engine's
 optional protected draft store persists prompt intent

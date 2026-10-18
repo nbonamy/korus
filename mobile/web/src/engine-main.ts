@@ -7,7 +7,7 @@ import { setConnectionDiagnosticSink } from '../../src/connection-diagnostics';
 
 setConnectionDiagnosticSink(async record => { await request({ type: 'connection.diagnostic', record }); });
 
-// Credentials live in the iOS Keychain; this page only ever asks for them by key.
+// Credentials live in the platform's protected storage; this page asks for them by key.
 const vault = createNativeVault(request);
 
 const relay = await request<RelayConfig | null>({ type: 'relay' });

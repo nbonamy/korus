@@ -1,6 +1,6 @@
 import type { ProtectedVault } from './protected-storage';
 
-/** Keychain persistence is acknowledged by the native host, not by bridge delivery alone. */
+/** Protected storage persistence is acknowledged by the host, not by bridge delivery alone. */
 export function createNativeVault(request: <Result>(message: Record<string, unknown>) => Promise<Result>): ProtectedVault {
   return {
     read: ({ key }) => request({ type: 'vault.read', key }),

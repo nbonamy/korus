@@ -5,6 +5,12 @@ import { relayStartupMessage } from '../relay-startup-error';
 const host = '12D3KooW'.padEnd(52, 'h');
 const base = { hostIds: [host], stateDirectory: '/state' };
 describe('relay operator configuration', () => {
+  it('keeps Firebase credentials optional and accepts an operator-managed credential file', () => {
+    const config = { ...base, listen: '/ip4/127.0.0.1/tcp/47800/ws', fcm: { serviceAccountFile: '/private/firebase.json' } };
+    expect(parseRelayConfig(JSON.stringify(config)).fcm).toStrictEqual(config.fcm);
+    expect(() => parseRelayConfig(JSON.stringify({ ...config, fcm: { serviceAccountFile: '' } }))).toThrow();
+    expect(() => parseRelayConfig(JSON.stringify({ ...config, fcm: { privateKey: 'inline-secret' } }))).toThrow();
+  });
   it('prints actionable configuration errors without echoing sensitive values', async () => {
     await expect(runCompanionRelay('')).rejects.toThrow(/configuration file.*first argument/);
     for (const source of ['{"secret":"private-key-material",', JSON.stringify({ ...base, listen: 'private-key-material' })]) {

@@ -11,11 +11,15 @@ export type CompanionNotification = {
 export type CompanionPushRegistration = {
   token: string;
   environment: 'development' | 'production';
+  /** Omitted by existing Apple clients. */
+  transport?: 'apns' | 'fcm';
   authorization?: { expiresAt: number; signature: string };
 };
 /** Phone consent is scoped to one relay, laptop, token, and expiry; it cannot authorize another recipient. */
 export function companionPushAuthorizationMessage(relayId: string, hostId: string, peerId: string, registration: CompanionPushRegistration, expiresAt: number): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(['companion-push-consent-v1', relayId, hostId, peerId, registration.token, registration.environment, expiresAt]));
+  return new TextEncoder().encode(JSON.stringify(registration.transport === 'fcm'
+    ? ['companion-push-consent-v2', 'fcm', relayId, hostId, peerId, registration.token, registration.environment, expiresAt]
+    : ['companion-push-consent-v1', relayId, hostId, peerId, registration.token, registration.environment, expiresAt]));
 }
 export const companionPushProtocol = '/workspace/companion-push/1.0.0';
 

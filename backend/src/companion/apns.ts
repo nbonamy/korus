@@ -16,7 +16,7 @@ export class ApnsSender {
     if (this.key.asymmetricKeyType !== 'ec' || this.key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') throw new Error('APNs requires a P-256 key.');
   }
   async send(registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
-    if (registration.environment !== this.config.environment) return 'unavailable';
+    if (registration.transport === 'fcm' || registration.environment !== this.config.environment) return 'unavailable';
     const now = Math.floor(Date.now() / 1000);
     if (!this.token || now - this.issuedAt >= 3000) {
       const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');

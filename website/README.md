@@ -19,6 +19,12 @@ the built artifact so the name and documentation are both available.
 
 ## Documentation
 
+The public privacy policy is authored in `privacy/index.html` and published at
+`/privacy/`. The website build expands its shared product metadata and includes
+it in the static artifact beside the landing page and guide.
+Keep the policy's contact links inside Cloudflare's `email_off` comments so
+the public email address remains accessible without JavaScript.
+
 The public user guide lives in `website/docs/` and uses VitePress with a
 customized default theme. The navigation follows Getting started, Providers,
 Workflows, Features, Reference, and Troubleshooting. Internal engineering notes

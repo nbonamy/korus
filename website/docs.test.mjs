@@ -9,6 +9,57 @@ import product from "../core/src/product.json" with { type: "json" };
 const artifact = new URL("../dist/website/", import.meta.url);
 const origin = product.websiteUrl;
 
+// App Store metadata must resolve to a policy, not the landing-page fallback.
+test("the public privacy URL has a standalone policy and a discoverable contact", async () => {
+  const dom = new JSDOM(
+    await readFile(new URL("privacy/index.html", artifact), "utf8"),
+    { url: `${origin}/privacy/` },
+  );
+  const landing = new JSDOM(
+    await readFile(new URL("index.html", artifact), "utf8"),
+    { url: origin },
+  );
+  try {
+    const document = dom.window.document;
+    assert.match(document.querySelector("main h1").textContent, /privacy/i);
+    assert.equal(
+      document.querySelector('link[rel="canonical"]').href,
+      `${origin}/privacy/`,
+    );
+    assert.ok(document.querySelector('main a[href^="mailto:"]'));
+    const policyText = document
+      .querySelector("main")
+      .textContent.replace(/\s+/g, " ");
+    assert.match(policyText, /Android/);
+    const push = document.querySelector("#notifications");
+    const pushParagraphs = [];
+    for (
+      let node = push.nextElementSibling;
+      node && node.tagName !== "H2";
+      node = node.nextElementSibling
+    ) {
+      pushParagraphs.push(node.textContent);
+    }
+    const pushText = pushParagraphs.join(" ").replace(/\s+/g, " ");
+    assert.match(pushText, /Apple Push Notification service/);
+    assert.match(pushText, /Firebase Cloud Messaging/);
+    assert.ok(
+      document.querySelector(
+        'a[href="https://firebase.google.com/support/privacy/"]',
+      ),
+    );
+    assert.match(policyText, /Android Keystore/);
+    assert.doesNotMatch(document.documentElement.outerHTML, /__PRODUCT_\w+__/);
+    assert.ok(
+      landing.window.document.querySelector('footer a[href="/privacy/"]'),
+      "The website footer makes the policy accessible",
+    );
+  } finally {
+    dom.window.close();
+    landing.window.close();
+  }
+});
+
 async function files(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(
