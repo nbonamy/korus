@@ -63,7 +63,7 @@ import org.json.JSONObject
                 }
             }
             Spacer(Modifier.weight(1f))
-            if (activity) IconButton(onClick = { model.openCreation(CreationKind.QUICK); close() }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Edit, "New chat") }
+            if (activity) IconButton(onClick = { model.openCreation(CreationKind.QUICK); close() }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Edit, "New chat", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         var repositoryMenu by remember(sidebar.owner) { mutableStateOf<JSONObject?>(null) }
         val repositories = state.items("groups").flatMap { group -> group.items("sessions").map { it.string("agentId") to group } }.toMap()
@@ -82,10 +82,11 @@ import org.json.JSONObject
                             DrawerGroupIcon(group)
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(group.string("label"), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val headerTone = if (activity) when (group.string("activity")) { "attention" -> CompanionColors.attention; "working" -> CompanionColors.worktree; "recent" -> CompanionColors.addedLines; else -> MaterialTheme.colorScheme.onSurfaceVariant } else MaterialTheme.colorScheme.onSurfaceVariant
+                        Text(group.string("label"), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = headerTone)
                         if (activity && group.string("activity") == "idle") Box {
                             var sortMenu by remember(sidebar.owner) { mutableStateOf(false) }
-                            IconButton(onClick = { sortMenu = true }, modifier = Modifier.semantics { contentDescription = "Sort Idle agents"; stateDescription = if (sidebar.idleSort == "activity") "Recent activity" else "Repository" }) { Icon(Icons.Outlined.SwapVert, null) }
+                            IconButton(onClick = { sortMenu = true }, modifier = Modifier.semantics { contentDescription = "Sort Idle agents"; stateDescription = if (sidebar.idleSort == "activity") "Recent activity" else "Repository" }) { Icon(Icons.Outlined.SwapVert, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                                 listOf("activity" to "Recent activity", "repository" to "Repository").forEach { (order,title) ->
                                     DropdownMenuItem(text = { Text(title) }, trailingIcon = { if (sidebar.idleSort == order) Icon(Icons.Outlined.Check, null) }, onClick = { sortMenu = false; model.chooseSidebarIdleSort(order) })
@@ -98,8 +99,8 @@ import org.json.JSONObject
                         if (!activity && group.string("kind") == "repository") Box {
                             IconButton(onClick = { repositoryMenu = group }, enabled = model.canStartCreation && group.string("repositoryRoot").isNotBlank()) { Icon(Icons.Outlined.Add, "New agent in ${group.string("label")}") }
                             DropdownMenu(expanded = repositoryMenu?.string("id") == group.string("id"), onDismissRequest = { repositoryMenu = null }) {
-                                listOf("Default Branch" to CreationKind.DEFAULT, "Existing Branch" to CreationKind.EXISTING, "New Worktree" to CreationKind.WORKTREE).forEach { (label, kind) ->
-                                    DropdownMenuItem(text = { Text(label) }, onClick = { repositoryMenu = null; model.openCreation(kind, group.string("repositoryRoot"), group.string("label")); close() })
+                                listOf(Triple("Default Branch", CreationKind.DEFAULT, Icons.AutoMirrored.Outlined.CallMerge), Triple("Existing Branch…", CreationKind.EXISTING, Icons.Outlined.AccountTree), Triple("New Worktree…", CreationKind.WORKTREE, Icons.Outlined.AddBox)).forEach { (label, kind, icon) ->
+                                    DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { repositoryMenu = null; model.openCreation(kind, group.string("repositoryRoot"), group.string("label")); close() })
                                 }
                             }
                         }
@@ -114,17 +115,16 @@ import org.json.JSONObject
         }
         if (model.drawerVisible && model.showConnectionLost) Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Connection lost", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { model.command("reconnect") }, modifier = Modifier.semantics { contentDescription = "Reconnect computer" }) { Text("Reconnect") }
+            TextButton(onClick = { model.command("reconnect") }, modifier = Modifier.semantics { contentDescription = "Reconnect laptop" }) { Text("Reconnect") }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             var newMenu by remember { mutableStateOf(false) }
             Box(Modifier.weight(1f)) {
-                FilledTonalButton(onClick = { newMenu = true }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Add, null); Text("New agent") }
+                Button(onClick = { newMenu = true }, enabled = model.canStartCreation, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("New Agent", fontWeight = FontWeight.SemiBold) }
                 DropdownMenu(expanded = newMenu, onDismissRequest = { newMenu = false }) {
-                    listOf("Quick Chat" to CreationKind.QUICK, "New Project" to CreationKind.PROJECT, "From GitHub" to CreationKind.GITHUB, "From URL" to CreationKind.URL).forEachIndexed { index, (label, kind) ->
+                    listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
                         if (index == 1) HorizontalDivider()
-                        DropdownMenuItem(text = { Text(label) }, onClick = { newMenu = false; model.openCreation(kind); close() })
+                        DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { newMenu = false; model.openCreation(kind); close() })
                     }
                 }
             }
@@ -134,7 +134,7 @@ import org.json.JSONObject
 }
 
 @Composable private fun UnreadDot() {
-    Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+    Box(Modifier.size(8.dp).background(CompanionColors.unread, CircleShape))
 }
 
 /** Repository icons are display data, never host paths or remote fetch instructions. */
@@ -180,16 +180,19 @@ import org.json.JSONObject
         if (repositoryRow) {
             val tint = when (kind) { "main" -> MaterialTheme.colorScheme.primary; "branch" -> CompanionColors.addedLines; "worktree" -> CompanionColors.worktree; else -> MaterialTheme.colorScheme.onSurfaceVariant }
             Icon(when (kind) { "worktree" -> Icons.Outlined.AccountTree; "folder" -> Icons.Outlined.FolderOpen; else -> Icons.AutoMirrored.Outlined.CallMerge }, null, Modifier.size(22.dp), tint = tint)
-        } else DrawerGroupIcon(repository ?: group)
+        } else if (activity) DrawerGroupIcon(repository ?: group)
         Column(Modifier.weight(1f)) {
-            Text(session.string("displayTitle"), fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(session.string("displayTitle"), fontWeight = if (activity) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (activity && session.string("subtitle").isNotBlank()) Text(session.string("subtitle"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (unread) UnreadDot()
         if (repositoryRow && status == "working" && model.drawerVisible && model.foreground) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-        if (repositoryRow && status == "awaitingInput") Surface(shape = RoundedCornerShape(5.dp), color = CompanionColors.attention.copy(alpha = 0.12f)) {
-            Text("Input", Modifier.padding(horizontal = 5.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = CompanionColors.attention)
+        if (repositoryRow && status == "awaitingInput") Surface(shape = CircleShape, color = CompanionColors.worktree.copy(alpha = 0.18f)) {
+            Text("Input", Modifier.widthIn(min = 46.dp).padding(horizontal = 8.dp, vertical = 2.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = CompanionColors.worktree)
         }
-        if (status == "error") Icon(Icons.Outlined.ErrorOutline, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+        if (status == "error") {
+            if (repositoryRow) Box(Modifier.size(9.dp).background(MaterialTheme.colorScheme.error, CircleShape))
+            else Icon(Icons.Outlined.ErrorOutline, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+        }
     }
 }

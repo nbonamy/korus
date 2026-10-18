@@ -32,7 +32,6 @@ class ComposerPresentationWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e)
             app.onNodeWithContentDescription("Choose model and reasoning").assertDoesNotExist()
-            app.onNodeWithContentDescription("Message options").assertDoesNotExist()
             app.onNodeWithContentDescription("Send").assertDoesNotExist()
             val editor = app.onNodeWithTag("composer").getUnclippedBoundsInRoot()
             val add = app.onNodeWithContentDescription("Add").getUnclippedBoundsInRoot()
@@ -41,9 +40,8 @@ class ComposerPresentationWorkflowTest {
             app.onNodeWithTag("composer").performClick().performTextInput("Keep this draft")
             app.onNodeWithTag("composer").assertIsFocused().assertTextContains("Keep this draft")
             app.onNodeWithContentDescription("Choose model and reasoning").assertIsDisplayed().performClick()
-            app.onNodeWithText("Done").performClick()
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
-            app.onNodeWithContentDescription("Message options").assertIsDisplayed()
             app.onAllNodesWithContentDescription("Add").assertCountEquals(1)
             app.onAllNodesWithContentDescription("Dictate").assertCountEquals(1)
             app.onNodeWithTag("composer").performTextClearance()

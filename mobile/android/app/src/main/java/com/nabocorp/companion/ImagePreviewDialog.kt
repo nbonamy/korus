@@ -7,6 +7,10 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,18 +69,19 @@ import kotlin.math.roundToInt
             val loaded = image
             when {
                 loaded != null -> ZoomableImage(loaded, preview.title)
-                failed -> Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Image unavailable", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                    Text("The image couldn’t be loaded.", Modifier.padding(vertical = 12.dp), color = Color.White)
-                    TextButton(onClick = { attempt++ }) { Text("Retry") }
+                failed -> Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Image, null, Modifier.size(44.dp), tint = Color.White.copy(alpha = 0.6f))
+                    Text("Image unavailable", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("The image couldn’t be loaded.", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
+                    AppUnavailableAction("Retry", { attempt++ })
                 }
                 else -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(); Text("Loading image…", Modifier.padding(top = 12.dp), color = Color.White)
+                    CircularProgressIndicator(color = Color.White); Text("Loading image…", Modifier.padding(top = 12.dp), color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
                 }
             }
-            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color.Black.copy(alpha=.65f)).padding(horizontal=16.dp,vertical=4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(preview.title, Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Ellipsis, color=Color.White, style=MaterialTheme.typography.titleMedium)
-                IconButton(onClick=dismiss) { Icon(Icons.Outlined.Close,"Close image",tint=Color.White) }
+            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(preview.title, Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Ellipsis, color=Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                IconButton(onClick=dismiss, modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.18f), CircleShape)) { Icon(Icons.Outlined.Close,"Close image",tint=Color.White) }
             }
         }
     }

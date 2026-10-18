@@ -20,18 +20,20 @@ class ComposerPreferenceWorkflowTest {
                     first.model.sheet = "settings"
                     activity.setContent { MaterialTheme { SheetContent(first.model, {}, {}) } }
                 }
-                app.onNodeWithText("Steer").performScrollTo().assertIsSelected()
-                app.onNodeWithText("Queue").performClick()
-                app.onNodeWithText("Queue").assertIsSelected()
+                app.onNodeWithText("Steer").performScrollTo().assertIsDisplayed()
+                app.onNodeWithText("Follow-up behavior").performClick()
+                app.onNode(hasText("Queue") and hasAnyAncestor(isPopup())).performClick()
+                app.onNodeWithText("Queue").assertIsDisplayed()
             }
             NativeEngineFixture(app.activityRule.scenario).use { second ->
                 app.activityRule.scenario.onActivity { activity ->
                     second.model.sheet = "settings"
                     activity.setContent { MaterialTheme { SheetContent(second.model, {}, {}) } }
                 }
-                app.onNodeWithText("Queue").performScrollTo().assertIsSelected()
-                app.onNodeWithText("Steer").performClick()
-                app.onNodeWithText("Steer").assertIsSelected()
+                app.onNodeWithText("Queue").performScrollTo().assertIsDisplayed()
+                app.onNodeWithText("Follow-up behavior").performClick()
+                app.onNode(hasText("Steer") and hasAnyAncestor(isPopup())).performClick()
+                app.onNodeWithText("Steer").assertIsDisplayed()
             }
         } finally { preferences.edit().putString("composer.followUpBehavior", previous).commit() }
     }

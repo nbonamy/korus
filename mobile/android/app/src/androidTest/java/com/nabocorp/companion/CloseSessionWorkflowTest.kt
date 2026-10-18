@@ -38,11 +38,11 @@ class CloseSessionWorkflowTest {
             assertEquals(mapOf("type" to "confirmCloseSession", "agentId" to "second", "deleteWorktree" to false), engine.commands().last().fields())
             engine.state(state("second", busy = true))
             app.onNodeWithText("Keep Worktree and Close").assertDoesNotExist()
-            app.onNodeWithText("Closing session…").assertIsDisplayed()
+            app.onNodeWithText("Closing session").assertIsDisplayed()
             engine.state(state("second", failed = true))
-            app.onNodeWithText("Couldn’t close this session.", substring = true).assertIsDisplayed()
+            app.onNodeWithText("The session couldn’t be closed.", substring = true).assertIsDisplayed()
             app.onNodeWithText("Keep Worktree and Close").assertIsEnabled()
-            app.onNodeWithText("Cancel").performScrollTo().assertIsDisplayed().performClick()
+            app.onNodeWithText("Cancel").assertIsDisplayed().performClick()
             assertEquals(mapOf("type" to "cancelCloseSession"), engine.commands().last().fields())
         }
     }

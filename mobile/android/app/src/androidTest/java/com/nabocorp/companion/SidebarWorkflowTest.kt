@@ -104,17 +104,17 @@ class SidebarWorkflowTest {
             app.runOnIdle { engine.model.activity(true) }
             app.onNodeWithContentDescription("Open workspace").performClick()
             app.waitUntil(8_000) { engine.model.showConnectionLost }
-            app.onNodeWithText("New agent").assertIsNotEnabled()
-            app.onNodeWithContentDescription("Reconnect computer").assertIsDisplayed().performClick()
+            app.onNodeWithText("New Agent").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Reconnect laptop").assertIsDisplayed().performClick()
             assertCommand(engine, json("type" to "reconnect"))
             app.onNodeWithContentDescription("Settings").performClick()
-            app.onNodeWithContentDescription("Reconnect computer").assertDoesNotExist()
-            app.onAllNodes(hasText("Connection lost") and hasAnyAncestor(isDialog())).assertCountEquals(1)
+            app.onNodeWithContentDescription("Reconnect laptop").assertDoesNotExist()
+            app.onAllNodes(hasText("Connection lost") and hasAnyAncestor(hasScrollAction())).assertCountEquals(1)
             app.onNodeWithText("Done").performClick()
             app.onNodeWithContentDescription("Open workspace").performClick()
             engine.state(state())
-            app.onNodeWithContentDescription("Reconnect computer").assertDoesNotExist()
-            app.onNodeWithText("New agent").assertIsEnabled()
+            app.onNodeWithContentDescription("Reconnect laptop").assertDoesNotExist()
+            app.onNodeWithText("New Agent").assertIsEnabled()
         }
     }
 

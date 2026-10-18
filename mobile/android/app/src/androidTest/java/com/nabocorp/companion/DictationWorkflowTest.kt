@@ -88,7 +88,7 @@ class DictationWorkflowTest {
             app.onNodeWithTag("composer").assertTextEquals("Other host")
             engine.state(state())
             app.onNodeWithTag("composer").assertTextEquals("Original words")
-            val interruptions: List<(CompanionModel) -> Unit> = listOf({ it.activity(false) }, { it.setUnlocked(false) }, { it.sheet = "models" }, { it.drawerVisible = true })
+            val interruptions: List<(CompanionModel) -> Unit> = listOf({ it.activity(false) }, { it.setUnlocked(false) }, { it.sheet = "settings" }, { it.drawerVisible = true })
             interruptions.forEach { interrupt ->
                 app.onNodeWithContentDescription("Dictate").performClick()
                 app.runOnIdle {

@@ -86,7 +86,7 @@ class ChangesWorkflowTest {
             e.state(state("failed")); app.onNodeWithText("Couldn’t load changes").assertIsDisplayed(); app.onNodeWithTag("changes-patch").assertDoesNotExist()
             app.onNodeWithText("Retry").performClick(); app.waitForIdle(); last(e,json("type" to "loadChanges"))
             e.state(state("idle",connected=false))
-            app.onNodeWithText("Computer disconnected").assertIsDisplayed()
+            app.onNodeWithText("Laptop disconnected").assertIsDisplayed()
             app.onNodeWithContentDescription("Refresh changes").assertIsNotEnabled(); app.onNodeWithContentDescription("Change scope").assertIsNotEnabled()
             app.onNodeWithText("Reconnect").performClick(); app.waitForIdle(); last(e,json("type" to "reconnect"))
             val count=commands(e,"loadChanges").size

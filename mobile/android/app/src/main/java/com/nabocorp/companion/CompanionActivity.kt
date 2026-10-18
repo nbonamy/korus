@@ -29,6 +29,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -52,6 +56,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
@@ -172,12 +177,12 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     Box {
         // The engine stays mounted across native navigation, with no accessible or visible content.
         WebContent(model.engine, Modifier.size(1.dp),interactive = false)
-        AppLockHost(model.appLock, model.product.string("name"), unlock) {
+        AppLockHost(model.appLock, model.productName, unlock) {
             if (model.fatalError || state.string("startup") == "error") {
                 StartupFailure(model::retryStartup)
             } else if (model.engineRecovering || state.string("startup") != "ready" || state.has("teams") && state.items("teams").isEmpty() && !model.needsPairing && state.string("connection") != "connected") {
                 if (model.showConnectionLost) ConnectionLostContent { model.command("reconnect") }
-                else StartupProgress(state.items("laptops").isNotEmpty(),model.product.string("name"))
+                else StartupProgress(state.items("laptops").isNotEmpty(),model.productName)
             } else if (model.needsPairing) {
                 PairingScreen(model, scanPairingCode)
             } else if (model.presentedRequest != null) {
@@ -207,7 +212,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         ConversationContent(model,Modifier.padding(padding).fillMaxSize())
                     }
                 }
-                if (model.sheet != null && model.sheet != "conversation") {
+                if (model.sheet in listOf("settings", "forget", "usage")) {
+                    BackHandler { if (model.sheet == "usage") model.sheet = "settings" else if (model.sheet == "forget") model.sheet = "settings" else model.dismissSheet() }
+                    Surface(Modifier.fillMaxSize(), color = CompanionColors.sheetBackground) { SheetContent(model, enableNotifications, setAppLockEnabled) }
+                } else if (model.sheet != null && model.sheet != "conversation") {
                     ModalBottomSheet(onDismissRequest = model::dismissSheet, containerColor = CompanionColors.sheetBackground, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = {
                         it != SheetValue.Hidden || model.canDismissSheet
                     })) {
@@ -221,7 +229,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             }
             if (state.optBoolean("sessionActionFailed") && state.optJSONObject("closePreview")?.optBoolean("isLinkedWorktree") != true) {
                 AlertDialog(onDismissRequest = { model.command("dismissSessionError") }, title = { Text("Session action failed") },
-                    text = { Text("The computer couldn’t complete the action. Check the connection and try again.") },
+                    text = { Text("The laptop couldn’t complete the action. Check the connection and try again.") },
                     confirmButton = { TextButton(onClick = { model.command("dismissSessionError") }) { Text("OK") } })
             }
             model.attachmentPreview?.let { AttachmentImageDialog(it) { model.attachmentPreview = null } }
@@ -262,34 +270,51 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     val enabled = if (stopping) state.string("connection") == "connected" && state.obj("capabilities").optBoolean("interrupt")
         else !drafts.empty && !drafts.importing && !drafts.sending && state.optBoolean("canSend") && (!drafts.goalMode || !state.optBoolean("goalBusy")) && (drafts.items.isEmpty() || state.obj("capabilities").optBoolean("attachments"))
     var addMenu by remember { mutableStateOf(false) }
+    var addPage by remember { mutableStateOf("root") }
+    var modelMenu by remember { mutableStateOf(false) }
     var sendMenu by remember { mutableStateOf(false) }
     val sendAction: @Composable () -> Unit = {
         val label = when { drafts.sending -> "Sending"; stopping -> "Stop"; drafts.goalMode -> "Set goal"; choosing -> if (model.composerPreferences.followUpBehavior == "queue") "Queue message" else "Steer agent"; else -> "Send" }
         Box {
-            Box(Modifier.size(48.dp).clip(CircleShape).background(if (enabled || drafts.sending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
-                .semantics { contentDescription = label }.combinedClickable(enabled = enabled, role = Role.Button, onLongClick = if (choosing) ({ sendMenu = true }) else null,
+            Box(Modifier.size(48.dp).semantics { contentDescription = label }.combinedClickable(enabled = enabled, role = Role.Button, onLongClick = if (choosing) ({ sendMenu = true }) else null,
                     onClick = { if (stopping) model.command("interrupt") else model.send() }), contentAlignment = Alignment.Center) {
-                if (drafts.sending) {
-                    CircularProgressIndicator(Modifier.size(22.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                } else Icon(if (stopping) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send, null, tint = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.size(36.dp).clip(CircleShape).background(if (enabled || drafts.sending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                    if (drafts.sending) {
+                        CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else Icon(if (stopping) Icons.Filled.Stop else Icons.Filled.ArrowUpward, null, Modifier.size(20.dp), tint = Color.White)
+                }
             }
             DropdownMenu(expanded = sendMenu, onDismissRequest = { sendMenu = false }) {
-                DropdownMenuItem(text = { Text("Steer") }, onClick = { sendMenu = false; model.send("steer") })
-                DropdownMenuItem(text = { Text("Queue") }, onClick = { sendMenu = false; model.send("queue") })
+                DropdownMenuItem(text = { Text("Steer") }, leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) }, onClick = { sendMenu = false; model.send("steer") })
+                DropdownMenuItem(text = { Text("Queue") }, leadingIcon = { Icon(Icons.Outlined.Inbox, null) }, onClick = { sendMenu = false; model.send("queue") })
             }
         }
     }
     val addAction: @Composable () -> Unit = {
         Box {
-            IconButton(onClick = { addMenu = true }) { Icon(Icons.Outlined.Add, "Add") }
-            DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
-                DropdownMenuItem(text = { Text("Take Photo") }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.CAMERA) })
-                DropdownMenuItem(text = { Text("Add Photos") }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.PHOTOS) })
-                DropdownMenuItem(text = { Text("Add Files") }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.FILES) })
-                if (state.obj("capabilities").optBoolean("goals")) DropdownMenuItem(text = { Text("Goal mode") }, trailingIcon = { Switch(checked = drafts.goalMode, onCheckedChange = null) },
+            IconButton(onClick = { addPage = "root"; addMenu = true }, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.Add, "Add", Modifier.size(26.dp)) }
+            DropdownMenu(expanded = addMenu && addPage == "permissions", onDismissRequest = { addMenu = false }) {
+                DropdownMenuItem(text = { Text("Permissions") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null) }, onClick = { addPage = "root" })
+                HorizontalDivider()
+                val permissions = state.obj("permissions")
+                permissions.strings("presets").forEach { preset ->
+                    DropdownMenuItem(text = { Text(preset.replace('-', ' ').split(' ').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }) }, trailingIcon = { MenuCheck(preset == permissions.string("approvalPreset")) },
+                        enabled = model.canChoosePermissions, onClick = { addMenu = false; model.chooseApprovalPreset(preset) })
+                }
+                if (permissions.strings("presets").isNotEmpty() && permissions.items("modes").isNotEmpty()) HorizontalDivider()
+                permissions.items("modes").forEach { mode ->
+                    DropdownMenuItem(text = { Text(mode.string("label")) }, trailingIcon = { MenuCheck(mode.string("id") == permissions.string("permissionMode")) },
+                        enabled = model.canChoosePermissions, onClick = { addMenu = false; model.choosePermissionMode(mode.string("id")) })
+                }
+            }
+            DropdownMenu(expanded = addMenu && addPage == "root", onDismissRequest = { addMenu = false }) {
+                DropdownMenuItem(text = { Text("Take Photo") }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.CAMERA) })
+                DropdownMenuItem(text = { Text("Add Photos") }, leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, null) }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.PHOTOS) })
+                DropdownMenuItem(text = { Text("Add Files") }, leadingIcon = { Icon(Icons.Outlined.AttachFile, null) }, enabled = model.canAttach, onClick = { addMenu = false; pickAttachment(AttachmentSource.FILES) })
+                if (state.obj("capabilities").optBoolean("goals")) DropdownMenuItem(text = { Text("Goal mode") }, leadingIcon = { Icon(Icons.Outlined.TrackChanges, null) }, trailingIcon = { if (drafts.goalMode) Icon(Icons.Outlined.Check, null) },
                     enabled = state.optBoolean("canSend") && !drafts.sending && !drafts.importing && !dictation.active && drafts.items.isEmpty(), onClick = { addMenu = false; model.setGoalMode(!drafts.goalMode) })
-                if (state.obj("capabilities").optBoolean("planMode")) DropdownMenuItem(text = { Text("Plan mode") }, trailingIcon = { Switch(checked = composer.optBoolean("planMode"), onCheckedChange = null) }, enabled = model.canTogglePlanMode, onClick = { addMenu = false; model.setPlanMode(!composer.optBoolean("planMode")) })
-                if (state.obj("permissions").strings("presets").isNotEmpty() || state.obj("permissions").items("modes").isNotEmpty()) DropdownMenuItem(text = { Text("Permissions") }, leadingIcon={ Icon(Icons.Outlined.Security,null) },enabled=model.canChoosePermissions,onClick={ addMenu=false;model.sheet="permissions" })
+                if (state.obj("capabilities").optBoolean("planMode")) DropdownMenuItem(text = { Text("Plan mode") }, leadingIcon = { Icon(Icons.Outlined.ListAlt, null) }, trailingIcon = { if (composer.optBoolean("planMode")) Icon(Icons.Outlined.Check, null) }, enabled = model.canTogglePlanMode, onClick = { addMenu = false; model.setPlanMode(!composer.optBoolean("planMode")) })
+                if (state.obj("permissions").strings("presets").isNotEmpty() || state.obj("permissions").items("modes").isNotEmpty()) DropdownMenuItem(text = { Text("Permissions") }, leadingIcon={ Icon(Icons.Outlined.Security,null) },trailingIcon={ Icon(Icons.Outlined.ChevronRight,null) },enabled=model.canChoosePermissions,onClick={ addPage="permissions" })
                 HorizontalDivider()
                 DropdownMenuItem(text = { Text("Review") }, leadingIcon = { Icon(Icons.Outlined.Checklist, null) }, enabled = model.canManageSession,
                     onClick = { addMenu = false; focus.clearFocus(); keyboard?.hide(); model.openReview() })
@@ -336,7 +361,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             }
             state.optJSONObject("goal")?.takeIf { it.string("status") != "complete" }?.let { goal ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Flag, null, Modifier.size(18.dp)); Text(goal.string("objective"), Modifier.weight(1f).padding(8.dp), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Icon(Icons.Outlined.TrackChanges, null, Modifier.padding(start = 20.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant); Text(goal.string("objective"), Modifier.weight(1f).padding(10.dp), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     if (state.optBoolean("goalBusy")) CircularProgressIndicator(Modifier.size(18.dp).testTag("goal-update-pending").semantics { contentDescription="Updating goal" },strokeWidth=2.dp)
                     IconButton(onClick = { model.setGoalMode(true); model.editDraft(goal.string("objective")) }, enabled = state.optBoolean("canSend") && !state.optBoolean("goalBusy") && drafts.items.isEmpty() && !drafts.sending && !drafts.importing) { Icon(Icons.Outlined.Edit, "Edit goal") }
                     IconButton(onClick = { model.command("clearGoal", "target" to state.obj("composerTarget")) }, enabled = state.optBoolean("canSend") && !state.optBoolean("goalBusy")) { Icon(Icons.Outlined.Close, "Clear goal") }
@@ -345,9 +370,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             if (state.optBoolean("goalError")) Text("Goal change couldn’t be confirmed. Check its status before trying again.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=8.dp,vertical=4.dp))
             Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                 border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                Column(Modifier.padding(8.dp)) {
+                Column(Modifier.padding(10.dp)) {
                     if (drafts.goalMode || composer.optBoolean("planMode")) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (drafts.goalMode) "Goal" else "Plan", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                        Icon(if (drafts.goalMode) Icons.Outlined.TrackChanges else Icons.Outlined.ListAlt, null, Modifier.padding(start = 10.dp).size(16.dp))
+                        Text(if (drafts.goalMode) "Goal" else "Plan", Modifier.weight(1f).padding(start = 6.dp), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         IconButton(onClick = { if(drafts.goalMode) model.setGoalMode(false) else model.setPlanMode(false) }, enabled = !drafts.sending && !state.optBoolean("goalBusy") && (drafts.goalMode || model.canTogglePlanMode)) { Icon(Icons.Outlined.Close, if(drafts.goalMode) "Exit goal mode" else "Exit plan mode") }
                     }
                     ComposerAttachmentsView(drafts) { model.attachmentPreview = it }
@@ -375,8 +401,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                     }
                                 })
                         }
-                        if (expanded) IconButton(onClick = { model.sheet = "composer" }, modifier = Modifier.align(Alignment.Top)) { Icon(Icons.Outlined.Tune, "Message options") }
-                        else { dictationAction(); if (stopping || drafts.sending) sendAction() }
+                        if (!expanded) { dictationAction(); if (stopping || drafts.sending) sendAction() }
                     }
                     if (expanded) Row(verticalAlignment = Alignment.CenterVertically) {
                         addAction()
@@ -386,9 +411,26 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                             IconToggleButton(checked = fast, onCheckedChange = { model.chooseServiceTier(if (it) fastTier.string("id") else null) }, enabled = model.canChooseModel,
                                 modifier = Modifier.size(48.dp).semantics { contentDescription = "Fast mode"; stateDescription = if (fast) "On" else "Off" }) { Icon(if (fast) Icons.Filled.Bolt else Icons.Outlined.Bolt, null) }
                         }
-                        TextButton(onClick = { model.sheet = "models" }, enabled = model.canChooseModel, modifier = Modifier.weight(1f).semantics { contentDescription = "Choose model and reasoning" }) {
-                            Text(listOfNotNull(selected?.string("name") ?: "Model", composer.string("effort").takeIf { it.isNotBlank() }?.replaceFirstChar(Char::uppercase)).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Icon(Icons.Outlined.ExpandMore, null, Modifier.size(16.dp))
+                        Box(Modifier.weight(1f)) {
+                            TextButton(onClick = { modelMenu = true }, enabled = model.canChooseModel, modifier = Modifier.semantics { contentDescription = "Choose model and reasoning" }) {
+                                Text(selected?.string("name") ?: "Model", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                                composer.string("effort").takeIf { it.isNotBlank() }?.let { Text(" " + it.replaceFirstChar(Char::uppercase), maxLines = 1, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                Icon(Icons.Outlined.UnfoldMore, null, Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                                state.items("models").forEach { option ->
+                                    DropdownMenuItem(text = { Text(option.string("name")) }, trailingIcon = { MenuCheck(option.string("id") == composer.string("modelId")) },
+                                        enabled = model.canChooseModel, onClick = { modelMenu = false; model.chooseModel(option.string("id")) })
+                                }
+                                val efforts = selected?.strings("efforts").orEmpty()
+                                if (efforts.isNotEmpty()) {
+                                    HorizontalDivider()
+                                    efforts.forEach { effort ->
+                                        DropdownMenuItem(text = { Text(effort.replaceFirstChar(Char::uppercase)) }, trailingIcon = { MenuCheck(effort == composer.string("effort")) },
+                                            enabled = model.canChooseModel, onClick = { modelMenu = false; model.chooseReasoningEffort(effort) })
+                                    }
+                                }
+                            }
                         }
                         dictationAction()
                         sendAction()
@@ -405,49 +447,23 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
 
 @Composable internal fun SheetContent(model: CompanionModel, enableNotifications: () -> Unit, setAppLockEnabled: (Boolean) -> Unit) {
     val state = model.state
-    Column(Modifier.fillMaxWidth().padding(bottom = 28.dp).heightIn(max = 650.dp)) {
-        val title = when {
-            model.sheet == "settings" -> "Settings"
-            model.sheet == "forget" -> "Forget computer?"
-            model.sheet == "usage" -> "Usage"
-            model.sheet == "closeSession" -> "Close Session"
-            model.sheet == "models" -> "Choose a model"
-            model.sheet == "composer" -> "Message options"
-            model.sheet == "permissions" -> "Permissions"
-            else -> "Conversation"
+    when (model.sheet) {
+        "settings", "forget" -> {
+            AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
+            if (model.sheet == "forget") AlertDialog(onDismissRequest = { model.sheet = "settings" }, title = { Text("Forget this laptop?") },
+                text = { Text("You will need a new pairing code to connect again.") },
+                confirmButton = { TextButton(onClick = { model.command("forget"); model.sheet = null }) { Text("Forget Laptop", color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { model.sheet = "settings" }) { Text("Cancel") } })
         }
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = model::dismissSheet, enabled = model.canDismissSheet) { Text("Done") }
+        "usage" -> AppSheetFrame("Usage", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Settings") { model.sheet = "settings" } },
+            trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.string("connection") == "connected" && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
+            UsageContent(state.obj("usage"), state.string("connection"), { model.command("loadUsage") }, { model.command("reconnect") })
         }
-        when {
-            model.sheet == "settings" -> SettingsContent(model, enableNotifications, setAppLockEnabled)
-            model.sheet == "forget" -> {
-                Text("You’ll need a new pairing code to reconnect. Your agents and conversations stay on your computer.", Modifier.padding(horizontal = 24.dp))
-                TextButton(onClick = { model.command("forget"); model.sheet = null }) { Text("Forget computer", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = { model.sheet = "settings" }) { Text("Cancel") }
-            }
-            model.sheet == "models" -> ModelSelectionContent(model)
-            model.sheet == "composer" -> Column(Modifier.verticalScroll(rememberScrollState())) {
-                val selected = state.items("models").firstOrNull { it.string("id") == state.obj("composer").string("modelId") }
-                if (state.obj("capabilities").optBoolean("planMode")) ListItem(headlineContent = { Text("Plan mode") }, supportingContent = { Text("Discuss a plan before making changes") }, trailingContent = { Switch(checked = state.obj("composer").optBoolean("planMode"), enabled=model.canTogglePlanMode,onCheckedChange=model::setPlanMode) })
-                selected?.strings("efforts")?.forEach { effort -> SheetRow("Reasoning: $effort", Icons.Outlined.Psychology,model.canChooseModel) { model.chooseReasoningEffort(effort) } }
-                selected?.items("tiers")?.forEach { tier -> SheetRow(tier.string("name"), Icons.Outlined.Speed,model.canChooseModel) { model.chooseServiceTier(tier.string("id")); model.sheet = null } }
-                PermissionsContent(model)
-            }
-            model.sheet == "permissions" -> Column(Modifier.verticalScroll(rememberScrollState())) { PermissionsContent(model) }
-            model.sheet == "usage" -> {
-                TextButton(onClick = { model.sheet = "settings" }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Text("Settings") }
-                UsageContent(state.obj("usage"), state.string("connection"), { model.command("loadUsage") }, { model.command("reconnect") })
-            }
-            model.sheet == "closeSession" -> state.optJSONObject("closePreview")?.let { preview ->
-                CloseSessionContent(preview, state.string("sessionAction").isNotBlank(), state.optBoolean("sessionActionFailed"), model::dispatch,
-                    model::dismissSheet)
+        else -> Column(Modifier.fillMaxWidth().padding(bottom = 28.dp).heightIn(max = 650.dp)) {
+            AppSheetHeader("Close Session", leading = { AppBarPill("Cancel", model.canDismissSheet, onClick = model::dismissSheet) })
+            state.optJSONObject("closePreview")?.let { preview ->
+                CloseSessionContent(preview, state.string("sessionAction").isNotBlank(), state.optBoolean("sessionActionFailed"), model.productName, model::dispatch, model::dismissSheet)
             }
         }
     }
-}
-
-@Composable private fun SheetRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true, action: () -> Unit) {
-    ListItem(headlineContent = { Text(text) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(enabled = enabled,role = Role.Button,onClick = action))
 }

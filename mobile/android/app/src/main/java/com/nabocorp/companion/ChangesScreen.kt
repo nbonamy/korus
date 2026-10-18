@@ -8,7 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Difference
+import androidx.compose.material.icons.outlined.UnfoldMore
+import androidx.compose.material.icons.outlined.WifiOff
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.*
@@ -29,27 +32,16 @@ import org.json.JSONObject
     val git = model.state.obj("git")
     val connected = model.state.string("connection") == "connected"
     BackHandler { model.dismissChanges() }
-    Scaffold(topBar = {
-        CenterAlignedTopAppBar(title = { Text("Changes") },navigationIcon = {
-            IconButton(onClick = model::dismissChanges) { Icon(Icons.Outlined.Close,"Close changes") }
-        },actions = {
-            IconButton(onClick = { model.loadChanges() },enabled = connected && git.string("status") != "loading") { Icon(Icons.Outlined.Refresh,"Refresh changes") }
-        })
-    }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            ChangesScopePicker(git,connected) { model.loadChanges(it) }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when {
-                    !connected -> ChangesNotice("Computer disconnected","Reconnect to your computer to load changes.") {
-                        TextButton(onClick = { model.command("reconnect") }) { Text("Reconnect") }
-                    }
-                    git.string("status") == "failed" || model.changesPageFailed -> ChangesNotice("Couldn’t load changes","Check the connection and try again.") {
-                        TextButton(onClick = { model.loadChanges() }) { Text("Retry") }
-                    }
-                    git.string("status") == "loaded" -> WebContent(model.changes,Modifier.fillMaxSize().testTag("changes-patch"))
-                    else -> Column(Modifier.fillMaxSize(),verticalArrangement = Arrangement.spacedBy(16.dp,Alignment.CenterVertically),horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(); Text("Loading changes…",color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+    AppSheetFrame("Changes", leading = { AppBarIcon(Icons.Outlined.Close, "Close changes", onClick = model::dismissChanges) },
+        trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh changes", connected && git.string("status") != "loading") { model.loadChanges() } }, scroll = false) {
+        ChangesScopePicker(git,connected) { model.loadChanges(it) }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                !connected -> AppUnavailable("Laptop disconnected", Modifier.fillMaxSize(), Icons.Outlined.WifiOff, "Reconnect to your laptop to load changes.") { AppUnavailableAction("Reconnect", { model.command("reconnect") }) }
+                git.string("status") == "failed" || model.changesPageFailed -> AppUnavailable("Couldn’t load changes", Modifier.fillMaxSize(), Icons.Outlined.Difference, "Check the connection and try again.") { AppUnavailableAction("Retry", { model.loadChanges() }) }
+                git.string("status") == "loaded" -> WebContent(model.changes,Modifier.fillMaxSize().testTag("changes-patch"))
+                else -> Column(Modifier.fillMaxSize(),verticalArrangement = Arrangement.spacedBy(16.dp,Alignment.CenterVertically),horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(); Text("Loading changes…",fontSize = 15.sp,color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -64,15 +56,15 @@ import org.json.JSONObject
     val selected = choices.firstOrNull { it.string("id") == git.string("scopeId") }
     val summary = git.optJSONObject("summary")
     Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp,vertical = 12.dp)) {
-        Surface(shape = RoundedCornerShape(16.dp),color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Surface(shape = RoundedCornerShape(16.dp),color = MaterialTheme.colorScheme.surface) {
             Row(Modifier.fillMaxWidth().clickable(enabled = enabled,role = Role.Button) { open = true; commits = false }
                 .semantics { contentDescription = "Change scope" }.padding(16.dp),verticalAlignment = Alignment.CenterVertically,horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(selected?.string("label") ?: "Uncommitted changes",Modifier.weight(1f),maxLines = 1,overflow = TextOverflow.Ellipsis)
+                Text(selected?.string("label") ?: "Uncommitted changes",Modifier.weight(1f),maxLines = 1,overflow = TextOverflow.Ellipsis,fontSize = 17.sp)
                 if (summary != null) {
-                    Text("+${summary.optInt("addedLines")}",color = CompanionColors.addedLines,style = MaterialTheme.typography.labelLarge)
-                    Text("−${summary.optInt("removedLines")}",color = MaterialTheme.colorScheme.error,style = MaterialTheme.typography.labelLarge)
+                    Text("+${summary.optInt("addedLines")}",color = CompanionColors.addedLines,fontSize = 15.sp)
+                    Text("−${summary.optInt("removedLines")}",color = MaterialTheme.colorScheme.error,fontSize = 15.sp)
                 }
-                Icon(Icons.Outlined.ExpandMore,null,Modifier.size(18.dp))
+                Icon(Icons.Outlined.UnfoldMore,null,Modifier.size(18.dp),tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         DropdownMenu(expanded = open && enabled,onDismissRequest = { open = false }) {
@@ -97,10 +89,3 @@ import org.json.JSONObject
     }
 }
 
-@Composable private fun ChangesNotice(title: String, description: String, action: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(32.dp),verticalArrangement = Arrangement.spacedBy(12.dp,Alignment.CenterVertically),horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title,style = MaterialTheme.typography.titleLarge)
-        Text(description,color = MaterialTheme.colorScheme.onSurfaceVariant)
-        action()
-    }
-}

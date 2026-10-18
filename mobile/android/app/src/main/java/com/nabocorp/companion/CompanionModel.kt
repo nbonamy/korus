@@ -32,6 +32,8 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private var navigatingNotification: ConversationTarget? = null
     var notificationError by mutableStateOf<String?>(null)
     val product = JSONObject(application.assets.open("product.json").bufferedReader().use { it.readText() })
+    /** The name people read in the interface, not the store listing. */
+    val productName get() = product.string("desktopName").ifBlank { product.string("name") }
     private val vault = SecureVault(application)
     var state by mutableStateOf(JSONObject())
         private set
@@ -551,7 +553,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
             val payload = body.string("json")
             when (body.string("type")) {
                 "notification" -> attention.receive(JSONObject(payload).getJSONObject("notification").toString())
-                "notificationOpenFailed" -> { navigatingNotification = null; notificationError = "This conversation is no longer available on the paired computer."; acknowledge() }
+                "notificationOpenFailed" -> { navigatingNotification = null; notificationError = "This conversation is no longer available on the paired laptop."; acknowledge() }
                 "state" -> {
                     val next = JSONObject(payload).getJSONObject("state")
                     if (engineRecovering && next.string("startup") == "ready") engineRecovering = false
@@ -612,7 +614,8 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
             when (body.string("type")) {
                 "ready" -> { transcriptReady = true; drainTranscript() }
                 "loadOlder" -> command("loadOlder", "agentId" to body.string("agentId"))
-                "readConversationImage", "readConversationContent", "backend" -> dispatch(body)
+                "readConversationImage", "readConversationContent" -> dispatch(body)
+                "backend" -> { chooseCreationBackend(body.string("backend")); dispatch(body) }
                 "openExternal" -> openExternal(getApplication(), body.string("url"))
                 "openImage" -> if (foreground && screenUnlocked && !fatalError && !engineRecovering && state.string("agentId").isNotBlank()
                     && body.string("agentId") == state.string("agentId") && !drawerVisible && sheet == null && !reviewOpen && !changesOpen && creation == null && presentedRequest == null) {

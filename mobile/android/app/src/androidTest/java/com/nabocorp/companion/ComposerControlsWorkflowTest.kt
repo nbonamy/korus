@@ -68,12 +68,10 @@ class ComposerControlsWorkflowTest {
             mount(e,state());app.onNodeWithTag("composer").performTextInput("Keep this objective")
             app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Goal mode").performClick()
             app.onNodeWithContentDescription("Exit goal mode").assertIsDisplayed()
-            app.onNodeWithContentDescription("Message options").performClick();app.onNode(isToggleable() and !hasContentDescription("Fast mode")).awaitStableBounds(app).performClick()
+            app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Plan mode").performClick()
             app.onNodeWithContentDescription("Exit goal mode").assertDoesNotExist()
             command(e,json("type" to "composer","change" to json("planMode" to true)))
             e.state(state(plan=true))
-            app.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.Dismiss))
-                .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.Dismiss) { it() }
             app.onNodeWithContentDescription("Exit plan mode").assertIsDisplayed().performClick()
             command(e,json("type" to "composer","change" to json("planMode" to false)))
             e.state(state());app.onNodeWithTag("composer").assertTextContains("Keep this objective")
@@ -84,22 +82,23 @@ class ComposerControlsWorkflowTest {
     @Test fun addPermissionsShowsTheCurrentChoiceAndTracksTheOfferedPermissionCatalog() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e,state());app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Permissions").performClick()
-            app.onNodeWithText("Read Only").assertIsSelected();app.onNodeWithText("Full Access").performClick()
+            app.onNode(hasText("Read Only") and hasAnyAncestor(isPopup())).assertExists();app.onNodeWithText("Full Access").performClick()
             command(e,json("type" to "approvalPreset","preset" to "full-access"))
             e.state(state().put("permissions",json("permissionMode" to "default","presets" to JSONArray(),"modes" to JSONArray().put(json("id" to "default","label" to "Default")).put(json("id" to "acceptEdits","label" to "Accept edits")))))
             app.onNodeWithContentDescription("Add").performClick();app.onNodeWithText("Permissions").performClick()
-            app.onNodeWithText("Read Only").assertDoesNotExist();app.onNodeWithText("Default").assertIsSelected()
+            app.onNodeWithText("Read Only").assertDoesNotExist();app.onNodeWithText("Default").assertExists()
             app.onNodeWithText("Accept edits").performClick();command(e,json("type" to "permissionMode","mode" to "acceptEdits"))
         }
     }
 
     @Test fun messageOptionsCannotBypassDisconnectedComposerAndPermissionControls() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
-            mount(e,state(connected=false));app.onNodeWithTag("composer").performClick();app.onNodeWithContentDescription("Message options").performClick()
-            app.onNode(isToggleable() and !hasContentDescription("Fast mode")).assertIsNotEnabled()
-            app.onNodeWithText("Reasoning: low").assertIsNotEnabled()
-            app.onNodeWithText("Fast").assertIsNotEnabled()
-            app.onNodeWithText("Read Only").assertIsNotEnabled()
+            mount(e,state(connected=false));app.onNodeWithTag("composer").performClick()
+            app.onNodeWithContentDescription("Choose model and reasoning").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Fast mode").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Add").performClick()
+            app.onNodeWithText("Plan mode").assertIsNotEnabled()
+            app.onNodeWithText("Permissions").assertIsNotEnabled()
             assertTrue(e.commands().none { it.string("type") in listOf("composer","approvalPreset","permissionMode") })
         }
     }
@@ -108,12 +107,12 @@ class ComposerControlsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e,state().put("header",json("title" to "Agent","status" to "working")))
             app.onNodeWithContentDescription("Conversation actions").performClick()
-            app.onNodeWithText("Restart session").assertIsNotEnabled();app.onNodeWithText("Close session").assertIsEnabled()
+            app.onNodeWithText("Restart Session").assertIsNotEnabled();app.onNodeWithText("Close Session").assertIsEnabled()
             e.state(state().put("sessionAction","restart"))
-            app.onNodeWithText("Restart session").assertIsNotEnabled();app.onNodeWithText("Close session").assertIsNotEnabled()
+            app.onNodeWithText("Restart Session").assertIsNotEnabled();app.onNodeWithText("Close Session").assertIsNotEnabled()
             e.state(state(connected=false))
-            app.onNodeWithText("Restart session").assertIsNotEnabled();app.onNodeWithText("Close session").assertIsNotEnabled()
-            e.state(state());app.onNodeWithText("Restart session").assertIsEnabled().performClick()
+            app.onNodeWithText("Restart Session").assertIsNotEnabled();app.onNodeWithText("Close Session").assertIsNotEnabled()
+            e.state(state());app.onNodeWithText("Restart Session").assertIsEnabled().performClick()
             command(e,json("type" to "restartSession"))
         }
     }
@@ -123,13 +122,13 @@ class ComposerControlsWorkflowTest {
             val preview = json("target" to state().obj("composerTarget"), "isLinkedWorktree" to true,
                 "branch" to "feature/check", "hasChanges" to true)
             mount(e, state().put("closePreview", preview).put("sessionAction", "close"))
-            app.onNodeWithText("Done").assertIsDisplayed().assertIsNotEnabled()
+            app.onNodeWithText("Cancel").assertIsDisplayed().assertIsNotEnabled()
             app.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.Dismiss))
                 .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.Dismiss) { it() }
-            app.onNodeWithText("Closing session…").assertIsDisplayed()
+            app.onNodeWithText("Closing session").assertIsDisplayed()
             assertTrue(e.commands().none { it.string("type") == "cancelCloseSession" })
             e.state(state().put("closePreview", preview).put("sessionActionFailed", true))
-            app.onNodeWithText("Done").assertIsEnabled().performClick()
+            app.onNodeWithText("Cancel").assertIsEnabled().performClick()
             command(e, json("type" to "cancelCloseSession"))
             app.onNodeWithText("Close Session").assertDoesNotExist()
             assertTrue(e.commands().none { it.string("type") == "confirmCloseSession" })

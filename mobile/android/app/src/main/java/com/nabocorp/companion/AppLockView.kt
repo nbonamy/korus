@@ -1,7 +1,11 @@
 package com.nabocorp.companion
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -16,25 +20,19 @@ import androidx.compose.ui.unit.dp
 @Composable internal fun AppLockHost(lock: AppLock, name: String, unlock: () -> Unit, content: @Composable () -> Unit) {
     if (lock.isLocked) {
         BackHandler {}
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.safeDrawingPadding().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Image(painterResource(R.drawable.app_icon), null, Modifier.size(76.dp))
-                Spacer(Modifier.height(24.dp))
-                Text(name, style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(12.dp))
-                Text("Unlock to see your conversations.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(24.dp))
-                Button(onClick = unlock, enabled = !lock.isAuthenticating) { Text("Unlock") }
+        BrandedEntry(name) {
+            Button(onClick = unlock, enabled = !lock.isAuthenticating, shape = CircleShape, contentPadding = PaddingValues(horizontal = 24.dp), modifier = Modifier.heightIn(min = 44.dp)) {
+                Icon(Icons.Outlined.Fingerprint, null, Modifier.size(22.dp)); Spacer(Modifier.width(8.dp)); Text("Unlock", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     } else content()
 }
 
+internal fun appLockFooter(lock: AppLock) = if (lock.canProtect) "Use your fingerprint, face or device PIN when the app opens and after five minutes away."
+    else "Set a screen lock on this device to lock the app."
+
 @Composable internal fun AppLockSettings(lock: AppLock, setEnabled: (Boolean) -> Unit) {
-    ListItem(headlineContent = { Text("Lock with device authentication") }, supportingContent = {
-        Text(if (lock.canProtect) "Use your fingerprint, face or device PIN when the app opens and after five minutes away."
-            else "Set a screen lock on this device to lock the app.")
-    }, trailingContent = {
+    AppRow("Lock with device authentication", icon = Icons.Outlined.Fingerprint, trailing = {
         Switch(checked = lock.isEnabled, onCheckedChange = setEnabled, enabled = lock.canProtect && !lock.isAuthenticating && !lock.isLocked,
             modifier = Modifier.semantics { contentDescription = "Lock with device authentication" })
     })

@@ -51,7 +51,7 @@ class ConversationHeaderWorkflowTest {
             app.onNodeWithText("fixture").assertIsDisplayed()
             app.onNodeWithText("Waiting for input").assertDoesNotExist()
             e.state(state().put("header", JSONObject.NULL))
-            app.onNodeWithText(e.model.product.string("name")).assertIsDisplayed()
+            app.onNodeWithText(e.model.productName).assertIsDisplayed()
         }
     }
 
@@ -59,17 +59,17 @@ class ConversationHeaderWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e, state(status = "idle", statusText = "", dirty = false).put("git", json("available" to false)))
             app.onNodeWithContentDescription("Conversation actions").performClick()
-            app.onNode(hasText("Restart session") and hasAnyAncestor(isPopup())).assertIsDisplayed()
+            app.onNode(hasText("Restart Session") and hasAnyAncestor(isPopup())).assertIsDisplayed()
             app.onNodeWithText("Changes").assertDoesNotExist()
             e.state(state(status = "idle").put("sessionAction", "previewClose"))
             app.onNodeWithContentDescription("Conversation actions").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Uncommitted changes, Preparing to close session"))
-            app.onNodeWithText("Restart session").assertIsNotEnabled()
-            app.onNodeWithText("Close session").assertIsNotEnabled()
+            app.onNodeWithText("Restart Session").assertIsNotEnabled()
+            app.onNodeWithText("Close Session").assertIsNotEnabled()
             app.onNodeWithText("Changes").assertIsNotEnabled()
             e.state(state(status = "idle", statusText = "", dirty = false))
-            app.onNodeWithText("Close session").performClick()
+            app.onNodeWithText("Close Session").performClick()
             assertCommand(e, json("type" to "closeSession"))
-            app.onNodeWithText("Close session").assertDoesNotExist()
+            app.onNodeWithText("Close Session").assertDoesNotExist()
         }
     }
 
@@ -89,7 +89,7 @@ class ConversationHeaderWorkflowTest {
             val linked = json("target" to e.model.state.obj("composerTarget"), "isLinkedWorktree" to true, "branch" to "feature/native", "hasChanges" to true)
             e.state(state(status = "idle").put("sessionActionFailed", true).put("closePreview", linked))
             app.onNodeWithText("Session action failed").assertDoesNotExist()
-            app.onNodeWithText("Couldn’t close this session.", substring = true).assertIsDisplayed()
+            app.onNodeWithText("The session couldn’t be closed.", substring = true).assertIsDisplayed()
             app.onNodeWithText("Delete Worktree and Close").assertIsNotEnabled()
             assertTrue(e.commands().none { it.string("type") in listOf("send", "confirmCloseSession") })
         }

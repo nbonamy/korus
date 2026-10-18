@@ -50,10 +50,10 @@ class NotificationSettingsWorkflowTest {
     @Test fun cancellingForgetReturnsToSettingsWithoutLosingPairingOrTheDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, true)
-            app.onNodeWithText("Forget this computer").performScrollTo().performClick()
-            app.onNodeWithText("Forget computer").assertIsDisplayed()
+            app.onNodeWithText("Forget this laptop").performScrollTo().performClick()
+            app.onNodeWithText("Forget this laptop?").assertIsDisplayed()
             app.onNodeWithText("Cancel").assertIsDisplayed().performClick()
-            app.onNodeWithText("Forget computer").assertDoesNotExist()
+            app.onNodeWithText("Forget this laptop?").assertDoesNotExist()
             app.onNodeWithText("Usage").performScrollTo().assertIsDisplayed()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
@@ -66,7 +66,7 @@ class NotificationSettingsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, false)
             app.waitUntil(7_000) { engine.model.showConnectionLost }
-            val inSheet = hasAnyAncestor(isDialog())
+            val inSheet = hasAnyAncestor(hasScrollAction())
             app.onNode(hasText("Reconnect") and inSheet).performScrollTo().performClick()
             app.waitUntil(5_000) { engine.commands().any { it.string("type") == "reconnect" } }
             assertEquals("{\"type\":\"reconnect\"}", engine.commands().last { it.string("type") == "reconnect" }.toString())

@@ -54,7 +54,7 @@ class PairingPresentationWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e, state())
             val recoveries = listOf("noLaptop" to "showing this code", "codeMismatch" to "did not match", "codeFormat" to "8-character",
-                "noRelay" to "Pairing is unavailable", "pairingExpired" to "Pairing expired", "unknown" to "Pairing failed")
+                "noRelay" to "no relay configured", "pairingExpired" to "Pairing expired", "unknown" to "Pairing failed")
             var prior: String? = null
             recoveries.forEach { (key, recovery) ->
                 e.state(state(error = "mobile.errors.$key"))
@@ -73,15 +73,14 @@ class PairingPresentationWorkflowTest {
             mount(e, state(error = "mobile.errors.pairingExpired"), fontScale = 1.6f)
             app.onNodeWithTag("pairing-code").performScrollTo().performClick().performTextInput("AB")
             app.waitUntil(5_000) { ViewCompat.getRootWindowInsets(app.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true }
-            app.onNodeWithContentDescription("Scan computer QR code").performScrollTo().assertIsDisplayed()
-            app.onNodeWithText("Connect").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+            app.onNodeWithContentDescription("Scan laptop QR code").performScrollTo().assertIsDisplayed()
             val privacy = app.onNodeWithText("Privacy Policy").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
             val root = app.onRoot().getUnclippedBoundsInRoot()
             assertTrue(privacy.left >= root.left && privacy.right <= root.right && privacy.top >= root.top && privacy.bottom <= root.bottom)
             val insets = ViewCompat.getRootWindowInsets(app.activity.window.decorView)!!
             assertTrue("The keyboard stays visible while reaching Privacy", insets.isVisible(WindowInsetsCompat.Type.ime()))
             val keyboardTop = root.bottom.value - insets.getInsets(WindowInsetsCompat.Type.ime()).bottom / app.activity.resources.displayMetrics.density
-            assertTrue("Privacy remains above the keyboard", privacy.bottom.value <= keyboardTop + 1f)
+            assertTrue("Privacy remains above the keyboard: privacy=$privacy keyboardTop=$keyboardTop root=$root", privacy.bottom.value <= keyboardTop + 1f)
             app.onNodeWithTag("pairing-code").performScrollTo().assertTextContains("AB")
             assertTrue(e.commands().none { it.string("type") == "pair" })
             android.util.Log.i("PairingLayoutCheck", json("fontScale" to 1.6, "keyboardVisible" to true, "keyboardTopDp" to keyboardTop,

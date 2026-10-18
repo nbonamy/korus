@@ -23,6 +23,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -64,7 +67,7 @@ class PairingScannerActivity : FragmentActivity() {
         denied = savedInstanceState?.getBoolean("denied") == true
         authorized = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         val supported = packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
-        if (!supported) failure = "This device has no camera. Enter the code shown on your computer."
+        if (!supported) failure = "This device has no camera. Enter the code shown on your laptop."
         else if (denied && !authorized) failure = "Allow camera access in Settings to scan, or enter the code manually."
         setContent { CompanionTheme { ScannerContent() } }
         if (supported && !authorized && !requested) { requested = true; permission.launch(Manifest.permission.CAMERA) }
@@ -91,28 +94,27 @@ class PairingScannerActivity : FragmentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable private fun ScannerContent() {
         BackHandler { finish() }
-        Scaffold(topBar = {
-            TopAppBar(title = { Text("Scan pairing code") }, navigationIcon = { IconButton(onClick = { finish() }) { Icon(Icons.Outlined.Close,"Cancel scanner") } })
-        }) { padding ->
+        AppSheetFrame("Scan pairing code", leading = { AppBarPill("Cancel", description = "Cancel scanner") { finish() } }, scroll = false) {
+            val padding = PaddingValues(0.dp)
             when {
-                failure != null -> Column(Modifier.padding(padding).fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp,Alignment.CenterVertically)) {
-                    Text("Camera unavailable",style = MaterialTheme.typography.titleLarge)
-                    Text(failure.orEmpty(),color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (denied) TextButton(onClick = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName"))) }) { Text("Open Settings") }
-                    else if (authorized) TextButton(onClick = { failure = null; retry++ }) { Text("Try again") }
-                    Button(onClick = { finish() }) { Text("Enter code manually") }
+                failure != null -> AppUnavailable("Camera unavailable", Modifier.weight(1f), Icons.Outlined.PhotoCamera, failure.orEmpty()) {
+                    if (denied) AppUnavailableAction("Open Settings", { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName"))) })
+                    else if (authorized) AppUnavailableAction("Try again", { failure = null; retry++ })
+                    AppUnavailableAction("Enter code manually", { finish() })
                 }
                 authorized -> key(retry) {
                     var ready by remember { mutableStateOf(false) }
-                    Box(Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.scrim)) {
-                        PairingCameraPreview(this@PairingScannerActivity,analyzer,{ ready = it }, { cameraUnavailable("The camera is unavailable. Enter the code shown on your computer.") })
+                    Box(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.scrim)) {
+                        PairingCameraPreview(this@PairingScannerActivity,analyzer,{ ready = it }, { cameraUnavailable("The camera is unavailable. Enter the code shown on your laptop.") })
                         CameraStartupIndicator(this@PairingScannerActivity,ready,{ cameraUnavailable("The camera didn’t become ready. Try again or enter the code manually.") },Modifier.align(Alignment.Center))
-                        Surface(Modifier.align(Alignment.BottomCenter).padding(20.dp),shape = MaterialTheme.shapes.large) {
-                            Text(if (ready) "Point your camera at the QR code on your computer." else "Opening camera…",Modifier.padding(16.dp))
+                        Surface(Modifier.align(Alignment.BottomCenter).padding(16.dp),shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)) {
+                            Text(if (ready) "Point your camera at the QR code on your laptop." else "Opening camera…",Modifier.padding(16.dp),fontSize = 16.sp,textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }
                 }
-                else -> Box(Modifier.padding(padding).fillMaxSize(),contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else -> Column(Modifier.weight(1f).fillMaxWidth(),verticalArrangement = Arrangement.spacedBy(16.dp,Alignment.CenterVertically),horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(); Text("Opening camera…",fontSize = 15.sp,color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -74,7 +75,7 @@ private const val BANNER_TIMEOUT_MS = 6_000L
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
                 Box(Modifier.size(42.dp).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
-                        Text(initials, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+                        Text(initials, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                     }
                     Surface(Modifier.align(Alignment.BottomEnd).offset(x = 3.dp, y = 2.dp).size(19.dp), shape = CircleShape, color = tint,
                         border = BorderStroke(2.dp, MaterialTheme.colorScheme.background)) {
@@ -82,10 +83,10 @@ private const val BANNER_TIMEOUT_MS = 6_000L
                     }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(notification.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(notification.message, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(width = 48.dp, height = 52.dp).semantics { contentDescription = "Dismiss notification" }) {
                 Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

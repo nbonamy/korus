@@ -26,7 +26,7 @@ class UsageWorkflowTest {
         app.activityRule.scenario.onActivity { activity ->
             activity.setContent { MaterialTheme { UsageContent(usage.value, connection.value, { refreshed++ }, { reconnected++ }) } }
         }
-        app.onNodeWithText("Computer disconnected").assertIsDisplayed()
+        app.onNodeWithText("Laptop disconnected").assertIsDisplayed()
         app.onNodeWithText("20% left").assertDoesNotExist()
         app.onNodeWithText("Reconnect").performClick()
         app.runOnIdle { assertEquals(1, reconnected); assertEquals(0, refreshed); connection.value = "connected" }
@@ -58,13 +58,11 @@ class UsageWorkflowTest {
             activity.setContent { MaterialTheme { UsageContent(usage.value, "connected", { refreshed++ }, {}) } }
         }
         app.onNodeWithText("Loading usage…").assertIsDisplayed()
-        app.onNodeWithContentDescription("Refresh usage").assertIsNotEnabled()
         app.runOnIdle { usage.value = json("status" to "failed") }
         app.onNodeWithText("Couldn’t load usage").assertIsDisplayed()
         app.onNodeWithText("Retry").performClick()
         app.runOnIdle { assertEquals(2, refreshed); usage.value = json("status" to "loaded", "providers" to JSONArray()) }
         app.onNodeWithText("No usage limits available.").assertIsDisplayed()
-        app.onNodeWithContentDescription("Refresh usage").performClick()
-        app.runOnIdle { assertEquals(3, refreshed) }
+        app.runOnIdle { assertEquals(2, refreshed) }
     }
 }

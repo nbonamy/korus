@@ -74,8 +74,9 @@ class ModelControlsWorkflowTest {
             engine.state(state()); mount(engine)
             app.onNodeWithTag("composer").performTextInput("Keep this draft")
             app.onNodeWithContentDescription("Choose model and reasoning").performClick()
-            app.onNodeWithText("Done").assertIsDisplayed().performClick()
-            app.onNodeWithText("Choose a model").assertDoesNotExist()
+            app.onNodeWithText("Low").assertIsDisplayed()
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            app.onNodeWithText("Low").assertDoesNotExist()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
             assertTrue(engine.commands().none { it.string("type") in listOf("composer", "send") })
         }

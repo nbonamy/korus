@@ -28,7 +28,7 @@ class ProjectWorkflowTest {
     }
     private fun newAgent(item: String) {
         app.onNodeWithContentDescription("Open workspace").performClick()
-        app.onNodeWithText("New agent").performClick()
+        app.onNodeWithText("New Agent").performClick()
         app.onNodeWithText(item).performClick()
     }
     private fun repository(item: String) {
@@ -64,8 +64,7 @@ class ProjectWorkflowTest {
                     app.onNodeWithText("Create Project").assertIsNotEnabled()
                 }
                 app.onNodeWithTag("project-value").performTextReplacement("  native-project  ")
-                app.onNodeWithContentDescription("Creation engine").performClick()
-                app.onNodeWithText("Claude").performClick()
+                app.runOnIdle { engine.model.chooseCreationBackend("claude") }
                 app.activityRule.scenario.recreate(); mount(engine)
                 app.onNodeWithTag("project-value").assertTextContains("  native-project  ")
                 app.onNodeWithText("Create Project").performClick()
@@ -75,7 +74,7 @@ class ProjectWorkflowTest {
                 engine.state(state(creation = "creating"))
                 assertEquals(1, engine.commands().count { it.string("type") == "createProject" })
                 engine.state(state(creation = "failed"))
-                app.onNodeWithText("Couldn’t prepare this workspace.", substring = true).assertIsDisplayed()
+                app.onNodeWithText("Couldn’t open the project.", substring = true).assertIsDisplayed()
                 app.onNodeWithTag("project-value").assertTextContains("  native-project  ")
                 app.onNodeWithText("Create Project").performClick()
                 assertEquals(2, engine.commands().count { it.string("type") == "createProject" })
@@ -97,7 +96,7 @@ class ProjectWorkflowTest {
                 app.onNodeWithTag("project-value").performTextInput("  git@github.com:org/repo.git  ")
                 app.onNodeWithTag("project-value").assertTextContains("  git@github.com:org/repo.git  ")
                 engine.state(state(connected = false))
-                app.onNodeWithText("Computer disconnected").assertIsDisplayed()
+                app.onNodeWithText("Laptop disconnected").assertIsDisplayed()
                 app.onNodeWithText("Clone Repository").assertDoesNotExist()
                 app.onNodeWithText("Reconnect").performClick()
                 assertCommand(engine, json("type" to "reconnect"))
@@ -111,7 +110,7 @@ class ProjectWorkflowTest {
                 engine.state(state(creation = "creating")); engine.state(state())
                 engine.state(state(connected = false))
                 app.onNodeWithContentDescription("Open workspace").performClick()
-                app.onNodeWithText("New agent").assertIsNotEnabled()
+                app.onNodeWithText("New Agent").assertIsNotEnabled()
             }
         } finally { preferences.edit().putString("newChat.backend", previous).commit() }
     }
@@ -135,8 +134,7 @@ class ProjectWorkflowTest {
             app.onNodeWithText("Loading branches…").assertIsDisplayed()
             app.onNodeWithText("feature/native").assertDoesNotExist()
             engine.state(state().put("projectBranches", branches("org/repository")))
-            app.onNodeWithContentDescription("Creation engine").performClick()
-            app.onNode(hasText("Codex") and hasAnyAncestor(isPopup())).performClick()
+            app.runOnIdle { engine.model.chooseCreationBackend("codex") }
             app.onNodeWithTag("branch-search").performTextInput("native")
             app.onNodeWithText("feature/native").performClick()
             assertCommand(engine, json("type" to "createProject", "source" to "github", "value" to "org/repository", "backend" to "codex", "branch" to "feature/native"))
@@ -159,7 +157,7 @@ class ProjectWorkflowTest {
     @Test fun existingBranchAndWorktreeUseOpaqueRepositoryRootRatherThanSidebarGroupId() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); repository("Existing Branch")
+            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); repository("Existing Branch…")
             assertCommand(engine, json("type" to "loadBranches", "repositoryId" to "repo-key"))
             engine.state(state().put("backends", JSONArray(listOf("codex"))).put("branches", branches(status = "failed")))
             app.onNodeWithText("Retry").performClick()
@@ -170,9 +168,9 @@ class ProjectWorkflowTest {
             app.onNodeWithText("feature/native").performClick()
             assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "codex", "existingBranch" to "feature/native"))
             engine.state(state(creation = "creating")); engine.state(state())
-            repository("New Worktree")
+            repository("New Worktree…")
             app.onNodeWithTag("branch-name").performTextInput("feature android")
-            app.onNodeWithText("Create Worktree").performClick()
+            app.onNodeWithText("Create").performClick()
             assertCommand(engine, json("type" to "newChat", "repositoryId" to "repo-key", "backend" to "codex", "branchName" to "feature-android"))
             engine.state(state(creation = "creating")); engine.state(state())
             repository("Default Branch")

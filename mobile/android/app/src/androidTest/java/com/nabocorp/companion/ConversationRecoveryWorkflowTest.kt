@@ -129,7 +129,7 @@ class ConversationRecoveryWorkflowTest {
                 assertTrue(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_RENDERER_TERMINATE))
                 assertTrue(WebViewCompat.getWebViewRenderProcess(e.model.transcript.view)!!.terminate())
             }
-            app.waitUntil(10_000) { app.onAllNodesWithText("Couldn’t restore your connection").fetchSemanticsNodes().size==1 }
+            app.waitUntil(10_000) { app.onAllNodesWithText("Couldn’t restore your connection",substring=true).fetchSemanticsNodes().size==1 }
             app.onNodeWithText("Retry").performClick()
             app.waitUntil(25_000) { app.onAllNodesWithTag("pairing-code").fetchSemanticsNodes().size==1 }
             e.state(state());e.event("conversation",frame());painted(e)
@@ -155,14 +155,14 @@ class ConversationRecoveryWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup")=="ready" };e.state(state());mount(e);e.event("conversation",frame());painted(e)
             app.onNodeWithContentDescription("Open workspace").performClick()
-            app.onNodeWithText("New agent").assertIsDisplayed()
+            app.onNodeWithText("New Agent").assertIsDisplayed()
             assertNull(e.model.attention.visibleTarget)
             fun tap(id: String, owner: ConversationTarget) = app.runOnIdle {
                 e.model.attention.tapped(json("id" to id,"target" to owner.toJson(),"kind" to "completed","name" to "Agent","createdAt" to System.currentTimeMillis()).toString())
             }
             tap("already-open",target())
             app.waitUntil(5_000) { e.model.attention.visibleTarget==target() }
-            app.onNodeWithText("New agent").assertIsNotDisplayed()
+            app.onNodeWithText("New Agent").assertIsNotDisplayed()
             assertTrue((page(e,"document.body.innerText") as String).contains("Recovered conversation"))
             assertEquals(7,reads(e).last().getInt("generation"))
             app.runOnIdle { e.model.sheet="settings";e.model.acknowledge() }
@@ -179,7 +179,7 @@ class ConversationRecoveryWorkflowTest {
             assertEquals(3,opened.size)
             assertEquals(target().copy(sessionId="different-session"),ConversationTarget.parse(opened.last().obj("target")))
             e.event("notificationOpenFailed",json())
-            app.waitUntil(5_000) { app.onAllNodesWithText("This conversation is no longer available on the paired computer.").fetchSemanticsNodes().isNotEmpty() }
+            app.waitUntil(5_000) { app.onAllNodesWithText("This conversation is no longer available on the paired laptop.").fetchSemanticsNodes().isNotEmpty() }
             app.onNodeWithText("OK").performClick()
             app.waitUntil(5_000) { e.model.attention.visibleTarget==target() }
             assertEquals(7,reads(e).last().getInt("generation"))

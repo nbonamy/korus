@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
             val header = state.obj("header")
             val subtitle = listOf(header.string("repository"), header.string("statusText")).filter { it.isNotBlank() }.joinToString(" · ")
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(header.string("title").ifBlank { model.product.string("name") }, Modifier.semantics { heading() }, maxLines = 1,
+                Text(header.string("title").ifBlank { model.productName }, Modifier.semantics { heading() }, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (subtitle.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     val status = header.string("status")
@@ -50,8 +50,8 @@ import androidx.compose.ui.unit.dp
                         DropdownMenuItem(text = { Text("Changes") }, leadingIcon = { Icon(Icons.Outlined.Difference, null) }, enabled = model.canManageSession, onClick = model::openChanges)
                         HorizontalDivider()
                     }
-                    DropdownMenuItem(text = { Text("Restart session") }, leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) }, enabled = model.canRestartSession, onClick = model::restartSession)
-                    DropdownMenuItem(text = { Text("Close session") }, leadingIcon = { Icon(Icons.Outlined.Close, null) },
+                    DropdownMenuItem(text = { Text("Restart Session") }, leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) }, enabled = model.canRestartSession, onClick = model::restartSession)
+                    DropdownMenuItem(text = { Text("Close Session") }, leadingIcon = { Icon(Icons.Outlined.Close, null) },
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error, leadingIconColor = MaterialTheme.colorScheme.error),
                         enabled = model.canManageSession, onClick = model::closeSession)
                 }
@@ -67,6 +67,6 @@ import androidx.compose.ui.unit.dp
             if (loading) CircularProgressIndicator(Modifier.size(20.dp).clearAndSetSemantics {}, strokeWidth = 2.dp)
             else Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface)
         }
-        if (dot) Box(Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp).size(6.dp).background(MaterialTheme.colorScheme.primary, CircleShape).clearAndSetSemantics {})
+        if (dot) Box(Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 2.dp).size(12.dp).background(MaterialTheme.colorScheme.background, CircleShape).padding(2.dp).background(CompanionColors.unread, CircleShape).clearAndSetSemantics {})
     }
 }

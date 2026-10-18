@@ -23,7 +23,7 @@ class PairingWorkflowTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val monitor = instrumentation.addMonitor("com.nabocorp.companion.PairingScannerActivity", ActivityResult(Activity.RESULT_OK, Intent().putExtra("pairingCode",payload)), true)
         try {
-            app.onNodeWithContentDescription("Scan computer QR code").performClick()
+            app.onNodeWithContentDescription("Scan laptop QR code").performClick()
             app.waitForIdle()
             assertEquals(1,monitor.hits)
         } finally { instrumentation.removeMonitor(monitor) }
@@ -55,7 +55,7 @@ class PairingWorkflowTest {
             val sent = engine.commands().single { it.string("type") == "pair" }
             assertEquals(setOf("type","code","deviceName"),sent.keys().asSequence().toSet())
             assertEquals("ABCD-23EF",sent.string("code")); assertEquals(Build.MODEL,sent.string("deviceName"))
-            app.onNodeWithContentDescription("Scan computer QR code").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Scan laptop QR code").assertIsNotEnabled()
             app.onNodeWithTag("pairing-code").assertIsNotEnabled()
         }
     }
@@ -66,18 +66,19 @@ class PairingWorkflowTest {
             engine.state(state())
             app.onNodeWithTag("pairing-code").performTextInput("ab 0i23")
             app.onNodeWithTag("pairing-code").assertTextContains("AB23")
-            app.onNodeWithText("Connect").assertIsNotEnabled()
             app.onNodeWithTag("pairing-code").performTextReplacement("abcd23ef")
             app.onNodeWithTag("pairing-code").assertTextContains("ABCD-23EF")
             assertEquals(1,engine.commands().count { it.string("type") == "pair" })
             engine.state(state("searching")); engine.state(state("awaitingApproval"))
-            app.onNodeWithContentDescription("Scan computer QR code").assertIsNotEnabled()
+            app.onNodeWithContentDescription("Scan laptop QR code").assertIsNotEnabled()
             app.activityRule.scenario.recreate()
             app.onNodeWithTag("pairing-code").assertTextContains("ABCD-23EF")
             app.onNodeWithTag("pairing-code").assertIsNotEnabled()
             engine.state(state(error = "mobile.errors.noLaptop"))
             assertEquals(1,engine.commands().count { it.string("type") == "pair" })
-            app.onNodeWithText("Connect").assertIsEnabled().performClick()
+            app.onNodeWithTag("pairing-code").performTextReplacement("abcd23e")
+            assertEquals(1,engine.commands().count { it.string("type") == "pair" })
+            app.onNodeWithTag("pairing-code").performTextReplacement("abcd23ef")
             assertEquals(2,engine.commands().count { it.string("type") == "pair" })
         }
     }
@@ -86,9 +87,9 @@ class PairingWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario, useActivityModel = true).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
             engine.state(state())
-            app.onNodeWithContentDescription("Scan computer QR code").assertIsDisplayed()
+            app.onNodeWithContentDescription("Scan laptop QR code").assertIsDisplayed()
             deniedCamera {
-                app.onNodeWithContentDescription("Scan computer QR code").performClick()
+                app.onNodeWithContentDescription("Scan laptop QR code").performClick()
                 app.waitUntil(10_000) { app.onAllNodesWithText("Camera unavailable").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
                 app.onNodeWithText("Open Settings").assertIsDisplayed()
                 app.onNodeWithText("Enter code manually").performClick()

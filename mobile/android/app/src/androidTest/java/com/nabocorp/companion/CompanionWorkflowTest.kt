@@ -16,7 +16,6 @@ class CompanionWorkflowTest {
         app.waitUntil(30_000) { app.onAllNodesWithTag("pairing-code").fetchSemanticsNodes().size == 1 }
         app.onNodeWithTag("pairing-code").performTextInput("ab23")
         app.onNodeWithTag("pairing-code").assertTextContains("AB23")
-        app.onNodeWithText("Connect").assertIsNotEnabled()
         app.onNodeWithText("Privacy Policy").assertHasClickAction()
         app.activityRule.scenario.recreate()
         app.waitUntil(30_000) { app.onAllNodesWithTag("pairing-code").fetchSemanticsNodes().size == 1 }

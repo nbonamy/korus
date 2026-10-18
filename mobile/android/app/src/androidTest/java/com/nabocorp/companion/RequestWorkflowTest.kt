@@ -94,7 +94,7 @@ class RequestWorkflowTest {
             e.state(state(listOf(request),connected = false))
             app.onNodeWithTag("request-form").performScrollToNode(hasText("Allow for Session"))
             app.onNodeWithText("Allow for Session").assertIsNotEnabled()
-            app.onNodeWithContentDescription("Close request").performClick()
+            app.onNodeWithText("Done").performClick()
             assertTrue(replies(e).isEmpty())
             e.state(state(listOf(request))); open("Approval needed"); action("Allow for Session")
             assertEquals(tree(json("type" to "respondRequest","reply" to json("target" to target(session=null).toJson(),"id" to "same-id","conversationId" to "conversation","outcome" to json("kind" to "decision","decision" to "allow_conversation")))),tree(replies(e).single()))
@@ -105,7 +105,7 @@ class RequestWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
             e.state(state(listOf(pending("toolConfirmation")))); mount(e); open("Approval needed")
-            app.onNodeWithText("GitHub · create_issue").assertIsDisplayed()
+            app.onNodeWithText("GitHub").assertIsDisplayed(); app.onNodeWithText("create_issue").assertIsDisplayed()
             app.onNodeWithText("Always Allow").assertDoesNotExist()
             app.onNodeWithText("Allow for Conversation").assertExists()
             e.state(state(listOf(pending("toolConfirmation",host="another")),host="another"))
@@ -121,7 +121,7 @@ class RequestWorkflowTest {
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
             val request=pending(details=json("blocking" to true,"questions" to JSONArray().put(question("single"))))
             e.state(state(listOf(request))); mount(e); open(); option("single","One")
-            app.onNodeWithContentDescription("Close request").performClick()
+            app.onNodeWithText("Done").performClick()
             assertTrue(replies(e).isEmpty())
             open(); action("Skip Question")
             assertEquals(tree(json("type" to "respondRequest","reply" to json("target" to target().toJson(),"id" to "same-id","conversationId" to "conversation","outcome" to json("kind" to "cancelled")))),tree(replies(e).single()))

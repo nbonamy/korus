@@ -2,6 +2,7 @@ package com.nabocorp.companion
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -27,12 +28,23 @@ import androidx.compose.ui.graphics.Color
         surfaceContainerLow = Color(0xFFF2F2F7), surfaceContainer = Color(0xFFF2F2F7), surfaceContainerHigh = Color(0xFFEAEAEE), surfaceContainerHighest = Color(0xFFE5E5EA),
         outline = Color(0xFF8E8E93), outlineVariant = Color(0xFFD1D1D6), inverseSurface = Color(0xFF2C2C2E), inverseOnSurface = Color(0xFFF2F2F7), inversePrimary = Color(0xFF99C7FF),
     )
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors, typography = CompanionTypography, content = content)
+}
+
+/** Native text takes the font's own line height, like the system text of the iOS app, instead of Material's roomy fixed leading. */
+private val CompanionTypography = Typography().let { base ->
+    fun androidx.compose.ui.text.TextStyle.tight() = copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
+    base.copy(displayLarge = base.displayLarge.tight(), displayMedium = base.displayMedium.tight(), displaySmall = base.displaySmall.tight(),
+        headlineLarge = base.headlineLarge.tight(), headlineMedium = base.headlineMedium.tight(), headlineSmall = base.headlineSmall.tight(),
+        titleLarge = base.titleLarge.tight(), titleMedium = base.titleMedium.tight(), titleSmall = base.titleSmall.tight(),
+        bodyLarge = base.bodyLarge.tight(), bodyMedium = base.bodyMedium.tight(), bodySmall = base.bodySmall.tight(),
+        labelLarge = base.labelLarge.tight(), labelMedium = base.labelMedium.tight(), labelSmall = base.labelSmall.tight())
 }
 
 internal object CompanionColors {
     val sheetBackground: Color @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
     val addedLines: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF80D49A) else Color(0xFF237A3B)
     val worktree: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFFFB66C) else Color(0xFFB85800)
+    val unread: Color get() = Color(0xFFFF3B30)
     val attention: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFD5B5FF) else Color(0xFF7951A8)
 }
