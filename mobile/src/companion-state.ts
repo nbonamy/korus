@@ -121,12 +121,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let projectEpoch = 0;
   function dismissProjectRepositories() { ++projectEpoch; projectRepositories.value = { status: 'idle', items: [] }; dismissProjectBranches(); }
   const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
-  async function loadProjectRepositories() {
+  async function loadProjectRepositories(source: 'github' | 'local' = 'github') {
     const active = session; const team = teamId.value; const epoch = ++projectEpoch;
     projectRepositories.value = { status: 'loading', items: [] };
     try {
-      if (!active?.githubRepositories || !team || status.value !== 'connected') throw new Error('GitHub is unavailable.');
-      const items = await active.githubRepositories(team);
+      const read = source === 'local' ? active?.localRepositories : active?.githubRepositories;
+      if (!active || !read || !team || status.value !== 'connected') throw new Error('Repositories are unavailable.');
+      const items = await read.call(active, team);
       if (epoch === projectEpoch && active === session) projectRepositories.value = { status: 'loaded', items };
     } catch {
       if (epoch === projectEpoch) projectRepositories.value = { status: 'failed', items: [] };
@@ -135,12 +136,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const projectBranches = shallowRef<{ repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionProjectBranch[] }>({ repositoryId: null, status: 'idle', items: [] });
   let projectBranchEpoch = 0;
   function dismissProjectBranches() { ++projectBranchEpoch; projectBranches.value = { repositoryId: null, status: 'idle', items: [] }; }
-  async function loadProjectBranches(repositoryId: string) {
+  async function loadProjectBranches(repositoryId: string, source: 'github' | 'local' = 'github') {
     const active = session, team = teamId.value, epoch = ++projectBranchEpoch;
     projectBranches.value = { repositoryId, status: 'loading', items: [] };
     try {
-      if (!active?.githubBranches || !team || status.value !== 'connected') throw new Error('GitHub branches are unavailable.');
-      const items = await active.githubBranches(team, repositoryId);
+      const read = source === 'local' ? active?.localBranches : active?.githubBranches;
+      if (!active || !read || !team || status.value !== 'connected') throw new Error('Branches are unavailable.');
+      const items = await read.call(active, team, repositoryId);
       if (epoch === projectBranchEpoch && active === session) projectBranches.value = { repositoryId, status: 'loaded', items };
     } catch {
       if (epoch === projectBranchEpoch) projectBranches.value = { repositoryId, status: 'failed', items: [] };
@@ -752,6 +754,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const createChat = (chat: Omit<CompanionNewChat, 'teamId'>) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }));
   const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
   const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
+  const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {
+    const current = agent.value;
+    const team = workspace.value?.teams.find(item => item.id === teamId.value);
+    const currentTarget = current && team ? companionTarget(laptopId.value, team, current) : null;
+    if (!currentTarget || !team || (['hostId', 'locationId', 'teamId', 'agentId', 'sessionId'] as const).some(key => currentTarget[key] !== target[key])) throw new Error('Target is stale.');
+    if (!workspace.value?.backends?.[team.id]?.includes(backend)) throw new Error('That engine is not available.');
+    return active.duplicateAgent?.(target, backend);
+  });
   /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
   async function selectBackend(backend: AgentBackend) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
@@ -790,7 +800,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
+  return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, duplicateAgent, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     refreshing, conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
       const current = agent.value; const team = workspace.value.teams.find(team => team.id === current?.teamId);
       return current && team ? connector.conversationUpdates?.(companionTarget(laptopId.value, team, current), since) ?? null : null;

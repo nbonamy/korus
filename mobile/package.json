@@ -11,6 +11,7 @@
     "test:native:crypto": "APPLE_CRYPTO_NATIVE_TEST=1 vitest run src/__tests__/apple-crypto.spec.ts native/build.spec.ts --maxWorkers=2",
     "test:native": "swift test --package-path ios --scratch-path .native-build/dictation-tests --jobs 2",
     "test:native:transcript": "node scripts/transcript-host.native.mjs",
+    "test:native:projects": "node scripts/project-picker.native.mjs",
     "test:native:android:release": "node --test scripts/android-release.native.mjs",
     "test:scroll": "node --test scripts/transcript-scroll.browser.mjs",
     "build:web": "vite build --config web/vite.config.ts"

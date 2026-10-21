@@ -162,6 +162,8 @@ export class CompanionManager {
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
       gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
+      localRepositories: remote => projects.localList(remote),
+      localBranches: (repositoryId, remote) => projects.localBranches(repositoryId, remote),
       githubRepositories: remote => projects.list(remote),
       githubBranches: (repositoryId, remote) => projects.branches(repositoryId, remote),
       createProject: (input, remote, authorize) => projects.create(input, remote, authorize),
@@ -237,6 +239,13 @@ export class CompanionManager {
         const result = await this.backend.request<AppSnapshot>(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, _clientId: 'companion-write' });
         const created = result.agents.find((agent) => agent.id === result.activeAgentId && agent.teamId === teamId && agent.sessionKind === 'quickChat');
         if (!created) throw new Error('The chat was not created.');
+        return created.id;
+      },
+      duplicateAgent: async (agentId, backend) => {
+        const result = await this.backend.request<AppSnapshot>(backendMethods.agentDuplicate, { agentId, options: { backend }, _clientId: 'companion-write' });
+        const source = result.agents.find(agent => agent.id === agentId);
+        const created = result.agents.find(agent => agent.id === result.activeAgentId && agent.id !== agentId && agent.teamId === source?.teamId && agent.backend === backend);
+        if (!created) throw new Error('The agent was not duplicated.');
         return created.id;
       },
       setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },

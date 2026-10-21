@@ -50,6 +50,52 @@ class ProjectWorkflowTest {
         assertEquals(tree(expected), tree(engine.commands().last()))
     }
 
+    @Test fun existingProjectUsesHostCatalogAndTheSameBranchPickerAsGitHub() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("Existing Project")
+            assertCommand(engine, json("type" to "loadProjectRepositories", "source" to "local"))
+            val repositories = JSONArray()
+            repeat(80) { index -> repositories.put(if (index == 25) json("id" to "opaque-local", "name" to "Local repository") else json("id" to "repo-$index", "name" to "Project $index")) }
+            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectRepositories", json("status" to "loaded", "items" to repositories)))
+            app.onNode(hasScrollAction()).performScrollToNode(hasText("Local repository"))
+            app.onNodeWithText("Local repository").performClick()
+            assertCommand(engine, json("type" to "loadProjectBranches", "repositoryId" to "opaque-local", "source" to "local"))
+            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectBranches", branches("opaque-local")))
+            app.onNodeWithText("New Branch").assertIsDisplayed()
+            app.onNodeWithText("main").assertIsDisplayed()
+            app.onNodeWithText("feature/native").performClick()
+            assertCommand(engine, json("type" to "createProject", "source" to "local", "value" to "opaque-local", "backend" to "codex", "branch" to "feature/native"))
+        }
+    }
+
+    @Test fun duplicateAgentStartsImmediatelyWithoutAFormAndReportsFailureForAnExplicitRetry() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state().put("backend", "codex")); mount(engine)
+            app.onNodeWithContentDescription("Conversation actions").performClick()
+            app.onNodeWithText("Duplicate Agent").performClick()
+            val expected = json("type" to "duplicateAgent", "target" to ConversationTarget("host", "local", "team", "agent", "session").toJson(), "backend" to "codex")
+            assertCommand(engine, expected)
+            app.onNodeWithContentDescription("Choose engine").assertDoesNotExist()
+            app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
+            engine.state(state(creation = "creating").put("backend", "codex"))
+            engine.state(state(creation = "failed").put("backend", "codex"))
+            app.onNodeWithText("Couldn’t duplicate the agent").assertIsDisplayed()
+            app.onNodeWithText("OK").performClick()
+            app.onNodeWithContentDescription("Conversation actions").performClick()
+            app.onNodeWithText("Duplicate Agent").performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "duplicateAgent" } == 2 }
+            assertCommand(engine, expected)
+            engine.state(state(creation = "creating").put("backend", "codex"))
+            engine.state(state().put("agentId", "duplicate").put("backend", "codex")
+                .put("composerTarget", ConversationTarget("host", "local", "team", "duplicate", null).toJson()).put("canSelectBackend", true))
+            app.onNodeWithContentDescription("Choose engine").assertDoesNotExist()
+            app.onNodeWithContentDescription("Conversation actions").assertIsDisplayed()
+            assertEquals(2, engine.commands().count { it.string("type") == "duplicateAgent" })
+        }
+    }
+
     @Test fun newProjectValidatesNamesRetainsChoicesAcrossRecreationAndRequiresAnExplicitRetry() {
         val preferences = app.activity.getSharedPreferences("preferences", 0)
         val previous = preferences.getString("newChat.backend", null)

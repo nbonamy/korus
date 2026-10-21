@@ -154,13 +154,18 @@ host paths or patch contents. Diffs are fetched through a target-bound, read-onl
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
 the device grant and conversation identity before returning the patch.
 Project acquisition uses the owning team's desktop operations for new repositories,
-GitHub discovery and URL cloning. The phone sends names, catalog IDs or network Git
-URLs rather than filesystem paths. GitHub credentials and checkout paths stay on
+local repository selection, GitHub discovery and URL cloning. The phone sends names,
+catalog IDs or network Git URLs rather than filesystem paths. The local catalog
+contains repository roots, with linked worktrees nested beneath them; only roots
+become selectable opaque IDs. GitHub credentials and checkout paths stay on
 the owning host; each write rechecks the grant, team location and available engine.
 Branch browsing uses the owning host’s connected integration without preparing a
 checkout. Selecting a branch reuses its checked-out worktree or fetches and prepares
 a linked worktree, preserving the primary checkout. Long-running acquisition uses
-the same device-scoped creation receipts as new chats.
+the same device-scoped creation receipts as new chats. Local branch selection uses the
+host’s branch catalog without requiring a remote fetch. Agent duplication is bound to
+the captured conversation target and creates a fresh agent in the same checkout; an
+explicit backend choice uses the target provider’s defaults without copying history.
 New GitHub branches use a catalog-validated base on the owning host, refresh its
 remote tip and create a separate worktree. Existing branch names are rejected;
 the primary checkout and its local base branch stay untouched.

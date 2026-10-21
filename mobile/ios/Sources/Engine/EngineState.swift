@@ -109,6 +109,7 @@ struct EngineState: Decodable {
     let closePreview: ClosePreview?
     let chatCreation: ChatCreation
     let branches: RepositoryBranches?
+    let backend: String?
     let backends: [String]
     let draft: String
     let models: [Model]

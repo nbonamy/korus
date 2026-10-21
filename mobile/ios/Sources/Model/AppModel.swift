@@ -81,6 +81,10 @@ final class AppModel {
     var closePreview: EngineState.ClosePreview?
     var chatCreation: EngineState.ChatCreation = .idle
     var backends: [String] = []
+    var backend: String?
+    private var duplicateTarget: ComposerTarget?
+    var duplicatingAgent: Bool { duplicateTarget != nil }
+    var duplicateFailed = false
     /// The repository a worktree is being named for; the sheet shows while it is set.
     var newWorktreeGroup: SidebarGroup?
     var existingBranchGroup: SidebarGroup?
@@ -246,6 +250,11 @@ final class AppModel {
         set(\.chatCreation, state.chatCreation)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
+        set(\.backend, state.backend)
+        if let source = duplicateTarget {
+            if source != state.composerTarget || created { duplicateTarget = nil }
+            else if state.chatCreation == .failed { duplicateTarget = nil; duplicateFailed = true }
+        }
         if created { newWorktreeGroup = nil; existingBranchGroup = nil; newProjectSource = nil; drawerOpen = false }
         set(\.branches, state.branches ?? RepositoryBranches())
         set(\.groups, state.groups.map(Self.sidebarGroup))
@@ -423,11 +432,21 @@ final class AppModel {
     }
     /// A conversation with no repository: one tap, the engine chosen in the empty chat.
     static let quickChatID = "quick-chat"
-    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty }
+    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty && !duplicatingAgent }
     func startQuickChat() {
         guard let backend = newChatBackend, chatCreation != .creating else { return }
         creatingChatGroupID = Self.quickChatID
         command("newQuickChat", ["backend": backend])
+    }
+    func duplicateAgent() {
+        guard canManageSession, canStartChat, chatCreation != .creating, let target = composerDrafts.target, let fallback = newChatBackend,
+              let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        dismissChatFailure()
+        dictation.cancel()
+        duplicateFailed = false
+        duplicateTarget = target
+        let initialBackend = backend.flatMap { backends.contains($0) ? $0 : nil } ?? fallback
+        command("duplicateAgent", ["target": fields, "backend": initialBackend])
     }
     func openProject(_ source: NewProjectSource) {
         guard canStartChat, chatCreation != .creating else { return }

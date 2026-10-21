@@ -24,7 +24,7 @@ function fixture(autoAcceptCode?: string) {
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), duplicateAgent: vi.fn(async () => 'duplicate'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
   const gateway = new CompanionGateway('host', saved, port, () => now, autoAcceptCode);
@@ -355,8 +355,9 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
+      'agent.duplicate': { args: t => ({ target: t, backend: 'claude' }), effect: 'duplicateAgent' },
       'agent.git.diff': { args: t => ({ target: t, scope: { type: 'uncommitted' } }), effect: 'gitDiff', read: true },
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
       'conversation.synchronize': { args: t => ({ target: t, checkpoint: null }), effect: 'synchronize', read: true },

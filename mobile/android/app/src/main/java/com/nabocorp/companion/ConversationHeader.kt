@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
     val state = model.state
     val unread = state.items("teams").any { it.optBoolean("isUnread") }
     val dirty = state.obj("git").obj("uncommitted").string("state") == "dirty"
-    val preparing = state.string("sessionAction") == "previewClose"
+    val preparing = state.string("sessionAction") == "previewClose" || model.duplicatingAgent
     CenterAlignedTopAppBar(
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.background),
         title = {
@@ -43,13 +43,14 @@ import androidx.compose.ui.unit.dp
         },
         actions = {
             Box {
-                val description = listOfNotNull(if (dirty) "Uncommitted changes" else null, if (preparing) "Preparing to close session" else null).joinToString(", ")
+                val description = listOfNotNull(if (dirty) "Uncommitted changes" else null, if (model.duplicatingAgent) "Duplicating agent" else if (preparing) "Preparing to close session" else null).joinToString(", ")
                 HeaderButton(Icons.Outlined.MoreHoriz, "Conversation actions", description, dirty, preparing) { model.sheet = "conversation" }
                 DropdownMenu(expanded = model.sheet == "conversation", onDismissRequest = model::dismissSheet) {
                     if (state.obj("git").optBoolean("available")) {
                         DropdownMenuItem(text = { Text("Changes") }, leadingIcon = { Icon(Icons.Outlined.Difference, null) }, enabled = model.canManageSession, onClick = model::openChanges)
                         HorizontalDivider()
                     }
+                    DropdownMenuItem(text = { Text("Duplicate Agent") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, enabled = model.canManageSession && model.canStartCreation, onClick = model::duplicateAgent)
                     DropdownMenuItem(text = { Text("Restart Session") }, leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) }, enabled = model.canRestartSession, onClick = model::restartSession)
                     DropdownMenuItem(text = { Text("Close Session") }, leadingIcon = { Icon(Icons.Outlined.Close, null) },
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error, leadingIconColor = MaterialTheme.colorScheme.error),

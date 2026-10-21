@@ -2,7 +2,7 @@ package com.nabocorp.companion
 
 import org.json.JSONObject
 
-internal enum class CreationKind { PROJECT, URL, GITHUB, EXISTING, WORKTREE, QUICK, DEFAULT }
+internal enum class CreationKind { PROJECT, LOCAL, URL, GITHUB, EXISTING, WORKTREE, QUICK, DEFAULT }
 
 /** Native form state only; catalogs, workspace mutation and resulting agent selection stay in the engine. */
 internal data class CreationFlow(
@@ -12,9 +12,12 @@ internal data class CreationFlow(
     val newBranch: Boolean = false, val branchName: String = "", val baseBranch: String = "", val selectedBranch: String? = null,
     val submitted: Boolean = false, val observedCreating: Boolean = false,
 ) {
+    val projectCatalog get() = kind == CreationKind.GITHUB || kind == CreationKind.LOCAL
+    val projectSource get() = if (kind == CreationKind.LOCAL) "local" else "github"
     val title get() = when (kind) {
         CreationKind.PROJECT -> "New Project"
         CreationKind.URL -> "Repository URL"
+        CreationKind.LOCAL -> if (newBranch) "New Branch" else if (repositoryId != null) "Choose Branch" else "Existing Project"
         CreationKind.GITHUB -> if (newBranch) "New Branch" else if (repositoryId != null) "Choose Branch" else "GitHub Repository"
         CreationKind.EXISTING -> "Existing Branch"
         CreationKind.WORKTREE -> "New Worktree"
@@ -24,7 +27,7 @@ internal data class CreationFlow(
     val action get() = when (kind) {
         CreationKind.PROJECT -> "Create Project"
         CreationKind.URL -> "Clone Repository"
-        CreationKind.GITHUB -> if (newBranch) "Create Branch" else null
+        CreationKind.GITHUB, CreationKind.LOCAL -> if (newBranch) "Create Branch" else null
         CreationKind.WORKTREE -> "Create Worktree"
         CreationKind.QUICK, CreationKind.DEFAULT -> "Retry"
         CreationKind.EXISTING -> null
@@ -43,12 +46,12 @@ internal data class CreationFlow(
                 if (input.isEmpty() || kind == CreationKind.PROJECT && (input in listOf(".", "..") || input.any { it == '/' || it == '\\' })) return null
                 json("type" to "createProject", "source" to if (kind == CreationKind.PROJECT) "new" else "url", "value" to input, "backend" to backend)
             }
-            CreationKind.GITHUB -> {
+            CreationKind.GITHUB, CreationKind.LOCAL -> {
                 val repository = repositoryId ?: return null
                 val catalog = catalog(state)
                 if (catalog.string("status") != "loaded") return null
                 val names = catalog.items("items").map { it.string("name") }
-                json("type" to "createProject", "source" to "github", "value" to repository, "backend" to backend).apply {
+                json("type" to "createProject", "source" to projectSource, "value" to repository, "backend" to backend).apply {
                     if (newBranch) {
                         val branch = branchName.trim()
                         if (branch.isBlank() || names.contains(branch) || !names.contains(baseBranch)) return null

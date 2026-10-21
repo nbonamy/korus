@@ -308,7 +308,13 @@ export function duplicateAgentInSnapshot(
     return null;
   }
 
+  const backend = options.backend === undefined ? source.backend : resolveAgentBackend(snapshot, options.backend);
   const duplicate = copiedAgent(snapshot, source, 'copy', createdAt, createId, options.name);
+  if (backend !== source.backend) {
+    duplicate.backend = backend;
+    duplicate.backendDefaults = defaultBackendDefaults(backend);
+    applyProviderDefaults(snapshot, duplicate);
+  }
   insertAgentAfterSource(snapshot, source, duplicate);
   if (options.select !== false) {
     snapshot.activeTeamId = duplicate.teamId ?? snapshot.activeTeamId;

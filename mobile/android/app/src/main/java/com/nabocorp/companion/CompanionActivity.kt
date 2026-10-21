@@ -232,6 +232,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     text = { Text("The laptop couldn’t complete the action. Check the connection and try again.") },
                     confirmButton = { TextButton(onClick = { model.command("dismissSessionError") }) { Text("OK") } })
             }
+            if (model.duplicateFailed) {
+                AlertDialog(onDismissRequest = { model.duplicateFailed = false }, title = { Text("Couldn’t duplicate the agent") },
+                    text = { Text("Check the connection and try again.") },
+                    confirmButton = { TextButton(onClick = { model.duplicateFailed = false }) { Text("OK") } })
+            }
             model.attachmentPreview?.let { AttachmentImageDialog(it) { model.attachmentPreview = null } }
             model.conversationImage?.let { ImagePreviewDialog(it, model::dismissConversationImage) }
         }

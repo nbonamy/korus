@@ -18,6 +18,32 @@ import {
 
 describe('AppBackendServer', () => {
 
+  it('duplicates into a chosen connected backend, preserving the checkout and isolating provider defaults', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
+    snapshot.general.providerModelDefaults = { claude: { model: 'target-model', reasoningEffort: null, serviceTier: null } };
+    snapshot.agents = [{ id: 'source', teamId: 'team-test', name: 'Source', folder: '/code/repo-worktree', backend: 'codex', backendDefaults: { kind: 'codex', model: 'source-model' },
+      backendSession: { kind: 'codex', threadId: 'source-thread' }, status: { type: 'working' }, createdAt: '', updatedAt: '', workspace: gitWorkspace('/code/repo', 'repo', 'feature/mobile') }];
+    snapshot.teams[0]!.agentIds = ['source'];
+    const handle = vi.fn(async () => ({ kind: 'claude', connected: true, state: { loggedIn: true } }));
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, saveSnapshot: async () => {},
+      driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never,
+      providerSetup: { isChanging: () => false, list: () => [{ backend: 'claude', installed: true, homePath: '/claude' }] } as never,
+    });
+    try {
+      const reply = await server.handleMessage({ jsonrpc: '2.0', id: 'duplicate', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { backend: 'claude' } } });
+      expect(reply).not.toHaveProperty('error');
+      expect(handle).toHaveBeenCalledExactlyOnceWith('driver/provider/authentication', { backend: 'claude', action: 'check' });
+      const duplicate = snapshot.agents.find(agent => agent.id !== 'source')!;
+      expect(duplicate).toMatchObject({ folder: '/code/repo-worktree', workspace: snapshot.agents[0]!.workspace, backend: 'claude', backendDefaults: { kind: 'claude', model: 'target-model' }, status: { type: 'idle' } });
+      expect(duplicate.backendSession).toBeUndefined();
+      expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'source-thread' });
+      const count = snapshot.agents.length;
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'unavailable', method: backendMethods.agentDuplicate, params: { agentId: 'source', options: { backend: 'antigravity' } } })).resolves.toMatchObject({ error: { message: expect.stringContaining('not connected') } });
+      expect(snapshot.agents).toHaveLength(count);
+    } finally { await server.close(); }
+  });
+
   it('owns agent CRUD and layout mutations', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-agent-'));
     const snapshot = createTestSnapshot();

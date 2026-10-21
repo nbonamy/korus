@@ -12,11 +12,13 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
   Settings offers connection. Existing chats stay accessible.
 - Surfaces differ in presentation, not policy. Dialogs (New agent, worktree,
   project, branch/work-item, repository URL) carry a conditional `BackendSelector`;
-  direct actions (new session on main, open folder, Quick Chat, new Mission) create
-  immediately and let the user choose on the empty chat. An explicit selection
+  direct actions (new session on main, open folder, Quick Chat, duplicate agent,
+  new Mission) create immediately and let the user choose on the empty chat. An explicit selection
   carries through acquisition and progress dialogs. Assigning to an existing session
   never implies a provider change.
-- **Duplicate and fork** keep the source backend. **MCP creation** (`create-agent`,
+- **Duplicate** defaults to the source backend and accepts an explicit available backend;
+  changing it applies the target provider’s defaults to the fresh agent. **Fork** keeps
+  the source backend. **MCP creation** (`create-agent`,
   `create-project`) takes an optional backend defaulting to the caller's. Same-provider
   helpers inherit the caller's model, effort and explicit service tier; cross-provider
   creation uses the target provider's defaults instead.
@@ -97,8 +99,8 @@ report their own connections.
 
 - Manual choices are remembered per client and host; an unavailable remembered engine
   falls back for new work without overwriting the preference. Existing conversations,
-  delegated work, duplicate/fork and persisted automations keep their engine and never
-  silently switch on auth loss. Automations persist their backend for filtering and
+  delegated work, duplicates without an explicit backend, forks and persisted automations
+  keep their engine and never silently switch on auth loss. Automations persist their backend for filtering and
   execution (filtering uses a tool-free, non-persisted Claude query) and fail before
   provisioning when it is disconnected.
 - Enablement is persisted separately (`providerEnabled`); availability requires

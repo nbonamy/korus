@@ -29,7 +29,7 @@ struct DrawerView: View {
         .sheet(item: Binding(get: { model.existingBranchGroup }, set: { if $0 == nil { model.closeBranchSheet() } })) { group in
             ExistingBranchSheet(group: group)
         }
-        .alert("Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil && model.existingBranchGroup == nil && model.newProjectSource == nil }, set: { if !$0 { model.dismissChatFailure() } })) {
+        .alert(model.duplicateFailed ? "Couldn’t duplicate the agent" : "Couldn’t start the chat", isPresented: Binding(get: { model.chatCreation == .failed && model.newWorktreeGroup == nil && model.existingBranchGroup == nil && model.newProjectSource == nil }, set: { if !$0 { model.duplicateFailed = false; model.dismissChatFailure() } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check the connection and try again.")

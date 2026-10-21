@@ -804,6 +804,7 @@ export type UpdateAgentInput = {
 export type DuplicateAgentOptions = {
   select?: boolean;
   name?: string;
+  backend?: AgentBackend;
 };
 
 export type MoveAgentToTeamInput = {

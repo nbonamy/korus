@@ -101,18 +101,20 @@ struct ConversationScreen: View {
                                 .disabled(!model.canManageSession)
                             Divider()
                         }
+                        Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
+                            .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
                         Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                             .disabled(!model.canManageSession || model.isWorking)
                         Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
                             .disabled(!model.canManageSession)
                     } label: {
-                        if model.sessionAction == "previewClose" { ProgressView() }
+                        if model.sessionAction == "previewClose" || model.duplicatingAgent { ProgressView() }
                         else { Image(systemName: "ellipsis") }
                     }
                     .buttonBorderShape(.circle)
                     .toolbarDot(model.git.uncommitted?.state == "dirty")
                     .accessibilityLabel("Session actions")
-                    .accessibilityValue(model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
+                    .accessibilityValue(model.duplicatingAgent ? "Duplicating agent" : model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
                 }
             }
             .toolbarTitleDisplayMode(.inline)

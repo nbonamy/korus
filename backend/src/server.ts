@@ -750,7 +750,8 @@ export class AppBackendServer {
       const remote = params?.remoteConnectionId || input.remoteConnectionId || this.snapshot.teams.find(team => team.id === teamId)?.remoteConnectionId;
       if (!remote && (message.method !== backendMethods.agentUpdate || input.backend !== undefined)) {
         try {
-          const requested = isAgentBackend(input.backend) ? input.backend : agent?.backend;
+          const duplicateBackend = message.method === backendMethods.agentDuplicate && isRecord(effectiveParams.options) ? effectiveParams.options.backend : undefined;
+          const requested = isAgentBackend(duplicateBackend) ? duplicateBackend : isAgentBackend(input.backend) ? input.backend : agent?.backend;
           if (this.providerConnections) await this.requireConnectedEngine(requested);
         } catch (error) {
           return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : String(error));
@@ -3666,6 +3667,9 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
   }
 
   const options = requireRecord(record.options);
+  if (options.backend !== undefined && !isAgentBackend(options.backend)) {
+    throw new Error('Invalid backend.');
+  }
   if (options.select !== undefined && typeof options.select !== 'boolean') {
     throw new Error('select must be a boolean.');
   }
@@ -3676,6 +3680,7 @@ function requireDuplicateAgentRequest(params: unknown): { agentId: string; optio
     agentId,
     options: {
       ...(options.select === undefined ? {} : { select: options.select }),
+      ...(isAgentBackend(options.backend) ? { backend: options.backend } : {}),
       ...(options.name === undefined ? {} : { name: options.name.trim() }),
     },
   };

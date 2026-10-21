@@ -3,7 +3,7 @@ import type { CompanionNotification, CompanionPushRegistration } from '@workspac
 import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
-import type { Agent, BackendModelOption } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -100,8 +100,9 @@ export type EngineCommand =
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
-  | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
-  | { type: 'loadProjectRepositories' } | { type: 'dismissProjectRepositories' }
+  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'local' } | { type: 'dismissProjectBranches' }
+  | { type: 'loadProjectRepositories'; source?: 'github' | 'local' } | { type: 'dismissProjectRepositories' }
+  | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
@@ -516,10 +517,11 @@ export function createEngine(port: EnginePort) {
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
       case 'loadBranches': return state.loadBranches(command.repositoryId);
-      case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId);
+      case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId, command.source);
       case 'dismissProjectBranches': return state.dismissProjectBranches();
-      case 'loadProjectRepositories': return state.loadProjectRepositories();
+      case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
+      case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
       case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });

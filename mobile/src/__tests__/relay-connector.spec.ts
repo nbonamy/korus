@@ -521,6 +521,15 @@ describe('native relay host adapter', () => {
     const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', backend: 'claude' as const, branch: 'feature/mobile' };
     expect(await session.createProject!(projectInput)).toBe('project-agent');
     expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);
+    transport.response = method => method === 'project.local.list' ? [{ id: 'opaque-repository', name: 'Local repository' }]
+      : method === 'project.local.branches' ? projectBranches : method === 'agent.duplicate' ? { agentId: 'duplicate-agent' } : {};
+    expect(await session.localRepositories!('team')).toStrictEqual([{ id: 'opaque-repository', name: 'Local repository' }]);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.list', args: { teamId: 'team' } });
+    expect(await session.localBranches!('team', 'opaque-repository')).toStrictEqual(projectBranches);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.local.branches', args: { teamId: 'team', repositoryId: 'opaque-repository' } });
+    const duplicateTarget = { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: agent.id, sessionId: null };
+    expect(await session.duplicateAgent!(duplicateTarget, 'claude')).toBe('duplicate-agent');
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.duplicate', args: { target: duplicateTarget, backend: 'claude' } });
     transport.response = (method) => method === 'snapshot.get' ? { teams: [{ id: 'team', name: 'Team', agentIds: ['new-chat'] }], agents: [{ ...agent, id: 'new-chat', backendSession: undefined }] } : {};
     await session.getWorkspace();
     await session.setBackend!('new-chat', 'claude');

@@ -49,10 +49,11 @@ const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.');
-const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
-  if ((input.branch || input.worktree) && input.source !== 'github') return false;
+const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'local', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+  if ((input.branch || input.worktree) && !['github', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
+  if (input.source === 'local') return /^\/[a-f0-9]{16}\/[^/]+$/u.test(input.value);
   if (input.source !== 'url') return true;
   if (/^git@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+$/u.test(input.value)) return true;
   try { const url = new URL(input.value); return ['https:', 'ssh:'].includes(url.protocol) && Boolean(url.hostname) && url.pathname.length > 1 && !url.password && (!url.username || url.protocol === 'ssh:'); }
@@ -72,6 +73,9 @@ export type GatewayPort = {
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
+  localRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
+  localBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
+  duplicateAgent?(agentId: string, backend: AgentBackend): Promise<string>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
@@ -256,6 +260,15 @@ const agentOperations = {
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
   }),
+  'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+    check: (agent, { backend }, { backends }) => {
+      if (!backends?.[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+    },
+    act: async (port, agent, { backend }) => {
+      if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');
+      return { agentId: await port.duplicateAgent(agent.id, backend) };
+    },
+  }),
   'agent.restart': agentOperation(onlyTarget)({
     check: (agent) => { if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') throw new Error('Stop the agent before restarting.'); },
     act: async (port, agent) => { await port.restart(agent.id); return {}; },
@@ -383,6 +396,16 @@ export class CompanionGateway {
    * inside the mutation lock.
    */
   private readonly operations: Record<string, Operation> = {
+    'project.local.list': async (peer, args) => {
+      const { teamId } = z.object({ teamId: identity }).strict().parse(args);
+      if (!this.port.localRepositories) throw new Error('Repositories are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.localRepositories!(remote));
+    },
+    'project.local.branches': async (peer, args) => {
+      const { teamId, repositoryId } = repositorySchema.parse(args);
+      if (!this.port.localBranches) throw new Error('Branches are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.localBranches!(repositoryId, remote));
+    },
     'project.github.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);
       if (!this.port.githubRepositories) throw new Error('GitHub repositories are unavailable.');

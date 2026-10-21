@@ -37,10 +37,10 @@ import org.json.JSONObject
         wasConnected = connected
     }
     BackHandler { if (!busy) model.backCreation() }
-    val picker = flow.kind == CreationKind.GITHUB && !flow.newBranch || flow.kind == CreationKind.EXISTING
+    val picker = flow.projectCatalog && !flow.newBranch || flow.kind == CreationKind.EXISTING
     val action = flow.action.takeIf { !busy && connected && flow.kind !in listOf(CreationKind.QUICK, CreationKind.DEFAULT, CreationKind.WORKTREE) }
     AppSheetFrame(if (busy || flow.kind == CreationKind.WORKTREE) "" else flow.title, Modifier.imePadding(),
-        leading = if (!busy && flow.kind == CreationKind.GITHUB && flow.repositoryId != null) ({
+        leading = if (!busy && flow.projectCatalog && flow.repositoryId != null) ({
             AppBarPill(if (flow.newBranch) "Branches" else "Repositories", description = if (flow.newBranch) "Back to branches" else "Back to repositories", onClick = model::backCreation, icon = Icons.AutoMirrored.Outlined.KeyboardArrowLeft)
         }) else null,
         trailing = if (busy) null else ({ AppBarPill("Cancel", description = "Cancel creation", onClick = model::dismissCreation) }),
@@ -52,7 +52,7 @@ import org.json.JSONObject
                 flow.kind == CreationKind.EXISTING || flow.kind == CreationKind.DEFAULT -> "Opening your branch"
                 flow.kind == CreationKind.QUICK -> "Starting your chat"
                 else -> "Preparing your project"
-            }, if (flow.kind == CreationKind.PROJECT || flow.kind == CreationKind.URL || flow.kind == CreationKind.GITHUB && !flow.newBranch) Icons.Outlined.CreateNewFolder else Icons.Outlined.AccountTree,
+            }, if (flow.kind == CreationKind.PROJECT || flow.kind == CreationKind.URL || flow.projectCatalog && !flow.newBranch) Icons.Outlined.CreateNewFolder else Icons.Outlined.AccountTree,
                 "${model.productName} is getting the workspace ready.", subject = flow.repositoryName.ifBlank { flow.value.trim() }, branch = flow.branchName.ifBlank { flow.selectedBranch.orEmpty() })
             !connected -> if (flow.kind == CreationKind.EXISTING) AppUnavailable("Not connected", Modifier.weight(1f), Icons.Outlined.WifiOff, "Reconnect to your laptop to browse branches.")
                 else AppUnavailable("Laptop disconnected", Modifier.weight(1f), Icons.Outlined.WifiOff, "Reconnect to your laptop to start a project.") { AppUnavailableAction("Reconnect", { model.command("reconnect") }) }
@@ -92,7 +92,7 @@ private fun Modifier.verticalScrollIfNeeded(): Modifier = this
 private val creationKeyboard = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false)
 
 @Composable private fun CreationCatalog(model: CompanionModel, flow: CreationFlow, state: JSONObject, failed: Boolean, modifier: Modifier) {
-    val repositories = flow.kind == CreationKind.GITHUB && flow.repositoryId == null
+    val repositories = flow.projectCatalog && flow.repositoryId == null
     val catalog = if (repositories) state.obj("projectRepositories") else flow.catalog(state)
     val query = if (repositories) flow.query else flow.branchQuery
     val items = catalog.items("items").filter { it.string("name").contains(query, ignoreCase = true) }
@@ -108,7 +108,7 @@ private val creationKeyboard = KeyboardOptions(capitalization = KeyboardCapitali
                 LazyColumn(Modifier.fillMaxWidth()) {
                     when (catalog.string("status")) {
                         "loaded" -> {
-                            if (!repositories && flow.kind == CreationKind.GITHUB) item {
+                            if (!repositories && flow.projectCatalog) item {
                                 AppRow("New Branch", icon = Icons.Outlined.Add, titleColor = MaterialTheme.colorScheme.primary, enabled = catalog.items("items").isNotEmpty(), onClick = model::newCreationBranch)
                                 AppDivider()
                             }
@@ -134,7 +134,7 @@ private val creationKeyboard = KeyboardOptions(capitalization = KeyboardCapitali
                             }, Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                         "failed" -> item {
-                            Text(if (repositories) "Couldn’t load repositories. Check the GitHub connection in ${model.productName} on your laptop." else "Couldn’t load branches. Check repository access and try again.", Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (repositories) if (flow.kind == CreationKind.LOCAL) "Couldn’t load repositories. Check the source folder in ${model.productName} on your computer." else "Couldn’t load repositories. Check the GitHub connection in ${model.productName} on your computer." else "Couldn’t load branches. Check repository access and try again.", Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = model::refreshCreation, Modifier.padding(horizontal = 8.dp)) { Text("Retry", fontSize = 17.sp) }
                         }
                         else -> item { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

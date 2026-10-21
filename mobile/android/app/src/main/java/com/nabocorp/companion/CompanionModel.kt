@@ -97,9 +97,12 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("preferences", 0)
     internal val sidebar = SidebarPreferences(application.getSharedPreferences("sidebar", 0))
     private var preferredNewBackend by mutableStateOf(preferences.getString("newChat.backend", "").orEmpty())
+    private var duplicateTarget by mutableStateOf<ConversationTarget?>(null)
+    internal val duplicatingAgent get() = duplicateTarget != null
+    internal var duplicateFailed by mutableStateOf(false)
     internal val newBackend get() = preferredNewBackend.takeIf { state.strings("backends").contains(it) } ?: state.strings("backends").firstOrNull().orEmpty()
     internal val canStartCreation get() = state.string("connection") == "connected" && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank() && newBackend.isNotBlank()
-        && state.string("chatCreation") != "creating" && creation?.submitted != true
+        && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
     val canManageSession get() = composerDrafts.target != null && state.string("connection") == "connected" && state.string("sessionAction").isBlank()
     val composerDrafts = ComposerDrafts()
     val composerPreferences = ComposerPreferences(application.getSharedPreferences("preferences", 0))
@@ -412,13 +415,28 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (!state.strings("backends").contains(backend) || creation?.submitted == true) return
         preferredNewBackend = backend; preferences.edit().putString("newChat.backend", backend).apply()
     }
+    internal fun duplicateAgent() {
+        if (!canManageSession || !canStartCreation) return
+        val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
+        val backend = state.string("backend").takeIf { state.strings("backends").contains(it) } ?: newBackend
+        if (state.string("chatCreation") == "failed") command("dismissNewChat")
+        dictation.cancel(); sheet = null
+        duplicateFailed = false; duplicateTarget = target
+        command("duplicateAgent", "target" to target.toJson(), "backend" to backend)
+    }
+    private fun projectCatalogCommand(type: String, flow: CreationFlow, repositoryId: String? = null) {
+        val fields = mutableListOf<Pair<String, Any?>>()
+        if (repositoryId != null) fields += "repositoryId" to repositoryId
+        if (flow.kind == CreationKind.LOCAL) fields += "source" to "local"
+        command(type, *fields.toTypedArray())
+    }
     internal fun openCreation(kind: CreationKind, repositoryId: String? = null, repositoryName: String = "") {
         if (!canStartCreation || kind in listOf(CreationKind.EXISTING, CreationKind.WORKTREE, CreationKind.DEFAULT) && repositoryId.isNullOrBlank()) return
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         creation = CreationFlow(state.string("laptopId", state.obj("composerTarget").string("hostId")), state.string("teamId"), kind, repositoryId, repositoryName)
         dictation.cancel(); sheet = null; reviewOpen = false; drawerVisible = false; acknowledge()
         when (kind) {
-            CreationKind.GITHUB -> command("loadProjectRepositories")
+            CreationKind.GITHUB, CreationKind.LOCAL -> projectCatalogCommand("loadProjectRepositories", creation!!)
             CreationKind.EXISTING -> command("loadBranches", "repositoryId" to repositoryId)
             CreationKind.QUICK, CreationKind.DEFAULT -> submitCreation()
             else -> Unit
@@ -429,14 +447,14 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     internal fun selectCreationRepository(repository: JSONObject) {
         val flow = creation ?: return
-        if (flow.kind != CreationKind.GITHUB || !canStartCreation || !state.obj("projectRepositories").items("items").any { it.string("id") == repository.string("id") }) return
+        if (!flow.projectCatalog || !canStartCreation || !state.obj("projectRepositories").items("items").any { it.string("id") == repository.string("id") }) return
         creation = flow.copy(repositoryId = repository.string("id"), repositoryName = repository.string("name"), branchQuery = "")
-        command("loadProjectBranches", "repositoryId" to repository.string("id"))
+        projectCatalogCommand("loadProjectBranches", flow, repository.string("id"))
     }
     internal fun newCreationBranch() {
         val flow = creation ?: return
         val catalog = flow.catalog(state)
-        if (flow.submitted || flow.kind != CreationKind.GITHUB || catalog.string("status") != "loaded" || catalog.items("items").isEmpty()) return
+        if (flow.submitted || !flow.projectCatalog || catalog.string("status") != "loaded" || catalog.items("items").isEmpty()) return
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         creation = flow.copy(newBranch = true, branchName = "", baseBranch = (catalog.items("items").firstOrNull { it.optBoolean("isDefault") } ?: catalog.items("items").first()).string("name"))
     }
@@ -453,7 +471,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (flow.submitted || state.string("chatCreation") == "creating") return
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         if (flow.newBranch) creation = flow.copy(newBranch = false, branchName = "", selectedBranch = null)
-        else if (flow.kind == CreationKind.GITHUB && flow.repositoryId != null) {
+        else if (flow.projectCatalog && flow.repositoryId != null) {
             creation = flow.copy(repositoryId = null, repositoryName = "", branchQuery = "", selectedBranch = null)
             command("dismissProjectBranches")
         } else dismissCreation()
@@ -464,7 +482,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         creation = null
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         when (flow.kind) {
-            CreationKind.GITHUB -> command("dismissProjectRepositories")
+            CreationKind.GITHUB, CreationKind.LOCAL -> command("dismissProjectRepositories")
             CreationKind.EXISTING -> command("dismissBranches")
             else -> Unit
         }
@@ -475,7 +493,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (flow.submitted || state.string("connection") != "connected") return
         when (flow.kind) {
             CreationKind.EXISTING -> command("loadBranches", "repositoryId" to flow.repositoryId)
-            CreationKind.GITHUB -> if (flow.repositoryId == null) command("loadProjectRepositories") else command("loadProjectBranches", "repositoryId" to flow.repositoryId)
+            CreationKind.GITHUB, CreationKind.LOCAL -> if (flow.repositoryId == null) projectCatalogCommand("loadProjectRepositories", flow) else projectCatalogCommand("loadProjectBranches", flow, flow.repositoryId)
             else -> Unit
         }
     }
@@ -563,6 +581,10 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     else if (pairingWasBusy || next.string("pairingError").isNotBlank()) { pairingPending = false; pairingWasBusy = false }
                     val oldId = state.string("agentId"); val nextId = next.string("agentId")
                     val nextTarget = next.optJSONObject("composerTarget")?.let(ConversationTarget::parse)
+                    duplicateTarget?.let { source ->
+                        if (source != nextTarget || state.string("chatCreation") == "creating" && next.string("chatCreation") == "idle") duplicateTarget = null
+                        else if (next.string("chatCreation") == "failed") { duplicateTarget = null; duplicateFailed = true }
+                    }
                     if (nextTarget != composerDrafts.target || nextTarget == navigatingNotification) navigatingNotification = null
                     if (composerDrafts.target != nextTarget || state.string("agentId") != next.string("agentId")) {
                         beginTranscriptSelection(clearCache = true); conversationPresentation = ConversationPresentation()
