@@ -17,7 +17,7 @@ function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 
 function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
     readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
@@ -355,10 +355,11 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
       'agent.git.diff': { args: t => ({ target: t, scope: { type: 'uncommitted' } }), effect: 'gitDiff', read: true },
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
+      'conversation.synchronize': { args: t => ({ target: t, checkpoint: null }), effect: 'synchronize', read: true },
       'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },
       'conversation.image.read': { args: t => ({ target: t, path: '/tmp/shot.png' }), effect: 'readImage', read: true },
       'conversation.loadOlder': { args: (t) => t, effect: 'loadOlderHistory', read: true },

@@ -94,3 +94,26 @@ describe('conversation source', () => {
     await expect(source.read('agent')).rejects.toThrow('unavailable');
   });
 });
+
+// Failure modes: reconnect retransmits images; missed updates or restart revisions
+// silently reuse stale content; an expired journal grows without bound.
+describe('resumable companion conversations', () => {
+  it('resumes an unchanged or briefly disconnected conversation without another provider read or snapshot', async () => {
+    let source: ConversationSource;
+    const load = vi.fn(async () => source.observe(reset(1)));
+    source = new ConversationSource(load);
+    const first = await source.synchronize('agent', null);
+    expect(first.frames).toHaveLength(1);
+    expect(await source.synchronize('agent', first.checkpoint)).toStrictEqual({ checkpoint: first.checkpoint, frames: [] });
+    const update = delta(2, { type: 'turn.started', turnId: 'turn', payload: { turn: { id: 'turn', backend: 'claude' } } });
+    source.observe(update);
+    const resumed = await source.synchronize('agent', first.checkpoint);
+    expect(resumed.frames).toStrictEqual([update]);
+    expect(resumed.checkpoint.revision).toBe(2);
+    expect(load).toHaveBeenCalledTimes(1);
+    source.clear();
+    const restarted = await source.synchronize('agent', resumed.checkpoint);
+    expect(restarted.frames).toHaveLength(1);
+    expect(restarted.checkpoint.epoch).not.toBe(first.checkpoint.epoch);
+  });
+});

@@ -211,13 +211,20 @@ triggers reconciliation, never automatic replay or authorization.
 
 The visible conversation remains subscribed. Leaving it starts a five-minute
 expiry while its replica continues to receive events. Viewing it again cancels
-expiry; incoming events do not extend it. Expiry discards the replica and removes
-the subscription. Session changes invalidate the old replica. App backgrounding
+expiry; incoming events do not extend it. Expiry removes the subscription while
+the bounded memory cache retains the last usable replica. Session identity changes
+invalidate that replica. App backgrounding
 delays intentional transport teardown for five minutes, matching the native lock grace.
 Heartbeat deadlines and automatic reconnects pause while hidden; background presence
-still enables APNs delivery immediately. Expiry closes the transport and cache;
-foreground restoration also checks elapsed wall time because iOS may pause timers.
-Transport loss preserves the visible conversation while the client reconnects.
+still enables APNs delivery immediately. The native iOS host requests one finite
+execution assertion for active streaming, releasing it on completion or expiry;
+this does not grant indefinite execution to the WebView engine. Foreground recovery
+uses a short liveness probe independently of workspace/presence refresh. A stale
+probe retires the host and relay routes before reconnecting so a new stream cannot
+reuse a half-open circuit. Restoration also checks elapsed wall time because iOS
+may pause timers. Transport loss preserves bounded conversation caches; checkpoint
+replay covers missing events when the host retains continuity, otherwise an
+authoritative snapshot replaces the baseline.
 
 The separate relay executable has a persistent pinned identity. Public admission
 accepts fresh laptop identities without accounts or operator enrollment. Short-lived,

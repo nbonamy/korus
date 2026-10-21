@@ -64,6 +64,37 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         let object: [String: Any] = ["agent": agent, "agentId": "transcript-probe", "generation": generation, "ready": ready, "peers": [], "history": ["hasOlder": false, "loadingOlder": false, "failed": false], "frame": ["agentId": "transcript-probe", "backend": "codex", "payload": ["snapshot": snapshot]]]
         return String(data: try! JSONSerialization.data(withJSONObject: object), encoding: .utf8)!
     }
+    func transferChecks() async {
+        var applied = 0
+        var resets = 0
+        func transfer(_ includeFrame: Bool) -> String {
+            let agent: [String: Any] = ["id": "transcript-probe", "teamId": "test-team", "name": "Cached conversation", "backend": "claude", "backendSession": ["kind": "claude", "sessionId": "probe-session"], "status": ["type": "idle"]]
+            let snapshot: [String: Any] = ["agentId": "transcript-probe", "sessionId": "probe-session", "messages": [["id": "cached-answer", "agentId": "transcript-probe", "role": "assistant", "status": "complete", "parts": [["type": "text", "text": "Retained native conversation"]]]], "turns": [], "turnIds": [], "activeTurnId": NSNull(), "busy": false, "historyLoading": false, "historyState": ["hasOlder": false, "loadingOlder": false], "answeredClientRequestIds": [], "contextUsage": NSNull(), "plan": NSNull(), "error": NSNull()]
+            let frame: [String: Any] = ["type": "claude.conversationSnapshotChanged", "agentId": "transcript-probe", "backend": "claude", "payload": ["revision": 1, "snapshot": snapshot]]
+            let message: [String: Any] = ["identity": "native-cached", "checkpoint": ["epoch": "native-epoch", "revision": 1], "agentId": "transcript-probe", "agent": agent, "generation": 1, "ready": true, "peers": [], "frames": includeFrame ? [frame] : []]
+            return String(data: try! JSONSerialization.data(withJSONObject: message), encoding: .utf8)!
+        }
+        host.onTransferApplied = { identity, checkpoint in if identity == "native-cached" && checkpoint["revision"] as? Int == 1 { applied += 1 } }
+        host.onNeedsReset = { [weak self] identity in
+            guard identity == "native-cached" else { return }
+            resets += 1
+            self?.host.submit(.transfer, transfer(true))
+        }
+        host.submit(.transfer, transfer(true))
+        await wait { applied == 1 }
+        check(applied == 1, "native bridge acknowledges the retained provider checkpoint after paint")
+        host.beginSelection()
+        host.submit(.transfer, transfer(false))
+        await wait { applied == 2 }
+        let visible = await js("document.body.textContent.includes('Retained native conversation')") as? Bool ?? false
+        check(applied == 2 && visible, "cached native selection paints without retransmitting the conversation")
+        host.retry()
+        await wait({ applied >= 3 }, milliseconds: 6000)
+        check(resets == 1 && applied >= 3, "reloaded WebView requests and paints a fresh baseline instead of accepting an absent cache")
+        host.onTransferApplied = nil
+        host.onNeedsReset = nil
+    }
+
     func retry(_ revision: Int) async {
         loading.select(awaitingRender: true)
         host.retry()
@@ -90,6 +121,7 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
             try? image.pngData()?.write(to: url)
             return image.cgImage
         }
+        if ProcessInfo.processInfo.environment["APP_NATIVE_SKIP_SCREENSHOTS"] != "1" {
         if let locked = await entryImage(LockView(lock: lock).environment(AppModel()), name: "lock-locked.png"),
            let connecting = await entryImage(StartupView(productName: "Korus", connecting: true), name: "connecting.png") {
             let header = CGRect(x: 0, y: 0, width: locked.width, height: locked.height / 2)
@@ -99,11 +131,13 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         } else {
             check(false, "lock screen renders for the layout regression")
         }
+        }
         window?.rootViewController = conversationController
         for _ in 0..<100 {
             if await js("Boolean(window.companionTranscript)") as? Bool == true { break }
             await pause(100)
         }
+        await transferChecks()
         select()
         host.submit(.conversation, frame(1))
         await wait { !self.loading.isLoading }

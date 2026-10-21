@@ -1,3 +1,4 @@
+import type { CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
@@ -77,22 +78,24 @@ export class CompanionSubscription {
       if (entry && JSON.stringify(entry.target) === JSON.stringify(target)) this.watched.delete(target.agentId);
       return {};
     }
-    if (method !== 'conversation.subscribe') throw new Error('Unsupported subscription operation.');
-    const target = args as CompanionTarget;
+    if (method !== 'conversation.subscribe' && method !== 'conversation.synchronize') throw new Error('Unsupported subscription operation.');
+    const target = (method === 'conversation.synchronize' ? (args as { target: CompanionTarget })?.target : args) as CompanionTarget;
     if (!target || typeof target.agentId !== 'string') throw new Error('Invalid target.');
     if (!this.watched.has(target.agentId) && this.watched.size >= 64) throw new Error('Too many subscriptions.');
     const entry: Watched = { target, revision: -1, pending: true, buffered: [] };
     this.watched.set(target.agentId, entry);
     try {
       // Listen before reading. Events newer than the reset are flushed after it.
-      const frame = await this.port.request(method, args) as CompanionReset;
+      const result = await this.port.request(method, args);
+      const sync = method === 'conversation.synchronize' ? result as CompanionSync : null;
+      const frames = sync?.frames ?? [result as CompanionReset];
       if (this.closed || !this.port.authorized() || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
-      entry.revision = frame.payload.revision;
-      this.emit({ type: 'conversation', frame: cleanFrame(frame) });
+      for (const frame of frames) this.emit({ type: 'conversation', frame: cleanFrame(frame) });
+      entry.revision = sync?.checkpoint.revision ?? frames[0]!.payload.revision;
       entry.pending = false;
       for (const buffered of entry.buffered) this.deliver(entry, buffered);
       entry.buffered = [];
-      return {};
+      return sync ? { checkpoint: sync.checkpoint } : {};
     } catch (error) {
       if (this.watched.get(target.agentId) === entry) this.watched.delete(target.agentId);
       throw error;

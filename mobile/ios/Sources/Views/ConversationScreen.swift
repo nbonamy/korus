@@ -18,7 +18,7 @@ struct ConversationScreen: View {
                 if model.showConnectionLost && !model.hasTranscript {
                     ConnectionLostView(reconnect: model.reconnect)
                         .background(Color(.systemBackground).ignoresSafeArea())
-                } else if model.conversationLoadFailed {
+                } else if model.conversationLoadFailed && !model.hasTranscript {
                     ContentUnavailableView {
                         Label("Couldn’t load this conversation", systemImage: "exclamationmark.bubble")
                     } description: { Text("Try again to reconnect to this conversation.") }
@@ -30,6 +30,24 @@ struct ConversationScreen: View {
                         Color(.systemBackground).ignoresSafeArea()
                         ProgressView("Loading conversation…")
                     }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if model.hasTranscript && (model.connection == .connected && (model.conversationLoadFailed || model.refreshingConversation) || model.connection == .reconnecting || model.connection == .connecting) {
+                    HStack(spacing: 7) {
+                        if model.conversationLoadFailed {
+                            Text("Couldn’t update")
+                            Button("Retry") { model.retryConversation() }
+                        } else {
+                            ProgressView().controlSize(.mini)
+                            Text(model.connection == .connected ? "Updating…" : "Reconnecting…")
+                        }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 6)
+                    .accessibilityElement(children: .contain)
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {

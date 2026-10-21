@@ -758,3 +758,36 @@ describe('companion engine', () => {
     engine.dispose();
   });
 });
+
+it('uses acknowledged transcript checkpoints for warm agent switching and recovers a lost native page', async () => {
+  const connector = createDemoConnector();
+  const connect = connector.connect;
+  const { ConversationCache } = await import('../conversation-cache');
+  const { companionTarget } = await import('@workspace/core/companion-protocol');
+  let cache: InstanceType<typeof ConversationCache>;
+  let workspace: CompanionWorkspace;
+  const target = (id: string) => companionTarget('demo-laptop', workspace.teams[0]!, workspace.agents.find(a => a.id === id)!);
+  const extended: import('../companion-port').CompanionConnector = { ...connector,
+    cachedConversation: value => cache?.peek(value), conversationUpdates: (value, since) => cache?.updates(value, since) ?? null,
+    async connect(id) {
+      const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      cache = new ConversationCache(async (_method, value) => { cache.receive((await session.loadConversation(value.agentId))!); }, () => {}, () => {});
+      return { ...session, getWorkspace: async () => workspace, cachedConversation: id => cache.peek(target(id)), loadConversation: id => cache.select(target(id)) };
+    },
+  };
+  const events: EngineEvent[] = [];
+  const engine = createEngine({ connector: extended, incrementalTranscript: true, post: event => { events.push(event); } });
+  const transfers = () => events.filter(event => event.type === 'conversationTransfer');
+  try {
+    await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await nextTick();
+    const first = transfers().at(-1)!;
+    expect(first.frames).toHaveLength(1);
+    await engine.dispatch({ type: 'transcriptApplied', identity: first.identity, checkpoint: first.checkpoint });
+    await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    await engine.dispatch({ type: 'selectAgent', id: first.agentId }); await nextTick();
+    const warm = transfers().at(-1)!;
+    expect(warm.identity).toBe(first.identity); expect(warm.frames).toStrictEqual([]);
+    await engine.dispatch({ type: 'transcriptReset', identity: warm.identity }); await nextTick();
+    expect(transfers().at(-1)!.frames).toHaveLength(1);
+  } finally { engine.dispose(); cache!.close(); }
+});

@@ -37,7 +37,7 @@ describe('recent mobile conversations', () => {
     } finally { cache.close(); }
   });
 
-  it('keeps hidden chats live for five minutes, counts from last visibility, and reloads expired chats', async () => {
+  it('unsubscribes hidden chats after five minutes but keeps their content visible while revalidating', async () => {
     vi.useFakeTimers(); const f = fixture();
     try {
       await f.cache.select(target('a')); await f.cache.select(target('b'));
@@ -53,7 +53,7 @@ describe('recent mobile conversations', () => {
       f.cache.receive(delta('a', 3)); // Incoming events do not extend it.
       await vi.advanceTimersByTimeAsync(1);
       expect(f.request).toHaveBeenCalledWith('conversation.unsubscribe', target('a'));
-      expect(f.cache.peek(target('a'))).toBeUndefined();
+      expect(f.cache.peek(target('a'))?.payload.revision).toBe(3);
       await f.cache.select(target('a'));
       expect(f.request.mock.calls.filter(([method, value]) => method === 'conversation.subscribe' && value.agentId === 'a')).toHaveLength(2);
     } finally { f.cache.close(); }
@@ -91,7 +91,7 @@ describe('recent mobile conversations', () => {
       f.cache.reconcile([target('a', 'replacement'), target('b')]);
       await Promise.resolve(); await Promise.resolve();
       finish(); expect(await old).toBeNull();
-      expect(f.request).toHaveBeenCalledWith('conversation.subscribe', target('a', 'replacement'));
+      expect(f.request).toHaveBeenCalledWith('conversation.subscribe', target('a', 'replacement'), null);
       await vi.advanceTimersByTimeAsync(60_000);
       expect(f.request).toHaveBeenCalledWith('conversation.unsubscribe', target('a', 'replacement'));
     } finally { f.cache.close(); }
@@ -103,8 +103,26 @@ describe('recent mobile conversations', () => {
       f.cache.reconcile([target('a', 'replacement')]);
       await Promise.resolve(); await Promise.resolve();
       expect(f.cache.peek(target('b'))).toBeUndefined();
-      expect(f.request).toHaveBeenCalledWith('conversation.subscribe', target('a', 'replacement'));
+      expect(f.request).toHaveBeenCalledWith('conversation.subscribe', target('a', 'replacement'), null);
       expect(f.cache.peek(target('a'))).toBeUndefined();
     } finally { f.cache.close(); }
   });
+});
+
+it('retains cached content while disconnected and after a failed refresh, then applies a same-revision authoritative reset', async () => {
+  const f = fixture();
+  try {
+    await f.cache.select(target('a'));
+    f.cache.disconnect();
+    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    let reject!: (error: Error) => void;
+    f.cache.reconnect((method, value) => method === 'conversation.subscribe' ? new Promise((_, fail) => { reject = fail; }) : Promise.resolve({}));
+    const refresh = f.cache.select(target('a'));
+    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    reject(new Error('offline'));
+    await expect(refresh).rejects.toThrow('offline');
+    expect(f.cache.peek(target('a'))?.payload.revision).toBe(1);
+    f.cache.reconnect(async (_method, value) => { f.cache.receive(reset(value.agentId)); });
+    expect((await f.cache.select(target('a')))?.payload.revision).toBe(1);
+  } finally { f.cache.close(); }
 });

@@ -1,6 +1,8 @@
 /// Fetching needs a loading overlay until the fetched transcript has painted.
 /// Local selection alone is not a fetch: cached conversations swap in place.
 struct ConversationLoadingState {
+    private var refreshing = false
+    private var awaitingRefreshPaint = false
     private var fetching = false
     private var awaitingTranscript = false
     private var failedToRender = false
@@ -8,19 +10,26 @@ struct ConversationLoadingState {
     private var connected = true
     private(set) var failed = false
     var isLoading: Bool { connected && !hasRendered && (fetching || awaitingTranscript) }
+    var isRefreshing: Bool { connected && hasRendered && (refreshing || awaitingRefreshPaint) }
     var hasTranscript: Bool { hasRendered }
 
     mutating func select(awaitingRender: Bool = false) {
         fetching = false
+        refreshing = false
+        awaitingRefreshPaint = false
         awaitingTranscript = awaitingRender
         failed = false
         failedToRender = false
         hasRendered = false
     }
 
-    mutating func update(fetching: Bool, failed: Bool, hasAgent: Bool, connected: Bool = true) {
+    mutating func update(fetching: Bool, failed: Bool, hasAgent: Bool, connected: Bool = true, refreshing: Bool = false) {
         self.connected = connected
+        self.refreshing = refreshing
+        if refreshing { awaitingRefreshPaint = true }
         guard connected else {
+            self.refreshing = false
+            awaitingRefreshPaint = false
             self.fetching = false
             awaitingTranscript = false
             self.failed = false
@@ -29,10 +38,14 @@ struct ConversationLoadingState {
         if fetching && !self.fetching { awaitingTranscript = true }
         self.fetching = fetching
         self.failed = (failed || failedToRender) && hasAgent && !fetching
+        if failed { awaitingRefreshPaint = false }
         if !fetching && (failed || failedToRender || !hasAgent) { awaitingTranscript = false }
     }
 
-    mutating func rendered() { awaitingTranscript = false; hasRendered = true }
+    mutating func rendered(synchronized: Bool = true) {
+        awaitingTranscript = false; hasRendered = true
+        if synchronized && !refreshing { awaitingRefreshPaint = false }
+    }
 
     mutating func renderingFailed() {
         failedToRender = true

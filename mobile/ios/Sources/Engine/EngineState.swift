@@ -94,6 +94,7 @@ struct EngineState: Decodable {
     let activityGroups: [Group]?
     let agentId: String
     let header: Header?
+    let refreshing: Bool?
     let loading: Bool
     let conversationReady: Bool?
     let conversationGeneration: Int?

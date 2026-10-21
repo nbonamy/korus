@@ -118,12 +118,24 @@ invalidation stay in the engine rather than a second native catalog cache.
 Native sidebar organization and idle-sort preferences belong to a host/team pair.
 The engine projects activity groups and their order; native clients render those
 groups with stable agent identity across activity transitions.
-A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
-rather than per-update: the engine sends the transcript once per change of its own
-content, capped at ten transfers per second during streaming (the provider replica
-has already applied every event), and changes around it (agent status, names, history, engine
-choice) travel as a small context message that never resends the transcript.
-Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+Recent mobile provider replicas are retained in memory independently of the connection.
+Hidden subscriptions expire without deleting their last usable content; count and byte
+budgets evict older entries. Reconnection revalidates the full host, team, provider and
+session identity before enabling conversation actions. Forgetting a host clears its cache.
+A capable daemon accepts a conversation checkpoint and replays a bounded journal of
+opaque provider events, or acknowledges an unchanged conversation without a transcript.
+A reset changes the checkpoint generation; unavailable continuity falls back to an
+authoritative snapshot. Older daemons retain the snapshot subscription protocol.
+The iOS transcript page retains provider-owned replicas and receives checkpointed batches
+through the native bridge. Each batch covers updates since the page's last painted
+acknowledgment, so the latest pending batch can replace older pending work without losing
+events. A missing page replica requests a full baseline. Native code routes opaque payloads;
+it does not reduce provider conversations. Android receives paced whole-conversation
+transfers, capped at ten per second. Context-only changes travel separately on both clients.
+Cached content stays readable during refresh; iOS distinguishes initial loading, updating,
+offline viewing and retryable refresh failure. Freshness and read acknowledgments require
+the selected connection generation and its rendered content. Unchanged workspace parts
+keep their identity to avoid unnecessary derived updates.
 Git changes use a separate bundled web view with the shared desktop diff renderer.
 Native controls own its scope and presentation, bound to the captured conversation.
 Closing or replacing that conversation clears Android's native patch cache. Patches

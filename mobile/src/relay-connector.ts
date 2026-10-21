@@ -32,6 +32,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
   // Saved pairings cannot grant a transport exception: only this build's configured relay can.
   const addressFor = (origin: string, peerId: string) => relayAddress(origin, peerId,
     relay?.allowLocalDevelopment === true && origin === relay.origin && peerId === relay.peerId);
+  const caches = new Map<string, ConversationCache>();
+  const cacheBindings = new Map<string, symbol>();
   let records: PairedLaptop[] = [];
   let initialized: Promise<void> | null = null;
   let node: Libp2p | null = null;
@@ -153,11 +155,15 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       }
       throw new PairingError('mobile.errors.pairingExpired');
     },
+    cachedConversation(target) { return caches.get(target.hostId)?.peek(target); },
+    conversationUpdates(target, since) { return caches.get(target.hostId)?.updates(target, since) ?? null; },
     async connect(laptopId) {
       connectionDiagnostic('session.connect');
       await initialize();
       const host = records.find((record) => record.hostId === laptopId);
       if (!host) throw new Error('Pair the laptop first.');
+      const binding = Symbol(); cacheBindings.set(host.hostId, binding);
+      const ownsCache = () => cacheBindings.get(host.hostId) === binding;
       let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] };
       const listeners = new Set<() => void>();
       const notifications = new Set<(notification: CompanionNotification) => void>();
@@ -183,12 +189,30 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         if (!agent || !team) throw new Error('Agent is outside the paired scope.');
         return companionTarget(host.hostId, team, agent);
       };
-      const notify = (frame: CompanionConversation | null = null) => { if (!closed) for (const listener of updates) listener(workspace, frame); };
-      const failed = () => { if (!closed) { close(); for (const listener of listeners) listener(); } };
-      const cache = new ConversationCache((method, target) => channel.request(method, target), (frame) => notify(frame), () => {
-        connectionDiagnostic('session.disconnect', { reason: 'conversation-cache' }); failed();
-      });
+      const notify = (frame: CompanionConversation | null = null) => { if (!closed && ownsCache()) for (const listener of updates) listener(workspace, frame); };
+      const failed = (reason?: string) => {
+        if (closed) return;
+        if (reason === 'resume-timeout') {
+          // A circuit can still claim to be open after iOS suspended its WebSocket.
+          // Retire both ends of the stale route so the next dial cannot reuse it.
+          for (const connection of node?.getConnections() ?? []) {
+            const peer = connection.remotePeer.toString();
+            if (peer === host.hostId || peer === host.relayPeerId) connection.abort(new Error('Foreground liveness check failed.'));
+          }
+        }
+        close(); for (const listener of listeners) listener();
+      };
+      const cacheRequest: ConstructorParameters<typeof ConversationCache>[0] = (method, target, checkpoint) =>
+        method === 'conversation.subscribe' && workspace.conversationSync
+          ? channel.request('conversation.synchronize', { target, checkpoint: checkpoint ?? null })
+          : channel.request(method, target);
+      const cacheChanged = (frame: CompanionConversation) => notify(frame);
+      const cacheFailed = () => { connectionDiagnostic('session.disconnect', { reason: 'conversation-cache' }); failed(); };
+      const cache = caches.get(host.hostId) ?? new ConversationCache(cacheRequest, cacheChanged, cacheFailed);
+      cache.reconnect(cacheRequest, cacheChanged, cacheFailed);
+      caches.set(host.hostId, cache);
       const channel = createCompanionStream(() => openStream(host, companionUpdatesProtocol), (update) => {
+        if (closed || !ownsCache()) return;
         if (update.type === 'workspace') {
           workspace = { ...update.workspace, repositoryIcons: update.workspace.repositoryIcons ?? icons.value };
           if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
@@ -201,7 +225,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           if (update.notification.target.hostId === host.hostId) for (const listener of notifications) listener(update.notification);
         } else cache.receive(update.frame);
       }, failed);
-      const close = () => { if (!closed) connectionDiagnostic('session.close'); closed = true; channel.close(); cache.close(); sessions.delete(handle); };
+      const close = () => { if (closed) return; connectionDiagnostic('session.close'); closed = true; channel.close(); if (ownsCache()) { cache.disconnect(); cacheBindings.delete(host.hostId); } sessions.delete(handle); };
       const handle = { laptopId, close }; sessions.add(handle);
       const pinned = host;
       async function created(creationId: string, signal?: AbortSignal): Promise<string> {
@@ -220,10 +244,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
       const session: CompanionSession = {
         async setActive(next) {
           active = next;
-          const liveness = channel.setActive(next);
-          // Retain the stream while allowing APNs immediately in the background.
-          const presence = supportsNotifications ? read() : Promise.resolve();
-          await Promise.all([liveness, presence]);
+          await channel.setActive(next);
+          // Presence enables APNs while hidden, but workspace reads must not delay
+          // foreground recovery or block the selected conversation's live stream.
+          if (supportsNotifications && !closed) {
+            if (next) void read().then(() => notify()).catch(() => {});
+            else await read();
+          }
         },
         getWorkspace: read,
         gitDiff: (agentId, scope) => request(host, 'agent.git.diff', { target: target(agentId), scope }),
@@ -240,6 +267,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         async markRead(agentId, revision) { await request(host, 'conversation.read', { target: target(agentId), revision }); },
         async respondRequest(reply) { await request(host, 'agent.request.respond', reply); },
         deselectConversation() { void cache.select(null); },
+        isConversationCurrent(agentId) { return cache.current(target(agentId)); },
         cachedConversation(agentId) { return cache.peek(target(agentId)); },
         async loadConversation(agentId) { return cache.select(agentId ? target(agentId) : null); },
         async loadOlderHistory(agentId) {
@@ -305,12 +333,13 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     async revoke(laptopId) {
       const host = records.find((record) => record.hostId === laptopId);
       for (const session of sessions) if (session.laptopId === laptopId) session.close();
+      caches.get(laptopId)?.close(); caches.delete(laptopId); cacheBindings.delete(laptopId);
       records = records.filter((record) => record.hostId !== laptopId);
       await vault.write({ key: 'paired-hosts', value: JSON.stringify(records) });
       if (host) await request(host, 'device.forget', {});
     },
     async resume() { if (disposed) throw new Error('Companion closed.'); suspended = false; },
     async suspend() { suspended = true; for (const session of sessions) session.close(); await opening?.catch(() => {}); await node?.stop(); node = null; },
-    async dispose() { disposed = true; for (const session of sessions) session.close(); await opening?.catch(() => {}); await node?.stop(); node = null; },
+    async dispose() { disposed = true; for (const cache of caches.values()) cache.close(); caches.clear(); for (const session of sessions) session.close(); await opening?.catch(() => {}); await node?.stop(); node = null; },
   };
 }

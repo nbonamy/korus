@@ -1,3 +1,4 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
@@ -45,6 +46,7 @@ export type EngineState = {
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   conversationReady: boolean;
+  refreshing: boolean;
   conversationGeneration: number;
   canSend: boolean;
   composerTarget: CompanionTarget | null;
@@ -83,6 +85,7 @@ export type EngineEvent =
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
   | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
   /** Everything around the open conversation changed but the conversation itself did not: small, and never resends the transcript. */
+  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionSync & TranscriptContext)
   | ({ type: 'conversationContext'; agentId: string } & TranscriptContext);
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
@@ -105,6 +108,9 @@ export type EngineCommand =
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
+  | { type: 'transcriptApplied'; identity: string; checkpoint: CompanionCheckpoint }
+  | { type: 'transcriptReset'; identity: string }
+  | { type: 'refreshConversation' }
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
@@ -132,7 +138,7 @@ export type EngineCommand =
   | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
-export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; post(event: EngineEvent): void };
+export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
 
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
@@ -242,7 +248,7 @@ export function createEngine(port: EnginePort) {
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
-      conversationReady: state.conversationReady.value,
+      conversationReady: state.conversationReady.value, refreshing: state.refreshing.value,
       conversationGeneration: state.conversationGeneration.value,
       mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
         ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
@@ -304,9 +310,10 @@ export function createEngine(port: EnginePort) {
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
   const contextNow = (): TranscriptContext => ({ generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
 
-  // A conversation crosses the bridge whole, so it crosses once per change of its own content and no faster than the page can
-  // draw it: updates in between are folded into the latest. The provider's replica has already applied every one of them.
+  // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
+  // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.
   const transcriptInterval = 100;
+  const acknowledged = new Map<string, CompanionCheckpoint>();
   let sent: { agentId: string; frame: CompanionConversation | null; ready: boolean; overlay: string; context: string } | null = null;
   let sentAt = 0;
   let trailing: ReturnType<typeof setTimeout> | undefined;
@@ -329,7 +336,10 @@ export function createEngine(port: EnginePort) {
       clearTimeout(trailing); trailing = undefined;
       const context = contextNow();
       sent = { agentId, frame: raw, ready, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
-      port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
+      const identity = JSON.stringify([state.laptopId.value, state.teamId.value, context.agent?.id, context.agent?.backend, context.agent?.backendSession]);
+      const updates = port.incrementalTranscript && raw && !overlaid.key ? state.conversationUpdates(acknowledged.get(identity) ?? null) : null;
+      if (updates) port.post({ type: 'conversationTransfer', identity, ...updates, agentId, ...context });
+      else port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
       return;
     }
     const context = contextNow(); const json = JSON.stringify(context);
@@ -431,6 +441,13 @@ export function createEngine(port: EnginePort) {
         finally { reading.delete(key); }
         return;
       }
+      case 'transcriptApplied':
+        acknowledged.delete(command.identity); acknowledged.set(command.identity, command.checkpoint);
+        while (acknowledged.size > 8) acknowledged.delete(acknowledged.keys().next().value!);
+        return;
+      case 'transcriptReset':
+        acknowledged.delete(command.identity); sent = null; postConversation(); return;
+      case 'refreshConversation': await state.selectAgent(state.agentId.value); return;
       case 'activity': {
         const activity = ++activityEpoch;
         connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });

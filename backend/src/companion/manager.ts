@@ -182,6 +182,7 @@ export class CompanionManager {
       markRead: async (agentId, revision) => { await this.backend.request(backendMethods.agentMarkRead, { agentId, revision, _clientId: 'companion-read' }); },
       loadOlderHistory: (agentId) => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'companion-read' }),
       readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'companion-read' }),
+      synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
       conversation: async (agentId) => {
         try { return await this.conversations.read(agentId); }
         catch (error) { warnMain('companion', 'conversation unavailable', { agentId, message: error instanceof Error ? error.message : String(error) }); throw error; }

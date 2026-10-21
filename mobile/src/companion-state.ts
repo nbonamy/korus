@@ -65,6 +65,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversation = shallowRef<CompanionConversation | null>(null);
   const conversationReady = ref(false);
   const loading = ref(false);
+  const refreshing = ref(false);
   const loadingOlder = ref(false);
   const historyFailed = ref(false);
   const hasOlder = ref<boolean | null>(null);
@@ -340,6 +341,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     ++conversationGeneration.value;
     loadingOlder.value = false;
     loading.value = false;
+    refreshing.value = false;
     conversationReady.value = false;
     unsubscribe();
     unsubscribe = () => {};
@@ -389,7 +391,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
         if (epoch !== connectionEpoch) return;
         if (applyWorkspace(nextWorkspace)) return;
         if (!loading.value && frame && matchesCurrentSession(frame)) {
-          conversation.value = frame; conversationReady.value = true;
+          conversation.value = frame;
+          if (!refreshing.value) conversationReady.value = true;
           if (error.value === 'mobile.errors.loadConversation') error.value = '';
         }
       }) ?? (() => {});
@@ -583,18 +586,21 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const epoch = ++selectionEpoch;
     ++conversationGeneration.value;
     const nextKey = conversationIdentity(nextAgent ?? null);
-    const cached = nextAgent && session && status.value === 'connected' ? session.cachedConversation?.(id) : undefined;
+    const nextTeam = workspace.value.teams.find(team => team.id === nextAgent?.teamId);
+    const nextTarget = nextAgent && nextTeam ? companionTarget(laptopId.value, nextTeam, nextAgent) : null;
+    const cached = nextTarget ? session?.cachedConversation?.(id) ?? connector.cachedConversation?.(nextTarget) : undefined;
     const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;
     selectedConversationKey = nextKey;
     loadingOlder.value = false;
     if (!retaining) { historyFailed.value = false; hasOlder.value = null; conversation.value = cached ?? null; }
     agentId.value = nextAgent?.id ?? '';
-    conversationReady.value = cached !== undefined;
+    conversationReady.value = cached !== undefined && status.value === 'connected' && session?.isConversationCurrent?.(id) !== false;
     error.value = '';
-    loading.value = false;
+    loading.value = false; refreshing.value = false;
     if (!session || status.value !== 'connected') return;
     if (!agentId.value) { session.deselectConversation?.(); return; }
-    loading.value = cached === undefined;
+    loading.value = cached === undefined && !retaining;
+    refreshing.value = Boolean(conversation.value);
     const active = session;
     try {
       const frame = await active.loadConversation(id);
@@ -602,12 +608,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (frame && (frame.agentId !== id || frame.backend !== agent.value?.backend)) throw new Error('Conversation identity mismatch.');
       if (!frame && agent.value?.backendSession) throw new Error('Conversation is unavailable.');
       conversation.value = frame;
+      if (!conversationReady.value) ++conversationGeneration.value;
       conversationReady.value = true;
       void loadModels(id, active);
     } catch {
       if (epoch === selectionEpoch) error.value = 'mobile.errors.loadConversation';
     } finally {
-      if (epoch === selectionEpoch) loading.value = false;
+      if (epoch === selectionEpoch) { loading.value = false; refreshing.value = false; }
     }
   }
   function updateDraft(next: DraftState) {
@@ -784,6 +791,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     await session.markRead(id, revision);
   }
   return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
+    refreshing, conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
+      const current = agent.value; const team = workspace.value.teams.find(team => team.id === current?.teamId);
+      return current && team ? connector.conversationUpdates?.(companionTarget(laptopId.value, team, current), since) ?? null : null;
+    },
     git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

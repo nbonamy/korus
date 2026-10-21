@@ -86,3 +86,17 @@ describe('companion event subscriptions', () => {
     } finally { f.subscription.close(); }
   });
 });
+
+it('joins checkpoint catch-up to the live stream without replaying snapshots or duplicating racing updates', async () => {
+  const f = fixture();
+  try {
+    await f.subscription.request('snapshot.get', {});
+    let resolve!: (value: unknown) => void;
+    f.request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const pending = f.subscription.request('conversation.synchronize', { target, checkpoint: { epoch: 'epoch', revision: 1 } });
+    f.event(frame(2)); f.event(frame(3));
+    resolve({ checkpoint: { epoch: 'epoch', revision: 2 }, frames: [frame(2)] });
+    expect(await pending).toStrictEqual({ checkpoint: { epoch: 'epoch', revision: 2 } });
+    expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => v.frame.payload.revision)).toStrictEqual([2, 3]);
+  } finally { f.subscription.close(); }
+});

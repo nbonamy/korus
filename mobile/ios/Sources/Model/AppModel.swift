@@ -34,6 +34,7 @@ final class AppModel {
     private var conversationLoading = ConversationLoadingState()
     var loadingConversation: Bool { conversationLoading.isLoading }
     var conversationLoadFailed: Bool { conversationLoading.failed }
+    var refreshingConversation: Bool { conversationLoading.isRefreshing }
     var hasTranscript: Bool { conversationLoading.hasTranscript }
     private var conversationReady = false
     private var conversationGeneration = 0
@@ -117,6 +118,13 @@ final class AppModel {
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
 
+    @ObservationIgnored private lazy var backgroundExecution = StreamBackgroundExecution { [weak self] stage in
+        self?.engine.recordLifecycle("app.background-execution", stage: stage)
+    }
+    private func updateBackgroundExecution() {
+        backgroundExecution.update(working: screenUnlocked && (header?.status == .working || composerDrafts.sending), foreground: foreground)
+    }
+
     let engine = EngineHost()
     let transcript = TranscriptHost()
 
@@ -131,7 +139,10 @@ final class AppModel {
         }
         push.flush()
 
-        engine.onSendResult = { [weak self] result in self?.composerDrafts.completeSend(result) }
+        engine.onSendResult = { [weak self] result in
+            self?.composerDrafts.completeSend(result)
+            self?.updateBackgroundExecution()
+        }
         engine.onGitDiff = { [weak self] json in self?.changesHost.setDiff(json) }
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
@@ -148,10 +159,12 @@ final class AppModel {
             guard let self, self.activeAgentID != nil else { return }
             self.conversationLoading.renderingFailed()
         }
+        transcript.onTransferApplied = { [weak self] identity, checkpoint in self?.command("transcriptApplied", ["identity": identity, "checkpoint": checkpoint]) }
+        transcript.onNeedsReset = { [weak self] identity in self?.command("transcriptReset", ["identity": identity]) }
         transcript.onRendered = { [weak self] id, revision, generation in
-            guard let self, id == self.activeAgentID, self.connection == .connected,
-                  self.conversationReady, generation == self.conversationGeneration else { return }
-            self.conversationLoading.rendered()
+            guard let self, id == self.activeAgentID, generation == self.conversationGeneration else { return }
+            self.conversationLoading.rendered(synchronized: self.connection == .connected && self.conversationReady)
+            guard self.connection == .connected, self.conversationReady else { return }
             self.conversationRead.didRender(agentId: id, revision: revision)
             self.acknowledgeRead()
         }
@@ -210,7 +223,7 @@ final class AppModel {
         if generation != conversationGeneration || state.connection != .connected || state.conversationReady != true { conversationRead.invalidate() }
         conversationGeneration = generation
         conversationReady = state.conversationReady == true
-        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected)
+        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected, refreshing: state.refreshing == true)
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
         set(\.failedRequest, state.failedRequest)
@@ -271,6 +284,7 @@ final class AppModel {
         set(\.sessionAction, state.sessionAction)
         set(\.sessionActionFailed, state.sessionActionFailed)
         set(\.closePreview, state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil)
+        updateBackgroundExecution()
         notifications.visibleChanged(visibleNotificationTarget)
         if startup == .ready, let notification = pendingNotification { pendingNotification = nil; open(notification) }
     }
@@ -314,6 +328,7 @@ final class AppModel {
 
     func retryConversation() {
         guard let id = activeAgentID, connection == .connected else { return }
+        if hasTranscript { command("refreshConversation"); return }
         conversationLoading.select(awaitingRender: true)
         transcript.retry()
         command("selectAgent", ["id": id])
@@ -325,11 +340,15 @@ final class AppModel {
         guard canSend, !goalMode || supportsGoals, supportsAttachments || composerDrafts.items.isEmpty else { return }
         dictation.cancel()
         guard let request = composerDrafts.beginSend(mode: mode ?? composerPreferences.followUpBehavior) else { return }
+        updateBackgroundExecution()
         do {
             let data = try JSONEncoder().encode(request)
             guard let command = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.coderInvalidValue) }
             engine.dispatch(command)
-        } catch { composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected)) }
+        } catch {
+            composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected))
+            updateBackgroundExecution()
+        }
     }
 
     func updateQueuedPrompt(_ id: String, steer: Bool) {
@@ -472,6 +491,7 @@ final class AppModel {
     }
     func setActive(_ active: Bool) {
         foreground = active
+        updateBackgroundExecution()
         updateConnectionNotice()
         if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
@@ -479,6 +499,7 @@ final class AppModel {
     }
     func setUnlocked(_ unlocked: Bool) {
         screenUnlocked = unlocked
+        updateBackgroundExecution()
         updateConnectionNotice()
         if !unlocked { dictation.cancel(); notifications.clear() }
         command("activity", ["active": unlocked && foreground])

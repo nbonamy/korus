@@ -21,6 +21,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
 
     override init() {
         let configuration = WKWebViewConfiguration()
+        configuration.preferences.inactiveSchedulingPolicy = .none
         configuration.setURLSchemeHandler(WebAssets(), forURLScheme: WebAssets.scheme)
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
         super.init()
@@ -38,13 +39,27 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
 
     /// Sends one command to the engine; commands issued before it is ready wait for it.
     func dispatch(_ command: [String: Any]) {
+        let started = Date()
+        let foreground = command["type"] as? String == "activity" && command["active"] as? Bool == true
+        if command["type"] as? String == "activity" {
+            recordLifecycle("app.native-activity", stage: command["active"] as? Bool == true ? "foreground" : "background")
+        }
         guard isReady else { pending.append(command); return }
         guard let data = try? JSONSerialization.data(withJSONObject: command), let json = String(data: data, encoding: .utf8) else { return }
         webView.callAsyncJavaScript("await window.companionEngine.dispatch(command)", arguments: ["command": json], in: nil, in: .page) { [weak self] result in
+            if foreground {
+                self?.recordLifecycle("app.foreground-dispatched", stage: { if case .success = result { return "ready" }; return "failed" }(), elapsedMs: Date().timeIntervalSince(started) * 1000)
+            }
             if case .failure = result, let id = command["requestId"] as? String {
                 self?.onSendResult?(ComposerSendResult(requestId: id, status: .unknown))
             }
         }
+    }
+
+    func recordLifecycle(_ event: String, stage: String, elapsedMs: Double? = nil) {
+        var record: [String: Any] = ["event": event, "at": ISO8601DateFormatter().string(from: Date()), "stage": stage]
+        if let elapsedMs { record["elapsedMs"] = elapsedMs }
+        diagnosticQueue.async { [connectionLog, record] in connectionLog.append(record) }
     }
 
     // MARK: Requests the engine page makes of the app
@@ -107,6 +122,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(ComposerSendResult.self, from: data) { onSendResult?(decoded) }
         case "state":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(StateEvent.self, from: data) { onState?(decoded.state) }
+        case "conversationTransfer": if let json { onTranscript?(.transfer, json) }
         case "conversation": if let json { onTranscript?(.conversation, json) }
         case "conversationContext": if let json { onTranscript?(.context, json) }
         case "conversationContent": if let json { onContent?(json) }

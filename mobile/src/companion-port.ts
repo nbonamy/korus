@@ -1,3 +1,4 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
@@ -33,6 +34,7 @@ export type CompanionSession = {
   respondRequest?(reply: CompanionRequestReply): Promise<void>;
   getWorkspace(): Promise<CompanionWorkspace>;
   deselectConversation?(): void;
+  isConversationCurrent?(agentId: string): boolean;
   cachedConversation?(agentId: string): CompanionConversation | null | undefined;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
@@ -67,6 +69,8 @@ export type CompanionSession = {
 /** Host transport owns pairing and encrypted routing; Vue consumes app-owned reads and actions. */
 export type CompanionConnector = {
   laptops: readonly { id: string; name: string }[];
+  cachedConversation?(target: CompanionTarget): CompanionConversation | null | undefined;
+  conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
   initialize?(): Promise<void>;

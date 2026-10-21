@@ -2,6 +2,23 @@ import XCTest
 @testable import CompanionConversation
 
 final class ConversationLoadingStateTests: XCTestCase {
+    func testCachedPaintStaysReadableAndUpdatingUntilTheRefreshedContentPaints() {
+        var state = ConversationLoadingState()
+        state.select()
+        state.update(fetching: false, failed: false, hasAgent: true, refreshing: true)
+        state.rendered(synchronized: false)
+        XCTAssertTrue(state.hasTranscript)
+        XCTAssertFalse(state.isLoading)
+        XCTAssertTrue(state.isRefreshing)
+        state.update(fetching: false, failed: false, hasAgent: true, refreshing: false)
+        XCTAssertTrue(state.isRefreshing)
+        state.rendered()
+        XCTAssertFalse(state.isRefreshing)
+        state.update(fetching: false, failed: true, hasAgent: true)
+        XCTAssertTrue(state.hasTranscript)
+        XCTAssertTrue(state.failed)
+    }
+
     func testDisconnectReleasesAnUnpaintedFetchInsteadOfLeavingASpinner() {
         var state = ConversationLoadingState()
         state.update(fetching: true, failed: false, hasAgent: true)

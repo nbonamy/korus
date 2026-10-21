@@ -79,6 +79,60 @@ describe('native relay host adapter', () => {
     } finally { session.close(); await connector.dispose!(); }
   });
 
+  it('retires stale host and relay routes after a failed foreground probe', async () => {
+    vi.useFakeTimers();
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    let parked = false;
+    transport.response = () => ({ teams: [], agents: [] });
+    const dial = transport.dial.getMockImplementation()!;
+    transport.dial.mockImplementation(async (...args) => {
+      const source = await dial(...args); const send = source.send.bind(source);
+      source.send = (frame: Uint8Array) => parked ? true : send(frame);
+      return source;
+    });
+    const session = await connector.connect(host.hostId);
+    const lost = vi.fn(); session.onDisconnect(lost);
+    const hostAbort = vi.fn(); const relayAbort = vi.fn(); const otherAbort = vi.fn();
+    transport.connections.push(...[[host.hostId, hostAbort], [host.relay.peerId, relayAbort], ['other', otherAbort]].map(([peer, abort]) => ({
+      status: 'open', remoteAddr: { toString: () => 'different route' }, remotePeer: { toString: () => peer }, abort,
+    })));
+    try {
+      await session.getWorkspace(); await session.setActive!(false); parked = true;
+      const returned = session.setActive!(true); const rejected = expect(returned).rejects.toThrow('Disconnected');
+      await vi.advanceTimersByTimeAsync(2_000); await rejected;
+      expect(lost).toHaveBeenCalledOnce();
+      expect(hostAbort).toHaveBeenCalledOnce(); expect(relayAbort).toHaveBeenCalledOnce();
+      expect(otherAbort).not.toHaveBeenCalled();
+    } finally { session.close(); await connector.dispose!(); vi.useRealTimers(); }
+  });
+  it('resumes the live stream without waiting for a slow workspace refresh', async () => {
+    vi.useFakeTimers();
+    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
+    let parked = false;
+    transport.response = () => ({ teams: [], agents: [] });
+    const dial = transport.dial.getMockImplementation()!;
+    transport.dial.mockImplementation(async (...args) => {
+      const source = await dial(...args);
+      const send = source.send.bind(source);
+      source.send = (frame: Uint8Array) => {
+        const call = new CompanionFrameDecoder().push(frame)[0] as { method: string };
+        return parked && call.method === 'snapshot.get' ? true : send(frame);
+      };
+      return source;
+    });
+    const session = await connector.connect(host.hostId);
+    let resumed: Promise<void> | undefined;
+    try {
+      await session.getWorkspace(); await session.setActive!(false); parked = true;
+      let returned = false;
+      resumed = session.setActive!(true).then(() => { returned = true; });
+      void resumed.catch(() => {});
+      await vi.advanceTimersByTimeAsync(100);
+      expect(returned).toBe(true);
+      await resumed;
+      expect(transport.requests.filter(call => call.method === 'ping').length).toBe(1);
+    } finally { session.close(); await resumed?.catch(() => {}); await connector.dispose!(); vi.useRealTimers(); }
+  });
   it('reads account quotas through the paired laptop circuit without a selected conversation', async () => {
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
     const providers = [{ backend: 'codex', limits: { primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: 2_000_000_000 }, secondary: null }, failed: false }];
@@ -232,6 +286,7 @@ describe('native relay host adapter', () => {
       await session.setActive!(false);
       expect(transport.requests.filter(request => request.method === 'snapshot.get').at(-1)?.args.notifications).toBe(false);
       await session.setActive!(true);
+      await vi.advanceTimersByTimeAsync(0); // Presence completes independently of foreground liveness.
       expect(transport.requests.filter(request => request.method === 'snapshot.get').at(-1)?.args.notifications).toBe(true);
       expect(await session.loadConversation('agent')).toStrictEqual(next);
       expect(transport.requests.filter(request => request.method === 'conversation.subscribe')).toHaveLength(1);
@@ -472,4 +527,38 @@ describe('native relay host adapter', () => {
     expect(transport.requests.find((request) => request.method === 'agent.backend.set')?.args).toStrictEqual({ target: { hostId: host.hostId, locationId: 'local', teamId: 'team', agentId: 'new-chat', sessionId: null }, backend: 'claude' });
     await connector.dispose!();
   });
+});
+
+it('retains paired-host conversations across reconnects and uses checkpoints only when the host advertises support', async () => {
+  const connector = createRelayConnector(vault(), host.relay);
+  await pairWith(connector);
+  const claude = { id: 'agent', teamId: 'team', backend: 'claude', backendSession: { kind: 'claude', sessionId: 'session' } };
+  const workspace = { conversationSync: true, teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [claude] };
+  const snapshot = { agentId: 'agent', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null };
+  const frame = { type: 'claude.conversationSnapshotChanged', backend: 'claude', agentId: 'agent', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot } };
+  transport.response = (method, args) => {
+    if (method === 'snapshot.get') return workspace;
+    if (method === 'conversation.synchronize') {
+      if (!args.checkpoint) transport.publish({ type: 'conversation', frame });
+      return { checkpoint: { epoch: 'host-generation', revision: args.checkpoint?.revision ?? 1 } };
+    }
+    return {};
+  };
+  try {
+    const first = await connector.connect(host.hostId); await first.getWorkspace(); await first.loadConversation('agent');
+    transport.publish({ type: 'conversation', frame: { ...frame, type: 'claude.conversationEventReceived', seq: 2, payload: { revision: 2, event: { type: 'turn.started', seq: 2, agentId: 'agent', backend: 'claude', backendSessionId: 'session', turnId: 'live-turn', occurredAt: 'now', payload: { turn: { id: 'live-turn', backend: 'claude' } } } } } });
+    await vi.waitFor(() => expect(first.cachedConversation!('agent')?.payload.revision).toBe(2));
+    first.close();
+    const second = await connector.connect(host.hostId); await second.getWorkspace();
+    expect(second.cachedConversation!('agent')?.payload.snapshot.activeTurnId).toBe('live-turn');
+    await second.loadConversation('agent');
+    first.close(); // A delayed close from the old connection must not suspend the new cache.
+    expect(second.isConversationCurrent!('agent')).toBe(true);
+    const syncs = transport.requests.filter(request => request.method === 'conversation.synchronize');
+    expect(syncs.map(call => call.args.checkpoint)).toStrictEqual([null, { epoch: 'host-generation', revision: 2 }]);
+    expect(transport.requests.some(call => call.method === 'conversation.subscribe')).toBe(false);
+    second.close();
+    await connector.revoke(host.hostId);
+    expect(connector.cachedConversation!({ hostId: host.hostId, teamId: 'team', locationId: 'local', agentId: 'agent', sessionId: JSON.stringify({ kind: 'claude', sessionId: 'session' }) })).toBeUndefined();
+  } finally { await connector.dispose!(); }
 });

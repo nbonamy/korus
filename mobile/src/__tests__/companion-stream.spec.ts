@@ -87,6 +87,24 @@ describe('mobile update channel', () => {
       expect(f.disconnected).toHaveBeenCalledOnce();
     } finally { f.stream.close(); }
   });
+  it('keeps a healthy stream after a fifteen-second app switch and bounds a stale return probe', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      await f.stream.setActive(false);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const healthy = f.stream.setActive(true); await tick();
+      f.push({ v: 1, id: f.calls.at(-1)!.id, result: {} }); await healthy;
+      expect(f.disconnected).not.toHaveBeenCalled();
+      await f.stream.setActive(false);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const stale = f.stream.setActive(true); const rejected = expect(stale).rejects.toThrow('Disconnected');
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(f.disconnected).toHaveBeenCalledExactlyOnceWith('resume-timeout');
+      await rejected;
+    } finally { f.stream.close(); }
+  });
   it('refuses malformed provider frames before they reach conversation replicas', async () => {
     const f = fixture();
     try {

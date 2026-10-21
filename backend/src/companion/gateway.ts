@@ -1,3 +1,4 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
@@ -78,6 +79,7 @@ export type GatewayPort = {
   respondRequest?(response: AgentRequestResponse): Promise<void>;
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
+  synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
@@ -181,6 +183,19 @@ const agentOperations = {
     },
   }),
   'conversation.subscribe': agentOperation(onlyTarget)({ act: (port, agent) => port.conversation(agent.id), read: { verify: currentReset } }),
+  'conversation.synchronize': agentOperation(withTarget(z.object({ checkpoint: z.object({ epoch: z.string().min(1).max(100), revision: z.number().int().nonnegative().safe() }).strict().nullable() }).strict()))({
+    act: (port, agent, { checkpoint }) => {
+      if (!port.synchronize) throw new Error('Conversation synchronization unavailable.');
+      return port.synchronize(agent.id, checkpoint);
+    },
+    read: { verify: (result, current, target) => {
+      for (const frame of result.frames) {
+        if (frame.type.endsWith('SnapshotChanged')) currentReset(frame as CompanionReset, current, target);
+        else if (frame.agentId !== target.agentId || frame.backend !== current.backend || (current.backendSession?.kind === 'codex' && frame.threadId !== current.backendSession.threadId)) throw new Error('Conversation session mismatch.');
+      }
+      return result;
+    } },
+  }),
   'conversation.loadOlder': agentOperation(onlyTarget)({
     act: async (port, agent) => {
       const page = await port.loadOlderHistory(agent.id);
@@ -418,7 +433,7 @@ export class CompanionGateway {
       const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);
       // Icons are large and rarely change: send them only when the phone's copy is out of date.
       const version = createHash('sha256').update(JSON.stringify(Object.entries(repositoryIcons).sort())).digest('hex').slice(0, 16);
-      return { ...projected, iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
+      return { ...projected, ...(this.port.synchronize ? { conversationSync: true } : {}), iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
     },
     'prompt.submit': (peer, args) => {
       const command = commandSchema.parse(args);

@@ -10,7 +10,7 @@ declare global {
     webkit?: { messageHandlers: Record<string, Handler | undefined> };
     companionChanges?: { setDiff(json: string): void };
     companionEngine?: { dispatch(command: string): Promise<void>; start(): Promise<void> };
-    companionTranscript?: { setConversation(json: string): Promise<{ agentId: string; revision: number } | null>; setContext(json: string): Promise<{ agentId: string; revision: number } | null>; setContent(json: string): void; setImage(json: string): void; setInsets(top: number, bottom: number): void };
+    companionTranscript?: { setTransfer(json: string): Promise<Record<string, unknown> | null>; setConversation(json: string): Promise<{ agentId: string; revision: number } | null>; setContext(json: string): Promise<{ agentId: string; revision: number } | null>; setContent(json: string): void; setImage(json: string): void; setInsets(top: number, bottom: number): void };
   }
 }
 let androidBridge: ReturnType<typeof createNativeMessageBridge> | undefined;

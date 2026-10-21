@@ -6,7 +6,7 @@ struct ConnectionLostNotice: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.exclamationmark")
-            Text("Connection lost")
+            Text("Offline · showing saved conversation")
             Spacer()
             Button("Reconnect", action: reconnect)
                 .foregroundStyle(Color.accentColor)

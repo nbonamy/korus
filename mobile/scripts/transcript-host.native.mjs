@@ -30,7 +30,7 @@ try {
   const sdk = run('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path']);
   const sources = ['Tests/TranscriptHost/TranscriptHostProbe.swift', 'Sources/Engine/TranscriptHost.swift', 'Sources/Engine/WebAssets.swift',
     'Sources/Conversation/TranscriptRenderQueue.swift', 'Sources/Conversation/ConversationLoadingState.swift', 'Sources/Conversation/ImagePreview.swift', 'Sources/Conversation/ExternalLink.swift',
-    'Sources/Lock/AppLock.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift'];
+    'Sources/Lock/AppLock.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift', 'Sources/Conversation/StreamBackgroundExecution.swift'];
   run('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-ios26.0-simulator`, '-sdk', sdk,
     '-o', path.join(app, 'TranscriptTests'), ...sources.map(source => path.join(ios, source))]);
   run('codesign', ['--force', '--sign', '-', app]);
@@ -58,20 +58,20 @@ try {
   assert.ok(existsSync(resultPath), 'Native transcript probe did not complete within 120 seconds.');
   const results = JSON.parse(readFileSync(resultPath, 'utf8'));
   writeFileSync(path.join(scratch, 'results.json'), JSON.stringify(results, null, 2));
-  for (const name of ['lock-locked.png', 'connecting.png']) cpSync(path.join(container, 'Documents', name), path.join(scratch, name));
+  if (process.env.APP_NATIVE_SKIP_SCREENSHOTS !== '1') for (const name of ['lock-locked.png', 'connecting.png']) cpSync(path.join(container, 'Documents', name), path.join(scratch, name));
   assert.ok(results.length >= 12, 'Native probe did not exercise all recovery scenarios.');
   assert.deepEqual(results.filter(result => !result.passed), [], 'Native transcript regressions failed.');
   console.log(`Native transcript checks passed: ${results.length}. Evidence: ${scratch}/results.json`);
 
   // Exercise the actual app's scene callbacks: an authenticated phone must retain
-  // its screen through an ordinary five-second switch to another app and back.
+  // its screen through an ordinary fifteen-second switch to another app and back.
   const resumeApp = path.join(scratch, 'ResumeTests.app');
   const resumeId = 'dev.korus.resumetests';
   mkdirSync(resumeApp);
   cpSync(path.join(root, 'electron/assets/icon.png'), path.join(resumeApp, 'icon.png'));
   writeFileSync(path.join(resumeApp, 'Info.plist'), readFileSync(path.join(app, 'Info.plist'), 'utf8')
     .replaceAll(identifier, resumeId).replaceAll('TranscriptTests', 'ResumeTests'));
-  const resumeSources = ['Tests/AppResume/AppResumeProbe.swift', 'Sources/CompanionApp.swift', 'Sources/Lock/AppLockWindow.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift'];
+  const resumeSources = ['Tests/AppResume/AppResumeProbe.swift', 'Sources/Conversation/StreamBackgroundExecution.swift', 'Sources/CompanionApp.swift', 'Sources/Lock/AppLockWindow.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift'];
   run('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-ios26.0-simulator`, '-sdk', sdk,
     '-o', path.join(resumeApp, 'ResumeTests'), ...resumeSources.map(source => path.join(ios, source))]);
   run('codesign', ['--force', '--sign', '-', resumeApp]);
@@ -91,14 +91,15 @@ try {
   }
   const initial = await resumed();
   run('xcrun', ['simctl', 'launch', simulator, 'com.apple.Preferences']);
-  await delay(5000);
+  await delay(15_000);
   run('xcrun', ['simctl', 'launch', simulator, resumeId]);
   const resume = await resumed(initial.activations);
   assert.equal(resume.pid, initial.pid, 'The resume check must keep the original app alive.');
   assert.equal(resume.coverVisibleBeforeForeground, false, 'Brief app switches must not return behind the branded lock cover.');
   assert.equal(resume.coverVisibleOnResume, false, 'An authenticated app must keep its last screen visible.');
+  assert.deepEqual(resume.executionEvents, ['acquired'], 'Active streaming must hold one native execution assertion through the switch.');
   writeFileSync(path.join(scratch, 'resume.json'), JSON.stringify(resume, null, 2));
-  console.log(`Native five-second resume check passed. Evidence: ${scratch}/resume.json`);
+  console.log(`Native fifteen-second resume and background assertion check passed. Evidence: ${scratch}/resume.json`);
 } finally {
   if (simulator) {
     for (const args of [['terminate', simulator, identifier], ['shutdown', simulator], ['delete', simulator]]) {

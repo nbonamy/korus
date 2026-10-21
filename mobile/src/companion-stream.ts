@@ -5,12 +5,14 @@ import type { Stream } from '@libp2p/interface';
 import { companionBackgroundGraceMs, companionResponseLimit, encodeCompanionFrame, type CompanionUpdate } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
+const resumeProbeTimeoutMs = 2_000;
+
 export class CompanionOperationDenied extends Error {
   constructor() { super('Laptop denied the operation or is unavailable.'); }
 }
 
 /** Ordered duplex RPC and notifications over the authenticated laptop circuit. */
-export function createCompanionStream(open: () => Promise<Stream>, update: (value: CompanionUpdate) => void, disconnected: () => void) {
+export function createCompanionStream(open: () => Promise<Stream>, update: (value: CompanionUpdate) => void, disconnected: (reason?: string) => void) {
   let stream: Stream | undefined;
   let opening: Promise<Stream> | undefined;
   let closed = false; let sequence = 0; let active = true;
@@ -21,10 +23,10 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     connectionDiagnostic(event, { streamId, elapsedMs: Date.now() - started, idleMs: Date.now() - lastReceived, sequence, pending: pending.size,
       ...(oldest ? { oldestMethod: oldest.method, oldestAgeMs: Date.now() - oldest.started } : {}), ...details });
   };
-  const pending = new Map<string, { method: string; started: number; resolve(value: unknown): void; reject(error: Error): void; timer?: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<string, { method: string; started: number; timeoutMs: number; resolve(value: unknown): void; reject(error: Error): void; timer?: ReturnType<typeof setTimeout> }>();
   function armDeadline(id: string, call: NonNullable<ReturnType<typeof pending.get>>) {
     clearTimeout(call.timer);
-    call.timer = active ? setTimeout(() => { log('updates.request-timeout', { requestId: id, method: call.method }); fail('request-timeout'); }, 15_000) : undefined;
+    call.timer = active ? setTimeout(() => { log('updates.request-timeout', { requestId: id, method: call.method }); fail(call.timeoutMs === resumeProbeTimeoutMs ? 'resume-timeout' : 'request-timeout'); }, call.timeoutMs) : undefined;
   }
   function startHeartbeat() {
     clearInterval(heartbeat);
@@ -38,7 +40,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error('Disconnected.')); }
     pending.clear();
   }
-  function fail(reason: string) { if (!closed) { log('updates.disconnect', { reason }); close(); disconnected(); } }
+  function fail(reason: string) { if (!closed) { log('updates.disconnect', { reason }); close(); disconnected(reason); } }
   async function connect() {
     if (closed) throw new Error('Disconnected.');
     return opening ??= open().then((next) => {
@@ -90,12 +92,12 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     } catch (error) { if (!closed) log('updates.receive-error', { stage, ...connectionError(error) }); }
     finally { fail('receive-ended'); }
   }
-  async function request<T>(method: string, args: unknown): Promise<T> {
+  async function request<T>(method: string, args: unknown, timeoutMs = 15_000): Promise<T> {
     const channel = await connect();
     if (closed || pending.size >= 128) throw new Error('Update channel unavailable.');
     const id = crypto.randomUUID();
     return new Promise<T>((resolve, reject) => {
-      const call = { method, started: Date.now(), resolve: (value: unknown) => resolve(value as T), reject };
+      const call = { method, started: Date.now(), timeoutMs, resolve: (value: unknown) => resolve(value as T), reject };
       pending.set(id, call); armDeadline(id, call);
       log('updates.request', { requestId: id, method });
       try { channel.send(encodeCompanionFrame({ v: 1, id, method, args })); }
@@ -110,7 +112,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     for (const [id, call] of pending) armDeadline(id, call);
     if (active && stream) startHeartbeat();
     // Do not open a connection solely to report background presence on a locked cold launch.
-    if (active && opening) { await opening; if (!closed) await request('ping', {}); }
+    if (active && opening) { await opening; if (!closed) await request('ping', {}, resumeProbeTimeoutMs); }
   }
   return { request, close, setActive };
 }

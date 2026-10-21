@@ -577,3 +577,38 @@ describe('companion state', () => {
     } finally { state.dispose(); }
   });
 });
+
+it('shows a stale cached conversation immediately but separates its paint generation from completed catch-up', async () => {
+  const connector = createDemoConnector(); const connect = connector.connect;
+  let stale = false;
+  let current!: CompanionWorkspace;
+  let publish!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
+  let finish!: (frame: CompanionConversation | null) => void;
+  let cached: CompanionConversation | null;
+  connector.connect = async id => {
+    const session = await connect(id); const base = await session.getWorkspace();
+    current = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+    return { ...session, getWorkspace: async () => current, onUpdate: listener => { publish = listener; return () => {}; }, cachedConversation: () => cached, isConversationCurrent: () => !stale,
+      async loadConversation(id) {
+        if (stale) return new Promise<CompanionConversation | null>(resolve => { finish = resolve; });
+        cached = await session.loadConversation(id); return cached;
+      },
+    };
+  };
+  const state = createCompanionState(connector);
+  try {
+    await state.connect('demo-laptop'); await state.selectTeam('demo-team');
+    stale = true;
+    const refresh = state.selectAgent('demo-agent');
+    const cachedGeneration = state.conversationGeneration.value;
+    expect(state.conversation.value).toBe(cached!);
+    expect(state.loading.value).toBe(false);
+    expect(state.refreshing.value).toBe(true);
+    expect(state.conversationReady.value).toBe(false);
+    publish(current, cached!);
+    expect(state.conversationReady.value).toBe(false); // A replayed frame is not the catch-up barrier.
+    finish(cached!); await refresh;
+    expect(state.conversationGeneration.value).toBeGreaterThan(cachedGeneration);
+    expect(state.conversationReady.value).toBe(true);
+  } finally { state.dispose(); }
+});

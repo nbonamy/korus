@@ -25,7 +25,7 @@ export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.c
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
+export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
 export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
