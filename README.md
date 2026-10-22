@@ -145,7 +145,7 @@ each engine's account, conversation location, and enabled state.
 Requirements:
 
 - macOS arm64, Windows x64, or Linux x64/arm64;
-- Node 22.23.3 and npm 10.9.4 (the CI toolchain);
+- Node 26.12.1 and npm 10.9.4 (the CI toolchain);
 - a separately installed runtime for each coding engine you want to use.
 
 ```bash

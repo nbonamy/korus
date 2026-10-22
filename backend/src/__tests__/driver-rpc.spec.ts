@@ -12,6 +12,11 @@ import { createTestSnapshot } from './server-test-fixtures';
 import { CodexBackendDriver } from '../codex/codex-driver';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
+// Provider discovery has its own coverage; RPC tests must not run the host login shell.
+vi.mock('../codex/codex-command', () => ({
+  resolveCodexLaunch: (configuredPath?: string) => ({ command: configuredPath || 'codex', env: {} }),
+}));
+
 describe('BackendDriverRpc', () => {
   it.each(['driver/prompt/send', 'driver/prompt/steer'])('checks the expected session after asynchronous engine preflight (%s)', async method => {
     const agent = { ...createAgent(), backendSession: { kind: 'codex' as const, threadId: 'original' } };
