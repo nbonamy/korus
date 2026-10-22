@@ -279,7 +279,7 @@
       :respond="planReviewResponder"
       :plan-updating="planUpdating"
     />
-    <MarkdownPanel v-else-if="tabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" />
+    <MarkdownPanel v-else-if="tabs.includes('plan') && planPanel" v-show="activeTab === 'plan'" :content="planPanel.content" :state="planPanel.state" :error="planPanel.error" @open-file="openMarkdownFile($event, planPanel)" />
 
     <template v-if="subagentTree && loadSubagentMessages">
       <SubagentPanel
@@ -307,6 +307,7 @@
         :content="markdownFilePanel(tab)?.content ?? ''"
         :error="markdownFilePanel(tab)?.error"
         :state="markdownFilePanel(tab)?.state"
+        @open-file="openMarkdownFile($event, markdownFilePanel(tab))"
       />
       <SourcePreviewPanel
         v-else-if="sourceFilePanel(tab)"
@@ -830,6 +831,22 @@ function relativeFilePathForTab(tab: RightWorkspaceTab): string | null {
 
 function imagePanel(tab: RightWorkspaceTab): RightWorkspaceImagePanel | undefined {
   return isRightWorkspaceImageTab(tab) ? props.imagePanels?.[tab] : undefined;
+}
+
+function openMarkdownFile(href: string, panel: SidePanelMarkdownState | null): void {
+  // Resolve on the agent's host, never against the renderer's own page URL.
+  const folder = (props.agent.folder ?? '/').replace(/\\/gu, '/').replace(/\/?$/u, '/');
+  const folderUrl = new URL(folder, 'file:///');
+  const documentPath = panel?.savedPath ?? panel?.path ?? panel?.subtitle;
+  try {
+    const base = documentPath ? new URL(documentPath.replace(/\\/gu, '/'), folderUrl) : folderUrl;
+    const target = new URL(href, base);
+    if (target.protocol !== 'file:') return;
+    const path = decodeURIComponent(target.pathname);
+    emit('openLink', { kind: 'file', href, path });
+  } catch {
+    // Malformed links must never navigate the application window.
+  }
 }
 
 function markdownFilePanel(tab: RightWorkspaceFileTab): SidePanelMarkdownState | null {

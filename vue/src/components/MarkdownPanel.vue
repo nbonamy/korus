@@ -57,6 +57,8 @@
       <div
         v-else-if="content.trim()"
         class="markdown-panel__content codex-markdown"
+        @click="openLink"
+        @auxclick="openLink"
         v-html="renderedMarkdown"
       />
       <div
@@ -85,6 +87,7 @@ const props = withDefaults(defineProps<{
 });
 
 const documentId = `markdown-${useId()}`;
+const emit = defineEmits<{ openFile: [href: string] }>();
 const outlineId = `${documentId}-outline`;
 const documentRoot = ref<HTMLElement | null>(null);
 const headings = shallowRef<MarkdownHeading[]>([]);
@@ -92,6 +95,19 @@ const activeHeading = ref<string | null>(null);
 const outlineOpen = ref(false);
 const renderedMarkdown = computed(() => props.state === 'idle' && props.content.trim() ? renderMarkdown(props.content) : '');
 let resizeObserver: ResizeObserver | undefined;
+
+function openLink(event: MouseEvent): void {
+  const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  const href = anchor?.getAttribute('href');
+  if (!href || href.startsWith('#')) return;
+  event.preventDefault();
+  if (event.type === 'auxclick' && event.button !== 1) return;
+  if (/^https?:\/\//iu.test(href)) {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  } else if (!/^[a-z][a-z\d+.-]*:/iu.test(href) || /^file:/iu.test(href)) {
+    emit('openFile', href);
+  }
+}
 
 function updateActiveHeading(): void {
   const viewport = documentRoot.value;
