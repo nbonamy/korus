@@ -209,8 +209,22 @@ and a subscribe-before-read conversation barrier precede ordered provider-native
 deltas. The phone uses the existing provider replicas, never a second transcript
 reducer. Workspace projections are sent on change; heartbeat messages carry no
 app state. Sequence gaps, provider revision gaps and reconnects rehydrate from the
-authoritative daemon. Stream queues and subscription counts are bounded; revocation
-and stream closure dispose listeners and buffered work.
+authoritative daemon. A phone holds one update channel: a newer one replaces a stale
+one from an older connection. Stream queues are bounded in frames and bytes, and
+subscription counts are bounded; revocation and stream closure dispose listeners and
+buffered work. A long catch-up replay waits on the stream writer instead of queueing
+every frame at once, and live frames that outrun a catch-up fail that catch-up only.
+
+Liveness belongs to the update channel. A slow request times out alone and its late
+reply is ignored; only the heartbeat speaks for the link, and its deadline is extended
+while other authenticated traffic arrives. The transport's own pings are advisory on
+both endpoints: a ping that times out during a brief stall does not abort a circuit.
+The laptop treats repeated unanswered relay admissions as a dead relay link and
+reconnects it. The laptop's transport is three parts, `RelayLink` (the node and its
+reconnection), `RelayClient` (admission and push, one admission at a time) and
+`StreamServer` (request and update streams). The phone's is `relay-network` (the node
+and device identity), `relay-pairing` (stored laptops and the pairing flow) and
+`relay-session` (one laptop connection and the conversation caches later sessions share).
 
 The iOS encrypted reader serializes native decryption with transport flow control.
 Its receive-window credit stays below the paused-buffer capacity: pausing cannot
@@ -233,9 +247,13 @@ the bounded memory cache retains the last usable replica. Session identity chang
 invalidate that replica. App backgrounding
 delays intentional transport teardown for five minutes, matching the native lock grace.
 Heartbeat deadlines and automatic reconnects pause while hidden; background presence
-still enables APNs delivery immediately. The native iOS host requests one finite
-execution assertion for active streaming, releasing it on completion or expiry;
-this does not grant indefinite execution to the WebView engine. Foreground recovery
+still enables APNs delivery immediately. The native iOS host holds one finite
+execution assertion while the app is connected or streaming, so a short app switch
+keeps the authenticated link, and releases it on completion or expiry; iOS decides how
+long it lasts, and it does not grant indefinite execution to the WebView engine. If iOS
+terminates the engine's web content process, the host reloads the engine and tells it
+again whether the app is visible. Reconnecting and updating indicators appear only if
+recovery outlasts a short delay, and the retained transcript stays in place meanwhile. Foreground recovery
 uses a short liveness probe independently of workspace/presence refresh. A stale
 probe retires the host and relay routes before reconnecting so a new stream cannot
 reuse a half-open circuit. Restoration also checks elapsed wall time because iOS
