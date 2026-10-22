@@ -317,8 +317,8 @@
         :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
-        :empty-split-pane="!split.focusedPane.value.agentId"
-        :split-headers="split.layout.value !== 'single'"
+        :empty-split-pane="!hasFocusedConversation"
+        :split-headers="splitLayout !== 'single'"
         :latest-turn-id-for-agent="latestTurnIdForAgent"
         :current-agent-git-status="currentAgentGitStatus"
         :current-backend-runtime="currentBackendRuntime"
@@ -388,8 +388,8 @@
         <template v-if="!compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
-        <template v-if="split.layout.value !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
-          <AgentSplitGrid :layout="split.layout.value" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" @focus="focusSplitPane">
+        <template v-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
+          <AgentSplitGrid :layout="splitLayout" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
             <template #header="{ agentId, topRight, topLeft }">
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
@@ -1664,15 +1664,12 @@ const split = useSplitWorkspace({
   teamId: () => activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
 });
-// One pane at a time on phones, including layouts restored from a team's saved workspace.
-watch(
-  [compactViewport, split.layout],
-  ([compact, layout]) => { if (compact && layout !== 'single') split.setLayout('single'); },
-  { immediate: true },
-);
+// Compact screens display one conversation without changing the saved team layout.
+const splitLayout = computed(() => compactViewport.value ? 'single' : split.layout.value);
+const hasFocusedConversation = computed(() => compactViewport.value || Boolean(split.focusedPane.value.agentId));
 const rightWorkspaceState = useRightWorkspaceState({
   currentAgentId: () => currentAgent.value?.id,
-  sharedVisibilityGroupId: () => split.layout.value === 'single' ? undefined : activeTeam.value?.id,
+  sharedVisibilityGroupId: () => splitLayout.value === 'single' ? undefined : activeTeam.value?.id,
   workspaceBody: () => agentWorkspace.value?.workspaceBodyElement() ?? null,
 });
 const documentWorkspaces = useDocumentWorkspaces({
@@ -1692,7 +1689,7 @@ function setSplitPanel(agentId: string, instance: unknown): void {
   else splitPanels.delete(agentId);
 }
 function focusedConversationPanel() {
-  return split.layout.value === 'single' ? agentWorkspace.value : splitPanels.get(split.focusedPane.value.agentId ?? '');
+  return splitLayout.value === 'single' ? agentWorkspace.value : splitPanels.get(split.focusedPane.value.agentId ?? '');
 }
 const pendingComposerFocusAgentId = ref<string | null>(null);
 // A cold conversation has no composer until history hydration replaces its loader.
@@ -1720,7 +1717,7 @@ watch([
   });
 }, { flush: 'post' });
 function addFocusedVisualizationAnnotation(annotation: import('./use-visualization-annotations').VisualizationAnnotationInput): void {
-  if (split.layout.value === 'single') addVisualizationAnnotation(annotation);
+  if (splitLayout.value === 'single') addVisualizationAnnotation(annotation);
   else splitPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
 }
 const splitActions = computed<AgentConversationActions | undefined>(() => props.agentConversationActions ? {
@@ -2455,7 +2452,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
     composerAttachments: () => props.composerAttachments,
-    currentAgent: () => split.focusedPane.value.agentId ? currentAgent.value : null,
+    currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
     isAgentWorkspaceVisible: () => isAgentWorkspaceVisible.value,
     isModalDialogVisible: () => isModalDialogVisible.value,
@@ -2511,7 +2508,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
 });
 
 const paletteActions = computed(() => {
-  const agent = split.focusedPane.value.agentId ? currentAgent.value : null;
+  const agent = hasFocusedConversation.value ? currentAgent.value : null;
   const team = activeTeam.value;
   const remote = team?.remoteConnectionId;
   return commandPaletteActions({
