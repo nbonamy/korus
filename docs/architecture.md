@@ -558,6 +558,8 @@ publishes only after saving.
 - Stage approval is one revision-checked `daemon` command (accept, advance and
   queue the next run in one transaction). Renderers never chain accept, advance and
   run writes. Only the user accepts Requirements, Tickets and Review.
+  Reusing a lead waits for its active provider turn to finish before refreshing
+  stage instructions and sending the next kickoff.
 - Canonical artifacts are Markdown under `$APP_HOME/missions/<id>/artifacts`.
   Workers reach them through identity-bound MCP tools with optimistic revisions;
   the renderer and providers get metadata, never file access. Stage skills are
