@@ -18,16 +18,6 @@
             <span v-if="stageHeadingMeta">{{ stageHeadingMeta }}</span>
           </div>
           <div class="mission-workspace__stage-actions">
-            <BackendModelSelector
-              v-if="viewedStage === 'tickets' && mission.stage === 'tickets' && activeRun?.proposal && missionLead"
-              v-model:backend="implementationBackend"
-              v-model:model="implementationModel"
-              v-model:reasoning-effort="implementationEffort"
-              :agent-id="missionLead.id"
-              :team-id="mission.teamId"
-              :allowed-backends="[missionLead.backend]"
-              :disabled="busy"
-            />
             <div v-if="activeStageRun" class="mission-workspace__run-status" role="status" aria-live="polite">
               <span class="mission-workspace__activity-indicator" aria-hidden="true" />
               <span>{{ activeStageStatus }}</span>
@@ -48,10 +38,10 @@
               class="app-button app-button--primary"
               type="button"
               :aria-busy="busy"
-              :disabled="busy"
-              @click="approveProposal"
+              :disabled="busy || (viewedStage === 'tickets' && !missionLead)"
+              @click="requestApproval"
             >
-              {{ t('missions.approveAndContinue') }}
+              {{ t(viewedStage === 'tickets' ? 'missions.approveTickets' : 'missions.approveAndContinue') }}
               <ArrowRightIcon aria-hidden="true" />
             </button>
             <span v-else-if="showAcceptedArtifactStatus" class="mission-workspace__accepted-status"><CheckIcon aria-hidden="true" />{{ t('missions.accepted') }}</span>
@@ -150,6 +140,33 @@
       </MissionConversationRail>
     </div>
   </section>
+  <FormDialog
+    v-if="implementationApprovalVisible && missionLead"
+    :model-value="!implementationStarting"
+    :title="t('missions.startImplementation')"
+    :subtitle="t('missions.ticketCount', { count: visibleTickets.length })"
+    @update:model-value="visible => { if (!visible && !busy) implementationApprovalVisible = false; }"
+  >
+    <div class="mission-workspace__start-options">
+      <BackendModelSelector
+        v-model:backend="implementationBackend"
+        v-model:model="implementationModel"
+        v-model:reasoning-effort="implementationEffort"
+        :agent-id="missionLead.id"
+        :team-id="mission.teamId"
+        :disabled="busy"
+      />
+      <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
+    </div>
+    <template #footer>
+      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
+        {{ t('common.cancel') }}
+      </button>
+      <button class="app-button app-button--primary" type="button" :disabled="busy || !implementationModel" @click="approveProposal">
+        {{ t('missions.startImplementationAction') }}
+      </button>
+    </template>
+  </FormDialog>
   <WorkspaceProvisioningProgressDialog :operation="implementationOperation" />
 </template>
 
@@ -162,6 +179,7 @@ import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { ArrowRightIcon, CheckIcon, FileTextIcon, MessageCircleIcon, PlayerPlayIcon } from '../shared/icons/app-icons';
 import BackendModelSelector from './BackendModelSelector.vue';
+import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -325,13 +343,28 @@ const missionLead = computed(() => {
 const implementationBackend = ref<AgentBackend>();
 const implementationModel = ref('');
 const implementationEffort = ref('');
-watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, () => {
+const implementationApprovalVisible = ref(false);
+function resetImplementationModel(): void {
   const selected = props.mission.execution?.implementationModel;
   const lead = missionLead.value;
   implementationBackend.value = selected?.backend ?? lead?.backend;
   implementationModel.value = selected?.model ?? lead?.backendDefaults?.model ?? '';
   implementationEffort.value = selected?.reasoningEffort ?? lead?.backendDefaults?.reasoningEffort ?? '';
-}, { immediate: true });
+}
+watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
+watch(() => [props.mission.id, props.mission.revision, activeRun.value?.id, viewedStage.value], () => {
+  implementationApprovalVisible.value = false;
+});
+
+function requestApproval(): void {
+  if (props.mission.stage === 'tickets') {
+    resetImplementationModel();
+    error.value = '';
+    implementationApprovalVisible.value = true;
+  } else {
+    void approveProposal();
+  }
+}
 
 async function approveProposal(): Promise<void> {
   const run = activeRun.value;
@@ -352,6 +385,7 @@ async function approveProposal(): Promise<void> {
         ...(implementationEffort.value ? { reasoningEffort: implementationEffort.value } : {}),
       } } : {}),
     });
+    implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally {
     busy.value = false;

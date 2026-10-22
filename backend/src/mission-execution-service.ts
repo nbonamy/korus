@@ -1,5 +1,6 @@
 import type { Agent, AppSnapshot, BackendModelOption, CreateSourceWorktreeInput, SourceWorktree } from '@workspace/core/contracts';
 import { createAgentInSnapshot } from '@workspace/core/agent-manager';
+import { resolveAgentBackend } from '@workspace/core/agent-backends';
 import { createEntityId } from '@workspace/core/ids';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
@@ -580,7 +581,9 @@ export class MissionExecutionService {
       createAgentInSnapshot(this.ports.snapshot, {
         name: `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`,
         teamId: mission.execution!.teamId, folder: workingFolder,
-        backend: lead.backend, backendDefaults: structuredClone(lead.backendDefaults), avatar: member.avatar,
+        backend: implementationModel?.backend ?? lead.backend,
+        ...(implementationModel && implementationModel.backend !== lead.backend ? {} : { backendDefaults: structuredClone(lead.backendDefaults) }),
+        avatar: member.avatar,
       }, undefined, workerId, { select: false });
       worker = this.agent(workerId)!;
       await this.ports.missions.change(id, current => {
@@ -623,17 +626,18 @@ export class MissionExecutionService {
   private async validateImplementationModel(mission: Mission, selection: MissionImplementationModel): Promise<MissionImplementationModel> {
     const leadRun = mission.execution!.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
     const lead = this.agent(leadRun?.workerId ?? mission.execution!.memberIds[0]);
-    if (!lead || !selection || selection.backend !== lead.backend) throw new Error('Choose an implementation model from the Mission lead provider.');
+    if (!lead || !selection) throw new Error('Choose an implementation model.');
+    const backend = resolveAgentBackend(this.ports.snapshot, selection.backend);
     if (typeof selection.model !== 'string' || !selection.model.trim()) throw new Error('Choose an implementation model.');
     if (!this.ports.listModels) throw new Error('The implementation model catalog is unavailable.');
-    const catalog = await this.ports.listModels(lead);
+    const catalog = await this.ports.listModels({ ...lead, backend, backendSession: undefined, backendDefaults: undefined });
     const model = catalog.find(model => !model.hidden && model.model === selection.model);
     if (!model) throw new Error('The implementation model is unavailable or restricted on this host.');
     const effort = selection.reasoningEffort ?? model.defaultReasoningEffort ?? undefined;
     if (effort !== undefined && !model.supportedReasoningEfforts?.some(option => option.reasoningEffort === effort)) {
       throw new Error('Choose a supported reasoning effort for the implementation model.');
     }
-    return { backend: lead.backend, model: model.model, ...(effort ? { reasoningEffort: effort } : {}) };
+    return { backend, model: model.model, ...(effort ? { reasoningEffort: effort } : {}) };
   }
 
   private requireMission(id: string): Mission {

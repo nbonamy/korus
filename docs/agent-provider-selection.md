@@ -25,8 +25,9 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
 - **Missions:** new workers inherit the main Mission agent's current provider,
   model, reasoning effort and service tier, not the assigned team member's profile.
   The first Mission agent starts from the selected orchestrator member. Tickets
-  approval may persist a Mission-specific implementation model and reasoning effort
-  from that provider. The daemon validates the selection against the host's filtered
+  approval may persist an independent implementation provider, model and reasoning
+  effort. Cross-provider workers use the target provider's defaults. The daemon
+  validates provider availability and the selection against the host's filtered
   catalog before worktree creation and each worker launch. Implementation workers,
   including reused workers and retries, use that selection; the lead and Review
   retain their configuration and conversations.
