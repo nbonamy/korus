@@ -209,9 +209,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           ? channel.request('conversation.synchronize', { target, checkpoint: checkpoint ?? null })
           : channel.request(method, target);
       const cacheChanged = (frame: CompanionConversation) => notify(frame);
-      const cacheFailed = () => { connectionDiagnostic('session.disconnect', { reason: 'conversation-cache' }); failed(); };
-      const cache = caches.get(host.hostId) ?? new ConversationCache(cacheRequest, cacheChanged, cacheFailed);
-      cache.reconnect(cacheRequest, cacheChanged, cacheFailed);
+      const cache = caches.get(host.hostId) ?? new ConversationCache(cacheRequest, cacheChanged);
+      cache.reconnect(cacheRequest, cacheChanged);
       caches.set(host.hostId, cache);
       const channel = createCompanionStream(() => openStream(host, companionUpdatesProtocol), (update) => {
         if (closed || !ownsCache()) return;

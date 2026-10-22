@@ -24,8 +24,8 @@ export class ConversationCache {
   private readonly journal = new CompanionJournal();
   private epoch = 0;
   private online = true;
-  constructor(private request: Request, private changed: (frame: CompanionReset) => void, private failed: () => void) {}
-  reconnect(request: Request, changed = this.changed, failed = this.failed) { this.disconnect(); this.request = request; this.changed = changed; this.failed = failed; this.online = true; }
+  constructor(private request: Request, private changed: (frame: CompanionReset) => void) {}
+  reconnect(request: Request, changed = this.changed) { this.disconnect(); this.request = request; this.changed = changed; this.online = true; }
   disconnect() {
     ++this.epoch; this.online = false;
     for (const entry of this.entries.values()) { clearTimeout(entry.timer); entry.timer = undefined; entry.subscribed = false; entry.loading = undefined; }
@@ -78,7 +78,7 @@ export class ConversationCache {
     this.journal.observe(frame);
     if (reset) entry.replica = createCompanionReplica(frame as CompanionReset);
     else {
-      if (!current || !entry.replica || frame.payload.revision !== current.payload.revision + 1) { void this.load(entry).catch(this.failed); return; }
+      if (!current || !entry.replica || frame.payload.revision !== current.payload.revision + 1) { this.reloadInBackground(entry); return; }
       try {
         entry.replica.apply(frame.payload.event as never);
         const snapshot = entry.replica.getSnapshot();
@@ -89,7 +89,7 @@ export class ConversationCache {
         if (entry.checkpoint) entry.checkpoint = { ...entry.checkpoint, revision: frame.payload.revision };
         entry.bytes = (entry.bytes ?? 0) + new TextEncoder().encode(JSON.stringify(frame)).byteLength; this.trim();
         this.changed(entry.frame); return;
-      } catch { void this.load(entry).catch(this.failed); return; }
+      } catch { this.reloadInBackground(entry); return; }
     }
     entry.frame = frame;
     entry.bytes = new TextEncoder().encode(JSON.stringify(frame)).byteLength;
@@ -106,7 +106,7 @@ export class ConversationCache {
         const replacement: Entry = { target, frame: null, expiresAt: entry.expiresAt };
         this.entries.set(target.agentId, replacement);
         if (replacement.expiresAt !== undefined) replacement.timer = setTimeout(() => this.expire(replacement), Math.max(0, replacement.expiresAt - Date.now()));
-        if (target.sessionId) void this.load(replacement).catch(this.failed);
+        if (target.sessionId) this.reloadInBackground(replacement);
       }
     }
   }
@@ -136,6 +136,12 @@ export class ConversationCache {
     const loading = entry.loading;
     return loading;
   }
+  /**
+   * A request that fails here says nothing about the link: the update channel's heartbeat judges that. The chat is
+   * left unsubscribed, so its next selection loads it again.
+   */
+  private reloadInBackground(entry: Entry) { this.load(entry).catch(() => {}); }
+  private unsubscribe(entry: Entry) { this.request('conversation.unsubscribe', entry.target).catch(() => {}); }
   private trim() {
     let bytes = [...this.entries.values()].reduce((sum, entry) => sum + (entry.bytes ?? 0), 0);
     for (const entry of this.entries.values()) {
@@ -148,12 +154,12 @@ export class ConversationCache {
     clearTimeout(entry.timer); entry.timer = undefined;
     if (this.entries.get(entry.target.agentId) !== entry) return;
     entry.subscribed = false;
-    if (entry.target.sessionId && this.online) void this.request('conversation.unsubscribe', entry.target).catch(this.failed);
+    if (entry.target.sessionId && this.online) this.unsubscribe(entry);
   }
   private drop(entry: Entry) {
     clearTimeout(entry.timer);
     if (this.entries.get(entry.target.agentId) !== entry) return;
     this.entries.delete(entry.target.agentId); this.journal.forget(entry.target.agentId);
-    if (entry.target.sessionId && entry.subscribed && this.online) void this.request('conversation.unsubscribe', entry.target).catch(this.failed);
+    if (entry.target.sessionId && entry.subscribed && this.online) this.unsubscribe(entry);
   }
 }

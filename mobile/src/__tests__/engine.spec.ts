@@ -771,7 +771,7 @@ it('uses acknowledged transcript checkpoints for warm agent switching and recove
     cachedConversation: value => cache?.peek(value), conversationUpdates: (value, since) => cache?.updates(value, since) ?? null,
     async connect(id) {
       const session = await connect(id); const base = await session.getWorkspace(); workspace = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
-      cache = new ConversationCache(async (_method, value) => { cache.receive((await session.loadConversation(value.agentId))!); }, () => {}, () => {});
+      cache = new ConversationCache(async (_method, value) => { cache.receive((await session.loadConversation(value.agentId))!); }, () => {});
       return { ...session, getWorkspace: async () => workspace, cachedConversation: id => cache.peek(target(id)), loadConversation: id => cache.select(target(id)) };
     },
   };
