@@ -258,7 +258,6 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         gitDiff: (agentId, scope) => request(host, 'agent.git.diff', { target: target(agentId), scope }),
         readImage: (agentId, path) => request(host, 'conversation.image.read', { target: target(agentId), path }),
         getUsage: () => request(host, 'usage.get', {}),
-        async reportDiagnostics(records) { await channel.request('diagnostics.report', { records }); },
         async registerPush(registration) {
           if (!registration) { await request(host, 'notifications.register', null); return; }
           await network();

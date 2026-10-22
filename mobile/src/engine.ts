@@ -118,8 +118,6 @@ export type EngineCommand =
   | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
-  /** The app's own lifecycle facts join the connection timeline; only these events are accepted. */
-  | { type: 'nativeDiagnostic'; event: string; stage: string; elapsedMs?: number }
   | { type: 'read'; agentId: string; revision: number; generation: number }
   | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
@@ -145,8 +143,6 @@ export type EnginePort = { connector: CompanionConnector; selectionStore?: Selec
 
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
-const nativeDiagnosticEvents = new Set(['app.native-activity', 'app.foreground-dispatched', 'app.background-execution']);
-
 export function createEngine(port: EnginePort) {
   const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && foreground) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
@@ -162,12 +158,7 @@ export function createEngine(port: EnginePort) {
   let backgroundedAt: number | undefined;
   let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
   let backgroundSuspended = false;
-  // One correlated record trail per return from the background: how long the phone was away and when the chat was usable again.
-  let resumeStartedAt: number | undefined;
-  const stopResumeTrace = watch(state.conversationReady, ready => {
-    if (!ready || resumeStartedAt === undefined) return;
-    connectionDiagnostic('resume.ready', { elapsedMs: Date.now() - resumeStartedAt }); resumeStartedAt = undefined;
-  }, { flush: 'post' });
+
   let suspension: Promise<void> | undefined;
   function suspendAfterGrace() {
     if (backgroundSuspended) return suspension;
@@ -464,7 +455,6 @@ export function createEngine(port: EnginePort) {
         connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });
         foreground = command.active;
         if (command.active) {
-          if (backgroundedAt !== undefined) { resumeStartedAt = Date.now(); connectionDiagnostic('resume.start', { idleMs: resumeStartedAt - backgroundedAt }); }
           sidebarNow.value = Date.now();
           clearTimeout(backgroundTimer); backgroundTimer = undefined;
           if (backgroundedAt !== undefined && Date.now() - backgroundedAt >= companionBackgroundGraceMs) suspendAfterGrace();
@@ -477,10 +467,6 @@ export function createEngine(port: EnginePort) {
           if (disposed || activity !== activityEpoch || !foreground) return;
           if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
           else await state.reconnect();
-          if (resumeStartedAt !== undefined) {
-            connectionDiagnostic('resume.settled', { elapsedMs: Date.now() - resumeStartedAt, stage: state.status.value, reason: state.conversationReady.value ? 'ready' : 'loading' });
-            if (state.conversationReady.value) resumeStartedAt = undefined;
-          }
           return openPendingNotification();
         }
         void state.setActive(false);
@@ -493,9 +479,6 @@ export function createEngine(port: EnginePort) {
         }
         return;
       }
-      case 'nativeDiagnostic':
-        if (nativeDiagnosticEvents.has(command.event)) connectionDiagnostic(command.event, { stage: String(command.stage).slice(0, 64), ...(typeof command.elapsedMs === 'number' ? { elapsedMs: command.elapsedMs } : {}) });
-        return;
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
         ++notificationEpoch; pendingNotification = null;
@@ -572,5 +555,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; stopResumeTrace(); ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

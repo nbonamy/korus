@@ -86,16 +86,6 @@ describe('native relay host adapter', () => {
     try { expect(transport.config.connectionMonitor).toStrictEqual({ abortConnectionOnPingFailure: false }); }
     finally { session.close(); await connector.dispose!(); }
   });
-  it('uploads connection diagnostics over the update channel', async () => {
-    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
-    transport.response = () => ({ teams: [], agents: [] });
-    const session = await connector.connect(host.hostId);
-    try {
-      await session.getWorkspace();
-      await session.reportDiagnostics!([{ event: 'app.activity', at: '2026-10-21T23:00:00.000Z', stage: 'foreground' }]);
-      expect(transport.requests.at(-1)).toMatchObject({ method: 'diagnostics.report', args: { records: [{ event: 'app.activity', at: '2026-10-21T23:00:00.000Z', stage: 'foreground' }] } });
-    } finally { session.close(); await connector.dispose!(); }
-  });
   it('retires stale host and relay routes after a failed foreground probe', async () => {
     vi.useFakeTimers();
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);

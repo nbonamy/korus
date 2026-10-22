@@ -1,5 +1,4 @@
 import { PromptRejectedError } from './companion-port';
-import { acknowledgeDiagnostics, pendingDiagnostics } from './connection-diagnostics';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -111,19 +110,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let reconnectWanted = false;
   let isForeground = true;
   let retryCount = 0;
-  // The laptop receives the phone's connection timeline so recovery can be studied away from the device.
-  let diagnosticsRefused = false; let uploadingDiagnostics = false;
-  let diagnosticsTimer: ReturnType<typeof setInterval> | undefined;
-  async function uploadDiagnostics() {
-    const active = session;
-    if (!active?.reportDiagnostics || diagnosticsRefused || uploadingDiagnostics) return;
-    const batch = pendingDiagnostics(100);
-    if (!batch.length) return;
-    uploadingDiagnostics = true;
-    try { await active.reportDiagnostics(batch); acknowledgeDiagnostics(batch.length); }
-    catch { diagnosticsRefused = true; /* An older laptop refuses; the next connection tries again. */ }
-    finally { uploadingDiagnostics = false; }
-  }
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
@@ -352,7 +338,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     clearTimeout(receiptTimer); receiptTimer = undefined;
     clearTimeout(retryTimer);
     retryTimer = undefined;
-    clearInterval(diagnosticsTimer); diagnosticsTimer = undefined;
     ++connectionEpoch;
     ++selectionEpoch;
     ++conversationGeneration.value;
@@ -417,9 +402,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';
-      diagnosticsRefused = false; clearInterval(diagnosticsTimer);
-      diagnosticsTimer = setInterval(() => { void uploadDiagnostics(); }, 30_000);
-      void uploadDiagnostics();
       // Receipt reads must not hold back the transcript; they settle while it loads.
       const receipts = reconcileReceipts();
       if (teamId.value) await selectAgent(agentId.value);
@@ -800,7 +782,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (isForeground === active) return;
     isForeground = active;
     if (!active) { clearTimeout(retryTimer); retryTimer = undefined; } else retryCount = 0;
-    void uploadDiagnostics();
     try { await session?.setActive?.(active); } catch { /* The channel reports transport loss through onDisconnect. */ }
   }
   async function reconnect(force = false) {

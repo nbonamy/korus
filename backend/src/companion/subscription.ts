@@ -64,8 +64,6 @@ export class CompanionSubscription {
     if (this.closed || !this.port.authorized()) throw new Error('Subscription closed.');
     this.lastRequestAt = this.now();
     if (method === 'ping') return {};
-    // The phone's connection timeline travels on this stream; the gateway validates and bounds it.
-    if (method === 'diagnostics.report') return this.port.request(method, args);
     if (method === 'snapshot.get') {
       const result = await this.port.request(method, args) as CompanionWorkspace;
       this.notificationsEnabled = (args as { notifications?: boolean })?.notifications === true;

@@ -1,20 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { acknowledgeDiagnostics, connectionDiagnostic, connectionError, connectionLogger, pendingDiagnostics, setConnectionDiagnosticSink } from '../connection-diagnostics';
+import { connectionDiagnostic, connectionError, connectionLogger, setConnectionDiagnosticSink } from '../connection-diagnostics';
 
 afterEach(() => setConnectionDiagnosticSink(undefined));
 describe('local connection diagnostics', () => {
-  it('keeps a bounded outbox of the newest records until the laptop acknowledges them', () => {
-    acknowledgeDiagnostics(Number.MAX_SAFE_INTEGER);
-    for (let index = 0; index < 350; index++) connectionDiagnostic('test.event', { sequence: index });
-    const batch = pendingDiagnostics(100);
-    expect(batch).toHaveLength(100);
-    expect(batch[0]).toMatchObject({ event: 'test.event', sequence: 50 });
-    acknowledgeDiagnostics(batch.length);
-    expect(pendingDiagnostics(500)).toHaveLength(200);
-    expect(pendingDiagnostics(1)[0]).toMatchObject({ sequence: 150 });
-    acknowledgeDiagnostics(Number.MAX_SAFE_INTEGER);
-    expect(pendingDiagnostics(10)).toStrictEqual([]);
-  });
   it('distinguishes socket closure from heartbeat abort without recording transport contents', () => {
     const sink = vi.fn(); setConnectionDiagnosticSink(sink);
     const socket = connectionLogger.forComponent('libp2p:websockets:connection').newScope('outbound:socket-id');

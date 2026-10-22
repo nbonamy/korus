@@ -63,9 +63,6 @@ const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'cl
 type NewChatRequest = { teamId: string; remoteConnectionId?: string; backend: AgentBackend; repositoryName: string; repositoryRoot: string; defaultBranch?: string; existingBranch?: string; worktree?: { branchName: string } };
 type CompanionPromptOptions = z.infer<typeof promptOptionsSchema>;
 const maxUploadBytes = companionMaxUploadBytes;
-const diagnosticValue = z.union([z.string().max(64), z.number().finite(), z.boolean()]);
-const diagnosticsSchema = z.object({ records: z.array(z.object({ event: z.string().regex(/^[\w.-]{1,64}$/), at: z.string().max(40) }).catchall(diagnosticValue)
-  .refine(record => Object.keys(record).length <= 24, 'Too many fields.')).max(200) }).strict();
 const uploadSchema = z.object({ type: z.enum(['image', 'file']), name: z.string().min(1).max(200), mimeType: z.string().max(120), data: z.string().max(Math.ceil(maxUploadBytes * 4 / 3) + 4).regex(/^[A-Za-z0-9+/]*={0,2}$/) }).strict();
 const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_000), clientCommandId: z.string().uuid(), options: promptOptionsSchema.optional(), attachments: z.array(uploadSchema).max(companionMaxUploads).optional() }).strict()
   .refine((command) => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, 'A prompt needs text or an attachment.');
@@ -81,8 +78,6 @@ export type GatewayPort = {
   duplicateAgent?(agentId: string, backend: AgentBackend): Promise<string>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
-  /** Receives the phone's connection timeline: metadata only, never request arguments or payloads. */
-  diagnostics?(peerId: string, records: Record<string, string | number | boolean>[]): void;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(response: AgentRequestResponse): Promise<void>;
@@ -443,12 +438,6 @@ export class CompanionGateway {
       const usage = await this.port.usage();
       this.requireGrant(peer);
       return usage;
-    },
-    'diagnostics.report': async (peer, args) => {
-      this.requireGrant(peer);
-      const { records } = diagnosticsSchema.parse(args);
-      this.port.diagnostics?.(peer.peerId, records as Record<string, string | number | boolean>[]);
-      return {};
     },
     'notifications.register': async (peer, args) => {
       const registration = pushRegistrationSchema.nullable().parse(args);

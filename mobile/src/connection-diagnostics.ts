@@ -11,18 +11,9 @@ type Details = {
 };
 export type ConnectionDiagnostic = Details & { event: string; at: string };
 let sink: ((record: ConnectionDiagnostic) => void | Promise<void>) | undefined;
-/** The newest records wait here until the paired laptop confirms receipt, so a reconnect timeline survives the reconnect. */
-const outboxLimit = 300;
-const outbox: ConnectionDiagnostic[] = [];
-export function pendingDiagnostics(max: number): ConnectionDiagnostic[] { return outbox.slice(0, max); }
-export function acknowledgeDiagnostics(count: number) { outbox.splice(0, count); }
 export function setConnectionDiagnosticSink(next: typeof sink) { sink = next; }
 export function connectionDiagnostic(event: string, details: Details = {}) {
-  try {
-    const record = { ...details, event, at: new Date().toISOString() };
-    outbox.push(record); if (outbox.length > outboxLimit) outbox.splice(0, outbox.length - outboxLimit);
-    void Promise.resolve(sink?.(record)).catch(() => {});
-  }
+  try { void Promise.resolve(sink?.({ ...details, event, at: new Date().toISOString() })).catch(() => {}); }
   catch { /* Diagnostics must never change connection behavior. */ }
 }
 export function connectionError(error: unknown): Pick<Details, 'errorName' | 'errorCode'> {

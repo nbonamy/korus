@@ -125,14 +125,3 @@ it('paces a long checkpoint catch-up by the writer so replay never outruns the s
     expect(delivered).toStrictEqual(Array.from({ length: 601 }, (_, index) => index + 2));
   } finally { f.subscription.close(); }
 });
-
-it('forwards the phone\'s connection timeline over the update stream without touching subscriptions', async () => {
-  const f = fixture();
-  try {
-    f.request.mockImplementationOnce(async () => ({}));
-    const records = [{ event: 'app.activity', at: '2026-10-21T23:00:00.000Z', stage: 'foreground' }];
-    await expect(f.subscription.request('diagnostics.report', { records })).resolves.toStrictEqual({});
-    expect(f.request).toHaveBeenCalledExactlyOnceWith('diagnostics.report', { records });
-    await expect(f.subscription.request('prompt.submit', {})).rejects.toThrow('Unsupported');
-  } finally { f.subscription.close(); }
-});
