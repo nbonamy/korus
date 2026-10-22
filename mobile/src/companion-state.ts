@@ -3,6 +3,8 @@ import { createBackoff } from './reconnect-backoff';
 import { createRemoteList } from './remote-list';
 import { createDraftLedger } from './draft-ledger';
 import { createReceiptReconciler } from './receipts';
+import { createSessionActions } from './session-actions';
+import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -17,8 +19,6 @@ import { createGitChanges } from './git-changes';
 import { reconcileWorkspace } from './workspace-reconcile';
 import type { DraftState, DraftStore } from './protected-storage';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
-
-const sameTarget = (a: CompanionTarget, b: CompanionTarget) => (Object.keys(a) as (keyof CompanionTarget)[]).every(key => a[key] === b[key]);
 
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[], onNotification?: (notification: CompanionNotification) => void) {
   let pushRegistration: CompanionPushRegistration | null | undefined;
@@ -43,8 +43,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const respondingRequest = ref<string | null>(null);
   const failedRequest = ref<string | null>(null);
-  const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | 'rename' | null>(null);
-  const sessionActionFailed = ref(false);
   const pendingGoals = reactive(new Set<string>());
   const goalError = ref(false);
   const queuedPromptPending = ref<string | null>(null);
@@ -53,7 +51,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const goalBusy = computed(() => pendingGoals.has(goalKey()));
 
   const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
-  const closePreview = shallowRef<CompanionClosePreview | null>(null);
   const laptopId = ref('');
   const teamId = ref('');
   const agentId = ref('');
@@ -265,7 +262,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   function closeSession() {
     permissionRequests.clear();
     for (const id of Object.keys(permissionChoices)) delete permissionChoices[id];
-    closePreview.value = null; chatCreation.value = 'idle';
+    actions.reset(); chatCreation.value = 'idle';
     receipts.clear();
     clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -425,70 +422,18 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
 
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => { const target = currentTarget(); return canSend.value && target ? session?.sendPrompt(target, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined; });
-  async function renameAgent(target: CompanionTarget, value: string) {
-    const active = session; const epoch = selectionEpoch; const current = currentTarget(); const name = value.trim();
-    if (!active || status.value !== 'connected' || sessionAction.value || !name || name.length > 200 || !current || !sameTarget(current, target)) return;
-    sessionAction.value = 'rename'; sessionActionFailed.value = false;
-    try {
-      if (!active.renameAgent) throw new Error('Agent renaming is unavailable.');
-      await active.renameAgent(target, name);
-      await refreshWorkspace(active);
-    } catch {
-      if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
-    } finally { sessionAction.value = null; }
-  }
-  async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
-    const id = agentId.value; const active = session; const epoch = selectionEpoch;
-    if (!id || !active || status.value !== 'connected' || !conversationReady.value || sessionAction.value) return;
-    const preview = closePreview.value;
-    if (action === 'close' && preview?.target.agentId !== id) return;
-    sessionAction.value = action; sessionActionFailed.value = false;
-    try {
-      if (action === 'close' && active.closeSession && preview) await active.closeSession(preview.target, input);
-      else if (action === 'restart' && active.restartSession) await active.restartSession(id);
-      else if (action === 'interrupt' && active.interrupt) await active.interrupt(id);
-      else throw new Error('Session action unavailable.');
-      if (!(await refreshWorkspace(active)) || epoch !== selectionEpoch) return;
-      if (action !== 'interrupt') {
-        conversation.value = null; selectedConversationKey = '';
-        await selectAgent(action === 'restart' ? id : '');
-      }
-    } catch {
-      if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
-    } finally { sessionAction.value = null; }
-  }
-  const interrupt = () => controlSession('interrupt');
-  const restartSession = () => controlSession('restart');
-  async function requestCloseSession() {
-    const id = agentId.value; const active = session; const epoch = selectionEpoch;
-    if (!id || !active || status.value !== 'connected' || sessionAction.value) return;
-    sessionAction.value = 'previewClose'; sessionActionFailed.value = false;
-    closePreview.value = null;
-    try {
-      if (!active.previewCloseSession) throw new Error('Close preview unavailable.');
-      const preview = await active.previewCloseSession(id);
-      if (epoch !== selectionEpoch || active !== session) return;
-      closePreview.value = { ...preview, upstream: matchingBranchUpstream(preview.branch, preview.upstream) ?? null };
-    } catch {
-      if (epoch === selectionEpoch && active === session) sessionActionFailed.value = true;
-    } finally { sessionAction.value = null; }
-    if (closePreview.value && !closePreview.value.isLinkedWorktree) await controlSession('close');
-  }
-  async function confirmCloseSession(id: string, deleteWorktree: boolean, deleteRemoteBranch = false, discardChanges = false) {
-    const preview = closePreview.value;
-    if (!preview || preview.target.agentId !== id || id !== agentId.value) return;
-    if (deleteWorktree && (!preview.isLinkedWorktree || (preview.hasChanges && !discardChanges))) return;
-    await controlSession('close', deleteWorktree ? { deleteWorktree: true, deleteRemoteBranch: deleteRemoteBranch && Boolean(preview.upstream), discardChanges, confirmed: true } : undefined);
-  }
-  const cancelCloseSession = () => { if (!sessionAction.value) { closePreview.value = null; sessionActionFailed.value = false; } };
-  const dismissSessionError = () => { sessionActionFailed.value = false; };
+  const actions = createSessionActions({
+    session: () => session, connected: () => status.value === 'connected', conversationReady: () => conversationReady.value, agentId: () => agentId.value,
+    selection: () => selectionEpoch, currentTarget, refreshWorkspace,
+    reopen: async (id) => { conversation.value = null; selectedConversationKey = ''; await selectAgent(id); },
+  });
+  const { action: sessionAction, failed: sessionActionFailed, closePreview } = actions;
   async function selectAgent(id: string) {
     const nextAgent = agents.value.find((a) => a.id === id) ?? mostRecentAgent();
     id = nextAgent?.id ?? '';
     if (id !== agentId.value) queuedPromptFailed.value = false;
     goalError.value = false;
-    closePreview.value = null;
-    sessionActionFailed.value = false;
+    actions.reset();
     const epoch = ++selectionEpoch;
     ++conversationGeneration.value;
     const nextKey = conversationIdentity(nextAgent ?? null);
@@ -702,6 +647,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
-    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose, confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset(); stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }
