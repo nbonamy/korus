@@ -12,6 +12,9 @@ import { connectionDiagnostic, connectionError } from './connection-diagnostics'
 export type CompanionDisconnectReason = 'resume-timeout' | 'heartbeat-timeout' | 'heartbeat-failed' | 'open-failed' | 'send-failed' | 'receive-ended';
 
 const resumeProbeTimeoutMs = 2_000;
+/** Subscribing or catching up replays a whole conversation, so it gets longer than an ordinary request. */
+const conversationLoadTimeoutMs = 60_000;
+const conversationLoads = new Set(['conversation.subscribe', 'conversation.synchronize']);
 /** A heartbeat may wait this many extra windows while other traffic shows the link is alive. */
 const maxHeartbeatExtensions = 2;
 const maxAbandoned = 64;
@@ -172,7 +175,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     const id = crypto.randomUUID();
     const deadline = options.deadline ?? 'request';
     return new Promise<T>((resolve, reject) => {
-      const call: Call = { method, deadline, started: Date.now(), armedAt: Date.now(), extensions: 0, timeoutMs: options.timeoutMs ?? companionRequestTimeoutMs, resolve: (value) => resolve(value as T), reject };
+      const call: Call = { method, deadline, started: Date.now(), armedAt: Date.now(), extensions: 0, timeoutMs: options.timeoutMs ?? (conversationLoads.has(method) ? conversationLoadTimeoutMs : companionRequestTimeoutMs), resolve: (value) => resolve(value as T), reject };
       pending.set(id, call); armDeadline(id, call);
       log('updates.request', { requestId: id, method });
       try { channel.send(encodeCompanionFrame({ v: 1, id, method, args })); }

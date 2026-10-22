@@ -110,7 +110,7 @@ describe('mobile update channel', () => {
     try {
       const initial = f.stream.request('snapshot.get', {}); await tick();
       f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
-      const slow = f.stream.request('conversation.synchronize', {}); const timedOut = expect(slow).rejects.toThrow('timed out');
+      const slow = f.stream.request('usage.get', {}); const timedOut = expect(slow).rejects.toThrow('timed out');
       await tick(); const slowId = f.calls.at(-1)!.id;
       await vi.advanceTimersByTimeAsync(14_999); f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
       await vi.advanceTimersByTimeAsync(1); await timedOut;
@@ -160,6 +160,25 @@ describe('mobile update channel', () => {
       await vi.advanceTimersByTimeAsync(10_000); f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
       await vi.advanceTimersByTimeAsync(5_000);
       expect(f.calls.filter(call => call.method === 'ping')).toHaveLength(1);
+      expect(f.disconnected).not.toHaveBeenCalled();
+    } finally { f.stream.close(); }
+  });
+  it('gives a conversation catch-up longer than an ordinary request before timing it out alone', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      let outcome = 'pending';
+      void f.stream.request('conversation.synchronize', {}).then(() => { outcome = 'replied'; }, (error: Error) => { outcome = error.message; });
+      await tick();
+      const answered = new Set<string>();
+      for (let second = 0; second < 59; second++) {
+        await vi.advanceTimersByTimeAsync(1_000);
+        for (const call of f.calls) if (call.method === 'ping' && !answered.has(call.id)) { answered.add(call.id); f.push({ v: 1, id: call.id, result: {} }); }
+      }
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(outcome).toBe('Request timed out.');
       expect(f.disconnected).not.toHaveBeenCalled();
     } finally { f.stream.close(); }
   });
