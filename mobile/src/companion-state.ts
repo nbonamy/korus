@@ -1,6 +1,8 @@
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
 import { createRemoteList } from './remote-list';
+import { createDraftLedger } from './draft-ledger';
+import { createReceiptReconciler } from './receipts';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -13,7 +15,7 @@ import type { CompanionConnector, CompanionConversation, CompanionHistoryState, 
 import { applyComposerChoice, composerCapabilitiesFor, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 import { createGitChanges } from './git-changes';
 import { reconcileWorkspace } from './workspace-reconcile';
-import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
+import type { DraftState, DraftStore } from './protected-storage';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 
 const sameTarget = (a: CompanionTarget, b: CompanionTarget) => (Object.keys(a) as (keyof CompanionTarget)[]).every(key => a[key] === b[key]);
@@ -68,33 +70,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     loadingOlder: loadingOlder.value,
     failed: historyFailed.value,
   }));
-  const drafts = reactive<Record<string, DraftState>>({});
-  const uncertain = reactive<Record<string, boolean>>({});
-  const unresolvedReceipts = reactive<Record<string, boolean>>({});
-  const receiptCallbacks = new Map<string, (outcome: 'accepted' | 'rejected') => void>();
-  let receiptTimer: ReturnType<typeof setTimeout> | undefined;
-  const sending = reactive<Record<string, boolean>>({});
-  const commandIds = reactive<Record<string, string>>({});
-  const submittedTexts = reactive<Record<string, string>>({});
-  const storageReady = ref(!store);
-  let storageFailed = false;
-  let writes = Promise.resolve();
-  const ready = store ? store.read().then((record) => {
-    const restored = restoreDraftRecord(record);
-    Object.assign(drafts, restored.drafts);
-    Object.assign(uncertain, restored.uncertain);
-    Object.assign(commandIds, restored.commandIds);
-    Object.assign(submittedTexts, restored.submittedTexts);
-    storageReady.value = true;
-  }).catch(() => { storageFailed = true; error.value = 'mobile.errors.storage'; }) : Promise.resolve();
-  function persist() {
-    if (!store) return Promise.resolve();
-    const record = JSON.parse(JSON.stringify({ drafts, uncertain, commandIds, submittedTexts }));
-    const pending = writes.then(() => store.write(record));
-    // Each write keeps its rejection for callers; the queue remains usable after a transient lock.
-    writes = pending.catch(() => { storageFailed = true; error.value = 'mobile.errors.storage'; });
-    return pending.then(() => { storageFailed = false; });
-  }
+  const ledger = createDraftLedger(store, () => { error.value = 'mobile.errors.storage'; });
+  const { drafts, uncertain, commandIds, submittedTexts, sending, storageReady, ready, persist } = ledger;
+  const unresolvedReceipts = ledger.unresolved; const receiptCallbacks = ledger.callbacks;
   let session: CompanionSession | null = null;
   let unsubscribe = () => {};
   let connectionEpoch = 0;
@@ -288,7 +266,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     permissionRequests.clear();
     for (const id of Object.keys(permissionChoices)) delete permissionChoices[id];
     closePreview.value = null; chatCreation.value = 'idle';
-    clearTimeout(receiptTimer); receiptTimer = undefined;
+    receipts.clear();
     clearTimeout(retryTimer);
     retryTimer = undefined;
     ++connectionEpoch;
@@ -356,47 +334,19 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';
       // Receipt reads must not hold back the transcript; they settle while it loads.
-      const receipts = reconcileReceipts();
+      const receiptsSettled = receipts.reconcile();
       if (teamId.value) await selectAgent(agentId.value);
-      await receipts;
+      await receiptsSettled;
       if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) backoff.reset();
     } catch {
       opened?.close();
       if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
     }
   }
-  /** Only receipt reads are retried. A timed-out prompt is never submitted again. */
-  async function reconcileReceipts() {
-    const active = session; const epoch = connectionEpoch;
-    if (!active?.commandStatus || status.value !== 'connected') return;
-    let retry = false;
-    for (const [draftKey, commandId] of Object.entries(commandIds)) {
-      if (!uncertain[draftKey] || JSON.parse(draftKey)[0] !== laptopId.value || unresolvedReceipts[draftKey]) continue;
-      try {
-        const receipt = await active.commandStatus(commandId);
-        if (active !== session || epoch !== connectionEpoch || disposed) return;
-        if (commandIds[draftKey] !== commandId) continue;
-        if (receipt === 'pending') { retry = true; continue; }
-        if (receipt === 'unresolved') {
-          // The daemon cannot prove delivery (e.g. it restarted during admission).
-          // Keep the warning and draft; a deliberate new Send remains available.
-          unresolvedReceipts[draftKey] = true;
-          continue;
-        }
-        uncertain[draftKey] = false;
-        receiptCallbacks.get(commandId)?.(receipt === 'accepted' ? 'accepted' : 'rejected');
-        receiptCallbacks.delete(commandId);
-        if (receipt === 'accepted' && drafts[draftKey]?.text === submittedTexts[draftKey]) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
-        if (draftKey === key() && error.value === 'mobile.errors.deliveryUnknown') error.value = receipt === 'accepted' ? '' : 'mobile.errors.commandFailed';
-        await persist();
-      } catch { retry = true; }
-    }
-    if (retry && active === session && !disposed) scheduleReceipts();
-  }
-  function scheduleReceipts() {
-    if (receiptTimer || disposed) return;
-    receiptTimer = setTimeout(() => { receiptTimer = undefined; void reconcileReceipts(); }, 2000);
-  }
+  const receipts = createReceiptReconciler({
+    ledger, session: () => session, connected: () => status.value === 'connected', connection: () => connectionEpoch, laptopId: () => laptopId.value, disposed: () => disposed,
+    settled: (draftKey, outcome) => { if (draftKey === key() && error.value === 'mobile.errors.deliveryUnknown') error.value = outcome === 'accepted' ? '' : 'mobile.errors.commandFailed'; },
+  });
   async function selectTeam(id: string, preferredAgentId = agentId.value) {
     teamId.value = workspace.value.teams.some((team) => team.id === id) ? id : '';
     await selectAgent(preferredAgentId);
@@ -680,8 +630,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       }
       uncertain[draftKey] = true;
       if (sendOptions?.onResolved) receiptCallbacks.set(clientCommandId, sendOptions.onResolved);
-      scheduleReceipts();
-      if (epoch === selectionEpoch) error.value = storageFailed ? 'mobile.errors.storage' : 'mobile.errors.deliveryUnknown';
+      receipts.schedule();
+      if (epoch === selectionEpoch) error.value = ledger.storageFailed ? 'mobile.errors.storage' : 'mobile.errors.deliveryUnknown';
       await persist().catch(() => {});
       return 'unknown';
     } finally {
