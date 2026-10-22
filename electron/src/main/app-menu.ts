@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { app, clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts';
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
@@ -420,7 +420,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       {
         label: mainT('menu.quitApp'),
         accelerator: shortcutAccelerator('quit'),
-        click: () => callbacks.sendAppCommand({ type: 'quit' }),
+        click: () => app.quit(),
       },
     ],
   };
@@ -466,7 +466,7 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
       {
         label: mainT('menu.quit'),
         accelerator: shortcutAccelerator('quit'),
-        click: () => callbacks.sendAppCommand({ type: 'quit' }),
+        click: () => app.quit(),
       },
     ],
   };

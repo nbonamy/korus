@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MenuItemConstructorOptions } from 'electron';
+import { app, type MenuItemConstructorOptions } from 'electron';
 import { buildAppMenuTemplate, installAppMenu, type AppMenuCallbacks } from '../app-menu';
 import { sendAppCommand } from '../ipc-events';
 
@@ -50,12 +50,14 @@ const electronClipboardMocks = vi.hoisted(() => {
 });
 
 vi.mock('electron', () => ({
+  app: { quit: vi.fn() },
   clipboard: electronClipboardMocks,
   Menu: electronMenuMocks,
   MenuItem: electronMenuMocks.MenuItem,
 }));
 
 beforeEach(() => {
+  vi.mocked(app.quit).mockClear();
   vi.mocked(sendAppCommand).mockClear();
   electronMenuMocks.buildFromTemplate.mockClear();
   electronMenuMocks.setApplicationMenu.mockClear();
@@ -235,7 +237,6 @@ describe('app menu', () => {
       ['File', 'New Team'],
       ['File', 'Close Agent'],
       ['File', 'Close Team'],
-      ['File', 'Quit'],
       ['View', 'Go to Agent...'],
       ['View', 'Changes'],
       ['View', 'Browser'],
@@ -247,17 +248,20 @@ describe('app menu', () => {
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(1, { type: 'new-team' });
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(2, { type: 'close-active-agent' });
     expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(3, { type: 'close-active-team' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(4, { type: 'quit' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(5, { type: 'open-agent-palette' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(6, { type: 'open-review' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(7, { type: 'open-browser' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(8, { type: 'cycle-teams' });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(9, { type: 'cycle-agents', direction: 1 });
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(10, { type: 'cycle-agents', direction: -1 });
+    clickItem(menu, 'File', 'Quit');
+    clickItem(menu, product.name, `Quit ${product.name}`);
+    expect(app.quit).toHaveBeenCalledTimes(2);
+    expect(menuItem(menu, 'File', 'Quit')?.accelerator).toBe('CommandOrControl+Q');
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(4, { type: 'open-agent-palette' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(5, { type: 'open-review' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(6, { type: 'open-browser' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(7, { type: 'cycle-teams' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(8, { type: 'cycle-agents', direction: 1 });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(9, { type: 'cycle-agents', direction: -1 });
     clickItem(menu, 'Help', 'What’s New');
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(11, { type: 'open-whats-new' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(10, { type: 'open-whats-new' });
     clickItem(menu, 'Help', 'Keyboard Shortcuts…');
-    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(12, { type: 'open-keyboard-shortcuts' });
+    expect(nextCallbacks.sendAppCommand).toHaveBeenNthCalledWith(11, { type: 'open-keyboard-shortcuts' });
     expect(menuItem(menu, 'Help', 'Keyboard Shortcuts…')).toMatchObject({ accelerator: 'CommandOrControl+Shift+/', registerAccelerator: false });
     clickItem(menu, 'Help', 'Command Palette…');
     expect(nextCallbacks.sendAppCommand).toHaveBeenLastCalledWith({ type: 'open-command-palette' });
