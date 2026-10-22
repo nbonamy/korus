@@ -1,7 +1,7 @@
 import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
-import type { MissionRun } from '@workspace/core/mission-execution';
+import { missionRunAssignment, type MissionRun } from '@workspace/core/mission-execution';
 
 export function missionAgent(snapshot: AppSnapshot, id: string | undefined): Agent | undefined {
   return snapshot.agents.find(agent => agent.id === id);
@@ -33,9 +33,9 @@ export function missionWorkspaceName(mission: Mission): string {
   return `${outcome}-${suffix || 'work'}`;
 }
 
-export function stageKickoffPrompt(run: MissionRun): string {
+export function stageKickoffPrompt(mission: Mission, run: MissionRun): string {
   if (run.stage === 'tickets') return `The requirements are approved. Continue this Mission in the Tickets stage now: follow the assigned ${product.name} Mission skill, then work with the user to shape and publish the backlog.`;
-  if (run.stage === 'implementation') return `The tickets are approved. Begin implementation of assigned ticket ${(run.ticketIndex ?? 0) + 1} now and report progress in this Mission conversation.`;
+  if (run.stage === 'implementation') return `The tickets are approved. Begin assigned ticket ${missionRunAssignment(mission, run)?.ticketNumber ?? (run.ticketIndex ?? 0) + 1}. Your assignment is ${JSON.stringify(missionRunAssignment(mission, run))}. Read get-mission-assignment, then implement only this ticket in your assigned worktree. Report progress in this Mission conversation and submit summary, ticketId and implementation evidence through submit-mission-result.`;
   return 'The implementation is approved. Begin the Mission review now and prepare the delivery decision for the user.';
 }
 

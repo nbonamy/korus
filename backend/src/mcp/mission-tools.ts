@@ -29,6 +29,15 @@ function registerMissionTools(
     },
   }, ({ title }) => loggedToolResult('set-mission-title', { callerAgentId }, () => coordinator.setMissionTitle(callerAgentId, title)));
 
+  server.registerTool('get-mission-assignment', {
+    description: 'Read your authenticated Mission implementation assignment: stable ticketId, one-based ticketNumber, exact title/body and repositoryPath. Read before editing, after compaction, and on reassignment; never infer a ticket by counting backlog entries. No parameters.',
+    inputSchema: {},
+  }, () => loggedToolResult('get-mission-assignment', { callerAgentId }, () => {
+    const context = coordinator.missionContext(callerAgentId);
+    if (!context?.assignment) throw new Error('This agent has no Mission implementation assignment.');
+    return { missionId: context.missionId, runId: context.runId, assignment: context.assignment };
+  }));
+
   server.registerTool('list-mission-artifacts', {
     description: 'List canonical artifact files already written for the active Mission. The Mission is inferred from your authenticated agent identity.',
     inputSchema: {},
@@ -61,15 +70,17 @@ function registerMissionTools(
   }, input => loggedToolResult('upsert-mission-ticket', { callerAgentId, ticketId: input.ticketId }, () => coordinator.upsertMissionTicket(callerAgentId, input)));
 
   server.registerTool('submit-mission-result', {
-    description: 'Submit the structured result of your active Mission stage. The Mission and run are inferred from your authenticated agent identity. This never approves a user-reviewed stage or completes a mission. Include actual verification evidence for implementation work.',
+    description: 'Submit the structured result of your active Mission stage. The Mission and run are inferred from your authenticated agent identity. This never approves a user-reviewed stage or completes a mission. For Implementation, send only summary, ticketId and implementation { changes, tests }, using get-mission-assignment. Example: {"summary":"Done","ticketId":"mission-ticket-abc","implementation":{"changes":"Commit abc123: callback fixed","tests":"npm test: 12 passed"}}. Other stages require complete artifacts. Legacy full-artifacts implementation calls remain supported; never combine both forms.',
     inputSchema: {
       summary: z.string().min(1).max(20000),
+      ticketId: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(),
+      implementation: z.object({ changes: z.string().trim().min(1).max(100000), tests: z.string().trim().min(1).max(100000) }).optional(),
       artifacts: z.object({
         requirements: z.object({ problem: z.string().max(100000), acceptance: z.string().max(100000) }),
         tickets: z.array(z.object({ id: z.string().regex(/^mission-ticket-[a-zA-Z0-9-]+$/).optional(), title: z.string().max(100000), body: z.string().max(100000).optional(), repositoryPath: z.string().trim().min(1).optional(), done: z.boolean(), reference: z.string().min(1).max(100000).optional(), dependsOn: z.array(z.number().int().nonnegative()).max(200).optional() })).max(200),
         implementation: z.object({ changes: z.string().max(100000), tests: z.string().max(100000) }),
         review: z.object({ summary: z.string().max(100000), pullRequestUrl: z.string().max(100000) }),
-      }),
+      }).optional(),
     },
   }, input => loggedToolResult('submit-mission-result', { callerAgentId }, () => coordinator.submitMissionResult(callerAgentId, input)));
 }

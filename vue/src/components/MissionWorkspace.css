@@ -85,6 +85,10 @@
   overflow: auto;
 }
 
+.mission-workspace__workbench-scroll--requirements {
+  padding-bottom: 0;
+}
+
 .mission-workspace__stage-heading {
   display: flex;
   min-width: 0;
