@@ -232,6 +232,11 @@ reconnection), `RelayClient` (admission and push, one admission at a time) and
 and device identity), `relay-pairing` (stored laptops and the pairing flow) and
 `relay-session` (one laptop connection and the conversation caches later sessions share).
 
+The phone's state (`companion-state`) keeps the connection, the selection and the conversation, and composes small
+parts for the rest: `remote-list` (every list read from the laptop on demand, dropped when its context changes),
+`draft-ledger` and `receipts` (what was typed, what was sent and whether it arrived), `session-actions` (rename,
+interrupt, restart and close) and `composer-state` (the model menu and permission choices).
+
 The iOS encrypted reader serializes native decryption with transport flow control.
 Its receive-window credit stays below the paused-buffer capacity: pausing cannot
 recall bytes already granted to the sender, and resuming can dispatch buffered
