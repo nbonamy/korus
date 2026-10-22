@@ -374,6 +374,8 @@ describe('native relay host adapter', () => {
     await session.interrupt!('agent'); await session.setApprovalPreset!('agent', 'full-access'); await session.setPermissionMode!('agent', 'acceptEdits');
     expect(transport.requests.filter((request) => /^agent\.(interrupt|approvalPreset|permissionMode)/.test(request.method)).map((request) => [request.method, request.args]))
       .toStrictEqual([['agent.interrupt', selectedTarget], ['agent.approvalPreset.set', { target: selectedTarget, preset: 'full-access' }], ['agent.permissionMode.set', { target: selectedTarget, mode: 'acceptEdits' }]]);
+    await session.renameAgent!(selectedTarget, 'Mobile work');
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.rename', args: { target: selectedTarget, name: 'Mobile work' } });
     await session.restartSession!('agent');
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.restart', args: selectedTarget });
     await session.previewCloseSession!('agent');

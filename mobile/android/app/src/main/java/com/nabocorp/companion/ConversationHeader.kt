@@ -50,7 +50,9 @@ import androidx.compose.ui.unit.dp
                         DropdownMenuItem(text = { Text("Changes") }, leadingIcon = { Icon(Icons.Outlined.Difference, null) }, enabled = model.canManageSession, onClick = model::openChanges)
                         HorizontalDivider()
                     }
+                    DropdownMenuItem(text = { Text("Rename Agent") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, enabled = model.canManageSession, onClick = model::openAgentRename)
                     DropdownMenuItem(text = { Text("Duplicate Agent") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, enabled = model.canManageSession && model.canStartCreation, onClick = model::duplicateAgent)
+                    HorizontalDivider()
                     DropdownMenuItem(text = { Text("Restart Session") }, leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) }, enabled = model.canRestartSession, onClick = model::restartSession)
                     DropdownMenuItem(text = { Text("Close Session") }, leadingIcon = { Icon(Icons.Outlined.Close, null) },
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error, leadingIconColor = MaterialTheme.colorScheme.error),

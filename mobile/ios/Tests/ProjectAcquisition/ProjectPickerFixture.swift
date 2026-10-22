@@ -55,14 +55,23 @@ enum EngineState {
 
 @main struct ProjectPickerFixture: App {
     @State private var model = AppModel()
+    @State private var showingRename = false
+    @State private var name = "Original"
     var body: some Scene {
         WindowGroup {
             @Bindable var model = model
             VStack {
                 Button("Existing Project") { model.showingProject = true }
                 Text(model.selection)
+                Button("Rename Agent") { showingRename = true }
+                Text("Agent: \(name)")
             }
             .sheet(isPresented: $model.showingProject) { NewProjectSheet(source: .existing).environment(model) }
+            .sheet(isPresented: $showingRename) {
+                RenameAgentSheet(name: name, enabled: true, cancel: { showingRename = false }) {
+                    name = $0; showingRename = false
+                }
+            }
         }
     }
 }

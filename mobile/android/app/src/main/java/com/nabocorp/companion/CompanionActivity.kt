@@ -237,6 +237,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     text = { Text("Check the connection and try again.") },
                     confirmButton = { TextButton(onClick = { model.duplicateFailed = false }) { Text("OK") } })
             }
+            model.agentRename?.let { RenameAgentDialog(model, it) }
             model.attachmentPreview?.let { AttachmentImageDialog(it) { model.attachmentPreview = null } }
             model.conversationImage?.let { ImagePreviewDialog(it, model::dismissConversationImage) }
         }

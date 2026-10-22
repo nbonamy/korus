@@ -100,6 +100,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private var duplicateTarget by mutableStateOf<ConversationTarget?>(null)
     internal val duplicatingAgent get() = duplicateTarget != null
     internal var duplicateFailed by mutableStateOf(false)
+    internal var agentRename by mutableStateOf<AgentRename?>(null)
     internal val newBackend get() = preferredNewBackend.takeIf { state.strings("backends").contains(it) } ?: state.strings("backends").firstOrNull().orEmpty()
     internal val canStartCreation get() = state.string("connection") == "connected" && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank() && newBackend.isNotBlank()
         && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
@@ -415,6 +416,18 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (!state.strings("backends").contains(backend) || creation?.submitted == true) return
         preferredNewBackend = backend; preferences.edit().putString("newChat.backend", backend).apply()
     }
+    internal fun openAgentRename() {
+        if (!canManageSession) return
+        val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
+        command("dismissSessionError")
+        dictation.cancel(); sheet = null
+        agentRename = AgentRename(target, state.obj("header").string("title"))
+    }
+    internal fun renameAgent(target: ConversationTarget, name: String) {
+        if (!canManageSession || target != ConversationTarget.parse(state.obj("composerTarget"))) return
+        agentRename = null
+        command("renameAgent", "target" to target.toJson(), "name" to name)
+    }
     internal fun duplicateAgent() {
         if (!canManageSession || !canStartCreation) return
         val target = ConversationTarget.parse(state.obj("composerTarget")) ?: return
@@ -581,6 +594,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     else if (pairingWasBusy || next.string("pairingError").isNotBlank()) { pairingPending = false; pairingWasBusy = false }
                     val oldId = state.string("agentId"); val nextId = next.string("agentId")
                     val nextTarget = next.optJSONObject("composerTarget")?.let(ConversationTarget::parse)
+                    if (agentRename?.target != nextTarget) agentRename = null
                     duplicateTarget?.let { source ->
                         if (source != nextTarget || state.string("chatCreation") == "creating" && next.string("chatCreation") == "idle") duplicateTarget = null
                         else if (next.string("chatCreation") == "failed") { duplicateTarget = null; duplicateFailed = true }

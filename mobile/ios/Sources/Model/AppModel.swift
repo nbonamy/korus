@@ -91,6 +91,12 @@ final class AppModel {
     private var duplicateTarget: ComposerTarget?
     var duplicatingAgent: Bool { duplicateTarget != nil }
     var duplicateFailed = false
+    struct AgentRename: Identifiable {
+        let target: ComposerTarget
+        let name: String
+        var id: String { target.agentId }
+    }
+    var agentRename: AgentRename?
     /// The repository a worktree is being named for; the sheet shows while it is set.
     var newWorktreeGroup: SidebarGroup?
     var existingBranchGroup: SidebarGroup?
@@ -470,6 +476,18 @@ final class AppModel {
         duplicateTarget = target
         let initialBackend = backend.flatMap { backends.contains($0) ? $0 : nil } ?? fallback
         command("duplicateAgent", ["target": fields, "backend": initialBackend])
+    }
+    func openAgentRename() {
+        guard canManageSession, let target = composerDrafts.target else { return }
+        dismissSessionError()
+        dictation.cancel()
+        agentRename = AgentRename(target: target, name: header?.title ?? "")
+    }
+    func renameAgent(_ target: ComposerTarget, name: String) {
+        guard canManageSession, composerDrafts.target == target,
+              let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        agentRename = nil
+        command("renameAgent", ["target": fields, "name": name])
     }
     func openProject(_ source: NewProjectSource) {
         guard canStartChat, chatCreation != .creating else { return }

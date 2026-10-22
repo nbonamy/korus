@@ -47,7 +47,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const respondingRequest = ref<string | null>(null);
   const failedRequest = ref<string | null>(null);
-  const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | null>(null);
+  const sessionAction = ref<'interrupt' | 'restart' | 'close' | 'previewClose' | 'rename' | null>(null);
   const sessionActionFailed = ref(false);
   const pendingGoals = reactive(new Set<string>());
   const goalError = ref(false);
@@ -532,6 +532,20 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
 
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => { const target = currentTarget(); return canSend.value && target ? session?.sendPrompt(target, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined; });
+  async function renameAgent(target: CompanionTarget, value: string) {
+    const active = session; const epoch = selectionEpoch; const current = currentTarget(); const name = value.trim();
+    if (!active || status.value !== 'connected' || sessionAction.value || !name || name.length > 200 || !current
+      || !(Object.keys(current) as (keyof CompanionTarget)[]).every(key => current[key] === target[key])) return;
+    sessionAction.value = 'rename'; sessionActionFailed.value = false;
+    try {
+      if (!active.renameAgent) throw new Error('Agent renaming is unavailable.');
+      await active.renameAgent(target, name);
+      const next = await active.getWorkspace();
+      if (active === session) workspace.value = reconcileWorkspace(workspace.value, next);
+    } catch {
+      if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
+    } finally { sessionAction.value = null; }
+  }
   async function controlSession(action: 'interrupt' | 'restart' | 'close', input?: CompanionCloseOptions) {
     const id = agentId.value; const active = session; const epoch = selectionEpoch;
     if (!id || !active || status.value !== 'connected' || !conversationReady.value || sessionAction.value) return;
@@ -807,6 +821,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const current = agent.value; const team = workspace.value.teams.find(team => team.id === current?.teamId);
       return current && team ? connector.conversationUpdates?.(companionTarget(laptopId.value, team, current), since) ?? null : null;
     },
-    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }

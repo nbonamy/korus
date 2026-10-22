@@ -314,6 +314,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         localRepositories: teamId => request(host, 'project.local.list', { teamId }),
         localBranches: (teamId, repositoryId) => request(host, 'project.local.branches', { teamId, repositoryId }),
         async duplicateAgent(target, backend) { return (await request<{ agentId: string }>(host, 'agent.duplicate', { target, backend })).agentId; },
+        async renameAgent(target, name) { await request(host, 'agent.rename', { target, name }); },
         githubRepositories: teamId => request(host, 'project.github.list', { teamId }),
         githubBranches: (teamId, repositoryId) => request(host, 'project.github.branches', { teamId, repositoryId }),
         async createProject(input, signal) { return created((await request<{ creationId: string }>(host, 'project.create', input)).creationId, signal); },

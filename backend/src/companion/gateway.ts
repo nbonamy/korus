@@ -77,6 +77,7 @@ export type GatewayPort = {
   localRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
   localBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   duplicateAgent?(agentId: string, backend: AgentBackend): Promise<string>;
+  renameAgent?(agentId: string, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
@@ -260,6 +261,12 @@ const agentOperations = {
       if (backends && !backends[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
+  }),
+  'agent.rename': agentOperation(withTarget(z.object({ name: z.string().trim().min(1).max(200) }).strict()))({
+    act: async (port, agent, { name }) => {
+      if (!port.renameAgent) throw new Error('Agent renaming is unavailable.');
+      await port.renameAgent(agent.id, name); return {};
+    },
   }),
   'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
     check: (agent, { backend }, { backends }) => {

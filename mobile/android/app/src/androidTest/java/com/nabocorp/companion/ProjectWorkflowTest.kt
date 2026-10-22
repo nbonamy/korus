@@ -69,6 +69,25 @@ class ProjectWorkflowTest {
         }
     }
 
+    @Test fun renameCapturesTheTargetValidatesTheNameAndCanBeCancelled() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state().put("header", json("title" to "Original"))); mount(engine)
+            app.onNodeWithContentDescription("Conversation actions").performClick()
+            app.onNodeWithText("Rename Agent").performClick()
+            app.onNodeWithTag("agent-name").assertTextContains("Original").performTextReplacement("   ")
+            app.onNodeWithText("Save").assertIsNotEnabled()
+            app.onNodeWithTag("agent-name").performTextReplacement("Discarded")
+            app.onNodeWithText("Cancel").performClick()
+            assertFalse(engine.commands().any { it.string("type") == "renameAgent" })
+            app.onNodeWithContentDescription("Conversation actions").performClick()
+            app.onNodeWithText("Rename Agent").performClick()
+            app.onNodeWithTag("agent-name").performTextReplacement("  Mobile work  ")
+            app.onNodeWithText("Save").performClick()
+            assertCommand(engine, json("type" to "renameAgent", "target" to ConversationTarget("host", "local", "team", "agent", "session").toJson(), "name" to "Mobile work"))
+        }
+    }
+
     @Test fun duplicateAgentStartsImmediatelyWithoutAFormAndReportsFailureForAnExplicitRetry() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }

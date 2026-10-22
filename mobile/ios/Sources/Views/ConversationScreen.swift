@@ -101,8 +101,11 @@ struct ConversationScreen: View {
                                 .disabled(!model.canManageSession)
                             Divider()
                         }
+                        Button("Rename Agent", systemImage: "pencil") { model.openAgentRename() }
+                            .disabled(!model.canManageSession)
                         Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
                             .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
+                        Divider()
                         Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                             .disabled(!model.canManageSession || model.isWorking)
                         Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
@@ -131,6 +134,11 @@ struct ConversationScreen: View {
             .sheet(item: Binding(get: { model.closePreview }, set: { if $0 == nil { model.cancelCloseSession() } })) { preview in
                 CloseSessionSheet(preview: preview)
             }
+            .sheet(item: Binding(get: { model.agentRename }, set: { model.agentRename = $0 })) { draft in
+                RenameAgentSheet(name: draft.name, enabled: model.canManageSession && model.composerDrafts.target == draft.target,
+                    cancel: { model.agentRename = nil }, save: { model.renameAgent(draft.target, name: $0) })
+            }
+            .onChange(of: model.composerDrafts.target) { _, _ in model.agentRename = nil }
             .alert("Session action failed", isPresented: Binding(get: { model.sessionActionFailed && model.closePreview == nil }, set: { if !$0 { model.dismissSessionError() } })) {
                 Button("OK", role: .cancel) { model.dismissSessionError() }
             } message: { Text("The laptop couldn’t complete the action. Check the connection and try again.") }

@@ -16,7 +16,7 @@ project = Xcodeproj::Project.new(File.join(work, 'Picker.xcodeproj'))
 app = project.new_target(:application, 'PickerFixture', :ios, '26.0')
 tests = project.new_target(:ui_test_bundle, 'PickerTests', :ios, '26.0')
 tests.add_dependency(app)
-['Views/NewProjectSheet.swift', 'Views/SheetStyle.swift'].each do |file|
+['Views/NewProjectSheet.swift', 'Views/RenameAgentSheet.swift', 'Views/SheetStyle.swift'].each do |file|
   app.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Sources', file))])
 end
 app.add_file_references([project.main_group.new_file(File.join(root, 'mobile/ios/Tests/ProjectAcquisition/ProjectPickerFixture.swift'))])

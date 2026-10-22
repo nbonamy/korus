@@ -54,7 +54,7 @@ export type EngineState = {
   goalBusy: boolean;
   goalError: boolean;
   review: ReturnType<typeof createCompanionState>['review']['value'];
-  sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
+  sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | 'rename' | null;
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
@@ -103,6 +103,7 @@ export type EngineCommand =
   | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'local' } | { type: 'dismissProjectBranches' }
   | { type: 'loadProjectRepositories'; source?: 'github' | 'local' } | { type: 'dismissProjectRepositories' }
   | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
+  | { type: 'renameAgent'; target: CompanionTarget; name: string }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
@@ -523,6 +524,7 @@ export function createEngine(port: EnginePort) {
       case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
       case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
+      case 'renameAgent': return state.renameAgent(command.target, command.name);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
       case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });

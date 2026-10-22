@@ -248,6 +248,7 @@ export class CompanionManager {
         if (!created) throw new Error('The agent was not duplicated.');
         return created.id;
       },
+      renameAgent: async (agentId, name) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, name }, _clientId: 'companion-write' }); },
       setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },
       closePreview: async (agentId) => {
         const workspace = await this.workspace();

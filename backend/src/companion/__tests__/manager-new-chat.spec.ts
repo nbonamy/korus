@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { duplicateAgentInSnapshot } from '@workspace/core/agent-manager';
+import { duplicateAgentInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { opaquePath } from '@workspace/core/companion-projection';
 import type { AgentGitWorkflow, AppSnapshot, SourceBranch, SourceRepository } from '@workspace/core/contracts';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
@@ -67,8 +67,8 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
       return { ...snapshot, activeAgentId: id } as Result;
     }
     if (method === backendMethods.agentUpdate) {
-      const { input } = params as { input: { id: string; backend: 'codex' | 'claude' } };
-      snapshot.agents.find((agent) => agent.id === input.id)!.backend = input.backend;
+      const { input } = params as { input: import('@workspace/core/contracts').UpdateAgentInput };
+      updateAgentFromInput(snapshot, input);
       return snapshot as Result;
     }
     throw new Error(`Unexpected ${method}`);
@@ -116,6 +116,17 @@ describe('mobile chat creation', () => {
     expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-existing', backend: 'claude' } });
     expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
     expect(f.calls.some(call => call.method === backendMethods.sourceWorktreeCreate)).toBe(false);
+  });
+
+  it('routes a rename through the existing desktop update operation and preserves the session', async () => {
+    const f = await fixture();
+    f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'rename-session' };
+    const source = structuredClone(f.snapshot.agents[0]!);
+    const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: JSON.stringify(source.backendSession) };
+    await f.gateway.request('phone', 'agent.rename', { target, name: 'Mobile work' });
+    expect(f.calls.find(call => call.method === backendMethods.agentUpdate)?.params).toStrictEqual({ input: { id: 'existing', name: 'Mobile work' }, _clientId: 'companion-write' });
+    const result = await f.gateway.request('phone', 'snapshot.get', {});
+    expect(result).toMatchObject({ agents: [expect.objectContaining({ id: 'existing', name: 'Mobile work', backend: source.backend, backendSession: source.backendSession })] });
   });
 
   it('duplicates the target through the desktop operation with an explicit available engine', async () => {

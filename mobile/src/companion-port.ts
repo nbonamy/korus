@@ -29,6 +29,7 @@ export type CompanionSession = {
   localRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
   localBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   duplicateAgent?(target: CompanionTarget, backend: AgentBackend): Promise<string>;
+  renameAgent?(target: CompanionTarget, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, signal?: AbortSignal): Promise<string>;
   getUsage?(): Promise<CompanionUsage[]>;
   registerPush?(registration: CompanionPushRegistration | null): Promise<void>;

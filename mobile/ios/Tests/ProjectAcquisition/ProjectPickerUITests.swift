@@ -3,6 +3,26 @@ import XCTest
 // Regression: replacing a scrolled repository catalog with asynchronously loaded
 // branches must expose tappable rows, including when changing repositories.
 final class ProjectPickerUITests: XCTestCase {
+    @MainActor func testRenameValidatesTheNameAndRequiresSave() {
+        let app = XCUIApplication()
+        continueAfterFailure = false
+        app.launch()
+        app.buttons["Rename Agent"].tap()
+        let name = app.textFields["Agent name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        XCTAssertEqual(name.value as? String, "Original")
+        name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "   ")
+        XCTAssertFalse(app.buttons["Save"].isEnabled)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.staticTexts["Agent: Original"].waitForExistence(timeout: 5))
+        app.buttons["Rename Agent"].tap()
+        name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "  Mobile work  ")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Agent: Mobile work"].waitForExistence(timeout: 5))
+    }
+
     @MainActor func testSearchingForRepositoriesKeepsLoadedBranchesVisibleAfterKeyboardDismissal() {
         let app = XCUIApplication()
         continueAfterFailure = false
