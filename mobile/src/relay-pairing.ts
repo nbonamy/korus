@@ -92,4 +92,3 @@ export function createPairing(options: { vault: ProtectedVault; relay: RelayConf
     },
   };
 }
-export type Pairing = ReturnType<typeof createPairing>;

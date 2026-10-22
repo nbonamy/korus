@@ -1,10 +1,10 @@
 import { companionResponseLimit } from '@workspace/core/companion-protocol';
 import { describeError } from './describe-error';
 
-export const maxQueuedFrames = 256;
+const maxQueuedFrames = 256;
 /** A bulk producer resumes once the writer has caught up to this many frames, or half the byte cap. */
-export const resumeQueuedFrames = 32;
-export const maxQueuedBytes = companionResponseLimit * 2;
+const resumeQueuedFrames = 32;
+const maxQueuedBytes = companionResponseLimit * 2;
 
 type Limits = { maxFrames: number; resumeFrames: number; maxBytes: number };
 type Io = { write(bytes: Uint8Array): Promise<void>; fail(reason: 'send-queue-limit' | 'send-failed', detail?: string): void };

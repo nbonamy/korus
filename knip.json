@@ -3,8 +3,7 @@
   "ignoreBinaries": [
     "shasum",
     "swift",
-    "spctl",
-    "openssl"
+    "spctl"
   ],
   "workspaces": {
     ".": {

@@ -22,7 +22,7 @@ export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: 
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
 /** The link to one laptop: whether the app is looking at it, when it is lost, and how it ends. */
-export type CompanionLink = {
+type CompanionLink = {
   setActive?(active: boolean): Promise<void>;
   onDisconnect(listener: () => void): () => void;
   close(): void;
