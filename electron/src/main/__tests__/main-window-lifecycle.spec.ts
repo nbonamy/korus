@@ -12,7 +12,7 @@ const host = vi.hoisted(() => ({
 }));
 vi.mock('electron', () => ({
   nativeTheme: Object.defineProperty(new EventEmitter(), 'shouldUseDarkColors', { get: () => host.dark }),
-  app: { getPath: () => host.userData, getAppPath: () => '/app', get isPackaged() { return host.packaged; } },
+  app: { quit: vi.fn(), getPath: () => host.userData, getAppPath: () => '/app', get isPackaged() { return host.packaged; } },
   screen: { getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }] },
   globalShortcut: { register: host.register, unregister: host.unregister, isRegistered: () => host.registered },
   shell: { openExternal: host.openExternal },
@@ -38,7 +38,7 @@ import { createMainWindow } from '../main-window';
 import { cycleTeamsAccelerator } from '../app-shortcuts';
 import { ipcChannels } from '@workspace/core/ipc';
 import { logRendererConsole, warnMain } from '../log';
-import { nativeTheme } from 'electron';
+import { app, nativeTheme } from 'electron';
 
 function openWindow() {
   return createMainWindow() as unknown as EventEmitter & {
@@ -221,5 +221,9 @@ describe('main window lifecycle', () => {
     window.webContents.emit('before-input-event', event, { type: 'keyDown', meta: true, key: 'k' });
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.appCommand, { type: 'open-agent-palette' });
+    window.webContents.send.mockClear();
+    window.webContents.emit('before-input-event', event, { type: 'keyDown', meta: true, key: 'q' });
+    expect(app.quit).toHaveBeenCalledOnce();
+    expect(window.webContents.send).not.toHaveBeenCalled();
   });
 });

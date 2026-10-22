@@ -95,7 +95,8 @@ export function createMainWindow(
     }
 
     event.preventDefault();
-    sendAppCommand(window.webContents, command);
+    if (command.type === 'quit') app.quit();
+    else sendAppCommand(window.webContents, command);
   });
 
   const loading = MAIN_WINDOW_VITE_DEV_SERVER_URL
