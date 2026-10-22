@@ -1,5 +1,6 @@
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
+import { createRemoteList } from './remote-list';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -29,24 +30,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
-  const usage = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; providers: CompanionUsage[] }>({ status: 'idle', providers: [] });
-  let usageEpoch = 0;
-  const stopUsage = watch(status, () => {
-    ++usageEpoch;
-    usage.value = { status: 'idle', providers: [] };
-  }, { flush: 'sync' });
+  // Every list read from the laptop on demand is dropped when the connection or its context changes.
+  const remote = { session: () => session, connected: () => status.value === 'connected' };
+  const usageList = createRemoteList<CompanionUsage>(remote, {});
+  const usage = computed(() => ({ status: usageList.state.value.status, providers: usageList.state.value.items }));
+  const stopUsage = watch(status, usageList.reset, { flush: 'sync' });
   async function loadUsage() {
-    const active = session;
-    if (status.value !== 'connected' || usage.value.status === 'loading') return;
-    const epoch = ++usageEpoch;
-    usage.value = { status: 'loading', providers: [] };
-    try {
-      if (!active?.getUsage) throw new Error('Usage is unavailable.');
-      const providers = await active.getUsage();
-      if (epoch === usageEpoch && active === session) usage.value = { status: 'loaded', providers };
-    } catch {
-      if (epoch === usageEpoch && active === session) usage.value = { status: 'failed', providers: [] };
-    }
+    if (status.value !== 'connected' || usageList.state.value.status === 'loading') return;
+    await usageList.load({}, active => active.getUsage?.());
   }
   const respondingRequest = ref<string | null>(null);
   const failedRequest = ref<string | null>(null);
@@ -116,52 +107,26 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
-  const branches = shallowRef<{ repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] }>({ repositoryId: null, status: 'idle', items: [] });
-  let branchEpoch = 0;
-  function dismissBranches() { ++branchEpoch; branches.value = { repositoryId: null, status: 'idle', items: [] }; }
+  const branchList = createRemoteList<CompanionBranch, { repositoryId: string | null }>(remote, { repositoryId: null });
+  const branches = branchList.state;
+  const dismissBranches = branchList.reset;
   const stopBranches = watch([laptopId, teamId, status], dismissBranches, { flush: 'sync' });
-  const projectRepositories = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionGitHubRepository[] }>({ status: 'idle', items: [] });
-  let projectEpoch = 0;
-  function dismissProjectRepositories() { ++projectEpoch; projectRepositories.value = { status: 'idle', items: [] }; dismissProjectBranches(); }
+  const loadBranches = (repositoryId: string) => branchList.load({ repositoryId }, active => teamId.value ? active.listBranches?.(teamId.value, repositoryId) : undefined);
+  const projectBranchList = createRemoteList<CompanionProjectBranch, { repositoryId: string | null }>(remote, { repositoryId: null });
+  const projectBranches = projectBranchList.state;
+  const dismissProjectBranches = projectBranchList.reset;
+  const loadProjectBranches = (repositoryId: string, source: 'github' | 'local' = 'github') => projectBranchList.load({ repositoryId }, active => {
+    const read = source === 'local' ? active.localBranches : active.githubBranches;
+    return teamId.value ? read?.call(active, teamId.value, repositoryId) : undefined;
+  });
+  const projectRepositoryList = createRemoteList<CompanionGitHubRepository>(remote, {});
+  const projectRepositories = projectRepositoryList.state;
+  function dismissProjectRepositories() { projectRepositoryList.reset(); dismissProjectBranches(); }
   const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
-  async function loadProjectRepositories(source: 'github' | 'local' = 'github') {
-    const active = session; const team = teamId.value; const epoch = ++projectEpoch;
-    projectRepositories.value = { status: 'loading', items: [] };
-    try {
-      const read = source === 'local' ? active?.localRepositories : active?.githubRepositories;
-      if (!active || !read || !team || status.value !== 'connected') throw new Error('Repositories are unavailable.');
-      const items = await read.call(active, team);
-      if (epoch === projectEpoch && active === session) projectRepositories.value = { status: 'loaded', items };
-    } catch {
-      if (epoch === projectEpoch) projectRepositories.value = { status: 'failed', items: [] };
-    }
-  }
-  const projectBranches = shallowRef<{ repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionProjectBranch[] }>({ repositoryId: null, status: 'idle', items: [] });
-  let projectBranchEpoch = 0;
-  function dismissProjectBranches() { ++projectBranchEpoch; projectBranches.value = { repositoryId: null, status: 'idle', items: [] }; }
-  async function loadProjectBranches(repositoryId: string, source: 'github' | 'local' = 'github') {
-    const active = session, team = teamId.value, epoch = ++projectBranchEpoch;
-    projectBranches.value = { repositoryId, status: 'loading', items: [] };
-    try {
-      const read = source === 'local' ? active?.localBranches : active?.githubBranches;
-      if (!active || !read || !team || status.value !== 'connected') throw new Error('Branches are unavailable.');
-      const items = await read.call(active, team, repositoryId);
-      if (epoch === projectBranchEpoch && active === session) projectBranches.value = { repositoryId, status: 'loaded', items };
-    } catch {
-      if (epoch === projectBranchEpoch) projectBranches.value = { repositoryId, status: 'failed', items: [] };
-    }
-  }
-  async function loadBranches(repositoryId: string) {
-    const active = session; const team = teamId.value; const epoch = ++branchEpoch;
-    branches.value = { repositoryId, status: 'loading', items: [] };
-    try {
-      if (!active?.listBranches || !team || status.value !== 'connected') throw new Error('Branch list unavailable.');
-      const items = await active.listBranches(team, repositoryId);
-      if (epoch === branchEpoch && active === session) branches.value = { repositoryId, status: 'loaded', items };
-    } catch {
-      if (epoch === branchEpoch) branches.value = { repositoryId, status: 'failed', items: [] };
-    }
-  }
+  const loadProjectRepositories = (source: 'github' | 'local' = 'github') => projectRepositoryList.load({}, active => {
+    const read = source === 'local' ? active.localRepositories : active.githubRepositories;
+    return teamId.value ? read?.call(active, teamId.value) : undefined;
+  });
 
   const modelCatalog = shallowRef<Record<string, BackendModelOption[]>>({});
   const composerChoices = reactive<Record<string, ComposerChoice>>({});
@@ -179,8 +144,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return agents.value.reduce<Agent | undefined>((latest, candidate) =>
       !latest || activity(candidate) > activity(latest) ? candidate : latest, undefined);
   }
-  const plugins = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendPluginSummary[] }>({ status: 'idle', items: [] });
-  const skills = shallowRef<{ status: 'idle' | 'loading' | 'loaded' | 'failed'; items: BackendSkillSummary[] }>({ status: 'idle', items: [] });
+  const skillList = createRemoteList<BackendSkillSummary>(remote, {});
+  const skills = skillList.state;
+  const pluginList = createRemoteList<BackendPluginSummary>(remote, {});
+  const plugins = pluginList.state;
   const review = shallowRef<{ status: 'idle' | 'loading' | 'ready' | 'failed' | 'starting' | 'started' | 'unknown'; setup: CompanionReviewSetup | null }>({ status: 'idle', setup: null });
   let reviewEpoch = 0;
   function dismissReview() { ++reviewEpoch; review.value = { status: 'idle', setup: null }; }
@@ -218,46 +185,19 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     } catch { if (epoch === reviewEpoch) review.value = { status: 'unknown', setup }; }
   }
   const skillContext = computed(() => JSON.stringify([laptopId.value, status.value, agent.value?.id, agent.value?.backend, agent.value?.folder, agent.value && companionSessionId(agent.value)]));
-  let skillRequest: Promise<void> | undefined;
-  let skillEpoch = 0;
-  const stopSkills = watch(skillContext, () => {
-    ++skillEpoch; skillRequest = undefined; skills.value = { status: 'idle', items: [] };
-  }, { flush: 'sync' });
-  function loadSkills(): Promise<void> {
-    if (skillRequest) return skillRequest;
-    if (skills.value.status === 'loaded' || status.value !== 'connected' || !agent.value) return Promise.resolve();
-    const active = session; const id = agent.value.id; const epoch = skillEpoch;
-    if (!active?.listSkills || !defaultBackendCapabilities(agent.value.backend).skills) {
-      skills.value = { status: 'loaded', items: [] }; return Promise.resolve();
-    }
-    skills.value = { status: 'loading', items: [] };
-    skillRequest = active.listSkills(id).then((items) => {
-      if (epoch === skillEpoch && session === active) skills.value = { status: 'loaded', items: items.filter((skill) => skill.enabled) };
-    }).catch(() => {
-      if (epoch === skillEpoch && session === active) skills.value = { status: 'failed', items: [] };
-    }).finally(() => { if (epoch === skillEpoch) skillRequest = undefined; });
-    return skillRequest;
+  const stopSkills = watch(skillContext, skillList.reset, { flush: 'sync' });
+  const stopPlugins = watch(skillContext, pluginList.reset, { flush: 'sync' });
+  /** Skills and plugins are read once per chat; only the enabled ones are offered, and an engine without them offers none. */
+  function loadCatalog<Item extends { enabled: boolean }>(list: ReturnType<typeof createRemoteList<Item>>, capability: 'skills' | 'plugins',
+    supports: (active: CompanionSession) => boolean, read: (active: CompanionSession, id: string) => Promise<Item[]> | undefined): Promise<void> {
+    const owner = agent.value;
+    if (list.pending) return list.pending;
+    if (list.state.value.status === 'loaded' || status.value !== 'connected' || !owner) return Promise.resolve();
+    if (!session || !supports(session) || !defaultBackendCapabilities(owner.backend)[capability]) { list.settle([]); return Promise.resolve(); }
+    return list.loadOnce({}, active => read(active, owner.id)?.then(items => items.filter(item => item.enabled)));
   }
-  let pluginRequest: Promise<void> | undefined;
-  let pluginEpoch = 0;
-  const stopPlugins = watch(skillContext, () => {
-    ++pluginEpoch; pluginRequest = undefined; plugins.value = { status: 'idle', items: [] };
-  }, { flush: 'sync' });
-  function loadPlugins(): Promise<void> {
-    if (pluginRequest) return pluginRequest;
-    if (plugins.value.status === 'loaded' || status.value !== 'connected' || !agent.value) return Promise.resolve();
-    const active = session; const id = agent.value.id; const epoch = pluginEpoch;
-    if (!active?.listPlugins || !defaultBackendCapabilities(agent.value.backend).plugins) {
-      plugins.value = { status: 'loaded', items: [] }; return Promise.resolve();
-    }
-    plugins.value = { status: 'loading', items: [] };
-    pluginRequest = active.listPlugins(id).then((items) => {
-      if (epoch === pluginEpoch && session === active) plugins.value = { status: 'loaded', items: items.filter((plugin) => plugin.enabled) };
-    }).catch(() => {
-      if (epoch === pluginEpoch && session === active) plugins.value = { status: 'failed', items: [] };
-    }).finally(() => { if (epoch === pluginEpoch) pluginRequest = undefined; });
-    return pluginRequest;
-  }
+  const loadSkills = () => loadCatalog(skillList, 'skills', active => Boolean(active.listSkills), (active, id) => active.listSkills?.(id));
+  const loadPlugins = () => loadCatalog(pluginList, 'plugins', active => Boolean(active.listPlugins), (active, id) => active.listPlugins?.(id));
   const requests = computed(() => {
     const owner = agent.value; const target = targetOf(owner);
     if (!owner || !target) return [];
@@ -697,11 +637,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const draftKey = key();
     const capturedSession = session;
     const epoch = selectionEpoch;
-    const catalogEpoch = skillEpoch;
+    const catalogEpoch = skillList.epoch;
     // Resolve the same typed skill aliases as the desktop, including pasted mentions.
     if (/[$/][A-Za-z0-9_.-]+/.test(prompt)) {
       await loadSkills();
-      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillEpoch || !canSend.value) return 'rejected';
+      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillList.epoch || !canSend.value) return 'rejected';
     }
     const selectedSkills = promptSkillInputsFromText(prompt, skills.value.items);
     const sentDraft = draft.value.text ? { ...draft.value } : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length };
@@ -813,5 +753,5 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
     git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset(); stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }
