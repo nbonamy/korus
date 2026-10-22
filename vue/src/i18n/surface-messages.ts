@@ -784,6 +784,7 @@ export const surfaceMessages = {
     "browser": "Browser",
     "files": "Files",
     "selectAFileFromTheExplorer": "Select a file from the explorer.",
+    "browseFiles": "Browse files",
     "resizeFileExplorer": "Resize file explorer",
     "gitHubReview": "GitHub Review",
     "collapseFileExplorer": "Collapse file explorer",
