@@ -22,7 +22,7 @@ export class FcmSender {
       const response = await fetch(`https://fcm.googleapis.com/v1/projects/${this.config.projectId}/messages:send`, {
         method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         signal: AbortSignal.timeout(10_000), redirect: 'error',
-        body: JSON.stringify({ message: { fid: registration.token, data, android: { priority: 'HIGH', ttl: '300s' } } }),
+        body: JSON.stringify({ message: { fid: registration.token, data, android: { priority: notification.kind === 'read' ? 'NORMAL' : 'HIGH', ttl: '300s' } } }),
       });
       if (response.ok) { await response.body?.cancel(); return 'sent'; }
       const result = await response.json() as { error?: { details?: { '@type'?: string; errorCode?: string }[] } };

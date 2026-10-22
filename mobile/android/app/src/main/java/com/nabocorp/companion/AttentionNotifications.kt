@@ -25,7 +25,7 @@ data class ConversationTarget(val hostId: String, val locationId: String, val te
     }
 }
 
-data class AttentionNotification(val id: String, val target: ConversationTarget, val kind: String, val name: String, val createdAt: Long, val source: String) {
+data class AttentionNotification(val id: String, val target: ConversationTarget, val kind: String, val name: String, val createdAt: Long, val source: String, val revision: Long? = null) {
     val message get() = when (kind) { "completed" -> "Finished its turn"; "approval" -> "Needs your approval"; else -> "Has a question for you" }
     companion object {
         fun parse(source: String): AttentionNotification? = runCatching {
@@ -36,8 +36,14 @@ data class AttentionNotification(val id: String, val target: ConversationTarget,
             val kind = data.opt("kind") as? String ?: return null
             val createdAt = data.opt("createdAt") as? Number ?: return null
             if (!createdAt.toDouble().isFinite() || createdAt.toDouble() != createdAt.toLong().toDouble()) return null
-            if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}")) || name.length > 100 || kind !in setOf("completed", "approval", "question")) return null
-            AttentionNotification(id, ConversationTarget.parse(data.getJSONObject("target")) ?: return null, kind, name, createdAt.toLong(), source)
+            if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}")) || name.length > 100 || kind !in setOf("completed", "approval", "question", "read")) return null
+            val revision = if (!data.has("revision")) null else {
+                val raw = data.opt("revision") as? Number ?: return null
+                if (!raw.toDouble().isFinite() || raw.toDouble() != raw.toLong().toDouble() || raw.toLong() < 0) return null
+                raw.toLong()
+            }
+            if (kind == "read" && revision == null) return null
+            AttentionNotification(id, ConversationTarget.parse(data.getJSONObject("target")) ?: return null, kind, name, createdAt.toLong(), source, revision)
         }.getOrNull()
     }
 }
@@ -46,6 +52,9 @@ data class AttentionNotification(val id: String, val target: ConversationTarget,
 class AttentionNotifications(private val context: Context) {
     companion object { const val EXTRA_NOTIFICATION = "companion.notification"; private const val CHANNEL = "agent-attention" }
     private val manager = context.getSystemService(NotificationManager::class.java)
+    private val reads = context.getSharedPreferences("notification-reads", Context.MODE_PRIVATE)
+    private fun key(target: ConversationTarget) = org.json.JSONArray(listOf(target.hostId, target.locationId, target.teamId, target.agentId)).toString()
+    private fun isRead(notification: AttentionNotification): Boolean = notification.revision?.let { it <= reads.getLong(key(notification.target), -1) } ?: false
     private val seen = linkedSetOf<String>()
     private val queued = ArrayDeque<AttentionNotification>()
     private var pendingOpen: ConversationTarget? = null
@@ -77,6 +86,18 @@ class AttentionNotifications(private val context: Context) {
     }
     fun receive(source: String) {
         val notification = AttentionNotification.parse(source) ?: return
+        if (notification.kind == "read") {
+            val key = key(notification.target)
+            if (notification.revision!! > reads.getLong(key, -1)) reads.edit().putLong(key, notification.revision).commit()
+            queued.removeAll { isRead(it) }
+            if (current?.let { isRead(it) } == true) current = queued.removeFirstOrNull()
+            manager.activeNotifications.forEach { active ->
+                val posted = active.notification.extras.getString(EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)
+                if (posted != null && isRead(posted)) manager.cancel(active.tag, active.id)
+            }
+            return
+        }
+        if (isRead(notification)) return
         if (abs(System.currentTimeMillis().toDouble() - notification.createdAt.toDouble()) > 300_000 || !seen.add(notification.id)) return
         if (seen.size > 256) seen.remove(seen.first())
         if (foreground) {

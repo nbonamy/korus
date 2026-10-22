@@ -395,6 +395,16 @@ before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
 
+Delivered alerts carry the daemon's persisted agent read revision. Acknowledgments
+from any client clear notifications through that revision on every paired phone;
+newer turns remain unread. Native clients retain the read checkpoint to reject late
+alerts, and reconcile it from the workspace after reconnecting. These checkpoints
+span conversation replacements within the same agent and are scoped to the paired
+host, location, team and agent. Local banner dismissal does not acknowledge a turn.
+Clear events travel on the live stream and through APNs background or FCM data
+messages. Apple may delay or omit background delivery; foreground reconciliation
+removes stale delivered notifications without relying on a silent push.
+
 Android push uses the relay's optional `fcm.serviceAccountFile`, an operator-managed
 Google service-account JSON file with permission to send FCM messages in its project.
 The Android client configuration must name that project and the product application

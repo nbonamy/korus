@@ -146,7 +146,7 @@ export type EnginePort = { connector: CompanionConnector; selectionStore?: Selec
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
 export function createEngine(port: EnginePort) {
-  const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && foreground) port.post({ type: 'notification', notification }); });
+  const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && (foreground || notification.kind === 'read')) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
   const pairing = ref<EngineState['pairing']>('idle');
   const pairingError = ref('');

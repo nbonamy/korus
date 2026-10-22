@@ -9,6 +9,8 @@ import type { CompanionNotification } from '@workspace/core/companion-notificati
 
 /** Only live attention events create alerts. Snapshots and reconnects never replay them. */
 export class CompanionNotifications {
+  private readonly pending = new Map<string, { event: AppBackendEvent; desktopOrigin: boolean }>();
+  private readonly read = new Map<string, number>();
   private readonly seen = new Set<string>();
   private readonly origins = new Map<string, { desktop: boolean; conversationId?: string; turnId?: string }>();
   constructor(private readonly hostId: string) {}
@@ -37,17 +39,38 @@ export class CompanionNotifications {
     if (view.type === 'turn.completed') this.origins.delete(view.agentId);
     return entry.desktop;
   }
+  /** Pair attention with its authoritative read-state update before asynchronous workspace reads. */
+  capture(event: AppBackendEvent): { event: AppBackendEvent; revision: number; desktopOrigin: boolean }[] {
+    const desktopOrigin = this.observe(event);
+    if (event.agentId && this.accepts(event)) {
+      this.pending.set(event.agentId, { event, desktopOrigin });
+      if (this.pending.size > 1024) this.pending.delete(this.pending.keys().next().value!);
+      return [];
+    }
+    if (event.type !== 'agent.updated' || !event.agentId || !event.payload.readState) return [];
+    const state = event.payload.readState;
+    const pending = this.pending.get(event.agentId); this.pending.delete(event.agentId);
+    const previous = this.read.get(event.agentId) ?? 0;
+    this.read.set(event.agentId, state.readRevision);
+    if (this.read.size > 1024) this.read.delete(this.read.keys().next().value!);
+    return [
+      ...(pending ? [{ ...pending, revision: state.revision }] : []),
+      ...(state.readRevision > previous ? [{ event, revision: state.readRevision, desktopOrigin: false }] : []),
+    ];
+  }
   accepts(event: AppBackendEvent) {
     return event.type === 'agentRequest.created' || providerConversationEventView(event).type === 'turn.completed';
   }
-  create(event: AppBackendEvent, workspace: CompanionWorkspace): CompanionNotification | null {
+  create(event: AppBackendEvent, workspace: CompanionWorkspace, revision?: number): CompanionNotification | null {
     const view = providerConversationEventView(event);
     const agent = workspace.agents.find(agent => agent.id === view.agentId);
     const team = workspace.teams.find(team => team.id === agent?.teamId);
     if (!agent || !team) return null;
     if (view.conversationId && view.conversationId !== agentConversationId(agent)) return null;
     let kind: CompanionNotification['kind']; let identity: string;
-    if (event.type === 'agentRequest.created') {
+    if (event.type === 'agent.updated' && revision !== undefined) {
+      kind = 'read'; identity = `read/${revision}`;
+    } else if (event.type === 'agentRequest.created') {
       const request = event.payload.request;
       if (request.conversationId !== agentConversationId(agent)) return null;
       kind = request.kind === 'question' ? 'question' : 'approval';
@@ -59,10 +82,11 @@ export class CompanionNotifications {
       kind = 'completed'; identity = `${view.conversationId}/${view.turnId ?? turn?.id}`;
       if (!view.turnId && !turn?.id) return null;
     }
+    if (kind !== 'read' && revision !== undefined && revision <= (agent.readState?.readRevision ?? -1)) return null;
     const target = companionTarget(this.hostId, team, agent);
     const id = createHash('sha256').update(JSON.stringify([target, kind, identity])).digest('hex');
     if (this.seen.has(id)) return null;
     this.seen.add(id); if (this.seen.size > 1024) this.seen.delete(this.seen.values().next().value!);
-    return { id, target, kind, name: agentDisplayName(agent).slice(0, 100), createdAt: Date.now() };
+    return { id, target, kind, ...(revision === undefined ? {} : { revision }), name: agentDisplayName(agent).slice(0, 100), createdAt: Date.now() };
   }
 }

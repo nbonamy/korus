@@ -34,6 +34,13 @@ describe('Firebase push provider boundary', () => {
     expect(await sender.send({ token: 'ab'.repeat(32), environment: 'production' }, notification)).toBe('unavailable');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it('delivers read checkpoints as normal-priority data without creating another visible notification', async () => {
+    const read = { ...notification, kind: 'read' as const, revision: 2 };
+    expect(await new FcmSender(config).send(registration, read)).toBe('sent');
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toStrictEqual({ message: {
+      fid: registration.token, data: { notification: JSON.stringify(read) }, android: { priority: 'NORMAL', ttl: '300s' },
+    } });
+  });
   it.each([
     [404, { error: { details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode: 'UNREGISTERED' }] } }, 'invalid'],
     [400, { error: { status: 'INVALID_ARGUMENT' } }, 'unavailable'],

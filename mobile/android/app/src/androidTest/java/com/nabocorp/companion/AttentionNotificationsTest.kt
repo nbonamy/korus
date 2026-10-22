@@ -7,6 +7,7 @@ import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +20,36 @@ class AttentionNotificationsTest {
     private val manager get() = context.getSystemService(NotificationManager::class.java)
     private fun event(id: String = "native-attention") = json("id" to id, "name" to "Builder", "kind" to "question", "createdAt" to System.currentTimeMillis(),
         "target" to json("hostId" to "host", "locationId" to "local", "teamId" to "team", "agentId" to "agent", "sessionId" to "session"))
+
+    @Test fun desktopReadCancelsOlderSystemAlertsAndSuppressesLateDeliveryAfterRecreation() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        val old = event("read-old").put("revision", 1)
+        val newer = event("read-new").put("revision", 2)
+        val other = event("read-other").put("revision", 1).apply { obj("target").put("hostId", "other-host") }
+        // Unique agent identity isolates the persistent checkpoint between repeatable runs.
+        val agent = "read-" + System.nanoTime()
+        listOf(old, newer, other).forEach { it.obj("target").put("agentId", agent) }
+        instrumentation.runOnMainSync {
+            val inbox = AttentionNotifications(context).apply { systemEnabled = true }
+            listOf(old, newer, other).forEach { inbox.receive(it.toString()) }
+        }
+        try {
+            instrumentation.waitForIdleSync()
+            val read = JSONObject(old.toString()).put("kind", "read").put("id", "read-checkpoint")
+            instrumentation.runOnMainSync { AttentionNotifications(context).receive(read.toString()) }
+            instrumentation.waitForIdleSync()
+            assertFalse(manager.activeNotifications.any { it.tag == "read-old" })
+            assertTrue(manager.activeNotifications.any { it.tag == "read-new" })
+            assertTrue(manager.activeNotifications.any { it.tag == "read-other" })
+            instrumentation.runOnMainSync {
+                val restored = AttentionNotifications(context).apply { foreground = true }
+                restored.receive(old.put("id", "read-late").toString())
+                assertNull(restored.current)
+                restored.receive(newer.put("id", "read-new-banner").toString())
+                assertEquals("read-new-banner", restored.current?.id)
+            }
+        } finally { listOf("read-old", "read-new", "read-other").forEach { manager.cancel(it, 0) } }
+    }
 
     @Test fun backgroundAlertCarriesOnlyAttentionAndTapOpensTheCapturedTarget() {
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)

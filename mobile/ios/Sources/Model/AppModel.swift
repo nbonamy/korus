@@ -529,6 +529,7 @@ final class AppModel {
     }
     func receive(_ notification: ChatNotification) {
         guard laptops.contains(where: { $0.id == notification.target.hostId }) else { return }
+        if notification.kind == .read { push.clear(notification) }
         notifications.receive(notification, foreground: foreground, visible: visibleNotificationTarget)
     }
     func open(_ notification: ChatNotification) {

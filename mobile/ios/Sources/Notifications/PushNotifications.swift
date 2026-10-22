@@ -10,6 +10,7 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = PushNotifications()
     var onNotification: ((ChatNotification, Bool) -> Void)?
     var onRegistration: (([String: String]?) -> Void)?
+    private let reads = NotificationReadState()
     private var pending: [(ChatNotification, Bool)] = []
     var status = "Notifications"
     var error: String?
@@ -21,6 +22,7 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
         return true
     }
     func refresh() async {
+        await removeReadNotifications()
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral:
@@ -57,8 +59,28 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
     private func receive(_ userInfo: [AnyHashable: Any], tapped: Bool) {
         guard let value = userInfo["notification"], let data = try? JSONSerialization.data(withJSONObject: value),
               let notification = try? JSONDecoder().decode(ChatNotification.self, from: data) else { return }
+        if notification.kind == .read { reads.apply(notification); Task { await removeReadNotifications() } }
+        else if reads.contains(notification) { Task { await removeReadNotifications() }; return }
         if let onNotification { onNotification(notification, tapped) }
         else { pending.append((notification, tapped)); if pending.count > 16 { pending.removeFirst() } }
+    }
+    func clear(_ notification: ChatNotification) {
+        reads.apply(notification)
+        Task { await removeReadNotifications() }
+    }
+    private func removeReadNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        let ids = delivered.compactMap { entry -> String? in
+            guard let value = entry.request.content.userInfo["notification"], let data = try? JSONSerialization.data(withJSONObject: value),
+                  let notification = try? JSONDecoder().decode(ChatNotification.self, from: data), reads.contains(notification) else { return nil }
+            return entry.request.identifier
+        }
+        center.removeDeliveredNotifications(withIdentifiers: ids)
+    }
+    func background(_ userInfo: [AnyHashable: Any]) async {
+        receive(userInfo, tapped: false)
+        await removeReadNotifications()
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
@@ -83,5 +105,9 @@ final class CompanionAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         PushNotifications.shared.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
     }
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        Task { await PushNotifications.shared.background(userInfo); completionHandler(.newData) }
+    }
+
 }
 #endif
