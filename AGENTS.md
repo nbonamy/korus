@@ -159,6 +159,9 @@ Before editing code, read `docs/testing.md`. Before editing UI, also read
 
 ## Build
 
+Use the Node 26 reference toolchain for development, tests, and builds. Read
+`.nvmrc` for the exact Node version and `package.json` for the npm version.
+
 The app builds through Electron Forge. Keep build outputs, generated protocol
 bindings, copied id8 renderer code, and packaged resources clearly separated
 from source code.

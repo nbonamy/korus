@@ -145,8 +145,12 @@ each engine's account, conversation location, and enabled state.
 Requirements:
 
 - macOS arm64, Windows x64, or Linux x64/arm64;
-- Node 26.12.1 and npm 10.9.4 (the CI toolchain);
+- Node 26 (use the exact version pinned in [.nvmrc](.nvmrc)) and npm 10.9.4;
 - a separately installed runtime for each coding engine you want to use.
+
+Use this reference toolchain for local development and checks to match CI.
+The packaged desktop app includes its own Node runtime; users do not need to
+install Node to run it.
 
 ```bash
 npm ci

@@ -174,6 +174,9 @@ regressions; do not reintroduce a transcript reducer to benchmark provider traff
 
 ## Gates
 
+Run local checks with the Node 26 reference toolchain pinned in `.nvmrc` and
+the npm version declared in `package.json` so results use the same toolchain as CI.
+
 `package.json` scripts are the reference. `npm test`, `npm run test:coverage`,
 `npm run lint` (includes every workspace typecheck and the Knip dead-code check) and
 `npm run build`. Prefer `npm run test:ai` for agent-driven full runs: same suites,

@@ -4,6 +4,10 @@ This contains the static landing page and VitePress documentation for [meetkorus
 
 ## Local preview
 
+Use the repository's Node 26 reference toolchain, with the exact version pinned
+in [`.nvmrc`](../.nvmrc) and npm setup covered in the
+[development requirements](../README.md#development).
+
 ```bash
 npm run docs:build
 node website/build.mjs

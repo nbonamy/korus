@@ -440,6 +440,11 @@ discovery still accepts the previous `daemon` CLI name for hosts not yet upgrade
 
 ## Development
 
+Use the Node 26 reference toolchain for local development and verification.
+The repository's `.nvmrc` pins the exact version; the root README covers setup.
+The packaged daemon uses the private runtime described below independently of
+the developer's shell.
+
 `npm run dev` is the Electron-first entrypoint. It builds `daemon` to a dev bundle
 and supervises a fresh local stdio backend instead of reusing an installed daemon
 of the same version. Backend changes rebuild and restart the process (no HMR) and
