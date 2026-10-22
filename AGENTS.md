@@ -193,6 +193,8 @@ commit, or push work. Curate it only when Nicolas explicitly invokes
 
 - `korus-dod`: Definition of Done checklist for scope, architecture,
   tests, coverage, security, UX, docs, worktree hygiene, and handoff.
+- `korus-desktop-update`: Build and activate a signed macOS desktop update,
+  restart the installed app and its owned daemon, or inspect the guarded update.
 - `korus-frontend-dev`: Vue, Element Plus, app shell, chat rendering,
   artifact panes, design tokens, themes, and frontend tests.
 - `korus-live-preview`: isolated, parallel-safe, branch-faithful web

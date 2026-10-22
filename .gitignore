@@ -10,6 +10,7 @@ coverage/
 # Local Apple push signing keys
 /certs/*.p8
 .app-dev/
+__pycache__/
 .release/
 electron/.computer-use-artifacts/
 electron/.tts/

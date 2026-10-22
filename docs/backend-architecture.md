@@ -83,6 +83,18 @@ with implementation in a separate accepted turn. [The plan](../plans/antigravity
 records transport evidence, model restrictions, attachment support and unsupported
 capabilities.
 
+## Local desktop replacement
+
+Local macOS desktop replacement is owned by the
+[`korus-desktop-update` skill](../.agents/skills/korus-desktop-update/SKILL.md) and
+its bundled updater. It stages a signed, notarized build or a copy of the installed
+app, then uses independent one-shot installer and recovery LaunchAgents. The
+installer retains the previous bundle and preserves pairing; startup verification
+checks the new desktop and its owned backend before declaring success. Private
+transaction logs and profile backups stay in the application home, outside the
+source checkout. Provider history is retained in place during activation and
+recovery.
+
 ## Transports
 
 The protocol is transport-neutral JSON-RPC 2.0, one message per line.
