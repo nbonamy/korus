@@ -2,9 +2,48 @@ import { PromptRejectedError } from '../companion-port';
 import { describe, expect, it, vi } from 'vitest';
 import { createCompanionState } from '../companion-state';
 import { createDemoConnector } from '../demo-connector';
+import { acknowledgeDiagnostics, connectionDiagnostic } from '../connection-diagnostics';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 
 describe('companion state', () => {
+  it('hands the laptop the pending connection timeline after connecting and stops after a refusal', async () => {
+    acknowledgeDiagnostics(Number.MAX_SAFE_INTEGER);
+    const connector = createDemoConnector(); const original = connector.connect;
+    const reported: string[][] = []; let refuse = false;
+    connector.connect = async (id: string) => ({ ...await original(id), async reportDiagnostics(records: { event: string }[]) {
+      if (refuse) throw new Error('denied');
+      reported.push(records.map(record => record.event));
+    } });
+    const state = createCompanionState(connector);
+    try {
+      connectionDiagnostic('resume.start');
+      await state.connect('demo-laptop');
+      await vi.waitFor(() => expect(reported).toHaveLength(1));
+      expect(reported[0]).toContain('resume.start');
+      connectionDiagnostic('resume.settled'); await state.setActive(false);
+      await vi.waitFor(() => expect(reported).toHaveLength(2));
+      expect(reported[1]).toStrictEqual(['resume.settled']);
+      refuse = true; connectionDiagnostic('after.refusal'); await state.setActive(true); await state.setActive(false); await state.setActive(true);
+      expect(reported).toHaveLength(2);
+    } finally { state.dispose(); }
+  });
+  it('restarts the retry schedule when the app returns to the foreground', async () => {
+    vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost!: () => void; let fail = false;
+    const connect = vi.fn(async (id: string) => { if (fail) throw new Error('offline'); const session = await original(id); return { ...session, onDisconnect(listener: () => void) { lost = listener; return () => {}; } }; });
+    connector.connect = connect;
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); fail = true; lost();
+      for (const delay of [1000, 2000, 4000]) await vi.advanceTimersByTimeAsync(delay);
+      const attempts = connect.mock.calls.length;
+      await state.setActive(false); await state.setActive(true); await state.reconnect();
+      expect(connect).toHaveBeenCalledTimes(attempts + 1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(connect).toHaveBeenCalledTimes(attempts + 2);
+    } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
   it('backs off repeated disconnects during history loading until a conversation actually synchronizes', async () => {
     vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const connector = createDemoConnector(); const original = connector.connect;

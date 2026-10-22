@@ -6,6 +6,9 @@ import { companionBackgroundGraceMs, companionResponseLimit, encodeCompanionFram
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 const resumeProbeTimeoutMs = 2_000;
+/** A heartbeat may wait this many extra windows while other traffic shows the link is alive. */
+const maxDeadlineExtensions = 2;
+const abandonedRetentionMs = 120_000;
 
 export class CompanionOperationDenied extends Error {
   constructor() { super('Laptop denied the operation or is unavailable.'); }
@@ -23,10 +26,30 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     connectionDiagnostic(event, { streamId, elapsedMs: Date.now() - started, idleMs: Date.now() - lastReceived, sequence, pending: pending.size,
       ...(oldest ? { oldestMethod: oldest.method, oldestAgeMs: Date.now() - oldest.started } : {}), ...details });
   };
-  const pending = new Map<string, { method: string; started: number; timeoutMs: number; resolve(value: unknown): void; reject(error: Error): void; timer?: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<string, { method: string; started: number; armedAt: number; extensions: number; timeoutMs: number; resolve(value: unknown): void; reject(error: Error): void; timer?: ReturnType<typeof setTimeout> }>();
+  // Requests that timed out alone: their replies may still arrive and are not a protocol violation.
+  const abandoned = new Map<string, number>();
+  function abandon(id: string) {
+    const now = Date.now();
+    for (const [key, expires] of abandoned) if (expires <= now || abandoned.size >= 64) abandoned.delete(key);
+    abandoned.set(id, now + abandonedRetentionMs);
+  }
   function armDeadline(id: string, call: NonNullable<ReturnType<typeof pending.get>>) {
     clearTimeout(call.timer);
-    call.timer = active ? setTimeout(() => { log('updates.request-timeout', { requestId: id, method: call.method }); fail(call.timeoutMs === resumeProbeTimeoutMs ? 'resume-timeout' : 'request-timeout'); }, call.timeoutMs) : undefined;
+    if (!active) { call.timer = undefined; return; }
+    call.armedAt = Date.now();
+    call.timer = setTimeout(() => {
+      // Only the heartbeat speaks for the link. A slow operation fails alone and never drops a healthy stream.
+      if (call.method !== 'ping') {
+        log('updates.request-timeout', { requestId: id, method: call.method, reason: 'isolated' });
+        pending.delete(id); abandon(id); call.reject(new Error('Request timed out.'));
+        return;
+      }
+      // The laptop answers in order, so a ping can sit behind slow work while its other traffic still arrives.
+      if (lastReceived > call.armedAt && call.extensions++ < maxDeadlineExtensions) { log('updates.deadline-extended', { requestId: id, method: call.method }); armDeadline(id, call); return; }
+      log('updates.request-timeout', { requestId: id, method: call.method });
+      fail(call.timeoutMs === resumeProbeTimeoutMs ? 'resume-timeout' : 'request-timeout');
+    }, call.timeoutMs);
   }
   function startHeartbeat() {
     clearInterval(heartbeat);
@@ -79,7 +102,11 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
           stage = 'reply';
           if (!('id' in raw) || typeof raw.id !== 'string') throw new Error('Invalid reply.');
           const call = pending.get(raw.id);
-          if (!call) throw new Error('Unmatched reply.');
+          if (!call) {
+            if (!abandoned.delete(raw.id)) throw new Error('Unmatched reply.');
+            log('updates.late-reply', { requestId: raw.id });
+            stage = 'read'; continue;
+          }
           if (!('error' in raw) && !('result' in raw)) throw new Error('Invalid reply.');
           pending.delete(raw.id); clearTimeout(call.timer);
           log('updates.reply', { requestId: raw.id, method: call.method, elapsedMs: Date.now() - call.started, reason: 'error' in raw ? 'denied' : 'success' });
@@ -97,7 +124,7 @@ export function createCompanionStream(open: () => Promise<Stream>, update: (valu
     if (closed || pending.size >= 128) throw new Error('Update channel unavailable.');
     const id = crypto.randomUUID();
     return new Promise<T>((resolve, reject) => {
-      const call = { method, started: Date.now(), timeoutMs, resolve: (value: unknown) => resolve(value as T), reject };
+      const call = { method, started: Date.now(), armedAt: Date.now(), extensions: 0, timeoutMs, resolve: (value: unknown) => resolve(value as T), reject };
       pending.set(id, call); armDeadline(id, call);
       log('updates.request', { requestId: id, method });
       try { channel.send(encodeCompanionFrame({ v: 1, id, method, args })); }

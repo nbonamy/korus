@@ -65,6 +65,8 @@ export type CompanionSession = {
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;
   setActive?(active: boolean): Promise<void>;
+  /** Hands the laptop the phone's recent connection timeline: metadata only. Older laptops refuse it. */
+  reportDiagnostics?(records: import('./connection-diagnostics').ConnectionDiagnostic[]): Promise<void>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
   onDisconnect(listener: () => void): () => void;
   close(): void;

@@ -77,6 +77,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         // the paused stream buffer, including at the relayed (inner Noise) layer.
         connectionEncrypters: [noise()], streamMuxers: [yamux({ streamOptions: { maxStreamWindowSize: 1024 * 1024 } })], services: { identify: identify() },
         connectionManager: { maxConnections: 4, maxParallelDials: 2 },
+        // The update channel owns liveness: a transport ping that runs late after iOS resumes must not abort a healthy circuit.
+        connectionMonitor: { abortConnectionOnPingFailure: false },
         connectionGater: { denyInboundConnection: () => true, denyDialMultiaddr: () => false },
       });
       node.addEventListener('connection:close', event => {
@@ -256,6 +258,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
         gitDiff: (agentId, scope) => request(host, 'agent.git.diff', { target: target(agentId), scope }),
         readImage: (agentId, path) => request(host, 'conversation.image.read', { target: target(agentId), path }),
         getUsage: () => request(host, 'usage.get', {}),
+        async reportDiagnostics(records) { await channel.request('diagnostics.report', { records }); },
         async registerPush(registration) {
           if (!registration) { await request(host, 'notifications.register', null); return; }
           await network();

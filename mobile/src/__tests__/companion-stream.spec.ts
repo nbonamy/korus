@@ -105,6 +105,37 @@ describe('mobile update channel', () => {
       await rejected;
     } finally { f.stream.close(); }
   });
+  it('times out only a slow request, ignores its late reply and keeps the stream', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      const slow = f.stream.request('conversation.synchronize', {}); const timedOut = expect(slow).rejects.toThrow('timed out');
+      await tick(); const slowId = f.calls.at(-1)!.id;
+      await vi.advanceTimersByTimeAsync(14_999); f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
+      await vi.advanceTimersByTimeAsync(1); await timedOut;
+      expect(f.disconnected).not.toHaveBeenCalled();
+      f.push({ v: 1, id: slowId, result: { late: true } }); await tick();
+      expect(f.disconnected).not.toHaveBeenCalled(); expect(f.source.abort).not.toHaveBeenCalled();
+      const next = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls.at(-1)!.id, result: 'ok' });
+      expect(await next).toBe('ok');
+    } finally { f.stream.close(); }
+  });
+  it('extends a heartbeat deadline while other authenticated traffic proves the laptop is alive', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(f.calls.at(-1)!.method).toBe('ping');
+      await vi.advanceTimersByTimeAsync(10_000); f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(f.disconnected).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(f.disconnected).toHaveBeenCalledOnce();
+    } finally { f.stream.close(); }
+  });
   it('refuses malformed provider frames before they reach conversation replicas', async () => {
     const f = fixture();
     try {
