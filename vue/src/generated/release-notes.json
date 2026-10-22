@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.38.0",
+  "currentVersion": "0.39.0",
   "releases": [
+    {
+      "version": "0.39.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "f96216ca16511d5f247909db89dee4561d007a4085f2c51dc8d65bf0ce25320d",
+      "markdown": "### New features\n\n- Resize conversation panes with draggable dividers or keyboard controls. Team\n  layouts, assigned agents, focused panes, and split sizes persist across restarts.\n- Include read-only diagrams in interactive plans and comment on each diagram.\n- Review Mission requirements with annotations and question answers, regardless\n  of the interactive-plan workflow setting.\n- Choose the implementation provider, model, and reasoning effort in a Start\n  implementation dialog, independently of the Mission lead's provider.\n\n### Improvements and fixes\n\n- Mission stage handoffs wait for the lead's active turn to finish, preventing\n  approved requirements from leaving Tickets queued and the lead stuck working.\n- Mission workers retain their ticket assignments and receive actionable errors\n  when submitting results, allowing corrections after a failed submission.\n- Agent names remain visible in narrow conversation headers while repository\n  and branch details truncate first.\n- Question cards fill the conversation width and resize with the sidebar and pane.\n- Concurrent operations on a new Codex agent share conversation initialization,\n  preventing missing-rollout errors when starting work from an issue.\n- Quitting the desktop app uses the native shutdown sequence reliably.\n- Reading a conversation clears its mobile notification. Read events stay silent,\n  and later alerts replace earlier notifications for the same conversation.\n- Merge-report recipients follow the sidebar's manual agent order.\n- Browse files directly from an empty file pane, and open local Markdown links\n  in workspace tabs without replacing the app."
+    },
     {
       "version": "0.38.0",
       "releasedAt": "2026-10-22",

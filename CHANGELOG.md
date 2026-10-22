@@ -4,6 +4,36 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.39.0] - 2026-10-22
+
+### New features
+
+- Resize conversation panes with draggable dividers or keyboard controls. Team
+  layouts, assigned agents, focused panes, and split sizes persist across restarts.
+- Include read-only diagrams in interactive plans and comment on each diagram.
+- Review Mission requirements with annotations and question answers, regardless
+  of the interactive-plan workflow setting.
+- Choose the implementation provider, model, and reasoning effort in a Start
+  implementation dialog, independently of the Mission lead's provider.
+
+### Improvements and fixes
+
+- Mission stage handoffs wait for the lead's active turn to finish, preventing
+  approved requirements from leaving Tickets queued and the lead stuck working.
+- Mission workers retain their ticket assignments and receive actionable errors
+  when submitting results, allowing corrections after a failed submission.
+- Agent names remain visible in narrow conversation headers while repository
+  and branch details truncate first.
+- Question cards fill the conversation width and resize with the sidebar and pane.
+- Concurrent operations on a new Codex agent share conversation initialization,
+  preventing missing-rollout errors when starting work from an issue.
+- Quitting the desktop app uses the native shutdown sequence reliably.
+- Reading a conversation clears its mobile notification. Read events stay silent,
+  and later alerts replace earlier notifications for the same conversation.
+- Merge-report recipients follow the sidebar's manual agent order.
+- Browse files directly from an empty file pane, and open local Markdown links
+  in workspace tabs without replacing the app.
+
 ## [0.38.0] - 2026-10-22
 
 ### New features
