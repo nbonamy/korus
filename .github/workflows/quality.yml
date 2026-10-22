@@ -1,6 +1,7 @@
 name: Quality
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 

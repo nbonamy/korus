@@ -151,8 +151,8 @@ statement coverage. Lines, branches, and functions remain reported diagnostics
 without blocking thresholds. Do not lower the statement threshold or shrink
 the measured surface to land a change. Coverage does not replace meaningful
 behavioral/regression tests or verification at the owning runtime boundary.
-Quality CI enforces coverage on every push. Release CI independently requires the
-full test suite without coverage; it does not wait for Quality CI.
+Quality CI enforces coverage on every branch push. Release CI independently
+requires the full test suite without coverage; it does not wait for Quality CI.
 
 Before editing code, read `docs/testing.md`. Before editing UI, also read
 `docs/frontend.md`.

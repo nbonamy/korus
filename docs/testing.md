@@ -185,9 +185,10 @@ commands (`test:electron`, `typecheck:web`, …). For visual changes add a local
 app/screenshot check when the app can boot; for protocol or persistence changes run
 the touched module's tests plus the full coverage gate.
 
-The independent Quality workflow runs on every push, PR and manual dispatch. It
-owns lint/typechecks, the full suite under coverage, script tests, and retained
-coverage reports. The README badge combines covered and total statement counts
+The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
+Tag pushes do not trigger it. It owns lint/typechecks, the full suite under
+coverage, script tests, and retained coverage reports. The README badge combines
+covered and total statement counts
 from every declared workspace. Only successful runs for the current `main` commit
 publish badge data to the separate `badges` branch; PRs have no publication authority.
 The publishing job alone has repository write permission and retains badge history
