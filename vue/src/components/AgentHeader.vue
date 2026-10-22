@@ -401,7 +401,6 @@ const gitReviewAvailable = computed(() => {
 
 /* Narrow split panes keep the same essential controls as phones. */
 @container agent-header (max-width: 400px) {
-  .agent-header__folder,
   .agent-header__inline-status,
   .agent-header__git-status,
   .agent-header__open-in {
@@ -411,7 +410,6 @@ const gitReviewAvailable = computed(() => {
 
 /* Phones keep identity, the git workflow and the workspace toggle; the rest stays reachable from the workspace. */
 @media (max-width: 768px) {
-  .agent-header__folder,
   .agent-header__inline-status,
   .agent-header__git-status,
   .agent-header__open-in {

@@ -31,8 +31,10 @@ test('conversation headers preserve agent identity before branch and status cont
       const title = header.querySelector('strong');
       const line = title.parentElement;
       const controls = header.querySelector('.agent-header__activity');
+      const repository = header.querySelector('.agent-header__folder');
       const bounds = element => element.getBoundingClientRect().toJSON();
       return { header: bounds(header), line: bounds(line), title: bounds(title), controls: bounds(controls),
+        repository: { ...bounds(repository), clipped: repository.scrollWidth > repository.clientWidth },
         clipped: title.scrollWidth > title.clientWidth, overflow: getComputedStyle(title).textOverflow };
     });
     for (const width of [480, 320, 760, 1200]) {
@@ -45,6 +47,9 @@ test('conversation headers preserve agent identity before branch and status cont
         assert.ok(measured.title.right <= measured.line.right + 1, 'name stays within the visible identity line');
         assert.ok(measured.title.right <= measured.controls.left, 'name and controls must not overlap');
         assert.ok(measured.controls.right <= measured.header.right, 'controls stay inside the pane');
+        assert.ok(measured.repository.width > 0, 'repository context remains visible beside the name');
+        assert.ok(measured.repository.right <= measured.line.right + 1, 'repository stays within the identity line');
+        if (width <= 480) assert.equal(measured.repository.clipped, true, 'repository truncates before the agent name');
       }
     }
     await page.getByRole('combobox', { name: 'Pane width' }).selectOption('480');
@@ -66,6 +71,7 @@ test('conversation headers preserve agent identity before branch and status cont
     await page.setViewportSize({ width: 375, height: 500 });
     await page.getByRole('combobox', { name: 'Assigned agent' }).selectOption('0');
     assert.equal((await layout()).clipped, false, 'phone layout also preserves the agent name');
+    assert.ok((await layout()).repository.width > 0, 'phone layout retains repository context');
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
