@@ -40,9 +40,15 @@ final class AppModel {
     private var conversationGeneration = 0
     private var connectionNotice = ConnectionNoticeState()
     @ObservationIgnored private var connectionNoticeTask: Task<Void, Never>?
+    private var updatingIndicator = QuietIndicatorState()
+    @ObservationIgnored private var updatingIndicatorTask: Task<Void, Never>?
+    /// A refresh that finishes within a moment shows nothing at all.
+    var showUpdating: Bool { updatingIndicator.isVisible }
     var showConnectionLost: Bool { connectionNotice.isVisible }
+    /// Brief recovery stays invisible, like the lost-connection notice: the transcript just stays put.
+    var showReconnecting: Bool { connectionNotice.isVisible && (connection == .reconnecting || connection == .connecting) }
     var connection: ConnectionState = .unpaired {
-        didSet { if connection != oldValue { updateConnectionNotice() } }
+        didSet { if connection != oldValue { updateConnectionNotice(); updateBackgroundExecution() } }
     }
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -126,7 +132,8 @@ final class AppModel {
         self?.engine.recordLifecycle("app.background-execution", stage: stage)
     }
     private func updateBackgroundExecution() {
-        backgroundExecution.update(working: screenUnlocked && (header?.status == .working || composerDrafts.sending), foreground: foreground)
+        backgroundExecution.update(working: StreamBackgroundExecution.wantsLease(unlocked: screenUnlocked, working: header?.status == .working,
+            sending: composerDrafts.sending, connected: connection == .connected), foreground: foreground)
     }
 
     let engine = EngineHost()
@@ -204,6 +211,21 @@ final class AppModel {
         }
     }
 
+    private func updateUpdatingIndicator() {
+        let previous = updatingIndicator.deadline
+        updatingIndicator.update(active: refreshingConversation && connection == .connected)
+        guard previous != updatingIndicator.deadline else { return }
+        updatingIndicatorTask?.cancel()
+        updatingIndicatorTask = nil
+        guard let deadline = updatingIndicator.deadline else { return }
+        updatingIndicatorTask = Task { [weak self] in
+            do { try await Task.sleep(until: deadline, clock: .continuous) }
+            catch { return }
+            guard let self, self.updatingIndicator.deadline == deadline else { return }
+            self.updatingIndicator.update(active: self.refreshingConversation && self.connection == .connected)
+        }
+    }
+
     // MARK: Engine
 
     /// The engine repeats its whole state on every change. Writing an unchanged value still wakes every view that read it,
@@ -233,6 +255,7 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        defer { updateUpdatingIndicator() }
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)

@@ -31,6 +31,12 @@ final class StreamBackgroundExecution {
     }
     #endif
 
+    /// A live link holds a lease too: leaving for a few seconds keeps answering the laptop and relay, so the
+    /// link is still there on return. iOS grants the time; expiry releases it and recovery works as before.
+    nonisolated static func wantsLease(unlocked: Bool, working: Bool, sending: Bool, connected: Bool) -> Bool {
+        unlocked && (working || sending || connected)
+    }
+
     func update(working: Bool, foreground: Bool) {
         if foreground && !wasForeground { exhausted = false }
         wasForeground = foreground

@@ -60,6 +60,10 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         var record: [String: Any] = ["event": event, "at": ISO8601DateFormatter().string(from: Date()), "stage": stage]
         if let elapsedMs { record["elapsedMs"] = elapsedMs }
         diagnosticQueue.async { [connectionLog, record] in connectionLog.append(record) }
+        // The same facts join the engine's timeline, which the paired laptop receives.
+        var forwarded: [String: Any] = ["type": "nativeDiagnostic", "event": event, "stage": stage]
+        if let elapsedMs { forwarded["elapsedMs"] = elapsedMs }
+        dispatch(forwarded)
     }
 
     // MARK: Requests the engine page makes of the app

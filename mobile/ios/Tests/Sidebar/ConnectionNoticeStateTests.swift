@@ -47,4 +47,22 @@ final class ConnectionNoticeStateTests: XCTestCase {
             XCTAssertNil(notice.deadline)
         }
     }
+
+    func testQuickRefreshNeverShowsAnIndicatorAndALongOneAppearsAfterTheDelay() {
+        var indicator = QuietIndicatorState(delay: .seconds(1))
+        let start = ContinuousClock.now
+        indicator.update(active: true, now: start)
+        XCTAssertFalse(indicator.isVisible)
+        indicator.update(active: true, now: start.advanced(by: .milliseconds(900)))
+        XCTAssertFalse(indicator.isVisible)
+        indicator.update(active: false, now: start.advanced(by: .milliseconds(950)))
+        XCTAssertNil(indicator.deadline)
+        indicator.update(active: true, now: start.advanced(by: .seconds(2)))
+        indicator.update(active: true, now: start.advanced(by: .milliseconds(2999)))
+        XCTAssertFalse(indicator.isVisible)
+        indicator.update(active: true, now: start.advanced(by: .seconds(3)))
+        XCTAssertTrue(indicator.isVisible)
+        indicator.update(active: false, now: start.advanced(by: .seconds(4)))
+        XCTAssertFalse(indicator.isVisible)
+    }
 }

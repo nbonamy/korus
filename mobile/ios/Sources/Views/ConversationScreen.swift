@@ -33,7 +33,7 @@ struct ConversationScreen: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if model.hasTranscript && (model.connection == .connected && (model.conversationLoadFailed || model.refreshingConversation) || model.connection == .reconnecting || model.connection == .connecting) {
+                if model.hasTranscript && (model.connection == .connected && (model.conversationLoadFailed || model.showUpdating) || model.showReconnecting) {
                     HStack(spacing: 7) {
                         if model.conversationLoadFailed {
                             Text("Couldn’t update")

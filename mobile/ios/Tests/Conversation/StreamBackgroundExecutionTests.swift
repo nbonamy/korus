@@ -48,4 +48,12 @@ final class StreamBackgroundExecutionTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
         execution.update(working: false, foreground: true)
     }
+
+    func testALiveLinkKeepsItsLeaseSoAShortAppSwitchDoesNotDropIt() {
+        XCTAssertTrue(StreamBackgroundExecution.wantsLease(unlocked: true, working: false, sending: false, connected: true))
+        XCTAssertTrue(StreamBackgroundExecution.wantsLease(unlocked: true, working: true, sending: false, connected: false))
+        XCTAssertTrue(StreamBackgroundExecution.wantsLease(unlocked: true, working: false, sending: true, connected: false))
+        XCTAssertFalse(StreamBackgroundExecution.wantsLease(unlocked: true, working: false, sending: false, connected: false))
+        XCTAssertFalse(StreamBackgroundExecution.wantsLease(unlocked: false, working: true, sending: true, connected: true))
+    }
 }
