@@ -1,9 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { computed } from 'vue';
+import { ElPopover, ElTabs, ElTabPane } from 'element-plus';
+import { backendChoicesKey } from '../backend-selection';
+import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { createMission, type Mission } from '@workspace/core/missions';
 import type { MissionArtifactReadResult, MissionExecutionInput, MissionImplementationStartProgress, MissionRun } from '@workspace/core/mission-execution';
-import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, BackendModelOption, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import MissionWorkspace from '../MissionWorkspace.vue';
 import WorkspaceProvisioningProgressDialog from '../WorkspaceProvisioningProgressDialog.vue';
 import MissionTicketBoard, { type MissionTicketComment } from '../MissionTicketBoard.vue';
@@ -34,6 +38,7 @@ function missionWithRun(status: MissionRun['status'], proposal = false): Mission
 }
 
 function mountWorkspace(mission: Mission, options: {
+  models?: BackendModelOption[];
   agents?: Agent[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: MissionArtifactReadResult['stage']) => Promise<MissionArtifactReadResult>;
@@ -43,6 +48,10 @@ function mountWorkspace(mission: Mission, options: {
   implementationStartProgress?: MissionImplementationStartProgress;
 } = {}) {
   return mount(MissionWorkspace, {
+    global: options.models ? { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+      [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
+      [backendModelCatalogKey as symbol]: { listModels: vi.fn().mockResolvedValue(options.models) },
+    } } : undefined,
     props: {
       mission: structuredClone(mission),
       agents: structuredClone(options.agents ?? createInitialSnapshot().agents),
@@ -62,6 +71,39 @@ function mountWorkspace(mission: Mission, options: {
 }
 
 describe('MissionWorkspace', () => {
+  it('selects the implementation model and effort at Tickets approval without changing the lead', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets';
+    mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', repositoryPath: '/repo', done: false }];
+    const agents = createInitialSnapshot().agents;
+    agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: [
+      { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
+      { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
+    ] });
+    await flushPromises();
+    await wrapper.setProps({ agents }); await flushPromises();
+    const picker = wrapper.get('[aria-label="Coding agent and model"]');
+    expect(picker.text()).toContain('Planner');
+    await picker.trigger('click'); await flushPromises();
+    expect([...document.querySelectorAll('[role="tab"] [aria-label]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex']);
+    const low = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low');
+    expect(low).toBeDefined();
+    low!.click(); await flushPromises();
+    expect(picker.text()).toContain('Luna');
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({
+      id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
+      implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low' },
+    });
+    expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
+    await wrapper.setProps({ mission: { ...mission, stage: 'review' } });
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('waits for the user to move completed Implementation into Review', async () => {
     const mission = missionWithRun('accepted', true);
     mission.stage = 'implementation';
@@ -158,12 +200,13 @@ describe('MissionWorkspace', () => {
     expect(stageHeader.get('h2').text()).toBe('Mission brief');
     expect(stageHeader.text()).not.toContain('Define the outcome');
     expect(stageHeader.find('.mission-workspace__review-status').exists()).toBe(false);
-    expect(stageHeader.get('.app-button').text()).toContain('Approve and continue');
+    expect(stageHeader.find('.app-button').exists()).toBe(false);
+    expect(wrapper.get('.plan-review-footer .app-button--primary').text()).toBe('Approve');
     expect(wrapper.find('.mission-workspace__artifact-toolbar').exists()).toBe(false);
-    expect(wrapper.get('.mission-requirement-review__footer').text()).toContain('Select text to leave an inline comment.');
+    expect(wrapper.get('.plan-review-panel').text()).toContain('Teams need one bill');
     expect(wrapper.find('.conversation-slot').exists()).toBe(true);
 
-    await wrapper.get('.mission-workspace__stage-header .app-button').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
 
     expect(executeMission).toHaveBeenNthCalledWith(1, {
@@ -212,43 +255,69 @@ describe('MissionWorkspace', () => {
     expect(wrapper.getComponent(WorkspaceProvisioningProgressDialog).props('operation')).toBeNull();
   });
 
-  it('sends selected requirement comments to the stage conversation as one revision request', async () => {
+  it('reviews requirement choices and diagrams through the shared plan editor and sends confirmed feedback without approving', async () => {
     const mission = missionWithRun('awaitingReview', true);
+    mission.execution!.runs[0]!.proposal!.requirements.problem = '# Payment roles\n\n- [x] Owner\n- [ ] Member\n\n## Billing flow\n\n```mermaid\nflowchart LR\n Owner --> Checkout\n```';
+    const sendMissionPrompt = vi.fn().mockRejectedValueOnce(new Error('Delivery failed')).mockResolvedValue(undefined);
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { sendMissionPrompt, executeMission });
+    try {
+      expect(wrapper.get('figure img').attributes('alt')).toContain('Billing flow');
+      await wrapper.findAll('.plan-choice-option input')[1]!.setValue(true);
+      await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
+      expect(wrapper.get('[role="dialog"]').text()).toContain('Approve the requirements and continue to Tickets anyway?');
+      await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click');
+      await wrapper.get('[role="switch"]').setValue(true);
+      await wrapper.get('button[aria-label^="Comment on diagram"]').trigger('click');
+      await wrapper.get('textarea').setValue('Include the cancellation path.');
+      const revise = wrapper.get('.plan-review-footer .app-button--secondary');
+      await revise.trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('Delivery failed');
+      expect(wrapper.get('textarea').element.value).toBe('Include the cancellation path.');
+      await revise.trigger('click');
+      await flushPromises();
+      expect(sendMissionPrompt).toHaveBeenCalledTimes(2);
+      const feedback = sendMissionPrompt.mock.calls[1]![0];
+      expect(feedback).toContain('Include the cancellation path.');
+      expect(feedback).toContain('flowchart LR');
+      expect(feedback).toContain('"selected": [\n        "Owner",\n        "Member"\n      ]');
+      expect(executeMission).not.toHaveBeenCalled();
+      expect(revise.attributes('disabled')).toBeDefined();
+    } finally { wrapper.unmount(); }
+  });
+
+  it('allows debug requirements feedback and decisions locally, and resets them when the fixture is reapplied', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.execution!.debugFixture = true;
+    mission.execution!.runs[0]!.proposal!.requirements.problem = '# Payment roles\n\n- [x] Owner\n- [ ] Member';
     const sendMissionPrompt = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountWorkspace(mission, { sendMissionPrompt });
-    const markdown = wrapper.get('.mission-requirement-review .markdown-panel');
-    vi.spyOn(wrapper.get('.mission-requirement-review').element, 'getBoundingClientRect').mockReturnValue({
-      left: 0, top: -600, width: 800, height: 900,
-    } as DOMRect);
-    vi.spyOn(window, 'getSelection').mockReturnValue({
-      rangeCount: 1,
-      toString: () => 'Teams need one bill',
-      getRangeAt: () => ({
-        commonAncestorContainer: markdown.element,
-        getBoundingClientRect: () => ({ left: 20, top: 60, width: 180, height: 20 } as DOMRect),
-      } as unknown as Range),
-      removeAllRanges: vi.fn(),
-    } as unknown as Selection);
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { sendMissionPrompt, executeMission });
+    try {
+      const choices = wrapper.findAll('.plan-choice-option input');
+      expect(choices[1]!.attributes('disabled')).toBeUndefined();
+      await choices[1]!.setValue(true);
+      await wrapper.get('[role="switch"]').setValue(true);
+      await wrapper.get('button[aria-label="Comment on this section: Payment roles"]').trigger('click');
+      await wrapper.get('textarea').setValue('Allow a delegated billing owner.');
+      await wrapper.get('.plan-review-footer .app-button--secondary').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('textarea').element.value).toBe('Allow a delegated billing owner.');
+      expect(wrapper.get('.plan-review-footer .app-button--primary').attributes('disabled')).toBeDefined();
+      expect(sendMissionPrompt).not.toHaveBeenCalled();
+      expect(executeMission).not.toHaveBeenCalled();
 
-    await markdown.trigger('mouseup');
-    const popup = document.querySelector<HTMLFormElement>('form.annotation-popup');
-    if (!popup) throw new Error('Expected requirement annotation popup');
-    expect(popup.style.position).toBe('fixed');
-    expect(popup.style.top).toBe('88px');
-    const input = popup.querySelector<HTMLInputElement>('.annotation-popup__input');
-    if (!input) throw new Error('Expected requirement annotation input');
-    input.value = 'Clarify which team roles can pay.';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    popup.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flushPromises();
-    await wrapper.get('[aria-label="Send 1 requirement comment"]').trigger('click');
-    await flushPromises();
-
-    expect(sendMissionPrompt).toHaveBeenCalledOnce();
-    expect(sendMissionPrompt.mock.calls[0]![0]).toContain('Teams need one bill');
-    expect(sendMissionPrompt.mock.calls[0]![0]).toContain('Clarify which team roles can pay.');
-    expect(wrapper.find('.mission-requirement-review__comment').exists()).toBe(false);
-    wrapper.unmount();
+      mission.execution!.runs[0]!.startedAt = '2026-09-19T00:01:00.000Z';
+      await wrapper.setProps({ mission: structuredClone(mission) });
+      expect(wrapper.get('.plan-choice-option input').attributes('disabled')).toBeUndefined();
+      expect(wrapper.find('textarea').exists()).toBe(false);
+      await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
+      await wrapper.get('[role="dialog"] .app-button--primary').trigger('click');
+      await flushPromises();
+      expect(executeMission).not.toHaveBeenCalled();
+      expect(sendMissionPrompt).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
   });
 
   it('does not synthesize follow-up revisions when the accepted snapshot arrives during approval', async () => {
@@ -263,7 +332,7 @@ describe('MissionWorkspace', () => {
     });
     wrapper = mountWorkspace(mission, { executeMission });
 
-    await wrapper.get('.mission-workspace__stage-header .app-button').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
 
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
@@ -659,7 +728,7 @@ describe('MissionWorkspace', () => {
     const mission = missionWithRun('awaitingReview', true);
     const wrapper = mountWorkspace(mission, { executeMission: vi.fn().mockRejectedValue(new Error('Worker unavailable')) });
 
-    await wrapper.get('.mission-workspace__stage-header .app-button').trigger('click');
+    await wrapper.get('.plan-review-footer .app-button--primary').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[role="alert"]').text()).toBe('Worker unavailable');

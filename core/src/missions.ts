@@ -1,3 +1,4 @@
+import { agentBackends } from './contracts/shared';
 import { pendingMissionRun } from './mission-execution';
 import type { AppSnapshot } from './contracts';
 import { createEntityId } from './ids';
@@ -124,6 +125,9 @@ export function updateMission(snapshot: AppSnapshot, input: unknown): Mission {
 function isMissionExecution(v: unknown): v is MissionExecution {
   return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
     && (v.debugFixture === undefined || v.debugFixture === true)
+    && (v.implementationModel === undefined || (record(v.implementationModel) && agentBackends.includes(v.implementationModel.backend as typeof agentBackends[number])
+      && text(v.implementationModel.model) && !!v.implementationModel.model.trim()
+      && (v.implementationModel.reasoningEffort === undefined || (text(v.implementationModel.reasoningEffort) && !!v.implementationModel.reasoningEffort.trim()))))
     && (v.workspaceName === undefined || (text(v.workspaceName) && !!v.workspaceName.trim()))
     && (v.workspaces === undefined || (Array.isArray(v.workspaces) && v.workspaces.every(workspace => record(workspace)
       && text(workspace.repositoryPath) && !!workspace.repositoryPath.trim()
@@ -136,6 +140,7 @@ function isMissionExecution(v: unknown): v is MissionExecution {
       && featureStages.includes(run.stage as MissionStage)
       && ['preparing', 'running', 'awaitingReview', 'accepted', 'cancelled', 'failed'].includes(run.status as string)
       && (run.workerId === undefined || text(run.workerId))
+      && (run.ticketId === undefined || (text(run.ticketId) && /^mission-ticket-[a-zA-Z0-9-]+$/.test(run.ticketId)))
       && (run.ticketIndex === undefined || (Number.isInteger(run.ticketIndex) && (run.ticketIndex as number) >= 0))
       && (run.repositoryPath === undefined || (text(run.repositoryPath) && !!run.repositoryPath.trim()))
       && (run.implementationResult === undefined || (record(run.implementationResult) && text(run.implementationResult.changes) && text(run.implementationResult.tests)))

@@ -62,7 +62,9 @@ it('preserves accepted criteria and ticket indices when saved artifact metadata 
   expect(prompt).toContain('Exact acceptance for this worker');
   expect(prompt).toContain('mission-ticket-2');
   expect(prompt).toContain('Persisted acceptance');
-  expect(prompt).toContain('Unrelated ticket body');
+  expect(prompt).not.toContain('Unrelated ticket body');
+  expect(prompt).toContain('get-mission-assignment');
+  expect(prompt).toContain('ticketId');
   expect(prompt).toContain('Implement ONLY ticket 2 in /repo');
 });
 
@@ -97,10 +99,14 @@ it('validates persisted execution records and dependency graphs before admitting
   const run: MissionRun = { id: 'run', stage: 'requirements', memberId: 'member', workerId: 'worker', status: 'running', skills: [{ name: 'grilling', path: '/skill' }], feedback: '', startedAt: 'now', finishedAt: 'later', summary: 'Ready', error: 'old error', proposal: structuredClone(mission.artifacts), ticketIndex: 0 };
   mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
   expect(isMission(mission)).toBe(true);
+  expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low' } } })).toBe(true);
+  for (const implementationModel of [{ backend: 'unknown', model: 'luna' }, { backend: 'codex', model: '' }, { backend: 'codex', model: 'luna', reasoningEffort: 1 }]) {
+    expect(isMission({ ...mission, execution: { ...mission.execution, implementationModel } })).toBe(false);
+  }
   expect(pendingMissionRun(mission)).toBe(run);
   expect(() => updateMission(snapshot, { id: mission.id, revision: 0, artifacts: mission.artifacts, stageAgentIds: {}, action: 'save' })).toThrow('current mission run');
   expect(isMission({ ...mission, execution: { ...mission.execution, runs: [{ ...run, skills: [{ name: 'mission-shape-requirements' }] }] } })).toBe(true);
-  for (const change of [{ status: 'unknown' }, { stage: 'unknown' }, { memberId: null }, { workerId: false }, { ticketIndex: -1 }, { skills: [{ name: 'x', path: 42 }] }, { feedback: null }, { startedAt: null }, { finishedAt: false }, { summary: false }, { error: false }, { proposal: {} }]) {
+  for (const change of [{ status: 'unknown' }, { stage: 'unknown' }, { memberId: null }, { workerId: false }, { ticketIndex: -1 }, { ticketId: 42 }, { skills: [{ name: 'x', path: 42 }] }, { feedback: null }, { startedAt: null }, { finishedAt: false }, { summary: false }, { error: false }, { proposal: {} }]) {
     expect(isMission({ ...mission, execution: { ...mission.execution, runs: [{ ...run, ...change }] } })).toBe(false);
   }
   expect(isMission({ ...mission, execution: { ...mission.execution, workspace: { path: '/repo', branch: 'x', baseSha: 'bad' } } })).toBe(false);

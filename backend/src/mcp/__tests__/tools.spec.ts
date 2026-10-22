@@ -185,7 +185,7 @@ describe(`${product.name} MCP tool registration`, () => {
     coordinator.missionContext.mockReturnValue({ missionId: 'mission-1', runId: 'run-1', stage: 'requirements' });
     createServer();
     expect([...handlers.keys()]).toEqual(expect.arrayContaining([
-      'set-mission-title', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result',
+      'set-mission-title', 'get-mission-assignment', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result',
     ]));
     expect([...handlers.keys()]).not.toContain('set-mission-execution-policy');
     const finishTurnDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'finish_turn')![1] as { inputSchema: z.ZodRawShape };

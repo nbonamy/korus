@@ -2,7 +2,7 @@ import { createEntityId } from '@workspace/core/ids';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { isMissionArtifacts, type Mission, type MissionReviewFinding, type MissionStage, type MissionTicket } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
-import { missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
+import { missionRunAssignment, missionDeveloperInstructions, type MissionArtifactReadResult, type MissionArtifactWriteInput, type MissionExecutionInput, type MissionReviewFindingInput, type MissionReviewFindingUpdateInput, type MissionTicketDraftInput, type MissionTicketDraftResult, type MissionToolContext } from '@workspace/core/mission-execution';
 import type { MissionService } from './mission-service';
 import { missionTeamRepositories } from './mission-execution-policy';
 
@@ -27,7 +27,8 @@ export class MissionAgentTools {
       // Membership outlives a turn or run. Mutation guards below still enforce ownership.
       const run = mission.execution?.runs.slice().reverse().find(run => run.workerId === agentId);
       if (run) {
-        const context = { missionId: mission.id, runId: run.id, stage: run.stage };
+        const assignment = missionRunAssignment(mission, run);
+        const context = { missionId: mission.id, runId: run.id, stage: run.stage, ...(assignment ? { assignment } : {}) };
         if (run.stage === mission.stage) return context;
         historicalContext ??= context;
       }

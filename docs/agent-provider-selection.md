@@ -24,8 +24,12 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
   creation uses the target provider's defaults instead.
 - **Missions:** new workers inherit the main Mission agent's current provider,
   model, reasoning effort and service tier, not the assigned team member's profile.
-  The first Mission agent starts from the selected orchestrator member. Existing
-  workers retain their configuration and conversations.
+  The first Mission agent starts from the selected orchestrator member. Tickets
+  approval may persist a Mission-specific implementation model and reasoning effort
+  from that provider. The daemon validates the selection against the host's filtered
+  catalog before worktree creation and each worker launch. Implementation workers,
+  including reused workers and retries, use that selection; the lead and Review
+  retain their configuration and conversations.
 - **Review:** the reviewer's provider is an independent choice (Claude can review
   Codex work and vice versa). The panel remembers provider, model, effort and
   automation preferences. `start_automatic_review` inherits the caller's
