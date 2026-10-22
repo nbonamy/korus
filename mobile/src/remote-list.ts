@@ -1,7 +1,7 @@
 import { shallowRef } from 'vue';
 import type { CompanionSession } from './companion-port';
 
-export type RemoteStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+type RemoteStatus = 'idle' | 'loading' | 'loaded' | 'failed';
 export type RemoteList<Item, Extra extends object> = { status: RemoteStatus; items: Item[] } & Extra;
 
 /**

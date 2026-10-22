@@ -4,6 +4,7 @@ import { createRemoteList } from './remote-list';
 import { createDraftLedger } from './draft-ledger';
 import { createReceiptReconciler } from './receipts';
 import { createSessionActions } from './session-actions';
+import { createComposerState } from './composer-state';
 import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
@@ -14,7 +15,7 @@ import { companionTarget, companionSessionId, type CompanionTarget, type Compani
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
-import { applyComposerChoice, composerCapabilitiesFor, promptOptionsFor, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
+import { composerCapabilitiesFor, promptOptionsFor } from './composer-settings';
 import { createGitChanges } from './git-changes';
 import { reconcileWorkspace } from './workspace-reconcile';
 import type { DraftState, DraftStore } from './protected-storage';
@@ -103,10 +104,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return teamId.value ? read?.call(active, teamId.value) : undefined;
   });
 
-  const modelCatalog = shallowRef<Record<string, BackendModelOption[]>>({});
-  const composerChoices = reactive<Record<string, ComposerChoice>>({});
-  const permissionChoices = reactive<Record<string, { approvalPreset?: string; permissionMode?: string }>>({});
-  const permissionRequests = new Map<string, symbol>();
   // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
   const agents = computed(() => {
     const order = workspace.value.teams.find((team) => team.id === teamId.value)?.agentIds ?? [];
@@ -202,19 +199,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
-  /** Models and the person's choice belong to a chat under one engine: another engine has its own. */
-  const modelKey = (id: string, backend: string | undefined) => `${id}:${backend ?? ''}`;
-  const currentModelKey = () => modelKey(agentId.value, agent.value?.backend);
-  const models = computed(() => modelCatalog.value[currentModelKey()] ?? []);
-  const composerSettings = computed(() => agent.value ? resolveComposerSettings(agent.value, models.value, composerChoices[currentModelKey()]) : null);
-  /** What the agent is set to now: the phone's latest choice, else what the laptop reports. */
-  const permissions = computed(() => {
-    const current = agent.value; if (!current) return null;
-    const choice = permissionChoices[current.id] ?? {}; const saved = current.backendDefaults;
-    return { approvalPreset: choice.approvalPreset ?? (saved?.kind === 'codex' ? saved.approvalPreset : undefined) ?? null,
-      permissionMode: choice.permissionMode ?? (saved && saved.kind !== 'codex' ? saved.permissionMode : undefined) ?? null };
-  });
-  const modelFavorites = computed(() => workspace.value.modelFavorites ?? []);
+  const composer = createComposerState({ session: () => session, agent: () => agent.value, agentId: () => agentId.value, workspace: () => workspace.value, applyWorkspace: (next) => { applyWorkspace(next); } });
+  const { models, composerSettings, modelFavorites, permissions, loadModels } = composer;
   const draft = computed(() => drafts[key()] ?? { text: '', selectionStart: 0, selectionEnd: 0 });
   const deliveryUnknown = computed(() => Boolean(uncertain[key()]));
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
@@ -252,7 +238,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   function applyWorkspace(next: CompanionWorkspace): boolean {
     workspace.value = reconcileWorkspace(workspace.value, next);
     if ((!agentId.value && agents.value.length) || (agentId.value && selectedConversationKey !== conversationIdentity())) {
-      permissionRequests.delete(agentId.value); delete permissionChoices[agentId.value];
+      composer.forgetPermission(agentId.value);
       void selectAgent(agentId.value);
       return true;
     }
@@ -260,8 +246,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
 
   function closeSession() {
-    permissionRequests.clear();
-    for (const id of Object.keys(permissionChoices)) delete permissionChoices[id];
+    composer.forgetAllPermissions();
     actions.reset(); chatCreation.value = 'idle';
     receipts.clear();
     clearTimeout(retryTimer);
@@ -293,7 +278,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     closeSession();
     const epoch = connectionEpoch;
     const sameLaptop = laptopId.value === id;
-    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; modelCatalog.value = {}; }
+    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; composer.forgetModels(); }
     laptopId.value = id;
     status.value = reconnecting ? 'reconnecting' : 'connecting';
     error.value = '';
@@ -348,48 +333,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     teamId.value = workspace.value.teams.some((team) => team.id === id) ? id : '';
     await selectAgent(preferredAgentId);
   }
-  async function loadModels(id: string, capturedSession: CompanionSession) {
-    const backendOf = () => workspace.value.agents.find((candidate) => candidate.id === id)?.backend;
-    const requested = backendOf(); const key = modelKey(id, requested);
-    if (!capturedSession.listModels || modelCatalog.value[key]) return;
-    try {
-      const list = await capturedSession.listModels(id);
-      // A list asked for under another engine is not this engine's list.
-      if (session === capturedSession && backendOf() === requested) modelCatalog.value = { ...modelCatalog.value, [key]: list };
-    } catch { /* Without a catalog the model menu simply stays hidden. */ }
-  }
-  /** One change from the model menu: remembered here, and saved on the laptop like the desktop does. */
-  function updateComposerSettings(change: ComposerChange) {
-    const id = agentId.value; const active = session;
-    if (!id || !active || !agent.value) return;
-    const key = currentModelKey();
-    const { choice, save } = applyComposerChoice(models.value, composerChoices[key] ?? currentChoice(), change);
-    composerChoices[key] = choice;
-    if (save && active.selectModel) void active.selectModel(id, save).catch(() => {});
-  }
-  function currentChoice(): ComposerChoice {
-    const settings = composerSettings.value;
-    return settings ? { model: settings.model?.model ?? null, reasoningEffort: settings.reasoningEffort, serviceTier: settings.serviceTier, planMode: settings.planMode } : {};
-  }
-  /** Optimistic only until the owning laptop answers; subsequent policy updates stay authoritative. */
-  async function changePermissions(change: { approvalPreset?: string; permissionMode?: string }, send: (active: CompanionSession, id: string) => Promise<void> | undefined) {
-    const id = agentId.value; const active = session;
-    if (!id || !active) return;
-    const token = Symbol();
-    permissionRequests.set(id, token);
-    permissionChoices[id] = { ...permissionChoices[id], ...change };
-    try {
-      await send(active, id);
-      if (active !== session) return;
-      const next = await active.getWorkspace();
-      if (active === session) applyWorkspace(next);
-    } catch { /* Revert to the latest authoritative policy on rejection or transport failure. */ }
-    finally {
-      if (permissionRequests.get(id) === token) { permissionRequests.delete(id); delete permissionChoices[id]; }
-    }
-  }
-  const setApprovalPreset = (preset: string) => changePermissions({ approvalPreset: preset }, (active, id) => active.setApprovalPreset?.(id, preset));
-  const setPermissionMode = (mode: string) => changePermissions({ permissionMode: mode }, (active, id) => active.setPermissionMode?.(id, mode));
   /** A laptop-side command that is not the person's draft: sent once, the draft untouched. */
   async function runCommand(command: () => Promise<unknown> | undefined) {
     error.value = '';
@@ -647,6 +590,6 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
-    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose, confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
+    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings: composer.updateSettings, permissions, modelFavorites, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode, renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose, confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset(); stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
 }
