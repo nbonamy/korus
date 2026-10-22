@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 struct ChatNotification: Codable, Identifiable, Equatable, Sendable {
-    struct Target: Codable, Equatable, Sendable {
+    struct Target: Codable, Hashable, Sendable {
         let hostId: String
         let locationId: String
         let teamId: String
@@ -31,6 +31,10 @@ struct ChatNotification: Codable, Identifiable, Equatable, Sendable {
         case .question: "questionmark"
         case .read: ""
         }
+    }
+    func precedes(_ other: ChatNotification) -> Bool {
+        if let revision, let next = other.revision, revision != next { return revision < next }
+        return createdAt < other.createdAt
     }
     var initials: String { String(name.split(separator: " ").prefix(2).compactMap(\.first)).uppercased() }
 }
@@ -66,6 +70,7 @@ final class NotificationInbox {
     private(set) var current: ChatNotification?
     private var queued: [ChatNotification] = []
     private var seen: [String] = []
+    private var latest: [ChatNotification.Target: ChatNotification] = [:]
 
     func receive(_ notification: ChatNotification, foreground: Bool, visible: ChatNotification.Target?, now: Double = Date().timeIntervalSince1970 * 1000) {
         if notification.kind == .read {
@@ -75,9 +80,13 @@ final class NotificationInbox {
             return
         }
         guard !reads.contains(notification), !seen.contains(notification.id) else { return }
+        if let previous = latest[notification.target], notification.precedes(previous) { return }
+        latest[notification.target] = notification
+        if latest.count > 256, let oldest = latest.min(by: { $0.value.createdAt < $1.value.createdAt })?.key { latest.removeValue(forKey: oldest) }
         remember(notification.id)
         guard foreground, notification.target != visible, abs(now - notification.createdAt) <= 300_000 else { return }
-        if current == nil { current = notification }
+        if current == nil || current?.target == notification.target { current = notification }
+        else if let index = queued.firstIndex(where: { $0.target == notification.target }) { queued[index] = notification }
         else { queued.append(notification); if queued.count > 8 { queued.removeFirst() } }
     }
     func remember(_ id: String) {

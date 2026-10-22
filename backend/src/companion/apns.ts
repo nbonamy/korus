@@ -1,4 +1,4 @@
-import { createPrivateKey, sign } from 'node:crypto';
+import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { connect } from 'node:http2';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 
@@ -25,6 +25,10 @@ export class ApnsSender {
       this.issuedAt = now;
     }
     const read = notification.kind === 'read';
+    const target = notification.target;
+    const collapseId = read ? notification.id : createHash('sha256').update(JSON.stringify([
+      target.hostId, target.locationId, target.teamId, target.agentId, target.sessionId,
+    ])).digest('hex');
     const payload = JSON.stringify({ aps: read ? { 'content-available': 1 } : { alert: { title: notification.name, body: messages[notification.kind as keyof typeof messages] }, sound: 'default', 'thread-id': notification.target.agentId }, notification });
     if (Buffer.byteLength(payload) > 4096) return 'unavailable';
     const client = connect(registration.environment === 'development' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com');
@@ -35,7 +39,7 @@ export class ApnsSender {
       client.on('error', () => finish('unavailable'));
       const request = client.request({ ':method': 'POST', ':path': `/3/device/${registration.token}`,
         authorization: `bearer ${this.token}`, 'apns-topic': this.config.topic, 'apns-push-type': read ? 'background' : 'alert',
-        'apns-priority': read ? '5' : '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': notification.id });
+        'apns-priority': read ? '5' : '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': collapseId });
       let status = 0; let body = '';
       request.on('response', headers => { status = Number(headers[':status']); });
       request.setEncoding('utf8');

@@ -6,6 +6,26 @@ final class NotificationInboxTests: XCTestCase {
     private func event(_ id: String, time: Double = 1000) -> ChatNotification {
         .init(id: id, target: target, kind: .completed, name: "Mobile companion", createdAt: time)
     }
+    func testLatestAlertReplacesItsConversationAndPreservesOtherConversations() {
+        let inbox = NotificationInbox(reads: NotificationReadState(defaults: nil))
+        let first = event("first"), latest = event("latest", time: 1001)
+        let other = ChatNotification(id: "other", target: .init(hostId: "other-host", locationId: "local", teamId: "team", agentId: "chat", sessionId: "session"), kind: .completed, name: "Other", createdAt: 1000)
+        inbox.receive(first, foreground: true, visible: nil, now: 1001)
+        inbox.receive(other, foreground: true, visible: nil, now: 1001)
+        inbox.receive(latest, foreground: true, visible: nil, now: 1001)
+        XCTAssertEqual(inbox.current?.id, "latest")
+        inbox.dismiss(id: "first")
+        XCTAssertEqual(inbox.current?.id, "latest")
+        inbox.dismiss(id: "latest")
+        XCTAssertEqual(inbox.current?.id, "other")
+        inbox.receive(event("delayed", time: 999), foreground: true, visible: nil, now: 1001)
+        inbox.receive(event("queued-old", time: 1002), foreground: true, visible: nil, now: 1003)
+        inbox.receive(event("queued-latest", time: 1003), foreground: true, visible: nil, now: 1003)
+        inbox.dismiss(id: "other")
+        XCTAssertEqual(inbox.current?.id, "queued-latest")
+        inbox.dismiss(id: "queued-latest")
+        XCTAssertNil(inbox.current)
+    }
     // Acknowledging an older turn must clear its banner, preserve newer work, and
     // prevent delayed push delivery from bringing the old alert back.
     func testReadCheckpointClearsOnlyOlderAlertsAndSurvivesInboxRecreation() throws {
@@ -46,11 +66,12 @@ final class NotificationInboxTests: XCTestCase {
     func testQueuedBannersSurviveOldTimersAndDisappearWhenTheirConversationOpens() {
         let inbox = NotificationInbox()
         inbox.receive(event("first"), foreground: true, visible: nil, now: 1000)
-        inbox.receive(event("second"), foreground: true, visible: nil, now: 1000)
+        let second = ChatNotification(id: "second", target: .init(hostId: "host", locationId: "local", teamId: "team", agentId: "other", sessionId: "session"), kind: .completed, name: "Other", createdAt: 1000)
+        inbox.receive(second, foreground: true, visible: nil, now: 1000)
         inbox.dismiss(id: "first")
         inbox.dismiss(id: "first")
         XCTAssertEqual(inbox.current?.id, "second")
-        inbox.visibleChanged(target)
+        inbox.visibleChanged(second.target)
         XCTAssertNil(inbox.current)
         inbox.receive(event("third"), foreground: true, visible: nil, now: 1000)
         inbox.clear()

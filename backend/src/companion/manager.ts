@@ -18,6 +18,7 @@ import { CompanionGateway, type GatewayState } from './gateway';
 import { CompanionOutboundConnector } from './connector';
 import { ConversationSource } from './conversation-source';
 import { warnMain } from '../log';
+import { setTimeout as delay } from 'node:timers/promises';
 import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
@@ -34,7 +35,6 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
-  desktopFocused?(): Promise<boolean>;
   request<Result>(method: string, params?: unknown): Promise<Result>;
   onAccessChanged?: (enabled: boolean) => void;
 };
@@ -78,15 +78,18 @@ export class CompanionManager {
     return this.saved.relayOrigin ? { origin: this.saved.relayOrigin, peerId: this.saved.relayPeerId } : product.companionRelay;
   }
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
-  recordPrompt(agent: Agent, clientId: string) { return this.notifications?.recordPrompt(agent, clientId); }
   event(event: AppBackendEvent) {
     const notifications = this.notifications?.capture(event) ?? [];
     this.conversations.observe(event);
     for (const action of notifications) if (this.saved?.enabled) {
+      // Let visible clients acknowledge the result before creating an alert. Each
+      // grace starts at capture time, so a burst does not add one delay per agent.
+      const ready = action.event.type === 'agent.updated' ? Promise.resolve() : delay(500);
       this.notificationWork = this.notificationWork.then(async () => {
+        await ready;
         if (!this.saved.enabled) return;
         const notification = this.notifications!.create(action.event, await this.workspace(), action.revision);
-        if (notification && this.saved.enabled) void this.gateway.notify(notification, async () => !action.desktopOrigin || !await this.backend.desktopFocused?.().catch(() => false)).catch(() => { warnMain('companion', 'push delivery unavailable'); });
+        if (notification && this.saved.enabled) void this.gateway.notify(notification).catch(() => { warnMain('companion', 'push delivery unavailable'); });
       }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
     }
     for (const listener of this.eventListeners) listener(event);
