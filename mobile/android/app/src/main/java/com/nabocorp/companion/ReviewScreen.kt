@@ -28,7 +28,7 @@ import org.json.JSONObject
     val setup = review.optJSONObject("setup")
     val status = review.string("status")
     val starting = status == "starting"
-    val connected = state.string("connection") == "connected"
+    val connected = state.connection.isConnected
     val choices = model.reviewChoices
     var priorConnection by remember { mutableStateOf(connected) }
     LaunchedEffect(connected) {

@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
                         Modifier.widthIn(max = 300.dp), textAlign = TextAlign.Center, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val laptops = state.items("laptops").filter { it.string("id").isNotBlank() }
-                val connecting = state.string("connection") in listOf("connecting", "reconnecting")
+                val connecting = state.connection in setOf(Connection.Connecting, Connection.Reconnecting)
                 if (laptops.size > 1 || laptops.size == 1 && !connecting) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         laptops.forEach { laptop ->
@@ -70,7 +70,7 @@ import androidx.compose.ui.unit.sp
                         Text("Connecting…", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (state.string("connection") == "error") PairingMessage("Laptop unavailable. Check it and the relay, then try again.", error = true)
+                if (state.connection == Connection.Error) PairingMessage("Laptop unavailable. Check it and the relay, then try again.", error = true)
             }
             Spacer(Modifier.height(32.dp))
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {

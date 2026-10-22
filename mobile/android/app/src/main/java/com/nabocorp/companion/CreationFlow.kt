@@ -37,7 +37,7 @@ internal data class CreationFlow(
         return if (catalog.string("repositoryId") == repositoryId) catalog else json("status" to "loading")
     }
     fun command(state: JSONObject, backend: String): JSONObject? {
-        if (submitted || state.string("connection") != "connected" || state.string("chatCreation") == "creating" ||
+        if (submitted || !state.connection.isConnected || state.string("chatCreation") == "creating" ||
             state.string("laptopId", state.obj("composerTarget").string("hostId")) != hostId || state.string("teamId") != teamId ||
             !state.strings("backends").contains(backend)) return null
         val input = value.trim()

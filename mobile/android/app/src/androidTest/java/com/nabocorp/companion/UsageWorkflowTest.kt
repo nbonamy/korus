@@ -18,7 +18,7 @@ class UsageWorkflowTest {
     @get:Rule val app = createAndroidComposeRule<CompanionActivity>()
 
     @Test fun reconnectLoadsUsageAndProviderRetryReplacesItsFailure() {
-        val connection = mutableStateOf("disconnected")
+        val connection = mutableStateOf(Connection.Disconnected)
         val usage = mutableStateOf(json("status" to "loaded", "providers" to JSONArray().put(json("backend" to "codex", "failed" to false,
             "limits" to json("primary" to json("usedPercent" to 80, "windowDurationMins" to 300), "secondary" to json("usedPercent" to null, "windowDurationMins" to 10080))))))
         var refreshed = 0
@@ -29,7 +29,7 @@ class UsageWorkflowTest {
         app.onNodeWithText("Laptop disconnected").assertIsDisplayed()
         app.onNodeWithText("20% left").assertDoesNotExist()
         app.onNodeWithText("Reconnect").performClick()
-        app.runOnIdle { assertEquals(1, reconnected); assertEquals(0, refreshed); connection.value = "connected" }
+        app.runOnIdle { assertEquals(1, reconnected); assertEquals(0, refreshed); connection.value = Connection.Connected }
         app.waitForIdle()
         app.runOnIdle { assertEquals(1, refreshed) }
         app.onNodeWithText("Codex").assertIsDisplayed()
@@ -55,7 +55,7 @@ class UsageWorkflowTest {
         val usage = mutableStateOf(json("status" to "loading"))
         var refreshed = 0
         app.activityRule.scenario.onActivity { activity ->
-            activity.setContent { MaterialTheme { UsageContent(usage.value, "connected", { refreshed++ }, {}) } }
+            activity.setContent { MaterialTheme { UsageContent(usage.value, Connection.Connected, { refreshed++ }, {}) } }
         }
         app.onNodeWithText("Loading usage…").assertIsDisplayed()
         app.runOnIdle { usage.value = json("status" to "failed") }

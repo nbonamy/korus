@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable internal fun ConversationContent(model: CompanionModel, modifier: Modifier = Modifier) {
     val presentation = model.conversationPresentation
-    val connected = model.state.string("connection") == "connected"
+    val connected = model.state.connection.isConnected
     Column(modifier) {
         if (presentation.hasTranscript && model.showConnectionLost) Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -13,7 +13,7 @@ internal data class ConversationPresentation(
     val failed get() = connected && hasAgent && (renderFailed || fetchFailed && !fetching)
     val loading get() = connected && hasAgent && !hasTranscript && !failed && (fetching || awaitingPaint)
     fun update(next: org.json.JSONObject): ConversationPresentation {
-        val online = next.string("connection") == "connected"
+        val online = next.connection.isConnected
         val fetching = online && next.optBoolean("loading")
         return copy(fetching = fetching,awaitingPaint = online && (awaitingPaint || fetching && !this.fetching),
             fetchFailed = online && next.string("error") == "mobile.errors.loadConversation",connected = online,hasAgent = next.string("agentId").isNotBlank())

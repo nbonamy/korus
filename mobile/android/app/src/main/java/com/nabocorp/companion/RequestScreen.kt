@@ -121,7 +121,7 @@ import androidx.compose.ui.unit.dp
                 }
             }
             if (model.state.string("failedRequest") == pending.key) Text("The response wasn’t confirmed. Your answer is still here. Check the connection and try again.", Modifier.padding(horizontal = 32.dp, vertical = 12.dp), fontSize = 15.sp, color = MaterialTheme.colorScheme.error)
-            if (model.state.string("connection") != "connected") {
+            if (!model.state.connection.isConnected) {
                 Text("Reconnect to your laptop to respond.", Modifier.padding(horizontal = 32.dp, vertical = 12.dp), fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

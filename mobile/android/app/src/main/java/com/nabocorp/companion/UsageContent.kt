@@ -24,14 +24,14 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** Quota data stays owned by the shared engine; this native view formats and refreshes it. */
-@Composable internal fun UsageContent(usage: JSONObject, connection: String, refresh: () -> Unit, reconnect: () -> Unit) {
+@Composable internal fun UsageContent(usage: JSONObject, connection: Connection, refresh: () -> Unit, reconnect: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(connection) { if (connection == "connected") refresh() }
+    LaunchedEffect(connection) { if (connection.isConnected) refresh() }
     LaunchedEffect(Unit) { while (true) { delay(60_000); now = System.currentTimeMillis() } }
     val loading = usage.string("status") in listOf("", "idle", "loading")
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         when {
-            connection != "connected" -> AppUnavailable("Laptop disconnected", Modifier.padding(top = 48.dp), Icons.Outlined.Laptop, "Connect to your laptop to see usage.") { AppUnavailableAction("Reconnect", reconnect) }
+            !connection.isConnected -> AppUnavailable("Laptop disconnected", Modifier.padding(top = 48.dp), Icons.Outlined.Laptop, "Connect to your laptop to see usage.") { AppUnavailableAction("Reconnect", reconnect) }
             loading -> Row(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 Text("Loading usage…", Modifier.padding(start = 12.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -16,6 +16,8 @@ import org.json.JSONObject
 import java.io.File
 
 fun JSONObject.string(key: String, fallback: String = ""): String = if (isNull(key)) fallback else optString(key, fallback)
+/** Where the link to the laptop stands, as the engine reports it. */
+val JSONObject.connection: Connection get() = Connection.of(string("connection"))
 fun JSONObject.obj(key: String): JSONObject = optJSONObject(key) ?: JSONObject()
 fun JSONObject.items(key: String): List<JSONObject> = optJSONArray(key)?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) } } ?: emptyList()
 fun JSONObject.strings(key: String): List<String> = optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
@@ -47,7 +49,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         private set
     private var connectionDeadline: Long? = null
     private var connectionNoticeJob: Job? = null
-    internal val needsPairing get() = state.items("laptops").isEmpty() || state.string("connection") in listOf("unpaired","revoked")
+    internal val needsPairing get() = state.items("laptops").isEmpty() || state.connection.needsPairing
     internal var pairingCode by mutableStateOf("")
         private set
     internal var pairingPending by mutableStateOf(false)
@@ -93,7 +95,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal val requests get() = state.items("requests").mapNotNull(PendingRequest::parse)
     internal val presentedRequest get() = if (requestOpen) requestSelection?.let { selected -> requests.firstOrNull(selected::sameIdentity) } else null
     internal val requestBusy get() = presentedRequest?.let { requestPending == it.key || state.string("respondingRequest") == it.key } == true
-    internal val canRespond get() = screenUnlocked && state.string("connection") == "connected" && requestPending == null && state.string("respondingRequest").isBlank()
+    internal val canRespond get() = screenUnlocked && state.connection.isConnected && requestPending == null && state.string("respondingRequest").isBlank()
     private val preferences = application.getSharedPreferences("preferences", 0)
     internal val sidebar = SidebarPreferences(application.getSharedPreferences("sidebar", 0))
     private var preferredNewBackend by mutableStateOf(preferences.getString("newChat.backend", "").orEmpty())
@@ -102,9 +104,9 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     internal var duplicateFailed by mutableStateOf(false)
     internal var agentRename by mutableStateOf<AgentRename?>(null)
     internal val newBackend get() = preferredNewBackend.takeIf { state.strings("backends").contains(it) } ?: state.strings("backends").firstOrNull().orEmpty()
-    internal val canStartCreation get() = state.string("connection") == "connected" && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank() && newBackend.isNotBlank()
+    internal val canStartCreation get() = state.connection.isConnected && state.string("laptopId", state.obj("composerTarget").string("hostId")).isNotBlank() && state.string("teamId").isNotBlank() && newBackend.isNotBlank()
         && state.string("chatCreation") != "creating" && creation?.submitted != true && !duplicatingAgent
-    val canManageSession get() = composerDrafts.target != null && state.string("connection") == "connected" && state.string("sessionAction").isBlank()
+    val canManageSession get() = composerDrafts.target != null && state.connection.isConnected && state.string("sessionAction").isBlank()
     val composerDrafts = ComposerDrafts()
     val composerPreferences = ComposerPreferences(application.getSharedPreferences("preferences", 0))
     val draft get() = composerDrafts.text
@@ -200,7 +202,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     internal fun retryConversation() {
         val id = state.string("agentId")
-        if (id.isBlank() || state.string("connection") != "connected") return
+        if (id.isBlank() || !state.connection.isConnected) return
         conversationPresentation = ConversationPresentation(awaitingPaint = true).update(state).copy(fetchFailed = false)
         replaceTranscript()
         conversation = latestConversation; context = latestContext
@@ -208,13 +210,13 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     private fun acceptPaintedReceipt() {
         val read = receipt ?: return
-        if (state.string("connection") == "connected" && state.optBoolean("conversationReady") && transcript.usable
+        if (state.connection.isConnected && state.optBoolean("conversationReady") && transcript.usable
             && read.string("agentId") == state.string("agentId") && read.optInt("generation") == state.optInt("conversationGeneration") && !conversationPresentation.failed) {
             renderedAgent = read.string("agentId"); conversationPresentation = conversationPresentation.rendered()
         }
     }
     private fun updateConnectionNotice() {
-        if (!foreground || !screenUnlocked || state.string("connection") in listOf("connected","unpaired","revoked") || needsPairing) {
+        if (!foreground || !screenUnlocked || (state.connection.isConnected || state.connection.needsPairing) || needsPairing) {
             connectionNoticeJob?.cancel(); connectionNoticeJob = null; connectionDeadline = null; showConnectionLost = false; return
         }
         if (connectionDeadline != null) return
@@ -290,7 +292,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         dictation.cancel(); sheet = null; acknowledge(); loadChanges()
     }
     internal fun loadChanges(scopeId: String? = null) {
-        if (!changesOpen || changesTarget != composerDrafts.target || state.string("connection") != "connected" || !state.obj("git").optBoolean("available")) return
+        if (!changesOpen || changesTarget != composerDrafts.target || !state.connection.isConnected || !state.obj("git").optBoolean("available")) return
         if (scopeId != null && state.obj("git").items("choices").none { it.string("id") == scopeId }) return
         if (scopeId == null && state.obj("git").string("status") == "loading") return
         if (!changes.usable) { changes.destroy(); changesReady = false; changesPageFailed = false; changes = page("changes") }
@@ -381,7 +383,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (sidebar.sortIdle(order)) command("idleSort", "order" to order)
     }
     internal val selectedModel get() = state.items("models").firstOrNull { it.string("id") == state.obj("composer").string("modelId") }
-    internal val canChooseModel get() = state.string("connection") == "connected" && state.items("models").isNotEmpty()
+    internal val canChooseModel get() = state.connection.isConnected && state.items("models").isNotEmpty()
     internal fun chooseModel(id: String) {
         if (!canChooseModel || !state.items("models").any { it.string("id") == id }) return
         command("composer", "change" to json("modelId" to id)); sheet = null
@@ -503,7 +505,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     }
     internal fun refreshCreation() {
         val flow = creation ?: return
-        if (flow.submitted || state.string("connection") != "connected") return
+        if (flow.submitted || !state.connection.isConnected) return
         when (flow.kind) {
             CreationKind.EXISTING -> command("loadBranches", "repositoryId" to flow.repositoryId)
             CreationKind.GITHUB, CreationKind.LOCAL -> if (flow.repositoryId == null) projectCatalogCommand("loadProjectRepositories", flow) else projectCatalogCommand("loadProjectBranches", flow, flow.repositoryId)
@@ -527,7 +529,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (enabled) composerDrafts.setGoalMode(false)
         command("composer", "change" to json("planMode" to enabled))
     }
-    internal val canTogglePlanMode get() = state.string("connection") == "connected" && composerDrafts.target != null
+    internal val canTogglePlanMode get() = state.connection.isConnected && composerDrafts.target != null
         && state.obj("capabilities").optBoolean("planMode") && !composerDrafts.sending && !state.optBoolean("goalBusy")
     fun beginAttachmentImport(): ComposerDrafts.Import? {
         if (!canAttach) return null
@@ -563,7 +565,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (importing != null) importing.invokeOnCompletion { file?.delete() } else file?.delete()
     }
     fun acknowledge() {
-        if (navigatingNotification != null || fatalError || engineRecovering || state.string("connection") != "connected" || !state.optBoolean("conversationReady") || !transcript.usable) { attention.visibleTarget = null; return }
+        if (navigatingNotification != null || fatalError || engineRecovering || !state.connection.isConnected || !state.optBoolean("conversationReady") || !transcript.usable) { attention.visibleTarget = null; return }
         attention.visibleTarget = if (foreground && screenUnlocked && !drawerVisible && !reviewOpen && !changesOpen && creation == null && presentedRequest == null && sheet == null && attachmentPreview == null && conversationImage == null && renderedAgent == state.string("agentId") && state.string("startup") == "ready")
             state.optJSONObject("composerTarget")?.let(ConversationTarget::parse) else null
         val read = receipt ?: return
@@ -589,7 +591,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     val next = JSONObject(payload).getJSONObject("state")
                     if (engineRecovering && next.string("startup") == "ready") engineRecovering = false
                     reconcileRequest(next)
-                    if (next.items("laptops").isNotEmpty() && next.string("connection") !in listOf("unpaired","revoked")) { pairingCode = ""; pairingPending = false; pairingWasBusy = false; scanError = false }
+                    if (next.items("laptops").isNotEmpty() && !next.connection.needsPairing) { pairingCode = ""; pairingPending = false; pairingWasBusy = false; scanError = false }
                     else if (next.string("pairing") != "idle") pairingWasBusy = true
                     else if (pairingWasBusy || next.string("pairingError").isNotBlank()) { pairingPending = false; pairingWasBusy = false }
                     val oldId = state.string("agentId"); val nextId = next.string("agentId")
@@ -604,13 +606,13 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                         beginTranscriptSelection(clearCache = true); conversationPresentation = ConversationPresentation()
                     } else if (state.optInt("conversationGeneration") != next.optInt("conversationGeneration")) beginTranscriptSelection(clearCache = false)
                     conversationPresentation = conversationPresentation.update(next)
-                    if (changesOpen && (changesTarget != nextTarget || next.string("connection") == "connected" && !next.obj("git").optBoolean("available"))) dismissChanges()
-                    val reloadChanges = changesOpen && state.string("connection") != "connected" && next.string("connection") == "connected"
+                    if (changesOpen && (changesTarget != nextTarget || next.connection.isConnected && !next.obj("git").optBoolean("available"))) dismissChanges()
+                    val reloadChanges = changesOpen && !state.connection.isConnected && next.connection.isConnected
                     if (sidebar.select(next.string("laptopId", next.obj("composerTarget").string("hostId")), next.string("teamId"))) command("idleSort", "order" to sidebar.idleSort)
                     creation?.let { flow ->
                         creation = when {
                             flow.hostId != next.string("laptopId", next.obj("composerTarget").string("hostId")) || flow.teamId != next.string("teamId") -> null
-                            next.string("connection") != "connected" || next.string("chatCreation") == "failed" -> flow.copy(submitted = false, observedCreating = false)
+                            !next.connection.isConnected || next.string("chatCreation") == "failed" -> flow.copy(submitted = false, observedCreating = false)
                             next.string("chatCreation") == "creating" -> flow.copy(submitted = true, observedCreating = true)
                             flow.submitted && (flow.observedCreating || nextId != oldId) && next.string("chatCreation") == "idle" -> null
                             else -> flow

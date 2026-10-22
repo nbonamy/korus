@@ -180,7 +180,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
         AppLockHost(model.appLock, model.productName, unlock) {
             if (model.fatalError || state.string("startup") == "error") {
                 StartupFailure(model::retryStartup)
-            } else if (model.engineRecovering || state.string("startup") != "ready" || state.has("teams") && state.items("teams").isEmpty() && !model.needsPairing && state.string("connection") != "connected") {
+            } else if (model.engineRecovering || state.string("startup") != "ready" || state.has("teams") && state.items("teams").isEmpty() && !model.needsPairing && !state.connection.isConnected) {
                 if (model.showConnectionLost) ConnectionLostContent { model.command("reconnect") }
                 else StartupProgress(state.items("laptops").isNotEmpty(),model.productName)
             } else if (model.needsPairing) {
@@ -264,7 +264,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     }
     DisposableEffect(model) { onDispose { dictation.cancel() } }
     val query = editor.query?.takeIf { editorFocused && !model.drawerVisible && model.sheet == null && !dictation.active && !drafts.sending
-        && state.string("connection") == "connected" && drafts.target != null && it != dismissedQuery }
+        && state.connection.isConnected && drafts.target != null && it != dismissedQuery }
     val catalog = state.obj(if (query?.isSkill == true) "skills" else "mentions")
     val loadSuggestions = { model.command(if (query?.isSkill == true) "loadSkills" else "loadMentions") }
     LaunchedEffect(query?.trigger, drafts.target) { if (query != null) loadSuggestions() }
@@ -273,7 +273,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     val working = state.obj("header").string("status") in listOf("working", "awaitingInput")
     val stopping = working && drafts.empty && !drafts.goalMode && !drafts.sending
     val choosing = working && !drafts.goalMode && !stopping && !drafts.sending
-    val enabled = if (stopping) state.string("connection") == "connected" && state.obj("capabilities").optBoolean("interrupt")
+    val enabled = if (stopping) state.connection.isConnected && state.obj("capabilities").optBoolean("interrupt")
         else !drafts.empty && !drafts.importing && !drafts.sending && state.optBoolean("canSend") && (!drafts.goalMode || !state.optBoolean("goalBusy")) && (drafts.items.isEmpty() || state.obj("capabilities").optBoolean("attachments"))
     var addMenu by remember { mutableStateOf(false) }
     var addPage by remember { mutableStateOf("root") }
@@ -362,7 +362,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             }
             if (state.items("queuedPrompts").isNotEmpty() || state.optBoolean("queuedPromptFailed")) {
                 QueuedPromptsContent(state.items("queuedPrompts"), state.optJSONObject("composerTarget")?.let(ConversationTarget::parse),
-                    state.string("connection") == "connected" && state.string("sessionAction").isBlank(),
+                    state.connection.isConnected && state.string("sessionAction").isBlank(),
                     state.string("queuedPromptPending").takeIf { it.isNotBlank() }, state.optBoolean("queuedPromptFailed"), model::dispatch)
             }
             state.optJSONObject("goal")?.takeIf { it.string("status") != "complete" }?.let { goal ->
@@ -462,8 +462,8 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                 dismissButton = { TextButton(onClick = { model.sheet = "settings" }) { Text("Cancel") } })
         }
         "usage" -> AppSheetFrame("Usage", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Settings") { model.sheet = "settings" } },
-            trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.string("connection") == "connected" && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
-            UsageContent(state.obj("usage"), state.string("connection"), { model.command("loadUsage") }, { model.command("reconnect") })
+            trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.connection.isConnected && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
+            UsageContent(state.obj("usage"), state.connection, { model.command("loadUsage") }, { model.command("reconnect") })
         }
         else -> Column(Modifier.fillMaxWidth().padding(bottom = 28.dp).heightIn(max = 650.dp)) {
             AppSheetHeader("Close Session", leading = { AppBarPill("Cancel", model.canDismissSheet, onClick = model::dismissSheet) })

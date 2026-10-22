@@ -29,7 +29,7 @@ import org.json.JSONObject
     val flow = model.creation ?: return
     val state = model.state
     val busy = flow.submitted || state.string("chatCreation") == "creating"
-    val connected = state.string("connection") == "connected"
+    val connected = state.connection.isConnected
     val failed = state.string("chatCreation") == "failed"
     var wasConnected by remember { mutableStateOf(connected) }
     LaunchedEffect(connected) {

@@ -30,7 +30,7 @@ import org.json.JSONObject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ChangesScreen(model: CompanionModel) {
     val git = model.state.obj("git")
-    val connected = model.state.string("connection") == "connected"
+    val connected = model.state.connection.isConnected
     BackHandler { model.dismissChanges() }
     AppSheetFrame("Changes", leading = { AppBarIcon(Icons.Outlined.Close, "Close changes", onClick = model::dismissChanges) },
         trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh changes", connected && git.string("status") != "loading") { model.loadChanges() } }, scroll = false) {
