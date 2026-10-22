@@ -69,6 +69,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   previewBranchCurrentWork: [backendMethods.agentGitBranchWorkPreview, named('agentId')],
   branchCurrentWork: [backendMethods.agentGitBranchWork, named('agentId', 'input')],
   getAgentGitWorkflow: [backendMethods.agentGitWorkflowGet, named('agentId')],
+  getAgentClosePreview: [backendMethods.agentClosePreview, named('agentId')],
   listAgentTasks: [backendMethods.agentTasksList, named('agentId')],
   cancelAgentTask: [backendMethods.agentTaskCancel, named('agentId', 'taskId')],
   generateAgentGitMessage: [backendMethods.agentGitMessageGenerate, named('agentId', 'input')],

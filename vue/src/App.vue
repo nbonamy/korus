@@ -203,7 +203,7 @@
   <AgentCloseDialog
     :visible="pendingAgentClose !== null"
     :agent="pendingAgentClose?.agent"
-    :workflow="pendingAgentClose?.workflow"
+    :preview="pendingAgentClose?.preview"
     :busy="agentCloseBusy"
     :error="agentCloseError"
     @close="cancelAgentClose"
@@ -253,8 +253,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentGitWorkflow, DesktopUpdateStatus } from '@workspace/core/contracts';
+import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
+import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
 import AgentCloseDialog from './components/AgentCloseDialog.vue';
@@ -513,7 +514,7 @@ const agentConversationActions: AgentConversationActions = {
 };
 
 const updateStatus = ref<DesktopUpdateStatus>({ state: 'idle' });
-const pendingAgentClose = ref<{ agent: Agent; workflow: AgentGitWorkflow } | null>(null);
+const pendingAgentClose = ref<{ agent: Agent; preview: AgentClosePreview } | null>(null);
 const agentCloseBusy = ref(false);
 const agentCloseError = ref<string | null>(null);
 const pendingPullRequestCleanup = ref<Agent | null>(null);
@@ -532,14 +533,10 @@ async function installUpdate(): Promise<void> {
 async function requestCloseAgent(agentId: string): Promise<void> {
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent) return;
-  if (isAgentFolderShared(agent)) {
-    await closeAgentAction(agentId);
-    return;
-  }
   try {
-    const workflow = await getAgentGitWorkflow(agentId);
-    if (workflow.isLinkedWorktree) {
-      pendingAgentClose.value = { agent, workflow };
+    const preview = await appApi!.getAgentClosePreview(agentId);
+    if (preview.isLinkedWorktree) {
+      pendingAgentClose.value = { agent, preview };
       agentCloseError.value = null;
       return;
     }
@@ -547,21 +544,6 @@ async function requestCloseAgent(agentId: string): Promise<void> {
     // Non-Git folders and unavailable Git hosts use the normal close behavior.
   }
   await closeAgentAction(agentId);
-}
-
-function isAgentFolderShared(agent: Agent): boolean {
-  if (!agent.folder) return false;
-  const location = agentBackendLocation(agent);
-  return snapshot.value.agents.some((candidate) => (
-    candidate.id !== agent.id
-    && candidate.folder === agent.folder
-    && agentBackendLocation(candidate) === location
-  ));
-}
-
-function agentBackendLocation(agent: Agent): string {
-  const team = snapshot.value.teams.find((candidate) => candidate.id === agent.teamId);
-  return team?.remoteConnectionId ? `remote:${team.remoteConnectionId}` : 'local';
 }
 
 function cancelAgentClose(): void {

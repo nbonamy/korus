@@ -608,7 +608,7 @@ describe('companion authorization gateway', () => {
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.review.start', { target, input })).rejects.toThrow('authorized');
-    for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
+    for (const bad of [{ ...input, cwd: '/private' }, { ...input, scope: { ...input.scope, cwd: '/private' } }, { ...input, automation: { ...input.automation, cwd: '/private' } }, { ...input, model: 'x'.repeat(201) }, { ...input, reasoningEffort: 'x'.repeat(41) }, { ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
       await expect(f.gateway.request('phone', 'agent.review.start', { target, input: bad })).rejects.toThrow();
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };

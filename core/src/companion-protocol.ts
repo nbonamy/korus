@@ -26,7 +26,7 @@ export const companionResponseLimit = 32 * 1024 * 1024;
 export type CompanionTarget = { hostId: string; locationId: string; teamId: string; agentId: string; sessionId: string | null };
 export type CompanionRequestReply = { target: CompanionTarget; id: string; conversationId: string; outcome: AgentRequestResponse['outcome'] };
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
-export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree: boolean; branch: string | null; upstream: string | null; hasChanges: boolean };
+export type CompanionClosePreview = { target: CompanionTarget } & import('./agent-close').AgentClosePreview;
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
 const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
 /** A provider conversation frame is a full reset or one event after it; these two checks are the only definition of either. */

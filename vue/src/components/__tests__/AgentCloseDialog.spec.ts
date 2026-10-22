@@ -14,10 +14,11 @@ const agent = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
-const workflow = {
+const preview = {
   repository: 'owner/repo',
   folder: agent.folder,
   isLinkedWorktree: true,
+  hasChanges: false,
   branch: 'fix/gh-22',
   detached: false,
   remote: 'origin',
@@ -31,10 +32,10 @@ const workflow = {
 };
 
 describe('AgentCloseDialog', () => {
-  it('hides remote deletion for an inherited base upstream and clears a stale remote deletion choice', async () => {
+  it('clears a stale remote deletion choice when the daemon withdraws eligibility', async () => {
     const wrapper = mountDialog();
     await wrapper.get('.agent-close-dialog__remote .el-switch').trigger('click');
-    await wrapper.setProps({ workflow: { ...workflow, upstream: 'origin/main', baseBranch: 'main' } });
+    await wrapper.setProps({ preview: { ...preview, upstream: null } });
     expect(wrapper.find('.agent-close-dialog__remote').exists()).toBe(false);
     await wrapper.get('.app-button--primary').trigger('click');
     expect(wrapper.emitted('delete-worktree')).toStrictEqual([[false, false]]);
@@ -42,7 +43,7 @@ describe('AgentCloseDialog', () => {
 
   it('requires an explicit discard choice before deleting a dirty worktree and resets it on reopening', async () => {
     const wrapper = mountDialog();
-    await wrapper.setProps({ workflow: { ...workflow, files: [{ path: 'README.fr.md', indexStatus: '?', worktreeStatus: '?' }] } });
+    await wrapper.setProps({ preview: { ...preview, hasChanges: true } });
     expect(wrapper.get('.app-button--primary').attributes('disabled')).toBeDefined();
     expect(wrapper.get('.agent-close-dialog__discard [role="switch"]').attributes('aria-checked')).toBe('false');
     await wrapper.get('.agent-close-dialog__discard .el-switch').trigger('click');
@@ -79,7 +80,7 @@ describe('AgentCloseDialog', () => {
 
 function mountDialog() {
   return mount(AgentCloseDialog, {
-    props: { visible: true, agent, workflow },
+    props: { visible: true, agent, preview },
     global: {
       components: { ElSwitch },
       stubs: {

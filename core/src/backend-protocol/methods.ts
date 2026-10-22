@@ -42,6 +42,7 @@ export const backendMethods = {
   missionUpdate: 'mission/update',
   agentQuickChatCreate: 'agent/quickChat/create',
   agentDelete: 'agent/delete',
+  agentClosePreview: 'agent/close/preview',
   agentDuplicate: 'agent/duplicate',
   agentFork: 'agent/fork',
   agentHandoff: 'agent/handoff/start',

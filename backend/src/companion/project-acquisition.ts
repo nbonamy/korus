@@ -1,9 +1,10 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AppSnapshot, SourceBranch, SourceRepository, SourceWorktree, WorkSource } from '@workspace/core/contracts';
+import type { CreatedAgentResult, SourceBranch, SourceRepository, SourceWorktree, WorkSource } from '@workspace/core/contracts';
 import type { CompanionProjectInput, CompanionGitHubRepository } from '@workspace/core/companion-protocol';
-import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { opaquePath } from '@workspace/core/companion-projection';
 import type { CompanionBackendPort } from './manager';
+import { resolveRepositorySession } from '../projects/repository-session';
+import { acquireRepository } from '../projects/repository-acquisition';
 
 /** Adapts the desktop project workflow without exposing its paths or credentials to the phone. */
 export class CompanionProjectAcquisition {
@@ -53,10 +54,10 @@ export class CompanionProjectAcquisition {
 
   async create(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string> {
     const { teamId, backend } = input;
-    let result: AppSnapshot;
+    let result: CreatedAgentResult;
     if (input.source === 'new') {
       await authorize();
-      result = await this.backend.request<AppSnapshot>(backendMethods.projectCreate, { input: { name: input.value, teamId, backend }, _clientId: 'companion-write' });
+      result = await this.backend.request<CreatedAgentResult>(backendMethods.projectCreate, { input: { name: input.value, teamId, backend }, entityResult: true, _clientId: 'companion-write' });
     } else {
       const remote = remoteConnectionId ? { remoteConnectionId } : {};
       let url = input.value;
@@ -74,15 +75,14 @@ export class CompanionProjectAcquisition {
           }
         }
       }
-      // Reuse a checkout already in the configured source folder, as desktop does.
       if (!repository) {
-        const repositories = await this.localSources(remoteConnectionId);
-        const identity = canonicalGitRemoteIdentity(url);
-        repository = identity ? repositories.find(candidate => candidate.remoteIdentity === identity) : undefined;
-      }
-      if (!repository) {
-        await authorize();
-        repository = await this.backend.request<SourceRepository>(backendMethods.sourceRepositoryClone, { input: { url, ...remote }, _clientId: 'companion-write' });
+        repository = await acquireRepository(url, true, {
+          repositories: () => this.localSources(remoteConnectionId),
+          clone: async () => {
+            await authorize();
+            return this.backend.request<SourceRepository>(backendMethods.sourceRepositoryClone, { input: { url, ...remote }, _clientId: 'companion-write' });
+          },
+        });
       }
       if (input.source === 'local' && (input.branch || input.worktree)) {
         const choices = await this.localBranches(input.value, remoteConnectionId);
@@ -91,28 +91,19 @@ export class CompanionProjectAcquisition {
           throw new Error('Choose an existing base branch and a new branch name.');
         }
       }
-      let folder = repository.path;
-      if (input.worktree) {
-        await authorize();
-        folder = (await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: {
-          repoPath: repository.path, ...input.worktree, requireNewBranch: true, fetchRemoteBranch: input.source !== 'local', ...remote,
-        }, _clientId: 'companion-write' })).path;
-      } else if (input.branch) {
-        const branches = await this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath: repository.path, ...remote, _clientId: 'companion-read' });
-        const checkedOut = branches.find(branch => branch.name === input.branch)?.worktreePath;
-        if (checkedOut) folder = checkedOut;
-        else {
+      const folder = input.branch || input.worktree ? await resolveRepositorySession(repository.path, {
+        ...(input.branch ? { existingBranch: input.branch, fetchRemoteBranch: input.source !== 'local' } : {}),
+        ...(input.worktree ? { worktree: { ...input.worktree, requireNewBranch: true, fetchRemoteBranch: input.source !== 'local' } } : {}),
+      }, {
+        branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: repository.path, ...remote, _clientId: 'companion-read' }),
+        createWorktree: async worktree => {
           await authorize();
-          folder = (await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: {
-            repoPath: repository.path, branchName: input.branch, reuseExisting: true, fetchRemoteBranch: input.source !== 'local', ...remote,
-          }, _clientId: 'companion-write' })).path;
-        }
-      }
+          return this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: { ...worktree, ...remote }, _clientId: 'companion-write' });
+        },
+      }) : repository.path;
       await authorize();
-      result = await this.backend.request<AppSnapshot>(backendMethods.agentCreate, { input: { name: null, folder, sourceRepositoryName: repository.name, teamId, backend }, _clientId: 'companion-write' });
+      result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, sourceRepositoryName: repository.name, teamId, backend }, entityResult: true, _clientId: 'companion-write' });
     }
-    const created = result.agents.find(agent => agent.id === result.activeAgentId && agent.teamId === teamId && agent.backend === backend);
-    if (!created) throw new Error('The agent was not created.');
-    return created.id;
+    return result.agentId;
   }
 }

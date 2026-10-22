@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
 import {
   activeCodeReviewRound,
+  activeReviewForAgent,
   codeReviewLedger,
   isCodeReviewStartInput,
   type CodeReviewAutomationSettings,
@@ -116,11 +117,7 @@ export class CodeReviewService {
     if (current && current.status !== 'finished' && current.status !== 'failed') {
       throw new Error('This agent already has an active code review.');
     }
-    const existing = this.options.snapshot.agents.find((candidate) => (
-      candidate.codeReview?.targetAgentId === agent.id
-      && candidate.codeReview.status !== 'finished'
-      && candidate.codeReview.status !== 'failed'
-    ));
+    const existing = activeReviewForAgent(this.options.snapshot.agents, agent);
     if (existing) throw new Error('This agent already has an active code review.');
 
     const reviewer = input.threadMode === 'current'

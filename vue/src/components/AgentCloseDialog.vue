@@ -15,7 +15,7 @@
     </template>
 
     <div class="agent-close-dialog__body">
-      <p> {{ $t('surface.agentCloseDialog.thisAgentIsUsingTheLinkedWorktree') }} <strong>{{ workflow?.branch }}</strong>.
+      <p> {{ $t('surface.agentCloseDialog.thisAgentIsUsingTheLinkedWorktree') }} <strong>{{ preview?.branch }}</strong>.
       </p>
       <p> {{ $t('surface.agentCloseDialog.deletingTheWorktreeAlsoDeletesItsLocalBranchKeepingItLea') }} </p>
       <label v-if="hasChanges" class="agent-close-dialog__discard">
@@ -41,20 +41,20 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { Agent, AgentGitWorkflow } from '@workspace/core/contracts';
-import { matchingBranchUpstream } from '@workspace/core/git-remote';
+import type { Agent } from '@workspace/core/contracts';
+import type { AgentClosePreview } from '@workspace/core/agent-close';
 
 const props = withDefaults(defineProps<{
   agent?: Agent | null;
   busy?: boolean;
   error?: string | null;
   visible: boolean;
-  workflow?: AgentGitWorkflow | null;
+  preview?: AgentClosePreview | null;
 }>(), {
   agent: null,
   busy: false,
   error: null,
-  workflow: null,
+  preview: null,
 });
 
 const emit = defineEmits<{
@@ -65,8 +65,8 @@ const emit = defineEmits<{
 
 const deleteRemoteBranch = ref(false);
 const discardChanges = ref(false);
-const hasChanges = computed(() => (props.workflow?.files.length ?? 0) > 0);
-const remoteBranch = computed(() => matchingBranchUpstream(props.workflow?.branch, props.workflow?.upstream, props.workflow?.baseBranch));
+const hasChanges = computed(() => props.preview?.hasChanges ?? false);
+const remoteBranch = computed(() => props.preview?.upstream);
 
 watch(() => props.visible, (visible) => {
   if (visible) {

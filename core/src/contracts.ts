@@ -758,6 +758,12 @@ export type AppCommand =
 export type CreateAgentInput = {
   name: string | null;
   folder: string;
+  /** Open the selected repository branch without moving its primary checkout. */
+  repositorySession?: {
+    existingBranch?: string;
+    fetchRemoteBranch?: boolean;
+    worktree?: Omit<CreateSourceWorktreeInput, 'repoPath' | 'remoteConnectionId'>;
+  };
   avatar?: string;
   backend?: AgentBackend;
   backendDefaults?: BackendDefaults;
@@ -772,6 +778,9 @@ export type CreateQuickChatInput = {
   backend?: AgentBackend;
   teamId?: string;
 };
+
+/** Explicit command outcome; requested with entityResult, without changing legacy snapshot responses. */
+export type CreatedAgentResult = { agentId: string; snapshot: AppSnapshot };
 
 export type CreateTeamInput = {
   name: string;
@@ -900,6 +909,7 @@ export type AppApi = {
   getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
   getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
+  getAgentClosePreview(agentId: string): Promise<import('./agent-close').AgentClosePreview>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;
   generateAgentGitMessage(agentId: string, input: AgentGitMessageGenerationInput): Promise<AgentGitMessageGenerationResult>;

@@ -17,6 +17,18 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it.each(['working', 'awaitingInput', 'error'] as const)('rejects a restart before changing provider state when the agent is %s', async type => {
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ id: 'restart', teamId: 'team-test', name: 'Restart', folder: '/code/repo', backend: 'codex',
+      backendSession: { kind: 'codex', threadId: 'keep-thread' }, status: type === 'error' ? { type, message: 'Failed' } : { type }, createdAt: '', updatedAt: '' }];
+    const handle = vi.fn(async () => undefined);
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: { handle, onEvent: () => () => {}, close: async () => {} } as never });
+    try {
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'restart', method: backendMethods.agentConversationReset, params: { agentId: 'restart' } })).rejects.toThrow('idle');
+      expect(handle).not.toHaveBeenCalled();
+      expect(snapshot.agents[0]!.backendSession).toStrictEqual({ kind: 'codex', threadId: 'keep-thread' });
+    } finally { await server.close(); }
+  });
 
   it('duplicates into a chosen connected backend, preserving the checkout and isolating provider defaults', async () => {
     const snapshot = createTestSnapshot();

@@ -9,10 +9,9 @@ import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import type { AccountRateLimits, Agent, AgentGitWorkflow, AppSnapshot, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
+import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
-import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
@@ -22,6 +21,8 @@ import { warnMain } from '../log';
 import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
+import { resolveRepositorySession } from '../projects/repository-session';
+import { supportsSubscriptionQuota } from '@workspace/core/agent-backends';
 import { readConversationImage } from './images';
 import { readConfiguredPairing } from './configured-pairing';
 
@@ -173,7 +174,7 @@ export class CompanionManager {
       usage: async () => {
         const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
-          && provider.backend !== 'antigravity' && !(provider.authentication?.kind === 'codex' && provider.authentication.state.account?.type === 'apiKey'));
+          && supportsSubscriptionQuota(provider.backend, provider.authentication?.kind === 'codex' ? provider.authentication.state.account : null));
         return Promise.all(providers.map(async ({ backend }) => {
           try {
             const limits = await this.backend.request<AccountRateLimits | null>(backendMethods.providerUsageGet, { backend });
@@ -213,62 +214,25 @@ export class CompanionManager {
       branches: (repoPath, remoteConnectionId) => this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath, ...(remoteConnectionId ? { remoteConnectionId } : {}), _clientId: 'companion-read' }),
       createChat: async (chat) => {
         const remote = chat.remoteConnectionId ? { remoteConnectionId: chat.remoteConnectionId } : {};
-        let folder = chat.repositoryRoot;
-        if (!chat.worktree) {
-          // Resolve both explicit and default branches at creation: primary worktrees
-          // can be on any branch, and checkouts can move after the menu was opened.
-          const branches = await this.backend.request<SourceBranch[]>(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' });
-          const branch = chat.existingBranch
-            ? branches.find(candidate => candidate.name === chat.existingBranch)
-            : branches.find(candidate => candidate.isDefault);
-          if (!branch) throw new Error(chat.existingBranch ? 'Branch not found. Refresh the branch list.' : 'Default branch not found. Refresh the branch list.');
-          folder = branch.worktreePath ?? (await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, {
-            input: { repoPath: chat.repositoryRoot, branchName: branch.name, ...remote }, _clientId: 'companion-write',
-          })).path;
-        } else if (chat.worktree) {
-          const worktree = await this.backend.request<SourceWorktree>(backendMethods.sourceWorktreeCreate, { input: { repoPath: chat.repositoryRoot, branchName: chat.worktree.branchName,
-            ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}), ...remote }, _clientId: 'companion-write' });
-          folder = worktree.path;
-        }
-        const result = await this.backend.request<AppSnapshot>(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, _clientId: 'companion-write' });
-        const created = result.agents.find((agent) => agent.id === result.activeAgentId && agent.teamId === chat.teamId && agent.folder === folder);
-        if (!created) throw new Error('The chat was not created.');
-        return created.id;
+        const folder = await resolveRepositorySession(chat.repositoryRoot, {
+          ...(chat.existingBranch ? { existingBranch: chat.existingBranch } : {}),
+          ...(chat.worktree ? { worktree: { ...chat.worktree, ...(chat.defaultBranch ? { baseBranch: chat.defaultBranch } : {}) } } : {}),
+        }, {
+          branches: () => this.backend.request(backendMethods.sourceBranchesList, { repoPath: chat.repositoryRoot, ...remote, _clientId: 'companion-read' }),
+          createWorktree: input => this.backend.request(backendMethods.sourceWorktreeCreate, { input: { ...input, ...remote }, _clientId: 'companion-write' }),
+        });
+        const result = await this.backend.request<CreatedAgentResult>(backendMethods.agentCreate, { input: { name: null, folder, backend: chat.backend, sourceRepositoryName: chat.repositoryName, teamId: chat.teamId }, entityResult: true, _clientId: 'companion-write' });
+        return result.agentId;
       },
-      createQuickChat: async ({ teamId, backend }) => {
-        const result = await this.backend.request<AppSnapshot>(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, _clientId: 'companion-write' });
-        const created = result.agents.find((agent) => agent.id === result.activeAgentId && agent.teamId === teamId && agent.sessionKind === 'quickChat');
-        if (!created) throw new Error('The chat was not created.');
-        return created.id;
-      },
-      duplicateAgent: async (agentId, backend) => {
-        const result = await this.backend.request<AppSnapshot>(backendMethods.agentDuplicate, { agentId, options: { backend }, _clientId: 'companion-write' });
-        const source = result.agents.find(agent => agent.id === agentId);
-        const created = result.agents.find(agent => agent.id === result.activeAgentId && agent.id !== agentId && agent.teamId === source?.teamId && agent.backend === backend);
-        if (!created) throw new Error('The agent was not duplicated.');
-        return created.id;
-      },
+      createQuickChat: async ({ teamId, backend }) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentQuickChatCreate, { input: { teamId, backend }, entityResult: true, _clientId: 'companion-write' })).agentId,
+      duplicateAgent: async (agentId, backend) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentDuplicate, { agentId, options: { backend }, entityResult: true, _clientId: 'companion-write' })).agentId,
       renameAgent: async (agentId, name) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, name }, _clientId: 'companion-write' }); },
       setBackend: async (agentId, backend) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, backend }, _clientId: 'companion-write' }); },
-      closePreview: async (agentId) => {
-        const workspace = await this.workspace();
-        const agent = workspace.agents.find((agent) => agent.id === agentId);
-        const location = (teamId: string | undefined) => workspace.teams.find((team) => team.id === teamId)?.remoteConnectionId ?? 'local';
-        const plain = { isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false };
-        if (!agent) throw new Error('Agent not found.');
-        if (agent.folder && workspace.agents.some((other) => other.id !== agentId && other.folder === agent.folder && location(other.teamId) === location(agent.teamId))) return plain;
-        try {
-          const workflow = await this.backend.request<AgentGitWorkflow>(backendMethods.agentGitWorkflowGet, { agentId, _clientId: 'companion-read' });
-          return { isLinkedWorktree: workflow.isLinkedWorktree, branch: workflow.branch ?? null, upstream: matchingBranchUpstream(workflow.branch, workflow.upstream, workflow.baseBranch) ?? null, hasChanges: workflow.files.length > 0 };
-        } catch { return plain; } // Non-Git or unavailable workspaces can still close while keeping all files.
-      },
+      closePreview: agentId => this.backend.request(backendMethods.agentClosePreview, { agentId, _clientId: 'companion-read' }),
       close: async (agentId, input) => { await this.backend.request(backendMethods.agentDelete, { agentId, ...(input ? { input } : {}), _clientId: 'companion-write' }); },
       setApprovalPreset: async (agentId, preset) => { await this.backend.request(backendMethods.agentApprovalPresetUpdate, { agentId, preset, _clientId: 'companion-write' }); },
       setPermissionMode: async (agentId, mode) => { await this.backend.request(backendMethods.agentPermissionModeUpdate, { agentId, mode, _clientId: 'companion-write' }); },
-      startReview: async (agentId, input) => {
-        const snapshot = await this.backend.request<AppSnapshot>(backendMethods.agentCodeReviewStart, { agentId, input, _clientId: 'companion-write' });
-        return snapshot.agents.find(agent => agent.codeReview?.targetAgentId === agentId && agent.codeReview.status !== 'finished')?.codeReview?.reviewerAgentId;
-      },
+      startReview: async (agentId, input) => (await this.backend.request<CreatedAgentResult>(backendMethods.agentCodeReviewStart, { agentId, input, entityResult: true, _clientId: 'companion-write' })).agentId,
       reviewSetup: (agentId, backend) => readReviewSetup(this.backend, peerIdFromPrivateKey(this.key).toString(), agentId, backend),
       selectModel: async (agentId, modelSelection) => { await this.backend.request(backendMethods.agentUpdate, { input: { id: agentId, modelSelection }, _clientId: 'companion-write' }); },
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),

@@ -65,6 +65,7 @@ const api: AppApi = {
   previewBranchCurrentWork: (agentId: string) => ipc.invoke(ipcChannels.previewBranchCurrentWork, agentId),
   branchCurrentWork: (agentId, input) => ipc.invoke(ipcChannels.branchCurrentWork, agentId, input),
   getAgentGitWorkflow: (agentId: string) => ipc.invoke(ipcChannels.getAgentGitWorkflow, agentId),
+  getAgentClosePreview: (agentId: string) => ipc.invoke(ipcChannels.getAgentClosePreview, agentId),
   listAgentTasks: (agentId: string) => ipc.invoke(ipcChannels.listAgentTasks, agentId),
   cancelAgentTask: (agentId: string, taskId: string) => ipc.invoke(ipcChannels.cancelAgentTask, agentId, taskId),
   generateAgentGitMessage: (agentId: string, input: AgentGitMessageGenerationInput) => ipc.invoke(ipcChannels.generateAgentGitMessage, agentId, input),

@@ -86,6 +86,7 @@ export function createClientApiMock(
     previewBranchCurrentWork: unscripted('previewBranchCurrentWork'),
     branchCurrentWork: unscripted('branchCurrentWork'),
     getAgentGitWorkflow: unscripted('getAgentGitWorkflow'),
+    getAgentClosePreview: unscripted('getAgentClosePreview'),
     listAgentTasks: vi.fn().mockResolvedValue([]),
     cancelAgentTask: unscripted('cancelAgentTask'),
     generateAgentGitMessage: unscripted('generateAgentGitMessage'),

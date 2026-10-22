@@ -14,6 +14,26 @@ import {
 
 describe('AppBackendServer', () => {
 
+  it.each(['current', 'independent'] as const)('returns the explicit reviewer identity for a remote %s review', async (threadMode) => {
+    const snapshot = createTestSnapshot();
+    const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];
+    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteConnectionId: connection.id, remoteTeamId: 'team-remote' });
+    const target = createRemoteAgent();
+    const reviewer = { ...target, id: 'reviewer' };
+    const remoteSnapshot = createRemoteTeamSnapshot([target, reviewer]);
+    remoteSnapshot.activeAgentId = reviewer.id;
+    const remoteClients = { request: vi.fn(async (_connection, method: string) => method === 'snapshot/get'
+      ? { snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } }
+      : remoteSnapshot), close: async () => {} };
+    const server = new AppBackendServer({ version: 'test', snapshot, remoteClients: remoteClients as never });
+    try {
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'review', method: 'agent/codeReview/start', params: {
+        agentId: target.id, entityResult: true, input: { scope: { type: 'uncommitted' }, threadMode },
+      } });
+      expect(result).toMatchObject({ result: { agentId: threadMode === 'current' ? target.id : reviewer.id, snapshot: { agents: expect.any(Array) } } });
+    } finally { await server.close(); }
+  });
+
   it('routes branch browsing to the selected host and keeps token reads on that host', async () => {
     const snapshot = createTestSnapshot();
     const connection = readyRemoteConnection(); snapshot.remoteConnections.connections = [connection];

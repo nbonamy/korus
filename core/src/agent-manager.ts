@@ -559,6 +559,8 @@ export function reorderRepositoryInTeam(
   return sourceAgents;
 }
 
+export function canChangeAgentConversation(agent: Pick<Agent, 'status'>): boolean { return agent.status.type === 'idle'; }
+
 export function restartAgentConversation(snapshot: AppSnapshot, agentId: string, updatedAt = new Date().toISOString()): Agent | null {
   const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
   if (!agent) {
@@ -635,7 +637,7 @@ export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Ag
 }
 
 function ensureAgentCanChange(agent: Agent, message: string): void {
-  if (agent.status.type !== 'idle') {
+  if (!canChangeAgentConversation(agent)) {
     throw new Error(message);
   }
 }

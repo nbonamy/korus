@@ -60,6 +60,8 @@ export type SourceRepository = {
 export type CloneSourceRepositoryInput = {
   url: string;
   remoteConnectionId?: string;
+  /** Acquire a configured checkout of the same remote instead of cloning another copy. */
+  reuseExisting?: boolean;
 };
 
 export type CreateSourceRepositoryInput = {

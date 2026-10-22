@@ -293,17 +293,10 @@ export function useRepositorySession(options: {
   async function createSession(nextSource: RepositorySessionSource, branch: SourceBranch, teamId?: string): Promise<void> {
     close();
     try {
-      const { remoteConnectionId } = context({ ...nextSource, teamId });
-      const worktree = branch.worktreePath
-        ? { name: branch.name, path: branch.worktreePath }
-        : await options.createSourceWorktree({
-            repoPath: nextSource.repositoryRoot,
-            branchName: branch.name,
-            ...(remoteConnectionId ? { remoteConnectionId } : {}),
-          });
       await options.createAgent({
         name: null,
-        folder: worktree.path,
+        folder: nextSource.repositoryRoot,
+        repositorySession: { existingBranch: branch.name },
         backend: backend.value,
         sourceRepositoryName: nextSource.repositoryName,
         ...(teamId ? { teamId } : {}),

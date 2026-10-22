@@ -14,6 +14,8 @@ import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, Comp
 import { companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { canChangeAgentConversation } from '@workspace/core/agent-manager';
+import { isCodeReviewStartInput } from '@workspace/core/code-review';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
@@ -41,11 +43,12 @@ const promptOptionsSchema = z.object({
   serviceTier: z.string().min(1).max(80).nullable().optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
   delegation: z.object({ startingContext: z.enum(['conversation', 'handoff']), instructions: z.string().max(100_000).optional() }).strict().optional(),
 }).strict();
+// Strict transport shape and size limits remain gateway-owned; review policy is shared.
 const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
   threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional(),
   backend: z.enum(['codex', 'claude', 'antigravity']).optional(), model: identity.optional(), reasoningEffort: z.string().min(1).max(40).optional(),
   automation: z.object({ enabled: z.boolean(), maxPriority: z.enum(['p0', 'p1', 'p2', 'p3']), maxRounds: z.number().int().min(1).max(10), autoCommit: z.boolean().optional() }).strict().optional(),
-}).strict().refine(input => input.threadMode === 'independent' || (!input.automation?.enabled && !input.model && !input.reasoningEffort)) }).strict();
+}).strict().refine(isCodeReviewStartInput) }).strict();
 /** A branch name git accepts and no option or path trick can hide in. */
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
@@ -278,7 +281,7 @@ const agentOperations = {
     },
   }),
   'agent.restart': agentOperation(onlyTarget)({
-    check: (agent) => { if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') throw new Error('Stop the agent before restarting.'); },
+    check: (agent) => { if (!canChangeAgentConversation(agent)) throw new Error('Stop the agent before restarting.'); },
     act: async (port, agent) => { await port.restart(agent.id); return {}; },
   }),
   'agent.close.preview': agentOperation(onlyTarget)({ act: async (port, agent, _input, target) => ({ ...await port.closePreview(agent.id), target }), read: {} }),

@@ -9,6 +9,7 @@ export function registerAgentGitIpcHandlers(
   ipc: TypedIpcMain<AppIpcRequests>,
   getBackendClient: () => AppBackendClientPort,
 ): void {
+  ipc.handle(ipcChannels.getAgentClosePreview, (_event, agentId) => requestAppBackend(getBackendClient(), backendMethods.agentClosePreview, { agentId }));
   ipc.handle(ipcChannels.getAgentGitPrune, (_event, agentId) => (
     requestAppBackend(getBackendClient(), backendMethods.agentGitPruneGet, { agentId })
   ));

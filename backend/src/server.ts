@@ -91,6 +91,10 @@ import { CodeReviewService, type CodeReviewToolPort, type AutomaticReviewStartIn
 import { BranchCurrentWorkService } from './git/branch-current-work-service';
 import { AgentCreationService } from './agents/agent-creation-service';
 import { ProjectCreationService, type CreatedProject } from './projects/project-creation-service';
+import { repositorySessionSchema, resolveRepositorySession } from './projects/repository-session';
+import { acquireRepository } from './projects/repository-acquisition';
+import { readAgentClosePreview } from './agents/agent-close-preview';
+import { canChangeAgentConversation } from '@workspace/core/agent-manager';
 import { VisualizeService, directVisualizationPrompt, generateVisualizationSuggestionPrompt, initialVisualizePrompt } from './visualize-service';
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
@@ -768,6 +772,8 @@ export class AppBackendServer {
     }
     if(sourceAgentId && response && 'error' in response)this.options.usage?.cancelPrompt(sourceAgentId,source);
     if (response && 'result' in response) {
+      const commandResult = (snapshot: AppSnapshot) => params?.entityResult === true && creation.id && (createsAgent || message.method === backendMethods.agentCodeReviewStart)
+        ? { agentId: creation.id, snapshot } : snapshot;
       if (isAppSnapshot(response.result) && (createsAgent || createsTeam)) {
         const created = (createsAgent ? response.result.agents : response.result.teams).find((item) => item.id === creation.id);
         if (created && message.method === backendMethods.agentDuplicate && before) {
@@ -776,14 +782,14 @@ export class AppBackendServer {
             { agentId: created.id, application: source.openInApplication });
         }
         const shouldSelect = !isRecord(params?.options) || params.options.select !== false;
-        if (created && shouldSelect) return { ...response, result: await preferences.update(clientId,
+        if (created && shouldSelect) return { ...response, result: commandResult(await preferences.update(clientId,
           createsAgent ? backendMethods.clientNavigationSelectAgent : backendMethods.clientNavigationSelectTeam,
-          createsAgent ? { agentId: created.id } : { teamId: created.id }) };
+          createsAgent ? { agentId: created.id } : { teamId: created.id })) };
       }
       if (isAppSnapshot(response.result) && reviewTargetAgentId && response.result.agents.some((agent) => agent.id === reviewTargetAgentId)) {
         return { ...response, result: await preferences.update(clientId, backendMethods.clientNavigationSelectAgent, { agentId: reviewTargetAgentId }) };
       }
-      if (isAppSnapshot(response.result)) return { ...response, result: projectClientSnapshot(response.result, clientId) };
+      if (isAppSnapshot(response.result)) return { ...response, result: commandResult(projectClientSnapshot(response.result, clientId)) };
       if (isAppSnapshotGetResult(response.result)) return { ...response, result: { ...response.result, snapshot: projectClientSnapshot(response.result.snapshot, clientId) } };
     }
     return response;
@@ -1128,6 +1134,18 @@ export class AppBackendServer {
       case backendMethods.agentCreate: {
         const input = requireAgentCreateInput(message.params);
         const remoteTeamPointer = this.remoteTeams.pointerForAgentInput(input);
+        if (input.repositorySession !== undefined) {
+          const location = this.locationFromRemoteConnectionId(remoteTeamPointer?.connectionId);
+          const root = input.folder;
+          input.folder = await resolveRepositorySession(root, repositorySessionSchema.parse(input.repositorySession), {
+            branches: () => this.requestInLocation(location, backendMethods.sourceBranchesList, { repoPath: root }, () =>
+              this.requireDriverRpc().handle(backendMethods.sourceBranchesList, { repoPath: root }) as Promise<SourceBranch[]>),
+            createWorktree: request => this.requestInLocation(location, backendMethods.sourceWorktreeCreate, { input: request }, () =>
+              this.requireDriverRpc().handle(backendMethods.sourceWorktreeCreate, { input: request }) as Promise<SourceWorktree>),
+          });
+          delete input.repositorySession;
+        }
+
         if (remoteTeamPointer) {
           const remoteSnapshot = await this.remoteTeams.request<AppSnapshot>(remoteTeamPointer.connectionId, backendMethods.agentCreate, {
             input: {
@@ -1353,6 +1371,13 @@ export class AppBackendServer {
       }
 
 
+      case backendMethods.agentClosePreview: {
+        const agentId = requireAgentId(message.params);
+        const route = await this.locationForAgentId(agentId);
+        if (!route) throw new Error('Agent not found.');
+        return createAppRpcResult(message.id, await readAgentClosePreview(await this.remoteTeams.clientSnapshot(), agentId, () =>
+          this.backendHandleForAgentLocation(route).request(backendMethods.agentGitWorkflowGet, { agentId }, () => this.agentGitService.workflow(requireAgentFolder(route.agent)))));
+      }
       case backendMethods.agentDelete: {
         const { agentId, input } = requireAgentCloseRequest(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentDelete, {
@@ -1542,9 +1567,9 @@ export class AppBackendServer {
         }
         return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, input }, async (agent) => {
           const session = this.requireCodeReviews().start(agent, input);
-          if (session.threadMode === 'independent') onCreated(session.reviewerAgentId);
+          onCreated(session.reviewerAgentId);
           return this.persistAndEmitSnapshot();
-        });
+        }, createdId => onCreated(input.threadMode === 'current' ? agentId : createdId));
       }
       case backendMethods.agentCodeReviewFindingDecide: {
         const agentId = requireStringParam(message.params, 'agentId');
@@ -1692,6 +1717,7 @@ export class AppBackendServer {
       case backendMethods.agentConversationReset: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationReset, { agentId }, async (agent) => {
+          if (!canChangeAgentConversation(agent)) throw new Error('Agent must be idle before restarting.');
           if (agent.backendSession) {
             await this.driverRpc?.handle(backendMethods.driverConversationArchive, { agent });
           }
@@ -2519,20 +2545,18 @@ export class AppBackendServer {
         const input = requireSourceRepositoryCloneInput(message.params);
         const location = this.locationFromRemoteConnectionId(input.remoteConnectionId ?? null);
         try {
-          const repository = await this.requestInLocation(
-            location,
-            backendMethods.sourceRepositoryClone,
-            { input: { url: input.url } },
-            async () => {
-              await this.initializeSourceFolderIfNeeded();
-              const sourceFolderPath = this.snapshot.sourceFolder.path.trim();
-              if (!sourceFolderPath) throw new Error('Choose a source folder before cloning a repository.');
-              return this.requireDriverRpc().handle(backendMethods.sourceRepositoryClone, {
-                sourceFolderPath,
-                url: input.url,
-              }) as Promise<SourceRepository> | SourceRepository;
-            },
-          );
+          const sourceFolder = async () => {
+            await this.initializeSourceFolderIfNeeded();
+            const folder = this.snapshot.sourceFolder.path.trim();
+            if (!folder) throw new Error('Choose a source folder before cloning a repository.');
+            return folder;
+          };
+          const repository = await acquireRepository(input.url, input.reuseExisting === true, {
+            repositories: () => this.requestInLocation(location, backendMethods.sourceRepositoriesList, undefined, async () =>
+              this.requireDriverRpc().handle(backendMethods.sourceRepositoriesList, { sourceFolderPath: await sourceFolder() }) as Promise<SourceRepository[]>),
+            clone: () => this.requestInLocation(location, backendMethods.sourceRepositoryClone, { input: { url: input.url } }, async () =>
+              this.requireDriverRpc().handle(backendMethods.sourceRepositoryClone, { sourceFolderPath: await sourceFolder(), url: input.url }) as Promise<SourceRepository>),
+          });
           if (location.kind === 'local') {
             this.addRecentSourceRepository(repository.name);
             await this.persistAndEmitSnapshot();
@@ -3755,8 +3779,10 @@ function requireSourceWorktreeInput(params: unknown): CreateSourceWorktreeInput 
 function requireSourceRepositoryCloneInput(params: unknown): CloneSourceRepositoryInput {
   const record = requireRecord(params);
   const input = requireRecord(record.input);
+  if (input.reuseExisting !== undefined && typeof input.reuseExisting !== 'boolean') throw new Error('reuseExisting must be a boolean.');
   return {
     url: requireString(input.url, 'url'),
+    ...(input.reuseExisting === undefined ? {} : { reuseExisting: input.reuseExisting }),
     ...(optionalTrimmedString(input.remoteConnectionId) ? { remoteConnectionId: optionalTrimmedString(input.remoteConnectionId)! } : {}),
   };
 }

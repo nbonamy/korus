@@ -47,6 +47,12 @@ log and socket paths, npm scripts and launchd labels stay brand-neutral.
   user messages.
 - Agent creation (protocol, MCP delegation, independent review) goes through one
   `AgentCreationService`; callers only adapt their input.
+- Repository acquisition and branch-to-agent setup share daemon-owned modules
+  across desktop and companion adapters. Access adapters may revalidate a grant
+  before each write, but do not duplicate checkout selection or clone-reuse rules.
+  Close previews come from the daemon; review availability, reviewer defaults and
+  quota eligibility use shared product policy. Mutation handlers revalidate their
+  conditions before provider or filesystem side effects.
 - Optional operator requirements load from `$APP_HOME/requirements.json` before
   services start, separately from app-written settings. Invalid requirements stop
   startup. Model catalog filtering and provider availability belong to the owning

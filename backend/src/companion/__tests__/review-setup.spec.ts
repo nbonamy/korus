@@ -49,5 +49,8 @@ describe('companion review initialization', () => {
       scope: { type: 'uncommitted' }, threadMode: 'independent', status: 'reviewing', activeRoundId: 'round', rounds: [], createdAt: '', updatedAt: '' } });
     const setup = await readReviewSetup(f.port, 'host', 'a');
     expect({ active: setup.activeReview, reviewer: setup.reviewerAgentId }).toStrictEqual({ active: true, reviewer: 'reviewer' });
+    f.snapshot.agents.at(-1)!.codeReview!.status = 'failed';
+    const failed = await readReviewSetup(f.port, 'host', 'a');
+    expect({ active: failed.activeReview, reviewer: failed.reviewerAgentId }).toStrictEqual({ active: false, reviewer: null });
   });
 });
