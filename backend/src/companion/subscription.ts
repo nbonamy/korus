@@ -35,7 +35,7 @@ export class CompanionSubscription {
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private refreshing = false;
   private dirty = false;
-  constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void, private readonly fail: () => void, private readonly now = Date.now) {
+  constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void | Promise<void>, private readonly fail: () => void, private readonly now = Date.now) {
     this.unlistenNotifications = port.onNotification?.(notification => {
       if (!this.closed && this.notificationsEnabled && port.authorized()) this.emit({ type: 'notification', notification });
     }) ?? (() => {});
@@ -64,6 +64,8 @@ export class CompanionSubscription {
     if (this.closed || !this.port.authorized()) throw new Error('Subscription closed.');
     this.lastRequestAt = this.now();
     if (method === 'ping') return {};
+    // The phone's connection timeline travels on this stream; the gateway validates and bounds it.
+    if (method === 'diagnostics.report') return this.port.request(method, args);
     if (method === 'snapshot.get') {
       const result = await this.port.request(method, args) as CompanionWorkspace;
       this.notificationsEnabled = (args as { notifications?: boolean })?.notifications === true;
@@ -90,11 +92,18 @@ export class CompanionSubscription {
       const sync = method === 'conversation.synchronize' ? result as CompanionSync : null;
       const frames = sync?.frames ?? [result as CompanionReset];
       if (this.closed || !this.port.authorized() || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
-      for (const frame of frames) this.emit({ type: 'conversation', frame: cleanFrame(frame) });
+      // The stream's writer drains asynchronously. A long replay waits on it instead of
+      // queueing every frame at once, and live frames stay buffered until it has finished.
+      for (const frame of frames) {
+        await this.emit({ type: 'conversation', frame: cleanFrame(frame) });
+        if (this.closed || !this.port.authorized() || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
+      }
       entry.revision = sync?.checkpoint.revision ?? frames[0]!.payload.revision;
+      while (entry.buffered.length) {
+        await this.deliver(entry, entry.buffered.shift()!);
+        if (this.closed || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
+      }
       entry.pending = false;
-      for (const buffered of entry.buffered) this.deliver(entry, buffered);
-      entry.buffered = [];
       return sync ? { checkpoint: sync.checkpoint } : {};
     } catch (error) {
       if (this.watched.get(target.agentId) === entry) this.watched.delete(target.agentId);
@@ -105,14 +114,14 @@ export class CompanionSubscription {
     if (this.closed) return;
     this.closed = true; clearTimeout(this.refreshTimer); this.unlisten(); this.unlistenNotifications(); this.watched.clear(); this.port.onClose?.();
   }
-  private deliver(entry: Watched, frame: ProviderConversationFrame) {
+  private deliver(entry: Watched, frame: ProviderConversationFrame): void | Promise<void> {
     if (this.closed || !this.port.authorized()) return;
     const agent = this.workspace?.agents.find((agent) => agent.id === frame.agentId);
     if (!agent || agent.backend !== frame.backend) return;
     if (frame.backend === 'codex' && agent.backendSession?.kind === 'codex' && frame.threadId !== agent.backendSession.threadId) { this.refreshSoon(); return; }
     if (frame.payload.revision <= entry.revision) return;
     entry.revision = frame.payload.revision;
-    this.emit({ type: 'conversation', frame });
+    return this.emit({ type: 'conversation', frame });
   }
   private acceptWorkspace(next: CompanionWorkspace) {
     if (this.closed || !this.port.authorized()) return;

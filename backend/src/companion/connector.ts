@@ -16,6 +16,8 @@ import { sendWithBackpressure } from './stream-io';
 import { encodeCompanionResponse } from './response';
 import { logMain, warnMain } from '../log';
 
+/** A replay waits for the writer to drain to this many frames; the stream aborts past 256. */
+const queueResumeFrames = 32;
 const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method: z.string().min(1).max(80), args: z.unknown() }).strict();
 export class CompanionOutboundConnector {
   private node: Libp2p | null = null;
@@ -35,6 +37,8 @@ export class CompanionOutboundConnector {
     this.node = await createLibp2p({ start: false, privateKey: this.key, addresses: { listen: [`${address}/p2p-circuit`] }, transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1, maxInboundStopStreams: 8 })],
       connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
       connectionManager: { maxConnections: 20, maxParallelDials: 2 },
+      // The update channel's heartbeat decides when a phone is gone. A transport ping that times out during a brief stall must not tear the circuit down.
+      connectionMonitor: { abortConnectionOnPingFailure: false },
       connectionGater: { denyDialPeer: (peer) => peer.toString() !== relayPeerId,
         denyDialMultiaddr: (candidate) => candidate.toString() !== address.toString(),
         denyInboundRelayedConnection: (relay) => relay.toString() !== relayPeerId },
@@ -112,12 +116,14 @@ export class CompanionOutboundConnector {
     stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = companionBackgroundGraceMs + 45_000;
     let sequence = 0; let queuedBytes = 0; let queuedFrames = 0; let closed = false;
+    const drainWaiters: (() => void)[] = [];
+    const releaseDrained = () => { if (closed || queuedFrames <= queueResumeFrames) for (const wake of drainWaiters.splice(0)) wake(); };
     const started = Date.now(); let requestStarted = started; let method = ''; let requestId = '';
     const diagnostic = () => ({ streamId: stream.id, elapsedMs: Date.now() - started, method, requestId,
       requestAgeMs: method ? Date.now() - requestStarted : 0, sequence, queuedBytes, queuedFrames });
     logMain('companion', 'updates opened', diagnostic());
     let pending = Promise.resolve();
-    const fail = (reason: string) => { if (!closed) warnMain('companion', 'updates failed', { ...diagnostic(), reason }); closed = true; stream.abort(new Error('Companion update stream closed.')); };
+    const fail = (reason: string) => { if (!closed) warnMain('companion', 'updates failed', { ...diagnostic(), reason }); closed = true; releaseDrained(); stream.abort(new Error('Companion update stream closed.')); };
     const send = (value: unknown) => {
       if (closed) return;
       let bytes: Uint8Array;
@@ -128,17 +134,20 @@ export class CompanionOutboundConnector {
         if (closed) return;
         await sendWithBackpressure(stream, bytes);
         queuedBytes -= bytes.byteLength; queuedFrames--;
+        releaseDrained();
       }).catch(() => fail('send-failed'));
     };
+    /** Lets bulk producers, such as a catch-up replay, wait for the writer instead of overrunning the queue. */
+    const drained = (): Promise<void> => queuedFrames <= queueResumeFrames || closed ? Promise.resolve() : new Promise<void>((resolve) => { drainWaiters.push(resolve); });
     let subscription: ReturnType<CompanionGateway['subscribe']> | undefined;
     let loggedClose = false;
     const cleanup = () => {
       if (!loggedClose) { logMain('companion', 'updates closed', diagnostic()); loggedClose = true; }
-      closed = true; subscription?.close();
+      closed = true; releaseDrained(); subscription?.close();
     };
     stream.addEventListener('close', cleanup, { once: true });
     try {
-      subscription = this.gateway.subscribe(peerId, (update) => send({ v: 1, seq: ++sequence, update }), () => fail('subscription-failed'));
+      subscription = this.gateway.subscribe(peerId, (update) => { send({ v: 1, seq: ++sequence, update }); return drained(); }, () => fail('subscription-failed'));
       for await (const value of readCompanionFrames(stream)) {
         const request = requestSchema.parse(value);
         method = request.method; requestId = request.id; requestStarted = Date.now();

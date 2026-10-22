@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
 import { CompanionOutboundConnector } from './connector';
 import { ConversationSource } from './conversation-source';
-import { warnMain } from '../log';
+import { logMain, warnMain } from '../log';
 import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
 import { CompanionProjectAcquisition } from './project-acquisition';
@@ -170,6 +170,7 @@ export class CompanionManager {
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
+      diagnostics: (peerId, records) => { for (const record of records) logMain('companion-diagnostics', 'phone', { device: peerId.slice(-8), ...record }); },
       usage: async () => {
         const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false

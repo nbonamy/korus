@@ -163,6 +163,44 @@ describe('encrypted companion circuit', () => {
     expect(logMain).toHaveBeenCalledWith('companion', 'updates ended', expect.objectContaining({ elapsedMs: expect.any(Number), sequence: expect.any(Number) }));
     expect(() => gateway.subscribe(phone.peerId.toString(), () => {}, () => {})).toThrow('authorized');
   }, 15_000);
+  it('leaves a phone circuit open through a brief network stall so only the update channel decides when it is dead', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const port = relay.getMultiaddrs()[0]!.toString().match(/\/tcp\/(\d+)/)![1];
+    const connector = new CompanionOutboundConnector(hostKey, { grants: [], pairingInvitations: () => [] } as unknown as CompanionGateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const monitor = (connector as unknown as { node: { components: { connectionMonitor: { abortConnectionOnPingFailure: boolean } } } }).node.components.connectionMonitor;
+    expect(monitor.abortConnectionOnPingFailure).toBe(false);
+  });
+  it('streams a catch-up replay longer than the send queue without aborting the updates stream', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!.toString(); const port = address.match(/\/tcp\/(\d+)/)![1];
+    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
+    stops.push(() => phone.stop());
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: index + 2, occurredAt: 'now', payload: { revision: index + 2, event: { type: 'provider-event', payload: { text: `Event ${index}` } } } }));
+    const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => { throw new Error('No snapshot.'); },
+      synchronize: async () => ({ checkpoint: { epoch: 'epoch', revision: 601 }, frames: replay }) as never,
+      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setBackend: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: () => {},
+    });
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const stream = await phone.dialProtocol(multiaddr(`${address}/p2p-circuit/p2p/${hostId}`), companionUpdatesProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    const received: any[] = []; const decoder = new CompanionFrameDecoder(companionResponseLimit);
+    const reader = (async () => { try { for await (const chunk of stream) received.push(...decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())); } catch {} })();
+    stops.push(async () => { stream.abort(new Error('Test complete')); await reader; });
+    const request = (method: string, args: unknown) => stream.send(encodeCompanionFrame({ v: 1, id: randomUUID(), method, args }));
+    request('snapshot.get', {});
+    await expect.poll(() => received.some((item) => item.update?.type === 'workspace')).toBe(true);
+    request('conversation.synchronize', { target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) }, checkpoint: { epoch: 'epoch', revision: 1 } });
+    await expect.poll(() => received.some((item) => item.result?.checkpoint), { timeout: 10_000 }).toBe(true);
+    expect(received.filter((item) => item.update?.type === 'conversation').map((item) => item.update.frame.payload.revision)).toStrictEqual(replay.map((item) => item.payload.revision));
+    expect(stream.status).toBe('open');
+  }, 30_000);
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relayKey = await generateKeyPair('Ed25519');

@@ -37,6 +37,20 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('accepts bounded connection diagnostics only from an approved device and rejects anything else', async () => {
+    const f = fixture(); const report = vi.fn();
+    (f.port as Record<string, unknown>).diagnostics = report;
+    await expect(f.gateway.request('stranger', 'diagnostics.report', { records: [] })).rejects.toThrow('authorized');
+    await f.pair();
+    const record = { event: 'app.activity', at: '2026-10-21T23:00:00.000Z', stage: 'foreground', elapsedMs: 12 };
+    expect(await f.gateway.request('phone', 'diagnostics.report', { records: [record] })).toStrictEqual({});
+    expect(report).toHaveBeenCalledExactlyOnceWith('phone', [record]);
+    await expect(f.gateway.request('phone', 'diagnostics.report', { records: Array.from({ length: 201 }, () => record) })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'diagnostics.report', { records: [{ ...record, message: { nested: 'prompt text' } }] })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'diagnostics.report', { records: [{ ...record, stage: 'x'.repeat(65) }] })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'diagnostics.report', { records: [record], extra: true })).rejects.toThrow();
+    expect(report).toHaveBeenCalledOnce();
+  });
   it('serializes automatic grants and keeps them unauthorized until persistence finishes', async () => {
     const code = 'ABCDEFGH';
     const f = fixture(code);

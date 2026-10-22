@@ -100,3 +100,39 @@ it('joins checkpoint catch-up to the live stream without replaying snapshots or 
     expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => v.frame.payload.revision)).toStrictEqual([2, 3]);
   } finally { f.subscription.close(); }
 });
+
+it('paces a long checkpoint catch-up by the writer so replay never outruns the send queue', async () => {
+  const f = fixture();
+  // Models the stream writer: frames queue synchronously, drain one per tick, and a queue past the cap aborts the stream.
+  const cap = 256; let queued = 0; let overflowed = false; const delivered: number[] = [];
+  const waiters: (() => void)[] = [];
+  f.emit.mockImplementation((update: { type: string; frame?: { payload: { revision: number } } }) => {
+    if (update.type !== 'conversation') return;
+    if (++queued > cap) { overflowed = true; return; }
+    delivered.push(update.frame!.payload.revision);
+    setImmediate(() => { queued--; if (queued <= 32) for (const wake of waiters.splice(0)) wake(); });
+    return queued <= 32 ? undefined : new Promise<void>(resolve => waiters.push(resolve));
+  });
+  try {
+    await f.subscription.request('snapshot.get', {});
+    const frames = Array.from({ length: 600 }, (_, index) => frame(index + 2));
+    f.request.mockImplementationOnce(async () => ({ checkpoint: { epoch: 'epoch', revision: 601 }, frames }));
+    const pending = f.subscription.request('conversation.synchronize', { target, checkpoint: { epoch: 'epoch', revision: 1 } });
+    f.event(frame(602));
+    await pending;
+    await vi.waitFor(() => expect(delivered.length).toBe(601));
+    expect(overflowed).toBe(false);
+    expect(delivered).toStrictEqual(Array.from({ length: 601 }, (_, index) => index + 2));
+  } finally { f.subscription.close(); }
+});
+
+it('forwards the phone\'s connection timeline over the update stream without touching subscriptions', async () => {
+  const f = fixture();
+  try {
+    f.request.mockImplementationOnce(async () => ({}));
+    const records = [{ event: 'app.activity', at: '2026-10-21T23:00:00.000Z', stage: 'foreground' }];
+    await expect(f.subscription.request('diagnostics.report', { records })).resolves.toStrictEqual({});
+    expect(f.request).toHaveBeenCalledExactlyOnceWith('diagnostics.report', { records });
+    await expect(f.subscription.request('prompt.submit', {})).rejects.toThrow('Unsupported');
+  } finally { f.subscription.close(); }
+});
