@@ -1,4 +1,5 @@
 import { PromptRejectedError } from './companion-port';
+import { createBackoff } from './reconnect-backoff';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
@@ -109,7 +110,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   let selectedConversationKey = '';
   let reconnectWanted = false;
   let isForeground = true;
-  let retryCount = 0;
+  const backoff = createBackoff();
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   const key = () => JSON.stringify([laptopId.value, agentId.value]);
@@ -352,7 +353,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   function retryConnection() {
     if (!reconnectWanted || !isForeground || disposed || retryTimer || !laptopId.value) return;
-    const delay = Math.min(30_000, 1000 * 2 ** Math.min(retryCount++, 5)) * (0.8 + Math.random() * 0.4);
+    const delay = backoff.next();
     retryTimer = setTimeout(() => {
       retryTimer = undefined;
       if (reconnectWanted && isForeground && !disposed) void connect(laptopId.value, true);
@@ -361,7 +362,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function connect(id: string, reconnecting = false) {
     if (disposed) return;
     reconnectWanted = true;
-    if (!reconnecting) retryCount = 0;
+    if (!reconnecting) backoff.reset();
     closeSession();
     const epoch = connectionEpoch;
     const sameLaptop = laptopId.value === id;
@@ -406,7 +407,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const receipts = reconcileReceipts();
       if (teamId.value) await selectAgent(agentId.value);
       await receipts;
-      if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) retryCount = 0;
+      if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) backoff.reset();
     } catch {
       opened?.close();
       if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
@@ -796,11 +797,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function setActive(active: boolean) {
     if (isForeground === active) return;
     isForeground = active;
-    if (!active) { clearTimeout(retryTimer); retryTimer = undefined; } else retryCount = 0;
+    if (!active) { clearTimeout(retryTimer); retryTimer = undefined; } else backoff.reset();
     try { await session?.setActive?.(active); } catch { /* The channel reports transport loss through onDisconnect. */ }
   }
   async function reconnect(force = false) {
-    if (laptopId.value && (force || ['disconnected', 'error'].includes(status.value))) { retryCount = 0; await connect(laptopId.value, true); }
+    if (laptopId.value && (force || ['disconnected', 'error'].includes(status.value))) { backoff.reset(); await connect(laptopId.value, true); }
   }
   async function revoke() {
     reconnectWanted = false;

@@ -166,7 +166,8 @@ export function createEngine(port: EnginePort) {
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
-  let selectionEpoch = 0;
+  // Bumped whenever the person navigates, so a connection still restoring the saved selection gives way.
+  let restoreEpoch = 0;
   const backendChoices = () => state.workspace.value.backends?.[state.teamId.value] ?? [];
   const engines = () => { const agent = state.agent.value; return agent && backendChoices().length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices: backendChoices() } : null; };
 
@@ -179,16 +180,16 @@ export function createEngine(port: EnginePort) {
   async function connect(laptopId: string) {
     ++restoringSelection;
     try {
-      const epoch = ++selectionEpoch;
+      const epoch = ++restoreEpoch;
       await state.connect(laptopId);
-      if (disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
+      if (disposed || epoch !== restoreEpoch || state.status.value !== 'connected') return;
       const saved = await port.selectionStore?.read(laptopId).catch(() => null);
-      if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
+      if (disposed || epoch !== restoreEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
       const team = teams.find((candidate) => candidate.id === saved?.teamId)
         ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
       await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
-      if (!disposed && epoch === selectionEpoch) await rememberSelection();
+      if (!disposed && epoch === restoreEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
       if (!restoringSelection && state.status.value === 'connected') await openPendingNotification();
@@ -418,7 +419,7 @@ export function createEngine(port: EnginePort) {
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
-      case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
+      case 'disconnect': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; return state.disconnect();
       case 'loadUsage': return state.loadUsage();
       case 'idleSort': if (command.order === 'activity' || command.order === 'repository') sidebarIdleSort.value = command.order; return;
       case 'loadChanges': return state.git.load(command.scopeId);
@@ -468,16 +469,16 @@ export function createEngine(port: EnginePort) {
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
         ++notificationEpoch; pendingNotification = null;
-        ++selectionEpoch;
+        ++restoreEpoch;
         const laptopId = state.laptopId.value;
         await state.revoke();
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
-      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; await state.selectTeam(command.id); return rememberSelection();
+      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
         ++notificationEpoch; pendingNotification = null;
-        ++selectionEpoch;
+        ++restoreEpoch;
         const loading = state.selectAgent(command.id);
         await rememberSelection();
         return loading;

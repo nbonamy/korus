@@ -21,7 +21,14 @@ import type { CompanionReviewInput, CompanionReviewSetup } from '@workspace/core
 export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: string; data: string };
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
-export type CompanionSession = {
+/** The link to one laptop: whether the app is looking at it, when it is lost, and how it ends. */
+export type CompanionLink = {
+  setActive?(active: boolean): Promise<void>;
+  onDisconnect(listener: () => void): () => void;
+  close(): void;
+};
+/** What the app can ask of the paired laptop over a link. */
+type CompanionOperations = {
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
@@ -65,11 +72,9 @@ export type CompanionSession = {
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;
-  setActive?(active: boolean): Promise<void>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
-  onDisconnect(listener: () => void): () => void;
-  close(): void;
 };
+export type CompanionSession = CompanionLink & CompanionOperations;
 /** Host transport owns pairing and encrypted routing; Vue consumes app-owned reads and actions. */
 export type CompanionConnector = {
   laptops: readonly { id: string; name: string }[];
