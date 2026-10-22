@@ -13,6 +13,7 @@ import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
 import { composerCapabilitiesFor, type ComposerChange } from './composer-settings';
+import { createLifecycle } from './engine-lifecycle';
 import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
@@ -156,19 +157,9 @@ export function createEngine(port: EnginePort) {
   const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
   const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
-  let backgroundedAt: number | undefined;
-  let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
-  let backgroundSuspended = false;
-
-  let suspension: Promise<void> | undefined;
-  function suspendAfterGrace() {
-    if (backgroundSuspended) return suspension;
-    backgroundSuspended = true;
-    connectionDiagnostic('app.background-grace-expired');
-    state.disconnect();
-    suspension = Promise.resolve(port.connector.suspend?.());
-    return suspension;
-  }
+  // The state starts out foreground; tell it when the app was launched in the background.
+  if (!foreground) void state.setActive(false);
+  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => { state.disconnect(); return port.connector.suspend?.(); } });
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
@@ -455,30 +446,24 @@ export function createEngine(port: EnginePort) {
         const activity = ++activityEpoch;
         connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });
         foreground = command.active;
-        if (command.active) {
-          sidebarNow.value = Date.now();
-          clearTimeout(backgroundTimer); backgroundTimer = undefined;
-          if (backgroundedAt !== undefined && Date.now() - backgroundedAt >= companionBackgroundGraceMs) suspendAfterGrace();
-          await suspension?.catch(() => {});
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          suspension = undefined; backgroundedAt = undefined; backgroundSuspended = false;
-          await port.connector.resume?.();
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          await state.setActive(true);
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
-          else await state.reconnect();
-          return openPendingNotification();
+        if (!command.active) {
+          void state.setActive(false);
+          lifecycle.left(() => !disposed && !foreground);
+          return;
         }
-        void state.setActive(false);
-        if (backgroundedAt === undefined) {
-          backgroundedAt = Date.now();
-          backgroundTimer = setTimeout(() => {
-            backgroundTimer = undefined;
-            if (!disposed && !foreground) void suspendAfterGrace()?.catch(() => {});
-          }, companionBackgroundGraceMs);
-        }
-        return;
+        // Each step may be overtaken by the app leaving again, or by a newer foreground.
+        const superseded = () => disposed || activity !== activityEpoch || !foreground;
+        sidebarNow.value = Date.now();
+        await lifecycle.returned();
+        if (superseded()) return;
+        await port.connector.resume?.();
+        lifecycle.resumed();
+        if (superseded()) return;
+        await state.setActive(true);
+        if (superseded()) return;
+        if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
+        else await state.reconnect();
+        return openPendingNotification();
       }
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
@@ -557,5 +542,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); lifecycle.dispose(); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

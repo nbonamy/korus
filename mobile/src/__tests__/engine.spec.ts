@@ -22,6 +22,17 @@ function open(connector = createDemoConnector(), selectionStore?: EnginePort['se
   return { engine, events, states, latest };
 }
 
+it('tells the session it is in the background when the app is launched there', async () => {
+  const connector = createDemoConnector(); const original = connector.connect; const setActive = vi.fn(async () => {});
+  connector.connect = async id => ({ ...(await original(id)), setActive });
+  const engine = createEngine({ connector, initialActive: false, post: () => {} });
+  try {
+    await engine.start();
+    await engine.dispatch({ type: 'connect', laptopId: connector.laptops[0]!.id });
+    expect(setActive).toHaveBeenCalledWith(false);
+  } finally { engine.dispose(); }
+});
+
 describe('companion engine', () => {
   it('lets manual reconnect replace a stalled automatic attempt while preserving the selected conversation', async () => {
     const connector = createDemoConnector(); const original = connector.connect;
