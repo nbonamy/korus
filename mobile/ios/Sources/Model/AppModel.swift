@@ -29,9 +29,11 @@ final class AppModel {
     func loadUsage() { command("loadUsage") }
     private var pendingNotification: ChatNotification?
     private var foreground = true
+    /// What the engine was last told about visibility; nil until it has been told anything.
+    @ObservationIgnored private var engineActivity: Bool?
     private var screenUnlocked = false
     var startup: EngineState.Startup = .loading
-    private var conversationLoading = ConversationLoadingState()
+    private var conversationLoading = ConversationLoadingState() { didSet { updateUpdatingIndicator() } }
     var loadingConversation: Bool { conversationLoading.isLoading }
     var conversationLoadFailed: Bool { conversationLoading.failed }
     var refreshingConversation: Bool { conversationLoading.isRefreshing }
@@ -39,16 +41,16 @@ final class AppModel {
     private var conversationReady = false
     private var conversationGeneration = 0
     private var connectionNotice = ConnectionNoticeState()
-    @ObservationIgnored private var connectionNoticeTask: Task<Void, Never>?
-    private var updatingIndicator = QuietIndicatorState()
-    @ObservationIgnored private var updatingIndicatorTask: Task<Void, Never>?
+    @ObservationIgnored private let connectionNoticeWatcher = DeadlineWatcher()
+    private var updatingIndicator = QuietIndicatorState(delay: .seconds(1))
+    @ObservationIgnored private let updatingIndicatorWatcher = DeadlineWatcher()
     /// A refresh that finishes within a moment shows nothing at all.
     var showUpdating: Bool { updatingIndicator.isVisible }
     var showConnectionLost: Bool { connectionNotice.isVisible }
     /// Brief recovery stays invisible, like the lost-connection notice: the transcript just stays put.
     var showReconnecting: Bool { connectionNotice.isVisible && (connection == .reconnecting || connection == .connecting) }
     var connection: ConnectionState = .unpaired {
-        didSet { if connection != oldValue { updateConnectionNotice(); updateBackgroundExecution() } }
+        didSet { if connection != oldValue { updateConnectionNotice(); updateUpdatingIndicator(); updateBackgroundExecution() } }
     }
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -156,6 +158,12 @@ final class AppModel {
         }
         push.flush()
 
+        engine.onRestarted = { [weak self] in
+            // The new page knows nothing: tell it whether the app can be seen, and what push registration to hold.
+            self?.engineActivity = nil
+            self?.syncEngineActivity()
+            Task { await self?.push.refresh() }
+        }
         engine.onSendResult = { [weak self] result in
             self?.composerDrafts.completeSend(result)
             self?.updateBackgroundExecution()
@@ -206,30 +214,14 @@ final class AppModel {
         let previous = connectionNotice.deadline
         connectionNotice.update(connection: connection, active: foreground && screenUnlocked)
         guard previous != connectionNotice.deadline else { return }
-        connectionNoticeTask?.cancel()
-        connectionNoticeTask = nil
-        guard let deadline = connectionNotice.deadline else { return }
-        connectionNoticeTask = Task { [weak self] in
-            do { try await Task.sleep(until: deadline, clock: .continuous) }
-            catch { return }
-            guard let self, self.connectionNotice.deadline == deadline else { return }
-            self.connectionNotice.update(connection: self.connection, active: self.foreground && self.screenUnlocked)
-        }
+        connectionNoticeWatcher.wait(until: connectionNotice.deadline) { [weak self] in self?.updateConnectionNotice() }
     }
 
     private func updateUpdatingIndicator() {
         let previous = updatingIndicator.deadline
-        updatingIndicator.update(active: refreshingConversation && connection == .connected)
+        updatingIndicator.update(active: refreshingConversation && connection == .connected && foreground)
         guard previous != updatingIndicator.deadline else { return }
-        updatingIndicatorTask?.cancel()
-        updatingIndicatorTask = nil
-        guard let deadline = updatingIndicator.deadline else { return }
-        updatingIndicatorTask = Task { [weak self] in
-            do { try await Task.sleep(until: deadline, clock: .continuous) }
-            catch { return }
-            guard let self, self.updatingIndicator.deadline == deadline else { return }
-            self.updatingIndicator.update(active: self.refreshingConversation && self.connection == .connected)
-        }
+        updatingIndicatorWatcher.wait(until: updatingIndicator.deadline) { [weak self] in self?.updateUpdatingIndicator() }
     }
 
     // MARK: Engine
@@ -261,7 +253,6 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
-        defer { updateUpdatingIndicator() }
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
@@ -553,17 +544,25 @@ final class AppModel {
         foreground = active
         updateBackgroundExecution()
         updateConnectionNotice()
+        updateUpdatingIndicator()
         if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
-        command("activity", ["active": active && screenUnlocked])
+        syncEngineActivity()
     }
     func setUnlocked(_ unlocked: Bool) {
         screenUnlocked = unlocked
         updateBackgroundExecution()
         updateConnectionNotice()
         if !unlocked { dictation.cancel(); notifications.clear() }
-        command("activity", ["active": unlocked && foreground])
+        syncEngineActivity()
         if unlocked { acknowledgeRead() }
+    }
+    /// The engine only cares whether the app can be seen; it hears about changes in that, not about every event that led to one.
+    private func syncEngineActivity() {
+        let visible = foreground && screenUnlocked
+        guard engineActivity != visible else { return }
+        engineActivity = visible
+        command("activity", ["active": visible])
     }
 }
 

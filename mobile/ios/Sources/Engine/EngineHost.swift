@@ -4,17 +4,20 @@ import WebKit
 /// Runs the companion engine (relay link, pairing, laptop calls) in a web view the person never sees,
 /// and keeps its secrets in the Keychain.
 @MainActor
-final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler {
+final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessageHandler, WKNavigationDelegate {
     let webView: WKWebView
     var onSendResult: ((ComposerSendResult) -> Void)?
     var onNotification: ((ChatNotification) -> Void)?
     var onNotificationOpenFailed: (() -> Void)?
+    /// The engine page was killed by the system and has loaded again from scratch; everything it knew must be told to it anew.
+    var onRestarted: (() -> Void)?
     var onGitDiff: ((String) -> Void)?
     var onState: ((EngineState) -> Void)?
     var onContent: ((String) -> Void)?
     var onTranscript: ((TranscriptRenderQueue.Kind, String) -> Void)?
     private let crypto = AppleCryptoService(scriptURL: Bundle.main.url(forResource: "noise-session", withExtension: "js", subdirectory: "Web"))
     private var isReady = false
+    private var hasBeenReady = false
     private var pending: [[String: Any]] = []
     private let diagnosticQueue = DispatchQueue(label: "companion.connection-diagnostics", qos: .utility)
     private let connectionLog = ConnectionLog(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Diagnostics"))
@@ -27,6 +30,7 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         super.init()
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "native")
         configuration.userContentController.add(self, name: "engine")
+        webView.navigationDelegate = self
         diagnosticQueue.async { [connectionLog] in
             connectionLog.append(["event": "app.engine-start", "at": ISO8601DateFormatter().string(from: Date()),
                                   "stage": "build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")"])
@@ -39,12 +43,22 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
 
     /// Sends one command to the engine; commands issued before it is ready wait for it.
     func dispatch(_ command: [String: Any]) {
-        let started = Date()
-        let foreground = command["type"] as? String == "activity" && command["active"] as? Bool == true
-        if command["type"] as? String == "activity" {
+        let type = command["type"] as? String
+        if type == "activity" {
             recordLifecycle("app.native-activity", stage: command["active"] as? Bool == true ? "foreground" : "background")
         }
-        guard isReady else { pending.append(command); return }
+        guard isReady else {
+            // Only the latest word on visibility matters to an engine that is not listening yet.
+            if type == "activity" { pending.removeAll { $0["type"] as? String == "activity" } }
+            pending.append(command)
+            return
+        }
+        send(command)
+    }
+
+    private func send(_ command: [String: Any]) {
+        let started = Date()
+        let foreground = command["type"] as? String == "activity" && command["active"] as? Bool == true
         guard let data = try? JSONSerialization.data(withJSONObject: command), let json = String(data: data, encoding: .utf8) else { return }
         webView.callAsyncJavaScript("await window.companionEngine.dispatch(command)", arguments: ["command": json], in: nil, in: .page) { [weak self] result in
             if foreground {
@@ -110,10 +124,13 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         let json = body["json"] as? String
         switch type {
         case "ready":
-            isReady = true
+            let restarted = hasBeenReady
+            isReady = true; hasBeenReady = true
             webView.callAsyncJavaScript("await window.companionEngine.start()", arguments: [:], in: nil, in: .page) { _ in }
-            for command in pending { dispatch(command) }
+            let queued = pending
             pending.removeAll()
+            for command in queued { send(command) }
+            if restarted { onRestarted?() }
         case "gitDiff": if let json { onGitDiff?(json) }
         case "notification":
             if let data = json?.data(using: .utf8), let decoded = try? JSONDecoder().decode(NotificationEvent.self, from: data) { onNotification?(decoded.notification) }
@@ -129,5 +146,15 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
         case "conversationImage": if let json { onContent?(json) }
         default: break
         }
+    }
+}
+
+extension EngineHost {
+    /// iOS can kill the page's process while the app lives. The page is loaded again; commands that were in flight are lost.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        recordLifecycle("app.webcontent-terminated", stage: "reload")
+        isReady = false
+        pending.removeAll()
+        webView.load(URLRequest(url: WebAssets.url("engine.html")))
     }
 }

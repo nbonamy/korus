@@ -65,4 +65,18 @@ final class ConnectionNoticeStateTests: XCTestCase {
         indicator.update(active: false, now: start.advanced(by: .seconds(4)))
         XCTAssertFalse(indicator.isVisible)
     }
+
+    @MainActor func testWatcherFiresOnceAfterTheDeadlineAndNeverAfterBeingReplacedOrCleared() async throws {
+        let watcher = DeadlineWatcher()
+        var fired = 0
+        watcher.wait(until: .now.advanced(by: .milliseconds(60))) { fired += 1 }
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(fired, 0)
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(fired, 1)
+        watcher.wait(until: .now.advanced(by: .milliseconds(60))) { fired += 10 }
+        watcher.wait(until: nil) { fired += 100 }
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(fired, 1)
+    }
 }
