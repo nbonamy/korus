@@ -16,6 +16,56 @@ const continueWarning = async (wrapper: ReturnType<typeof mount>) => {
 };
 
 describe('Markdown plan review', () => {
+  it('renders read-only diagrams and preserves separate whole-diagram comments through reload and revision', async () => {
+    const sources = ['flowchart LR\n Client --> API\n API --> Store', 'sequenceDiagram\n Client->>API: Load plan'];
+    let current: PlanReview = { ...review(), markdown: `# Architecture\n\n${sources.map(source => '```mermaid\n' + source + '\n```').join('\n\n')}\n\n\`\`\`text\nordinary code\n\`\`\`` };
+    const respond = vi.fn(async (response: PlanReviewResponse) => current = result(current, response));
+    let wrapper = mount(PlanReviewPanel, { props: { review: current, respond }, attachTo: document.body });
+    try {
+      const diagrams = wrapper.findAll('figure');
+      expect(diagrams).toHaveLength(2);
+      expect(decodeURIComponent(diagrams[0]!.get('img').attributes('src')!)).toContain('Store');
+      expect(decodeURIComponent(diagrams[1]!.get('img').attributes('src')!)).toContain('Load plan');
+      expect(wrapper.get('pre code').text()).toBe('ordinary code');
+      expect(wrapper.find('canvas,[contenteditable="true"]').exists()).toBe(false);
+      for (const [index, diagram] of diagrams.entries()) {
+        const comment = diagram.get('button[aria-label^="Comment on diagram"]');
+        await comment.trigger('click');
+        const editor = wrapper.findAll('textarea').find(input => input.isVisible())!;
+        await editor.setValue(`Feedback for diagram ${index + 1}`);
+        await save();
+        await editor.trigger('keydown', { key: 'Escape' });
+        expect(document.activeElement).toBe(comment.element);
+      }
+      expect(current.draft?.comments.map(comment => comment.body)).toEqual(['Feedback for diagram 1', 'Feedback for diagram 2']);
+      expect(new Set(current.draft?.comments.map(comment => comment.id)).size).toBe(2);
+      current.draft?.comments.forEach((comment, index) => {
+        expect(comment.sectionId).toBe('s0');
+        expect(comment.quote).toContain(sources[index]);
+      });
+      wrapper.unmount();
+      wrapper = mount(PlanReviewPanel, { props: { review: current, respond } });
+      expect(wrapper.findAll('.comment-preview').map(comment => comment.text())).toEqual(['Feedback for diagram 1', 'Feedback for diagram 2']);
+      await button(wrapper, 'Revise').trigger('click');
+      await flushPromises();
+      expect(respond).toHaveBeenLastCalledWith(expect.objectContaining({ resolution: 'revise' }));
+      expect(respond.mock.calls.some(([response]) => response.resolution === 'accept')).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('keeps invalid diagram source readable and disables its comments after approval', async () => {
+    const source = 'not-a-diagram <script>run()</script>';
+    const current: PlanReview = { ...review(), markdown: '# Diagram\n\n```mermaid\n' + source + '\n```\n\nThe rest of the plan stays readable.' };
+    const wrapper = mount(PlanReviewPanel, { props: { review: current, respond: vi.fn(async response => result(current, response)) } });
+    try {
+      expect(wrapper.get('figure pre code').text()).toBe(source);
+      expect(wrapper.text()).toContain('The rest of the plan stays readable.');
+      expect(wrapper.find('script').exists()).toBe(false);
+      await wrapper.setProps({ review: { ...current, status: 'accept' } });
+      expect(wrapper.get('figure button[aria-label^="Comment on diagram"]').attributes('disabled')).toBeDefined();
+    } finally { wrapper.unmount(); }
+  });
+
   it('keeps normal Markdown, offers checkbox/radio choices, and sends explicitly confirmed groups through Revise', async () => {
     const current = review();
     const respond = vi.fn(async response => result(current, response));

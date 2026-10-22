@@ -10,8 +10,10 @@ export type PlanMarkdownSection = {
   id: string;
   title: string;
   heading: string;
-  blocks: ({ html: string } | { choice: PlanChoiceGroup })[];
+  blocks: ({ html: string } | { choice: PlanChoiceGroup } | { diagram: PlanMarkdownDiagram })[];
 };
+
+export type PlanMarkdownDiagram = { id: string; number: number; source: string };
 
 /** Decorate SDK-rendered Markdown. Never reparse source or enable authored HTML. */
 export function planMarkdownSections(markdown: string, interactive = true): PlanMarkdownSection[] {
@@ -19,6 +21,7 @@ export function planMarkdownSections(markdown: string, interactive = true): Plan
   const sections: PlanMarkdownSection[] = [];
   let section: PlanMarkdownSection | undefined;
   let groups = 0;
+  let diagrams = 0;
   for (const element of document.body.children) {
     const heading = /^H[1-6]$/u.test(element.tagName);
     if (!section || heading) {
@@ -29,8 +32,15 @@ export function planMarkdownSections(markdown: string, interactive = true): Plan
         blocks: [],
       };
       sections.push(section);
+      diagrams = 0;
     }
     if (heading) continue;
+    const code = element.tagName === 'PRE' && element.firstElementChild?.matches('code.language-mermaid')
+      ? element.firstElementChild : null;
+    if (code?.textContent?.trim()) {
+      section.blocks.push({ diagram: { id: `${section.id}-d${diagrams}`, number: ++diagrams, source: code.textContent.trim() } });
+      continue;
+    }
     const choice = interactive && choiceGroup(element, `${section.id}-g${groups}`, section.title);
     if (choice) {
       section.blocks.push({ choice });

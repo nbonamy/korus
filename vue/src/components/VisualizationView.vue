@@ -12,7 +12,7 @@
       @pointercancel="stopPan"
       @keydown="handleKeydown"
     >
-      <div v-if="error" class="visualization-view__error" role="alert">{{ error }}</div>
+      <div v-if="error" class="visualization-view__error" role="alert"><slot name="error" :error="error">{{ error }}</slot></div>
       <div v-else-if="visualization.content.kind === 'image' && !imageSource" class="visualization-view__loading">{{ translate('common.loading') }}</div>
       <img
         v-else
@@ -42,7 +42,7 @@ import { visualizationRenderKey } from './visualization-render-key';
 
 const props = withDefaults(defineProps<{
   compact?: boolean;
-  visualization: Visualization;
+  visualization: Pick<Visualization, 'id' | 'title' | 'content' | 'canvas'>;
   imageSource?: string;
   loadError?: string;
 }>(), {

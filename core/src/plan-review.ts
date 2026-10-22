@@ -152,5 +152,12 @@ export function planReviewFeedback(review: PlanReview): string {
 
 /** Hidden turn guidance is conditional on the owning host's current preference. */
 export function interactivePlanPrompt(prompt: string): string {
-  return `${prompt}\n\n<context>\nUse the provider's standard Markdown plan output; the app opens the review automatically. Do not call display-markdown for the proposal. Organize it with descriptive headings so the user can comment on sections. Where a decision is useful, use a flat list of - [ ] / - [x] for multiple selections, or - ( ) / - (x) for one selection. Put a question heading above each choice group. Initial checks are proposals, not user decisions. Keep ordinary clarifying questions when needed. Wait for explicit approval before implementation.\n</context>`;
+  const guidance = [
+    "Use the provider's standard Markdown plan output; the app opens the review automatically. Do not call display-markdown for the proposal.",
+    'Organize it with descriptive headings so the user can comment on sections.',
+    'Include a compact ```mermaid fenced diagram when it clarifies architecture, data flow or sequencing. Prefer flowcharts and sequence diagrams. Put the diagram directly in the relevant plan section; keep simple plans text-only.',
+    'Where a decision is useful, use a flat list of - [ ] / - [x] for multiple selections, or - ( ) / - (x) for one selection. Put a question heading above each choice group.',
+    'Initial checks are proposals, not user decisions. Keep ordinary clarifying questions when needed. Wait for explicit approval before implementation.',
+  ].join(' ');
+  return `${prompt}\n\n<context>\n${guidance}\n</context>`;
 }

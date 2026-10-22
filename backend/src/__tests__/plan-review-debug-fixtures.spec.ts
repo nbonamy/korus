@@ -7,7 +7,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { AppBackendServer } from '../server';
 import { AppStateStore } from '../persistence/store';
 
-it('injects a Markdown review with choices that survives restart and switches to the text fixture', async () => {
+it('injects diagrams in both Markdown review fixtures and preserves feedback across restart', async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), 'markdown-plan-debug-'));
   const store = new AppStateStore(home);
   const snapshot = createInitialSnapshot();
@@ -24,6 +24,7 @@ it('injects a Markdown review with choices that survives restart and switches to
     const plan = snapshot.agents[0]!.planReview!;
     expect(plan.markdown).toContain('- (x)');
     expect(plan.markdown).toContain('- [x]');
+    expect(plan.markdown).toMatch(/```mermaid\nflowchart [\s\S]+?\n```/u);
     const draft = { choices: [{ id: 's1-g0', quote: 'Platforms', selected: ['macOS'] }], comments: [{ id: 's0', sectionId: 's0', quote: 'Plan', body: 'Include cancellation.' }] };
     await server.handleMessage({ jsonrpc: '2.0', id: 'save', method: backendMethods.agentPlanReviewRespond,
       params: { agentId: agent.id, response: { resolution: 'save', reviewId: plan.id, draftVersion: 0, draft } },
@@ -37,5 +38,6 @@ it('injects a Markdown review with choices that survives restart and switches to
     const text = await new AppStateStore(home).load();
     expect(text.agents[0]!.planReview!.draft).toBeUndefined();
     expect(text.agents[0]!.planReview!.markdown).toContain('# Debug text plan review');
+    expect(text.agents[0]!.planReview!.markdown).toMatch(/```mermaid\nflowchart [\s\S]+?\n```/u);
   } finally { await server.close(); await rm(home, { recursive: true, force: true }); }
 });
