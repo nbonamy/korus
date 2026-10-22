@@ -295,6 +295,16 @@ it('prepares a mission without a provider turn, then starts it from the first us
     expect(current().stage).toBe('tickets');
     expect(current().execution!.runs).toHaveLength(2);
     expect(worker.backendSession).toEqual({ kind: 'codex', threadId: 'mission-thread' });
+    expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'preparing' });
+    expect(releaseConversation).not.toHaveBeenCalled();
+    server.emitEvent({
+      agentId: worker.id, backend: 'codex', threadId: 'mission-thread', type: 'codex.conversationEventReceived',
+      payload: { revision: 1, event: {
+        seq: 1, occurredAt: new Date().toISOString(), origin: 'notification', conversationId: 'mission-thread', turnId: 'requirements-turn',
+        type: 'turn.completed', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null },
+      } },
+    });
+    server.emitEvent({ agentId: worker.id, type: 'agent.statusChanged', payload: { type: 'idle' } });
     await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'tickets', status: 'running' }));
     expect(current().execution!.runs.at(-1)!.workerId).toBe(run.workerId);
     await vi.waitFor(() => expect(releaseConversation).toHaveBeenCalledWith(worker.id));
@@ -305,9 +315,10 @@ it('prepares a mission without a provider turn, then starts it from the first us
       instructions: expect.stringContaining('read-skill with name="mission-to-tickets"'),
     });
     expect(refreshedContexts.at(-1)?.instructions).toContain('Owners can pay');
-    await vi.waitFor(() => expect(snapshot.queuedPrompts).toEqual([
-      expect.objectContaining({ agentId: worker.id, text: expect.stringContaining(`assigned ${product.name} Mission skill`) }),
-    ]));
+    await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: worker.id }), expect.stringContaining(`assigned ${product.name} Mission skill`), undefined,
+    ));
+    expect(snapshot.queuedPrompts).toStrictEqual([]);
     await server.upsertMissionTicket(worker.id, {
       title: 'Implement billing', body: 'Deliver owner checkout.', repositoryPath: repo,
     });

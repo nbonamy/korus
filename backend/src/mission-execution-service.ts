@@ -96,6 +96,11 @@ export class MissionExecutionService {
       const run = mission.execution?.runs.find(run => run.id === input.runId);
       if (!run || !['preparing', 'running', 'awaitingReview'].includes(run.status)) throw new Error('No cancellable mission run.');
       const worker = this.agent(run.workerId);
+      const deferred = worker && this.postTurnLaunches.get(worker.id);
+      if (worker && deferred?.runIds.includes(run.id)) {
+        deferred.runIds = deferred.runIds.filter(id => id !== run.id);
+        if (!deferred.runIds.length) this.postTurnLaunches.delete(worker.id);
+      }
       if (worker && worker.status.type !== 'idle' && worker.status.type !== 'error') await this.ports.interrupt(worker);
       await this.change(input, current => {
         const run = current.execution!.runs.find(run => run.id === input.runId)!;
@@ -302,7 +307,17 @@ export class MissionExecutionService {
         }
         nextRunIds = this.enqueueRuns(current, {});
       });
-      for (const runId of nextRunIds) void this.startLaunch(input.id, runId);
+      for (const runId of nextRunIds) {
+        const run = this.requireMission(input.id).execution!.runs.find(candidate => candidate.id === runId)!;
+        const worker = this.agent(run.workerId);
+        // A submitted proposal can be approved before its provider turn ends.
+        // Keep the next run preparing until the reused worker can be refreshed.
+        if (worker && ['working', 'awaitingInput'].includes(worker.status.type)) {
+          this.postTurnLaunches.set(worker.id, { missionId: input.id, runIds: [runId] });
+        } else {
+          void this.startLaunch(input.id, runId);
+        }
+      }
       return;
     }
     if (input.action === 'continueToReview') {
