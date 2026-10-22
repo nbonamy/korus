@@ -34,11 +34,12 @@ import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
 
-const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean }>();
+const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[] }>();
 const backend = defineModel<AgentBackend>('backend');
 const model = defineModel<string>('model', { default: '' });
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
-const choices = useBackendChoices(() => props.teamId);
+const hostChoices = useBackendChoices(() => props.teamId);
+const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
 const tabs = computed(() => agentBackends.filter(choice => choices.value.includes(choice)));
 useNewAgentBackend(backend, choices);

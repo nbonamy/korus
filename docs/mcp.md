@@ -209,7 +209,12 @@ Registered per authenticated request by independent modules
   inspection; backend ownership checks separately control mutations and reject
   stale or superseded attempts. A failed attempt stays recoverable: its worker can
   continue and submit later, and success clears the error. Mission and run IDs are
-  inferred from identity, never model input. Mission workers get no generic
+  inferred from identity, never model input. Implementation workers read their
+  explicit ticket assignment through `get-mission-assignment` and submit evidence
+  against its stable ticket ID; the daemon owns backlog updates and aggregation.
+  Existing full-artifact submissions remain compatible, with assignment errors
+  identifying the expected ticket and recovery call. Other stages still submit
+  complete artifacts. Mission workers get no generic
   thread-flag tools. Behavior is in
   [architecture.md](architecture.md#missions).
 - **Browser:** `browser-open` opens the agent's Browser workspace without changing

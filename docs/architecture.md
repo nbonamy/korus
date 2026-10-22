@@ -564,11 +564,24 @@ publishes only after saving.
   bundled in the daemon and loaded through `read-skill`, scoped to the caller's
   assigned stage. Persisted skill references use names; legacy paths are accepted
   on read but never used to load instructions.
+- Requirements use the shared interactive plan-review format and editor regardless
+  of the Workflows preference. Mission instructions share the Markdown conventions
+  for choices and diagrams with Plan mode. Review feedback stays in the Mission
+  conversation; approval advances the Mission through its existing command.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel, work within one repository is
   serialized, and each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
+  Implementation assignments bind a stable ticket ID to the run and repository;
+  one-based ticket numbers are display context. Workers receive the full assigned
+  ticket and accepted requirements rather than reconstructing assignments from a
+  backlog. Identity-bound submission updates only that ticket and serially merges
+  its evidence with other repositories' results. Legacy runs retain index fallback.
+- Tickets approval can persist a provider-local implementation model and effort.
+  Host catalog policy is checked before provisioning and worker launch. This
+  selection applies to implementation workers and retries without changing the lead
+  or the Review configuration.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.

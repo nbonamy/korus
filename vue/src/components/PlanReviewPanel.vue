@@ -3,6 +3,7 @@
     :key="`${review.conversationId}:${review.id}`"
     :review="review"
     :interactive="interactive"
+    :approval-warning="approvalWarning"
     :respond="respond"
     :plan-updating="planUpdating"
   />
@@ -14,6 +15,7 @@ withDefaults(
   defineProps<{
     review: PlanReview;
     interactive?: boolean;
+    approvalWarning?: string;
     planUpdating?: boolean;
     respond?: (response: PlanReviewResponse) => Promise<PlanReview>;
   }>(),
