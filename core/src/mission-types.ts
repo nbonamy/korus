@@ -34,12 +34,26 @@ export type MissionArtifactFile = {
   size: number;
   updatedAt: string;
 };
+export type MissionImplementationModel = {
+  backend: import('./contracts').AgentBackend;
+  model: string;
+  reasoningEffort?: string;
+};
+export type MissionTicketAssignment = {
+  ticketId: string;
+  ticketNumber: number;
+  title: string;
+  body?: string;
+  repositoryPath: string;
+  reference?: string;
+};
 export type MissionRun = {
   id: string;
   stage: MissionStage;
   memberId: string;
   workerId?: string;
   ticketIndex?: number;
+  ticketId?: string;
   repositoryPath?: string;
   status: 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
   // Paths are retained only when reading older saved runs; skills load by name over MCP.
@@ -63,6 +77,7 @@ export type MissionDelivery = {
 export type MissionExecution = {
   teamId: string;
   debugFixture?: true;
+  implementationModel?: MissionImplementationModel;
   repoPath?: string;
   memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string };
@@ -104,7 +119,7 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
-  | { action: 'accept'; runId: string }
+  | { action: 'accept'; runId: string; implementationModel?: MissionImplementationModel }
   | { action: 'continueToReview' }
   | { action: 'cancel'; runId: string }
   | { action: 'selectReviewFinding'; findingId: string; selected: boolean }
@@ -113,7 +128,12 @@ export type MissionExecutionInput = { id: string; revision: number } & (
   | { action: 'recordDelivery'; repositoryPath: string; result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' } }
   | { action: 'reopen'; stage: MissionStage }
 );
-export type MissionResultInput = { artifacts: MissionArtifacts; summary: string };
+export type MissionResultInput = {
+  summary: string;
+  artifacts?: MissionArtifacts;
+  ticketId?: string;
+  implementation?: MissionArtifacts['implementation'];
+};
 export type MissionReviewFindingInput = Pick<MissionReviewFinding, 'priority' | 'title' | 'body' | 'repositoryPath'> & { location?: MissionReviewFinding['location'] };
 export type MissionReviewFindingUpdateInput = {
   findingId: string;
@@ -125,7 +145,7 @@ export type MissionReviewFindingUpdateInput = {
   status?: 'fixed';
   evidence?: string;
 };
-export type MissionToolContext = { missionId: string; runId: string; stage: MissionStage };
+export type MissionToolContext = { missionId: string; runId: string; stage: MissionStage; assignment?: MissionTicketAssignment };
 export type MissionArtifactWriteInput = { stage: MissionStage; content: string; expectedRevision?: number };
 export type MissionArtifactReadResult = { stage: MissionStage; content: string; revision: number; updatedAt: string };
 export type MissionTicketDraftInput = { ticketId?: string; title: string; body: string; repositoryPath: string; reference?: string; blockedByTicketIds?: string[] };

@@ -268,6 +268,14 @@
           class="right-workspace-panel__open-file"
         >
           <span>{{ $t('surface.rightWorkspacePanel.selectAFileFromTheExplorer') }}</span>
+          <button
+            v-if="!fileExplorerVisible"
+            class="app-button app-button--secondary"
+            type="button"
+            @click="emit('toggleFilesPane')"
+          >
+            {{ $t('surface.rightWorkspacePanel.browseFiles') }}
+          </button>
         </div>
 
     <PlanReviewPanel
@@ -1201,8 +1209,11 @@ function urlForTab(tab: RightWorkspaceTab): string {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
   padding: var(--space-8);
   color: var(--color-text-muted);
   font-size: var(--font-size-13);

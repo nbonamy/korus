@@ -69,6 +69,7 @@ describe(`${product.name} tool presentation`, () => {
     ['read-skill', MarkdownIcon, 'Loaded skill'],
     ['set-mission-title', TargetArrowIcon, 'Named mission'],
     ['attach-mission-repository', GitBranchIcon, 'Attached mission repository'],
+    ['get-mission-assignment', SquareCheck, 'Read mission assignment'],
     ['list-mission-artifacts', MarkdownIcon, 'Checked mission artifacts'],
     ['read-mission-artifact', MarkdownIcon, 'Read mission artifact'],
     ['write-mission-artifact', SquareCheck, 'Saved mission artifact'],

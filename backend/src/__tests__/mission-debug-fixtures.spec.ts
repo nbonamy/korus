@@ -26,6 +26,9 @@ describe('Mission debug fixtures', () => {
       const currentRun = mission.execution!.runs.at(-1);
       if (stage === 'requirements') {
         expect(currentRun).toMatchObject({ stage, status: 'awaitingReview', proposal: { requirements: { problem: expect.stringContaining('guided path') } } });
+        expect(currentRun!.proposal!.requirements.problem).toContain('```mermaid');
+        expect(currentRun!.proposal!.requirements.problem).toContain('- [x]');
+        expect(currentRun!.proposal!.requirements.problem).toContain('- ( )');
       } else if (stage === 'tickets') {
         expect(currentRun).toMatchObject({ stage, status: 'awaitingReview' });
         expect(currentRun?.proposal?.tickets).toHaveLength(4);

@@ -40,6 +40,9 @@ const { t } = useI18n();
 </script>
 <style scoped>
 .plan-review-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;

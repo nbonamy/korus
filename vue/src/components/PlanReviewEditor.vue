@@ -33,7 +33,7 @@
       width="440px"
       @update:model-value="warning = null"
     >
-      <p>{{ t(warning === 'accept' ? 'planFeedback.unconfirmedApprove' : 'planFeedback.unconfirmedRevise') }}</p>
+      <p>{{ warning === 'accept' && approvalWarning ? approvalWarning : t(warning === 'accept' ? 'planFeedback.unconfirmedApprove' : 'planFeedback.unconfirmedRevise') }}</p>
       <template #footer>
         <button class="app-button app-button--tertiary" type="button" @click="warning = null">
           {{ t('planFeedback.goBack') }}
@@ -65,6 +65,7 @@ const props = withDefaults(
   defineProps<{
     review: PlanReview;
     interactive?: boolean;
+    approvalWarning?: string;
     planUpdating?: boolean;
     respond?: (response: PlanReviewResponse) => Promise<PlanReview>;
   }>(),
@@ -186,6 +187,9 @@ async function decide(resolution: PlanReviewResolution) {
 .plan-review-document :deep(:focus-visible) {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
+}
+.plan-review-document :deep(textarea:focus-visible) {
+  outline-offset: -2px;
 }
 [role='alert'] {
   color: var(--color-error);
