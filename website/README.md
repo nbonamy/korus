@@ -69,8 +69,8 @@ for documentation routes.
 
 ## Product preview
 
-The visual identity uses warm off-white, charcoal, and restrained slate-blue
-accents. Films keep charcoal title cards and the same quiet accent palette;
+The website uses white and neutral-gray surfaces, near-black text, blue accents,
+and system UI typography. Films keep charcoal title cards and a quiet accent palette;
 green and red communicate success and defects. Shared film branding comes
 from `videos/product.mjs`, including the closing URL from product metadata.
 
