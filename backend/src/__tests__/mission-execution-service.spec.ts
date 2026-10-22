@@ -10,6 +10,7 @@ import { MissionService } from '../mission-service';
 import { MissionExecutionService } from '../mission-execution-service';
 import { FileMissionArtifactStore } from '../mission-artifact-store';
 import { missionStageSkills } from '../bundled-skills/catalog';
+import type { Agent } from '@workspace/core/contracts';
 
 function setup() {
   const snapshot = createInitialSnapshot();
@@ -100,14 +101,24 @@ describe('mission execution', () => {
     expect(h.current().artifacts.implementation).toStrictEqual(artifacts.implementation);
   });
 
-  it('validates and persists the implementation model before provisioning, without changing the lead', async () => {
+  it.each([
+    { backend: 'codex', model: 'luna' },
+    { backend: 'claude', model: 'sonnet' },
+  ] as const)('validates and persists the $backend implementation model before provisioning, without changing the lead', async (selection) => {
     const h = setup();
+    h.snapshot.providerConnections = [
+      { backend: 'codex', installed: true, connected: true, checking: false },
+      { backend: 'claude', installed: true, connected: true, checking: false },
+    ];
+    h.snapshot.general.providerApprovalDefaults = { claude: 'acceptEdits' };
     await h.configure();
     await h.command({ action: 'run' }); await h.service.waitForLaunches();
     const leadId = h.current().execution!.runs[0]!.workerId!;
     const lead = h.snapshot.agents.find(agent => agent.id === leadId)!;
     lead.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high', serviceTier: 'fast' };
-    const listModels = vi.fn().mockResolvedValue([
+    const listModels = vi.fn(async (agent: Agent) => agent.backend === 'claude' ? [
+      { id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
+    ] : [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
       { id: 'luna', model: 'luna', displayName: 'Luna', supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
     ]);
@@ -132,7 +143,11 @@ describe('mission execution', () => {
     await h.store.change(h.current().id, mission => { mission.execution!.implementationModel = { backend: 'codex', model: 'missing' }; });
     await expect(h.command({ action: 'accept', runId: 'tickets-ready' })).rejects.toThrow(/model/i);
     expect(h.ports.createWorktree).not.toHaveBeenCalled();
-    const implementationModel = { backend: 'codex', model: 'luna', reasoningEffort: 'low' };
+    h.snapshot.providerConnections![1]!.enabled = false;
+    await expect(h.command({ action: 'accept', runId: 'tickets-ready', implementationModel: { backend: 'claude', model: 'sonnet' } })).rejects.toThrow(/disabled|connected/i);
+    expect(h.ports.createWorktree).not.toHaveBeenCalled();
+    h.snapshot.providerConnections![1]!.enabled = true;
+    const implementationModel = { ...selection, reasoningEffort: 'low' };
     await h.command({ action: 'accept', runId: 'tickets-ready', implementationModel });
     await h.service.waitForLaunches();
     expect(h.persisted).toHaveBeenLastCalledWith(expect.objectContaining({ missions: [expect.objectContaining({ execution: expect.objectContaining({ implementationModel }) })] }));
@@ -146,7 +161,14 @@ describe('mission execution', () => {
     } finally { await rm(home, { recursive: true, force: true }); }
     const firstRun = h.current().execution!.runs.at(-1)!;
     const worker = h.snapshot.agents.find(agent => agent.id === firstRun.workerId)!;
-    expect(worker.backendDefaults).toMatchObject({ model: 'luna', reasoningEffort: 'low', serviceTier: 'fast' });
+    expect(worker.backend).toBe(selection.backend);
+    expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
+    if (selection.backend === 'codex') expect(worker.backendDefaults).toMatchObject({ serviceTier: 'fast' });
+    else {
+      expect(worker.backendDefaults).toMatchObject({ permissionMode: 'acceptEdits' });
+      expect(worker.backendDefaults).not.toHaveProperty('serviceTier');
+      expect(listModels).toHaveBeenCalledWith(expect.objectContaining({ backend: 'claude', backendSession: undefined, backendDefaults: undefined }));
+    }
     expect(lead.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
     const artifacts = structuredClone(h.current().artifacts);
     artifacts.tickets[0]!.done = true;
@@ -155,7 +177,7 @@ describe('mission execution', () => {
     lead.backendDefaults.model = 'another-planner';
     await h.service.agentFinished(worker.id); await h.service.waitForLaunches();
     expect(h.current().execution!.runs.at(-1)).toMatchObject({ workerId: worker.id, ticketIndex: 1, status: 'running' });
-    expect(worker.backendDefaults).toMatchObject({ model: 'luna', reasoningEffort: 'low' });
+    expect(worker.backendDefaults).toMatchObject({ kind: selection.backend, model: selection.model, reasoningEffort: 'low' });
   });
 
   it('keeps historical and cancelled workers able to read artifacts without reviving their assignments', async () => {

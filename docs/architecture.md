@@ -580,7 +580,7 @@ publishes only after saving.
   ticket and accepted requirements rather than reconstructing assignments from a
   backlog. Identity-bound submission updates only that ticket and serially merges
   its evidence with other repositories' results. Legacy runs retain index fallback.
-- Tickets approval can persist a provider-local implementation model and effort.
+- Tickets approval can persist an independent implementation provider, model and effort.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead
   or the Review configuration.

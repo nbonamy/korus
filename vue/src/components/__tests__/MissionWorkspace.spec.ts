@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import { ElPopover, ElTabs, ElTabPane } from 'element-plus';
+import { ElDialog, ElPopover, ElTabs, ElTabPane } from 'element-plus';
 import { backendChoicesKey } from '../backend-selection';
 import { backendModelCatalogKey } from '../backend-model-catalog';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,7 +38,7 @@ function missionWithRun(status: MissionRun['status'], proposal = false): Mission
 }
 
 function mountWorkspace(mission: Mission, options: {
-  models?: BackendModelOption[];
+  models?: BackendModelOption[] | Partial<Record<Agent['backend'], BackendModelOption[]>>;
   agents?: Agent[];
   executeMission?: (input: MissionExecutionInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: MissionArtifactReadResult['stage']) => Promise<MissionArtifactReadResult>;
@@ -48,9 +48,9 @@ function mountWorkspace(mission: Mission, options: {
   implementationStartProgress?: MissionImplementationStartProgress;
 } = {}) {
   return mount(MissionWorkspace, {
-    global: options.models ? { components: { ElPopover, ElTabs, ElTabPane }, provide: {
+    global: options.models ? { components: { ElPopover, ElTabs, ElTabPane }, stubs: { ElDialog }, provide: {
       [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']),
-      [backendModelCatalogKey as symbol]: { listModels: vi.fn().mockResolvedValue(options.models) },
+      [backendModelCatalogKey as symbol]: { listModels: vi.fn(async (_agentId: string, backend: Agent['backend']) => Array.isArray(options.models) ? options.models : options.models?.[backend] ?? []) },
     } } : undefined,
     props: {
       mission: structuredClone(mission),
@@ -71,7 +71,7 @@ function mountWorkspace(mission: Mission, options: {
 }
 
 describe('MissionWorkspace', () => {
-  it('selects the implementation model and effort at Tickets approval without changing the lead', async () => {
+  it('selects the implementation model in a cancellable approval dialog without changing the lead', async () => {
     const mission = missionWithRun('awaitingReview', true);
     mission.stage = 'tickets';
     mission.execution!.runs[0]!.stage = 'tickets';
@@ -79,26 +79,47 @@ describe('MissionWorkspace', () => {
     const agents = createInitialSnapshot().agents;
     agents[0]!.backendDefaults = { kind: 'codex', model: 'planner', reasoningEffort: 'high' };
     const executeMission = vi.fn().mockResolvedValue(undefined);
-    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: [
+    const wrapper = mountWorkspace(mission, { agents: [], executeMission, models: { codex: [
       { id: 'planner', model: 'planner', displayName: 'Planner', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'High' }] },
       { id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] },
-    ] });
+    ], claude: [{ id: 'sonnet', model: 'sonnet', displayName: 'Sonnet', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'Low' }] }] } });
     await flushPromises();
     await wrapper.setProps({ agents }); await flushPromises();
+    const approve = wrapper.get('.mission-workspace__stage-header .app-button--primary');
+    expect(approve.text()).toBe('Implement');
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    await approve.trigger('click'); await flushPromises();
+    expect(executeMission).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="dialog"][aria-label="Start implementation"]').text()).toContain('1 ticket');
     const picker = wrapper.get('[aria-label="Coding agent and model"]');
     expect(picker.text()).toContain('Planner');
     await picker.trigger('click'); await flushPromises();
-    expect([...document.querySelectorAll('[role="tab"] [aria-label]')].map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex']);
+    const tabs = [...document.querySelectorAll('[role="tab"] [aria-label]')];
+    expect(tabs.map(tab => tab.getAttribute('aria-label'))).toEqual(['Codex', 'Claude Code']);
     const low = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low');
     expect(low).toBeDefined();
     low!.click(); await flushPromises();
     expect(picker.text()).toContain('Luna');
-    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    await wrapper.get('[role="dialog"] .app-button--tertiary').trigger('click'); await flushPromises();
+    expect(executeMission).not.toHaveBeenCalled();
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    await approve.trigger('click'); await flushPromises();
+    const reopenedPicker = wrapper.get('[aria-label="Coding agent and model"]');
+    expect(reopenedPicker.text()).toContain('Planner');
+    await reopenedPicker.trigger('click'); await flushPromises();
+    document.querySelector('[role="tab"] [aria-label="Claude Code"]')!.closest<HTMLElement>('[role="tab"]')!.click();
+    await flushPromises();
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent?.trim() === 'low')!.click();
+    await flushPromises();
+    const confirm = wrapper.get('[role="dialog"] .app-button--primary');
+    expect(confirm.text()).toBe('Start');
+    await confirm.trigger('click'); await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id, revision: mission.revision, action: 'accept', runId: mission.execution!.runs[0]!.id,
-      implementationModel: { backend: 'codex', model: 'luna', reasoningEffort: 'low' },
+      implementationModel: { backend: 'claude', model: 'sonnet', reasoningEffort: 'low' },
     });
     expect(wrapper.props('agents')![0]!.backendDefaults).toMatchObject({ model: 'planner', reasoningEffort: 'high' });
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     await wrapper.setProps({ mission: { ...mission, stage: 'review' } });
     expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
     wrapper.unmount();
@@ -230,6 +251,7 @@ describe('MissionWorkspace', () => {
     const executeMission = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
     const wrapper = mountWorkspace(mission, {
       executeMission,
+      models: [{ id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true }],
       implementationStartProgress: {
         missionId: mission.id,
         phase: 'initializingWorkspaces',
@@ -240,6 +262,9 @@ describe('MissionWorkspace', () => {
     const continueButton = wrapper.get('.mission-workspace__stage-header .app-button');
 
     await continueButton.trigger('click');
+    await flushPromises();
+    expect(executeMission).not.toHaveBeenCalled();
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click');
 
     expect(continueButton.attributes('aria-busy')).toBe('true');
     const progress = wrapper.getComponent(WorkspaceProvisioningProgressDialog);
@@ -253,6 +278,25 @@ describe('MissionWorkspace', () => {
     await flushPromises();
 
     expect(wrapper.getComponent(WorkspaceProvisioningProgressDialog).props('operation')).toBeNull();
+    wrapper.unmount();
+  });
+
+  it('keeps the selected model available for retry when starting Implementation fails', async () => {
+    const mission = missionWithRun('awaitingReview', true);
+    mission.stage = 'tickets';
+    mission.execution!.runs[0]!.stage = 'tickets';
+    mission.execution!.runs[0]!.proposal!.tickets = [{ title: 'Checkout', done: false }];
+    const executeMission = vi.fn().mockRejectedValueOnce(new Error('Worktree initialization failed')).mockResolvedValue(undefined);
+    const wrapper = mountWorkspace(mission, { executeMission, models: [{ id: 'luna', model: 'luna', displayName: 'Luna', isDefault: true }] });
+    await wrapper.get('.mission-workspace__stage-header .app-button--primary').trigger('click'); await flushPromises();
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toBe('Worktree initialization failed');
+    expect(wrapper.get('[aria-label="Coding agent and model"]').text()).toContain('Luna');
+    await wrapper.get('[role="dialog"] .app-button--primary').trigger('click'); await flushPromises();
+    expect(executeMission).toHaveBeenCalledTimes(2);
+    expect(executeMission.mock.calls[1]![0]).toStrictEqual(executeMission.mock.calls[0]![0]);
+    expect(wrapper.find('[aria-label="Coding agent and model"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('reviews requirement choices and diagrams through the shared plan editor and sends confirmed feedback without approving', async () => {
