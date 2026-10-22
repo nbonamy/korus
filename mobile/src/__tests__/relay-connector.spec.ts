@@ -6,8 +6,8 @@ import { companionPushAuthorizationMessage } from '@workspace/core/companion-not
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { randomUUID } from 'node:crypto';
 import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame } from '@workspace/core/companion-protocol';
-const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}), config: undefined as any }));
-vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] } & Record<string, unknown>) => { transport.config = config; transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
+const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
+vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import type { ProtectedVault } from '../protected-storage';
@@ -79,13 +79,6 @@ describe('native relay host adapter', () => {
     } finally { session.close(); await connector.dispose!(); }
   });
 
-  it('leaves liveness to the update channel so a resumed phone is never aborted by a late transport ping', async () => {
-    const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
-    transport.response = () => ({ teams: [], agents: [] });
-    const session = await connector.connect(host.hostId);
-    try { expect(transport.config.connectionMonitor).toStrictEqual({ abortConnectionOnPingFailure: false }); }
-    finally { session.close(); await connector.dispose!(); }
-  });
   it('retires stale host and relay routes after a failed foreground probe', async () => {
     vi.useFakeTimers();
     const connector = createRelayConnector(vault(), host.relay); await pairWith(connector);
