@@ -2,7 +2,7 @@ import type { CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import { companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionIdleTimeoutMs, companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { warnMain } from '../log';
 
 export type SubscriptionPort = {
@@ -12,7 +12,10 @@ export type SubscriptionPort = {
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
   authorized(): boolean;
 };
-type Watched = { target: CompanionTarget; revision: number; pending: boolean; buffered: ProviderConversationFrame[] };
+/** Live frames held while a catch-up reads; past this the catch-up fails instead of the whole stream. */
+const maxBufferedFrames = 256;
+const maxWatched = 64;
+type Watched = { target: CompanionTarget; revision: number; pending: boolean; overflowed: boolean; buffered: ProviderConversationFrame[] };
 const cleanFrame = (event: ProviderConversationFrame): ProviderConversationFrame => {
   const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
   return { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
@@ -28,7 +31,7 @@ export class CompanionSubscription {
   private closed = false;
   private notificationsEnabled = false;
   private lastRequestAt = 0;
-  get foreground() { return !this.closed && this.port.authorized() && this.notificationsEnabled && this.now() - this.lastRequestAt < 45_000; }
+  get foreground() { return !this.closed && this.port.authorized() && this.notificationsEnabled && this.now() - this.lastRequestAt < companionIdleTimeoutMs; }
   private workspace: CompanionWorkspace | undefined;
   private workspaceJSON = '';
   private iconsVersion = '';
@@ -48,7 +51,13 @@ export class CompanionSubscription {
         // Never include the daemon's app snapshot/clientState on the mobile stream.
         const frame = cleanFrame(event);
         if (entry.pending) {
-          if (entry.buffered.length >= 256) { warnMain('companion', 'subscription failed', { reason: 'conversation-buffer-limit', agentId: event.agentId }); this.close(); fail(); return; }
+          if (entry.overflowed) return;
+          if (entry.buffered.length >= maxBufferedFrames) {
+            // The conversation moved faster than the catch-up could read it: the phone retries from a fresh read.
+            warnMain('companion', 'catch-up overflowed', { agentId: event.agentId });
+            entry.overflowed = true; entry.buffered = [];
+            return;
+          }
           entry.buffered.push(frame);
         } else this.deliver(entry, frame);
       } else if (event.type !== 'conversation.contextUsageUpdated'
@@ -81,32 +90,36 @@ export class CompanionSubscription {
     if (method !== 'conversation.subscribe' && method !== 'conversation.synchronize') throw new Error('Unsupported subscription operation.');
     const target = (method === 'conversation.synchronize' ? (args as { target: CompanionTarget })?.target : args) as CompanionTarget;
     if (!target || typeof target.agentId !== 'string') throw new Error('Invalid target.');
-    if (!this.watched.has(target.agentId) && this.watched.size >= 64) throw new Error('Too many subscriptions.');
-    const entry: Watched = { target, revision: -1, pending: true, buffered: [] };
+    if (!this.watched.has(target.agentId) && this.watched.size >= maxWatched) throw new Error('Too many subscriptions.');
+    const entry: Watched = { target, revision: -1, pending: true, overflowed: false, buffered: [] };
     this.watched.set(target.agentId, entry);
     try {
       // Listen before reading. Events newer than the reset are flushed after it.
       const result = await this.port.request(method, args);
       const sync = method === 'conversation.synchronize' ? result as CompanionSync : null;
       const frames = sync?.frames ?? [result as CompanionReset];
-      if (this.closed || !this.port.authorized() || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
+      this.assertCurrent(entry);
       // The stream's writer drains asynchronously. A long replay waits on it instead of
       // queueing every frame at once, and live frames stay buffered until it has finished.
       for (const frame of frames) {
         await this.emit({ type: 'conversation', frame: cleanFrame(frame) });
-        if (this.closed || !this.port.authorized() || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
+        this.assertCurrent(entry);
       }
       entry.revision = sync?.checkpoint.revision ?? frames[0]!.payload.revision;
       while (entry.buffered.length) {
         await this.deliver(entry, entry.buffered.shift()!);
-        if (this.closed || this.watched.get(target.agentId) !== entry) throw new Error('Subscription changed.');
+        this.assertCurrent(entry);
       }
+      if (entry.overflowed) throw new Error('Conversation changed faster than the catch-up.');
       entry.pending = false;
       return sync ? { checkpoint: sync.checkpoint } : {};
     } catch (error) {
       if (this.watched.get(target.agentId) === entry) this.watched.delete(target.agentId);
       throw error;
     }
+  }
+  private assertCurrent(entry: Watched) {
+    if (this.closed || !this.port.authorized() || this.watched.get(entry.target.agentId) !== entry) throw new Error('Subscription changed.');
   }
   close() {
     if (this.closed) return;
