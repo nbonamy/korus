@@ -22,6 +22,7 @@ import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, 
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
+import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
 import { pushRegistrationSchema } from './push-registration';
 
 const identity = z.string().min(1).max(200);
@@ -312,7 +313,7 @@ export class CompanionGateway {
   pairingInvitations() { this.expire(); return [...this.invitations.values()].map(({ code, expiresAt }) => ({ code, expiresAt })); }
   invite() {
     this.expire();
-    if (this.invitations.size >= 5) throw new Error('Too many active invitations.');
+    if (this.invitations.size >= companionMaxInvitations) throw new Error('Too many active invitations.');
     let code = generatePairingCode();
     while (this.invitations.has(normalizePairingCode(code)!)) code = generatePairingCode();
     const expiresAt = this.now() + pairingLifetimeMs;
@@ -332,7 +333,7 @@ export class CompanionGateway {
       this.expire();
       const pending = this.pending.get(id);
       if (!pending) throw new Error('Pairing request expired or consumed.');
-      if (approve && this.state.grants.length >= 20 && !this.state.grants.some((grant) => grant.peerId === pending.peerId)) throw new Error('Too many paired devices.');
+      if (approve && this.state.grants.length >= companionMaxDevices && !this.state.grants.some((grant) => grant.peerId === pending.peerId)) throw new Error('Too many paired devices.');
       const next = { ...this.state, grants: this.state.grants.filter((grant) => grant.peerId !== pending.peerId) };
       if (approve) next.grants.push({ peerId: pending.peerId, name: pending.name, createdAt: this.now() });
       await this.port.save(next);
@@ -507,7 +508,7 @@ export class CompanionGateway {
     if (!this.pairingAttempts.take(peerId)) throw new Error('Too many pairing attempts.');
     if (request.code === this.autoAcceptCode) return this.mutate(async () => {
       if (!this.state.grants.some(grant => grant.peerId === peerId)) {
-        if (this.state.grants.length >= 20) throw new Error('Too many paired devices.');
+        if (this.state.grants.length >= companionMaxDevices) throw new Error('Too many paired devices.');
         const grant = { peerId, name: request.name, createdAt: this.now() };
         const next = { ...this.state, grants: [...this.state.grants, grant] };
         await this.port.save(next);

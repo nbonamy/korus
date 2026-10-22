@@ -11,7 +11,7 @@ import { circuitRelayServer } from '@libp2p/circuit-relay-v2';
 import { identify } from '@libp2p/identify';
 import type { PrivateKey, Stream } from '@libp2p/interface';
 import { encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
-import { companionAdmissionProtocol, companionRendezvousProtocol } from '@workspace/core/companion-relay';
+import { companionAdmissionLeaseMs, companionAdmissionProtocol, companionMaxDevices, companionMaxInvitations, companionPeerIdPattern, companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { normalizePairingCode, pairingLifetimeMs, type PairingInvitation } from '@workspace/core/companion-pairing';
 import type { ConfiguredPairing } from './configured-pairing';
@@ -42,13 +42,13 @@ export class CompanionRelayPolicy {
     const previous = this.leases.get(host);
     if (previous?.source !== source && [...this.leases.values()].filter(lease => lease.source === source).length >= 20) return false;
     if (!previous && this.leases.size >= 1000) return false;
-    this.leases.set(host, { until: this.now() + 120_000, source });
+    this.leases.set(host, { until: this.now() + companionAdmissionLeaseMs, source });
     return true;
   }
   register(host: string, devices: string[], invitations: PairingInvitation[] = [], source = host) {
     this.prune();
     for (const [code, owner] of this.invitations) if (owner.expiresAt <= this.now()) this.invitations.delete(code);
-    if (!this.reserve(host, source) || devices.length > 20 || devices.some(id => !/^[a-zA-Z0-9]{32,128}$/.test(id))
+    if (!this.reserve(host, source) || devices.length > companionMaxDevices || devices.some(id => !companionPeerIdPattern.test(id))
       || invitations.length > 5 || invitations.some(invite => normalizePairingCode(invite.code) !== invite.code
         || !Number.isSafeInteger(invite.expiresAt) || invite.expiresAt > this.now() + pairingLifetimeMs)) throw new Error('Invalid relay admission.');
     const fresh = invitations.filter(invite => invite.expiresAt > this.now());
@@ -115,9 +115,10 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
     },
     services: { identify: identify(), relay: circuitRelayServer({ hopTimeout: 10_000, maxInboundHopStreams: 10, maxOutboundHopStreams: 10, maxOutboundStopStreams: 20,
       reservations: { maxReservations: 1000, reservationTtl: 120_000, reservationClearInterval: 60_000,
+        // Every phone circuit is cut after this duration or volume; the phone redials, so these bound relay cost per circuit.
         applyDefaultLimit: true, defaultDurationLimit: 600_000, defaultDataLimit: 64n * 1024n * 1024n } }) },
   });
-  const request = z.object({ devices: z.array(z.string().min(32).max(128)).max(20), invitations: z.array(z.object({ code: z.string().length(8), expiresAt: z.number().int() }).strict()).max(5) }).strict();
+  const request = z.object({ devices: z.array(z.string().min(32).max(128)).max(companionMaxDevices), invitations: z.array(z.object({ code: z.string().length(8), expiresAt: z.number().int() }).strict()).max(companionMaxInvitations) }).strict();
   await relay.handle(companionAdmissionProtocol, async (stream, connection) => {
     try {
       const source = ingress.source(connection.remoteAddr);

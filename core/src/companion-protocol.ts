@@ -10,6 +10,12 @@ export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/
 export const companionDecodedResponseLimit = 128 * 1024 * 1024;
 /** Match the native app lock: quick app switches retain the authenticated connection. */
 export const companionBackgroundGraceMs = 5 * 60_000;
+/** The update channel's liveness contract, shared by the phone and the laptop. */
+export const companionHeartbeatIntervalMs = 15_000;
+export const companionRequestTimeoutMs = 15_000;
+export const companionIdleTimeoutMs = 45_000;
+/** A backgrounded phone sends nothing, so the laptop waits out the grace period before calling a stream idle. */
+export const companionBackgroundIdleTimeoutMs = companionBackgroundGraceMs + companionIdleTimeoutMs;
 export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;

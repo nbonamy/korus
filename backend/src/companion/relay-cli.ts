@@ -5,12 +5,13 @@ import path from 'node:path';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import { createCompanionRelay } from './relay';
 import { z } from 'zod';
+import { companionPeerIdPattern } from '@workspace/core/companion-relay';
 import { startRelayHealth } from './relay-health';
 import { RelayStartupError } from './relay-startup-error';
 import { readConfiguredPairing } from './configured-pairing';
 
 const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
-const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
+const peerId = z.string().regex(companionPeerIdPattern);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
   trustedProxy: z.boolean().optional(),
   hostIds: z.array(peerId).min(1).max(100).optional(),
