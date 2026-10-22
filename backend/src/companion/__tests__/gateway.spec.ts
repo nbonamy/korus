@@ -152,9 +152,6 @@ describe('companion authorization gateway', () => {
       await f.gateway.notify({ ...notification, id: 'foreground-again' });
       expect(f.port.push.mock.calls.map(call => call[0])).toStrictEqual(['other']);
       f.port.push.mockClear();
-      await f.gateway.notify({ ...notification, id: 'desktop-focused' }, async () => false);
-      expect(updates).toHaveBeenCalledWith({ type: 'notification', notification: { ...notification, id: 'desktop-focused' } });
-      expect(f.port.push).not.toHaveBeenCalled();
       f.advance();
       await f.gateway.notify({ ...notification, id: 'stale' });
       expect(f.port.push).toHaveBeenCalledTimes(2);

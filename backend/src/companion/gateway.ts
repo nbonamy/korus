@@ -351,9 +351,8 @@ export class CompanionGateway {
       this.pending.delete(id); this.invitations.delete(pending.code);
     });
   }
-  async notify(notification: CompanionNotification, allowPush: () => Promise<boolean> = async () => true) {
+  async notify(notification: CompanionNotification) {
     for (const listener of this.notifications) listener(notification);
-    if (!await allowPush()) return;
     await Promise.all(this.state.grants.map(async grant => {
       const registration = this.state.push?.[grant.peerId];
       if (!registration || !this.port.push || [...this.livePhones.get(grant.peerId) ?? []].some(subscription => subscription.foreground)) return;

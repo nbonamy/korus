@@ -26,6 +26,7 @@ data class ConversationTarget(val hostId: String, val locationId: String, val te
 }
 
 data class AttentionNotification(val id: String, val target: ConversationTarget, val kind: String, val name: String, val createdAt: Long, val source: String, val revision: Long? = null) {
+    fun precedes(other: AttentionNotification): Boolean = if (revision != null && other.revision != null && revision != other.revision) revision < other.revision else createdAt < other.createdAt
     val message get() = when (kind) { "completed" -> "Finished its turn"; "approval" -> "Needs your approval"; else -> "Has a question for you" }
     companion object {
         fun parse(source: String): AttentionNotification? = runCatching {
@@ -56,6 +57,7 @@ class AttentionNotifications(private val context: Context) {
     private fun key(target: ConversationTarget) = org.json.JSONArray(listOf(target.hostId, target.locationId, target.teamId, target.agentId)).toString()
     private fun isRead(notification: AttentionNotification): Boolean = notification.revision?.let { it <= reads.getLong(key(notification.target), -1) } ?: false
     private val seen = linkedSetOf<String>()
+    private val latest = linkedMapOf<ConversationTarget, AttentionNotification>()
     private val queued = ArrayDeque<AttentionNotification>()
     private var pendingOpen: ConversationTarget? = null
     private var open: ((ConversationTarget) -> Unit)? = null
@@ -81,7 +83,12 @@ class AttentionNotifications(private val context: Context) {
     }
     fun tapped(source: String) {
         val notification = AttentionNotification.parse(source) ?: return
-        remember(notification.id); manager.cancel(notification.id, 0); dismiss(notification.id)
+        remember(notification.id)
+        manager.activeNotifications.forEach { active ->
+            val posted = active.notification.extras.getString(EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)
+            if (posted?.id == notification.id) manager.cancel(active.tag, active.id)
+        }
+        dismiss(notification.id)
         if (open == null) pendingOpen = notification.target else open?.invoke(notification.target)
     }
     fun receive(source: String) {
@@ -98,11 +105,19 @@ class AttentionNotifications(private val context: Context) {
             return
         }
         if (isRead(notification)) return
+        val posted = manager.activeNotifications.mapNotNull { active -> active.notification.extras.getString(EXTRA_NOTIFICATION)?.let(AttentionNotification::parse) }
+        if (latest[notification.target]?.let { notification.precedes(it) } == true || posted.any { it.target == notification.target && notification.precedes(it) }) return
         if (abs(System.currentTimeMillis().toDouble() - notification.createdAt.toDouble()) > 300_000 || !seen.add(notification.id)) return
         if (seen.size > 256) seen.remove(seen.first())
+        latest[notification.target] = notification
+        if (latest.size > 256) latest.remove(latest.keys.first())
         if (foreground) {
             if (notification.target == visibleTarget) return
-            if (current == null) current = notification else { queued.addLast(notification); if (queued.size > 8) queued.removeFirst() }
+            if (current == null || current?.target == notification.target) current = notification
+            else {
+                val index = queued.indexOfFirst { it.target == notification.target }
+                if (index >= 0) queued[index] = notification else { queued.addLast(notification); if (queued.size > 8) queued.removeFirst() }
+            }
         } else if (systemEnabled && manager.areNotificationsEnabled()) {
             val intent = Intent(context, CompanionActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -114,7 +129,12 @@ class AttentionNotifications(private val context: Context) {
                 .setContentIntent(tap).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setTimeoutAfter(300_000)
                 .addExtras(android.os.Bundle().apply { putString(EXTRA_NOTIFICATION, notification.source) }).build()
-            runCatching { manager.notify(notification.id, 0, alert) }
+            // A legacy event-based tag may still be in the tray after an upgrade.
+            manager.activeNotifications.forEach { active ->
+                val previous = active.notification.extras.getString(EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)
+                if (previous?.target == notification.target && active.tag != notification.target.toJson().toString()) manager.cancel(active.tag, active.id)
+            }
+            runCatching { manager.notify(notification.target.toJson().toString(), 0, alert) }
         }
     }
     private fun remember(id: String) { seen.add(id); if (seen.size > 256) seen.remove(seen.first()) }

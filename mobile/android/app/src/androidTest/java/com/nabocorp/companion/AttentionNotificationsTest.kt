@@ -21,6 +21,58 @@ class AttentionNotificationsTest {
     private fun event(id: String = "native-attention") = json("id" to id, "name" to "Builder", "kind" to "question", "createdAt" to System.currentTimeMillis(),
         "target" to json("hostId" to "host", "locationId" to "local", "teamId" to "team", "agentId" to "agent", "sessionId" to "session"))
 
+    private fun postedIds() = manager.activeNotifications.mapNotNull {
+        it.notification.extras.getString(AttentionNotifications.EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)?.id
+    }.toSet()
+    private fun clearEvents(ids: Set<String>) {
+        manager.activeNotifications.forEach { entry ->
+            val id = entry.notification.extras.getString(AttentionNotifications.EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)?.id
+            if (id in ids) manager.cancel(entry.tag, entry.id)
+        }
+    }
+    @Test fun latestAlertReplacesOnlyItsConversationAndMobileReadingClearsIt() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        val agent = "replacement-" + System.nanoTime()
+        val first = event("replacement-first").put("revision", 1).apply { obj("target").put("agentId", agent) }
+        val latest = JSONObject(first.toString()).put("id", "replacement-latest").put("revision", 2)
+        val other = JSONObject(first.toString()).put("id", "replacement-other").apply { obj("target").put("hostId", "other-host") }
+        try {
+            instrumentation.runOnMainSync {
+                val banners = AttentionNotifications(context).apply { foreground = true }
+                listOf(first, other, latest).forEach { banners.receive(it.toString()) }
+                assertEquals("replacement-latest", banners.current?.id)
+                banners.dismiss("replacement-first")
+                assertEquals("replacement-latest", banners.current?.id)
+                banners.dismiss("replacement-latest")
+                assertEquals("replacement-other", banners.current?.id)
+                val queued = JSONObject(latest.toString()).put("id", "queued-newer").put("revision", 3)
+                banners.receive(JSONObject(latest.toString()).put("id", "queued-old").toString())
+                banners.receive(queued.toString())
+                banners.dismiss("replacement-other")
+                assertEquals("queued-newer", banners.current?.id)
+                banners.dismiss("queued-newer")
+                assertNull(banners.current)
+                val inbox = AttentionNotifications(context).apply { systemEnabled = true }
+                listOf(first, other, latest).forEach { inbox.receive(it.toString()) }
+            }
+            instrumentation.waitForIdleSync()
+            assertFalse(postedIds().contains("replacement-first"))
+            assertTrue(postedIds().containsAll(setOf("replacement-latest", "replacement-other")))
+            instrumentation.runOnMainSync {
+                val inbox = AttentionNotifications(context).apply { systemEnabled = true }
+                inbox.receive(JSONObject(first.toString()).put("id", "replacement-delayed").toString())
+            }
+            instrumentation.waitForIdleSync()
+            assertFalse(postedIds().contains("replacement-delayed"))
+            instrumentation.runOnMainSync {
+                AttentionNotifications(context).receive(JSONObject(latest.toString()).put("kind", "read").put("id", "mobile-read").toString())
+            }
+            instrumentation.waitForIdleSync()
+            assertFalse(postedIds().contains("replacement-latest"))
+            assertTrue(postedIds().contains("replacement-other"))
+        } finally { clearEvents(setOf("replacement-first", "replacement-latest", "replacement-other", "replacement-delayed")) }
+    }
+
     @Test fun desktopReadCancelsOlderSystemAlertsAndSuppressesLateDeliveryAfterRecreation() {
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val old = event("read-old").put("revision", 1)
@@ -38,9 +90,9 @@ class AttentionNotificationsTest {
             val read = JSONObject(old.toString()).put("kind", "read").put("id", "read-checkpoint")
             instrumentation.runOnMainSync { AttentionNotifications(context).receive(read.toString()) }
             instrumentation.waitForIdleSync()
-            assertFalse(manager.activeNotifications.any { it.tag == "read-old" })
-            assertTrue(manager.activeNotifications.any { it.tag == "read-new" })
-            assertTrue(manager.activeNotifications.any { it.tag == "read-other" })
+            assertFalse(postedIds().contains("read-old"))
+            assertTrue(postedIds().contains("read-new"))
+            assertTrue(postedIds().contains("read-other"))
             instrumentation.runOnMainSync {
                 val restored = AttentionNotifications(context).apply { foreground = true }
                 restored.receive(old.put("id", "read-late").toString())
@@ -48,7 +100,7 @@ class AttentionNotificationsTest {
                 restored.receive(newer.put("id", "read-new-banner").toString())
                 assertEquals("read-new-banner", restored.current?.id)
             }
-        } finally { listOf("read-old", "read-new", "read-other").forEach { manager.cancel(it, 0) } }
+        } finally { clearEvents(setOf("read-old", "read-new", "read-other")) }
     }
 
     @Test fun backgroundAlertCarriesOnlyAttentionAndTapOpensTheCapturedTarget() {
@@ -63,7 +115,7 @@ class AttentionNotificationsTest {
             val deadline = SystemClock.uptimeMillis() + 5000
             var posted: android.service.notification.StatusBarNotification? = null
             while (posted == null && SystemClock.uptimeMillis() < deadline) {
-                posted = manager.activeNotifications.firstOrNull { it.tag == event.string("id") }
+                posted = manager.activeNotifications.firstOrNull { it.notification.extras.getString(AttentionNotifications.EXTRA_NOTIFICATION)?.let(AttentionNotification::parse)?.id == event.string("id") }
                 if (posted == null) SystemClock.sleep(25)
             }
             assertNotNull("The consented notification must be posted (enabled=${manager.areNotificationsEnabled()})", posted)
@@ -90,7 +142,7 @@ class AttentionNotificationsTest {
                     instrumentation.runOnMainSync { activity.intent = launchIntent }
                 }
             }
-        } finally { manager.cancel(event.string("id"), 0) }
+        } finally { clearEvents(setOf(event.string("id"))) }
     }
 
     @Test fun malformedAttentionCannotBecomeAnAlertOrNavigationTarget() {
@@ -129,7 +181,7 @@ class AttentionNotificationsTest {
             inbox.receive(event("expired").put("createdAt", 1).toString())
             inbox.receive(event("bad").apply { obj("target").put("agentId", "") }.toString())
             assertNull(inbox.current)
-            assertFalse(manager.activeNotifications.any { it.tag in setOf("visible", "other", "expired", "bad") })
+            assertFalse(postedIds().any { it in setOf("visible", "other", "expired", "bad") })
         }
     }
 }

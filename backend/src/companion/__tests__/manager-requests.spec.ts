@@ -38,15 +38,13 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
   snapshot.general.claudeCodeEnabled = true;
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = [agent.id];
   const events: AppBackendEvent[] = [];
-  const desktopFocused = vi.fn(async () => false);
   let manager: CompanionManager | undefined;
   const server = new AppBackendServer({ version: 'test', pid: 1, snapshot,
     driverRpc: new BackendDriverRpc(new Map([[driver.backend, driver]])),
-    onPromptSource: (agent, clientId) => manager?.recordPrompt(agent, clientId),
     onEvent: (event) => { events.push(event); manager?.event(event); },
   });
   cleanup.push(() => server.close());
-  const backend: CompanionBackendPort = { desktopFocused, async request<Result>(method: string, params?: unknown): Promise<Result> {
+  const backend: CompanionBackendPort = { async request<Result>(method: string, params?: unknown): Promise<Result> {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
     if (!response || 'error' in response) throw new Error(JSON.stringify(response));
     return response.result as Result;
@@ -62,7 +60,7 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
   cleanup.push(() => manager!.stop());
   await manager.control({ action: 'status' });
   const gateway = transport.gateway!;
-  return { server, snapshot, events, gateway, desktopFocused, hostId: host.hostId,
+  return { server, snapshot, events, gateway, hostId: host.hostId,
     workspace: () => gateway.request('phone', 'snapshot.get', {}) as Promise<CompanionWorkspace>,
     async answer(answers: Record<string, { answers: string[] }>) {
       const workspace = await gateway.request('phone', 'snapshot.get', {}) as CompanionWorkspace;
@@ -102,18 +100,20 @@ describe('mobile requests across the owning daemon', () => {
     expect(git('status', '--porcelain').toString()).toContain('?? new.txt');
   });
   it.each([
-    { clientId: 'desktop', focused: true, expectedPush: false, method: backendMethods.agentPromptSend },
-    { clientId: 'desktop', focused: false, expectedPush: true, method: backendMethods.agentPromptSend },
-    { clientId: 'desktop', focused: null, expectedPush: true, method: backendMethods.agentPromptSend },
-    { clientId: 'mobile:phone', focused: true, expectedPush: true, method: backendMethods.agentPromptSteer },
-  ])('gates background pushes by prompt origin and current desktop focus ($clientId / $focused)', async ({ clientId, focused, expectedPush, method }) => {
+    { clientId: 'desktop', readOnDesktop: false, duringGrace: false, method: backendMethods.agentPromptSend },
+    { clientId: 'mobile:phone', readOnDesktop: false, duringGrace: false, method: backendMethods.agentPromptSteer },
+    { clientId: 'desktop', readOnDesktop: true, duringGrace: false, method: backendMethods.agentPromptSend },
+    { clientId: 'desktop', readOnDesktop: true, duringGrace: true, method: backendMethods.agentPromptSend },
+  ])('pushes unread completions and clears only acknowledged results ($clientId / read=$readOnDesktop / grace=$duringGrace)', async ({ clientId, readOnDesktop, duringGrace, method }) => {
     const sdk = codexSdkFixture(); const agent = { ...sdkAgent(), teamId: 'team-test' };
-    const f = await fixture(sdk.driver, agent); f.desktopFocused.mockResolvedValue(true);
+    const f = await fixture(sdk.driver, agent);
+    const other = { ...sdkAgent('other-agent', 'other-conversation'), teamId: agent.teamId };
+    f.snapshot.agents.push(other); f.snapshot.teams[0]!.agentIds.push(other.id);
+    f.snapshot.activeAgentId = other.id;
     await f.gateway.request('phone', 'notifications.register', { token: 'ab'.repeat(32), environment: 'development' });
-    const updates = vi.fn(); const subscription = f.gateway.subscribe('phone', updates, vi.fn());
+    const subscription = f.gateway.subscribe('phone', vi.fn(), vi.fn());
     cleanup.push(async () => subscription.close());
-    // A legacy observer is not a foreground phone until it opts into the live alert stream.
-    await subscription.request('snapshot.get', {});
+    await subscription.request('snapshot.get', { notifications: false });
     transport.push.mockClear();
     const session = sdk.conversation('conversation-a');
     session.setSnapshot({ activeTurnId: 'turn', busy: true });
@@ -122,15 +122,17 @@ describe('mobile requests across the owning daemon', () => {
     expect(response).toHaveProperty('result');
     await vi.waitFor(() => expect(session.handle.sendMessage).toHaveBeenCalledOnce());
     session.emit({ type: 'turn.started', conversationId: 'conversation-a', turnId: 'turn', seq: 1, occurredAt: '', origin: 'notification', payload: { startedAt: '' } });
-    if (focused === null) f.desktopFocused.mockRejectedValue(new Error('Desktop unavailable')); else f.desktopFocused.mockResolvedValue(focused);
     session.emit({ type: 'turn.completed', conversationId: 'conversation-a', turnId: 'turn', seq: 2, occurredAt: '', origin: 'notification', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
-    await vi.waitFor(() => expect(f.events.some(event => event.type === 'codex.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
-    if (expectedPush) await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
-    else {
-      await vi.waitFor(() => expect(f.desktopFocused).toHaveBeenCalledOnce());
-      await new Promise(resolve => setTimeout(resolve, 0));
-      expect(transport.push).not.toHaveBeenCalled();
+    if (duringGrace) await vi.waitFor(() => expect(f.snapshot.agents[0]!.readState?.revision).toBe(1));
+    else await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
+    if (readOnDesktop) {
+      await expect(f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: 'agent/read', params: { agentId: agent.id, revision: 1 } })).resolves.toHaveProperty('result');
+      await vi.waitFor(() => expect(transport.push).toHaveBeenCalledTimes(duringGrace ? 1 : 2));
     }
+    expect(transport.push.mock.calls.map(call => call[2])).toStrictEqual((duringGrace ? ['read'] : readOnDesktop ? ['completed', 'read'] : ['completed']).map(kind => expect.objectContaining({
+      kind, revision: 1, target: expect.objectContaining({ agentId: agent.id }),
+    })));
+
   });
 
   it('sets, edits and clears the same provider goal exposed to desktop and the phone', async () => {
