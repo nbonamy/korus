@@ -15,6 +15,8 @@ import { reconcileWorkspace } from './workspace-reconcile';
 import { restoreDraftRecord, type DraftState, type DraftStore } from './protected-storage';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 
+const sameTarget = (a: CompanionTarget, b: CompanionTarget) => (Object.keys(a) as (keyof CompanionTarget)[]).every(key => a[key] === b[key]);
+
 export function createCompanionState(connector: CompanionConnector, store?: DraftStore, resolveUploads?: (references: readonly { type?: string; reference: string }[] | undefined) => CompanionUpload[], onNotification?: (notification: CompanionNotification) => void) {
   let pushRegistration: CompanionPushRegistration | null | undefined;
   const pushRegistrationFailed = ref(false);
@@ -196,7 +198,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function startReview(input: CompanionReviewInput, target: import('@workspace/core/companion-protocol').CompanionTarget) {
     const active = session; const setup = review.value.setup; const epoch = reviewEpoch;
     if (review.value.status !== 'ready' || !setup || !active?.startReview || !canSend.value || setup.activeReview) return;
-    if (!target || (Object.keys(setup.target) as (keyof typeof target)[]).some(key => setup.target[key] !== target[key])) return;
+    if (!target || !sameTarget(setup.target, target)) return;
     if ((input.scope.type === 'branch' && (!setup.branchChanges || input.scope.baseRef !== setup.baseRef))
       || (input.scope.type === 'uncommitted' && !setup.uncommitted)
       || (input.threadMode === 'current' && (!setup.currentThread || input.automation?.enabled))
@@ -208,9 +210,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (reviewerId && reviewerId !== agentId.value) {
         // Discovery failure does not turn an acknowledged start into a retryable start.
         try {
-          const next = await active.getWorkspace();
-          if (epoch !== reviewEpoch || active !== session) return;
-          workspace.value = reconcileWorkspace(workspace.value, next);
+          if (!(await refreshWorkspace(active)) || epoch !== reviewEpoch) return;
           if (agents.value.some(agent => agent.id === reviewerId)) await selectAgent(reviewerId);
         } catch { /* The reviewer remains available in the desktop-owned sidebar. */ }
       }
@@ -259,10 +259,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     return pluginRequest;
   }
   const requests = computed(() => {
-    const owner = agent.value;
-    const team = workspace.value.teams.find((team) => team.id === owner?.teamId);
-    if (!owner || !team) return [];
-    const target = companionTarget(laptopId.value, team, owner);
+    const owner = agent.value; const target = targetOf(owner);
+    if (!owner || !target) return [];
     return (workspace.value.agentRequests?.[owner.id] ?? []).map((request) => ({
       key: JSON.stringify([target, request.id, request.conversationId]), target, request,
     }));
@@ -285,7 +283,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (session === active && epoch === connectionEpoch) {
         failedRequest.value = pending.key;
         // Reconcile an answer handled on desktop or whose acknowledgment was lost. Never replay it.
-        try { const next = await active.getWorkspace(); if (session === active && epoch === connectionEpoch) workspace.value = reconcileWorkspace(workspace.value, next); } catch { /* Keep the request and draft available for an explicit retry. */ }
+        try { await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
@@ -307,9 +305,23 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const canSend = computed(() => status.value === 'connected' && conversationReady.value && Boolean(agent.value)
     && storageReady.value && !goalBusy.value && !loading.value && !sessionAction.value && !sending[key()] && (!deliveryUnknown.value || unresolvedReceipts[key()] === true));
 
-  function conversationIdentity(owner = agent.value): string {
+  /** The agent as the laptop identifies it: host, location, team, agent and session. */
+  function targetOf(owner: Agent | null | undefined): CompanionTarget | null {
     const team = workspace.value.teams.find(team => team.id === owner?.teamId);
-    return owner && team ? JSON.stringify([companionTarget(laptopId.value, team, owner), owner.backend]) : '';
+    return owner && team ? companionTarget(laptopId.value, team, owner) : null;
+  }
+  /** The selected conversation as the laptop identifies it, captured before any await. */
+  const currentTarget = () => targetOf(agent.value);
+  function conversationIdentity(owner = agent.value): string {
+    const target = targetOf(owner);
+    return owner && target ? JSON.stringify([target, owner.backend]) : '';
+  }
+  /** Reads the laptop's workspace after a command. False when the session changed meanwhile, so nothing is applied. */
+  async function refreshWorkspace(active: CompanionSession): Promise<boolean> {
+    const next = await active.getWorkspace();
+    if (active !== session) return false;
+    workspace.value = reconcileWorkspace(workspace.value, next);
+    return true;
   }
   const git = createGitChanges({
     owner: () => conversationIdentity(), agent: () => agent.value,
@@ -496,17 +508,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     error.value = '';
     try { await command(); } catch { error.value = 'mobile.errors.commandFailed'; }
   }
-  /** The selected conversation as the laptop identifies it, captured before any await. */
-  function currentTarget(): CompanionTarget | null {
-    const selected = agent.value;
-    const team = workspace.value.teams.find(team => team.id === selected?.teamId);
-    return selected && team ? companionTarget(laptopId.value, team, selected) : null;
-  }
   async function changeGoal(target: CompanionTarget, objective: string | null): Promise<'accepted' | 'rejected' | 'unknown'> {
     const active = session; const selected = agent.value;
     const current = currentTarget();
     if (!canSend.value || !active?.changeGoal || !selected || !defaultBackendCapabilities(selected.backend).goals
-      || !current || !(Object.keys(current) as (keyof CompanionTarget)[]).every(key => current[key] === target[key])
+      || !current || !sameTarget(current, target)
       || (objective !== null && (!objective.trim() || objective.trim().length > 100_000))) return 'rejected';
     const key = goalKey(); const epoch = selectionEpoch;
     pendingGoals.add(key); goalError.value = false;
@@ -515,18 +521,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       catch {
         // Initializing an empty session reloads its transcript without navigating away
         // from the goal's owner. Keep its uncertain result visible across that rebind.
-        const owner = agent.value;
-        const team = workspace.value.teams.find(team => team.id === owner?.teamId);
-        const current = owner && team ? companionTarget(laptopId.value, team, owner) : null;
+        const owner = agent.value; const current = targetOf(owner);
         if (active === session && owner?.backend === selected.backend && current
           && (Object.keys(target) as (keyof CompanionTarget)[]).every(key => (key === 'sessionId' && target.sessionId === null) || target[key] === current[key])) goalError.value = true;
         return 'unknown';
       }
       // The command was accepted even if refreshing later loses the connection.
       try {
-        const next = await active.getWorkspace();
-        if (active === session) workspace.value = reconcileWorkspace(workspace.value, next);
-        if (active === session && epoch === selectionEpoch) await selectAgent(target.agentId);
+        if (await refreshWorkspace(active) && epoch === selectionEpoch) await selectAgent(target.agentId);
       } catch { /* Subscriptions/reconnect will restore authoritative goal state. */ }
       return 'accepted';
     } finally { pendingGoals.delete(key); }
@@ -535,14 +537,12 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const delegate = (options: NonNullable<CompanionPromptOptions['delegation']>) => runCommand(() => { const target = currentTarget(); return canSend.value && target ? session?.sendPrompt(target, '/delegate', crypto.randomUUID(), { delegation: options }) : undefined; });
   async function renameAgent(target: CompanionTarget, value: string) {
     const active = session; const epoch = selectionEpoch; const current = currentTarget(); const name = value.trim();
-    if (!active || status.value !== 'connected' || sessionAction.value || !name || name.length > 200 || !current
-      || !(Object.keys(current) as (keyof CompanionTarget)[]).every(key => current[key] === target[key])) return;
+    if (!active || status.value !== 'connected' || sessionAction.value || !name || name.length > 200 || !current || !sameTarget(current, target)) return;
     sessionAction.value = 'rename'; sessionActionFailed.value = false;
     try {
       if (!active.renameAgent) throw new Error('Agent renaming is unavailable.');
       await active.renameAgent(target, name);
-      const next = await active.getWorkspace();
-      if (active === session) workspace.value = reconcileWorkspace(workspace.value, next);
+      await refreshWorkspace(active);
     } catch {
       if (active === session && epoch === selectionEpoch) sessionActionFailed.value = true;
     } finally { sessionAction.value = null; }
@@ -558,10 +558,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       else if (action === 'restart' && active.restartSession) await active.restartSession(id);
       else if (action === 'interrupt' && active.interrupt) await active.interrupt(id);
       else throw new Error('Session action unavailable.');
-      const next = await active.getWorkspace();
-      if (active !== session) return;
-      workspace.value = reconcileWorkspace(workspace.value, next);
-      if (epoch !== selectionEpoch) return;
+      if (!(await refreshWorkspace(active)) || epoch !== selectionEpoch) return;
       if (action !== 'interrupt') {
         conversation.value = null; selectedConversationKey = '';
         await selectAgent(action === 'restart' ? id : '');
@@ -605,8 +602,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const epoch = ++selectionEpoch;
     ++conversationGeneration.value;
     const nextKey = conversationIdentity(nextAgent ?? null);
-    const nextTeam = workspace.value.teams.find(team => team.id === nextAgent?.teamId);
-    const nextTarget = nextAgent && nextTeam ? companionTarget(laptopId.value, nextTeam, nextAgent) : null;
+    const nextTarget = targetOf(nextAgent);
     const cached = nextTarget ? session?.cachedConversation?.(id) ?? connector.cachedConversation?.(nextTarget) : undefined;
     const retaining = Boolean(conversation.value) && nextKey === selectedConversationKey;
     selectedConversationKey = nextKey;
@@ -682,7 +678,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const active = session; const epoch = selectionEpoch;
     const current = currentTarget();
     if (status.value !== 'connected' || !active?.updateQueuedPrompt || queuedPromptPending.value
-      || !current || (Object.keys(current) as (keyof CompanionTarget)[]).some(key => target[key] !== current[key])
+      || !current || !sameTarget(current, target)
       || !workspace.value.queuedPrompts?.some(prompt => prompt.agentId === target.agentId && prompt.id === promptId)) return;
     queuedPromptPending.value = promptId; queuedPromptFailed.value = false;
     try {
@@ -760,9 +756,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const created = await start(active, team);
       if (!created) throw new Error('Chat creation unavailable.');
-      const next = await active.getWorkspace();
-      if (active !== session) return;
-      workspace.value = reconcileWorkspace(workspace.value, next);
+      if (!(await refreshWorkspace(active))) return;
       chatCreation.value = 'idle';
       if (epoch === selectionEpoch) await selectAgent(created);
     } catch {
@@ -773,11 +767,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
   const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
   const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {
-    const current = agent.value;
-    const team = workspace.value?.teams.find(item => item.id === teamId.value);
-    const currentTarget = current && team ? companionTarget(laptopId.value, team, current) : null;
-    if (!currentTarget || !team || (['hostId', 'locationId', 'teamId', 'agentId', 'sessionId'] as const).some(key => currentTarget[key] !== target[key])) throw new Error('Target is stale.');
-    if (!workspace.value?.backends?.[team.id]?.includes(backend)) throw new Error('That engine is not available.');
+    const current = currentTarget();
+    if (!current || !sameTarget(current, target)) throw new Error('Target is stale.');
+    if (!workspace.value.backends?.[current.teamId]?.includes(backend)) throw new Error('That engine is not available.');
     return active.duplicateAgent?.(target, backend);
   });
   /** The engine of a chat that has not started: changed on the laptop, then the agent is reopened with it. */
@@ -786,10 +778,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (!id || !active?.setBackend || status.value !== 'connected' || agent.value?.backend === backend) return;
     try {
       await active.setBackend(id, backend);
-      const next = await active.getWorkspace();
-      if (active !== session) return;
-      workspace.value = reconcileWorkspace(workspace.value, next);
-      if (epoch === selectionEpoch) await selectAgent(id);
+      if (await refreshWorkspace(active) && epoch === selectionEpoch) await selectAgent(id);
     } catch { if (active === session && epoch === selectionEpoch) error.value = 'mobile.errors.commandFailed'; }
   }
   const dismissChatCreation = () => { if (chatCreation.value === 'failed') chatCreation.value = 'idle'; };
@@ -820,8 +809,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, duplicateAgent, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
     refreshing, conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
-      const current = agent.value; const team = workspace.value.teams.find(team => team.id === current?.teamId);
-      return current && team ? connector.conversationUpdates?.(companionTarget(laptopId.value, team, current), since) ?? null : null;
+      const target = currentTarget();
+      return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
     git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings, permissions, modelFavorites, setApprovalPreset, setPermissionMode, renameAgent, interrupt, restartSession, requestCloseSession, confirmCloseSession, cancelCloseSession, closePreview, sessionAction, sessionActionFailed, dismissSessionError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
     setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); ++skillEpoch; stopPlugins(); ++pluginEpoch; stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
