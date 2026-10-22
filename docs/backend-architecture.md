@@ -465,6 +465,10 @@ conversation or sequence cursor outlives the backend instance.
 
 ## Runtime And Packaging
 
+- Installation applies a version-checked patch to Forge's `cross-zip` dependency
+  so Windows ZIP creation uses the Node 26 filesystem API. The packaging regression
+  exercises the installed maker and verifies an extractable archive; Windows builds
+  also run it with native PowerShell.
 - On macOS, launching a packaged app outside Applications installs it through
   Electron's native relocation API before creating backend resources or taking
   the single-instance lock. Electron relaunches the installed copy or focuses an

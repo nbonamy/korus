@@ -84,6 +84,9 @@ jobs:
       - name: Test macOS signing cleanup
         if: runner.os == 'macOS'
         run: node --test scripts/macos-keychain.test.mjs
+      - name: Test Windows ZIP packaging
+        if: runner.os == 'Windows'
+        run: node --test scripts/windows-zip-maker.test.mjs
       - name: Signed and notarized macOS build
         if: runner.os == 'macOS'
         run: npm run release:ci-build
