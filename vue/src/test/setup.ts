@@ -8,6 +8,7 @@ import { installElectronTestClientAccessor, setElectronTestClient } from './clie
 import { elementPlusStubs } from './element-plus-stubs';
 
 beforeEach(() => {
+  localStorage.clear();
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
     value: () => null,

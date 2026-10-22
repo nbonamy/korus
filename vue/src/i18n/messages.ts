@@ -167,6 +167,7 @@ export const messages = {
       layout: 'Conversation layout', single: 'Single Pane', '2-vertical': 'Vertical Split',
       '2-horizontal': 'Horizontal Split', '4-quadrant': '4-Pane Split',
       emptyPane: 'Empty pane', selectAgent: 'Focus this pane, then select an agent from the sidebar.',
+      resizeColumns: 'Resize conversation columns', resizeRows: 'Resize conversation rows',
     },
     surface: surfaceMessages,
     missions: {

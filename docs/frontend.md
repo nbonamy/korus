@@ -79,8 +79,11 @@ host's snapshot. A generic Codex interaction defect is an SDK defect. Never add 
 global message list or provider-neutral reducer to `app-state.ts`; Korus-only
 overlays read the provider frame or an explicit coordination projection.
 
-Split layouts hold equal conversation panes, never parent/child agents.
-`useSplitWorkspace` owns client-local assignment and focus per team. Controllers and
+Split layouts hold peer conversation panes, never parent/child agents.
+`useSplitWorkspace` owns layout, assignment, focus and split ratios per team,
+persisted in client-local storage so devices retain their own workspace preferences.
+The grid constrains displayed ratios to keep panes usable at the current window size;
+compact screens show one conversation without replacing the saved layout. Controllers and
 async actions keep an explicit agent ID (background updates never select a pane); only
 the focused conversation handles global composer and interrupt shortcuts; hydration
 watches stable conversation identity, not snapshot object identity. One artifact
