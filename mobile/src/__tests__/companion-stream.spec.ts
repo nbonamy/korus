@@ -58,7 +58,7 @@ describe('mobile update channel', () => {
       expect(records.find(record => record.event === 'updates.request-timeout')).toMatchObject({
         method: 'ping', pending: expect.any(Number), oldestMethod: 'ping', oldestAgeMs: 15_000, idleMs: 30_000, sequence: 0,
       });
-      expect(records.find(record => record.event === 'updates.disconnect')).toMatchObject({ reason: 'request-timeout' });
+      expect(records.find(record => record.event === 'updates.disconnect')).toMatchObject({ reason: 'heartbeat-timeout' });
     } finally { f.stream.close(); }
   });
   it('closes a late dial when the app is suspended before connecting', async () => {
@@ -134,6 +134,33 @@ describe('mobile update channel', () => {
       expect(f.disconnected).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(15_000);
       expect(f.disconnected).toHaveBeenCalledOnce();
+    } finally { f.stream.close(); }
+  });
+  it('does not extend the return probe for traffic that arrives while it waits', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      await f.stream.setActive(false);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const returning = f.stream.setActive(true); const rejected = expect(returning).rejects.toThrow('Disconnected');
+      await vi.advanceTimersByTimeAsync(1_000);
+      f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(f.disconnected).toHaveBeenCalledExactlyOnceWith('resume-timeout');
+      await rejected;
+    } finally { f.stream.close(); }
+  });
+  it('keeps one heartbeat in flight while an extended one is still waiting', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const initial = f.stream.request('snapshot.get', {}); await tick();
+      f.push({ v: 1, id: f.calls[0]!.id, result: {} }); await initial;
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(10_000); f.push({ v: 1, seq: 1, update: { type: 'workspace', workspace: { teams: [], agents: [] } } });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(f.calls.filter(call => call.method === 'ping')).toHaveLength(1);
+      expect(f.disconnected).not.toHaveBeenCalled();
     } finally { f.stream.close(); }
   });
   it('refuses malformed provider frames before they reach conversation replicas', async () => {
