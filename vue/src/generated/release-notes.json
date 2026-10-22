@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.37.1",
+  "currentVersion": "0.38.0",
   "releases": [
+    {
+      "version": "0.38.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "7ac8ff54466313d119c65e2a7095cca96bc88c98087af2e07852f53e8050a935",
+      "markdown": "### New features\n\n- Claude and other non-Codex agents can generate images through Codex and display\n  the results inline in their replies.\n- Send merge reports to another agent in the same repository when a branch has\n  no originating agent. Reporting stays off until you choose a recipient.\n- Configure the models available from each provider with an administrator-managed\n  `requirements.json` file, shared by desktop and mobile.\n- Connect native Android companions with encrypted pairing and push notifications.\n- On mobile, open existing projects from the connected host, duplicate agents,\n  and rename agents from their conversation.\n\n### Improvements and fixes\n\n- Large mobile conversations, including image-heavy histories, transfer with\n  compression instead of failing at the uncompressed response limit.\n- Mobile conversations retain loaded history, drafts, attachments, and streaming\n  replies across refreshes and reconnects, catching up without reloading the\n  whole conversation. Slow conversation requests no longer disconnect the session.\n- Mobile recovery is more reliable after brief backgrounding, with quieter\n  connection indicators and clearer conversation-loading feedback.\n- Restarting a Claude agent clears its old conversation, and newly forked\n  conversations display their inherited history immediately.\n- Review agents receive the full skill instructions and explicit errors for\n  unsupported finding-update fields, preventing fixes from going unrecorded.\n- Tool activity titles use readable names without MCP prefixes, underscores,\n  or hyphens; shell commands keep their original text."
+    },
     {
       "version": "0.37.1",
       "releasedAt": "2026-10-16",

@@ -4,6 +4,36 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.38.0] - 2026-10-22
+
+### New features
+
+- Claude and other non-Codex agents can generate images through Codex and display
+  the results inline in their replies.
+- Send merge reports to another agent in the same repository when a branch has
+  no originating agent. Reporting stays off until you choose a recipient.
+- Configure the models available from each provider with an administrator-managed
+  `requirements.json` file, shared by desktop and mobile.
+- Connect native Android companions with encrypted pairing and push notifications.
+- On mobile, open existing projects from the connected host, duplicate agents,
+  and rename agents from their conversation.
+
+### Improvements and fixes
+
+- Large mobile conversations, including image-heavy histories, transfer with
+  compression instead of failing at the uncompressed response limit.
+- Mobile conversations retain loaded history, drafts, attachments, and streaming
+  replies across refreshes and reconnects, catching up without reloading the
+  whole conversation. Slow conversation requests no longer disconnect the session.
+- Mobile recovery is more reliable after brief backgrounding, with quieter
+  connection indicators and clearer conversation-loading feedback.
+- Restarting a Claude agent clears its old conversation, and newly forked
+  conversations display their inherited history immediately.
+- Review agents receive the full skill instructions and explicit errors for
+  unsupported finding-update fields, preventing fixes from going unrecorded.
+- Tool activity titles use readable names without MCP prefixes, underscores,
+  or hyphens; shell commands keep their original text.
+
 ## [0.37.1] - 2026-10-16
 
 ### Improvements and fixes
