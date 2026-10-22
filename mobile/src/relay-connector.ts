@@ -13,7 +13,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import { peerIdFromPrivateKey, peerIdFromString } from '@libp2p/peer-id';
 import { multiaddr } from '@multiformats/multiaddr';
 import type { Libp2p, Stream } from '@libp2p/interface';
-import { companionProtocol, companionUpdatesProtocol, companionCompressedProtocol, companionCompressedUpdatesProtocol, companionTarget, encodeCompanionFrame, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionUpdatesProtocol, companionCompressedProtocol, companionCompressedUpdatesProtocol, companionTarget, encodeCompanionFrame, isConversationReset, readFirstCompanionFrame } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionRendezvousProtocol, relayAddress } from '@workspace/core/companion-relay';
@@ -277,7 +277,8 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
           const page = await request<{ frame: import('@workspace/core/contracts').ProviderConversationFrame; hasOlder: boolean }>(host, 'conversation.loadOlder', identity);
           if (closed || JSON.stringify(target(agentId)) !== JSON.stringify(identity)) throw new Error('Conversation changed.');
           cache.receive(page.frame);
-          const frame = cache.peek(identity) ?? (page.frame.type === 'codex.conversationSnapshotChanged' || page.frame.type === 'claude.conversationSnapshotChanged' || page.frame.type === 'antigravity.conversationSnapshotChanged' ? page.frame : null);
+          const returned = page.frame;
+          const frame = cache.peek(identity) ?? (isConversationReset(returned) ? returned : null);
           if (!frame) throw new Error('Conversation history needs to be reloaded.');
           return { hasOlder: page.hasOlder, frame };
         },

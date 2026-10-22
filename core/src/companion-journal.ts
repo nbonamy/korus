@@ -1,4 +1,5 @@
 import type { ProviderConversationFrame } from './contracts';
+import { isConversationReset } from './companion-protocol';
 
 export type CompanionCheckpoint = { epoch: string; revision: number };
 export type CompanionSync = { checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
@@ -13,7 +14,7 @@ export class CompanionJournal {
     frame = Object.fromEntries(['type', 'agentId', 'backend', 'threadId', 'backendSessionId', 'conversationId', 'turnId', 'seq', 'occurredAt', 'payload']
       .filter(key => Object.hasOwn(frame, key)).map(key => [key, frame[key as keyof ProviderConversationFrame]])) as ProviderConversationFrame;
     let entry = this.entries.get(frame.agentId);
-    if (frame.type.endsWith('SnapshotChanged')) {
+    if (isConversationReset(frame)) {
       this.forget(frame.agentId);
       entry = { checkpoint: { epoch: crypto.randomUUID(), revision: frame.payload.revision }, frames: [], bytes: 0 };
       this.entries.set(frame.agentId, entry);

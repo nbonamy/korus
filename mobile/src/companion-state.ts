@@ -731,7 +731,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
       uncertain[draftKey] = false;
       await persist();
-      if (epoch === selectionEpoch) await selectAgent(target.agentId);
+      // Admission is complete. A slow transcript refresh must not hold the native composer open.
+      if (epoch === selectionEpoch) void selectAgent(target.agentId);
       return 'accepted';
     } catch (failure) {
       if (failure instanceof PromptRejectedError) {

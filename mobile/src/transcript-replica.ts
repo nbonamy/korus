@@ -1,6 +1,6 @@
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
-import type { CompanionReset } from '@workspace/core/companion-protocol';
+import { isConversationReset, type CompanionReset } from '@workspace/core/companion-protocol';
 import { createCompanionReplica } from './conversation-cache';
 
 type Entry = { checkpoint: CompanionCheckpoint; frame: CompanionReset; replica: ReturnType<typeof createCompanionReplica>; bytes: number };
@@ -10,21 +10,21 @@ export class TranscriptReplicas {
   clear() { this.entries.clear(); }
   apply(identity: string, checkpoint: CompanionCheckpoint, frames: ProviderConversationFrame[]): Entry | null {
     let entry = this.entries.get(identity);
-    const reset = frames.findIndex(frame => frame.type.endsWith('SnapshotChanged'));
+    const reset = frames.findIndex(frame => isConversationReset(frame));
     if (reset < 0 && (!entry || entry.checkpoint.epoch !== checkpoint.epoch)) return null;
     // Validate continuity before mutating a replica. Duplicate overlap is expected
     // when the native bridge coalesces batches produced before its last paint ack.
     let revision = reset >= 0 ? frames[reset]!.payload.revision : entry!.checkpoint.revision;
     for (const frame of frames.slice(reset >= 0 ? reset + 1 : 0)) {
       if (frame.payload.revision <= revision) continue;
-      if (frame.type.endsWith('SnapshotChanged')) revision = frame.payload.revision;
+      if (isConversationReset(frame)) revision = frame.payload.revision;
       else if (frame.payload.revision !== revision + 1) return null;
       else revision++;
     }
     if (revision < checkpoint.revision) return null;
     try {
       for (const frame of frames) {
-        if (frame.type === 'codex.conversationSnapshotChanged' || frame.type === 'claude.conversationSnapshotChanged' || frame.type === 'antigravity.conversationSnapshotChanged') {
+        if (isConversationReset(frame)) {
           const snapshot = frame as CompanionReset;
           entry = { checkpoint: { epoch: checkpoint.epoch, revision: frame.payload.revision }, frame: snapshot, replica: createCompanionReplica(snapshot), bytes: new TextEncoder().encode(JSON.stringify(frame)).byteLength };
         } else if (entry && frame.payload.revision > entry.checkpoint.revision) {

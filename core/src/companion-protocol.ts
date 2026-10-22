@@ -28,6 +28,11 @@ export type CompanionRequestReply = { target: CompanionTarget; id: string; conve
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
 export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree: boolean; branch: string | null; upstream: string | null; hasChanges: boolean };
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
+const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
+/** A provider conversation frame is a full reset or one event after it; these two checks are the only definition of either. */
+export const isConversationFrame = (frame: { type: string }): boolean => conversationFrameType.test(frame.type);
+export const isConversationReset = (frame: ProviderConversationFrame): frame is CompanionReset =>
+  frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */

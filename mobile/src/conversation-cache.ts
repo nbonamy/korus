@@ -3,7 +3,7 @@ import { createCodexConversationReplica } from '@codex-app-sdk/core/conversation
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import type { CompanionReset, CompanionTarget } from '@workspace/core/companion-protocol';
+import { isConversationReset, type CompanionReset, type CompanionTarget } from '@workspace/core/companion-protocol';
 import { connectionDiagnostic, connectionError } from './connection-diagnostics';
 
 type Replica = { apply(event: never): unknown; getSnapshot(): unknown };
@@ -72,7 +72,7 @@ export class ConversationCache {
     if (frame.backend === 'codex' && entry.target.sessionId !== JSON.stringify({ kind: 'codex', threadId: frame.threadId })) return;
     const current = entry.frame;
     if (current && current.backend !== frame.backend) return;
-    const reset = frame.type === 'codex.conversationSnapshotChanged' || frame.type === 'claude.conversationSnapshotChanged' || frame.type === 'antigravity.conversationSnapshotChanged';
+    const reset = isConversationReset(frame);
     if (current && frame.payload.revision <= current.payload.revision && !(reset && entry.resetting)) return;
     if (reset) { entry.resetting = false; entry.checkpoint = undefined; }
     this.journal.observe(frame);

@@ -2,7 +2,7 @@ import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import type { CompanionReset } from '@workspace/core/companion-protocol';
+import { isConversationFrame, type CompanionReset } from '@workspace/core/companion-protocol';
 
 type Followed = { revision: number; touchedAt: number; apply(event: unknown): void; snapshot(): unknown };
 
@@ -29,7 +29,7 @@ export class ConversationSource {
       for (const id of this.frames.keys()) if (!agents.has(id)) this.forget(id);
       return;
     }
-    if (/^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/.test(event.type)) this.journal.observe(event as import('@workspace/core/contracts').ProviderConversationFrame);
+    if (isConversationFrame(event)) this.journal.observe(event as import('@workspace/core/contracts').ProviderConversationFrame);
     if (event.type === 'codex.conversationSnapshotChanged') {
       this.retain(event); this.followed.delete(event.agentId);
     } else if (event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') {

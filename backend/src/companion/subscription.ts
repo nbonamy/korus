@@ -2,7 +2,7 @@ import type { CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import { companionIdleTimeoutMs, companionTarget, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionIdleTimeoutMs, companionTarget, isConversationFrame, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { warnMain } from '../log';
 
 export type SubscriptionPort = {
@@ -20,8 +20,7 @@ const cleanFrame = (event: ProviderConversationFrame): ProviderConversationFrame
   const { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } = event;
   return { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as ProviderConversationFrame;
 };
-const isConversation = (event: AppBackendEvent): event is ProviderConversationFrame =>
-  /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/.test(event.type);
+const isConversation = (event: AppBackendEvent): event is ProviderConversationFrame => isConversationFrame(event);
 
 /** One phone's scoped subscriptions; provider payloads pass through unchanged. */
 export class CompanionSubscription {

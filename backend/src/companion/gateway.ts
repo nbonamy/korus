@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { AgentBackend, AgentGitDiff, AgentGitDiffTarget, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
+import { companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
@@ -196,7 +196,7 @@ const agentOperations = {
     },
     read: { verify: (result, current, target) => {
       for (const frame of result.frames) {
-        if (frame.type.endsWith('SnapshotChanged')) currentReset(frame as CompanionReset, current, target);
+        if (isConversationReset(frame)) currentReset(frame as CompanionReset, current, target);
         else if (frame.agentId !== target.agentId || frame.backend !== current.backend || (current.backendSession?.kind === 'codex' && frame.threadId !== current.backendSession.threadId)) throw new Error('Conversation session mismatch.');
       }
       return result;
