@@ -18,6 +18,45 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it.each([
+    '../research/quality%20findings.md',
+    '/repo/research/quality%20findings.md',
+    'file:///repo/research/quality%20findings.md',
+  ])('keeps linked Markdown inside closable workspace tabs (%s)', async (href) => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/repo';
+    const { api, emit } = installBackendFixture(snapshot);
+    api.previewAgentFile.mockResolvedValue({
+      kind: 'text', path: 'research/quality findings.md', size: 80,
+      content: '# Useful quality findings\n\n**Research results**',
+    });
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      emit({ type: 'client.markdownDisplayRequested', agentId: agent.id, payload: {
+        kind: 'markdown', path: '/repo/plans/Feature061.md', title: 'Feature061',
+        content: `# Feature061\n\n| Research ticket | Document |\n| --- | --- |\n| Research | [Research **spike**](${href}) |`,
+      } });
+      await flushPromises();
+      const workspace = () => wrapper.get('[aria-label="Right workspace"]');
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+      workspace().get('a strong').element.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      await flushPromises();
+      expect(api.previewAgentFile).toHaveBeenCalledExactlyOnceWith(agent.id, 'research/quality findings.md');
+      expect(workspace().findAll('[role="tab"]').map(tab => tab.text())).toStrictEqual(['Feature061', 'quality findings.md']);
+      expect(workspace().findAll('h1').filter(heading => heading.isVisible()).map(heading => heading.text())).toStrictEqual(['Useful quality findings']);
+      expect(wrapper.get('[aria-label="Send prompt"]').isVisible()).toBe(true);
+      await workspace().get('[aria-label="Close quality findings.md tab"]').trigger('click');
+      await flushPromises();
+      expect(workspace().get('h1').isVisible()).toBe(true);
+      expect(workspace().get('h1').text()).toBe('Feature061');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('shows and clears a finish-turn suggestion in the main composer through backend events', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
