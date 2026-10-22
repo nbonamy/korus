@@ -585,11 +585,34 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (id !== agentId.value || !conversationReady.value || !session?.markRead) return;
     await session.markRead(id, revision);
   }
-  return { updateQueuedPrompt, queuedPromptPending, queuedPromptFailed, projectBranches, loadProjectBranches, dismissProjectBranches, projectRepositories, loadProjectRepositories, dismissProjectRepositories, createProject, usage, loadUsage, registerPush, pushRegistrationFailed, changeGoal, goalBusy, goalError, review, loadReview, dismissReview, markRead, branches, loadBranches, dismissBranches, selectBackend, chatCreation, createChat, createQuickChat, dismissChatCreation, duplicateAgent, requests, respondRequest, respondingRequest, failedRequest, status, error, laptopId, teamId, agentId, workspace, conversation, conversationReady, conversationGeneration, loading, agents, agent,
-    refreshing, conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
+  return {
+    // The link to the laptop.
+    status, error, laptopId, connect, setActive, disconnect, reconnect, revoke, registerPush, pushRegistrationFailed,
+    // What the laptop hosts, and which of it is selected.
+    teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead,
+    // The selected conversation and its history.
+    conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
+    conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
       const target = currentTarget();
       return target ? connector.conversationUpdates?.(target, since) ?? null : null;
     },
-    git, draft, deliveryUnknown, canSend, history, loadOlder, readImage, readConversationContent, models, plugins, loadPlugins, skills, loadSkills, composerSettings, updateComposerSettings: composer.updateSettings, permissions, modelFavorites, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode, renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose, confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError, delegate, startReview, connect, selectTeam, selectAgent, updateDraft, submit,
-    setActive, disconnect, reconnect, revoke, dispose() { git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession(); stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset(); stopBranches(); dismissBranches(); stopReview(); dismissReview(); } };
+    // The composer: the draft, sending it, and what was sent along with it.
+    draft, updateDraft, submit, canSend, deliveryUnknown, models, composerSettings, updateComposerSettings: composer.updateSettings, modelFavorites,
+    permissions, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode,
+    skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
+    // Goals and questions the agent asks.
+    goalBusy, goalError, changeGoal, requests, respondRequest, respondingRequest, failedRequest,
+    // Actions on the selected chat, and creating new ones.
+    renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose,
+    confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError,
+    chatCreation, createChat, createQuickChat, createProject, duplicateAgent, dismissChatCreation,
+    // Lists read from the laptop on demand.
+    usage, loadUsage, branches, loadBranches, dismissBranches, projectBranches, loadProjectBranches, dismissProjectBranches,
+    projectRepositories, loadProjectRepositories, dismissProjectRepositories, review, loadReview, startReview, dismissReview, git,
+    dispose() {
+      git.dispose(); receiptCallbacks.clear(); disposed = true; reconnectWanted = false; closeSession();
+      stopProjects(); dismissProjectRepositories(); stopUsage(); stopSkills(); skillList.reset(); stopPlugins(); pluginList.reset();
+      stopBranches(); dismissBranches(); stopReview(); dismissReview();
+    },
+  };
 }
