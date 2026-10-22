@@ -378,6 +378,7 @@ export class CompanionGateway {
     this.livePhones.set(peerId, subscriptions);
     const subscription = new CompanionSubscription({
       onClose: () => { subscriptions.delete(subscription); if (!subscriptions.size) this.livePhones.delete(peerId); },
+      // By identity, not by device id: pairing the same phone again replaces its grant and ends the streams of the old one.
       authorized: () => this.state.grants.includes(grant),
       onNotification: listener => { this.notifications.add(listener); return () => { this.notifications.delete(listener); }; },
       onEvent: (listener) => this.port.onEvent!(listener),

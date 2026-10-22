@@ -9,6 +9,7 @@ import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
 import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
 import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
 import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
@@ -147,6 +148,20 @@ describe('encrypted companion circuit', () => {
     expect(logMain).toHaveBeenCalledWith('companion', 'updates ended', expect.objectContaining({ elapsedMs: expect.any(Number), sequence: expect.any(Number) }));
     expect(() => gateway.subscribe(phone.peerId.toString(), () => {}, () => {})).toThrow('authorized');
   }, 15_000);
+  it('reconnects to the relay after it restarts and routes again', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relayKey = await generateKeyPair('Ed25519');
+    const port = await freePort(); const listen = `/ip4/127.0.0.1/tcp/${port}/ws`;
+    let relay = await createCompanionRelay({ key: relayKey, listen, hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const connector = new CompanionOutboundConnector(hostKey, { grants: [], pairingInvitations: () => [] } as unknown as CompanionGateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    expect(connector.connected).toBe(true);
+    await relay.stop();
+    await expect.poll(() => connector.connected, { timeout: 5_000 }).toBe(false);
+    relay = await createCompanionRelay({ key: relayKey, listen, hostIds: [hostId] });
+    await expect.poll(() => connector.connected, { timeout: 20_000, interval: 250 }).toBe(true);
+  }, 40_000);
   it('keeps one update channel per phone, replacing a stale one from an older connection', async () => {
     const { hostKey, hostId, relay, address, port, phone, phoneKey } = await relayAndPhone();
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: [] }], agents: [] } as CompanionWorkspace;
@@ -245,6 +260,13 @@ describe('encrypted companion circuit', () => {
   }, 25_000);
 });
 /** A relay that routes one laptop identity, and a phone that has not yet been given a grant. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
 async function relayAndPhone() {
   const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
   const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
