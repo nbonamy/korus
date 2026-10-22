@@ -18,6 +18,17 @@ async function input(hostId = host, token = 'ab'.repeat(32), transport?: 'fcm') 
   } };
 }
 describe('push relay admission', () => {
+  it('admits consented read checkpoints and rejects missing or invalid revisions before delivery', async () => {
+    const send = vi.fn(async () => 'sent' as const); const valid = await input();
+    const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);
+    const notification = { ...valid.notification, id: 'read', kind: 'read', revision: 2 };
+    for (const revision of [undefined, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(relay.send(host, source, { ...valid, notification: { ...notification, revision } })).rejects.toThrow();
+    }
+    expect(send).not.toHaveBeenCalled();
+    expect(await relay.send(host, source, { ...valid, notification })).toBe('sent');
+    expect(send).toHaveBeenCalledExactlyOnceWith(valid.registration, notification);
+  });
   it('admits opaque FCM tokens with phone consent and rejects switching the signed delivery service', async () => {
     const send = vi.fn(async () => 'sent' as const);
     const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);

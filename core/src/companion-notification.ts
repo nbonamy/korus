@@ -4,7 +4,9 @@ import type { CompanionTarget } from './companion-protocol';
 export type CompanionNotification = {
   id: string;
   target: CompanionTarget;
-  kind: 'completed' | 'approval' | 'question';
+  kind: 'completed' | 'approval' | 'question' | 'read';
+  /** Shared daemon attention revision; read messages acknowledge through this revision. */
+  revision?: number;
   name: string;
   createdAt: number;
 };
@@ -27,7 +29,8 @@ export function isCompanionNotification(value: unknown): value is CompanionNotif
   if (!value || typeof value !== 'object') return false;
   const n = value as CompanionNotification;
   return typeof n.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(n.id)
-    && ['completed', 'approval', 'question'].includes(n.kind)
+    && ['completed', 'approval', 'question', 'read'].includes(n.kind)
+    && (n.revision === undefined ? n.kind !== 'read' : Number.isSafeInteger(n.revision) && n.revision >= 0)
     && typeof n.name === 'string' && n.name.length <= 100 && Number.isFinite(n.createdAt)
     && Boolean(n.target && ['hostId', 'locationId', 'teamId', 'agentId'].every(key =>
       typeof n.target[key as keyof CompanionTarget] === 'string' && Boolean(n.target[key as keyof CompanionTarget]) && (n.target[key as keyof CompanionTarget]?.length ?? 0) <= 256)

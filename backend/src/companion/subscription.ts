@@ -39,7 +39,7 @@ export class CompanionSubscription {
   private dirty = false;
   constructor(private readonly port: SubscriptionPort, private readonly emit: (update: CompanionUpdate) => void | Promise<void>, private readonly fail: () => void, private readonly now = Date.now) {
     this.unlistenNotifications = port.onNotification?.(notification => {
-      if (!this.closed && this.notificationsEnabled && port.authorized()) this.emit({ type: 'notification', notification });
+      if (!this.closed && (this.notificationsEnabled || notification.kind === 'read') && port.authorized()) this.emit({ type: 'notification', notification });
     }) ?? (() => {});
     this.unlisten = port.onEvent((event) => {
       if (this.closed) return;

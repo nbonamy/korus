@@ -24,7 +24,8 @@ export class ApnsSender {
       this.token = `${unsigned}.${sign('sha256', Buffer.from(unsigned), { key: this.key, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`;
       this.issuedAt = now;
     }
-    const payload = JSON.stringify({ aps: { alert: { title: notification.name, body: messages[notification.kind] }, sound: 'default', 'thread-id': notification.target.agentId }, notification });
+    const read = notification.kind === 'read';
+    const payload = JSON.stringify({ aps: read ? { 'content-available': 1 } : { alert: { title: notification.name, body: messages[notification.kind as keyof typeof messages] }, sound: 'default', 'thread-id': notification.target.agentId }, notification });
     if (Buffer.byteLength(payload) > 4096) return 'unavailable';
     const client = connect(registration.environment === 'development' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com');
     return new Promise(resolve => {
@@ -33,8 +34,8 @@ export class ApnsSender {
       const timer = setTimeout(() => finish('unavailable'), 10_000);
       client.on('error', () => finish('unavailable'));
       const request = client.request({ ':method': 'POST', ':path': `/3/device/${registration.token}`,
-        authorization: `bearer ${this.token}`, 'apns-topic': this.config.topic, 'apns-push-type': 'alert',
-        'apns-priority': '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': notification.id });
+        authorization: `bearer ${this.token}`, 'apns-topic': this.config.topic, 'apns-push-type': read ? 'background' : 'alert',
+        'apns-priority': read ? '5' : '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': notification.id });
       let status = 0; let body = '';
       request.on('response', headers => { status = Number(headers[':status']); });
       request.setEncoding('utf8');

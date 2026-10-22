@@ -221,6 +221,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function refreshWorkspace(active: CompanionSession): Promise<boolean> {
     const next = await active.getWorkspace();
     if (active !== session) return false;
+    reconcileNotificationReads(next);
     workspace.value = reconcileWorkspace(workspace.value, next);
     return true;
   }
@@ -235,7 +236,26 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     if (frame.type === 'codex.conversationSnapshotChanged') return owner.backendSession.kind === 'codex' && frame.threadId === owner.backendSession.threadId;
     return owner.backendSession.kind !== 'codex' && frame.payload.snapshot.sessionId === owner.backendSession.sessionId;
   }
+  const notificationReads = new Map<string, number>();
+  function forwardNotification(notification: CompanionNotification) {
+    if (notification.kind === 'read' && notification.revision !== undefined) {
+      const { hostId, locationId, teamId, agentId } = notification.target;
+      const key = JSON.stringify([hostId, locationId, teamId, agentId]);
+      if (notification.revision <= (notificationReads.get(key) ?? -1)) return;
+      notificationReads.set(key, notification.revision);
+      if (notificationReads.size > 1024) notificationReads.delete(notificationReads.keys().next().value!);
+    }
+    onNotification?.(notification);
+  }
+  function reconcileNotificationReads(next: CompanionWorkspace) {
+    for (const agent of next.agents) {
+      const team = next.teams.find(team => team.id === agent.teamId);
+      if (team && agent.readState && agent.readState.readRevision > 0) forwardNotification({ id: 'read', kind: 'read', revision: agent.readState.readRevision,
+        name: '', createdAt: Date.now(), target: companionTarget(laptopId.value, team, agent) });
+    }
+  }
   function applyWorkspace(next: CompanionWorkspace): boolean {
+    reconcileNotificationReads(next);
     workspace.value = reconcileWorkspace(workspace.value, next);
     if ((!agentId.value && agents.value.length) || (agentId.value && selectedConversationKey !== conversationIdentity())) {
       composer.forgetPermission(agentId.value);
@@ -292,6 +312,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
       if (!isForeground) void session.setActive?.(false).catch(() => {});
+      reconcileNotificationReads(nextWorkspace);
       workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
       const removeDisconnect = session.onDisconnect(() => {
         if (epoch !== connectionEpoch) return;
@@ -311,7 +332,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
           if (error.value === 'mobile.errors.loadConversation') error.value = '';
         }
       }) ?? (() => {});
-      const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) onNotification?.(notification); }) ?? (() => {});
+      const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) forwardNotification(notification); }) ?? (() => {});
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
       status.value = 'connected';

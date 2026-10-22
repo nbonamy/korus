@@ -20,6 +20,44 @@ async function fixture() {
   return { engine, events, registerPush, loadedAgents, notify: (notification: CompanionNotification) => notify(notification) };
 }
 describe('native notification bridge', () => {
+  it.each(['reconnect', 'workspace update'])('reconciles desktop reads from persisted state on %s', async mode => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let read = false;
+    let notifyWorkspace = async () => {};
+    connector.connect = async id => {
+      const session = await connect(id);
+      const getWorkspace = async () => {
+        const workspace = await session.getWorkspace();
+        return { ...workspace, agents: workspace.agents.map(agent => ({ ...agent, ...(read ? { readState: { revision: 3, readRevision: 2 } } : {}) })) };
+      };
+      return { ...session, getWorkspace, onUpdate(listener) {
+        notifyWorkspace = async () => { listener(await getWorkspace(), null); };
+        return session.onUpdate?.(listener) ?? (() => {});
+      } };
+    };
+    const events: EngineEvent[] = []; const engine = createEngine({ connector, post: e => events.push(e) });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      const target = engine.snapshot().composerTarget!;
+      if (mode === 'reconnect') await engine.dispatch({ type: 'disconnect' });
+      read = true; events.length = 0;
+      if (mode === 'reconnect') await engine.dispatch({ type: 'reconnect' });
+      else await notifyWorkspace();
+      expect(events).toContainEqual({ type: 'notification', notification: { id: 'read', kind: 'read', name: '', revision: 2, createdAt: expect.any(Number), target } });
+    } finally { engine.dispose(); }
+  });
+  it('forwards read clearing while backgrounded instead of treating it as a visible alert', async () => {
+    const f = await fixture();
+    try {
+      const target = f.engine.snapshot().composerTarget!;
+      await f.engine.dispatch({ type: 'activity', active: false });
+      f.events.length = 0;
+      const read = { id: 'read', kind: 'read' as const, revision: 3, target, name: '', createdAt: Date.now() };
+      f.notify(read);
+      expect(f.events).toContainEqual({ type: 'notification', notification: read });
+    } finally { f.engine.dispose(); }
+  });
+
   it('keeps a cold-launch tap through pairing initialization and saved conversation restoration', async () => {
     const connector = createDemoConnector();
     const paired = connector.laptops;

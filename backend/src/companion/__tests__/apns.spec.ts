@@ -42,6 +42,13 @@ describe('Apple push provider boundary', () => {
     expect(await sender.send({ ...registration, environment: 'production' }, notification)).toBe('unavailable');
     expect(transport.connect).toHaveBeenCalledTimes(1);
   });
+  it('sends read acknowledgments as silent background pushes without an alert or sound', async () => {
+    const read = { ...notification, kind: 'read' as const, revision: 4 };
+    expect(await new ApnsSender(config).send(registration, read)).toBe('sent');
+    expect(transport.headers['apns-push-type']).toBe('background');
+    expect(transport.headers['apns-priority']).toBe('5');
+    expect(JSON.parse(transport.body)).toStrictEqual({ aps: { 'content-available': 1 }, notification: read });
+  });
   it.each([[410, 'Unregistered', 'invalid'], [400, 'BadDeviceToken', 'invalid'], [403, 'InvalidProviderToken', 'unavailable'], [429, 'TooManyRequests', 'unavailable']])('classifies Apple response %s without exposing credentials', async (status, reason, result) => {
     transport.status = status as number; transport.reason = reason as string;
     expect(await new ApnsSender(config).send(registration, notification)).toBe(result);

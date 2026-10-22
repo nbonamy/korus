@@ -30,6 +30,63 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
     expect(handle.load).toHaveBeenCalledOnce();
   });
 
+  it('shares a fresh agent conversation between overlapping title synchronization and its first prompt', async () => {
+    const { driver, surface, conversation } = setup();
+    const agent = { ...sdkAgent(), backendSession: undefined };
+    let finishCreation!: () => void;
+    const creation = new Promise<void>((resolve) => { finishCreation = resolve; });
+    let created = 0;
+    surface.createConversation.mockImplementation(async () => {
+      const id = `created-${++created}`;
+      await creation;
+      return sdkSnapshot(id);
+    });
+    conversation('created-1').handle.sendMessage.mockResolvedValue(sdkSnapshot('created-1', { turnIds: ['accepted'] }));
+
+    const title = driver.setConversationTitle(agent, 'Issue 61');
+    const prompt = driver.sendPrompt(agent, 'My custom instructions');
+    await vi.waitFor(() => expect(surface.createConversation).toHaveBeenCalled());
+    finishCreation();
+    await title;
+    await expect(prompt).resolves.toStrictEqual({ backendSession: { kind: 'codex', threadId: 'created-1' }, turnId: 'accepted' });
+    expect(surface.createConversation).toHaveBeenCalledOnce();
+    expect(surface.forgetConversation).not.toHaveBeenCalled();
+    expect(conversation('created-1').handle.rename).toHaveBeenCalledWith('Issue 61');
+    expect(conversation('created-1').handle.sendMessage).toHaveBeenCalledWith('My custom instructions', {});
+  });
+
+  it('allows another agent to start while creation is pending and retries a failed initialization', async () => {
+    const { driver, surface, conversation } = setup();
+    const firstAgent = { ...sdkAgent(), backendSession: undefined };
+    const secondAgent = { ...sdkAgent('agent-b'), backendSession: undefined };
+    let rejectCreation!: (error: Error) => void;
+    surface.createConversation.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectCreation = reject; }));
+    surface.createConversation.mockResolvedValue(sdkSnapshot('independent'));
+    const first = expect(driver.sendPrompt(firstAgent, 'first')).rejects.toThrow('creation failed');
+    await vi.waitFor(() => expect(surface.createConversation).toHaveBeenCalledOnce());
+    await expect(driver.sendPrompt(secondAgent, 'independent')).resolves.toMatchObject({ backendSession: { threadId: 'independent' } });
+    rejectCreation(new Error('creation failed'));
+    await first;
+    surface.createConversation.mockResolvedValue(sdkSnapshot('retry'));
+    await expect(driver.sendPrompt(firstAgent, 'retry')).resolves.toMatchObject({ backendSession: { threadId: 'retry' } });
+    expect(conversation('retry').handle.sendMessage).toHaveBeenCalledWith('retry', {});
+    expect(surface.forgetConversation).not.toHaveBeenCalledWith('independent');
+  });
+
+  it.each(['release', 'close'] as const)('does not start the first prompt after %s during conversation creation', async (action) => {
+    const { driver, surface, conversation } = setup();
+    let finishCreation!: () => void;
+    surface.createConversation.mockImplementation(() => new Promise((resolve) => { finishCreation = () => resolve(sdkSnapshot()); }));
+    const prompt = expect(driver.sendPrompt({ ...sdkAgent(), backendSession: undefined }, 'cancelled')).rejects.toThrow(/initialization.*cancelled/i);
+    await vi.waitFor(() => expect(surface.createConversation).toHaveBeenCalledOnce());
+    if (action === 'close') await driver.close();
+    else driver.releaseConversation('agent-a');
+    finishCreation();
+    await prompt;
+    expect(conversation('conversation-a').handle.sendMessage).not.toHaveBeenCalled();
+    expect(conversation('conversation-a').listenerCount()).toBe(0);
+  });
+
   it('restores an archived target before displacing the attached conversation', async () => {
     const { driver, surface, conversation } = setup();
     const order: string[] = [];

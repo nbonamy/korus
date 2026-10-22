@@ -80,13 +80,13 @@ export class CompanionManager {
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
   recordPrompt(agent: Agent, clientId: string) { return this.notifications?.recordPrompt(agent, clientId); }
   event(event: AppBackendEvent) {
-    const desktopOrigin = this.notifications?.observe(event) === true;
+    const notifications = this.notifications?.capture(event) ?? [];
     this.conversations.observe(event);
-    if (this.saved?.enabled && this.notifications?.accepts(event)) {
+    for (const action of notifications) if (this.saved?.enabled) {
       this.notificationWork = this.notificationWork.then(async () => {
         if (!this.saved.enabled) return;
-        const notification = this.notifications!.create(event, await this.workspace());
-        if (notification && this.saved.enabled) void this.gateway.notify(notification, async () => !desktopOrigin || !await this.backend.desktopFocused?.().catch(() => false)).catch(() => { warnMain('companion', 'push delivery unavailable'); });
+        const notification = this.notifications!.create(action.event, await this.workspace(), action.revision);
+        if (notification && this.saved.enabled) void this.gateway.notify(notification, async () => !action.desktopOrigin || !await this.backend.desktopFocused?.().catch(() => false)).catch(() => { warnMain('companion', 'push delivery unavailable'); });
       }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
     }
     for (const listener of this.eventListeners) listener(event);
