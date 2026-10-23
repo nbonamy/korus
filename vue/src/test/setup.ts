@@ -1,6 +1,7 @@
 import { config, enableAutoUnmount } from '@vue/test-utils';
 import { computed } from 'vue';
 import { backendChoicesKey } from '../components/backend-selection';
+import { resetProvisioningOperations } from '../components/provisioning-operations';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { i18n } from '../i18n';
 import { configureAppClient } from '../platform-api';
@@ -8,6 +9,7 @@ import { installElectronTestClientAccessor, setElectronTestClient } from './clie
 import { elementPlusStubs } from './element-plus-stubs';
 
 beforeEach(() => {
+  resetProvisioningOperations();
   localStorage.clear();
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,

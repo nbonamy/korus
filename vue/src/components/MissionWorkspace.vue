@@ -167,11 +167,10 @@
       </button>
     </template>
   </FormDialog>
-  <WorkspaceProvisioningProgressDialog :operation="implementationOperation" />
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentBackend, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
@@ -185,7 +184,8 @@ import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
-import WorkspaceProvisioningProgressDialog, { type WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { publishProvisioningOperation } from './provisioning-operations';
 import MissionRequirementReview from './MissionRequirementReview.vue';
 import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import MissionStageRail from './MissionStageRail.vue';
@@ -231,6 +231,8 @@ const implementationOperation = computed<WorkspaceProvisioningOperation | null>(
     ? props.implementationStartProgress.phase
     : undefined,
 } : null);
+watch(implementationOperation, (operation) => publishProvisioningOperation('mission', operation), { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('mission', null));
 const viewedStage = ref<MissionStage>(props.mission.stage);
 const canonicalArtifact = ref('');
 let artifactRead = 0;

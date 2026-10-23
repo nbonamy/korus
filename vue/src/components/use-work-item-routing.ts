@@ -70,6 +70,7 @@ type WorkItemRoutingUi = {
   confirmReassignment: (message: string) => Promise<boolean>;
   focusComposer: () => void;
   openNewAgent: (teamId: string | undefined, sourceRepositoryName: string) => void;
+  notifyError?: (message: string) => void;
   selectAgent: (agentId: string) => void;
   updateComposer: (agentId: string, text: string) => void;
 };
@@ -81,6 +82,7 @@ export function useWorkItemRouting(options: {
 }) {
   const pendingNewAgentItem = ref<WorkItem | null>(null);
   const creationProgress = ref<Exclude<WorkspaceProvisioningOperation, { mode: 'branchMove' | 'batch' }> | null>(null);
+  const backgroundSignals = new Map<string, () => void>();
 
   const newAgentTeamName = computed(() => (
     pendingNewAgentItem.value ? workItemTeamName(pendingNewAgentItem.value) : ''
@@ -192,9 +194,10 @@ export function useWorkItemRouting(options: {
       : { mode: 'multiple' as const, id, state: 'running' as const, ticketCount: input.items.length,
           repositories: input.items.map(item => input.repository?.name ?? workItemRepositoryName(item)), phase: 'creatingWorktrees' as const };
     creationProgress.value = progress;
+    const backgrounded = new Promise<'background'>((resolve) => backgroundSignals.set(id, () => resolve('background')));
     let prepared = 0;
     let created = 0;
-    const results = await Promise.allSettled(input.items.map(async listedItem => {
+    const settled = Promise.allSettled(input.items.map(async listedItem => {
       const { agent, item } = await createIsolatedAgent(listedItem, input.teamId, {
         backend: input.backend, model: input.model, reasoningEffort: input.reasoningEffort,
         repository: input.repository, isCurrent: input.isCurrent,
@@ -213,11 +216,29 @@ export function useWorkItemRouting(options: {
       ensureCurrent(input.isCurrent);
       await assignWithPrompt(agent.id, item, input.action);
     }));
+    const outcome = await Promise.race([settled, backgrounded]);
+    backgroundSignals.delete(id);
+    if (outcome === 'background') {
+      // The dialog is gone; the caller is released and a later failure must still reach the user.
+      void settled.then((results) => {
+        const late = results.find(result => result.status === 'rejected');
+        if (late) options.ui.notifyError?.(late.reason instanceof Error ? late.reason.message : String(late.reason));
+      });
+      return;
+    }
+    const results = outcome;
     const failure = results.find(result => result.status === 'rejected');
     const current = creationProgress.value;
     const state = current?.mode === 'single' ? current.progress : current;
     if (state) Object.assign(state, { state: failure ? 'error' : 'success', ...(failure ? { error: String(failure.reason instanceof Error ? failure.reason.message : failure.reason) } : {}) });
     if (failure) throw failure.reason;
+  }
+
+  function backgroundCreationProgress(id: string): void {
+    const current = creationProgress.value;
+    if (!current || (current.mode === 'single' ? current.progress.id : current.id) !== id) return;
+    creationProgress.value = null;
+    backgroundSignals.get(id)?.();
   }
 
   function closeCreationProgress(id: string): void {
@@ -346,6 +367,7 @@ export function useWorkItemRouting(options: {
     createIsolatedAgent,
     creationProgress,
     closeCreationProgress,
+    backgroundCreationProgress,
     newAgentItem: pendingNewAgentItem,
     newAgentTeamName,
     newAgentWorktreeBranchName,

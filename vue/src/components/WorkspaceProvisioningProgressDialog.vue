@@ -208,7 +208,7 @@ const steps = computed<StagedOperationStep[]>(() => {
   ];
 });
 
-const canRunInBackground = computed(() => (props.operation?.mode === 'single' || props.operation?.mode === 'batch') && operationState.value === 'running');
+const canRunInBackground = computed(() => props.operation !== null && operationState.value === 'running');
 
 function runInBackground(): void {
   for (const id of operationIds.value) emit('background', id);

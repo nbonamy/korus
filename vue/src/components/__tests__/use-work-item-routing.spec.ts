@@ -30,6 +30,26 @@ describe('useWorkItemRouting', () => {
     expect(harness.assign).toHaveBeenCalledTimes(count);
   });
 
+  it('lets a multi-item start run in the background and reports a later failure', async () => {
+    const harness = createHarness();
+    const releases: Array<(failure?: Error) => void> = [];
+    harness.createWorktree.mockImplementation(() => new Promise((resolve, reject) => {
+      releases.push((failure) => failure ? reject(failure) : resolve({ name: 'work', path: '/code/work' }));
+    }));
+    const items = [1, 2].map((number) => ({ ...harness.item, id: `issue-${number}`, number }));
+    const running = harness.routing.startMany({ action: 'fix', items, teamId: harness.teamId });
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    const progress = harness.routing.creationProgress.value!;
+    harness.routing.backgroundCreationProgress(progress.mode === 'single' ? progress.progress.id : progress.id);
+    expect(harness.routing.creationProgress.value).toBeNull();
+    await running;
+    expect(harness.notifyError).not.toHaveBeenCalled();
+    releases[0]!();
+    releases[1]!(new Error('Worktree preparation failed'));
+    await vi.waitFor(() => expect(harness.notifyError).toHaveBeenCalledWith('Worktree preparation failed'));
+    expect(harness.routing.creationProgress.value).toBeNull();
+  });
+
   it('keeps provisioning failures visible without starting a prompt', async () => {
     const harness = createHarness();
     harness.createWorktree.mockRejectedValueOnce(new Error('Worktree preparation failed'));
@@ -207,6 +227,7 @@ function createHarness(input: {
   const duplicateAgent = vi.fn(async () => createdAgent);
   const loadItems = vi.fn(async () => input.loadItemsResult);
   const confirmReassignment = vi.fn(async () => input.confirmReassignment ?? true);
+  const notifyError = vi.fn();
   const focusComposer = vi.fn();
   const openNewAgent = vi.fn();
   const selectAgent = vi.fn();
@@ -233,6 +254,7 @@ function createHarness(input: {
     ui: {
       confirmReassignment,
       focusComposer,
+      notifyError,
       openNewAgent,
       selectAgent,
       updateComposer,
@@ -244,6 +266,7 @@ function createHarness(input: {
     assign,
     assignFromUi,
     confirmReassignment,
+    notifyError,
     createAgent,
     createBranch,
     createdAgent,

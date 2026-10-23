@@ -1,9 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mountProvisioningHost } from './provisioning-host';
+import { activeProvisioningOperation, backgroundProvisioningOperation } from '../provisioning-operations';
 import type { SourceRepository } from '@workspace/core/contracts';
 import NewSourceWorktreeDialog from '../NewSourceWorktreeDialog.vue';
 
 describe('NewSourceWorktreeDialog', () => {
+  let mountedHost: ReturnType<typeof mountProvisioningHost> | undefined;
+  const host = () => mountedHost ??= mountProvisioningHost();
+  beforeEach(() => { mountedHost = undefined; });
   it('can prompt only for the worktree branch', () => {
     const wrapper = mountDialog({ allowDestinationOverride: false } as never);
 
@@ -71,7 +76,7 @@ describe('NewSourceWorktreeDialog', () => {
       repoPath: '/Users/nbonamy/src/agent-workspace',
       branchName: 'Fix/source folder!!',
     });
-    const progress = wrapper.getComponent({ name: 'StagedOperationProgress' });
+    const progress = host().getComponent({ name: 'StagedOperationProgress' });
     expect(progress.props('state')).toBe('success');
     expect(progress.props('completeTitle')).toBe('Fix/source folder!! is ready');
     progress.vm.$emit('complete');
@@ -95,7 +100,7 @@ describe('NewSourceWorktreeDialog', () => {
     await wrapper.get('.new-source-worktree-dialog .app-button--primary').trigger('click');
 
     expect(wrapper.find('.new-source-worktree-dialog__branch-input').exists()).toBe(false);
-    expect(wrapper.getComponent({ name: 'WorkspaceProvisioningProgressDialog' }).props('operation')).toMatchObject({
+    expect(host().getComponent({ name: 'WorkspaceProvisioningProgressDialog' }).props('operation')).toMatchObject({
       mode: 'single',
       progress: {
         state: 'running',
@@ -104,7 +109,7 @@ describe('NewSourceWorktreeDialog', () => {
         branchName: 'feature/progress',
       },
     });
-    const progress = wrapper.getComponent({ name: 'StagedOperationProgress' });
+    const progress = host().getComponent({ name: 'StagedOperationProgress' });
     expect(progress.props()).toMatchObject({
       state: 'running',
       title: 'Building an isolated home in agent-workspace…',
@@ -185,13 +190,29 @@ describe('NewSourceWorktreeDialog', () => {
     await wrapper.find('.new-source-worktree-dialog .app-button--primary').trigger('click');
     await flushPromises();
 
-    expect(wrapper.text()).toContain('worktree failed');
+    expect(activeProvisioningOperation.value).toMatchObject({ mode: 'single', progress: { state: 'error', error: 'worktree failed' } });
 
     await wrapper.setProps({ visible: false } as never);
     await wrapper.setProps({ visible: true } as never);
-
     expect(wrapper.get<HTMLInputElement>('.new-source-worktree-dialog__branch-input').element.value).toBe('');
-    expect(wrapper.text()).not.toContain('worktree failed');
+    expect(activeProvisioningOperation.value).toBeNull();
+  });
+
+  it('finishes a backgrounded creation without showing progress again', async () => {
+    let resolveCreation!: (worktree: { name: string; path: string }) => void;
+    const createWorktree = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveCreation = resolve; }));
+    const wrapper = mountDialog({ createWorktree });
+    await wrapper.get('.new-source-worktree-dialog__branch-input').setValue('feature/later');
+    await flushPromises();
+    await wrapper.get('.new-source-worktree-dialog .app-button--primary').trigger('click');
+    backgroundProvisioningOperation('manual-worktree-creation');
+    expect(activeProvisioningOperation.value).toBeNull();
+
+    resolveCreation({ name: 'feature/later', path: '/tmp/agent-workspace-feature-later' });
+    await flushPromises();
+    expect(wrapper.emitted('created')).toStrictEqual([[{ name: 'feature/later', path: '/tmp/agent-workspace-feature-later' }]]);
+    expect(wrapper.emitted('close')).toStrictEqual([[]]);
+    expect(activeProvisioningOperation.value).toBeNull();
   });
 
   it('closes when the dialog visibility changes and ignores missing repositories', async () => {

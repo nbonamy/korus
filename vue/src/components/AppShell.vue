@@ -562,11 +562,7 @@
       @image-error="handleImageAnnotationError"
       @save="saveImageAnnotation"
     />
-    <WorkspaceProvisioningProgressDialog
-      :operation="provisioningOperation"
-      @close="closeProvisioningProgress"
-      @background="backgroundProvisioningProgress"
-    />
+    <ProvisioningOperationHost />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -626,7 +622,9 @@ import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
-import WorkspaceProvisioningProgressDialog, { type WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import ProvisioningOperationHost from './ProvisioningOperationHost.vue';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { publishProvisioningOperation } from './provisioning-operations';
 import RepositorySessionSourceDialog from './RepositorySessionSourceDialog.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
@@ -1434,6 +1432,7 @@ const workItemRouting = useWorkItemRouting({
     sourceRepositories: () => props.sourceRepositories,
   },
   ui: {
+    notifyError: (message) => ElMessage.error(message),
     confirmReassignment: async (message) => {
       try {
         await ElMessageBox.confirm(
@@ -1472,6 +1471,7 @@ const {
   createIsolatedAgent: createIsolatedWorkItemAgent,
   creationProgress: workItemCreationProgress,
   closeCreationProgress: closeWorkItemCreationProgress,
+  backgroundCreationProgress: backgroundWorkItemCreationProgress,
   newAgentItem: pendingNewAgentWorkItem,
   newAgentTeamName: pendingNewAgentTeamName,
   newAgentWorktreeBranchName: pendingWorkItemBranchName,
@@ -2696,6 +2696,11 @@ const provisioningOperation = computed<WorkspaceProvisioningOperation | null>(()
   return delegated.length > 1 ? { mode: 'batch', progress: delegated } : null;
 });
 
+watch(provisioningOperation, (operation) => {
+  publishProvisioningOperation('shell', operation, { onClose: closeProvisioningProgress, onBackground: backgroundProvisioningProgress });
+}, { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('shell', null));
+
 function closeProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   closeRepositorySessionCreationProgress(id);
@@ -2706,7 +2711,7 @@ function closeProvisioningProgress(id: string): void {
 function backgroundProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   backgroundRepositorySessionCreationProgress(id);
-  closeWorkItemCreationProgress(id);
+  backgroundWorkItemCreationProgress(id);
   emit('background-agent-creation-progress', id);
 }
 

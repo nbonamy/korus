@@ -95,19 +95,15 @@
       > {{ existingWorktree ? $t('worktreeReuse.action') : $t('surface.newSourceWorktreeDialog.create') }} </button>
     </template>
   </FormDialog>
-  <WorkspaceProvisioningProgressDialog
-    :operation="creationProgress ? { mode: 'single', progress: creationProgress } : null"
-    @close="completeCreation"
-  />
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { AgentCreationProgress, CreateSourceWorktreeInput, SourceBranch, SourceRepository, SourceWorktree } from '@workspace/core/contracts';
 import { FolderIcon } from '../shared/icons/app-icons';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
+import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
 const backendChoices = useBackendChoices();
@@ -171,6 +167,11 @@ const creationProgress = computed<AgentCreationProgress | null>(() => {
     ...(creationError.value ? { error: creationError.value } : {}),
   };
 });
+
+watch(creationProgress, (progress) => {
+  publishProvisioningOperation('newWorktree', progress ? { mode: 'single', progress } : null, { onClose: completeCreation });
+}, { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('newWorktree', null));
 
 watch(() => props.visible, (visible) => {
   if (visible) {
@@ -251,6 +252,8 @@ async function create(reuseExisting = false): Promise<void> {
     } else {
       createdWorktree.value = worktree;
       creationState.value = 'success';
+      // A backgrounded creation has no dialog left to finish it.
+      if (isProvisioningBackgrounded('manual-worktree-creation')) completeCreation();
     }
   } catch (error) {
     creationState.value = 'error';

@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { mountProvisioningHost } from './provisioning-host';
 import { computed } from 'vue';
 import { ElDialog, ElPopover, ElTabs, ElTabPane } from 'element-plus';
 import { backendChoicesKey } from '../backend-selection';
@@ -267,7 +268,8 @@ describe('MissionWorkspace', () => {
     await wrapper.get('[role="dialog"] .app-button--primary').trigger('click');
 
     expect(continueButton.attributes('aria-busy')).toBe('true');
-    const progress = wrapper.getComponent(WorkspaceProvisioningProgressDialog);
+    const host = mountProvisioningHost();
+    const progress = host.getComponent(WorkspaceProvisioningProgressDialog);
     expect(progress.text()).toContain('Preparing worktrees');
     expect(progress.text()).toContain('2 repositories');
     expect(progress.text()).toContain('billing-api, billing-web');
@@ -277,7 +279,7 @@ describe('MissionWorkspace', () => {
     finish();
     await flushPromises();
 
-    expect(wrapper.getComponent(WorkspaceProvisioningProgressDialog).props('operation')).toBeNull();
+    expect(host.getComponent(WorkspaceProvisioningProgressDialog).props('operation')).toBeNull();
     wrapper.unmount();
   });
 
