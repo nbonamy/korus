@@ -4,6 +4,16 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.39.1] - 2026-10-22
+
+### Improvements and fixes
+
+- The file explorer shows workspace folders reliably in large projects. Folders
+  load on expansion, and large listings offer Load more instead of silently
+  omitting entries.
+- Search finds files in unopened folders, with pagination for large result sets.
+- Refresh the explorer to discover newly created files while keeping folders open.
+
 ## [0.39.0] - 2026-10-22
 
 ### New features

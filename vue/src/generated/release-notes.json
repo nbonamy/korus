@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.39.0",
+  "currentVersion": "0.39.1",
   "releases": [
+    {
+      "version": "0.39.1",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "13f0e4320514bdfeb0645a9314ce32ca3ee83787ba2a05b912c40151833a91a5",
+      "markdown": "### Improvements and fixes\n\n- The file explorer shows workspace folders reliably in large projects. Folders\n  load on expansion, and large listings offer Load more instead of silently\n  omitting entries.\n- Search finds files in unopened folders, with pagination for large result sets.\n- Refresh the explorer to discover newly created files while keeping folders open."
+    },
     {
       "version": "0.39.0",
       "releasedAt": "2026-10-22",
