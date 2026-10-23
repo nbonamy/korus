@@ -4,6 +4,28 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.39.2] - 2026-10-23
+
+### New features
+
+- Run project and worktree creation, Mission startup, and worktree deletion in
+  the background while continuing to use Korus.
+- Filter the GitHub backlog by issues or pull requests, and choose Assigned to me
+  directly from the assignee filter.
+
+### Improvements and fixes
+
+- Closing an agent with worktree cleanup immediately removes it from the roster
+  and selects another teammate from the same repository when available. Failed
+  cleanup restores the agent for retry without replacing your current selection.
+- Concurrent worktree creation in the same repository avoids Git lock conflicts.
+- Recent backlog sorting uses repository timestamps when issue activity is
+  unavailable, instead of falling back to alphabetical order.
+- Starting work uses a more compact dialog, with provider and source choices
+  alongside repository selection.
+- Menus consistently indicate the current selection across backlog views,
+  repository sorting, and conversation layouts.
+
 ## [0.39.1] - 2026-10-22
 
 ### Improvements and fixes
