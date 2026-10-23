@@ -64,13 +64,19 @@ approvals, diffs, filesystem, git or teams.
 
 ## Test Value Gate
 
+Start with the existing owner-boundary tests. Extend the closest workflow and
+remove checks it supersedes. Add a separate test only for a concrete regression
+those workflows cannot catch; a new function, branch or file is not sufficient
+reason. Keep scenarios independently readable rather than combining unrelated
+behaviors to reduce the test count.
+
 Name the regression a test protects in one sentence. Accept it only if:
 
 1. it exercises production behavior through the closest owning public seam;
 2. that regression would fail it for the right reason;
 3. a harmless refactor, rewording, file move or equivalent implementation keeps it
    green;
-4. no closer layer already protects the same contract in more detail.
+4. no existing owner-boundary test already proves the same behavior.
 
 Otherwise do not add it, and remove an existing test that fails the gate when no
 realistic regression risk is lost. A test that survives replacing the implementation
@@ -96,6 +102,8 @@ persistence guarantee, or an error/security/architecture boundary.
   higher-boundary test cannot reliably observe. Table-driven rows must be
   distinct behaviors.
 - Keep snapshots rare; prefer explicit assertions.
+- Report the behavior proved and remaining limits. Raw test counts and coverage
+  percentages alone do not establish correctness.
 
 ## Main Process And Preload
 

@@ -134,12 +134,14 @@ handoff.
   ask.
 
 Before adding or retaining a test, apply the mandatory **Test Value Gate** in
-`docs/testing.md`. A test must protect observable behavior, an owned contract,
-a meaningful state transition, or a realistic error/security/architecture
-boundary. Prefer E2E and integration tests. Isolate a system only when a
-concrete regression cannot be reliably observed at those boundaries, and write
-down its failure modes before implementation. When UI isolation is necessary,
-mount and exercise the component through its rendered behavior.
+`docs/testing.md`. Default to extending an existing owner-boundary workflow,
+not adding a new test for each change or helper. A test must protect observable
+behavior, an owned contract, a meaningful state transition, or a realistic
+error/security/architecture boundary. Prefer E2E and integration tests. Isolate
+a system only when a concrete regression cannot be reliably observed at those
+boundaries, and write down its failure modes before implementation. When UI
+isolation is necessary, mount and exercise the component through its rendered
+behavior.
 Tests must never read production source files as text to assert their contents;
 this includes TypeScript, Vue, stylesheets, scripts, package manifests, and
 configuration. Enforce static architecture rules with lint, type, AST, or
