@@ -7,6 +7,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { createGitWorktree, createSourceWorktree, listSourceBranches, listSourceWorktrees, parseGitWorktreeList, parseSourceBranches, suggestedSourceWorktreePath } from '../git-worktrees';
 
 describe('git worktree operations', () => {
+  it('creates worktrees of the same repository one at a time', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const runner = {
+      run: vi.fn(async (_command: string, args: string[]) => {
+        if (args[0] === 'show-ref') throw new Error('missing');
+        if (args[0] !== 'worktree') return { stdout: '' };
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { stdout: '' };
+      }),
+    };
+    await Promise.all(['a', 'b', 'c'].map((name) => createGitWorktree({ repoPath: '/repo', branchName: `feat/${name}` }, runner)));
+    expect(maxInFlight).toBe(1);
+
+    const otherRepo = await Promise.all([
+      createGitWorktree({ repoPath: '/repo-one', branchName: 'feat/x' }, runner),
+      createGitWorktree({ repoPath: '/repo-two', branchName: 'feat/x' }, runner),
+    ]);
+    expect(otherRepo).toHaveLength(2);
+    expect(maxInFlight).toBe(2);
+  });
+
   it('opens a remote branch created after cloning without changing the main checkout', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'branch-open-'));
     const remote = path.join(root, 'remote.git'), seed = path.join(root, 'seed'), repo = path.join(root, 'repo');

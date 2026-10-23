@@ -41,9 +41,28 @@ export async function createSourceWorktree(
   return (await createGitWorktree(input, runner)).worktree;
 }
 
-export async function createGitWorktree(
+// Git takes locks on the shared repository (.git/config, refs), so concurrent
+// worktree creation in one repository fails intermittently. Serialize per repository.
+const worktreeCreationQueues = new Map<string, Promise<unknown>>();
+
+export function createGitWorktree(
   input: GitWorktreeCreateInput,
   runner: CommandRunner = defaultRunner,
+): Promise<GitWorktreeCreateResult> {
+  const key = input.repoPath.trim();
+  const previous = worktreeCreationQueues.get(key) ?? Promise.resolve();
+  const result = previous.then(() => createGitWorktreeUnlocked(input, runner));
+  const settled = result.catch(() => undefined);
+  worktreeCreationQueues.set(key, settled);
+  void settled.then(() => {
+    if (worktreeCreationQueues.get(key) === settled) worktreeCreationQueues.delete(key);
+  });
+  return result;
+}
+
+async function createGitWorktreeUnlocked(
+  input: GitWorktreeCreateInput,
+  runner: CommandRunner,
 ): Promise<GitWorktreeCreateResult> {
   const repoPath = input.repoPath.trim();
   const branchName = input.branchName.trim();
