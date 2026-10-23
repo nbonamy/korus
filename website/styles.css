@@ -263,8 +263,7 @@ body > .site-header {
 /* Large app screenshot */
 .hero-shot {
   margin: 64px 0 0;
-  padding: clamp(12px, 3.4vw, 48px) clamp(12px, 3.4vw, 48px) 0;
-  overflow: hidden;
+  padding: clamp(12px, 3.4vw, 48px);
   border-radius: 28px;
   background: var(--panel);
 }
@@ -272,11 +271,7 @@ body > .site-header {
   display: block;
   width: 100%;
   height: auto;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 14px 14px 0 0;
-  background: #fff;
-  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.28);
+  filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.22));
 }
 
 /* Showcase: three films */
