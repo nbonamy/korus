@@ -1455,6 +1455,13 @@ export class AppBackendServer {
           folder: requireAgentFolder(agent),
         }));
       }
+      case backendMethods.agentDirectoryList: {
+        const params = requireRecord(message.params);
+        const agentId = requireString(params.agentId, 'agentId');
+        const input = params.input === undefined ? {} : requireRecord(params.input);
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId, input }, agent =>
+          this.handleAgentDriverRequest(agent, backendMethods.workspaceDirectoryList, { folder: requireAgentFolder(agent), input }));
+      }
       case backendMethods.agentFileChunkRead:
       case backendMethods.agentFilePreview: {
         const params = requireRecord(message.params);

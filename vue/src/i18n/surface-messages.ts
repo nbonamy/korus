@@ -472,6 +472,9 @@ export const surfaceMessages = {
     "migrate": "Migrate"
   },
   "fileExplorerPanel": {
+    "refreshFiles": "Refresh files",
+    "unavailable": "File browsing is unavailable.",
+    "loadMoreFiles": "Load more files",
     "workspaceFiles": "Workspace files",
     "searchWorkspaceFiles": "Search workspace files",
     "searchFiles": "Search files",

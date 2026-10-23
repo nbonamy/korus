@@ -60,6 +60,7 @@ export const ipcChannels = {
   listBackendPlugins: 'backend:plugins:list',
   listBackendSkills: 'backend:skills:list',
   listAgentFiles: 'agent:files:list',
+  listAgentDirectory: 'agent:directory:list',
   previewAgentFile: 'agent:file:preview',
   readAgentFileChunk: 'agent:file:chunk:read',
   getAgentGitLog: 'agent:git-log:get',

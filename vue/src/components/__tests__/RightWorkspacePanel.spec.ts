@@ -38,6 +38,7 @@ function mountPanel(
     browserSetVisible: vi.fn().mockResolvedValue(undefined),
     browserClose: vi.fn().mockResolvedValue(undefined),
     onEvent: vi.fn(() => vi.fn()),
+    listAgentDirectory: vi.fn().mockResolvedValue({ entries: [{ kind: 'file', name: 'README.md', path: 'README.md' }], nextCursor: null }),
   } as never;
   return mount(RightWorkspacePanel, {
     props: {
@@ -256,8 +257,8 @@ describe('RightWorkspacePanel', () => {
     const wrapper = mountPanel(['files'], 'files');
     await wrapper.setProps({
       filesPaneOpen: true,
-      files: [{ name: 'README.md', path: 'README.md' }],
     });
+    await flushPromises();
 
     expect(wrapper.get('[role="tab"]').text()).toBe('Open file');
     expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('README.md');
@@ -275,6 +276,7 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
 
     await wrapper.setProps({ activeTab: 'files', filesPaneOpen: true });
+    await flushPromises();
     expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('README.md');
   });
 

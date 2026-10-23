@@ -95,6 +95,11 @@ API with the containing pane's agent identity, so project and remote-host files
 are resolved on their owning host. The renderer receives bounded image data URLs;
 it does not read the filesystem or treat project paths as attachment capabilities.
 
+The file explorer uses directory entries from the owning daemon rather than the
+composer's bounded file catalog. Directory pages are cached by the explorer's
+agent and folder identity; refresh invalidates those pages. Workspace search
+runs independently of loaded tree nodes, so an unopened directory remains searchable.
+
 ### Surfaces
 
 - **Backlog** (work-provider inbox) and **Cockpit** (all-agent overview) are

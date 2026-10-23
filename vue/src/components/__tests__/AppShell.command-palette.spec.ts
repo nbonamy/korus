@@ -103,6 +103,9 @@ describe('AppShell command palette', () => {
     wrapper.unmount();
   });
   it('opens the existing file explorer through the workspace menu handler', async () => {
+    setElectronTestClient({ listAgentDirectory: vi.fn().mockResolvedValue({ entries: [
+      { kind: 'file', name: 'sample.txt', path: 'sample.txt' },
+    ], nextCursor: null }) });
     const wrapper = mountShell({ agentFiles: [{ path: 'sample.txt', name: 'sample.txt' }] });
     await openPalette();
     await wrapper.get('.quick-open-dialog input').setValue('open files');

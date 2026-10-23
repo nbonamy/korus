@@ -895,6 +895,7 @@ export type AppApi = {
   listBackendPlugins(agentId: string): Promise<BackendPluginSummary[]>;
   listBackendSkills(agentId: string): Promise<BackendSkillSummary[]>;
   listAgentFiles(agentId: string): Promise<AgentFileSearchItem[]>;
+  listAgentDirectory(agentId: string, input?: import('./contracts/workspace').AgentDirectoryInput): Promise<import('./contracts/workspace').AgentDirectoryPage>;
   getDocumentWorkspaces(): Promise<import('./document-workspace').DocumentWorkspaces>;
   updateDocumentWorkspace(agentId: string, change: import('./document-workspace').DocumentWorkspaceChange): Promise<import('./document-workspace').DocumentWorkspace>;
   readWorkspaceDocument(agentId: string, tabId: string): Promise<import('./document-workspace').DocumentReadResult>;

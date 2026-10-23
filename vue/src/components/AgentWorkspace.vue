@@ -48,7 +48,6 @@
       :active-tab="rightWorkspaceFor(agent.id).activeTab"
       :agent="agent"
       :agents="snapshot.agents"
-      :files="agent.id === currentAgent?.id ? agentFiles : []"
       :files-pane-open="rightWorkspaceFor(agent.id).filesPaneOpen"
       :files-pane-width="rightWorkspaceFor(agent.id).filesPaneWidth"
       :git-panel="effectiveGitReviewPanelFor(agent)"

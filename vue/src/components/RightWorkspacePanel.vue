@@ -369,10 +369,9 @@
             @keydown.right.prevent="resizeFilesPane(visualFilesPaneWidth - 16)"
           />
           <FileExplorerPanel
+            :key="`${agent.id}:${agent.folder}`"
             class="right-workspace-panel__files-pane"
-            :files="files ?? []"
-            :loading="filesLoading"
-            :error="filesError"
+            :load-directory="input => loadDirectory(input)"
             @preview="emit('previewFile', $event)"
           />
         </div>
@@ -383,6 +382,7 @@
 
 <script setup lang="ts">
 import { appApi } from '../platform-api';
+import type { AgentDirectoryInput, AgentDirectoryPage } from '@workspace/core/contracts/workspace';
 import type { SaveCanvasInput } from '@workspace/core/visualize-canvas';
 async function saveCanvas(agentId: string, input: SaveCanvasInput) {
   if (!appApi) throw new Error('Visualize is not available.');
@@ -392,7 +392,7 @@ import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
-import type { Agent, AgentFileSearchItem, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
+import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
 import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
@@ -440,6 +440,11 @@ import {
 
 const workspaceShortcuts = { changes: '⌘G', browser: '⌘B' } as const;
 
+async function loadDirectory(input: AgentDirectoryInput): Promise<AgentDirectoryPage> {
+  if (!appApi?.listAgentDirectory) throw new Error(translate('surface.fileExplorerPanel.unavailable'));
+  return appApi.listAgentDirectory(props.agent.id, input);
+}
+
 const props = withDefaults(defineProps<{
   saveDocument?: (tab: RightWorkspaceFileTab) => Promise<void>;
   linkDropActive?: boolean;
@@ -447,9 +452,6 @@ const props = withDefaults(defineProps<{
   activeTab: RightWorkspaceTab | null;
   agent: Agent;
   agents?: readonly Agent[];
-  files?: AgentFileSearchItem[];
-  filesLoading?: boolean;
-  filesError?: string | null;
   filesPaneOpen?: boolean;
   filesPaneWidth?: number;
   gitPanel: SidePanelGitDiffState;

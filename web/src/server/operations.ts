@@ -56,6 +56,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   listBackendPlugins: [backendMethods.agentPluginsList, named('agentId')],
   listBackendSkills: [backendMethods.agentSkillsList, named('agentId')],
   listAgentFiles: [backendMethods.agentFilesList, named('agentId')],
+  listAgentDirectory: [backendMethods.agentDirectoryList, namedOptional('agentId', 'input')],
   getDocumentWorkspaces: [backendMethods.clientWorkspaceGet],
   updateDocumentWorkspace: [backendMethods.clientWorkspaceApply, named('agentId', 'change')],
   readWorkspaceDocument: [backendMethods.clientDocumentRead, named('agentId', 'tabId')],

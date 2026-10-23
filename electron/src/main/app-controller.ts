@@ -278,6 +278,8 @@ export class AppController {
     ipc.handle(ipcChannels.listAgentFiles, async (_event, agentId: string) => {
       return this.listAgentFiles(agentId);
     });
+    ipc.handle(ipcChannels.listAgentDirectory, (_event, agentId: string, input?: import('@workspace/core/contracts/workspace').AgentDirectoryInput) =>
+      this.requireBackendClient().request(backendMethods.agentDirectoryList, { agentId, input }));
     ipc.handle(ipcChannels.listAgentTasks, (_event, agentId) => this.requireBackendClient().request(backendMethods.agentTasksList, { agentId }));
     ipc.handle(ipcChannels.cancelAgentTask, (_event, agentId, taskId) => this.requireBackendClient().request(backendMethods.agentTaskCancel, { agentId, taskId }));
 

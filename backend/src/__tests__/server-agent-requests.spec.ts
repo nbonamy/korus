@@ -17,6 +17,49 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it('browses directory levels without hiding later folders, pages large folders, and searches unloaded files', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'korus-explorer-'));
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ id: 'explorer', teamId: 'team-test', name: 'Explorer', folder, backend: 'codex',
+      status: { type: 'idle' }, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }];
+    snapshot.teams[0]!.agentIds = ['explorer'];
+    const server = new AppBackendServer({ version: 'test', pid: 123, snapshot, driverRpc: new BackendDriverRpc(new Map()) });
+    const list = (input: Record<string, unknown> = {}) => server.handleMessage({
+      jsonrpc: '2.0', id: 'directory', method: 'agent/directory/list', params: { agentId: 'explorer', input },
+    });
+    try {
+      await Promise.all(['aaa-large', 'empty', 'pensieve'].map(name => mkdir(path.join(folder, name))));
+      await Promise.all(Array.from({ length: 1005 }, (_, index) => writeFile(path.join(folder, 'aaa-large', `${String(index).padStart(4, '0')}.txt`), 'fixture')));
+      await writeFile(path.join(folder, 'pensieve', 'plan.md'), '# Plan');
+      await expect(list()).resolves.toMatchObject({ result: { entries: [
+        { kind: 'folder', name: 'aaa-large', path: 'aaa-large' },
+        { kind: 'folder', name: 'empty', path: 'empty' },
+        { kind: 'folder', name: 'pensieve', path: 'pensieve' },
+      ], nextCursor: null } });
+      const paths: string[] = [];
+      let cursor: number | undefined;
+      do {
+        const response = await list({ path: 'aaa-large', cursor });
+        if (!response || !('result' in response)) throw new Error(JSON.stringify(response));
+        const page = response.result as { entries: { path: string }[]; nextCursor: number | null };
+        expect(page.entries.length).toBeLessThanOrEqual(250);
+        paths.push(...page.entries.map(entry => entry.path));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor !== undefined);
+      expect(new Set(paths).size).toBe(1005);
+      await expect(list({ query: 'pensieve/plan' })).resolves.toMatchObject({ result: {
+        entries: [{ kind: 'file', name: 'plan.md', path: 'pensieve/plan.md' }], nextCursor: null,
+      } });
+      await expect(list({ path: 'empty' })).resolves.toMatchObject({ result: { entries: [], nextCursor: null } });
+      await writeFile(path.join(folder, 'empty', 'new-plan.md'), '# New');
+      await expect(list({ path: 'empty' })).resolves.toMatchObject({ result: {
+        entries: [{ kind: 'file', name: 'new-plan.md', path: 'empty/new-plan.md' }], nextCursor: null,
+      } });
+      await expect(list({ path: '..' })).rejects.toThrow(/workspace/i);
+      await expect(list({ cursor: -1 })).rejects.toThrow(/cursor/i);
+    } finally { await server.close(); await rm(folder, { recursive: true, force: true }); }
+  });
+
   it.each(['working', 'awaitingInput', 'error'] as const)('rejects a restart before changing provider state when the agent is %s', async type => {
     const snapshot = createTestSnapshot();
     snapshot.agents = [{ id: 'restart', teamId: 'team-test', name: 'Restart', folder: '/code/repo', backend: 'codex',

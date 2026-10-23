@@ -23,6 +23,10 @@ export type AgentFileSearchItem = {
   path: string;
 };
 
+export type AgentDirectoryInput = { path?: string; cursor?: number; query?: string };
+export type AgentDirectoryEntry = AgentFileSearchItem & { kind: 'folder' | 'file' };
+export type AgentDirectoryPage = { entries: AgentDirectoryEntry[]; nextCursor: number | null };
+
 export type AgentFilePreviewResult = {
   path: string;
   size: number;

@@ -12,6 +12,7 @@ import { unsupportedBackendFeature } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
+import { listAgentDirectory } from './agent-directory';
 import { ClaudeBackendDriver } from './claude/claude-driver';
 import { AntigravityHost } from './antigravity/antigravity-host';
 import { CodexBackendDriver } from './codex/codex-driver';
@@ -201,6 +202,10 @@ export class BackendDriverRpc {
       case backendMethods.workspaceFilesList: {
         const record = requireRecord(params);
         return listAgentFolderFiles(requireString(record.folder, 'folder'));
+      }
+      case backendMethods.workspaceDirectoryList: {
+        const record = requireRecord(params);
+        return listAgentDirectory(requireString(record.folder, 'folder'), record.input === undefined ? {} : requireRecord(record.input));
       }
       case backendMethods.driverCodexAuthenticationGet:
         return this.requireCodexDriver().getAuthentication();

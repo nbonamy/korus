@@ -482,6 +482,10 @@ describe('AppShell workspace and plans', () => {
   });
 
   it('opens Files as a right-side explorer pane and keeps it open beside previews', async () => {
+    setElectronTestClient({ listAgentDirectory: vi.fn().mockResolvedValue({ entries: [
+      { kind: 'file', name: 'README.md', path: 'README.md' },
+      { kind: 'file', name: 'main.ts', path: 'main.ts' },
+    ], nextCursor: null }) });
     const previewAgentFile = vi.fn().mockImplementation(async (_agentId: string, path: string) => ({
       path, size: 8, kind: 'text' as const, content: path === 'README.md' ? `# ${product.name}
 ` : 'export {};\n',

@@ -51,6 +51,7 @@ const api: AppApi = {
   listBackendPlugins: (agentId: string) => ipc.invoke(ipcChannels.listBackendPlugins, agentId),
   listBackendSkills: (agentId: string) => ipc.invoke(ipcChannels.listBackendSkills, agentId),
   listAgentFiles: (agentId: string) => ipc.invoke(ipcChannels.listAgentFiles, agentId),
+  listAgentDirectory: (agentId, input) => ipc.invoke(ipcChannels.listAgentDirectory, agentId, input),
   getDocumentWorkspaces: () => ipc.invoke(ipcChannels.getDocumentWorkspaces),
   updateDocumentWorkspace: (agentId: string, change: import('@workspace/core/document-workspace').DocumentWorkspaceChange) => ipc.invoke(ipcChannels.updateDocumentWorkspace, agentId, change),
   readWorkspaceDocument: (agentId: string, tabId: string) => ipc.invoke(ipcChannels.readWorkspaceDocument, agentId, tabId),
