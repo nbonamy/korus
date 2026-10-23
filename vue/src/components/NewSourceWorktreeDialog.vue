@@ -82,9 +82,6 @@
       </template>
     </form>
 
-    <template v-if="backendChoices.length !== 1" #footer-left>
-      <BackendSelector v-model="backend" :disabled="creating" />
-    </template>
     <template #footer>
       <button class="app-button app-button--tertiary" type="button" @click="backOrClose">
         {{ existingWorktree ? $t('common.back') : $t('surface.newSourceWorktreeDialog.cancel') }}
@@ -112,7 +109,6 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
 import WorktreeReusePrompt from './WorktreeReusePrompt.vue';
-import BackendSelector from './BackendSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
 const backendChoices = useBackendChoices();
 const backend = defineModel<import('@workspace/core/contracts').AgentBackend>('backend');
