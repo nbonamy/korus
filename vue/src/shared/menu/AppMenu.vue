@@ -26,9 +26,13 @@
           :aria-expanded="!item.disabled && item.items.length > 0"
           :disabled="item.disabled || item.items.length === 0"
         >
+          <CheckIcon
+            v-if="item.checked"
+            class="app-menu__icon app-menu__icon--check"
+          />
           <component
             :is="item.icon"
-            v-if="item.icon"
+            v-else-if="item.icon"
             class="app-menu__icon"
           />
           <span
@@ -61,7 +65,6 @@
           :class="{ 'app-menu__submenu-menu--wide': item.submenuWidth === 'wide' }"
           :ariaLabel="item.label"
           :items="item.items"
-          :show-selection-check="showSelectionCheck"
           @select="$emit('select', $event)"
         />
       </div>
@@ -84,6 +87,11 @@
           class="app-menu__color-dot"
           :style="{ backgroundColor: item.leadingColor }"
           aria-hidden="true"
+        />
+        <!-- A selected item shows its check where its icon would be. -->
+        <CheckIcon
+          v-else-if="showsCheck(item)"
+          class="app-menu__icon app-menu__icon--check"
         />
         <component
           :is="item.icon"
@@ -124,10 +132,6 @@
           @click.stop
           @change="$emit('select', item.id)"
         />
-        <CheckIcon
-          v-else-if="showSelectionCheck && isSelected(item)"
-          class="app-menu__check"
-        />
       </button>
     </template>
   </div>
@@ -141,11 +145,10 @@ defineOptions({
   name: 'AppMenu',
 });
 
-withDefaults(defineProps<{
+defineProps<{
   ariaLabel: string;
   items: AppMenuItem[];
-  showSelectionCheck?: boolean;
-}>(), { showSelectionCheck: true });
+}>();
 
 const emit = defineEmits<{
   select: [itemId: string];
@@ -173,6 +176,10 @@ function itemChecked(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' 
 
 function isSelected(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }>): item is AppMenuCheckboxItem | AppMenuRadioItem {
   return (item.type === 'checkbox' || item.type === 'radio') && item.checked;
+}
+
+function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }>): boolean {
+  return isSelected(item) && !(item.type === 'checkbox' && item.accessory === 'switch');
 }
 </script>
 
@@ -240,7 +247,6 @@ function isSelected(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
 }
 
 .app-menu__icon,
-.app-menu__check,
 .app-menu__chevron {
   width: var(--icon-md);
   height: var(--icon-md);
@@ -258,6 +264,11 @@ function isSelected(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   stroke-width: 2.5px;
 }
 
+.app-menu__icon--check {
+  opacity: 1;
+  stroke-width: 2.5px;
+}
+
 .app-menu__icon--empty {
   visibility: hidden;
 }
@@ -268,7 +279,6 @@ function isSelected(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   opacity: 1;
 }
 
-.app-menu__check,
 .app-menu__chevron {
   color: var(--color-text-muted);
 }

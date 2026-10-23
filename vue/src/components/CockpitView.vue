@@ -5,31 +5,19 @@
         <h1>{{ $t('surface.cockpitView.agents') }}</h1>
         <span>{{ agents.length }}</span>
       </div>
-      <el-popover
-        v-model:visible="modeMenuOpen"
-        placement="bottom-end"
-        trigger="click"
-        :width="188"
-        popper-class="app-popover agent-cockpit__mode-popover"
-      >
-        <template #reference>
+      <AppMenuButton :ariaLabel="$t('surface.cockpitAgentsView.layout')" :items="modeMenuItems" @select="selectMode">
+        <template #trigger="{ attrs }">
           <button
+            v-bind="attrs"
             class="agent-cockpit__mode-trigger"
             type="button"
             :aria-label="$t('surface.cockpitAgentsView.layout')"
-            :aria-expanded="modeMenuOpen"
           >
             <span>{{ modeLabel }}</span>
             <ChevronDown aria-hidden="true" />
           </button>
         </template>
-        <AppMenu
-          class="app-menu--embedded"
-          :ariaLabel="$t('surface.cockpitAgentsView.layout')"
-          :items="modeMenuItems"
-          @select="selectMode"
-        />
-      </el-popover>
+      </AppMenuButton>
     </header>
 
     <CockpitAgentsView
@@ -54,10 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import type { Agent, CockpitAgentViewMode, Team } from '@workspace/core/contracts';
 import { ChevronDown } from '../shared/icons/app-icons';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
 import CockpitAgentsView from './CockpitAgentsView.vue';
@@ -85,7 +73,6 @@ const emit = defineEmits<{
   'update-view-mode': [mode: CockpitAgentViewMode];
 }>();
 
-const modeMenuOpen = ref(false);
 const modeLabel = computed(() => translate(`surface.cockpitAgentsView.${props.viewMode}`));
 const modeMenuItems = computed<AppMenuItem[]>(() => [
   {
@@ -104,7 +91,6 @@ const modeMenuItems = computed<AppMenuItem[]>(() => [
 
 function selectMode(itemId: string): void {
   if (itemId !== 'teams' && itemId !== 'recent') return;
-  modeMenuOpen.value = false;
   emit('update-view-mode', itemId);
 }
 </script>

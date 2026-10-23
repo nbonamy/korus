@@ -65,32 +65,17 @@
           >
             <SettingsIcon aria-hidden="true" />
           </button>
-          <el-popover
-            :visible="openMenuConnectionId === connection.id"
-            placement="bottom-end"
-            trigger="manual"
-            width="180"
-            :teleported="true"
-            popper-class="app-popover settings-connections-panel__menu-popover"
-            @update:visible="setMenuVisible(connection.id, $event)"
+          <AppMenuButton
+            :ariaLabel="$t('surface.settingsConnectionsPanel.connectionActions')"
+            :items="connectionMenuItems(connection)"
+            @select="selectConnectionMenuItem(connection, $event)"
           >
-            <template #reference>
-              <button
-                type="button"
-                :aria-label="`${connection.name} actions`"
-                @click="setMenuVisible(connection.id, openMenuConnectionId !== connection.id)"
-              >
+            <template #trigger="{ attrs }">
+              <button v-bind="attrs" type="button" :aria-label="`${connection.name} actions`">
                 <DotsVerticalIcon aria-hidden="true" />
               </button>
             </template>
-            <AppMenu
-              class="app-menu--embedded"
-              :ariaLabel="$t('surface.settingsConnectionsPanel.connectionActions')"
-              :items="connectionMenuItems(connection)"
-              @click.stop
-              @select="selectConnectionMenuItem(connection, $event)"
-            />
-          </el-popover>
+          </AppMenuButton>
         </div>
         <div
           v-if="isExpanded(connection)"
@@ -236,7 +221,7 @@ import { translate } from '../i18n';
 import { ElMessageBox } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import type { AddSshConnectionInput, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput } from '@workspace/core/contracts';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { AlertTriangleIcon, ChevronDown, DotsVerticalIcon, RefreshIcon, SettingsIcon, Trash2Icon } from '../shared/icons/app-icons';
 import FormDialog from '../shared/dialog/FormDialog.vue';
@@ -304,7 +289,6 @@ const loadingHosts = ref(false);
 const hostError = ref<string | null>(null);
 const addingHost = ref<string | null>(null);
 const checkingConnectionId = ref<string | null>(null);
-const openMenuConnectionId = ref<string | null>(null);
 const settingsConnection = ref<RemoteConnection | null>(null);
 const settingsSourceFolderPath = ref('');
 const settingsError = ref<string | null>(null);
@@ -355,7 +339,6 @@ async function addConnection(host: SshHostCandidate): Promise<void> {
 }
 
 async function checkConnection(connectionId: string): Promise<void> {
-  openMenuConnectionId.value = null;
   checkingConnectionId.value = connectionId;
   try {
     await props.checkRemoteConnection(connectionId);
@@ -415,10 +398,6 @@ function listRemoteFolders(input?: SourceFolderListInput): Promise<SourceFolderL
   return props.listSourceFolders(input);
 }
 
-function setMenuVisible(connectionId: string, visible: boolean): void {
-  openMenuConnectionId.value = visible ? connectionId : null;
-}
-
 function connectionMenuItems(connection: RemoteConnection): AppMenuItem[] {
   return [{
     id: 'check',
@@ -456,7 +435,6 @@ function connectionDaemonVersion(connection: RemoteConnection): string | null {
 }
 
 function selectConnectionMenuItem(connection: RemoteConnection, itemId: string): void {
-  openMenuConnectionId.value = null;
   if (itemId === 'check') {
     void checkConnection(connection.id);
   } else if (itemId === 'delete') {

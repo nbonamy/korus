@@ -186,7 +186,8 @@ export const ElPopoverStub = defineComponent({
     const shown = computed(() => props.visible ?? internalVisible.value);
     const toggle = () => {
       if (props.disabled || props.trigger === 'manual') return;
-      internalVisible.value = !internalVisible.value;
+      // Toggle what is actually shown, so a controlled `visible` that was closed from outside reopens.
+      internalVisible.value = !shown.value;
       emit('update:visible', internalVisible.value);
     };
     return { shown, toggle };

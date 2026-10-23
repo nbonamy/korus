@@ -9,26 +9,19 @@
         <BacklogSourceSelector class="cockpit-view__provider" size="small" full-width :provider="workProvider ?? 'github'" :providers="workProviders ?? []" :show-source="false" @select-provider="emit('select-work-provider', $event)" />
         <div class="cockpit-view__navigation-section">
           <strong class="app-section-label">{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</strong>
-          <el-dropdown
-            placement="bottom-end"
-            trigger="click"
-            @command="selectRepositorySortMode"
-          >
-            <button
-              class="cockpit-view__repository-sort"
-              type="button"
-              :aria-label="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })"
-            >
-              {{ repositorySortLabel }}
-              <IconChevronDown aria-hidden="true" />
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="recent">{{ $t('surface.cockpitView.recentActivity') }}</el-dropdown-item>
-                <el-dropdown-item command="alphabetical">{{ $t('surface.cockpitView.alphabetical') }}</el-dropdown-item>
-              </el-dropdown-menu>
+          <AppMenuButton :ariaLabel="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })" :items="repositorySortMenuItems" :width="200" @select="selectRepositorySortMode($event as RepositorySortMode)">
+            <template #trigger="{ attrs }">
+              <button
+                v-bind="attrs"
+                class="cockpit-view__repository-sort"
+                type="button"
+                :aria-label="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })"
+              >
+                {{ repositorySortLabel }}
+                <IconChevronDown aria-hidden="true" />
+              </button>
             </template>
-          </el-dropdown>
+          </AppMenuButton>
         </div>
         <label class="cockpit-view__repository-filter">
           <IconSearch aria-hidden="true" />
@@ -177,6 +170,8 @@ import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { ExternalLinkIcon } from '../shared/icons/app-icons';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
@@ -256,6 +251,10 @@ watch(() => `${props.workProvider}:${props.workBacklog?.selectedRepositoryId}`, 
   activeSummaryFilter.value = null;
 });
 const repositorySortMode = ref<RepositorySortMode>('recent');
+const repositorySortMenuItems = computed<AppMenuItem[]>(() => [
+  { id: 'recent', type: 'radio', checked: repositorySortMode.value === 'recent', label: translate('surface.cockpitView.recentActivity') },
+  { id: 'alphabetical', type: 'radio', checked: repositorySortMode.value === 'alphabetical', label: translate('surface.cockpitView.alphabetical') },
+]);
 const repositorySortLabel = computed(() => repositorySortMode.value === 'recent' ? translate('surface.cockpitView.recent') : 'A–Z');
 const repositorySortDescription = computed(() => repositorySortMode.value === 'recent' ? 'recent activity' : 'name');
 const sortedRepositories = computed(() => [...(props.workBacklog?.repositories ?? [])].sort((left, right) => {

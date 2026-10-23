@@ -18,43 +18,28 @@
       />
       <ExternalLinkIcon v-else aria-hidden="true" />
     </button>
-    <el-popover
-      v-model:visible="menuOpen"
-      placement="bottom-end"
-      trigger="click"
-      :teleported="true"
-      :width="220"
-      :offset="variant === 'compact' ? 4 : 8"
-      :show-arrow="false"
-      popper-class="app-popover"
-    >
-      <template #reference>
+    <AppMenuButton :ariaLabel="$t('surface.openInControl.openInApplication')" :items="menuItems" @select="selectApplication">
+      <template #trigger="{ attrs }">
         <button
+          v-bind="attrs"
           class="open-in-control__menu-trigger"
           type="button"
           :aria-label="$t('surface.openInControl.chooseOpenInApplication')"
           :title="$t('surface.openInControl.chooseApplication')"
-          :aria-expanded="menuOpen"
           :disabled="disabled || catalog.applications.length === 0"
         >
           <ChevronDown aria-hidden="true" />
         </button>
       </template>
-      <AppMenu
-        class="app-menu--embedded"
-        :ariaLabel="$t('surface.openInControl.openInApplication')"
-        :items="menuItems"
-        @select="selectApplication"
-      />
-    </el-popover>
+    </AppMenuButton>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import type { OpenInApplication, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import { ChevronDown, ExternalLinkIcon } from './icons/app-icons';
-import AppMenu from './menu/AppMenu.vue';
+import AppMenuButton from './menu/AppMenuButton.vue';
 import { openInApplicationFromMenuItem, openInMenuItems } from './open-in';
 
 const props = defineProps<{
@@ -68,7 +53,6 @@ const emit = defineEmits<{
   open: [application: OpenInApplication];
 }>();
 
-const menuOpen = ref(false);
 const menuItems = computed(() => openInMenuItems(props.catalog));
 const currentApplication = computed(() => (
   props.catalog.applications.find((application) => application.id === props.application)
@@ -85,7 +69,6 @@ function selectApplication(itemId: string): void {
   if (props.disabled) return;
   const application = openInApplicationFromMenuItem(itemId);
   if (!application) return;
-  menuOpen.value = false;
   emit('open', application);
 }
 
@@ -110,11 +93,11 @@ function selectApplication(itemId: string): void {
   background: transparent;
 }
 
-.open-in-control--compact > button {
+.open-in-control--compact button {
   width: 28px;
 }
 
-.open-in-control > button {
+.open-in-control button {
   display: grid;
   place-items: center;
   width: 32px;
@@ -125,11 +108,11 @@ function selectApplication(itemId: string): void {
   cursor: pointer;
 }
 
-.open-in-control > button:hover:not(:disabled) {
+.open-in-control button:hover:not(:disabled) {
   background: var(--color-surface-low);
 }
 
-.open-in-control > button:disabled {
+.open-in-control button:disabled {
   cursor: default;
   opacity: 0.5;
 }

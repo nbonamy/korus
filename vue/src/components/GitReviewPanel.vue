@@ -18,26 +18,22 @@
         <span class="git-review-panel__removed">-{{ displayedSummary.removedLines }}</span>
       </div>
 
-      <div ref="actionsRoot" class="git-review-panel__actions">
+      <div class="git-review-panel__actions">
         <button type="button" :aria-label="$t('surface.gitReviewPanel.refreshRepositoryDiff')" :title="$t('surface.gitReviewPanel.refresh')" @click="emit('refresh')">
           <RefreshIcon aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          :aria-label="$t('surface.gitReviewPanel.reviewOptions')"
-          :title="$t('surface.gitReviewPanel.reviewOptions')"
-          :aria-expanded="menuOpen"
-          @click.stop="menuOpen = !menuOpen"
-        >
-          <DotsVerticalIcon aria-hidden="true" />
-        </button>
-        <AppMenu
-          v-if="menuOpen"
-          class="git-review-panel__menu"
-          :ariaLabel="$t('surface.gitReviewPanel.reviewOptions')"
-          :items="menuItems"
-          @select="selectMenuItem"
-        />
+        <AppMenuButton :ariaLabel="$t('surface.gitReviewPanel.reviewOptions')" :items="menuItems" @select="selectMenuItem">
+          <template #trigger="{ attrs }">
+            <button
+              v-bind="attrs"
+              type="button"
+              :aria-label="$t('surface.gitReviewPanel.reviewOptions')"
+              :title="$t('surface.gitReviewPanel.reviewOptions')"
+            >
+              <DotsVerticalIcon aria-hidden="true" />
+            </button>
+          </template>
+        </AppMenuButton>
       </div>
     </header>
 
@@ -57,10 +53,10 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
 import { DotsVerticalIcon, FileDiffIcon, FileTextIcon, GitCommitIcon, GitHubIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import type { SidePanelGitDiffState } from './side-panel';
@@ -76,8 +72,6 @@ const emit = defineEmits<{
   refresh: [];
 }>();
 
-const actionsRoot = ref<HTMLElement | null>(null);
-const menuOpen = ref(false);
 const wordWrap = ref(false);
 const allExpanded = ref(true);
 const expandAllSignal = ref(0);
@@ -139,13 +133,7 @@ const menuItems = computed<AppMenuItem[]>(() => [
   },
 ]);
 
-onMounted(() => {
-  document.addEventListener('click', closeMenuOnOutsideClick);
-});
-onBeforeUnmount(() => document.removeEventListener('click', closeMenuOnOutsideClick));
-
 function selectMenuItem(itemId: string): void {
-  menuOpen.value = false;
   if (itemId.startsWith('scope-')) {
     const scope = itemId.slice('scope-'.length) as AgentGitDiffScope;
     if (scope === 'staged' || scope === 'unstaged' || scope === 'untracked') {
@@ -157,12 +145,6 @@ function selectMenuItem(itemId: string): void {
     expandAllSignal.value += 1;
   } else if (itemId === 'collapse-all') {
     collapseAllSignal.value += 1;
-  }
-}
-
-function closeMenuOnOutsideClick(event: MouseEvent): void {
-  if (!actionsRoot.value?.contains(event.target as Node)) {
-    menuOpen.value = false;
   }
 }
 
@@ -260,7 +242,7 @@ function fileBasename(path: string): string {
   gap: var(--space-1);
 }
 
-.git-review-panel__actions > button {
+.git-review-panel__actions button {
   display: grid;
   place-items: center;
   width: var(--space-12);
@@ -273,8 +255,8 @@ function fileBasename(path: string): string {
   cursor: pointer;
 }
 
-.git-review-panel__actions > button:hover,
-.git-review-panel__actions > button[aria-expanded="true"] {
+.git-review-panel__actions button:hover,
+.git-review-panel__actions button[aria-expanded="true"] {
   color: var(--color-text);
   background: var(--color-surface-low);
 }
@@ -282,12 +264,5 @@ function fileBasename(path: string): string {
 .git-review-panel__actions svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.git-review-panel__menu {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + var(--space-2));
-  right: 0;
 }
 </style>

@@ -52,6 +52,17 @@ describe('BacklogView', () => {
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['support-uuid']]);
   });
 
+  it('sorts repositories from the shared popup menu', async () => {
+    const wrapper = mountView(createInitialSnapshot(), [], [repository('b', '2026-01-01'), repository('a', '2026-02-01')]);
+    await wrapper.get('.cockpit-view__repository-sort').trigger('click');
+    const items = Array.from(document.body.querySelectorAll<HTMLElement>('.app-menu__item'));
+    expect(items.map((item) => item.textContent?.trim())).toEqual(['Recent activity', 'Alphabetical']);
+    items[1]!.click();
+    await flushPromises();
+    expect(wrapper.get('.cockpit-view__repository-sort').text()).toContain('A–Z');
+    expect(document.body.querySelector('.app-menu__item')).toBeNull();
+  });
+
   it('rolls back a failed favorite save and accepts later saved preferences', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')]);
     let rejectSave!: (error: Error) => void;
@@ -334,7 +345,8 @@ describe('BacklogView', () => {
     expect(wrapper.findAll('.cockpit-view__repositories > div').map((row) => row.text())).toStrictEqual(['older']);
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
 
-    await wrapper.getComponent({ name: 'ElDropdown' }).vm.$emit('command', 'alphabetical');
+    await wrapper.get('.cockpit-view__repository-sort').trigger('click');
+    await wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'alphabetical');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.get('[aria-label="Sort repositories by name"]').text()).toContain('A–Z');
@@ -370,7 +382,8 @@ describe('BacklogView', () => {
       repository('inactive', '2026-08-14T00:00:00.000Z'),
       repository('active', '2026-08-01T00:00:00.000Z', '2026-08-10T00:00:00.000Z'),
     ];
-    await wrapper.getComponent({ name: 'ElDropdown' }).vm.$emit('command', 'recent');
+    await wrapper.getComponent({ name: 'ElPopover' }).vm.$emit('update:visible', true);
+    await wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'recent');
     await wrapper.setProps({
       workBacklog: {
         ...wrapper.props('workBacklog')!,

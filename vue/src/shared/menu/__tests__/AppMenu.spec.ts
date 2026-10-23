@@ -17,15 +17,18 @@ describe('AppMenu', () => {
     } finally { wrapper.unmount(); }
   });
 
-  it('keeps selected diff scopes accessible without a check column', async () => {
+  it('replaces the icon of a selected item with a check and keeps the others\' icons', async () => {
     const items: AppMenuItem[] = [
       { id: 'branch', type: 'radio', label: 'Branch', value: '+12 -4', checked: false, icon: PencilIcon },
       { id: 'working', type: 'radio', label: 'Uncommitted', value: { addedLines: 2, removedLines: 1 }, checked: true, icon: PencilIcon },
     ];
-    const wrapper = mount(AppMenu, { props: { ariaLabel: 'Diff scope', items, showSelectionCheck: false } });
+    const wrapper = mount(AppMenu, { props: { ariaLabel: 'Diff scope', items } });
     const rows = wrapper.findAll('[role="menuitemradio"]');
     expect(rows.map(row => row.attributes('aria-checked'))).toStrictEqual(['false', 'true']);
-    expect(wrapper.find('.app-menu__check').exists()).toBe(false);
+    expect(rows[0]!.find('.app-menu__icon--check').exists()).toBe(false);
+    expect(rows[0]!.find('svg.app-menu__icon').exists()).toBe(true);
+    expect(rows[1]!.find('.app-menu__icon--check').exists()).toBe(true);
+    expect(rows[1]!.findAll('svg')).toHaveLength(1);
     expect(rows[1]!.get('.app-menu__label').text()).toBe('Uncommitted');
     expect(rows[1]!.get('.app-menu__value').text()).toBe('+2 -1');
     await rows[0]!.trigger('click');
@@ -110,6 +113,19 @@ describe('AppMenu', () => {
     await wrapper.get('[role="menuitemcheckbox"]').trigger('click');
 
     expect(wrapper.emitted('select')).toStrictEqual([['plan-mode']]);
+  });
+
+  it('shows the check in the leading slot for icon-less items and never beside a switch', () => {
+    const wrapper = mountMenu([
+      { id: 'plain', type: 'radio', label: 'Plain', checked: true },
+      { id: 'other', type: 'radio', label: 'Other', checked: false },
+      { id: 'toggle', type: 'checkbox', accessory: 'switch', label: 'Toggle', checked: true },
+    ]);
+    const rows = wrapper.findAll('.app-menu__item');
+    const labelOffset = (index: number) => [...rows[index]!.element.children].findIndex(child => child.classList.contains('app-menu__copy'));
+    expect(rows[0]!.find('.app-menu__icon--check').exists()).toBe(true);
+    expect(labelOffset(0)).toBe(labelOffset(1));
+    expect(rows[2]!.find('.app-menu__icon--check').exists()).toBe(false);
   });
 
   it('keeps icon-less submenu rows aligned with icon-less rows beside them', () => {

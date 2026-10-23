@@ -254,7 +254,7 @@ describe('BrowserPanel', () => {
     api.browserSetVisible.mockClear();
     await header.get('.git-diff-control__menu-trigger').trigger('click');
     await flushPromises();
-    expect(header.find('[role="menu"]').exists()).toBe(true);
+    expect(document.body.querySelector('[role="menu"]')).not.toBeNull();
     expect(wrapper.find('.browser-panel__viewport webview').exists()).toBe(true);
     expect(api.browserSetVisible).not.toHaveBeenCalled();
   });

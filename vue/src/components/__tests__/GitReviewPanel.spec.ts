@@ -1,6 +1,8 @@
-import { mount } from '@vue/test-utils';
+import { DOMWrapper, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import GitReviewPanel from '../GitReviewPanel.vue';
+// Menus open in a popper attached to the body.
+const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
 
 const diff = [
   'diff --git a/src/main.ts b/src/main.ts',
@@ -93,11 +95,11 @@ describe('GitReviewPanel', () => {
     });
 
     await wrapper.get('[aria-label="Review options"]').trigger('click');
-    await wrapper.findAll('.app-menu__item').find((item) => item.text().includes('Word wrap'))?.trigger('click');
+    await bodyAll('.app-menu__item').find((item) => item.text().includes('Word wrap'))?.trigger('click');
     expect(wrapper.get('.git-diff-preview-panel').classes()).toContain('git-diff-preview-panel--wrap');
 
     await wrapper.get('[aria-label="Review options"]').trigger('click');
-    await wrapper.findAll('.app-menu__item').find((item) => item.text().includes('Collapse all'))?.trigger('click');
+    await bodyAll('.app-menu__item').find((item) => item.text().includes('Collapse all'))?.trigger('click');
     expect(wrapper.get('.git-diff-preview-panel__file-header').attributes('aria-expanded')).toBe('false');
   });
 
@@ -116,7 +118,7 @@ describe('GitReviewPanel', () => {
     expect(wrapper.text()).toContain('src/untracked.ts');
 
     await wrapper.get('[aria-label="Review options"]').trigger('click');
-    const unstaged = wrapper.findAll('.app-menu__item').find((item) => item.text().includes('Unstaged changes'));
+    const unstaged = bodyAll('.app-menu__item').find((item) => item.text().includes('Unstaged changes'));
     expect(unstaged).toBeDefined();
     await unstaged!.trigger('click');
 

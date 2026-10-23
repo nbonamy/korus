@@ -105,32 +105,17 @@
                   >
                     <LogsIcon aria-hidden="true" />
                   </button>
-                  <el-popover
-                    :visible="openMenuAutomationId === row.id"
-                    placement="bottom-end"
-                    trigger="manual"
-                    width="180"
-                    :teleported="true"
-                    popper-class="app-popover automations-view__menu-popover"
-                    @update:visible="setMenuVisible(row.id, $event)"
+                  <AppMenuButton
+                    :ariaLabel="$t('surface.automationsView.automationActions')"
+                    :items="automationMenuItems"
+                    @select="selectAutomationMenuItem(row.id, $event)"
                   >
-                    <template #reference>
-                      <button
-                        type="button"
-                        :aria-label="`${row.name} actions`"
-                        @click="setMenuVisible(row.id, openMenuAutomationId !== row.id)"
-                      >
+                    <template #trigger="{ attrs }">
+                      <button v-bind="attrs" type="button" :aria-label="`${row.name} actions`">
                         <DotsVerticalIcon aria-hidden="true" />
                       </button>
                     </template>
-                    <AppMenu
-                      class="app-menu--embedded"
-                      :ariaLabel="$t('surface.automationsView.automationActions')"
-                      :items="automationMenuItems"
-                      @click.stop
-                      @select="selectAutomationMenuItem(row.id, $event)"
-                    />
-                  </el-popover>
+                  </AppMenuButton>
                 </div>
               </template>
             </AppDataList>
@@ -166,7 +151,7 @@ import { automationExecutionIsActive, automationTargetIsAvailable, canTargetAuto
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import AppDataList from './AppDataList.vue';
 import type { AppDataListColumn, AppDataListRow } from './app-data-list';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import AutomationEditor from './AutomationEditor.vue';
 import { provideBackendHost } from './backend-selection';
@@ -213,7 +198,6 @@ type LocationStatus = 'idle' | 'loading' | 'error';
 const editorMode = ref<EditorMode>('create');
 const editingAutomationId = ref<string | null>(null);
 const logAutomationId = ref<string | null>(null);
-const openMenuAutomationId = ref<string | null>(null);
 const selectedLocationValue = ref('local');
 const remoteSnapshot = ref<AppSnapshot | null>(null);
 const locationStatus = ref<LocationStatus>('idle');
@@ -321,7 +305,6 @@ function openEdit(automationId: string): void {
   editingAutomationId.value = automationId;
   logAutomationId.value = null;
   creating.value = false;
-  openMenuAutomationId.value = null;
 }
 
 function closeEditor(): void {
@@ -333,7 +316,6 @@ function openLog(automationId: string): void {
   creating.value = false;
   editingAutomationId.value = null;
   logAutomationId.value = automationId;
-  openMenuAutomationId.value = null;
 }
 
 function closeLog(): void {
@@ -371,18 +353,12 @@ async function toggleAutomation(automationId: string, enabled: boolean): Promise
 }
 
 async function runAutomation(automationId: string): Promise<void> {
-  openMenuAutomationId.value = null;
   operationError.value = null;
   try { refreshLocationFromSnapshot(await runLocationAutomation(automationId)); }
   catch (error) { operationError.value = error instanceof Error ? error.message : String(error); }
 }
 
-function setMenuVisible(automationId: string, visible: boolean): void {
-  openMenuAutomationId.value = visible ? automationId : null;
-}
-
 function selectAutomationMenuItem(automationId: string, itemId: string): void {
-  openMenuAutomationId.value = null;
   if (itemId === 'edit') {
     openEdit(automationId);
   } else if (itemId === 'delete') {

@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="root"
     class="git-diff-control"
   >
     <button
@@ -25,32 +24,27 @@
       />
     </button>
     <span v-else class="git-diff-control__empty">{{ $t('surface.agentHeader.noChanges') }}</span>
-    <button
-      class="git-diff-control__menu-trigger"
-      type="button"
-      :aria-label="$t('surface.agentHeader.chooseRepositoryDiff')"
-      :aria-expanded="menuOpen"
-      @click.stop="menuOpen = !menuOpen"
-    >
-      <ChevronDown aria-hidden="true" />
-    </button>
-    <AppMenu
-      v-if="menuOpen"
-      class="git-diff-control__menu"
-      :show-selection-check="false"
-      :ariaLabel="$t('surface.agentHeader.chooseRepositoryDiff')"
-      :items="menuItems"
-      @select="selectTarget"
-    />
+    <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.agentHeader.chooseRepositoryDiff')" :items="menuItems" :width="260" @select="selectTarget">
+      <template #trigger="{ attrs }">
+        <button
+          v-bind="attrs"
+          class="git-diff-control__menu-trigger"
+          type="button"
+          :aria-label="$t('surface.agentHeader.chooseRepositoryDiff')"
+        >
+          <ChevronDown aria-hidden="true" />
+        </button>
+      </template>
+    </AppMenuButton>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import type { AgentGitDiffSummary, AgentGitDiffTarget, AgentGitStatus, TurnGitDiff } from '@workspace/core/contracts';
 import { CodexAnimatedDiffStat } from '@codex-app-sdk/vue';
-import { CheckIcon, ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shared/icons/app-icons';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shared/icons/app-icons';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
 
@@ -66,7 +60,6 @@ const emit = defineEmits<{
   select: [target: AgentGitDiffTarget];
 }>();
 
-const root = ref<HTMLElement | null>(null);
 const menuOpen = ref(false);
 const hasUserSelection = ref(Boolean(props.selectedTarget));
 const selectedTarget = shallowRef<AgentGitDiffTarget>(selectedTargetForAgent());
@@ -94,7 +87,7 @@ const menuItems = computed<AppMenuItem[]>(() => {
       type: 'radio',
       label: labelFor(target),
       ...(target.type === 'branch' && target.baseRef ? { description: target.baseRef } : {}),
-      icon: checked ? CheckIcon : target.type === 'branch' ? GitBranchIcon : target.type === 'turn' ? GitCommitIcon : FileDiffIcon,
+      icon: target.type === 'branch' ? GitBranchIcon : target.type === 'turn' ? GitCommitIcon : FileDiffIcon,
       checked,
       value: summaryFor(target),
     };
@@ -115,7 +108,7 @@ const menuItems = computed<AppMenuItem[]>(() => {
           type: 'radio',
           label: commit.subject,
           description: commit.shortSha,
-          icon: checked ? CheckIcon : GitCommitIcon,
+          icon: GitCommitIcon,
           checked,
           value: commit,
         };
@@ -145,9 +138,6 @@ watch(() => props.gitStatus.diffCatalog, (catalog) => {
   }
 });
 
-onMounted(() => document.addEventListener('click', closeMenuOnOutsideClick));
-onBeforeUnmount(() => document.removeEventListener('click', closeMenuOnOutsideClick));
-
 function defaultTarget(): AgentGitDiffTarget {
   return { type: 'uncommitted' };
 }
@@ -161,7 +151,6 @@ function selectTarget(itemId: string): void {
   if (!target) return;
   hasUserSelection.value = true;
   selectedTarget.value = target;
-  menuOpen.value = false;
   emit('select', { ...target });
 }
 
@@ -208,10 +197,6 @@ function summaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
     ? { ...props.lastTurnGitDiff, changedFiles: 0 }
     : fallbackSummary.value;
   return catalog?.commits.find((commit) => commit.sha === target.sha) ?? fallbackSummary.value;
-}
-
-function closeMenuOnOutsideClick(event: MouseEvent): void {
-  if (!root.value?.contains(event.target as Node)) menuOpen.value = false;
 }
 </script>
 
@@ -268,24 +253,4 @@ function closeMenuOnOutsideClick(event: MouseEvent): void {
   height: var(--icon-sm);
 }
 
-.git-diff-control__menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  min-width: 240px;
-}
-
-.git-diff-control__menu :deep(.app-menu__submenu-menu) {
-  right: 100%;
-  left: auto;
-}
-
-.git-diff-control__menu :deep([role="menuitemradio"][aria-checked="false"] .app-menu__icon) {
-  opacity: 0.4;
-}
-
-.git-diff-control__menu :deep(.app-menu__check) {
-  display: none;
-}
 </style>

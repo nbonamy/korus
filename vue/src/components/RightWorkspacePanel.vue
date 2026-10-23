@@ -109,23 +109,19 @@
         <IconLayoutSidebarRightExpand v-else aria-hidden="true" />
       </button>
 
-      <div ref="addMenuRoot" class="right-workspace-panel__add">
-        <button
-          type="button"
-          :aria-label="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')"
-          :title="$t('surface.rightWorkspacePanel.newTab')"
-          :aria-expanded="addMenuOpen"
-          @click.stop="addMenuOpen = !addMenuOpen"
-        >
-          <PlusIcon aria-hidden="true" />
-        </button>
-        <AppMenu
-          v-if="addMenuOpen"
-          class="right-workspace-panel__add-menu"
-          :ariaLabel="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')"
-          :items="addMenuItems"
-          @select="openTabFromMenu"
-        />
+      <div class="right-workspace-panel__add">
+        <AppMenuButton v-model:open="addMenuOpen" :ariaLabel="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')" :items="addMenuItems" @select="openTabFromMenu">
+          <template #trigger="{ attrs }">
+            <button
+              v-bind="attrs"
+              type="button"
+              :aria-label="$t('surface.rightWorkspacePanel.openRightWorkspaceTab')"
+              :title="$t('surface.rightWorkspacePanel.newTab')"
+            >
+              <PlusIcon aria-hidden="true" />
+            </button>
+          </template>
+        </AppMenuButton>
       </div>
     </header>
 
@@ -396,7 +392,7 @@ import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInAppli
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
 import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import OpenInControl from '../shared/OpenInControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
@@ -541,7 +537,6 @@ const emit = defineEmits<{
   resizeFilesPane: [width: number];
 }>();
 
-const addMenuRoot = ref<HTMLElement | null>(null);
 const bodyRoot = ref<HTMLElement | null>(null);
 const tabStripRoot = ref<HTMLElement | null>(null);
 const tabListRoot = ref<HTMLElement | null>(null);
@@ -628,7 +623,6 @@ watch(() => props.filesPaneWidth, (width) => {
 });
 
 onMounted(() => {
-  document.addEventListener('click', closeAddMenuOnOutsideClick);
   window.addEventListener('resize', updateTabScrollState);
   if (typeof ResizeObserver !== 'undefined' && tabStripRoot.value && tabTrackRoot.value) {
     tabResizeObserver = new ResizeObserver(updateTabScrollState);
@@ -641,7 +635,6 @@ onMounted(() => {
   });
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeAddMenuOnOutsideClick);
   window.removeEventListener('resize', updateTabScrollState);
   tabResizeObserver?.disconnect();
   stopFilesPaneResize();
@@ -870,15 +863,8 @@ function sourceFilePanel(tab: RightWorkspaceFileTab): SidePanelSourceState | nul
 }
 
 function openTabFromMenu(tab: string): void {
-  addMenuOpen.value = false;
   if ((tab === 'simulator' && simulatorAvailable) || tab === 'backlog' || tab === 'codeReview' || tab === 'visualize' || tab === 'review' || tab === 'files' || (tab === 'browser' && props.browserAvailable)) {
     emit('openTab', tab);
-  }
-}
-
-function closeAddMenuOnOutsideClick(event: MouseEvent): void {
-  if (!addMenuRoot.value?.contains(event.target as Node)) {
-    addMenuOpen.value = false;
   }
 }
 
@@ -994,7 +980,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
 .right-workspace-panel__tab-save,
 .right-workspace-panel__tab-close,
 .right-workspace-panel__files-toggle,
-.right-workspace-panel__add > button {
+.right-workspace-panel__add button {
   border: 0;
   color: inherit;
   background: transparent;
@@ -1081,8 +1067,8 @@ function urlForTab(tab: RightWorkspaceTab): string {
 .right-workspace-panel__tab-save:hover:not(:disabled),
 .right-workspace-panel__tab-close:hover,
 .right-workspace-panel__files-toggle:hover,
-.right-workspace-panel__add > button:hover,
-.right-workspace-panel__add > button[aria-expanded="true"] {
+.right-workspace-panel__add button:hover,
+.right-workspace-panel__add button[aria-expanded="true"] {
   color: var(--color-text);
   background: var(--color-surface-high);
 }
@@ -1111,7 +1097,7 @@ function urlForTab(tab: RightWorkspaceTab): string {
   flex: 0 0 auto;
 }
 
-.right-workspace-panel__add > button {
+.right-workspace-panel__add button {
   display: grid;
   place-items: center;
   width: var(--space-16);
@@ -1119,13 +1105,6 @@ function urlForTab(tab: RightWorkspaceTab): string {
   padding: 0;
   border-radius: var(--radius-lg);
   color: var(--color-text-muted);
-}
-
-.right-workspace-panel__add-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + var(--space-3));
-  right: 0;
 }
 
 .right-workspace-panel__launcher {

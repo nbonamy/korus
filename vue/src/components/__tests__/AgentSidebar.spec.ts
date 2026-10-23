@@ -201,8 +201,9 @@ describe('AgentSidebar sessions', () => {
     });
     const choose = async (label: string) => {
       await wrapper.get('button[aria-label="Agent view"]').trigger('click');
-      const option = wrapper.findAll('[role="menuitemradio"]').find(button => button.text() === label)!;
-      await option.trigger('click');
+      const option = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(button => button.textContent?.trim() === label)!;
+      option.click();
+      await flushPromises();
     };
     try {
       await choose('Activity');
@@ -351,15 +352,15 @@ describe('AgentSidebar sessions', () => {
       },
     });
 
-    const sessionMenu = wrapper.findAllComponents({ name: 'ElPopover' }).find((popover) => (
-      popover.props('popperClass') === 'app-popover agent-sidebar__repository-session-menu-popover'
+    const sessionMenu = wrapper.findAllComponents({ name: 'AppMenuButton' }).find((button) => (
+      button.props('ariaLabel').startsWith('New session in')
     ));
-    await sessionMenu?.vm.$emit('update:visible', true);
+    await sessionMenu?.vm.$emit('update:open', true);
     await flushPromises();
-    const menu = wrapper.findAllComponents({ name: 'AppMenu' }).find((item) => item.props('ariaLabel') === 'New session in id8')!;
-    const main = menu.findAll('[role="menuitem"]').find((item) => item.text() === 'main')!;
-    expect(main.attributes('aria-haspopup')).toBeUndefined();
-    await main.trigger('click');
+    const main = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'main')!;
+    expect(main.getAttribute('aria-haspopup')).toBeNull();
+    main.click();
+    await flushPromises();
     await wrapper.get('[aria-label="Create agent from branch, pull request, or issue"]').trigger('click');
 
     expect(listRepositoryBranches).toHaveBeenCalledWith({
@@ -390,10 +391,10 @@ describe('AgentSidebar sessions', () => {
       global: { components: { ElPopover } },
     });
 
-    const sessionMenu = wrapper.findAllComponents({ name: 'ElPopover' }).find((popover) => (
-      popover.props('popperClass') === 'app-popover agent-sidebar__repository-session-menu-popover'
+    const sessionMenu = wrapper.findAllComponents({ name: 'AppMenuButton' }).find((button) => (
+      button.props('ariaLabel').startsWith('New session in')
     ));
-    await sessionMenu?.vm.$emit('update:visible', true);
+    await sessionMenu?.vm.$emit('update:open', true);
     await flushPromises();
 
     expect(document.body.textContent).toContain('Could not load branches: offline');

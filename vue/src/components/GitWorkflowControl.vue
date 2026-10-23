@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="root"
     class="git-workflow-control agent-header__git-actions"
     :class="{ 'git-workflow-control--delivery': presentation === 'delivery' }"
   >
@@ -45,24 +44,20 @@
       >
         <GitHubIcon aria-hidden="true" />
       </button>
-      <button
-        class="git-workflow-control__trigger"
-        type="button"
-        :disabled="busy"
-        :aria-label="$t('surface.gitWorkflowControl.chooseGitAction')"
-        :title="$t('surface.gitWorkflowControl.chooseGitAction')"
-        :aria-expanded="menuOpen"
-        @click.stop="toggleMenu"
-      >
-        <ChevronDown aria-hidden="true" />
-      </button>
-      <AppMenu
-        v-if="menuOpen"
-        class="git-workflow-control__menu"
-        :ariaLabel="$t('surface.gitWorkflowControl.gitActions')"
-        :items="menuItems"
-        @select="selectAction"
-      />
+      <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.gitWorkflowControl.gitActions')" :items="menuItems" @select="selectAction">
+        <template #trigger="{ attrs }">
+          <button
+            v-bind="attrs"
+            class="git-workflow-control__trigger"
+            type="button"
+            :disabled="busy"
+            :aria-label="$t('surface.gitWorkflowControl.chooseGitAction')"
+            :title="$t('surface.gitWorkflowControl.chooseGitAction')"
+          >
+            <ChevronDown aria-hidden="true" />
+          </button>
+        </template>
+      </AppMenuButton>
     </template>
   </div>
 
@@ -405,7 +400,7 @@ import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGen
 import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitOperationFeedback from './GitOperationFeedback.vue';
@@ -437,7 +432,6 @@ const emit = defineEmits<{
   'inspect-agent': [agentId: string];
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
-const root = ref<HTMLElement | null>(null);
 const workflow = ref<AgentGitWorkflow | null>(null);
 const workflowError = ref<string | null>(null);
 const menuOpen = ref(false);
@@ -733,12 +727,10 @@ watch(mergeStrategy, (strategy) => {
 });
 
 onMounted(() => {
-  document.addEventListener('click', closeMenu);
   unsubscribeMainEvents = appApi?.onEvent(handleMainEvent) ?? null;
   void loadWorkflow({ reset: true });
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeMenu);
   unsubscribeMainEvents?.();
   clearCommitSuccessTimer();
   clearPushSuccessTimer();
@@ -809,11 +801,6 @@ async function revertChanges(): Promise<void> {
   } finally {
     busy.value = false;
   }
-}
-function closeMenu(event: MouseEvent): void { if (!root.value?.contains(event.target as Node)) menuOpen.value = false; }
-function toggleMenu(): void {
-  if (busy.value) return;
-  menuOpen.value = !menuOpen.value;
 }
 function runFirstEnabled(): void { if (firstEnabledAction.value) selectAction(firstEnabledAction.value); }
 async function selectAction(action: string): Promise<void> {
@@ -1387,7 +1374,7 @@ function handleMainEvent(event: MainToRendererEvent): void {
   background: transparent;
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button {
+.git-workflow-control:not(.git-workflow-control--delivery) button {
   display: grid;
   place-items: center;
   padding: 0;
@@ -1408,12 +1395,12 @@ function handleMainEvent(event: MainToRendererEvent): void {
   border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0;
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button:hover:not(:disabled) {
+.git-workflow-control:not(.git-workflow-control--delivery) button:hover:not(:disabled) {
   color: var(--color-text);
   background: var(--color-surface-high);
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button:disabled {
+.git-workflow-control:not(.git-workflow-control--delivery) button:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -1428,13 +1415,6 @@ function handleMainEvent(event: MainToRendererEvent): void {
 .git-workflow-control svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.git-workflow-control__menu {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + var(--space-2));
-  right: 0;
 }
 
 .git-workflow-control__dialog-form {
