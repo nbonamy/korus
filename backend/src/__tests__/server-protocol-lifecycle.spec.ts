@@ -7,7 +7,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { AppBackendServer } from '../server';
 import { BackendDriverRpc } from '../driver-rpc';
 import type { AgentGitService } from '../git/agent-git-service';
-import { createMission } from '@workspace/core/missions';
+import { createMission, isMission } from '@workspace/core/missions';
 import {
   createTestSnapshot,
 } from './server-test-fixtures';
@@ -487,6 +487,59 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0', id: 'debug-mission-invalid', method: backendMethods.debugMissionStageSet,
       params: { missionId: mission.id, stage: 'unknown' },
     })).resolves.toMatchObject({ error: { code: -32602 } });
+  });
+
+  it('loads a repeatable two-repository Mission screenshot with synthetic chats across reloads', async () => {
+    // Failure modes: incorrect ticket grouping/state; missing chats after reload;
+    // duplicated agents on reuse; accidentally hydrating a fake provider session.
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ id: 'original', teamId: 'team-test', name: 'Original', folder: '/repo', backend: 'codex',
+      status: { type: 'idle' }, createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z' }];
+    snapshot.teams[0]!.agentIds = ['original'];
+    const original = structuredClone(snapshot.agents[0]);
+    const mission = createMission(snapshot, { outcome: 'Screenshot', workflowType: 'shapeAndShipFeature', teamId: 'team-test', orchestratorMemberId: 'original' });
+    const saveSnapshot = vi.fn().mockResolvedValue(undefined);
+    const server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot });
+    const load = () => server.handleMessage({ jsonrpc: '2.0', id: 'screenshot', method: backendMethods.debugMissionStageSet,
+      params: { missionId: mission.id, stage: 'implementation', preset: 'screenshot' } });
+    await load();
+    const tickets = mission.artifacts.tickets;
+    expect(tickets).toHaveLength(3);
+    expect(tickets.map(ticket => ticket.done)).toEqual([true, false, true]);
+    expect(tickets[0]!.repositoryPath).toBe(tickets[1]!.repositoryPath);
+    expect(tickets[2]!.repositoryPath).not.toBe(tickets[0]!.repositoryPath);
+    expect(mission.execution?.workspaces).toHaveLength(2);
+    expect(isMission(mission)).toBe(true);
+    expect(mission.execution?.runs.filter(run => run.stage === 'implementation').map(run => run.status)).toEqual(['accepted', 'running', 'accepted']);
+    expect(snapshot.agents.find(agent => agent.id === 'original')).toEqual(original);
+    const agentCount = snapshot.agents.length;
+    await load();
+    expect(snapshot.agents).toHaveLength(agentCount);
+    expect(saveSnapshot).toHaveBeenCalledTimes(2);
+
+    // A fresh daemon reconstructs fixture conversations without provider history.
+    const events: BackendEvent[] = [];
+    const reopened = new AppBackendServer({ version: 'test', snapshot: structuredClone(snapshot), onEvent: event => events.push(event) });
+    const workerIds = [...new Set(mission.execution!.runs.map(run => run.workerId!))];
+    expect(workerIds).toHaveLength(3);
+    for (const agentId of workerIds) {
+      await reopened.handleMessage({ jsonrpc: '2.0', id: agentId, method: backendMethods.agentConversationLoad, params: { agentId } });
+      const event = events.find(event => event.agentId === agentId && event.type === 'claude.conversationSnapshotChanged');
+      expect(event).toMatchObject({ payload: { snapshot: { agentId, messages: expect.arrayContaining([
+        expect.objectContaining({ role: 'user' }), expect.objectContaining({ role: 'assistant' }),
+      ]) } } });
+    }
+    const runningWorker = mission.execution!.runs.find(run => run.status === 'running')!.workerId!;
+    await expect(reopened.handleMessage({ jsonrpc: '2.0', id: 'fixture-models', method: backendMethods.agentModelsList, params: { agentId: runningWorker } }))
+      .resolves.toMatchObject({ result: [{ model: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' }] });
+    expect(events.find(event => event.agentId === runningWorker && event.type === 'claude.conversationSnapshotChanged'))
+      .toMatchObject({ payload: { snapshot: { busy: true, activeTurnId: expect.any(String) } } });
+    await expect(reopened.handleMessage({ jsonrpc: '2.0', id: 'no-provider', method: backendMethods.agentSkillsList, params: { agentId: runningWorker } }))
+      .rejects.toThrow('screenshot agents are read-only');
+    await expect(server.handleMessage({ jsonrpc: '2.0', id: 'wrong-stage', method: backendMethods.debugMissionStageSet,
+      params: { missionId: mission.id, stage: 'review', preset: 'screenshot' } })).resolves.toMatchObject({ error: { code: -32602 } });
+    await server.close();
+    await reopened.close();
   });
 
   it('routes system permission requests through the backend system port', async () => {

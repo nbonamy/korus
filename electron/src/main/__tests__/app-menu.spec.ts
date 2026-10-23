@@ -456,6 +456,7 @@ describe('app menu', () => {
       'Review — Findings Identified',
       'Review — Findings Remediated',
       'Ship',
+      'Implementation — Website Screenshot',
     ]);
     expect(submenuLabels(debugMenu, 'Debug', 'Visualize Fixtures')).toStrictEqual([
       'Populate Suggestions',
@@ -538,6 +539,7 @@ describe('app menu', () => {
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Review — Findings Identified');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Review — Findings Remediated');
     clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Ship');
+    clickNestedItem(debugMenu, 'Debug', 'Mission Fixtures', 'Implementation — Website Screenshot');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Suggestions');
     clickNestedItem(debugMenu, 'Debug', 'Visualize Fixtures', 'Populate Diagrams');
     clickNestedItem(debugMenu, 'Debug', 'Review', 'Manual Review in Progress');
@@ -618,6 +620,7 @@ describe('app menu', () => {
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(4, 'review', 'identified');
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(5, 'review', 'remediated');
     expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(6, 'ship', undefined);
+    expect(debugCallbacks.setDebugMissionStage).toHaveBeenNthCalledWith(7, 'implementation', undefined, 'screenshot');
     expect(debugCallbacks.populateDebugVisualize).toHaveBeenNthCalledWith(1, 'suggestions');
     expect(debugCallbacks.populateDebugVisualize).toHaveBeenNthCalledWith(2, 'complete');
     expect(debugCallbacks.injectDebugCodeReview).toHaveBeenNthCalledWith(1, 'reviewing');

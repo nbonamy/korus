@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAppBrowserClient } from '../browser-client';
 
 describe(`${product.name} browser client`, () => {
+  it('keeps the native Mission debug-menu selection hook local in the browser', async () => {
+    const socket = new FakeBrowserSocket();
+    const api = createAppBrowserClient({ createSocket: () => socket as unknown as WebSocket, requestTimeoutMs: 20 });
+    const selection = api.selectMission('mission-website');
+    socket.receive({ version: 1, type: 'ready', userId: 'local-single-user' });
+    await expect(selection).resolves.toBeUndefined();
+    await expect(api.selectMission(null)).resolves.toBeUndefined();
+    expect(api.selectMission).toBe(api.selectMission);
+    expect(socket.sent).toStrictEqual([]);
+  });
+
   it('keeps an explicit runtime install pending beyond the ordinary request timeout', async () => {
     vi.useFakeTimers();
     try {

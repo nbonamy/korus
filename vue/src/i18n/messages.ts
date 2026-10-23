@@ -194,6 +194,7 @@ export const messages = {
       new: 'New mission', title: 'Missions',
       actions: 'Mission actions', deleteMission: 'Delete {mission}', deleteTitle: 'Delete {mission}?', deleteAction: 'Delete mission',
       deleteDescription: 'The mission, conversations, and artifacts will be deleted.',
+      deleteDebugDescription: 'The debug mission and its synthetic data will be deleted. Existing agents, conversations, and repositories are kept.',
       deleteWorktreeChoice: 'This mission created {count} worktree. Keep it for later, or delete it with its local branch. Deleting it discards any uncommitted changes.',
       deleteWorktreesChoice: 'This mission created {count} worktrees. Keep them for later, or delete them with their local branches. Deleting them discards any uncommitted changes.',
       createdWorktrees: 'Mission worktrees', keepWorktrees: 'Keep worktrees', deleteMissionAndWorktrees: 'Delete mission and worktrees',

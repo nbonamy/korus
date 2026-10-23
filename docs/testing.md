@@ -17,6 +17,16 @@ Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
 
+Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
+their conversations from the persisted fixture identity and rejects provider
+operations for those sessions. They exercise the real Mission and conversation
+components without starting model turns; they are presentation fixtures, not
+evidence that live provider execution works. Keep failure and recovery fixtures
+separate from screenshot presets.
+Debug workspace rows never grant filesystem ownership. Deleting a fixture keeps
+borrowed agents and provider conversations; synthetic screenshot agents are removed
+locally without provider operations.
+
 ## Quality Bar
 
 Every behavior change needs coverage at the owning runtime boundary; write the

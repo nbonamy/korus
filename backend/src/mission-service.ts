@@ -1,6 +1,7 @@
 import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
 import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import { createMission, deleteMission, updateMission, type DeleteMissionInput, type Mission } from '@workspace/core/missions';
+import { isMissionScreenshotAgent } from './mission-screenshot-fixture';
 
 /** Serializes mission revisions and publishes them only after durable storage succeeds. */
 export class MissionService {
@@ -36,7 +37,8 @@ export class MissionService {
       const retainedWorkerIds = new Set((candidate.missions ?? []).flatMap(other => (
         other.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []
       )));
-      const workers = candidate.agents.filter(agent => workerIds.has(agent.id) && !retainedWorkerIds.has(agent.id));
+      const workers = candidate.agents.filter(agent => workerIds.has(agent.id) && !retainedWorkerIds.has(agent.id)
+        && (!mission.execution?.debugFixture || isMissionScreenshotAgent(agent)));
       await cleanup(mission, workers);
       for (const worker of workers) closeAgentInSnapshot(candidate, worker.id);
     }, true);

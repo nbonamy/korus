@@ -27,7 +27,7 @@ export type AppMenuCallbacks = {
   populateDebugVisualize?: (scenario: VisualizeDebugScenario) => void;
   getDebugMissionStage?: () => MissionStage | undefined;
   getDebugMissionReviewState?: () => MissionReviewDebugState | undefined;
-  setDebugMissionStage?: (stage: MissionStage, reviewState?: MissionReviewDebugState) => void;
+  setDebugMissionStage?: (stage: MissionStage, reviewState?: MissionReviewDebugState, preset?: 'screenshot') => void;
   injectDebugCodeReview?: (scenario: DebugCodeReviewScenario) => void;
   isDebugThreadFlagSet?: (id: ThreadFlagId) => boolean;
   setDebugThreadFlag?: (id: ThreadFlagId, value: boolean) => void;
@@ -213,13 +213,17 @@ function buildDebugMissionFixtures(callbacks: AppMenuCallbacks): MenuItemConstru
     { label: 'Review — Findings Remediated', stage: 'review', reviewState: 'remediated' },
     { label: 'Ship', stage: 'ship' },
   ];
-  return fixtures.map(({ label, stage, reviewState }) => ({
+  return [...fixtures.map(({ label, stage, reviewState }): MenuItemConstructorOptions => ({
     label,
     type: 'radio',
     checked: callbacks.getDebugMissionStage?.() === stage && (stage !== 'review' || callbacks.getDebugMissionReviewState?.() === reviewState),
     enabled: Boolean(callbacks.setDebugMissionStage && callbacks.getDebugMissionStage?.()),
     click: () => callbacks.setDebugMissionStage?.(stage, reviewState),
-  }));
+  })), { type: 'separator' }, {
+    label: 'Implementation — Website Screenshot',
+    enabled: Boolean(callbacks.setDebugMissionStage && callbacks.getDebugMissionStage?.()),
+    click: () => callbacks.setDebugMissionStage?.('implementation', undefined, 'screenshot'),
+  }];
 }
 
 function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {

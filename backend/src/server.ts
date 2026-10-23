@@ -22,10 +22,11 @@ import { backendCodexHomeDir } from './state';
 import { isProviderConnection, type ProviderAuthentication } from '@workspace/core/contracts/provider-setup';
 import { MissionExecutionService } from './mission-execution-service';
 import { applyMissionDebugFixture } from './mission-debug-fixtures';
+import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
 import { missionStageSkills } from './bundled-skills/catalog';
 import { featureStages, type DeleteMissionInput, type Mission, type MissionReviewDebugState, type MissionStage } from '@workspace/core/missions';
-import type { MissionExecutionInput, MissionResultInput } from '@workspace/core/mission-execution';
+import { missionCreatedWorkspaces, type MissionExecutionInput, type MissionResultInput } from '@workspace/core/mission-execution';
 import { MissionService } from './mission-service';
 import { FileMissionArtifactStore, type MissionArtifactStorage } from './mission-artifact-store';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -589,7 +590,7 @@ export class AppBackendServer {
 
   private async deleteMission(input: DeleteMissionInput): Promise<void> {
     await this.missions.remove(input, async (deleted, workers) => {
-      const workspacePaths = missionWorktreePaths(deleted);
+      const workspacePaths = missionCreatedWorkspaces(deleted).map(workspace => workspace.path);
       if (input.deleteWorktrees) {
         const workerIds = new Set(workers.map(worker => worker.id));
         for (const folder of workspacePaths) {
@@ -599,6 +600,7 @@ export class AppBackendServer {
         }
       }
       for (const worker of workers) {
+        if (isMissionScreenshotAgent(worker)) continue;
         if (worker.status.type === 'working' || worker.status.type === 'awaitingInput') {
           await this.handleAgentDriverRequest(worker, backendMethods.driverInterrupt, { agent: worker });
         }
@@ -975,14 +977,19 @@ export class AppBackendServer {
         if (reviewState !== undefined && (stage !== 'review' || !['identified', 'remediated'].includes(reviewState as string))) {
           return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'reviewState must be identified or remediated for Review');
         }
+        const preset = params.preset;
+        if (preset !== undefined && (preset !== 'screenshot' || stage !== 'implementation')) {
+          return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'preset must be screenshot for Implementation');
+        }
         const mission = this.snapshot.missions?.find(candidate => candidate.id === missionId);
         for (const workerId of new Set(mission?.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? [])) {
           const worker = this.snapshot.agents.find(agent => agent.id === workerId);
-          if (worker && (worker.status.type === 'working' || worker.status.type === 'awaitingInput')) {
+          if (worker && !isMissionScreenshotAgent(worker) && (worker.status.type === 'working' || worker.status.type === 'awaitingInput')) {
             await this.handleAgentDriverRequest(worker, backendMethods.driverInterrupt, { agent: worker });
           }
         }
-        applyMissionDebugFixture(this.snapshot, missionId, stage as MissionStage, undefined, reviewState as MissionReviewDebugState | undefined);
+        if (preset === 'screenshot') applyMissionScreenshotFixture(this.snapshot, missionId);
+        else applyMissionDebugFixture(this.snapshot, missionId, stage as MissionStage, undefined, reviewState as MissionReviewDebugState | undefined);
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
       }
       case backendMethods.debugCodeReviewSet: {
@@ -1748,6 +1755,11 @@ export class AppBackendServer {
       case backendMethods.agentConversationLoad: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentConversationLoad, { agentId }, async () => {
+          const fixture = missionScreenshotConversation(this.snapshot, agentId);
+          if (fixture) {
+            this.applyAndEmitBackendEvent({ agentId, backend: 'claude', type: 'claude.conversationSnapshotChanged', payload: { revision: 1, snapshot: fixture } });
+            return this.snapshot;
+          }
           await this.agentConversations.hydrateAndRefresh(agentId);
           return this.snapshot;
         });
@@ -2923,6 +2935,10 @@ export class AppBackendServer {
   }
 
   private async handleAgentDriverRequest(agent: Agent, method: string, params: unknown): Promise<unknown> {
+    if (isMissionScreenshotAgent(agent)) {
+      if (method === backendMethods.driverModelsList) return [missionScreenshotModel];
+      throw new Error('Mission screenshot agents are read-only; no provider session is started.');
+    }
     const remoteConnectionId = this.remoteTeams.connectionIdForAgent(agent);
     return this.backendHandleForLocation(this.locationFromRemoteConnectionId(remoteConnectionId))
       .request(method, params, () => this.requireDriverRpc().handle(method, params));
@@ -3693,12 +3709,6 @@ function requireAgentCloseRequest(params: unknown): {
       confirmed: true,
     },
   };
-}
-
-function missionWorktreePaths(mission: Mission): string[] {
-  const paths = mission.execution?.workspaces?.map(workspace => workspace.path) ?? [];
-  if (mission.execution?.workspace?.path) paths.push(mission.execution.workspace.path);
-  return [...new Set(paths)];
 }
 
 function requireDuplicateAgentRequest(params: unknown): { agentId: string; options?: DuplicateAgentOptions } {

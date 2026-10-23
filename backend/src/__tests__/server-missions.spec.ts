@@ -5,8 +5,55 @@ import { createInitialSnapshot } from '@workspace/core/snapshot-construction';
 import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { AgentGitService } from '../git/agent-git-service';
+import { applyMissionDebugFixture } from '../mission-debug-fixtures';
+import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
 
 describe('mission backend boundary', () => {
+  it.each([
+    { preset: 'workflow', deleteWorktrees: true },
+    { preset: 'workflow', deleteWorktrees: false },
+    { preset: 'screenshot', deleteWorktrees: true },
+    { preset: 'screenshot', deleteWorktrees: false },
+  ])('deletes the $preset fixture without touching repositories or real agents (cleanup=$deleteWorktrees)', async ({ preset, deleteWorktrees }) => {
+    // Debug runs may borrow real agents and display primary checkouts as workspaces.
+    // Neither a stale cleanup request nor fixture deletion owns those resources.
+    const snapshot = createInitialSnapshot();
+    snapshot.agents.forEach((agent, index) => {
+      agent.folder = `/src/${index ? 'web' : 'api'}`;
+      agent.backendSession = { kind: 'codex', threadId: `real-thread-${index}` };
+    });
+    const observer = { ...structuredClone(snapshot.agents[0]!), id: 'unnamed-observer', name: null };
+    snapshot.agents.push(observer);
+    const originalAgents = structuredClone(snapshot.agents);
+    const mission = createMission(snapshot, { outcome: 'New mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    if (preset === 'workflow') applyMissionDebugFixture(snapshot, mission.id, 'implementation');
+    else applyMissionScreenshotFixture(snapshot, mission.id);
+    const validateLinkedWorktreeDeletion = vi.fn().mockRejectedValue(new Error('Primary checkouts cannot be deleted.'));
+    const deleteLinkedWorktree = vi.fn();
+    const providerRequest = vi.fn().mockRejectedValue(new Error('Fixture cleanup must not contact a provider.'));
+    const deleteMissionHome = vi.fn().mockResolvedValue(undefined);
+    let disk: unknown;
+    const server = new AppBackendServer({
+      version: 'test', snapshot,
+      agentGitService: { validateLinkedWorktreeDeletion, deleteLinkedWorktree } as unknown as AgentGitService,
+      driverRpc: { handle: providerRequest, onEvent: () => () => {}, close: async () => {} } as unknown as BackendDriverRpc,
+      deleteMissionHome, saveSnapshot: async value => { disk = persistedStateFromSnapshot(value); },
+    });
+    try {
+      await server.handleMessage({ jsonrpc: '2.0', id: 'delete-fixture', method: 'mission/delete', params: {
+        input: { id: mission.id, revision: mission.revision, deleteWorktrees, confirmed: true },
+      } });
+      expect(snapshot.missions).toStrictEqual([]);
+      expect(snapshot.agents).toStrictEqual(originalAgents);
+      expect(snapshotFromPersistedState(disk).missions).toStrictEqual([]);
+      expect(snapshotFromPersistedState(disk).agents.map(agent => agent.id)).toStrictEqual(originalAgents.map(agent => agent.id));
+      expect(deleteMissionHome).toHaveBeenCalledExactlyOnceWith(mission.id);
+      expect(validateLinkedWorktreeDeletion).not.toHaveBeenCalled();
+      expect(deleteLinkedWorktree).not.toHaveBeenCalled();
+      expect(providerRequest).not.toHaveBeenCalled();
+    } finally { await server.close(); }
+  });
+
   it('keeps a resumed Mission running through compaction while its work prompt is queued', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

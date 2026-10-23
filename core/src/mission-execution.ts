@@ -1,6 +1,6 @@
 import { product } from './product';
 import { interactiveReviewMarkdownGuidance } from './plan-review';
-import type { Mission, MissionRun, MissionStage, MissionTicketAssignment } from './mission-types';
+import type { Mission, MissionRun, MissionStage, MissionTicketAssignment, MissionWorkspace } from './mission-types';
 
 export type {
   MissionArtifactReadResult,
@@ -26,6 +26,17 @@ export type MissionImplementationStartProgress = {
   repositoryCount: number;
   ticketCount: number;
 };
+
+/** Debug workspace rows are display data, never owned filesystem resources. */
+export function missionCreatedWorkspaces(mission?: Mission | null): MissionWorkspace[] {
+  const execution = mission?.execution;
+  if (!execution || execution.debugFixture) return [];
+  const workspaces = [...(execution.workspaces ?? [])];
+  if (execution.workspace) {
+    workspaces.push({ repositoryPath: execution.repoPath ?? execution.workspace.path, ...execution.workspace });
+  }
+  return workspaces.filter((workspace, index) => workspaces.findIndex(candidate => candidate.path === workspace.path) === index);
+}
 
 export function pendingMissionRun(mission: Mission): MissionRun | undefined {
   return mission.execution?.runs.slice().reverse().find(run => ['preparing', 'running', 'awaitingReview'].includes(run.status));

@@ -15,7 +15,7 @@
     </template>
 
     <div class="mission-delete-dialog__body">
-      <p>{{ t('missions.deleteDescription') }}</p>
+      <p>{{ t(mission?.execution?.debugFixture ? 'missions.deleteDebugDescription' : 'missions.deleteDescription') }}</p>
       <template v-if="worktrees.length">
         <p>{{ t(worktrees.length === 1 ? 'missions.deleteWorktreeChoice' : 'missions.deleteWorktreesChoice', { count: worktrees.length }) }}</p>
         <ul class="mission-delete-dialog__worktrees" :aria-label="t('missions.createdWorktrees')">
@@ -64,7 +64,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Mission } from '@workspace/core/missions';
-import type { MissionWorkspace } from '@workspace/core/mission-execution';
+import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 import { FolderIcon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
@@ -84,17 +84,7 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 
-const worktrees = computed<MissionWorkspace[]>(() => {
-  const execution = props.mission?.execution;
-  const values = [...(execution?.workspaces ?? [])];
-  if (execution?.workspace) {
-    values.push({
-      repositoryPath: execution.repoPath ?? execution.workspace.path,
-      ...execution.workspace,
-    });
-  }
-  return values.filter((worktree, index) => values.findIndex(candidate => candidate.path === worktree.path) === index);
-});
+const worktrees = computed(() => missionCreatedWorkspaces(props.mission));
 
 function repositoryName(repositoryPath: string): string {
   return repositoryPath.split(/[\\/]/).filter(Boolean).at(-1) ?? repositoryPath;
