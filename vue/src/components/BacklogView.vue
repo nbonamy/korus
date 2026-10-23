@@ -263,7 +263,7 @@ const sortedRepositories = computed(() => [...(props.workBacklog?.repositories ?
     return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' });
   }
   const activity = repositoryActivityAt(right).localeCompare(repositoryActivityAt(left));
-  return activity || left.name.localeCompare(right.name);
+  return activity || (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '') || left.name.localeCompare(right.name);
 }));
 const filteredRepositories = computed(() => {
   const query = repositoryFilter.value.trim().toLocaleLowerCase();

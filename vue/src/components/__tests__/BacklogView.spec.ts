@@ -415,6 +415,12 @@ describe('BacklogView', () => {
     });
 
     expect(wrapper.findAll('.cockpit-view__repositories > div').map((row) => row.text())).toStrictEqual(['recent', 'older']);
+
+    // Repository timestamps still provide recency if optional issue enrichment is unavailable.
+    await wrapper.setProps({ workBacklog: { ...wrapper.props('workBacklog')!, repositories:
+      paginatedRepositories.map(({ workItemsUpdatedAt, ...source }) => source),
+    } });
+    expect(wrapper.findAll('.cockpit-view__repositories > div').map(row => row.text())).toStrictEqual(['recent', 'older']);
   });
 
   it('routes assigned rows to their team and passes the batch launcher to the inbox', () => {
