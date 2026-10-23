@@ -102,7 +102,8 @@ describe('split-screen conversations', () => {
     expect(wrapper.get('.agent-split-grid__pane--focused').attributes('data-agent-id')).toBeUndefined();
     expect(wrapper.get('[aria-label="Resize conversation columns"]').attributes('aria-valuenow')).toBe('60');
     expect(wrapper.get('[aria-label="Resize conversation rows"]').attributes('aria-valuenow')).toBe('50');
-  });
+    // Mounts the whole app twice; CI runners take 3-5s, so the 5s default leaves no headroom.
+  }, 20_000);
 
   it('preserves the saved split layout while a narrow window shows one conversation', async () => {
     let compact = false;
