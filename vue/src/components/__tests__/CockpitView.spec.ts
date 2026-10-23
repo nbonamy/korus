@@ -13,7 +13,7 @@ describe('CockpitView', () => {
     });
 
     expect(wrapper.get('h1').text()).toBe('Agents');
-    expect(wrapper.get('.agent-cockpit__header span').text()).toBe(String(snapshot.agents.length));
+    expect(wrapper.get('.agent-cockpit__count').text()).toBe(String(snapshot.agents.length));
     expect(wrapper.findComponent(CockpitAgentsView).props('mode')).toBe('teams');
   });
 
@@ -23,12 +23,12 @@ describe('CockpitView', () => {
       props: { agents: snapshot.agents, teams: snapshot.teams, viewMode: 'teams' },
     });
 
-    expect(wrapper.get('.agent-cockpit__mode-trigger').text()).toContain('Teams');
-    await wrapper.get('.agent-cockpit__mode-trigger').trigger('click');
+    expect(wrapper.get('.app-menu-chip').text()).toContain('Teams');
+    await wrapper.get('.app-menu-chip').trigger('click');
     const menu = wrapper.getComponent(AppMenu);
-    expect(menu.props('items')).toStrictEqual([
-      { checked: true, id: 'teams', label: 'Teams', type: 'radio' },
-      { checked: false, id: 'recent', label: 'Recent', type: 'radio' },
+    expect(menu.props('items')).toEqual([
+      expect.objectContaining({ checked: true, id: 'teams', label: 'Teams', type: 'radio', icon: expect.anything() }),
+      expect.objectContaining({ checked: false, id: 'recent', label: 'Recent', type: 'radio', icon: expect.anything() }),
     ]);
     menu.vm.$emit('select', 'recent');
 

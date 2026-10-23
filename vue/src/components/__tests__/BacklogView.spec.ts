@@ -54,12 +54,12 @@ describe('BacklogView', () => {
 
   it('sorts repositories from the shared popup menu', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('b', '2026-01-01'), repository('a', '2026-02-01')]);
-    await wrapper.get('.cockpit-view__repository-sort').trigger('click');
+    await wrapper.get('.app-menu-chip').trigger('click');
     const items = Array.from(document.body.querySelectorAll<HTMLElement>('.app-menu__item'));
     expect(items.map((item) => item.textContent?.trim())).toEqual(['Recent activity', 'Alphabetical']);
     items[1]!.click();
     await flushPromises();
-    expect(wrapper.get('.cockpit-view__repository-sort').text()).toContain('A–Z');
+    expect(wrapper.get('.app-menu-chip').text()).toContain('A–Z');
     expect(document.body.querySelector('.app-menu__item')).toBeNull();
   });
 
@@ -345,7 +345,7 @@ describe('BacklogView', () => {
     expect(wrapper.findAll('.cockpit-view__repositories > div').map((row) => row.text())).toStrictEqual(['older']);
     await wrapper.get('input[aria-label="Filter repositories"]').setValue('');
 
-    await wrapper.get('.cockpit-view__repository-sort').trigger('click');
+    await wrapper.get('.app-menu-chip').trigger('click');
     await wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'alphabetical');
     await wrapper.vm.$nextTick();
 
