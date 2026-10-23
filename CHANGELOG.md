@@ -4,6 +4,15 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.39.3] - 2026-10-23
+
+### Improvements and fixes
+
+- Claude Code's native task lists appear in the execution-plan panel, with live
+  progress updates and restored progress when reopening a conversation.
+- Worktree deletion shows its progress without a stale close-confirmation title.
+  Agents without a custom name use their normal display name when confirming closure.
+
 ## [0.39.2] - 2026-10-23
 
 ### New features

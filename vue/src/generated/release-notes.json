@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.39.2",
+  "currentVersion": "0.39.3",
   "releases": [
+    {
+      "version": "0.39.3",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "55fcb0d9c360ac5bb93c8b8a2f0c1562e7679f26e32f29369a8297cb28d34f4b",
+      "markdown": "### Improvements and fixes\n\n- Claude Code's native task lists appear in the execution-plan panel, with live\n  progress updates and restored progress when reopening a conversation.\n- Worktree deletion shows its progress without a stale close-confirmation title.\n  Agents without a custom name use their normal display name when confirming closure."
+    },
     {
       "version": "0.39.2",
       "releasedAt": "2026-10-23",
