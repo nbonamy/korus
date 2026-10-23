@@ -7,7 +7,7 @@
       <article class="settings-integrations-panel__integration">
         <div class="settings-integrations-panel__identity">
           <span class="settings-integrations-panel__icon" aria-hidden="true">
-            <component :is="providerIcons[connection.provider] ?? BacklogIcon" size="var(--icon-xl)" />
+            <component :is="workProviderIcon(connection.provider)" size="var(--icon-xl)" />
           </span>
           <div>
             <strong>{{ workProviderDefinition(connection.provider).label }}</strong>
@@ -37,12 +37,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type Component } from 'vue';
+import { computed } from 'vue';
 import type { WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { workProviderDefinition, workProviderKinds } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
-import { BacklogIcon, GitHubIcon, LinearIcon } from '../shared/icons/app-icons';
+import { workProviderIcon } from './work-provider-icons';
 import WorkAuthorizationSteps from './WorkAuthorizationSteps.vue';
 import SettingsIntro from './SettingsIntro.vue';
 import StatusPill from '../shared/form/StatusPill.vue';
@@ -61,7 +61,6 @@ const emit = defineEmits<{
   disconnect: [provider: WorkProviderKind];
   'open-authorization': [provider: WorkProviderKind];
 }>();
-const providerIcons: Partial<Record<WorkProviderKind, Component>> = { github: GitHubIcon, linear: LinearIcon };
 const integrations = computed(() => workProviderKinds.map(provider => props.connections.find(connection => connection.provider === provider) ?? { provider, status: 'notConfigured' } as WorkIntegrationConnection));
 const pendingAuthorization = (provider: WorkProviderKind) => props.authorizations[provider]
   ?? (props.authorization?.provider === provider ? props.authorization : null);

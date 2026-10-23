@@ -20,6 +20,14 @@ describe('BacklogSourceSelector', () => {
     expect(getComputedStyle(wrapper.get('.backlog-source-selector__provider').element).flexGrow).toBe('1');
   });
 
+  it('shows the provider icon on the selected value', () => {
+    const wrapper = mount(BacklogSourceSelector, {
+      props: { provider: 'linear', providers: ['github', 'linear'], showSource: false },
+      global: { components: { ElSelect, ElOption } },
+    });
+    expect(wrapper.find('.backlog-source-selector__provider .el-select__prefix .linear-icon').exists()).toBe(true);
+  });
+
   it('offers connected providers only, hides a redundant choice, and falls back after disconnect', async () => {
     const connections = reactive<WorkIntegrationConnection[]>([
       { provider: 'github', status: 'connected' },
