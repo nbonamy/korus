@@ -4,6 +4,48 @@ const host = '12D3KooW'.padEnd(52, 'h'); const phone = '12D3KooW'.padEnd(52, 'p'
 const other = '12D3KooW'.padEnd(52, 'o');
 const invite = (expiresAt = 1001, code = 'K7QDM2XP') => ({ code, expiresAt });
 describe('trusted companion rendezvous', () => {
+  it('limits a configured code to its admitted destination and expires each temporary circuit permission', () => {
+    let now = 1;
+    const pairing = { code: 'ABCDEFGH', hostId: host };
+    const policy = new CompanionRelayPolicy(undefined, () => now, pairing);
+    expect(policy.resolve(phone, pairing.code)).toBeNull();
+    policy.register(host, []); policy.register(other, []);
+    expect(policy.route(phone, host)).toBe(false);
+    expect(policy.resolve(phone, pairing.code)).toBe(host);
+    expect(policy.route(phone, host)).toBe(true);
+    expect(policy.route(phone, other)).toBe(false);
+    expect(() => policy.register(other, [], [invite(1000, pairing.code)])).toThrow();
+    // Refresh the host lease without extending the phone's temporary lookup permission.
+    now = 100_000; policy.register(host, []);
+    now = 200_000; policy.register(host, []);
+    now = 300_001; policy.register(host, []);
+    expect(policy.route(phone, host)).toBe(false);
+    expect(policy.resolve(phone, pairing.code)).toBe(host);
+    policy.register(host, [phone]);
+    now += 100_000; policy.register(host, [phone]);
+    now += 100_000; policy.register(host, [phone]);
+    now += 100_000; policy.register(host, [phone]);
+    expect(policy.route(phone, host)).toBe(true);
+    policy.register(host, []);
+    expect(policy.route(phone, host)).toBe(false);
+  });
+
+  it('keeps configured-route lookup state bounded and clears it when its host lease ends', () => {
+    let now = 1;
+    const pairing = { code: 'ABCDEFGH', hostId: host };
+    const policy = new CompanionRelayPolicy(undefined, () => now, pairing);
+    policy.register(host, []);
+    for (let index = 0; index < 1000; index++) policy.resolve(`phone-${index}`, pairing.code);
+    expect(policy.route('phone-0', host)).toBe(false);
+    expect(policy.route('phone-999', host)).toBe(true);
+    expect(policy.resolve(phone, pairing.code)).toBe(host);
+    expect(policy.route(phone, host)).toBe(true);
+    now += 120_000;
+    policy.register(host, []);
+    expect(policy.route(phone, host)).toBe(false);
+    expect(policy.resolve(phone, pairing.code)).toBe(host);
+  });
+
   it('allows only the first authenticated phone to claim and route a code; retries keep that identity', () => {
     const policy = new CompanionRelayPolicy(new Set([host]), () => 1);
     policy.register(host, [], [invite()]);

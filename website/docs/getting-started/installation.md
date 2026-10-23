@@ -65,7 +65,10 @@ For a first task, choose a small local repository whose branch and existing chan
 
 ## Development builds
 
-For source installation and development instructions, see the [repository README](https://github.com/nbonamy/korus#readme).
+Building from source uses the Node 26 reference toolchain. Follow the
+[repository README](https://github.com/nbonamy/korus#development) for the pinned
+Node version, npm setup, and development instructions. The packaged desktop app
+includes its own Node runtime, so you do not need to install Node to use it.
 
 Experimental source builds may expose behavior that differs from the desktop release. When reporting a problem, include the app version and whether you are using a release or a development build.
 

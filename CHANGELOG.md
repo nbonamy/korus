@@ -4,6 +4,129 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.39.2] - 2026-10-23
+
+### New features
+
+- Run project and worktree creation, Mission startup, and worktree deletion in
+  the background while continuing to use Korus.
+- Filter the GitHub backlog by issues or pull requests, and choose Assigned to me
+  directly from the assignee filter.
+
+### Improvements and fixes
+
+- Closing an agent with worktree cleanup immediately removes it from the roster
+  and selects another teammate from the same repository when available. Failed
+  cleanup restores the agent for retry without replacing your current selection.
+- Concurrent worktree creation in the same repository avoids Git lock conflicts.
+- Recent backlog sorting uses repository timestamps when issue activity is
+  unavailable, instead of falling back to alphabetical order.
+- Starting work uses a more compact dialog, with provider and source choices
+  alongside repository selection.
+- Menus consistently indicate the current selection across backlog views,
+  repository sorting, and conversation layouts.
+
+## [0.39.1] - 2026-10-22
+
+### Improvements and fixes
+
+- The file explorer shows workspace folders reliably in large projects. Folders
+  load on expansion, and large listings offer Load more instead of silently
+  omitting entries.
+- Search finds files in unopened folders, with pagination for large result sets.
+- Refresh the explorer to discover newly created files while keeping folders open.
+
+## [0.39.0] - 2026-10-22
+
+### New features
+
+- Resize conversation panes with draggable dividers or keyboard controls. Team
+  layouts, assigned agents, focused panes, and split sizes persist across restarts.
+- Include read-only diagrams in interactive plans and comment on each diagram.
+- Review Mission requirements with annotations and question answers, regardless
+  of the interactive-plan workflow setting.
+- Choose the implementation provider, model, and reasoning effort in a Start
+  implementation dialog, independently of the Mission lead's provider.
+
+### Improvements and fixes
+
+- Mission stage handoffs wait for the lead's active turn to finish, preventing
+  approved requirements from leaving Tickets queued and the lead stuck working.
+- Mission workers retain their ticket assignments and receive actionable errors
+  when submitting results, allowing corrections after a failed submission.
+- Agent names remain visible in narrow conversation headers while repository
+  and branch details truncate first.
+- Question cards fill the conversation width and resize with the sidebar and pane.
+- Concurrent operations on a new Codex agent share conversation initialization,
+  preventing missing-rollout errors when starting work from an issue.
+- Quitting the desktop app uses the native shutdown sequence reliably.
+- Reading a conversation clears its mobile notification. Read events stay silent,
+  and later alerts replace earlier notifications for the same conversation.
+- Merge-report recipients follow the sidebar's manual agent order.
+- Browse files directly from an empty file pane, and open local Markdown links
+  in workspace tabs without replacing the app.
+
+## [0.38.0] - 2026-10-22
+
+### New features
+
+- Claude and other non-Codex agents can generate images through Codex and display
+  the results inline in their replies.
+- Send merge reports to another agent in the same repository when a branch has
+  no originating agent. Reporting stays off until you choose a recipient.
+- Configure the models available from each provider with an administrator-managed
+  `requirements.json` file, shared by desktop and mobile.
+- Connect native Android companions with encrypted pairing and push notifications.
+- On mobile, open existing projects from the connected host, duplicate agents,
+  and rename agents from their conversation.
+
+### Improvements and fixes
+
+- Large mobile conversations, including image-heavy histories, transfer with
+  compression instead of failing at the uncompressed response limit.
+- Mobile conversations retain loaded history, drafts, attachments, and streaming
+  replies across refreshes and reconnects, catching up without reloading the
+  whole conversation. Slow conversation requests no longer disconnect the session.
+- Mobile recovery is more reliable after brief backgrounding, with quieter
+  connection indicators and clearer conversation-loading feedback.
+- Restarting a Claude agent clears its old conversation, and newly forked
+  conversations display their inherited history immediately.
+- Review agents receive the full skill instructions and explicit errors for
+  unsupported finding-update fields, preventing fixes from going unrecorded.
+- Tool activity titles use readable names without MCP prefixes, underscores,
+  or hyphens; shell commands keep their original text.
+
+## [0.37.1] - 2026-10-16
+
+### Improvements and fixes
+
+- Creating and editing automations saves correctly without an object-cloning error.
+- Analytics records token usage and output speed for the first turn in new Codex
+  conversations. Previously unmeasured turns remain unchanged.
+- Git diff controls use the same background as the other header controls.
+
+## [0.37.0] - 2026-10-16
+
+### New features
+
+- Get started with your existing Codex and Claude CLI sign-ins and settings.
+  New setups reuse your CLI configuration by default; saved choices and existing
+  conversations stay intact. Separate setups remain available with their own sign-in.
+- Use an authenticated GitHub CLI for repositories, backlog, and pull requests
+  without signing in again. Direct GitHub access remains available, and canceling
+  or disconnecting it preserves available CLI access. Hosted GitHub MCP requires
+  a direct connection.
+
+### Improvements and fixes
+
+- Onboarding highlights separate setups that still need sign-in and warns before
+  continuing without connecting them.
+- GitHub and Linear connection flows load independently.
+- Switching Codex configurations refreshes plugin availability, avoiding
+  tool startup failures such as `node_repl`.
+- Independent review threads use `👀 <thread name>`, or the branch name when
+  the source thread has no custom name.
+
 ## [0.36.3] - 2026-10-16
 
 ### New features

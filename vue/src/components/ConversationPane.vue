@@ -186,6 +186,7 @@ import {
   type CollaborationMessagePresentation,
 } from '../shared/collaboration-message';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
+import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useBackendSwitch();
 const backendChoices = useBackendChoices(() => props.agent?.teamId);
 const connectEngine = useConnectEngine();
@@ -237,6 +238,7 @@ const props = withDefaults(defineProps<{
   threadFlagBusy: false,
   savedPromptDrafts: () => [],
 });
+provideConversationImagePreviews(() => props.agent?.id);
 provideAppToolPresentation(
   (key, params) => t(key, params ?? {}),
   (identifier) => {

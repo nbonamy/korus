@@ -1,4 +1,3 @@
-import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import type {
   CloneSourceRepositoryInput,
   SourceRepository,
@@ -101,23 +100,15 @@ export function useRepositoryAcquisition(options: RepositoryAcquisitionOptions) 
   }
 
   async function select(repository: WorkSource): Promise<void> {
-    const identity = canonicalGitRemoteIdentity(repository.url);
-    const local = identity
-      ? sourceRepositories.value.find((candidate) => candidate.remoteIdentity === identity)
-      : undefined;
-    if (local) {
-      close();
-      await options.openRepository(local, selectedTeamId());
-      return;
-    }
-    await cloneAndOpen(repository.url);
+    await cloneAndOpen(repository.url, true);
   }
 
-  async function cloneAndOpen(url: string): Promise<void> {
+  async function cloneAndOpen(url: string, reuseExisting = false): Promise<void> {
     await runBusy(async () => {
       const team = options.activeTeam();
       const repository = await options.cloneRepository({
         url,
+        ...(reuseExisting ? { reuseExisting: true } : {}),
         ...(team?.remoteConnectionId ? { remoteConnectionId: team.remoteConnectionId } : {}),
       });
       close();

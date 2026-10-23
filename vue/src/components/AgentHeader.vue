@@ -23,24 +23,27 @@
         size="sm"
       />
       <div class="agent-header__agent-line">
-        <strong class="workspace-header__title">{{ displayName }}</strong>
-        <span
-          v-if="agentLocationLabel"
-          class="agent-header__folder"
-          :title="agent.folder ?? undefined"
-        >
-          {{ agentLocationLabel }}
-        </span>
-        <span
-          class="agent-header__inline-dot"
-          :data-status="agent.status.type"
-          aria-hidden="true"
-        />
-        <span
-          class="agent-header__inline-status"
-        >
-          {{ agentStatusDetail }}
-        </span>
+        <strong class="workspace-header__title" :title="displayName">{{ displayName }}</strong>
+        <div class="agent-header__context">
+          <span
+            v-if="agentLocationLabel"
+            class="agent-header__folder"
+            :title="agent.folder ?? undefined"
+          >
+            {{ agentLocationLabel }}
+          </span>
+          <span
+            class="agent-header__inline-dot"
+            :data-status="agent.status.type"
+            aria-hidden="true"
+          />
+          <span
+            class="agent-header__inline-status"
+            :title="agentStatusDetail ?? undefined"
+          >
+            {{ agentStatusDetail }}
+          </span>
+        </div>
       </div>
     </div>
     <div
@@ -77,6 +80,7 @@
         :pull-branch="pullGitBranch"
         :revert-changes="revertGitChanges"
         :report-back-agent-name="reportBackAgentName"
+        :report-back-agents="reportBackAgents"
         @open-git-log="emit('open-git-log')"
         @inspect-agent="emit('select-agent', $event)"
       />
@@ -166,6 +170,7 @@ const props = withDefaults(defineProps<{
   subagentTree?: AgentSubagentTree | null;
   selectedSubagentConversationId?: string | null;
   reportBackAgentName?: string | null;
+  reportBackAgents?: { id: string; name: string }[];
   getGitWorkflow?: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   generateGitMessage?: (agentId: string, input: import('@workspace/core/contracts').AgentGitMessageGenerationInput) => Promise<import('@workspace/core/contracts').AgentGitMessageGenerationResult>;
   commitGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitCommitInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
@@ -276,6 +281,7 @@ const gitReviewAvailable = computed(() => {
 <style scoped>
 .agent-header {
   --agent-status-dot-size: 10px;
+  container: agent-header / inline-size;
 }
 
 .agent-header.agent-header--pane {
@@ -291,10 +297,32 @@ const gitReviewAvailable = computed(() => {
 }
 
 .agent-header__agent-line {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-6);
+}
+
+.agent-header__agent-line > .workspace-header__title {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.agent-header__context {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.agent-header__folder,
+.agent-header__inline-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-header__identity .agent-header__agent-line {
@@ -313,7 +341,6 @@ const gitReviewAvailable = computed(() => {
 }
 
 .agent-header__inline-status {
-  min-width: 0;
   color: var(--color-text-muted);
 }
 
@@ -378,9 +405,17 @@ const gitReviewAvailable = computed(() => {
 }
 
 
+/* Narrow split panes keep the same essential controls as phones. */
+@container agent-header (max-width: 400px) {
+  .agent-header__inline-status,
+  .agent-header__git-status,
+  .agent-header__open-in {
+    display: none;
+  }
+}
+
 /* Phones keep identity, the git workflow and the workspace toggle; the rest stays reachable from the workspace. */
 @media (max-width: 768px) {
-  .agent-header__folder,
   .agent-header__inline-status,
   .agent-header__git-status,
   .agent-header__open-in {

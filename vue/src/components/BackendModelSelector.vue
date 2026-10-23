@@ -13,7 +13,7 @@
         <template #label><span class="backend-model-selector__tab" role="img" :title="backendDisplayName(choice)" :aria-label="backendDisplayName(choice)"><BackendIcon :backend="choice" /></span></template>
       </el-tab-pane>
     </el-tabs>
-    <AppMenu class="app-menu--embedded" :items="modelItems" :ariaLabel="t('modelPicker.model')" :show-selection-check="false" @select="selectModel" />
+    <AppMenu class="app-menu--embedded" :items="modelItems" :ariaLabel="t('modelPicker.model')" @select="selectModel" />
     <!-- Only on a cold first load; a cached catalog is shown straight away and refreshed behind the scenes. -->
     <div v-if="loading" class="backend-model-selector__loading" aria-busy="true" role="status" :aria-label="t('modelPicker.loading')">
       <span v-for="row in 4" :key="row" />
@@ -29,16 +29,17 @@ import { backendDisplayName } from '@workspace/core/backend-driver';
 import { agentBackends } from '@workspace/core/contracts/shared';
 import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { CheckIcon, ChevronDown } from '../shared/icons/app-icons';
+import { ChevronDown } from '../shared/icons/app-icons';
 import BackendIcon from './BackendIcon.vue';
 import { useAgentHost, useBackendChoices, useCatalogAgentId, useNewAgentBackend, useRememberBackend, useSavedModelSelection } from './backend-selection';
 import { cacheModels, cachedModels, defaultReasoningEffort, presentCatalog, useBackendModelCatalog } from './backend-model-catalog';
 
-const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean }>();
+const props = defineProps<{ agentId?: string; teamId?: string | null; disabled?: boolean; allowedBackends?: AgentBackend[] }>();
 const backend = defineModel<AgentBackend>('backend');
 const model = defineModel<string>('model', { default: '' });
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' });
-const choices = useBackendChoices(() => props.teamId);
+const hostChoices = useBackendChoices(() => props.teamId);
+const choices = computed(() => hostChoices.value.filter(choice => !props.allowedBackends || props.allowedBackends.includes(choice)));
 // Remembering a choice reorders `choices`; the tabs keep a fixed order so they never jump under the pointer.
 const tabs = computed(() => agentBackends.filter(choice => choices.value.includes(choice)));
 useNewAgentBackend(backend, choices);
@@ -66,16 +67,14 @@ const efforts = computed(() => selectedModel.value?.supportedReasoningEfforts ??
 const modelItems = computed<AppMenuItem[]>(() => [
   ...models.value.map((option): AppMenuItem => {
     const selected = model.value === option.model;
-    const icon = selected ? CheckIcon : undefined;
-    if (!option.supportedReasoningEfforts?.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected, icon };
+    if (!option.supportedReasoningEfforts?.length) return { id: `model:${option.model}`, label: option.displayName, type: 'radio', checked: selected };
     return {
-      id: `submenu:${option.model}`, type: 'submenu', label: option.displayName, icon,
+      id: `submenu:${option.model}`, type: 'submenu', label: option.displayName, checked: selected,
       ...(selected && reasoningEffort.value ? { value: reasoningEffort.value } : {}),
       items: [
         ...option.supportedReasoningEfforts.map((effort): AppMenuItem => ({
           id: `effort:${option.model}:${effort.reasoningEffort}`, label: effort.reasoningEffort, type: 'radio',
           checked: selected && reasoningEffort.value === effort.reasoningEffort,
-          icon: selected && reasoningEffort.value === effort.reasoningEffort ? CheckIcon : undefined,
         })),
       ],
     };
@@ -147,7 +146,7 @@ function selectModel(id: string) {
   color: var(--color-text);
   background: var(--color-surface-lowest);
   font: inherit;
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-13);
   font-weight: var(--font-weight-regular);
   text-align: left;
   cursor: pointer;

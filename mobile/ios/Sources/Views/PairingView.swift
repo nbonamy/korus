@@ -92,6 +92,9 @@ struct PairingView: View {
                 .padding(.vertical, 6)
                 .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
                 .disabled(model.pairing != .idle)
+                if let url = model.privacyPolicyURL {
+                    Link("Privacy Policy", destination: url).font(.footnote)
+                }
             }
             .padding(.bottom, 8)
         }

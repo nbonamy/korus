@@ -3,33 +3,9 @@
     <header class="agent-cockpit__header">
       <div>
         <h1>{{ $t('surface.cockpitView.agents') }}</h1>
-        <span>{{ agents.length }}</span>
+        <span class="agent-cockpit__count">{{ agents.length }}</span>
       </div>
-      <el-popover
-        v-model:visible="modeMenuOpen"
-        placement="bottom-end"
-        trigger="click"
-        :width="188"
-        popper-class="app-popover agent-cockpit__mode-popover"
-      >
-        <template #reference>
-          <button
-            class="agent-cockpit__mode-trigger"
-            type="button"
-            :aria-label="$t('surface.cockpitAgentsView.layout')"
-            :aria-expanded="modeMenuOpen"
-          >
-            <span>{{ modeLabel }}</span>
-            <ChevronDown aria-hidden="true" />
-          </button>
-        </template>
-        <AppMenu
-          class="app-menu--embedded"
-          :ariaLabel="$t('surface.cockpitAgentsView.layout')"
-          :items="modeMenuItems"
-          @select="selectMode"
-        />
-      </el-popover>
+      <AppMenuChip :label="modeLabel" :ariaLabel="$t('surface.cockpitAgentsView.layout')" :items="modeMenuItems" @select="selectMode" />
     </header>
 
     <CockpitAgentsView
@@ -54,10 +30,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
+import { IconClockHour8, IconUsers } from '@tabler/icons-vue';
 import type { Agent, CockpitAgentViewMode, Team } from '@workspace/core/contracts';
-import { ChevronDown } from '../shared/icons/app-icons';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuChip from '../shared/menu/AppMenuChip.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
 import CockpitAgentsView from './CockpitAgentsView.vue';
@@ -85,17 +61,18 @@ const emit = defineEmits<{
   'update-view-mode': [mode: CockpitAgentViewMode];
 }>();
 
-const modeMenuOpen = ref(false);
 const modeLabel = computed(() => translate(`surface.cockpitAgentsView.${props.viewMode}`));
 const modeMenuItems = computed<AppMenuItem[]>(() => [
   {
     checked: props.viewMode === 'teams',
+    icon: IconUsers,
     id: 'teams',
     label: translate('surface.cockpitAgentsView.teams'),
     type: 'radio',
   },
   {
     checked: props.viewMode === 'recent',
+    icon: IconClockHour8,
     id: 'recent',
     label: translate('surface.cockpitAgentsView.recent'),
     type: 'radio',
@@ -104,7 +81,6 @@ const modeMenuItems = computed<AppMenuItem[]>(() => [
 
 function selectMode(itemId: string): void {
   if (itemId !== 'teams' && itemId !== 'recent') return;
-  modeMenuOpen.value = false;
   emit('update-view-mode', itemId);
 }
 </script>
@@ -149,7 +125,7 @@ function selectMode(itemId: string): void {
   line-height: var(--line-height-20);
 }
 
-.agent-cockpit__header span {
+.agent-cockpit__count {
   min-width: 28px;
   border-radius: var(--radius-full);
   padding: 2px var(--space-4);
@@ -157,36 +133,5 @@ function selectMode(itemId: string): void {
   background: var(--color-surface-low);
   font-size: var(--font-size-12);
   text-align: center;
-}
-
-.agent-cockpit__mode-trigger {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  background: transparent;
-  font: inherit;
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-.agent-cockpit__mode-trigger:hover,
-.agent-cockpit__mode-trigger:focus-visible,
-.agent-cockpit__mode-trigger[aria-expanded="true"] {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-  outline: 0;
-}
-
-.agent-cockpit__mode-trigger svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  stroke-width: 1.75px;
 }
 </style>

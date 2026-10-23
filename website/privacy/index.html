@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="How __PRODUCT_NAME__ handles your information across the desktop app, iPhone and Android companion, and website."
+    />
+    <title>Privacy policy — __PRODUCT_NAME__</title>
+    <link rel="canonical" href="__PRODUCT_WEBSITE_URL__/privacy/" />
+    <link rel="icon" type="image/png" href="/assets/app-icon.png?v=mark-2" />
+    <link rel="stylesheet" href="/styles.css?v=product-2" />
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      .policy {
+        max-width: 760px;
+        padding-block: 48px 72px;
+        line-height: 1.75;
+        overflow-wrap: anywhere;
+      }
+      .policy h1 {
+        font-size: clamp(2rem, 6vw, 3.5rem);
+        line-height: 1.15;
+        letter-spacing: -0.04em;
+      }
+      .policy h2 {
+        margin-top: 40px;
+        font-size: 1.4rem;
+        line-height: 1.35;
+      }
+      .policy p,
+      .policy li {
+        color: var(--ink);
+      }
+      .policy a {
+        color: var(--blue);
+        text-underline-offset: 3px;
+      }
+      .policy .policy-date {
+        color: var(--muted);
+      }
+      .policy li + li {
+        margin-top: 12px;
+      }
+      .policy-footer {
+        padding-block: 24px;
+        border-top: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header shell">
+      <a class="brand" href="/" aria-label="__PRODUCT_NAME__ home">
+        <img class="brand-icon" src="/assets/app-icon.png?v=mark-2" alt="" />
+        <strong>__PRODUCT_NAME__</strong>
+      </a>
+      <a class="header-link" href="/docs/">Documentation</a>
+    </header>
+    <main class="policy shell">
+      <h1>Privacy policy</h1>
+      <p class="policy-date">Effective October 17, 2026</p>
+      <p>
+        This policy covers __PRODUCT_NAME__ for macOS, Windows, and Linux, its
+        iPhone and Android companion __PRODUCT_COMPANION_NAME__, and this
+        website. __PRODUCT_NAME__ is developed and operated by Nicolas Bonamy
+        (nabocorp). For privacy questions or requests, contact
+        <!--email_off--><a href="mailto:korus@nabocorp.com"
+          >korus@nabocorp.com</a
+        ><!--/email_off-->.
+      </p>
+      <p>
+        <strong
+          >Your conversations are not stored on __PRODUCT_NAME__
+          servers.</strong
+        >
+        Conversation and workspace content sent between your phone and computer
+        is encrypted end to end, so the relay cannot read it.
+      </p>
+      <p>
+        Your computers keep your workspace and coding-runtime history. The apps
+        also keep local settings and pairing information. Coding providers and
+        tools you choose receive the context needed to carry out your requests;
+        connection and push-notification metadata is handled separately, as
+        described below. You do not need a separate __PRODUCT_NAME__ account.
+      </p>
+
+      <h2 id="workspace">Your workspace and coding providers</h2>
+      <p>
+        __PRODUCT_NAME__ stores workspace information on the computer running
+        it: teams and agent names, repository references, settings, tasks,
+        plans, review results, documents, diagrams, and integration credentials.
+        Coding runtimes maintain conversation history and their own
+        authentication data in their selected local setup. Remote teams keep
+        their working data on the computer hosting that team.
+      </p>
+      <p>
+        When you use an agent, your prompts, relevant code and files,
+        attachments, tool results, and other context may be sent to your
+        selected coding provider, such as
+        <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>,
+        <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, or
+        <a href="https://policies.google.com/privacy">Google</a>. Connected
+        tools, MCP servers, websites,
+        <a
+          href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
+          >GitHub</a
+        >, <a href="https://linear.app/privacy">Linear</a>, and other
+        integrations receive the information needed for the actions you ask them
+        to perform. This can include account identifiers, repository content,
+        issues, and pull requests.
+      </p>
+      <p>
+        These services process information under their own terms, privacy
+        policies, and your account settings, including their retention and
+        model-training settings. __PRODUCT_NAME__ does not override those
+        settings. Review the services and tools you enable before sharing
+        sensitive information.
+      </p>
+
+      <h2 id="mobile">Connecting your phone</h2>
+      <p>
+        After you pair and approve your phone, __PRODUCT_COMPANION_NAME__ can
+        display your workspace, conversations, images, changes, and requests,
+        and send prompts, attachments, and decisions to your computer.
+        Conversation and workspace content is encrypted between the paired phone
+        and computer while passing through the relay. After pairing establishes
+        their identities, the relay cannot read that content.
+      </p>
+      <p>
+        The relay processes connection metadata to introduce paired devices,
+        route encrypted traffic, and prevent abuse. This includes IP addresses,
+        device and computer public identifiers, pairing invitations, routing
+        relationships, connection timing, and traffic volume. Initial pairing
+        relies on the relay to introduce the devices; keep pairing codes private
+        and approve only devices you recognize.
+      </p>
+      <p>
+        Routing, invitation, and rate-limit state is temporary and expires; the
+        relay does not maintain a conversation archive. Hosting and network
+        infrastructure, including Cloudflare's network services, may process
+        connection metadata and security or error logs to operate and protect
+        the service. That operational processing is separate from the encrypted
+        conversation content.
+      </p>
+
+      <h2 id="notifications">Push notifications</h2>
+      <p>
+        If you enable notifications, iPhone uses an Apple Push Notification
+        service (APNs) device token, and Android uses a Firebase installation
+        identifier for Firebase Cloud Messaging (FCM). Your paired computer
+        sends the delivery identifier and notification metadata through the
+        relay to Apple or Google. This metadata includes the agent name, whether
+        work finished or needs your attention, a timestamp, and identifiers used
+        to open the correct conversation.
+      </p>
+      <p>
+        Push payloads do not include prompt text, conversation messages,
+        approval contents, or tool arguments. Agent names can still reveal
+        information and may appear on your lock screen. You can change
+        notification permissions and previews in your phone's system settings.
+        Apple handles delivery under its
+        <a href="https://www.apple.com/legal/privacy/">privacy policy</a>, and
+        Google handles Firebase delivery under
+        <a href="https://firebase.google.com/support/privacy/"
+          >Firebase's privacy terms</a
+        >. Firebase processes installation identifiers, app and SDK information,
+        and connection metadata to register the app and deliver notifications.
+        The Android app does not include Firebase Analytics or Crashlytics.
+      </p>
+
+      <h2 id="permissions">Photos, files, microphone, and device access</h2>
+      <ul>
+        <li>
+          <strong>Photos, camera, and files:</strong> the mobile app accesses
+          the items you select or capture for an attachment, or scans a pairing
+          QR code when you open the scanner. Sent attachments travel to your
+          paired computer and may be passed to your selected coding provider.
+        </li>
+        <li>
+          <strong>Dictation:</strong> dictation uses on-device recognition and
+          requires microphone permission, plus speech-recognition permission on
+          iPhone. Android requires an available on-device recognizer and does
+          not fall back to cloud dictation. Dictation audio stays on the phone;
+          recognized text enters your draft and is sent only when you send the
+          prompt.
+        </li>
+        <li>
+          <strong>App lock:</strong> optional protection uses Apple's device
+          authentication on iPhone or Android's device-owner authentication.
+          Depending on your device, this can use biometrics or a device
+          passcode, PIN, or pattern. __PRODUCT_NAME__ receives the
+          authentication result, not your biometric data or device credential.
+        </li>
+        <li>
+          <strong>Desktop tools:</strong> browser and optional Computer Use
+          features can access pages, screen contents, and applications you allow
+          an agent to use. Information an agent reads or captures can become
+          provider context. Manage operating-system permissions and tool access
+          to control these features.
+        </li>
+      </ul>
+
+      <h2 id="analytics">Usage statistics and diagnostics</h2>
+      <p>
+        The desktop app records local usage statistics such as provider, model,
+        workspace identifiers, token counts, timing, and outcomes. These
+        statistics do not contain conversation text and are not sent to a hosted
+        __PRODUCT_NAME__ analytics service. They are retained for up to one
+        year, subject to a record limit, and can be deleted in
+        <strong>Settings → Analytics → Clear</strong>.
+      </p>
+      <p>
+        The apps may keep local diagnostic logs to troubleshoot errors. iPhone
+        connection diagnostics are limited in size and contain connection events
+        and identifiers rather than transcript payloads. If you send us a
+        support email, issue, or diagnostic file, we receive the information you
+        choose to include and use it to respond and investigate. Remove secrets
+        and private content before sharing logs or opening a public issue.
+      </p>
+
+      <h2 id="website">Website and downloads</h2>
+      <p>
+        The website does not use advertising trackers or a hosted
+        visitor-analytics service. Serving pages, media, and downloads
+        necessarily exposes network information such as your IP address and
+        requested URL to the hosting and delivery services. Cloudflare helps
+        deliver and protect the website and processes network information under
+        its
+        <a href="https://www.cloudflare.com/privacypolicy/">privacy policy</a>.
+        The landing page loads fonts from Google Fonts; downloads and release
+        information use GitHub. Those services handle requests under their own
+        privacy policies. This policy page uses system fonts.
+      </p>
+      <p>
+        We do not sell your personal information, use it for targeted
+        advertising, or use your workspace content to train our own AI models.
+        Third-party coding providers and services have their own practices, as
+        described above.
+      </p>
+
+      <h2 id="retention">Retention, deletion, and your choices</h2>
+      <ul>
+        <li>
+          <strong>Workspace and conversations:</strong> local data remains in
+          the app's storage, your project folders, or the coding provider's
+          local history until removed. Closing or archiving an agent does not
+          necessarily delete its history. Uninstalling the desktop app does not
+          necessarily remove that storage. Use the relevant app, provider, or
+          filesystem controls to remove it, including backups you maintain.
+        </li>
+        <li>
+          <strong>Mobile access:</strong> use the <strong>Forget</strong> action
+          on the phone and revoke the device or disable mobile access on the
+          desktop to end access. Pairing secrets are held in the iPhone Keychain
+          with device-only protection or in encrypted Android storage protected
+          by Android Keystore. Push registrations are removed from the computer
+          when the associated grant is revoked. Forgetting a pairing does not
+          delete conversations on the computer or at a provider.
+        </li>
+        <li>
+          <strong>Attachments:</strong> temporary copies uploaded from the phone
+          are eligible for cleanup on the computer after one day. Copies
+          retained in projects, provider history, or backups follow those
+          locations' retention rules.
+        </li>
+        <li>
+          <strong>Integrations and permissions:</strong> disconnect services you
+          no longer use, revoke authorization at the provider, and change
+          camera, microphone, speech, or notification permissions in system
+          settings.
+        </li>
+        <li>
+          <strong>Support and service records:</strong> we retain information
+          supplied for support and operational records as needed to handle the
+          request, protect the service, and meet legal obligations. Contact us
+          to request deletion of information we hold. We cannot directly delete
+          data stored only on your devices or in your third-party accounts.
+        </li>
+      </ul>
+
+      <h2 id="rights">Privacy requests and security</h2>
+      <p>
+        Depending on where you live, you may have rights to access, correct,
+        delete, or obtain a copy of your personal information, object to or
+        restrict processing, or withdraw consent. Send requests to
+        <!--email_off--><a href="mailto:korus@nabocorp.com"
+          >korus@nabocorp.com</a
+        ><!--/email_off-->. We may need to verify your request. You may also
+        contact your local data-protection authority.
+      </p>
+      <p>
+        We use information to provide the features you request, with permission
+        where required, and to maintain service security and respond to support
+        requests. Data sent to providers or infrastructure may be processed
+        outside your country. Encryption, pairing approval, and device
+        protection reduce risk, but no system guarantees absolute security.
+        Protect your devices and provider accounts, and revoke lost devices
+        promptly.
+      </p>
+      <p>
+        __PRODUCT_NAME__ is a developer tool and is not directed to children
+        under 13. If you believe a child has provided personal information to
+        us, contact us so we can address it.
+      </p>
+
+      <h2 id="changes">Changes to this policy</h2>
+      <p>
+        We publish updates at this URL and change the effective date when this
+        policy changes. For questions about the policy or your information,
+        write to
+        <!--email_off--><a href="mailto:korus@nabocorp.com"
+          >korus@nabocorp.com</a
+        ><!--/email_off-->.
+      </p>
+    </main>
+    <footer class="policy-footer shell">
+      <a class="header-link" href="/">Back to __PRODUCT_NAME__</a>
+    </footer>
+  </body>
+</html>

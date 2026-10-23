@@ -10,6 +10,7 @@ coverage/
 # Local Apple push signing keys
 /certs/*.p8
 .app-dev/
+__pycache__/
 .release/
 electron/.computer-use-artifacts/
 electron/.tts/
@@ -37,3 +38,16 @@ electron/.mobile-simulator-artifacts/
 backend/relay-dist/
 
 /certs/apns-keys.json
+
+# Android companion build output and machine-local configuration
+/mobile/android/.gradle/
+/mobile/android/**/build/
+/mobile/android/local.properties
+/mobile/android/app/src/main/assets/web/
+/mobile/android/app/src/main/assets/product.json
+/mobile/android/app/src/main/res/values/product.xml
+/mobile/android/app/src/main/res/drawable/app_icon.png
+/mobile/android/app/src/main/res/drawable-nodpi/app_icon.png
+/mobile/android/app/src/main/res/drawable/app_launcher_*.xml
+/mobile/android/app/src/main/res/mipmap-anydpi-v*/app_launcher.xml
+/mobile/android/app/google-services.json

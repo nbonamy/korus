@@ -12,6 +12,7 @@ import { unsupportedBackendFeature } from '@workspace/core/backend-driver';
 import type { Agent, AgentBackend, AppGeneralSettings, AppPluginSettings, BackendSession, ConversationListInput, ConversationResumeTarget, CreateSourceWorktreeInput, DevicePairingSession, SendPromptOptions } from '@workspace/core/contracts';
 import { stat } from 'node:fs/promises';
 import { listAgentFolderFiles, previewAgentFolderFile, readAgentFolderFileChunk } from './agent-files';
+import { listAgentDirectory } from './agent-directory';
 import { ClaudeBackendDriver } from './claude/claude-driver';
 import { AntigravityHost } from './antigravity/antigravity-host';
 import { CodexBackendDriver } from './codex/codex-driver';
@@ -26,6 +27,7 @@ import { listSourceFolders } from './source-folders';
 import { detectSourceFolder, scanSourceRepositories } from './source-repositories';
 import { cloneSourceRepository } from './clone-source-repository';
 import { createSourceRepository } from './create-source-repository';
+import { filterRequiredModels, type Requirements } from './requirements';
 
 export type BackendDriverRegistryOptions = {
   appMcpServerUrl?: string | null;
@@ -129,6 +131,7 @@ export class BackendDriverRpc {
     private readonly worktreeManager = new WorktreeManager(),
     private readonly ensureConnected?: (backend: AgentBackend) => Promise<unknown>,
     private readonly blocked: (backend: AgentBackend) => boolean = () => false,
+    private readonly requirements: Requirements = {},
   ) {
     for (const [backend, driver] of drivers) { this.bindUsage(backend,driver); this.unsubscribeDriverEvents.set(backend, driver.onEvent((event) => this.emit(event))); }
   }
@@ -158,7 +161,7 @@ export class BackendDriverRpc {
     await this.ensureConnected?.(backend);
   }
 
-  async handle(method: string, params: unknown): Promise<unknown> {
+  async handle(method: string, params: unknown, options: { signal?: AbortSignal } = {}): Promise<unknown> {
     const record = isRecord(params) ? params : {};
     const candidate = record.backend ?? (isRecord(record.agent) ? record.agent.backend : undefined);
     const backend = candidate === 'codex' || candidate === 'claude' ? candidate : undefined;
@@ -166,11 +169,11 @@ export class BackendDriverRpc {
       if (this.blocked(backend)) throw new Error('Provider upgrade is in progress. Try again when it finishes.');
       this.inFlight.set(backend, (this.inFlight.get(backend) ?? 0) + 1);
     }
-    try { return await this.dispatch(method, params); }
+    try { return await this.dispatch(method, params, options.signal); }
     finally { if (backend) this.inFlight.set(backend, (this.inFlight.get(backend) ?? 1) - 1); }
   }
 
-  private async dispatch(method: string, params: unknown): Promise<unknown> {
+  private async dispatch(method: string, params: unknown, signal?: AbortSignal): Promise<unknown> {
     switch (method) {
       case backendMethods.driverProviderAuthentication: {
         const record = requireRecord(params);
@@ -199,6 +202,10 @@ export class BackendDriverRpc {
       case backendMethods.workspaceFilesList: {
         const record = requireRecord(params);
         return listAgentFolderFiles(requireString(record.folder, 'folder'));
+      }
+      case backendMethods.workspaceDirectoryList: {
+        const record = requireRecord(params);
+        return listAgentDirectory(requireString(record.folder, 'folder'), record.input === undefined ? {} : requireRecord(record.input));
       }
       case backendMethods.driverCodexAuthenticationGet:
         return this.requireCodexDriver().getAuthentication();
@@ -269,6 +276,15 @@ export class BackendDriverRpc {
           ...(typeof record.developerInstructions === 'string' ? { developerInstructions: record.developerInstructions } : {}),
           ...(record.outputSchema !== undefined ? { outputSchema: record.outputSchema as never } : {}),
         });
+      }
+      case backendMethods.driverImageGenerate: {
+        const { agent } = requireAgentParams(params);
+        if (agent.backend !== 'codex') throw new Error('Image generation requires the Codex driver.');
+        await this.requireNewWork('codex');
+        const driver = this.requireDriver('codex');
+        if (!driver.generateImage) throw unsupportedBackendFeature(agent, 'image generation');
+        const record = requireRecord(params);
+        return driver.generateImage(agent, { prompt: requireString(record.prompt, 'prompt'), cwd: requireString(record.cwd, 'cwd') }, signal);
       }
       case backendMethods.driverCodeReviewRun: {
         const { agent } = requireAgentParams(params);
@@ -551,7 +567,7 @@ export class BackendDriverRpc {
       case backendMethods.driverModelsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.backend);
-        return driver.listModels ? driver.listModels(agent) : [];
+        return filterRequiredModels(this.requirements, agent.backend, driver.listModels ? await driver.listModels(agent) : []);
       }
       case backendMethods.driverPluginsList: {
         const { agent } = requireAgentParams(params);
@@ -659,6 +675,9 @@ export class BackendDriverRpc {
   }
 
   private emit(event: BackendEvent): void {
+    if (event.type === 'models.changed') {
+      event = { ...event, payload: { ...event.payload, models: filterRequiredModels(this.requirements, event.backend, event.payload.models) } };
+    }
     for (const listener of this.listeners) {
       listener(event);
     }

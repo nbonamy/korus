@@ -324,9 +324,14 @@ describe('AppShell missions', () => {
     expect(wrapper.findComponent({ name: 'AgentWorkspace' }).exists()).toBe(true);
   });
 
-  it('deletes a Mission with no worktrees without presenting a worktree choice', async () => {
+  it.each(['empty', 'debug'] as const)('deletes a Mission with %s workspaces without presenting a worktree choice', async kind => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Add billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    if (kind === 'debug') {
+      mission.execution!.debugFixture = true;
+      mission.execution!.workspaces = [{ repositoryPath: '/src/payments', path: '/src/payments', branch: 'mission/debug-billing' }];
+      mission.execution!.workspace = { path: '/src/web', branch: 'mission/debug-billing' };
+    }
     const deleteMission = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountShell({ snapshot, deleteMission });
 
@@ -335,6 +340,8 @@ describe('AppShell missions', () => {
 
     const dialog = wrapper.getComponent({ name: 'MissionDeleteDialog' });
     expect(dialog.text()).not.toContain('Keep worktrees');
+    expect(dialog.find('.mission-delete-dialog__worktrees').exists()).toBe(false);
+    expect(dialog.get('button.mission-delete-dialog__delete').text()).toBe('Delete mission');
     await dialog.get('button.mission-delete-dialog__delete').trigger('click');
     await flushPromises();
     expect(deleteMission).toHaveBeenCalledWith(expect.objectContaining({ deleteWorktrees: false, confirmed: true }));

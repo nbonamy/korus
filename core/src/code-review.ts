@@ -1,4 +1,26 @@
 import type { BackendSession } from './contracts/backend';
+import type { Agent, AgentBackend, AgentGitStatus } from './contracts';
+
+/** Shared setup decisions; rendering and form state remain client-owned. */
+export function codeReviewAvailability(agent: Agent, status?: AgentGitStatus | null) {
+  const catalog = status?.diffCatalog;
+  const changed = (value: { changedFiles: number; addedLines: number; removedLines: number }) => value.changedFiles > 0 || value.addedLines > 0 || value.removedLines > 0;
+  return {
+    uncommitted: !catalog || status?.state === 'unknown' || changed(catalog.uncommitted),
+    branchChanges: Boolean(catalog?.branch && catalog.commits.length > 0 && changed(catalog.branch)),
+    currentThread: Boolean(agent.backendSession),
+  };
+}
+
+export function preferredReviewBackend(agentBackend: AgentBackend, backends: readonly AgentBackend[], preferred?: AgentBackend): AgentBackend | undefined {
+  return preferred && backends.includes(preferred) ? preferred : backends.includes(agentBackend) ? agentBackend : backends[0];
+}
+
+export function activeReviewForAgent(agents: readonly Agent[], agent: Agent): CodeReviewSession | undefined {
+  const active = (review?: CodeReviewSession) => review && !['finished', 'failed'].includes(review.status);
+  return agents.find(candidate => candidate.codeReview?.targetAgentId === agent.id && active(candidate.codeReview))?.codeReview
+    ?? (active(agent.codeReview) ? agent.codeReview : undefined);
+}
 
 export type CodeReviewPriority = 'p0' | 'p1' | 'p2' | 'p3';
 

@@ -42,6 +42,31 @@ describe('Apple push provider boundary', () => {
     expect(await sender.send({ ...registration, environment: 'production' }, notification)).toBe('unavailable');
     expect(transport.connect).toHaveBeenCalledTimes(1);
   });
+  it('replaces alerts for one conversation without merging other conversations or read clears', async () => {
+    const sender = new ApnsSender(config);
+    await sender.send(registration, notification);
+    const original = transport.headers['apns-collapse-id'];
+    await sender.send(registration, { ...notification, id: 'second', kind: 'completed' });
+    expect(transport.headers['apns-collapse-id']).toBe(original);
+    for (const target of [
+      { ...notification.target, hostId: 'other-host' },
+      { ...notification.target, sessionId: 'other-session' },
+      { ...notification.target, agentId: 'other-agent' },
+    ]) {
+      await sender.send(registration, { ...notification, id: 'third', target });
+      expect(transport.headers['apns-collapse-id']).not.toBe(original);
+    }
+    await sender.send(registration, { ...notification, kind: 'read', revision: 1 });
+    expect(transport.headers['apns-collapse-id']).not.toBe(original);
+    expect(Buffer.byteLength(original!)).toBeLessThanOrEqual(64);
+  });
+  it('sends read acknowledgments as silent background pushes without an alert or sound', async () => {
+    const read = { ...notification, kind: 'read' as const, revision: 4 };
+    expect(await new ApnsSender(config).send(registration, read)).toBe('sent');
+    expect(transport.headers['apns-push-type']).toBe('background');
+    expect(transport.headers['apns-priority']).toBe('5');
+    expect(JSON.parse(transport.body)).toStrictEqual({ aps: { 'content-available': 1 }, notification: read });
+  });
   it.each([[410, 'Unregistered', 'invalid'], [400, 'BadDeviceToken', 'invalid'], [403, 'InvalidProviderToken', 'unavailable'], [429, 'TooManyRequests', 'unavailable']])('classifies Apple response %s without exposing credentials', async (status, reason, result) => {
     transport.status = status as number; transport.reason = reason as string;
     expect(await new ApnsSender(config).send(registration, notification)).toBe(result);

@@ -1,14 +1,8 @@
 <template>
-  <el-popover
-    trigger="click"
-    placement="bottom-end"
-    :width="220"
-    popper-class="app-popover"
-    :show-arrow="false"
-    v-model:visible="open"
-  >
-    <template #reference>
+  <AppMenuButton :ariaLabel="t('split.layout')" :items="items" @select="select">
+    <template #trigger="{ attrs }">
       <button
+        v-bind="attrs"
         type="button"
         class="split-layout-control"
         :aria-label="t('split.layout')"
@@ -17,11 +11,10 @@
         <component :is="icons[layouts.indexOf(modelValue)]" aria-hidden="true" />
       </button>
     </template>
-    <AppMenu class="app-menu--embedded" :ariaLabel="t('split.layout')" :items="items" @select="select" />
-  </el-popover>
+  </AppMenuButton>
 </template>
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   IconLayoutGrid,
@@ -29,13 +22,12 @@ import {
   IconLayoutRows,
   IconLayoutNavbar,
 } from '@tabler/icons-vue';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import type { SplitLayout } from './use-split-workspace';
 const props = defineProps<{ modelValue: SplitLayout }>();
 const emit = defineEmits<{ 'update:modelValue': [layout: SplitLayout] }>();
 const { t } = useI18n();
-const open = ref(false);
 const layouts = ['single', '2-vertical', '2-horizontal', '4-quadrant'] as const;
 const icons = [IconLayoutNavbar, IconLayoutColumns, IconLayoutRows, IconLayoutGrid];
 const items = computed<AppMenuItem[]>(() =>
@@ -50,7 +42,6 @@ const items = computed<AppMenuItem[]>(() =>
 function select(id: string): void {
   if (layouts.includes(id as SplitLayout))
     emit('update:modelValue', id as SplitLayout);
-  open.value = false;
 }
 </script>
 <style scoped>

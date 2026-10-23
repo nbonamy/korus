@@ -7,38 +7,19 @@
   >
     <header class="agent-sidebar__header">
       <strong :title="teamName">{{ teamName }}</strong>
-      <el-popover
-        v-model:visible="organizationMenuVisible"
-        placement="bottom-end"
-        trigger="click"
+      <AppMenuButton
+        :heading="t('sidebar.organizeBy')"
+        :ariaLabel="t('sidebar.organizeBy')"
+        :items="organizationMenuItems"
         :width="200"
-        popper-class="app-popover"
+        @select="organization.select($event)"
       >
-        <template #reference>
-          <span>
-            <button
-              class="agent-sidebar__header-action"
-              type="button"
-              :aria-label="t('sidebar.view')"
-              :title="t('sidebar.view')"
-              aria-haspopup="menu"
-              :aria-expanded="organizationMenuVisible"
-              @keydown.esc.stop.prevent="organizationMenuVisible = false"
-            >
-              <ArrowsSortIcon aria-hidden="true" />
-            </button>
-          </span>
+        <template #trigger="{ attrs }">
+          <button v-bind="attrs" class="agent-sidebar__header-action" type="button" :aria-label="t('sidebar.view')" :title="t('sidebar.view')">
+            <ArrowsSortIcon aria-hidden="true" />
+          </button>
         </template>
-        <div class="agent-sidebar__organize-heading">{{ t('sidebar.organizeBy') }}</div>
-        <AppMenu
-          class="app-menu--embedded"
-          :ariaLabel="t('sidebar.organizeBy')"
-          :items="organizationMenuItems"
-          :show-selection-check="false"
-          @select="organization.select($event); organizationMenuVisible = false"
-          @keydown.esc.stop.prevent="organizationMenuVisible = false"
-        />
-      </el-popover>
+      </AppMenuButton>
       <button
         class="agent-sidebar__collapse"
         type="button"
@@ -166,26 +147,20 @@
           <template v-if="group.activity">
             <component :is="activityIcons[group.activity]" class="agent-sidebar__activity-icon" aria-hidden="true" />
             <strong class="agent-sidebar__activity-heading">{{ group.label }}</strong>
-            <el-popover
+            <AppMenuButton
               v-if="group.activity === 'idle'"
-              v-model:visible="idleSortMenuVisible"
-              placement="bottom-end"
-              trigger="click"
+              :heading="t('sidebar.sortIdleBy')"
+              :ariaLabel="t('sidebar.sortIdle')"
+              :items="idleSortMenuItems"
               :width="200"
-              popper-class="app-popover"
+              @select="organization.selectIdleSort($event)"
             >
-              <template #reference>
-                <span>
-                  <button class="agent-sidebar__activity-more agent-sidebar__activity-sort" type="button" :aria-label="t('sidebar.sortIdle')" :title="t('sidebar.sortIdle')" aria-haspopup="menu" :aria-expanded="idleSortMenuVisible" @keydown.esc.stop.prevent="idleSortMenuVisible = false">
-                    <ArrowsSortIcon aria-hidden="true" />
-                  </button>
-                </span>
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" class="agent-sidebar__activity-more agent-sidebar__activity-sort" type="button" :aria-label="t('sidebar.sortIdle')" :title="t('sidebar.sortIdle')">
+                  <ArrowsSortIcon aria-hidden="true" />
+                </button>
               </template>
-              <div class="agent-sidebar__organize-heading">{{ t('sidebar.sortIdleBy') }}</div>
-              <AppMenu class="app-menu--embedded" :ariaLabel="t('sidebar.sortIdle')" :items="idleSortMenuItems" :show-selection-check="false"
-                @select="organization.selectIdleSort($event); idleSortMenuVisible = false"
-                @keydown.esc.stop.prevent="idleSortMenuVisible = false" />
-            </el-popover>
+            </AppMenuButton>
             <el-tooltip
               v-if="moreRowsLabel(group.id)"
               :content="moreRowsLabel(group.id)"
@@ -235,34 +210,21 @@
             >
               <GitForkIcon aria-hidden="true" />
             </button>
-            <el-popover
-              :visible="repositorySessionMenuId === group.id"
-              placement="bottom-end"
-              trigger="click"
-              :width="220"
-              popper-class="app-popover agent-sidebar__repository-session-menu-popover"
-              @update:visible="setRepositorySessionMenuVisible(group, $event)"
+            <AppMenuButton
+              :open="repositorySessionMenuId === group.id"
+              :ariaLabel="t('sidebar.newSessionIn', { repository: group.label })"
+              :items="repositorySessionMenuItems(group)"
+              :message="repositorySessionMenu.loading.value[group.id] ? t('sidebar.loadingDefaultBranch') : repositorySessionMenu.errors.value[group.id] ?? undefined"
+              :message-tone="repositorySessionMenu.errors.value[group.id] ? 'error' : 'default'"
+              @update:open="setRepositorySessionMenuVisible(group, $event)"
+              @select="selectRepositorySessionMenuItem(group, $event)"
             >
-              <template #reference>
-                <button
-                  type="button"
-                  :aria-label="t('sidebar.newSessionIn', { repository: group.label })"
-                  :title="t('sidebar.newSession')"
-                  @click.stop
-                >
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" type="button" :aria-label="t('sidebar.newSessionIn', { repository: group.label })" :title="t('sidebar.newSession')">
                   <PlusIcon aria-hidden="true" />
                 </button>
               </template>
-              <p v-if="repositorySessionMenu.loading.value[group.id]" class="agent-sidebar__repository-session-menu-state">{{ t('sidebar.loadingDefaultBranch') }}</p>
-              <p v-else-if="repositorySessionMenu.errors.value[group.id]" class="agent-sidebar__repository-session-menu-state agent-sidebar__repository-session-menu-state--error">{{ repositorySessionMenu.errors.value[group.id] }}</p>
-              <AppMenu
-                v-else
-                class="app-menu--embedded"
-                :ariaLabel="t('sidebar.newSessionIn', { repository: group.label })"
-                :items="repositorySessionMenuItems(group)"
-                @select="selectRepositorySessionMenuItem(group, $event)"
-              />
-            </el-popover>
+            </AppMenuButton>
           </span>
         </header>
 
@@ -408,7 +370,6 @@ import {
   ArrowsSortIcon,
   BellIcon,
   CarouselVerticalIcon,
-  CheckIcon,
   CircleCheckIcon,
   ClockHour8Icon,
   LoaderIcon,
@@ -431,7 +392,7 @@ import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { useRepositorySessionMenu } from './use-repository-session-menu';
@@ -501,11 +462,9 @@ const emit = defineEmits<{
 
 const missionsCollapsed = ref(false);
 const activityIcons = { attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon };
-const organizationMenuVisible = ref(false);
-const idleSortMenuVisible = ref(false);
 const organizationMenuItems = computed<AppMenuItem[]>(() => [
-  { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: organizationMode.value === 'repository' ? CheckIcon : FolderIcon },
-  { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: organizationMode.value === 'activity' ? CheckIcon : BellIcon },
+  { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
+  { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
 ]);
 const minWidth = computed(() => props.minWidth ?? 200);
 const maxWidth = computed(() => props.maxWidth ?? 420);
@@ -527,8 +486,8 @@ const organization = useAgentSidebarOrganization({
 });
 const organizationMode = organization.mode;
 const idleSortMenuItems = computed<AppMenuItem[]>(() => [
-  { id: 'repository', type: 'radio', checked: organization.idleSort.value === 'repository', label: t('sidebar.repository'), icon: organization.idleSort.value === 'repository' ? CheckIcon : FolderIcon },
-  { id: 'activity', type: 'radio', checked: organization.idleSort.value === 'activity', label: t('sidebar.recentActivity'), icon: organization.idleSort.value === 'activity' ? CheckIcon : ClockHour8Icon },
+  { id: 'repository', type: 'radio', checked: organization.idleSort.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
+  { id: 'activity', type: 'radio', checked: organization.idleSort.value === 'activity', label: t('sidebar.recentActivity'), icon: ClockHour8Icon },
 ]);
 const workspaceGroups = computed(() => {
   let index = 0;
@@ -978,13 +937,6 @@ function onResizePointerEnd(event: PointerEvent): void {
   -webkit-app-region: no-drag;
 }
 
-.agent-sidebar__organize-heading {
-  padding: var(--space-3) var(--space-6) var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-medium);
-}
-
 .agent-sidebar__header-action:hover {
   color: var(--color-text);
   background: var(--color-surface-base);
@@ -1095,7 +1047,7 @@ function onResizePointerEnd(event: PointerEvent): void {
 }
 
 .agent-sidebar__start-work--activity > button,
-.agent-sidebar__start-work--activity > :deep(.start-work-menu__trigger) {
+.agent-sidebar__start-work--activity :deep(.start-work-menu__trigger) {
   flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
@@ -1108,7 +1060,7 @@ function onResizePointerEnd(event: PointerEvent): void {
 
 /* min-content stacks each word on its own line, so two-word labels always take two lines. */
 .agent-sidebar__start-work--activity > button > span,
-.agent-sidebar__start-work--activity > :deep(.start-work-menu__trigger > span) {
+.agent-sidebar__start-work--activity :deep(.start-work-menu__trigger > span) {
   display: -webkit-box;
   width: min-content;
   max-width: 100%;
@@ -1286,17 +1238,6 @@ function onResizePointerEnd(event: PointerEvent): void {
 .agent-sidebar__workspace-actions button:hover {
   color: var(--color-text);
   background: var(--color-surface-base);
-}
-
-.agent-sidebar__repository-session-menu-state {
-  margin: 0;
-  padding: var(--space-4) var(--space-6);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
-}
-
-.agent-sidebar__repository-session-menu-state--error {
-  color: var(--color-error);
 }
 
 .agent-sidebar__workspace-icon {

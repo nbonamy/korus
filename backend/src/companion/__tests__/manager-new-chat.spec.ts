@@ -3,8 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { duplicateAgentInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { opaquePath } from '@workspace/core/companion-projection';
-import type { AgentGitWorkflow, AppSnapshot, SourceBranch, SourceRepository } from '@workspace/core/contracts';
+import type { AppSnapshot, SourceBranch, SourceRepository } from '@workspace/core/contracts';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { CompanionManager } from '../manager';
 import type { CompanionGateway } from '../gateway';
@@ -33,13 +34,13 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
     { name: 'feature/available', isDefault: false },
   ];
   const calls: { method: string; params: unknown }[] = [];
-  const workflow: AgentGitWorkflow = { repository: 'org/repo', folder: '/code/repo', isLinkedWorktree: true, branch: 'feature/new', baseBranch: 'main', remote: 'origin', upstream: 'origin/main', detached: false, files: [], stagedFiles: [], unstagedFiles: [], ahead: 0, behind: 0, githubConnected: true };
+  const closePreview = { isLinkedWorktree: true, branch: 'feature/new', upstream: 'origin/feature/new', hasChanges: false };
   const repositories: SourceRepository[] = [];
   let chatCount = 0; let quickCount = 0;
   const backend = { async request<Result>(method: string, params?: unknown): Promise<Result> {
     calls.push({ method, params });
     if (method === backendMethods.snapshotGet) return { snapshot } as Result;
-    if (method === backendMethods.agentGitWorkflowGet) return workflow as Result;
+    if (method === backendMethods.agentClosePreview) return closePreview as Result;
     if (method === backendMethods.workProviderBranchesList) { await beforeProjectReadReturns(method); return branches.map(({ name, isDefault }) => ({ name, isDefault })) as Result; }
     if (method === backendMethods.sourceBranchesList) return branches as Result;
     if (method === backendMethods.sourceWorktreeCreate) return { name: 'feature', path: '/code/repo-feature' } as Result;
@@ -51,18 +52,23 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
       const id = ++chatCount === 1 ? 'new-chat' : `new-chat-${chatCount}`;
       snapshot.agents.push({ id, teamId: input.teamId, name: 'New', backend: input.backend, folder: input.folder, status: { type: 'idle' }, createdAt: '', updatedAt: '' });
       await beforeCreationReturns(id);
-      return { ...snapshot, activeAgentId: id } as Result;
+      return { agentId: id, snapshot: { ...snapshot, activeAgentId: id } } as Result;
+    }
+    if (method === backendMethods.agentDuplicate) {
+      const { agentId, options } = params as { agentId: string; options: { backend: 'codex' | 'claude' } };
+      duplicateAgentInSnapshot(snapshot, agentId, undefined, () => 'duplicated-agent', options);
+      return { agentId: 'duplicated-agent', snapshot } as Result;
     }
     if (method === backendMethods.agentQuickChatCreate) {
       const { input } = params as { input: { teamId: string; backend: 'codex' | 'claude' } };
       const id = ++quickCount === 1 ? 'quick-chat' : `quick-chat-${quickCount}`;
       snapshot.agents.push({ id, teamId: input.teamId, name: null, backend: input.backend, folder: null, sessionKind: 'quickChat', status: { type: 'idle' }, createdAt: '', updatedAt: '' } as never);
       await beforeCreationReturns(id);
-      return { ...snapshot, activeAgentId: id } as Result;
+      return { agentId: id, snapshot: { ...snapshot, activeAgentId: id } } as Result;
     }
     if (method === backendMethods.agentUpdate) {
-      const { input } = params as { input: { id: string; backend: 'codex' | 'claude' } };
-      snapshot.agents.find((agent) => agent.id === input.id)!.backend = input.backend;
+      const { input } = params as { input: import('@workspace/core/contracts').UpdateAgentInput };
+      updateAgentFromInput(snapshot, input);
       return snapshot as Result;
     }
     throw new Error(`Unexpected ${method}`);
@@ -93,10 +99,60 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
       return result;
     });
   }
-  return { calls, create, quickChat, gateway, snapshot, branches, repositories, workflow };
+  return { calls, create, quickChat, gateway, snapshot, branches, repositories, closePreview };
 }
 
 describe('mobile chat creation', () => {
+  it('lists only repository roots with opaque IDs and opens a chosen local branch without cloning', async () => {
+    const f = await fixture();
+    f.repositories.push({ name: 'repo', path: '/code/repo', worktrees: [{ name: 'main', path: '/code/repo' }, { name: 'feature/checked-out', path: '/code/repo-existing' }] });
+    const choices = await f.gateway.request('phone', 'project.local.list', { teamId: 'team-test' });
+    expect(choices).toStrictEqual([{ id: opaquePath('/code/repo'), name: 'repo' }]);
+    const branches = await f.gateway.request('phone', 'project.local.branches', { teamId: 'team-test', repositoryId: opaquePath('/code/repo') });
+    expect(branches).toStrictEqual(f.branches.map(({ name, isDefault }) => ({ name, isDefault })));
+    await expect(f.gateway.request('phone', 'project.local.branches', { teamId: 'team-test', repositoryId: '/code/repo' })).rejects.toThrow();
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), branch: 'feature/checked-out', backend: 'claude' }) as { creationId: string };
+    await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-existing', backend: 'claude' } });
+    expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
+    expect(f.calls.some(call => call.method === backendMethods.sourceWorktreeCreate)).toBe(false);
+  });
+
+  it('routes a rename through the existing desktop update operation and preserves the session', async () => {
+    const f = await fixture();
+    f.snapshot.agents[0]!.backendSession = { kind: 'codex', threadId: 'rename-session' };
+    const source = structuredClone(f.snapshot.agents[0]!);
+    const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: JSON.stringify(source.backendSession) };
+    await f.gateway.request('phone', 'agent.rename', { target, name: 'Mobile work' });
+    expect(f.calls.find(call => call.method === backendMethods.agentUpdate)?.params).toStrictEqual({ input: { id: 'existing', name: 'Mobile work' }, _clientId: 'companion-write' });
+    const result = await f.gateway.request('phone', 'snapshot.get', {});
+    expect(result).toMatchObject({ agents: [expect.objectContaining({ id: 'existing', name: 'Mobile work', backend: source.backend, backendSession: source.backendSession })] });
+  });
+
+  it('duplicates the target through the desktop operation with an explicit available engine', async () => {
+    const f = await fixture();
+    const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: null };
+    expect(await f.gateway.request('phone', 'agent.duplicate', { target, backend: 'claude' })).toStrictEqual({ agentId: 'duplicated-agent' });
+    expect(f.calls.find(call => call.method === backendMethods.agentDuplicate)?.params).toStrictEqual({ agentId: 'existing', options: { backend: 'claude' }, entityResult: true, _clientId: 'companion-write' });
+    expect(f.snapshot.agents.find(agent => agent.id === 'duplicated-agent')).toMatchObject({ folder: '/code/repo', backend: 'claude', status: { type: 'idle' } });
+    await expect(f.gateway.request('phone', 'agent.duplicate', { target, backend: 'antigravity' })).rejects.toThrow('not available');
+    expect(f.calls.filter(call => call.method === backendMethods.agentDuplicate)).toHaveLength(1);
+  });
+
+  it.each([false, true])('prepares local branches without a remote fetch (new branch: %s)', async newBranch => {
+    const f = await fixture();
+    f.repositories.push({ name: 'repo', path: '/code/repo', worktrees: [] });
+    const choice = newBranch ? { worktree: { branchName: 'feature/local', baseBranch: 'main' } } : { branch: 'feature/available' };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', source: 'local', value: opaquePath('/code/repo'), backend: 'codex', ...choice }) as { creationId: string };
+    await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
+    expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: {
+      repoPath: '/code/repo', fetchRemoteBranch: false,
+      ...(newBranch ? { branchName: 'feature/local', baseBranch: 'main', requireNewBranch: true } : { branchName: 'feature/available', reuseExisting: true }),
+    } });
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-feature' } });
+    expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
+  });
+
   it.each(['new', 'github', 'url'] as const)('starts a project from %s through the owning remote host desktop operations', async source => {
     const f = await fixture();
     f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
@@ -106,19 +162,19 @@ describe('mobile chat creation', () => {
     await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
     expect(f.snapshot.agents.find(agent => agent.id === 'new-chat')?.teamId).toBe('team-test');
     if (source === 'new') {
-      expect(f.calls.find(call => call.method === backendMethods.projectCreate)?.params).toStrictEqual({ input: { teamId: 'team-test', backend: 'claude', name: value }, _clientId: 'companion-write' });
+      expect(f.calls.find(call => call.method === backendMethods.projectCreate)?.params).toStrictEqual({ input: { teamId: 'team-test', backend: 'claude', name: value }, entityResult: true, _clientId: 'companion-write' });
     } else {
       expect(f.calls.find(call => call.method === backendMethods.sourceRepositoryClone)?.params).toStrictEqual({ input: { url: source === 'github' ? 'https://github.com/org/repo' : value, remoteConnectionId: 'ssh-host' }, _clientId: 'companion-write' });
       expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo', teamId: 'team-test', backend: 'claude' } });
     }
   });
 
-  it('only offers remote deletion for the same branch, preserving genuine published worktree branches', async () => {
+  it('returns the daemon close preview unchanged, bound to the captured target', async () => {
     const f = await fixture();
     const target = { hostId: f.gateway.hostId, locationId: 'local', teamId: 'team-test', agentId: 'existing', sessionId: null };
-    expect(await f.gateway.request('phone', 'agent.close.preview', target)).toStrictEqual({ target, isLinkedWorktree: true, branch: 'feature/new', upstream: null, hasChanges: false });
-    f.workflow.upstream = 'origin/feature/new';
-    expect(await f.gateway.request('phone', 'agent.close.preview', target)).toStrictEqual({ target, isLinkedWorktree: true, branch: 'feature/new', upstream: 'origin/feature/new', hasChanges: false });
+    expect(await f.gateway.request('phone', 'agent.close.preview', target)).toStrictEqual({ target, ...f.closePreview });
+    expect(f.calls.at(-1)?.method).toBe(backendMethods.snapshotGet);
+    expect(f.calls).toContainEqual({ method: backendMethods.agentClosePreview, params: { agentId: 'existing', _clientId: 'companion-read' } });
   });
 
   it('lists GitHub branches without cloning, and opens an existing branch in its checked-out folder', async () => {
@@ -194,10 +250,10 @@ describe('mobile chat creation', () => {
     expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo' } });
   });
 
-  it('withholds GitHub results if the phone is revoked during the read', async () => {
+  it.each(['github', 'local'])('withholds %s repository results if the phone is revoked during the read', async source => {
     let release!: () => void;
     const f = await fixture(undefined, () => new Promise(resolve => { release = resolve; }));
-    const loading = f.gateway.request('phone', 'project.github.list', { teamId: 'team-test' });
+    const loading = f.gateway.request('phone', `project.${source}.list`, { teamId: 'team-test' });
     await vi.waitFor(() => expect(release).toBeTypeOf('function'));
     await f.gateway.revoke('phone'); release();
     await expect(loading).rejects.toThrow('not authorized');
@@ -273,7 +329,7 @@ describe('mobile chat creation', () => {
   it('creates a worktree for an existing branch without basing it on the default branch', async () => {
     const f = await fixture();
     expect(await f.create({ existingBranch: 'feature/available' })).toStrictEqual({ state: 'success', agentId: 'new-chat' });
-    expect(f.calls.find((call) => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/available' }, _clientId: 'companion-write' });
+    expect(f.calls.find((call) => call.method === backendMethods.sourceWorktreeCreate)?.params).toStrictEqual({ input: { repoPath: '/code/repo', branchName: 'feature/available', reuseExisting: true }, _clientId: 'companion-write' });
     expect(f.calls.find((call) => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: '/code/repo-feature' } });
   });
   it('rejects a branch removed since listing instead of creating a new branch with its name', async () => {

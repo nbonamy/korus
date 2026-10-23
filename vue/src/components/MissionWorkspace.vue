@@ -34,21 +34,21 @@
               <ArrowRightIcon aria-hidden="true" />
             </button>
             <button
-              v-else-if="viewedStage === mission.stage && mission.stage !== 'implementation' && activeRun?.proposal"
+              v-else-if="viewedStage === mission.stage && !['requirements', 'implementation'].includes(mission.stage) && activeRun?.proposal"
               class="app-button app-button--primary"
               type="button"
               :aria-busy="busy"
-              :disabled="busy"
-              @click="approveProposal"
+              :disabled="busy || (viewedStage === 'tickets' && !missionLead)"
+              @click="requestApproval"
             >
-              {{ t('missions.approveAndContinue') }}
+              {{ t(viewedStage === 'tickets' ? 'missions.approveTickets' : 'missions.approveAndContinue') }}
               <ArrowRightIcon aria-hidden="true" />
             </button>
             <span v-else-if="showAcceptedArtifactStatus" class="mission-workspace__accepted-status"><CheckIcon aria-hidden="true" />{{ t('missions.accepted') }}</span>
           </div>
         </header>
 
-        <div class="mission-workspace__workbench-scroll">
+        <div class="mission-workspace__workbench-scroll" :class="{ 'mission-workspace__workbench-scroll--requirements': viewedStage === 'requirements' }">
           <p v-if="error || artifactError" class="mission-workspace__error" role="alert">{{ error || artifactError }}</p>
           <MissionImplementationBoard
             v-if="viewedStage === 'implementation' && mission.artifacts.tickets.length"
@@ -96,9 +96,9 @@
             <MissionRequirementReview
               v-else-if="viewedStage === 'requirements'"
               :content="artifactMarkdown"
-              :disabled="feedbackBusy || debugFixture"
-              :reset-key="feedbackReset"
-              @send-comments="sendRequirementComments"
+              :review-id="`${activeRun.id}:${activeRun.startedAt}`"
+              :disabled="busy"
+              :respond="debugFixture || executeMission ? respondToRequirements : undefined"
             />
             <MarkdownPanel v-else-if="viewedStage !== 'review'" :content="artifactMarkdown" />
             <footer v-if="viewedStage !== 'requirements'" class="mission-workspace__review-hint">
@@ -109,6 +109,7 @@
 
           <section v-else-if="!['implementation', 'ship'].includes(viewedStage) && artifactMarkdown" class="mission-workspace__artifact" :aria-label="t('missions.acceptedArtifact')">
             <MissionTicketBoard v-if="viewedStage === 'tickets' && visibleTickets.length" :tickets="visibleTickets" />
+            <MissionRequirementReview v-else-if="viewedStage === 'requirements'" :content="artifactMarkdown" :review-id="mission.id" read-only />
             <MarkdownPanel v-else-if="viewedStage !== 'review'" :content="artifactMarkdown" />
           </section>
 
@@ -139,24 +140,54 @@
       </MissionConversationRail>
     </div>
   </section>
-  <WorkspaceProvisioningProgressDialog :operation="implementationOperation" />
+  <FormDialog
+    v-if="implementationApprovalVisible && missionLead"
+    :model-value="!implementationStarting"
+    :title="t('missions.startImplementation')"
+    :subtitle="t('missions.ticketCount', { count: visibleTickets.length })"
+    @update:model-value="visible => { if (!visible && !busy) implementationApprovalVisible = false; }"
+  >
+    <div class="mission-workspace__start-options">
+      <BackendModelSelector
+        v-model:backend="implementationBackend"
+        v-model:model="implementationModel"
+        v-model:reasoning-effort="implementationEffort"
+        :agent-id="missionLead.id"
+        :team-id="mission.teamId"
+        :disabled="busy"
+      />
+      <p v-if="error" class="mission-workspace__error" role="alert">{{ error }}</p>
+    </div>
+    <template #footer>
+      <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="implementationApprovalVisible = false">
+        {{ t('common.cancel') }}
+      </button>
+      <button class="app-button app-button--primary" type="button" :disabled="busy || !implementationModel" @click="approveProposal">
+        {{ t('missions.startImplementationAction') }}
+      </button>
+    </template>
+  </FormDialog>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Agent, OpenInApplicationCatalog } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission, MissionArtifacts, MissionReviewFinding, MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { pendingMissionRun, type MissionArtifactReadResult, type MissionExecutionInput, type MissionImplementationStartProgress } from '@workspace/core/mission-execution';
 import { ArrowRightIcon, CheckIcon, FileTextIcon, MessageCircleIcon, PlayerPlayIcon } from '../shared/icons/app-icons';
+import BackendModelSelector from './BackendModelSelector.vue';
+import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
-import WorkspaceProvisioningProgressDialog, { type WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
-import MissionRequirementReview, { type MissionRequirementComment } from './MissionRequirementReview.vue';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { publishProvisioningOperation } from './provisioning-operations';
+import MissionRequirementReview from './MissionRequirementReview.vue';
+import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import MissionStageRail from './MissionStageRail.vue';
 import MissionTicketBoard, { type MissionTicketComment } from './MissionTicketBoard.vue';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
@@ -200,6 +231,8 @@ const implementationOperation = computed<WorkspaceProvisioningOperation | null>(
     ? props.implementationStartProgress.phase
     : undefined,
 } : null);
+watch(implementationOperation, (operation) => publishProvisioningOperation('mission', operation), { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('mission', null));
 const viewedStage = ref<MissionStage>(props.mission.stage);
 const canonicalArtifact = ref('');
 let artifactRead = 0;
@@ -304,6 +337,37 @@ function stageMarkdown(stage: MissionStage, artifacts: MissionArtifacts): string
     case 'ship': return '';
   }
 }
+const missionLead = computed(() => {
+  const execution = props.mission.execution;
+  const run = execution?.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
+  return props.agents.find(agent => agent.id === (run?.workerId ?? execution?.memberIds[0]));
+});
+const implementationBackend = ref<AgentBackend>();
+const implementationModel = ref('');
+const implementationEffort = ref('');
+const implementationApprovalVisible = ref(false);
+function resetImplementationModel(): void {
+  const selected = props.mission.execution?.implementationModel;
+  const lead = missionLead.value;
+  implementationBackend.value = selected?.backend ?? lead?.backend;
+  implementationModel.value = selected?.model ?? lead?.backendDefaults?.model ?? '';
+  implementationEffort.value = selected?.reasoningEffort ?? lead?.backendDefaults?.reasoningEffort ?? '';
+}
+watch(() => `${props.mission.id}:${activeRun.value?.id}:${missionLead.value?.id ?? ''}`, resetImplementationModel, { immediate: true });
+watch(() => [props.mission.id, props.mission.revision, activeRun.value?.id, viewedStage.value], () => {
+  implementationApprovalVisible.value = false;
+});
+
+function requestApproval(): void {
+  if (props.mission.stage === 'tickets') {
+    resetImplementationModel();
+    error.value = '';
+    implementationApprovalVisible.value = true;
+  } else {
+    void approveProposal();
+  }
+}
+
 async function approveProposal(): Promise<void> {
   const run = activeRun.value;
   if (!run?.proposal || !props.executeMission) return;
@@ -317,7 +381,13 @@ async function approveProposal(): Promise<void> {
     implementationStarting.value = true;
   }
   try {
-    await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id });
+    await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: 'accept', runId: run.id,
+      ...(startsImplementation && implementationBackend.value && implementationModel.value ? { implementationModel: {
+        backend: implementationBackend.value, model: implementationModel.value,
+        ...(implementationEffort.value ? { reasoningEffort: implementationEffort.value } : {}),
+      } } : {}),
+    });
+    implementationApprovalVisible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally {
     busy.value = false;
@@ -353,15 +423,17 @@ async function stopRun(runId: string): Promise<void> {
   catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
   finally { busy.value = false; }
 }
-async function sendRequirementComments(comments: MissionRequirementComment[]): Promise<void> {
-  if (!props.sendMissionPrompt || comments.length === 0) return;
-  feedbackBusy.value = true; error.value = '';
-  const details = comments.map((comment, index) => `${index + 1}. On: "${comment.quote}"\n   Comment: ${comment.body}`).join('\n\n');
-  try {
-    await props.sendMissionPrompt(`${t('missions.requirementFeedbackPrompt')}\n\n${details}`);
-    feedbackReset.value += 1;
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
-  finally { feedbackBusy.value = false; }
+async function respondToRequirements(resolution: PlanReviewResolution, feedback?: string): Promise<void> {
+  // Debug decisions resolve the local preview without starting a worker or advancing the Mission.
+  if (debugFixture.value) return;
+  const run = activeRun.value;
+  if (!run || !props.executeMission) throw new Error(t('planFeedback.unavailable'));
+  if (resolution === 'revise') {
+    if (!props.sendMissionPrompt) throw new Error(t('planFeedback.unavailable'));
+    await props.sendMissionPrompt(`${t('missions.requirementFeedbackPrompt')}\n\n${feedback}`);
+  } else {
+    await props.executeMission({ id: props.mission.id, revision: props.mission.revision, action: resolution === 'accept' ? 'accept' : 'cancel', runId: run.id });
+  }
 }
 async function sendTicketComments(comments: MissionTicketComment[]): Promise<void> {
   if (!props.sendMissionPrompt || comments.length === 0) return;

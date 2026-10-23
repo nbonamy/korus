@@ -29,19 +29,28 @@ final class AppModel {
     func loadUsage() { command("loadUsage") }
     private var pendingNotification: ChatNotification?
     private var foreground = true
+    /// What the engine was last told about visibility; nil until it has been told anything.
+    @ObservationIgnored private var engineActivity: Bool?
     private var screenUnlocked = false
     var startup: EngineState.Startup = .loading
-    private var conversationLoading = ConversationLoadingState()
+    private var conversationLoading = ConversationLoadingState() { didSet { updateUpdatingIndicator() } }
     var loadingConversation: Bool { conversationLoading.isLoading }
     var conversationLoadFailed: Bool { conversationLoading.failed }
+    var refreshingConversation: Bool { conversationLoading.isRefreshing }
     var hasTranscript: Bool { conversationLoading.hasTranscript }
     private var conversationReady = false
     private var conversationGeneration = 0
     private var connectionNotice = ConnectionNoticeState()
-    @ObservationIgnored private var connectionNoticeTask: Task<Void, Never>?
+    @ObservationIgnored private let connectionNoticeWatcher = DeadlineWatcher()
+    private var updatingIndicator = QuietIndicatorState(delay: .seconds(1))
+    @ObservationIgnored private let updatingIndicatorWatcher = DeadlineWatcher()
+    /// A refresh that finishes within a moment shows nothing at all.
+    var showUpdating: Bool { updatingIndicator.isVisible }
     var showConnectionLost: Bool { connectionNotice.isVisible }
+    /// Brief recovery stays invisible, like the lost-connection notice: the transcript just stays put.
+    var showReconnecting: Bool { connectionNotice.isVisible && (connection == .reconnecting || connection == .connecting) }
     var connection: ConnectionState = .unpaired {
-        didSet { if connection != oldValue { updateConnectionNotice() } }
+        didSet { if connection != oldValue { updateConnectionNotice(); updateUpdatingIndicator(); updateBackgroundExecution() } }
     }
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
@@ -52,6 +61,7 @@ final class AppModel {
     var activityGroups: [SidebarGroup] = []
     private(set) var laptopID = ""
     private(set) var sidebarOrganization: SidebarOrganization = .activity
+    private(set) var sidebarIdleSort: SidebarIdleSort = .activity
     @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
     var activeAgentID: String?
     var header: ConversationHeader?
@@ -79,6 +89,16 @@ final class AppModel {
     var closePreview: EngineState.ClosePreview?
     var chatCreation: EngineState.ChatCreation = .idle
     var backends: [String] = []
+    var backend: String?
+    private var duplicateTarget: ComposerTarget?
+    var duplicatingAgent: Bool { duplicateTarget != nil }
+    var duplicateFailed = false
+    struct AgentRename: Identifiable {
+        let target: ComposerTarget
+        let name: String
+        var id: String { target.agentId }
+    }
+    var agentRename: AgentRename?
     /// The repository a worktree is being named for; the sheet shows while it is set.
     var newWorktreeGroup: SidebarGroup?
     var existingBranchGroup: SidebarGroup?
@@ -116,6 +136,14 @@ final class AppModel {
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false
 
+    @ObservationIgnored private lazy var backgroundExecution = StreamBackgroundExecution { [weak self] stage in
+        self?.engine.recordLifecycle("app.background-execution", stage: stage)
+    }
+    private func updateBackgroundExecution() {
+        backgroundExecution.update(working: StreamBackgroundExecution.wantsLease(unlocked: screenUnlocked, working: header?.status == .working,
+            sending: composerDrafts.sending, connected: connection == .connected), foreground: foreground)
+    }
+
     let engine = EngineHost()
     let transcript = TranscriptHost()
 
@@ -130,7 +158,16 @@ final class AppModel {
         }
         push.flush()
 
-        engine.onSendResult = { [weak self] result in self?.composerDrafts.completeSend(result) }
+        engine.onRestarted = { [weak self] in
+            // The new page knows nothing: tell it whether the app can be seen, and what push registration to hold.
+            self?.engineActivity = nil
+            self?.syncEngineActivity()
+            Task { await self?.push.refresh() }
+        }
+        engine.onSendResult = { [weak self] result in
+            self?.composerDrafts.completeSend(result)
+            self?.updateBackgroundExecution()
+        }
         engine.onGitDiff = { [weak self] json in self?.changesHost.setDiff(json) }
         engine.onState = { [weak self] state in self?.apply(state) }
         engine.onTranscript = { [weak self] kind, json in self?.transcript.submit(kind, json) }
@@ -147,10 +184,12 @@ final class AppModel {
             guard let self, self.activeAgentID != nil else { return }
             self.conversationLoading.renderingFailed()
         }
+        transcript.onTransferApplied = { [weak self] identity, checkpoint in self?.command("transcriptApplied", ["identity": identity, "checkpoint": checkpoint]) }
+        transcript.onNeedsReset = { [weak self] identity in self?.command("transcriptReset", ["identity": identity]) }
         transcript.onRendered = { [weak self] id, revision, generation in
-            guard let self, id == self.activeAgentID, self.connection == .connected,
-                  self.conversationReady, generation == self.conversationGeneration else { return }
-            self.conversationLoading.rendered()
+            guard let self, id == self.activeAgentID, generation == self.conversationGeneration else { return }
+            self.conversationLoading.rendered(synchronized: self.connection == .connected && self.conversationReady)
+            guard self.connection == .connected, self.conversationReady else { return }
             self.conversationRead.didRender(agentId: id, revision: revision)
             self.acknowledgeRead()
         }
@@ -162,6 +201,10 @@ final class AppModel {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? "Companion"
     }
 
+    var privacyPolicyURL: URL? {
+        (Bundle.main.object(forInfoDictionaryKey: "CompanionPrivacyPolicyURL") as? String).flatMap(URL.init(string:))
+    }
+
     var selectedModel: ModelChoice? { models.first { $0.id == selectedModelID } }
 
     /// Temporary connection loss does not require pairing again.
@@ -171,15 +214,14 @@ final class AppModel {
         let previous = connectionNotice.deadline
         connectionNotice.update(connection: connection, active: foreground && screenUnlocked)
         guard previous != connectionNotice.deadline else { return }
-        connectionNoticeTask?.cancel()
-        connectionNoticeTask = nil
-        guard let deadline = connectionNotice.deadline else { return }
-        connectionNoticeTask = Task { [weak self] in
-            do { try await Task.sleep(until: deadline, clock: .continuous) }
-            catch { return }
-            guard let self, self.connectionNotice.deadline == deadline else { return }
-            self.connectionNotice.update(connection: self.connection, active: self.foreground && self.screenUnlocked)
-        }
+        connectionNoticeWatcher.wait(until: connectionNotice.deadline) { [weak self] in self?.updateConnectionNotice() }
+    }
+
+    private func updateUpdatingIndicator() {
+        let previous = updatingIndicator.deadline
+        updatingIndicator.update(active: refreshingConversation && connection == .connected && foreground)
+        guard previous != updatingIndicator.deadline else { return }
+        updatingIndicatorWatcher.wait(until: updatingIndicator.deadline) { [weak self] in self?.updateUpdatingIndicator() }
     }
 
     // MARK: Engine
@@ -205,7 +247,7 @@ final class AppModel {
         if generation != conversationGeneration || state.connection != .connected || state.conversationReady != true { conversationRead.invalidate() }
         conversationGeneration = generation
         conversationReady = state.conversationReady == true
-        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected)
+        conversationLoading.update(fetching: state.loading, failed: state.error == "mobile.errors.loadConversation", hasAgent: !state.agentId.isEmpty, connected: state.connection == .connected, refreshing: state.refreshing == true)
         set(\.requests, state.requests ?? [])
         set(\.respondingRequest, state.respondingRequest)
         set(\.failedRequest, state.failedRequest)
@@ -219,6 +261,8 @@ final class AppModel {
         let hostID = state.laptopId ?? state.composerTarget?.hostId ?? ""
         if laptopID != hostID || teamID != state.teamId {
             sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: state.teamId)
+            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: state.teamId)
+            command("idleSort", ["order": sidebarIdleSort.rawValue])
         }
         set(\.laptopID, hostID)
         set(\.teamID, state.teamId)
@@ -226,6 +270,11 @@ final class AppModel {
         set(\.chatCreation, state.chatCreation)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
+        set(\.backend, state.backend)
+        if let source = duplicateTarget {
+            if source != state.composerTarget || created { duplicateTarget = nil }
+            else if state.chatCreation == .failed { duplicateTarget = nil; duplicateFailed = true }
+        }
         if created { newWorktreeGroup = nil; existingBranchGroup = nil; newProjectSource = nil; drawerOpen = false }
         set(\.branches, state.branches ?? RepositoryBranches())
         set(\.groups, state.groups.map(Self.sidebarGroup))
@@ -264,6 +313,7 @@ final class AppModel {
         set(\.sessionAction, state.sessionAction)
         set(\.sessionActionFailed, state.sessionActionFailed)
         set(\.closePreview, state.closePreview?.isLinkedWorktree == true ? state.closePreview : nil)
+        updateBackgroundExecution()
         notifications.visibleChanged(visibleNotificationTarget)
         if startup == .ready, let notification = pendingNotification { pendingNotification = nil; open(notification) }
     }
@@ -280,6 +330,12 @@ final class AppModel {
     func chooseSidebarOrganization(_ organization: SidebarOrganization) {
         sidebarOrganization = organization
         sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: teamID)
+    }
+
+    func chooseSidebarIdleSort(_ order: SidebarIdleSort) {
+        sidebarIdleSort = order
+        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: teamID)
+        command("idleSort", ["order": order.rawValue])
     }
 
     func command(_ type: String, _ fields: [String: Any] = [:]) {
@@ -301,6 +357,7 @@ final class AppModel {
 
     func retryConversation() {
         guard let id = activeAgentID, connection == .connected else { return }
+        if hasTranscript { command("refreshConversation"); return }
         conversationLoading.select(awaitingRender: true)
         transcript.retry()
         command("selectAgent", ["id": id])
@@ -312,11 +369,15 @@ final class AppModel {
         guard canSend, !goalMode || supportsGoals, supportsAttachments || composerDrafts.items.isEmpty else { return }
         dictation.cancel()
         guard let request = composerDrafts.beginSend(mode: mode ?? composerPreferences.followUpBehavior) else { return }
+        updateBackgroundExecution()
         do {
             let data = try JSONEncoder().encode(request)
             guard let command = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw CocoaError(.coderInvalidValue) }
             engine.dispatch(command)
-        } catch { composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected)) }
+        } catch {
+            composerDrafts.completeSend(.init(requestId: request.requestId, status: .rejected))
+            updateBackgroundExecution()
+        }
     }
 
     func updateQueuedPrompt(_ id: String, steer: Bool) {
@@ -391,11 +452,33 @@ final class AppModel {
     }
     /// A conversation with no repository: one tap, the engine chosen in the empty chat.
     static let quickChatID = "quick-chat"
-    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty }
+    var canStartChat: Bool { connection == .connected && !backends.isEmpty && !teamID.isEmpty && !duplicatingAgent }
     func startQuickChat() {
         guard let backend = newChatBackend, chatCreation != .creating else { return }
         creatingChatGroupID = Self.quickChatID
         command("newQuickChat", ["backend": backend])
+    }
+    func duplicateAgent() {
+        guard canManageSession, canStartChat, chatCreation != .creating, let target = composerDrafts.target, let fallback = newChatBackend,
+              let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        dismissChatFailure()
+        dictation.cancel()
+        duplicateFailed = false
+        duplicateTarget = target
+        let initialBackend = backend.flatMap { backends.contains($0) ? $0 : nil } ?? fallback
+        command("duplicateAgent", ["target": fields, "backend": initialBackend])
+    }
+    func openAgentRename() {
+        guard canManageSession, let target = composerDrafts.target else { return }
+        dismissSessionError()
+        dictation.cancel()
+        agentRename = AgentRename(target: target, name: header?.title ?? "")
+    }
+    func renameAgent(_ target: ComposerTarget, name: String) {
+        guard canManageSession, composerDrafts.target == target,
+              let data = try? JSONEncoder().encode(target), let fields = try? JSONSerialization.jsonObject(with: data) else { return }
+        agentRename = nil
+        command("renameAgent", ["target": fields, "name": name])
     }
     func openProject(_ source: NewProjectSource) {
         guard canStartChat, chatCreation != .creating else { return }
@@ -446,6 +529,7 @@ final class AppModel {
     }
     func receive(_ notification: ChatNotification) {
         guard laptops.contains(where: { $0.id == notification.target.hostId }) else { return }
+        if notification.kind == .read { push.clear(notification) }
         notifications.receive(notification, foreground: foreground, visible: visibleNotificationTarget)
     }
     func open(_ notification: ChatNotification) {
@@ -459,17 +543,27 @@ final class AppModel {
     }
     func setActive(_ active: Bool) {
         foreground = active
+        updateBackgroundExecution()
         updateConnectionNotice()
+        updateUpdatingIndicator()
         if active { Task { await push.refresh() } } else { notifications.clear() }
         if !active { dictation.cancel() }
-        command("activity", ["active": active && screenUnlocked])
+        syncEngineActivity()
     }
     func setUnlocked(_ unlocked: Bool) {
         screenUnlocked = unlocked
+        updateBackgroundExecution()
         updateConnectionNotice()
         if !unlocked { dictation.cancel(); notifications.clear() }
-        command("activity", ["active": unlocked && foreground])
+        syncEngineActivity()
         if unlocked { acknowledgeRead() }
+    }
+    /// The engine only cares whether the app can be seen; it hears about changes in that, not about every event that led to one.
+    private func syncEngineActivity() {
+        let visible = foreground && screenUnlocked
+        guard engineActivity != visible else { return }
+        engineActivity = visible
+        command("activity", ["active": visible])
     }
 }
 

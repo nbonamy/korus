@@ -134,7 +134,7 @@ describe('SubagentPanel', () => {
     expect(wrapper.text()).not.toContain('Updated status');
     expect(wrapper.text()).not.toContain('Finished turn');
     expect(wrapper.text()).toContain('Reported finding');
-    expect(wrapper.text()).toContain('github.finish_turn');
+    expect(wrapper.findAll('.chat-tool-call')).toHaveLength(2);
     expect(wrapper.text()).not.toContain('workspace.set-status');
   });
 

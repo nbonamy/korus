@@ -482,6 +482,10 @@ describe('AppShell workspace and plans', () => {
   });
 
   it('opens Files as a right-side explorer pane and keeps it open beside previews', async () => {
+    setElectronTestClient({ listAgentDirectory: vi.fn().mockResolvedValue({ entries: [
+      { kind: 'file', name: 'README.md', path: 'README.md' },
+      { kind: 'file', name: 'main.ts', path: 'main.ts' },
+    ], nextCursor: null }) });
     const previewAgentFile = vi.fn().mockImplementation(async (_agentId: string, path: string) => ({
       path, size: 8, kind: 'text' as const, content: path === 'README.md' ? `# ${product.name}
 ` : 'export {};\n',
@@ -502,6 +506,15 @@ describe('AppShell workspace and plans', () => {
 
     expect(wrapper.get('[role="tab"]').text()).toBe('Open file');
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(true);
+    await wrapper.get('[aria-label="Collapse file explorer"]').trigger('click');
+    expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
+    await wrapper.get('[role="tab"][aria-label="Open file"]').trigger('click');
+    const browseFiles = wrapper.get('.right-workspace-panel__open-file button');
+    expect(browseFiles.isVisible()).toBe(true);
+    await browseFiles.trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(true);
+    expect(wrapper.find('.right-workspace-panel__open-file button').exists()).toBe(false);
     await wrapper.get('button[title="Preview README.md"]').trigger('click');
     await flushPromises();
 

@@ -14,20 +14,20 @@ const target = { hostId: 'host', locationId: 'local', teamId: 'team', agentId: '
 function claim(gateway: CompanionGateway, peerId: string, shown: string, name = 'Phone') {
   return gateway.request(peerId, 'pair.claim', { code: normalizePairingCode(shown)!, name }) as Promise<{ pendingId: string; state: string }>;
 }
-function fixture() {
+function fixture(autoAcceptCode?: string) {
   let now = 1;
   let saved: GatewayState = { grants: [], commands: {} };
-  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
+  const port = { onEvent: () => () => {}, push: vi.fn(async (_peerId: string, _registration: unknown, _notification: unknown) => 'sent' as const), changeGoal: vi.fn(async () => {}), updateQueuedPrompt: vi.fn(async () => {}), markRead: vi.fn(async () => {}), respondRequest: vi.fn(async () => {}), workspace: vi.fn(async () => workspace), synchronize: vi.fn(async () => ({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] })), conversation: vi.fn(), loadOlderHistory: vi.fn(async (): Promise<import('@workspace/core/backend-driver').BackendHistoryLoadResult> => ({ hasOlder: false })), readConversationContent: vi.fn(async () => ({ data: 'e30=', totalBytes: 2, nextOffset: null })), submit: vi.fn(async () => {}),
     models: vi.fn(async () => [{ id: 'gpt', model: 'gpt', displayName: 'GPT' }]), selectModel: vi.fn(async () => {}),
     gitDiff: vi.fn(async () => ({ target: { type: 'uncommitted' as const }, summary: { changedFiles: 1, addedLines: 2, removedLines: 1 }, diff: 'patch', sections: [] })),
-    readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
+    renameAgent: vi.fn(async () => {}), readImage: vi.fn(async () => ({ dataUrl: 'data:image/png;base64,cG5n' })),
     plugins: vi.fn(async () => [{ id: 'github@bundled', name: 'github', displayName: 'GitHub', enabled: true }]),
     skills: vi.fn(async (): Promise<BackendSkillSummary[]> => [{ name: 'review', path: '/skills/review/SKILL.md', enabled: true }]),
     reviewSetup: vi.fn<() => Promise<import('@workspace/core/companion-review').CompanionReviewSetup>>(),
-    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
+    startReview: vi.fn(async () => {}), interrupt: vi.fn(async () => {}), restart: vi.fn(async () => {}), branches: async () => [], createChat: vi.fn(async () => 'created'), createQuickChat: vi.fn(async () => 'quick'), duplicateAgent: vi.fn(async () => 'duplicate'), setBackend: vi.fn(async () => {}), close: vi.fn(async () => {}),
     closePreview: vi.fn(async () => ({ isLinkedWorktree: true, branch: "feature", upstream: "origin/feature", hasChanges: true })), setApprovalPreset: vi.fn(async () => {}), setPermissionMode: vi.fn(async () => {}),
     save: vi.fn(async (state: GatewayState) => { saved = structuredClone(state); }), revoked: vi.fn() };
-  const gateway = new CompanionGateway('host', saved, port, () => now);
+  const gateway = new CompanionGateway('host', saved, port, () => now, autoAcceptCode);
   return { gateway, port, advance: () => { now += 300_001; }, saved: () => saved,
     async pair() {
       const invite = gateway.invite();
@@ -37,6 +37,32 @@ function fixture() {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('serializes automatic grants and keeps them unauthorized until persistence finishes', async () => {
+    const code = 'ABCDEFGH';
+    const f = fixture(code);
+    let release!: () => void;
+    const pendingSave = new Promise<void>(resolve => { release = resolve; });
+    f.port.save.mockImplementationOnce(async () => { await pendingSave; });
+    const first = claim(f.gateway, 'phone', code);
+    const retry = claim(f.gateway, 'phone', code);
+    const second = claim(f.gateway, 'second', code);
+    await expect(f.gateway.request('phone', 'snapshot.get', {})).rejects.toThrow('authorized');
+    release();
+    for (const admitted of await Promise.all([first, retry, second])) expect(admitted.state).toBe('approved');
+    expect(f.gateway.grants.map(grant => grant.peerId)).toStrictEqual(['phone', 'second']);
+    expect(f.gateway.pendingRequests).toStrictEqual([]);
+    await expect(f.gateway.request('phone', 'snapshot.get', {})).resolves.toMatchObject({ teams: expect.any(Array) });
+  });
+
+  it('applies the existing device limit to automatic grants while allowing a paired phone to retry', async () => {
+    const code = 'ABCDEFGH';
+    const f = fixture(code);
+    for (let index = 0; index < 20; index++) await claim(f.gateway, `phone-${index}`, code);
+    await expect(claim(f.gateway, 'overflow', code)).rejects.toThrow('Too many paired devices');
+    expect((await claim(f.gateway, 'phone-0', code)).state).toBe('approved');
+    expect(f.gateway.grants).toHaveLength(20);
+  });
+
   it('reads only scoped Git diffs and rejects extra filesystem authority', async () => {
     const f = fixture(); await f.pair();
     const result = await f.gateway.request('phone', 'agent.git.diff', { target, scope: { type: 'uncommitted' } });
@@ -119,13 +145,13 @@ describe('companion authorization gateway', () => {
       f.port.push.mockClear(); await subscription.request('snapshot.get', { notifications: false });
       await f.gateway.notify({ ...notification, id: 'background-grace' });
       expect(f.port.push.mock.calls.map(call => call[0])).toStrictEqual(['phone', 'other']);
+      const read = { ...notification, id: 'read', kind: 'read' as const, revision: 1 };
+      await f.gateway.notify(read);
+      expect(updates).toHaveBeenCalledWith({ type: 'notification', notification: read });
       f.port.push.mockClear(); await subscription.request('snapshot.get', { notifications: true });
       await f.gateway.notify({ ...notification, id: 'foreground-again' });
       expect(f.port.push.mock.calls.map(call => call[0])).toStrictEqual(['other']);
       f.port.push.mockClear();
-      await f.gateway.notify({ ...notification, id: 'desktop-focused' }, async () => false);
-      expect(updates).toHaveBeenCalledWith({ type: 'notification', notification: { ...notification, id: 'desktop-focused' } });
-      expect(f.port.push).not.toHaveBeenCalled();
       f.advance();
       await f.gateway.notify({ ...notification, id: 'stale' });
       expect(f.port.push).toHaveBeenCalledTimes(2);
@@ -138,12 +164,14 @@ describe('companion authorization gateway', () => {
     } finally { subscription.close(); }
   });
 
-  it('persists push registration only for its authenticated phone and revokes both delivery paths', async () => {
+  it.each([
+    { token: 'ab'.repeat(32), environment: 'development' },
+    { token: 'device-token:APA91b-example_-registration', environment: 'production', transport: 'fcm' },
+  ])('persists push registration only for its authenticated phone and revokes both delivery paths ($transport)', async (registration) => {
     const f = fixture();
-    const registration = { token: 'ab'.repeat(32), environment: 'development' };
     await expect(f.gateway.request('phone', 'notifications.register', registration)).rejects.toThrow('authorized');
     await f.pair();
-    await expect(f.gateway.request('phone', 'notifications.register', { ...registration, token: 'bad' })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'notifications.register', { ...registration, token: '' })).rejects.toThrow();
     await f.gateway.request('phone', 'notifications.register', registration);
     expect(f.saved().push?.phone).toStrictEqual(registration);
     await f.gateway.request('phone', 'notifications.register', null);
@@ -327,10 +355,13 @@ describe('companion authorization gateway', () => {
   describe('every agent operation', () => {
     const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
     const claude = { backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session' } };
-    type Row = { args: (target: CompanionTarget) => object; effect: 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
+    type Row = { args: (target: CompanionTarget) => object; effect: 'renameAgent' | 'duplicateAgent' | 'synchronize' | 'gitDiff' | 'updateQueuedPrompt' | 'readImage' | 'markRead' | 'conversation' | 'loadOlderHistory' | 'readConversationContent' | 'respondRequest' | 'skills' | 'plugins' | 'models' | 'selectModel' | 'interrupt' | 'setApprovalPreset' | 'setPermissionMode' | 'changeGoal' | 'setBackend' | 'restart' | 'closePreview' | 'close' | 'reviewSetup' | 'startReview'; read?: true; agent?: object };
     const rows: Record<string, Row> = {
+      'agent.rename': { args: t => ({ target: t, name: 'Renamed' }), effect: 'renameAgent' },
+      'agent.duplicate': { args: t => ({ target: t, backend: 'claude' }), effect: 'duplicateAgent' },
       'agent.git.diff': { args: t => ({ target: t, scope: { type: 'uncommitted' } }), effect: 'gitDiff', read: true },
       'conversation.read': { args: (t) => ({ target: t, revision: 1 }), effect: 'markRead' },
+      'conversation.synchronize': { args: t => ({ target: t, checkpoint: null }), effect: 'synchronize', read: true },
       'conversation.subscribe': { args: (t) => t, effect: 'conversation', read: true },
       'conversation.image.read': { args: t => ({ target: t, path: '/tmp/shot.png' }), effect: 'readImage', read: true },
       'conversation.loadOlder': { args: (t) => t, effect: 'loadOlderHistory', read: true },
@@ -383,6 +414,15 @@ describe('companion authorization gateway', () => {
         expect(f.port[row.effect]).toHaveBeenCalledTimes(revoked && (!row.read || revokedOnRead === 1) ? 0 : 1);
       }
     });
+  });
+  it('renames only the authorized target and rejects empty, oversized or extra fields', async () => {
+    const f = fixture(); await f.pair();
+    for (const input of [{ name: '  ' }, { name: 'a'.repeat(201) }, { name: 'Valid', backend: 'claude' }]) {
+      await expect(f.gateway.request('phone', 'agent.rename', { target, ...input })).rejects.toThrow();
+    }
+    expect(f.port.renameAgent).not.toHaveBeenCalled();
+    await f.gateway.request('phone', 'agent.rename', { target, name: '  Mobile work  ' });
+    expect(f.port.renameAgent).toHaveBeenCalledExactlyOnceWith('agent', 'Mobile work');
   });
   it('authorizes session actions against the selected session and requires explicit worktree deletion consent', async () => {
     const f = fixture();
@@ -568,7 +608,7 @@ describe('companion authorization gateway', () => {
     expect(f.port.startReview).toHaveBeenCalledExactlyOnceWith('agent', input);
     await expect(f.gateway.request('phone', 'agent.review.start', { target: { ...target, agentId: 'unknown' }, input })).rejects.toThrow('stale');
     await expect(f.gateway.request('stranger', 'agent.review.start', { target, input })).rejects.toThrow('authorized');
-    for (const bad of [{ ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
+    for (const bad of [{ ...input, cwd: '/private' }, { ...input, scope: { ...input.scope, cwd: '/private' } }, { ...input, automation: { ...input.automation, cwd: '/private' } }, { ...input, model: 'x'.repeat(201) }, { ...input, reasoningEffort: 'x'.repeat(41) }, { ...input, scope: { type: 'branch' } }, { ...input, threadMode: 'both' }, { ...input, backend: 'invalid' }, { ...input, threadMode: 'current' }, { ...input, automation: { ...input.automation, maxRounds: 11 } }]) {
       await expect(f.gateway.request('phone', 'agent.review.start', { target, input: bad })).rejects.toThrow();
     }
     const delegation = { startingContext: 'handoff', instructions: 'Run the focused tests' };

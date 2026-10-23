@@ -1,18 +1,22 @@
 import { ApnsSender } from './apns';
+import { FcmSender } from './fcm';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import { createCompanionRelay } from './relay';
 import { z } from 'zod';
+import { companionPeerIdPattern } from '@workspace/core/companion-relay';
 import { startRelayHealth } from './relay-health';
 import { RelayStartupError } from './relay-startup-error';
+import { readConfiguredPairing } from './configured-pairing';
 
 const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
-const peerId = z.string().regex(/^[a-zA-Z0-9]{32,128}$/);
+const peerId = z.string().regex(companionPeerIdPattern);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
   trustedProxy: z.boolean().optional(),
   hostIds: z.array(peerId).min(1).max(100).optional(),
   apns: z.object({ teamId: z.string().regex(/^[A-Z0-9]{10}$/), topic: z.string().min(1).max(200), development: apnsKey.optional(), production: apnsKey.optional() }).strict().refine(value => value.development || value.production).optional(),
+  fcm: z.object({ serviceAccountFile: z.string().min(1) }).strict().optional(),
   stateDirectory: z.string().min(1), certificateFile: z.string().min(1).optional(), privateKeyFile: z.string().min(1).optional(), healthPort: z.number().int().min(1024).max(65535).optional() }).strict()
   .superRefine((config, context) => {
     const secure = config.listen.endsWith('/tls/ws');
@@ -27,9 +31,11 @@ export function parseRelayConfig(source: string) {
     throw new RelayStartupError('Invalid operator configuration. Provide valid JSON with a listen address and stateDirectory (hostIds optionally restricts laptops); public listeners require TLS certificateFile and privateKeyFile, and plaintext listeners must use loopback.', { cause });
   }
 }
-export async function runCompanionRelay(configFile: string) {
+export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessEnv = process.env) {
   if (!configFile) throw new RelayStartupError('Provide the relay operator configuration file as the first argument, or use npm run dev:relay for local development.');
   const config = parseRelayConfig(await readFile(configFile, 'utf8'));
+  const pairing = await readConfiguredPairing(env);
+  if (pairing && config.hostIds && !config.hostIds.includes(pairing.hostId)) throw new RelayStartupError('The configured pairing destination must be included in hostIds when laptop admission is restricted.');
   await mkdir(config.stateDirectory, { recursive: true, mode: 0o700 });
   const identityFile = path.join(config.stateDirectory, 'identity.key');
   let identity;
@@ -47,9 +53,15 @@ export async function runCompanionRelay(configFile: string) {
     const key = config.apns[environment];
     if (key) senders[environment] = new ApnsSender({ ...key, teamId: config.apns.teamId, topic: config.apns.topic, environment, privateKey: await readFile(key.privateKeyFile, 'utf8') });
   }
-  const push = config.apns ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
-    senders[registration.environment]?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
-  const relay = await createCompanionRelay({ push, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
+  let firebase: FcmSender | undefined;
+  if (config.fcm) {
+    const credentials = z.object({ project_id: z.string().regex(/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/), client_email: z.email(), private_key: z.string().min(1) })
+      .parse(JSON.parse(await readFile(config.fcm.serviceAccountFile, 'utf8')));
+    firebase = new FcmSender({ projectId: credentials.project_id, clientEmail: credentials.client_email, privateKey: credentials.private_key });
+  }
+  const push = config.apns || firebase ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
+    (registration.transport === 'fcm' ? firebase : senders[registration.environment])?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
+  const relay = await createCompanionRelay({ push, pairing, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }

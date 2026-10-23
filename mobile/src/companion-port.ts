@@ -1,3 +1,4 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionRequestReply, CompanionCloseOptions, CompanionClosePreview, CompanionTarget } from '@workspace/core/companion-protocol';
@@ -20,11 +21,22 @@ import type { CompanionReviewInput, CompanionReviewSetup } from '@workspace/core
 export type CompanionUpload = { type: 'image' | 'file'; name: string; mimeType: string; data: string };
 export type CompanionHistoryPage = { frame: CompanionConversation; hasOlder: boolean };
 export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; failed: boolean };
-export type CompanionSession = {
+/** The link to one laptop: whether the app is looking at it, when it is lost, and how it ends. */
+type CompanionLink = {
+  setActive?(active: boolean): Promise<void>;
+  onDisconnect(listener: () => void): () => void;
+  close(): void;
+};
+/** What the app can ask of the paired laptop over a link. */
+type CompanionOperations = {
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
+  localRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
+  localBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
+  duplicateAgent?(target: CompanionTarget, backend: AgentBackend): Promise<string>;
+  renameAgent?(target: CompanionTarget, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, signal?: AbortSignal): Promise<string>;
   getUsage?(): Promise<CompanionUsage[]>;
   registerPush?(registration: CompanionPushRegistration | null): Promise<void>;
@@ -33,6 +45,7 @@ export type CompanionSession = {
   respondRequest?(reply: CompanionRequestReply): Promise<void>;
   getWorkspace(): Promise<CompanionWorkspace>;
   deselectConversation?(): void;
+  isConversationCurrent?(agentId: string): boolean;
   cachedConversation?(agentId: string): CompanionConversation | null | undefined;
   loadConversation(agentId: string): Promise<CompanionConversation | null>;
   loadOlderHistory?(agentId: string): Promise<CompanionHistoryPage>;
@@ -59,14 +72,14 @@ export type CompanionSession = {
   setApprovalPreset?(agentId: string, preset: string): Promise<void>;
   setPermissionMode?(agentId: string, mode: string): Promise<void>;
   commandStatus?(clientCommandId: string): Promise<'pending' | 'accepted' | 'rejected' | 'unresolved' | 'notReceived'>;
-  setActive?(active: boolean): Promise<void>;
   onUpdate?(listener: (workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void): () => void;
-  onDisconnect(listener: () => void): () => void;
-  close(): void;
 };
+export type CompanionSession = CompanionLink & CompanionOperations;
 /** Host transport owns pairing and encrypted routing; Vue consumes app-owned reads and actions. */
 export type CompanionConnector = {
   laptops: readonly { id: string; name: string }[];
+  cachedConversation?(target: CompanionTarget): CompanionConversation | null | undefined;
+  conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
   initialize?(): Promise<void>;

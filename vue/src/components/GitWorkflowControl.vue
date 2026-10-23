@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="root"
     class="git-workflow-control agent-header__git-actions"
     :class="{ 'git-workflow-control--delivery': presentation === 'delivery' }"
   >
@@ -45,24 +44,20 @@
       >
         <GitHubIcon aria-hidden="true" />
       </button>
-      <button
-        class="git-workflow-control__trigger"
-        type="button"
-        :disabled="busy"
-        :aria-label="$t('surface.gitWorkflowControl.chooseGitAction')"
-        :title="$t('surface.gitWorkflowControl.chooseGitAction')"
-        :aria-expanded="menuOpen"
-        @click.stop="toggleMenu"
-      >
-        <ChevronDown aria-hidden="true" />
-      </button>
-      <AppMenu
-        v-if="menuOpen"
-        class="git-workflow-control__menu"
-        :ariaLabel="$t('surface.gitWorkflowControl.gitActions')"
-        :items="menuItems"
-        @select="selectAction"
-      />
+      <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.gitWorkflowControl.gitActions')" :items="menuItems" @select="selectAction">
+        <template #trigger="{ attrs }">
+          <button
+            v-bind="attrs"
+            class="git-workflow-control__trigger"
+            type="button"
+            :disabled="busy"
+            :aria-label="$t('surface.gitWorkflowControl.chooseGitAction')"
+            :title="$t('surface.gitWorkflowControl.chooseGitAction')"
+          >
+            <ChevronDown aria-hidden="true" />
+          </button>
+        </template>
+      </AppMenuButton>
     </template>
   </div>
 
@@ -269,7 +264,7 @@
       <div
         v-else-if="pullRequestOperation.status === 'creating'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--secondary" type="button" @click="runPullRequestInBackground">{{ $t('surface.gitWorkflowControl.runInBackground') }}</button></div>
+      ><button class="app-button app-button--secondary" type="button" @click="runPullRequestInBackground">{{ $t('common.runInBackground') }}</button></div>
       <div
         v-else-if="pullRequestOperation.status === 'error'"
         class="app-dialog__footer"
@@ -328,6 +323,16 @@
         <el-switch v-model="reportBack" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.reportBackTo', { name: reportBackAgentName }) }}</span>
       </label>
+      <template v-else>
+        <label class="git-workflow-control__check git-workflow-control__report-back">
+          <el-switch v-model="reportBack" size="small" :disabled="!reportBack && !reportBackAgents.length" :aria-label="$t('surface.gitWorkflowControl.reportToAnotherAgent')" />
+          <span>{{ $t('surface.gitWorkflowControl.reportToAnotherAgent') }}</span>
+        </label>
+        <el-select v-if="reportBack" v-model="selectedReportBackAgentId" filterable clearable
+          :aria-label="$t('surface.gitWorkflowControl.reportRecipient')" :placeholder="$t('surface.gitWorkflowControl.reportRecipient')">
+          <el-option v-for="recipient in reportBackAgents" :key="recipient.id" :value="recipient.id" :label="recipient.name" />
+        </el-select>
+      </template>
       <label v-if="workflow?.isLinkedWorktree" class="git-workflow-control__check git-workflow-control__merge-cleanup">
         <el-switch v-model="deleteWorktree" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.deleteWorktreeAfterMerging') }}</span>
@@ -349,7 +354,7 @@
     <template #footer>
       <div v-if="mergeTargetDirtyWarning" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
       <div v-else-if="mergeOperation.status === 'confirming'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" :disabled="busy || !canMerge" @click="merge(false)">{{ $t('surface.gitWorkflowControl.merge') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !canMerge || !pushCapable" @click="merge(true)">{{ $t('surface.gitWorkflowControl.mergeAndPush') }}</button></div>
-      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button class="app-button app-button--secondary" type="button" @click="runMergeInBackground">{{ $t('surface.gitWorkflowControl.runInBackground') }}</button></div>
+      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button class="app-button app-button--secondary" type="button" @click="runMergeInBackground">{{ $t('common.runInBackground') }}</button></div>
       <div v-else-if="mergeOperation.status === 'warning'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
       <div v-else-if="mergeOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="mergeOperation.mergeCreated ? retryMergePush() : merge(mergeOperation.pushAfter)">{{ mergeOperation.mergeCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>
@@ -395,7 +400,7 @@ import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGen
 import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitOperationFeedback from './GitOperationFeedback.vue';
@@ -418,7 +423,8 @@ const props = withDefaults(defineProps<{
   updateFromBase?: (agentId: string, input: AgentGitUpdateFromBaseInput) => Promise<AgentGitUpdateFromBaseResult>;
   pullBranch?: (agentId: string, input: import('@workspace/core/contracts').AgentGitPullInput) => Promise<import('@workspace/core/contracts').AgentGitPullResult>;
   reportBackAgentName?: string | null;
-}>(), { presentation: 'menu' });
+  reportBackAgents?: { id: string; name: string }[];
+}>(), { presentation: 'menu', reportBackAgents: () => [] });
 
 const emit = defineEmits<{
   'open-git-diff': [];
@@ -426,7 +432,6 @@ const emit = defineEmits<{
   'inspect-agent': [agentId: string];
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
-const root = ref<HTMLElement | null>(null);
 const workflow = ref<AgentGitWorkflow | null>(null);
 const workflowError = ref<string | null>(null);
 const menuOpen = ref(false);
@@ -456,6 +461,8 @@ const deleteBranch = ref(false);
 const deleteWorktree = ref(false);
 const mergeCleanupPreferenceKey = 'app:mergeCleanup';
 const reportBack = ref(true);
+const selectedReportBackAgentId = ref('');
+const selectedReportBackAgent = computed(() => props.reportBackAgents.find(agent => agent.id === selectedReportBackAgentId.value));
 const gitOperationProgress = ref<AgentGitOperationProgress | null>(null);
 const committedMessage = ref('');
 const generatingKind = ref<'commit' | 'pullRequest' | null>(null);
@@ -637,7 +644,8 @@ const pushCapable = computed(() => Boolean(workflow.value?.branch && workflow.va
 const currentBranchAvailable = computed(() => Boolean(workflow.value?.branch && !workflow.value?.detached));
 const integrationBranch = computed(() => ['main', 'master', 'develop', 'development', 'trunk'].includes(workflow.value?.branch ?? ''));
 const mergeEnabled = computed(() => currentBranchAvailable.value && !integrationBranch.value);
-const canMerge = computed(() => mergeStrategy.value === 'merge' || Boolean(squashCommitMessage.value.trim()));
+const canMerge = computed(() => (mergeStrategy.value === 'merge' || Boolean(squashCommitMessage.value.trim()))
+  && (!reportBack.value || Boolean(props.reportBackAgentName) || Boolean(selectedReportBackAgent.value)));
 const prEnabled = computed(() => currentBranchAvailable.value && !integrationBranch.value);
 const updateEnabled = computed(() => Boolean(props.updateFromBase && workflow.value?.isLinkedWorktree && workflow.value.baseBranch && currentBranchAvailable.value));
 const pullEnabled = computed(() => Boolean(props.pullBranch && workflow.value?.upstream && currentBranchAvailable.value));
@@ -684,7 +692,8 @@ watch(pullRequestDialogOpen, (open) => {
 watch(mergeDialogOpen, (open) => {
   if (open) {
     resetMergeOperation();
-    reportBack.value = true;
+    reportBack.value = Boolean(props.reportBackAgentName);
+    selectedReportBackAgentId.value = '';
     squashCommitMessage.value = '';
     let saved: { deleteWorktree?: unknown; deleteBranch?: unknown } | null = null;
     try { saved = JSON.parse(window.localStorage.getItem(mergeCleanupPreferenceKey) ?? 'null'); } catch { /* Optional client preference. */ }
@@ -718,12 +727,10 @@ watch(mergeStrategy, (strategy) => {
 });
 
 onMounted(() => {
-  document.addEventListener('click', closeMenu);
   unsubscribeMainEvents = appApi?.onEvent(handleMainEvent) ?? null;
   void loadWorkflow({ reset: true });
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeMenu);
   unsubscribeMainEvents?.();
   clearCommitSuccessTimer();
   clearPushSuccessTimer();
@@ -794,11 +801,6 @@ async function revertChanges(): Promise<void> {
   } finally {
     busy.value = false;
   }
-}
-function closeMenu(event: MouseEvent): void { if (!root.value?.contains(event.target as Node)) menuOpen.value = false; }
-function toggleMenu(): void {
-  if (busy.value) return;
-  menuOpen.value = !menuOpen.value;
 }
 function runFirstEnabled(): void { if (firstEnabledAction.value) selectAction(firstEnabledAction.value); }
 async function selectAction(action: string): Promise<void> {
@@ -1042,7 +1044,7 @@ async function merge(pushAfter: boolean): Promise<void> {
   workflowError.value = null;
   gitOperationProgress.value = {
     operation: 'merge',
-    phase: props.reportBackAgentName && reportBack.value ? 'handoff' : 'delivery',
+    phase: reportBack.value && (props.reportBackAgentName || selectedReportBackAgent.value) ? 'handoff' : 'delivery',
   };
   let mergeCreated = false;
   let cleanupWarning: MergeCleanupWarning | undefined;
@@ -1055,7 +1057,8 @@ async function merge(pushAfter: boolean): Promise<void> {
       deleteBranch: deleteBranch.value,
       deleteWorktree: deleteWorktree.value,
       ...(pushAfter ? { pushAfter: true } : {}),
-      ...(props.reportBackAgentName ? { reportBack: reportBack.value } : {}),
+      ...(props.reportBackAgentName ? { reportBack: reportBack.value }
+        : reportBack.value && selectedReportBackAgent.value ? { reportBack: true, reportBackAgentId: selectedReportBackAgent.value.id } : {}),
       confirmed: true,
     });
     cleanupWarning = mergeResult.warning;
@@ -1371,7 +1374,7 @@ function handleMainEvent(event: MainToRendererEvent): void {
   background: transparent;
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button {
+.git-workflow-control:not(.git-workflow-control--delivery) button {
   display: grid;
   place-items: center;
   padding: 0;
@@ -1392,12 +1395,12 @@ function handleMainEvent(event: MainToRendererEvent): void {
   border-radius: 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0;
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button:hover:not(:disabled) {
+.git-workflow-control:not(.git-workflow-control--delivery) button:hover:not(:disabled) {
   color: var(--color-text);
   background: var(--color-surface-high);
 }
 
-.git-workflow-control:not(.git-workflow-control--delivery) > button:disabled {
+.git-workflow-control:not(.git-workflow-control--delivery) button:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -1412,13 +1415,6 @@ function handleMainEvent(event: MainToRendererEvent): void {
 .git-workflow-control svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.git-workflow-control__menu {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + var(--space-2));
-  right: 0;
 }
 
 .git-workflow-control__dialog-form {

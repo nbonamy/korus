@@ -79,6 +79,7 @@ export function createClientApiMock(
     stopProfileRun: unscripted('stopProfileRun'),
     stopAgentProfileRuns: unscripted('stopAgentProfileRuns'),
     listAgentFiles: unscripted('listAgentFiles'),
+    listAgentDirectory: unscripted('listAgentDirectory'),
     getDocumentWorkspaces: vi.fn().mockResolvedValue({}),
     updateDocumentWorkspace: unscripted('updateDocumentWorkspace'),
     readWorkspaceDocument: unscripted('readWorkspaceDocument'),
@@ -93,6 +94,7 @@ export function createClientApiMock(
     previewBranchCurrentWork: unscripted('previewBranchCurrentWork'),
     branchCurrentWork: unscripted('branchCurrentWork'),
     getAgentGitWorkflow: unscripted('getAgentGitWorkflow'),
+    getAgentClosePreview: unscripted('getAgentClosePreview'),
     listAgentTasks: vi.fn().mockResolvedValue([]),
     cancelAgentTask: unscripted('cancelAgentTask'),
     generateAgentGitMessage: unscripted('generateAgentGitMessage'),
@@ -260,6 +262,7 @@ export function createClientApiMock(
   api.listBackendPlugins.mockResolvedValue([]);
   api.listBackendSkills.mockResolvedValue([]);
   api.listAgentFiles.mockResolvedValue([]);
+  api.listAgentDirectory.mockResolvedValue({ entries: [], nextCursor: null });
   api.listSourceRepositories.mockResolvedValue([]);
   api.listSourceBranches.mockResolvedValue([]);
   api.listSourceWorktrees.mockResolvedValue([]);

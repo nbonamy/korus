@@ -6,15 +6,17 @@ import {
   type CodexConversationPaneController,
   type CodexMessageTextSelection,
   type CodexNativeAttachment,
+  type CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
 import { computed, defineComponent, h, nextTick, provide, ref } from 'vue';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';
 import { formatCollaborationMessageEnvelope } from '@workspace/core/collaboration-message-envelope';
 import ConversationPane from '../ConversationPane.vue';
 import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
 import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
+import { setElectronTestClient } from '../../test/client';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -60,8 +62,62 @@ const executionPlan: ThreadPlan = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
+const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendererApi };
+
 describe('ConversationPane', () => {
+  afterEach(() => { delete nativeWindow.codexAppSdkNative; });
   const claudeAgent = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
+  it.each([
+    ['claude', '/repo/banner.png', '/repo/banner.png'],
+    ['codex', 'file:///repo/blue%20flower.png', '/repo/blue flower.png'],
+    ['claude', 'website/assets/banner.png', 'website/assets/banner.png'],
+  ] as const)('loads a %s inline local image through its own agent file preview: %s', async (backend, reference, filePath) => {
+    const readImagePreview = vi.fn().mockRejectedValue(new Error('Attachment reference is invalid or expired'));
+    installNativeImagePreview(readImagePreview);
+    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'image', path: filePath, size: 3, mimeType: 'image/png', dataUrl: 'data:image/png;base64,cG5n' });
+    setElectronTestClient({ previewAgentFile });
+    const owner = { ...agent, id: 'background-image-owner', backend };
+    const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, agentId: owner.id, parts: [{ type: 'text', text: `![Blue flower](<${reference}>)` }] }]), agent: owner });
+    await flushPromises();
+    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('data:image/png;base64,cG5n');
+    expect(previewAgentFile).toHaveBeenCalledWith(owner.id, filePath);
+  });
+
+  it('keeps a pending image read bound to its original agent when the pane changes', async () => {
+    let release!: () => void;
+    installNativeImagePreview(() => new Promise(resolve => { release = () => resolve(null); }));
+    const previewAgentFile = vi.fn().mockResolvedValue({ kind: 'image', path: '/repo/banner.png', size: 3, dataUrl: 'data:image/png;base64,cG5n' });
+    setElectronTestClient({ previewAgentFile });
+    const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'text', text: '![Banner](/repo/banner.png)' }] }]), agent: claudeAgent });
+    await wrapper.setProps({ agent: { ...claudeAgent, id: 'different-agent' } });
+    release();
+    await flushPromises();
+    expect(previewAgentFile).toHaveBeenCalledWith(claudeAgent.id, '/repo/banner.png');
+    expect(previewAgentFile).not.toHaveBeenCalledWith('different-agent', expect.anything());
+  });
+
+  it('preserves native attachment previews without reading workspace files', async () => {
+    installNativeImagePreview(async () => 'data:image/png;base64,cG5n');
+    const previewAgentFile = vi.fn();
+    setElectronTestClient({ previewAgentFile });
+    const wrapper = mountPane({ controller: controllerFor([{ ...messages[0]!, parts: [{ type: 'attachment', attachment: {
+      kind: 'image', name: 'Upload', path: 'codex-attachment:upload', mimeType: 'image/png',
+    } }] }]), agent: claudeAgent });
+    await flushPromises();
+    expect(wrapper.get('img.chat-attachment-block__preview').attributes('src')).toBe('data:image/png;base64,cG5n');
+    expect(previewAgentFile).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'text', 'tooLarge'])('does not turn a %s file preview into an image', async kind => {
+    installNativeImagePreview(async () => null);
+    const previewAgentFile = kind === 'missing' ? vi.fn().mockRejectedValue(new Error('File not found')) : vi.fn().mockResolvedValue({ kind, path: '/repo/banner.png', size: 3 });
+    setElectronTestClient({ previewAgentFile });
+    const wrapper = mountPane({ controller: controllerFor([{ ...messages[1]!, parts: [{ type: 'text', text: '![Banner](/repo/banner.png)' }] }]), agent: claudeAgent });
+    await flushPromises();
+    expect(previewAgentFile).toHaveBeenCalledWith(claudeAgent.id, '/repo/banner.png');
+    expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBeUndefined();
+  });
+
   it('reads the full content of a cut row by itself, with nothing to click', async () => {
     const full = { ...messages[1]!, parts: [{ type: 'text' as const, text: 'The full result is visible.' }] };
     const bytes = Buffer.from(JSON.stringify(full));
@@ -929,6 +985,13 @@ describe('ConversationPane', () => {
     expect(multipleActions[1]?.attributes('aria-label')).toBe('Annotate second.png');
   });
 });
+
+function installNativeImagePreview(readImagePreview: NonNullable<CodexNativeRendererApi['readImagePreview']>): void {
+  nativeWindow.codexAppSdkNative = {
+    capabilities: { attachments: true, clipboard: true, externalLinks: true, transcription: false },
+    readImagePreview, copyToClipboard: vi.fn(), ingestAttachments: vi.fn(), openExternal: vi.fn(), pickAttachments: vi.fn(), transcribeAudio: vi.fn(),
+  };
+}
 
 function mountPane(props: {
   controller: CodexConversationPaneController;

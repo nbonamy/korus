@@ -17,8 +17,9 @@ export function generatedConfig(product, env, dotenv) {
   const relayPeer = overridePeer || product.companionRelay?.peerId || '';
   // `//` starts a comment in an xcconfig; `$()` keeps the URL intact.
   const escaped = relayUrl.replace('//', '/$()/');
+  const privacyUrl = new URL('privacy/', `${product.websiteUrl.replace(/\/$/, '')}/`).href.replace('//', '/$()/');
   return [`COMPANION_BUNDLE_ID = ${product.appId}`, `COMPANION_DISPLAY_NAME = ${product.name}`, `COMPANION_PRODUCT_NAME = ${product.companionName ?? product.name}`,
-    `COMPANION_RELAY_URL = ${escaped}`, `COMPANION_RELAY_PEER_ID = ${relayPeer}`, ''].join('\n');
+    `COMPANION_PRIVACY_POLICY_URL = ${privacyUrl}`, `COMPANION_RELAY_URL = ${escaped}`, `COMPANION_RELAY_PEER_ID = ${relayPeer}`, ''].join('\n');
 }
 
 function readIfPresent(file) { try { return readFileSync(file, 'utf8'); } catch (error) { if (error.code === 'ENOENT') return ''; throw error; } }

@@ -1,8 +1,10 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import AgentHeader from '../AgentHeader.vue';
 import type { Agent, AgentGitStatus, BackendRuntimeStatus } from '@workspace/core/contracts';
 import '../../styles/base.css';
+// Menus open in a popper attached to the body.
+const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -38,7 +40,7 @@ describe('AgentHeader', () => {
     } });
     await flushPromises();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Git log')!.trigger('click');
+    await bodyAll('[role="menuitem"]').find(item => item.text() === 'Git log')!.trigger('click');
     expect(wrapper.emitted('open-git-log')).toStrictEqual([[]]);
     wrapper.unmount();
   });
@@ -237,7 +239,6 @@ describe('AgentHeader', () => {
       expect.objectContaining({ id: 'commits', type: 'submenu' }),
     ]));
     expect(menu.find('[role="menuitemradio"][aria-checked="true"]').text()).toContain('Uncommitted');
-    expect(menu.find('.app-menu__check').exists()).toBe(false);
     menu.vm.$emit('select', 'staged');
     await wrapper.vm.$nextTick();
 

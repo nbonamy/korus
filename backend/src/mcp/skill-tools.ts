@@ -13,7 +13,7 @@ export function createSkillToolModuleProvider(
     resolve: request => ({
       id: 'bundled-skills',
       register: server => server.registerTool('read-skill', {
-        description: `Load a bundled ${product.name} skill by its catalog name before using that capability. Returns instructions, not authorization to act. Only skills available to this caller are readable; paths and personal skills are not accepted.`,
+        description: `Read a bundled ${product.name} procedure before using that capability. The full Markdown is returned in text content and structuredContent.markdown, not injected separately. Reading grants no authorization. Only names available to this caller are accepted, not paths or personal skills. Example: {"name":"korus-reviewer"} in a review session.`,
         inputSchema: { name: z.string().min(1).max(100) },
         annotations: { readOnlyHint: true, openWorldHint: false },
       }, async ({ name }) => {
@@ -22,7 +22,7 @@ export function createSkillToolModuleProvider(
           const mission = coordinator.missionContext(request.agentId);
           const definition = readBundledSkill(name, { toolModules: availableModules(request), missionStage: mission?.stage });
           markdown = definition.markdown;
-          return { name: definition.name, loaded: true };
+          return { name: definition.name, loaded: true, markdown };
         });
         if (!result.isError) result.content = [{ type: 'text', text: markdown }];
         return result;

@@ -12,18 +12,25 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
   Settings offers connection. Existing chats stay accessible.
 - Surfaces differ in presentation, not policy. Dialogs (New agent, worktree,
   project, branch/work-item, repository URL) carry a conditional `BackendSelector`;
-  direct actions (new session on main, open folder, Quick Chat, new Mission) create
-  immediately and let the user choose on the empty chat. An explicit selection
+  direct actions (new session on main, open folder, Quick Chat, duplicate agent,
+  new Mission) create immediately and let the user choose on the empty chat. An explicit selection
   carries through acquisition and progress dialogs. Assigning to an existing session
   never implies a provider change.
-- **Duplicate and fork** keep the source backend. **MCP creation** (`create-agent`,
+- **Duplicate** defaults to the source backend and accepts an explicit available backend;
+  changing it applies the target provider’s defaults to the fresh agent. **Fork** keeps
+  the source backend. **MCP creation** (`create-agent`,
   `create-project`) takes an optional backend defaulting to the caller's. Same-provider
   helpers inherit the caller's model, effort and explicit service tier; cross-provider
   creation uses the target provider's defaults instead.
 - **Missions:** new workers inherit the main Mission agent's current provider,
   model, reasoning effort and service tier, not the assigned team member's profile.
-  The first Mission agent starts from the selected orchestrator member. Existing
-  workers retain their configuration and conversations.
+  The first Mission agent starts from the selected orchestrator member. Tickets
+  approval may persist an independent implementation provider, model and reasoning
+  effort. Cross-provider workers use the target provider's defaults. The daemon
+  validates provider availability and the selection against the host's filtered
+  catalog before worktree creation and each worker launch. Implementation workers,
+  including reused workers and retries, use that selection; the lead and Review
+  retain their configuration and conversations.
 - **Review:** the reviewer's provider is an independent choice (Claude can review
   Codex work and vice versa). The panel remembers provider, model, effort and
   automation preferences. `start_automatic_review` inherits the caller's
@@ -32,6 +39,36 @@ How Korus picks Codex, Claude Code or Antigravity for new work.
   or incompatible model settings.
 - Validation gives a clear error for an unavailable explicit provider instead of
   silently using another.
+
+## Host Requirements
+
+An operator can limit the model choices offered by desktop and mobile with
+`$APP_HOME/requirements.json` (normally `~/.korus/requirements.json`). The daemon
+reads this optional file at startup, independently of saved preferences, and never
+rewrites it. Restart the daemon after editing it. Invalid JSON, unknown fields or
+providers, and invalid model lists stop startup with an error.
+
+For a demo that offers only Codex Luna:
+
+```json
+{
+  "models": {
+    "codex": ["gpt-6-luna"],
+    "claude": [],
+    "antigravity": []
+  }
+}
+```
+
+Entries match provider catalog model identifiers (`model` or `id`), not display
+names. Omitted providers keep their full catalog; an empty list disables that
+provider for new work while preserving its conversations. Settings cannot re-enable
+a provider disabled by requirements. Filtered catalogs retain an allowed provider
+default or select the first remaining model as the default. Catalog updates use the
+same filter, so discovery cannot restore excluded choices. Each host owns its
+requirements; remote clients receive the owning host's filtered catalog and
+availability. The file controls Korus model choices, not the provider's own CLI or
+native subagents.
 
 ## Switching Before The First Prompt
 
@@ -67,8 +104,8 @@ report their own connections.
 
 - Manual choices are remembered per client and host; an unavailable remembered engine
   falls back for new work without overwriting the preference. Existing conversations,
-  delegated work, duplicate/fork and persisted automations keep their engine and never
-  silently switch on auth loss. Automations persist their backend for filtering and
+  delegated work, duplicates without an explicit backend, forks and persisted automations
+  keep their engine and never silently switch on auth loss. Automations persist their backend for filtering and
   execution (filtering uses a tool-free, non-persisted Claude query) and fail before
   provisioning when it is disconnected.
 - Enablement is persisted separately (`providerEnabled`); availability requires

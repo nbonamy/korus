@@ -18,6 +18,7 @@ export type DelegatedWorkOutcome =
     kind: 'merge';
     branch: string;
     repository: string;
+    reportBackAgentId?: string;
   };
 
 export type DelegatedWorkAction =
@@ -29,6 +30,7 @@ export type DelegatedWorkAction =
     kind: 'merge';
     branch: string;
     repository: string;
+    reportBackAgentId?: string;
   };
 
 type PendingReport = {
@@ -46,7 +48,7 @@ export type DelegatedWorkReportServiceOptions = {
 
 export type DelegatedWorkReportPort = Pick<DelegatedWorkReportService, 'close' | 'deliver' | 'handleEvent' | 'notifyWorker' | 'prepare' | 'recipientName'>;
 
-/** Requests a final worker-authored handoff and delivers it to the delegating agent. */
+/** Requests a final worker-authored handoff and delivers it to the selected or delegating agent. */
 export class DelegatedWorkReportService {
   private readonly pending = new Map<string, PendingReport>();
 
@@ -57,7 +59,7 @@ export class DelegatedWorkReportService {
   }
 
   async prepare(agent: Agent, action: DelegatedWorkAction): Promise<string | null> {
-    if (!this.recipient(agent) || agent.status.type !== 'idle' || this.pending.has(agent.id)) {
+    if (!this.recipient(agent, action.kind === 'merge' ? action.reportBackAgentId : undefined) || agent.status.type !== 'idle' || this.pending.has(agent.id)) {
       return null;
     }
 
@@ -82,7 +84,7 @@ export class DelegatedWorkReportService {
   }
 
   deliver(agent: Agent, outcome: DelegatedWorkOutcome, summary: string | null): boolean {
-    const recipient = this.recipient(agent);
+    const recipient = this.recipient(agent, outcome.kind === 'merge' ? outcome.reportBackAgentId : undefined);
     if (!recipient || !this.options.sendMessage) return false;
     try {
       this.options.sendMessage(agent.id, recipient.id, reportMessage(agent, outcome, summary));
@@ -148,9 +150,10 @@ export class DelegatedWorkReportService {
     pending.resolve(summary);
   }
 
-  private recipient(agent: Agent): { id: string; name: string } | null {
-    if (!agent.delegatedByAgentId || agent.delegatedByAgentId === agent.id) return null;
-    const recipient = this.options.getSnapshot().agents.find((candidate) => candidate.id === agent.delegatedByAgentId);
+  private recipient(agent: Agent, selectedAgentId?: string): { id: string; name: string } | null {
+    const recipientId = selectedAgentId ?? agent.delegatedByAgentId;
+    if (!recipientId || recipientId === agent.id) return null;
+    const recipient = this.options.getSnapshot().agents.find((candidate) => candidate.id === recipientId);
     return recipient ? { id: recipient.id, name: agentDisplayName(recipient) } : null;
   }
 }
@@ -199,7 +202,7 @@ function reportMessage(agent: Agent, outcome: DelegatedWorkOutcome, summary: str
     : ['The worker could not prepare a handoff summary. Open its conversation for details.'];
 
   const report = [
-    `${worker} completed a delegated Git milestone. Please give the user a concise update using this report; no reply to the worker is needed.`,
+    `${worker} completed a Git milestone. Please give the user a concise update using this report; no reply to the worker is needed.`,
     '',
     ...action,
     '',

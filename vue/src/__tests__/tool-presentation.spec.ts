@@ -12,6 +12,7 @@ import {
   IconTargetArrow as TargetArrowIcon,
   IconSitemap as SitemapIcon,
   IconUsers as UsersIcon,
+  IconPhoto as PhotoIcon,
 } from '@tabler/icons-vue';
 import { messages } from '../i18n/messages';
 import { presentAppTool } from '../tool-presentation';
@@ -35,6 +36,7 @@ describe(`${product.name} tool presentation`, () => {
 
   it.each([
     ['close-agent', UsersIcon, 'Closed agent'],
+    ['generate-image', PhotoIcon, 'Generated images'],
     ['wait-tasks', SquareCheck, 'Checked delegated tasks'],
     ['complete-task', SquareCheck, 'Submitted task result'],
     ['cancel-task', SquareCheck, 'Requested task cancellation'],
@@ -67,6 +69,7 @@ describe(`${product.name} tool presentation`, () => {
     ['read-skill', MarkdownIcon, 'Loaded skill'],
     ['set-mission-title', TargetArrowIcon, 'Named mission'],
     ['attach-mission-repository', GitBranchIcon, 'Attached mission repository'],
+    ['get-mission-assignment', SquareCheck, 'Read mission assignment'],
     ['list-mission-artifacts', MarkdownIcon, 'Checked mission artifacts'],
     ['read-mission-artifact', MarkdownIcon, 'Read mission artifact'],
     ['write-mission-artifact', SquareCheck, 'Saved mission artifact'],

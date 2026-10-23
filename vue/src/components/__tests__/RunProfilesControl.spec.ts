@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElDialog } from 'element-plus';
 import type { Agent } from '@workspace/core/contracts';
@@ -10,8 +10,8 @@ const agent = { id: 'one', name: 'One', folder: '/repo/tree', backend: 'codex', 
 const profile = { id: 'dev', name: 'Dev', command: 'npm run dev', directory: '.', previewUrl: 'http://127.0.0.1:43210' };
 const catalog: RunProfileCatalog = { repository: '/repo', worktree: '/repo/tree', profiles: [profile], targets: { dev: { cwd: '/repo/tree' } }, runs: [] };
 const run: ProfileRun = { id: 'run', agentId: 'one', profileId: 'dev', command: profile.command, cwd: '/repo/tree', state: 'running', startedAt: '', output: 'ready', outputTruncated: false };
-function button(wrapper: ReturnType<typeof mount>, text: string) { return wrapper.findAll('button').find(b => b.text() === text)!; }
-function menuAction(wrapper: ReturnType<typeof mount>, text: string) { return wrapper.findAll('[role="menuitem"]').find(b => b.get('.app-menu__label').text() === text)!; }
+function button(wrapper: ReturnType<typeof mount>, text: string) { return [...wrapper.findAll('button'), ...new DOMWrapper(document.body).findAll('button')].find(b => b.text() === text)!; }
+function menuAction(wrapper: ReturnType<typeof mount>, text: string) { return [...wrapper.findAll('[role="menuitem"]'), ...new DOMWrapper(document.body).findAll('[role="menuitem"]')].find(b => b.get('.app-menu__label').text() === text)!; }
 async function setup(overrides = {}, props = {}, realDialogs = false) {
   const api = { getRunProfiles: vi.fn().mockResolvedValue(structuredClone(catalog)), getRunProfileActions: vi.fn().mockResolvedValue({ actions: [], warnings: [] }), startRunProfile: vi.fn().mockResolvedValue(run), saveRunProfile: vi.fn().mockResolvedValue(catalog), deleteRunProfile: vi.fn().mockResolvedValue(catalog), stopProfileRun: vi.fn().mockResolvedValue({ ...run, state: 'stopped' }), ...overrides };
   stubElectronTestWindow({ app: api });
@@ -42,7 +42,7 @@ describe('RunProfilesControl', () => {
     const { wrapper, api } = await setup();
     expect(wrapper.findComponent({ name: 'PlayerPlayIcon' }).exists()).toBe(true);
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-    expect(wrapper.get('[role="menu"]').text()).toContain('Dev');
+    expect(new DOMWrapper(document.body).get('[role="menu"]').text()).toContain('Dev');
     await button(wrapper, 'Configure…').trigger('click');
     expect(wrapper.get('[role="dialog"]').text()).toContain('Run profiles');
     expect(api.startRunProfile).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { createPrivateKey, sign } from 'node:crypto';
+import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { connect } from 'node:http2';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 
@@ -16,7 +16,7 @@ export class ApnsSender {
     if (this.key.asymmetricKeyType !== 'ec' || this.key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') throw new Error('APNs requires a P-256 key.');
   }
   async send(registration: CompanionPushRegistration, notification: CompanionNotification): Promise<PushResult> {
-    if (registration.environment !== this.config.environment) return 'unavailable';
+    if (registration.transport === 'fcm' || registration.environment !== this.config.environment) return 'unavailable';
     const now = Math.floor(Date.now() / 1000);
     if (!this.token || now - this.issuedAt >= 3000) {
       const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -24,7 +24,12 @@ export class ApnsSender {
       this.token = `${unsigned}.${sign('sha256', Buffer.from(unsigned), { key: this.key, dsaEncoding: 'ieee-p1363' }).toString('base64url')}`;
       this.issuedAt = now;
     }
-    const payload = JSON.stringify({ aps: { alert: { title: notification.name, body: messages[notification.kind] }, sound: 'default', 'thread-id': notification.target.agentId }, notification });
+    const read = notification.kind === 'read';
+    const target = notification.target;
+    const collapseId = read ? notification.id : createHash('sha256').update(JSON.stringify([
+      target.hostId, target.locationId, target.teamId, target.agentId, target.sessionId,
+    ])).digest('hex');
+    const payload = JSON.stringify({ aps: read ? { 'content-available': 1 } : { alert: { title: notification.name, body: messages[notification.kind as keyof typeof messages] }, sound: 'default', 'thread-id': notification.target.agentId }, notification });
     if (Buffer.byteLength(payload) > 4096) return 'unavailable';
     const client = connect(registration.environment === 'development' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com');
     return new Promise(resolve => {
@@ -33,8 +38,8 @@ export class ApnsSender {
       const timer = setTimeout(() => finish('unavailable'), 10_000);
       client.on('error', () => finish('unavailable'));
       const request = client.request({ ':method': 'POST', ':path': `/3/device/${registration.token}`,
-        authorization: `bearer ${this.token}`, 'apns-topic': this.config.topic, 'apns-push-type': 'alert',
-        'apns-priority': '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': notification.id });
+        authorization: `bearer ${this.token}`, 'apns-topic': this.config.topic, 'apns-push-type': read ? 'background' : 'alert',
+        'apns-priority': read ? '5' : '10', 'apns-expiration': String(now + 300), 'apns-collapse-id': collapseId });
       let status = 0; let body = '';
       request.on('response', headers => { status = Number(headers[':status']); });
       request.setEncoding('utf8');

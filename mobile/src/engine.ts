@@ -1,8 +1,9 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
-import type { Agent, BackendModelOption } from '@workspace/core/contracts';
+import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
@@ -12,6 +13,7 @@ import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
 import { createCompanionState } from './companion-state';
 import { composerCapabilitiesFor, type ComposerChange } from './composer-settings';
+import { createLifecycle } from './engine-lifecycle';
 import { activeSession, projectMobileActivityGroups, projectMobileGroups, type MobileActivityGroup, type MobileSidebarGroup } from './workspace-groups';
 import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
@@ -45,6 +47,7 @@ export type EngineState = {
   header: { title: string; repository: string | null; status: string; statusText: string; icon: string | null } | null;
   loading: boolean;
   conversationReady: boolean;
+  refreshing: boolean;
   conversationGeneration: number;
   canSend: boolean;
   composerTarget: CompanionTarget | null;
@@ -52,7 +55,7 @@ export type EngineState = {
   goalBusy: boolean;
   goalError: boolean;
   review: ReturnType<typeof createCompanionState>['review']['value'];
-  sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | null;
+  sessionAction: 'interrupt' | 'restart' | 'close' | 'previewClose' | 'rename' | null;
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
@@ -83,6 +86,7 @@ export type EngineEvent =
   /** The open conversation, for the transcript: the provider's own snapshot plus the agent it belongs to. */
   | ({ type: 'conversation'; agentId: string; frame: CompanionConversation | null } & TranscriptContext)
   /** Everything around the open conversation changed but the conversation itself did not: small, and never resends the transcript. */
+  | ({ type: 'conversationTransfer'; agentId: string; identity: string } & CompanionSync & TranscriptContext)
   | ({ type: 'conversationContext'; agentId: string } & TranscriptContext);
 
 /** What the transcript needs besides the conversation: the chat's own record, the names it can mention, and what an empty chat offers. */
@@ -94,16 +98,22 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
-  | { type: 'loadProjectBranches'; repositoryId: string } | { type: 'dismissProjectBranches' }
-  | { type: 'loadProjectRepositories' } | { type: 'dismissProjectRepositories' }
+  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'local' } | { type: 'dismissProjectBranches' }
+  | { type: 'loadProjectRepositories'; source?: 'github' | 'local' } | { type: 'dismissProjectRepositories' }
+  | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
+  | { type: 'renameAgent'; target: CompanionTarget; name: string }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
   | { type: 'loadUsage' }
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
+  | { type: 'transcriptApplied'; identity: string; checkpoint: CompanionCheckpoint }
+  | { type: 'transcriptReset'; identity: string }
+  | { type: 'refreshConversation' }
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
@@ -131,12 +141,12 @@ export type EngineCommand =
   | { type: 'loadReview'; backend?: 'codex' | 'claude' | 'antigravity' } | { type: 'dismissReview' }
   | { type: 'review'; target: CompanionTarget; input: CompanionReviewInput };
 
-export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; post(event: EngineEvent): void };
+export type EnginePort = { connector: CompanionConnector; selectionStore?: SelectionStore; chatsLabel?: string; initialActive?: boolean; incrementalTranscript?: boolean; post(event: EngineEvent): void };
 
 const effortsOf = (model: BackendModelOption) => (model.supportedReasoningEfforts ?? []).map((option) => option.reasoningEffort);
 
 export function createEngine(port: EnginePort) {
-  const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && foreground) port.post({ type: 'notification', notification }); });
+  const state = createCompanionState(port.connector, undefined, undefined, notification => { if (!disposed && (foreground || notification.kind === 'read')) port.post({ type: 'notification', notification }); });
   const startup = ref<EngineState['startup']>('loading');
   const pairing = ref<EngineState['pairing']>('idle');
   const pairingError = ref('');
@@ -144,27 +154,20 @@ export function createEngine(port: EnginePort) {
   let disposed = false;
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
+  const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
   const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
-  let backgroundedAt: number | undefined;
-  let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
-  let backgroundSuspended = false;
-  let suspension: Promise<void> | undefined;
-  function suspendAfterGrace() {
-    if (backgroundSuspended) return suspension;
-    backgroundSuspended = true;
-    connectionDiagnostic('app.background-grace-expired');
-    state.disconnect();
-    suspension = Promise.resolve(port.connector.suspend?.());
-    return suspension;
-  }
+  // The state starts out foreground; tell it when the app was launched in the background.
+  if (!foreground) void state.setActive(false);
+  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => { state.disconnect(); return port.connector.suspend?.(); } });
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
-  let selectionEpoch = 0;
+  // Bumped whenever the person navigates, so a connection still restoring the saved selection gives way.
+  let restoreEpoch = 0;
   const backendChoices = () => state.workspace.value.backends?.[state.teamId.value] ?? [];
   const engines = () => { const agent = state.agent.value; return agent && backendChoices().length > 1 && canSelectAgentBackend(agent) ? { current: agent.backend, choices: backendChoices() } : null; };
 
@@ -177,16 +180,16 @@ export function createEngine(port: EnginePort) {
   async function connect(laptopId: string) {
     ++restoringSelection;
     try {
-      const epoch = ++selectionEpoch;
+      const epoch = ++restoreEpoch;
       await state.connect(laptopId);
-      if (disposed || epoch !== selectionEpoch || state.status.value !== 'connected') return;
+      if (disposed || epoch !== restoreEpoch || state.status.value !== 'connected') return;
       const saved = await port.selectionStore?.read(laptopId).catch(() => null);
-      if (disposed || epoch !== selectionEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
+      if (disposed || epoch !== restoreEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
       const team = teams.find((candidate) => candidate.id === saved?.teamId)
         ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
       await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
-      if (!disposed && epoch === selectionEpoch) await rememberSelection();
+      if (!disposed && epoch === restoreEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
       if (!restoringSelection && state.status.value === 'connected') await openPendingNotification();
@@ -221,7 +224,7 @@ export function createEngine(port: EnginePort) {
     return {
       git: state.git.view.value,
       laptopId: state.laptopId.value,
-      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value),
+      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
       queuedPromptPending: state.queuedPromptPending.value,
       queuedPromptFailed: state.queuedPromptFailed.value,
@@ -240,7 +243,7 @@ export function createEngine(port: EnginePort) {
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
       review: state.review.value,
       loading: state.loading.value && !hasConversation.value, canSend: state.canSend.value, draft: state.draft.value.text,
-      conversationReady: state.conversationReady.value,
+      conversationReady: state.conversationReady.value, refreshing: state.refreshing.value,
       conversationGeneration: state.conversationGeneration.value,
       mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
         ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
@@ -302,9 +305,10 @@ export function createEngine(port: EnginePort) {
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
   const contextNow = (): TranscriptContext => ({ generation: state.conversationGeneration.value, ready: state.conversationReady.value, agent: state.agent.value, peers: peers.value, history: state.history.value, engines: engines() });
 
-  // A conversation crosses the bridge whole, so it crosses once per change of its own content and no faster than the page can
-  // draw it: updates in between are folded into the latest. The provider's replica has already applied every one of them.
+  // Pace presentation work. Incremental hosts send every event since the last paint acknowledgment;
+  // other hosts send the latest snapshot. Either payload subsumes older pending presentation work.
   const transcriptInterval = 100;
+  const acknowledged = new Map<string, CompanionCheckpoint>();
   let sent: { agentId: string; frame: CompanionConversation | null; ready: boolean; overlay: string; context: string } | null = null;
   let sentAt = 0;
   let trailing: ReturnType<typeof setTimeout> | undefined;
@@ -327,7 +331,10 @@ export function createEngine(port: EnginePort) {
       clearTimeout(trailing); trailing = undefined;
       const context = contextNow();
       sent = { agentId, frame: raw, ready, overlay: overlaid.key, context: JSON.stringify(context) }; sentAt = now;
-      port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
+      const identity = JSON.stringify([state.laptopId.value, state.teamId.value, context.agent?.id, context.agent?.backend, context.agent?.backendSession]);
+      const updates = port.incrementalTranscript && raw && !overlaid.key ? state.conversationUpdates(acknowledged.get(identity) ?? null) : null;
+      if (updates) port.post({ type: 'conversationTransfer', identity, ...updates, agentId, ...context });
+      else port.post({ type: 'conversation', agentId, frame: overlaid.frame, ...context });
       return;
     }
     const context = contextNow(); const json = JSON.stringify(context);
@@ -412,8 +419,9 @@ export function createEngine(port: EnginePort) {
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
-      case 'disconnect': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; return state.disconnect();
+      case 'disconnect': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; return state.disconnect();
       case 'loadUsage': return state.loadUsage();
+      case 'idleSort': if (command.order === 'activity' || command.order === 'repository') sidebarIdleSort.value = command.order; return;
       case 'loadChanges': return state.git.load(command.scopeId);
       case 'dismissChanges': return state.git.clear();
       case 'read': {
@@ -428,48 +436,49 @@ export function createEngine(port: EnginePort) {
         finally { reading.delete(key); }
         return;
       }
+      case 'transcriptApplied':
+        acknowledged.delete(command.identity); acknowledged.set(command.identity, command.checkpoint);
+        while (acknowledged.size > 8) acknowledged.delete(acknowledged.keys().next().value!);
+        return;
+      case 'transcriptReset':
+        acknowledged.delete(command.identity); sent = null; postConversation(); return;
+      case 'refreshConversation': await state.selectAgent(state.agentId.value); return;
       case 'activity': {
         const activity = ++activityEpoch;
         connectionDiagnostic('app.activity', { stage: command.active ? 'foreground' : 'background' });
         foreground = command.active;
-        if (command.active) {
-          sidebarNow.value = Date.now();
-          clearTimeout(backgroundTimer); backgroundTimer = undefined;
-          if (backgroundedAt !== undefined && Date.now() - backgroundedAt >= companionBackgroundGraceMs) suspendAfterGrace();
-          await suspension?.catch(() => {});
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          suspension = undefined; backgroundedAt = undefined; backgroundSuspended = false;
-          await port.connector.resume?.();
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          await state.setActive(true);
-          if (disposed || activity !== activityEpoch || !foreground) return;
-          if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
-          else await state.reconnect();
-          return openPendingNotification();
+        if (!command.active) {
+          void state.setActive(false);
+          lifecycle.left(() => !disposed && !foreground);
+          return;
         }
-        void state.setActive(false);
-        if (backgroundedAt === undefined) {
-          backgroundedAt = Date.now();
-          backgroundTimer = setTimeout(() => {
-            backgroundTimer = undefined;
-            if (!disposed && !foreground) void suspendAfterGrace()?.catch(() => {});
-          }, companionBackgroundGraceMs);
-        }
-        return;
+        // Each step may be overtaken by the app leaving again, or by a newer foreground.
+        const superseded = () => disposed || activity !== activityEpoch || !foreground;
+        sidebarNow.value = Date.now();
+        await lifecycle.returned();
+        if (superseded()) return;
+        await port.connector.resume?.();
+        lifecycle.resumed();
+        if (superseded()) return;
+        await state.setActive(true);
+        if (superseded()) return;
+        if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
+        else await state.reconnect();
+        return openPendingNotification();
       }
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
         ++notificationEpoch; pendingNotification = null;
-        ++selectionEpoch;
+        ++restoreEpoch;
         const laptopId = state.laptopId.value;
         await state.revoke();
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
-      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++selectionEpoch; await state.selectTeam(command.id); return rememberSelection();
+      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
         ++notificationEpoch; pendingNotification = null;
-        ++selectionEpoch;
+        ++restoreEpoch;
         const loading = state.selectAgent(command.id);
         await rememberSelection();
         return loading;
@@ -496,10 +505,12 @@ export function createEngine(port: EnginePort) {
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
       case 'loadBranches': return state.loadBranches(command.repositoryId);
-      case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId);
+      case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId, command.source);
       case 'dismissProjectBranches': return state.dismissProjectBranches();
-      case 'loadProjectRepositories': return state.loadProjectRepositories();
+      case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
       case 'dismissProjectRepositories': return state.dismissProjectRepositories();
+      case 'duplicateAgent': return state.duplicateAgent(command.target, command.backend);
+      case 'renameAgent': return state.renameAgent(command.target, command.name);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
       case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
@@ -532,5 +543,5 @@ export function createEngine(port: EnginePort) {
     await openPendingNotification();
   }
 
-  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); clearTimeout(backgroundTimer); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
+  return { dispatch, start, snapshot: () => view.value, dispose() { disposed = true; ++notificationEpoch; pendingNotification = null; stopNotificationReconnect(); stopGitDiff(); clearInterval(sidebarClock); lifecycle.dispose(); clearTimeout(expiry); clearTimeout(trailing); state.dispose(); void port.connector.dispose?.(); } };
 }

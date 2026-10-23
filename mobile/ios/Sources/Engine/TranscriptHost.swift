@@ -11,6 +11,8 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     var onReadContent: (([String: Any]) -> Void)?
     var onChooseBackend: ((String) -> Void)?
     var onRendered: ((String, Int, Int) -> Void)?
+    var onTransferApplied: ((String, [String: Any]) -> Void)?
+    var onNeedsReset: ((String) -> Void)?
     var onRenderFailed: (() -> Void)?
     private var presentation = 0
     private var isReady = false
@@ -18,6 +20,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     private var watchdog: Timer?
     private var navigation: WKNavigation?
     private var queue = TranscriptRenderQueue()
+    private var latestKind: TranscriptRenderQueue.Kind = .conversation
     private var latestConversation: String?
     private var latestContext: String?
     private var insets: (top: Double, bottom: Double) = (0, 0)
@@ -43,7 +46,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     /// The conversation, or just its surroundings. The page draws one message at a time; whatever arrives while it does is folded into the newest.
     func submit(_ kind: TranscriptRenderQueue.Kind, _ json: String) {
         switch kind {
-        case .conversation: latestConversation = json; latestContext = nil
+        case .conversation, .transfer: latestKind = kind; latestConversation = json; latestContext = nil
         case .context: latestContext = json
         }
         guard isReady else { return }
@@ -53,13 +56,23 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     private func run(_ job: TranscriptRenderQueue.Job) {
         let revision = presentation
         armWatchdog()
-        let script = job.kind == .conversation ? "return await window.companionTranscript.setConversation(json)" : "return await window.companionTranscript.setContext(json)"
+        let method: String
+        switch job.kind {
+        case .conversation: method = "setConversation"
+        case .transfer: method = "setTransfer"
+        case .context: method = "setContext"
+        }
+        let script = "return await window.companionTranscript.\(method)(json)"
         webView.callAsyncJavaScript(script, arguments: ["json": job.json], in: nil, in: .page) { [weak self] result in
             guard let self else { return }
             guard self.presentation == revision else { return }
             self.watchdog?.invalidate()
             self.watchdog = nil
             if case .failure = result { self.fail(); return }
+            if case .success(let value) = result, let receipt = value as? [String: Any], let identity = receipt["identity"] as? String {
+                if receipt["needsReset"] as? Bool == true { self.onNeedsReset?(identity) }
+                else if let checkpoint = receipt["checkpoint"] as? [String: Any] { self.onTransferApplied?(identity, checkpoint) }
+            }
             if case .success(let value) = result,
                let receipt = value as? [String: Any], let agentID = receipt["agentId"] as? String,
                let readRevision = receipt["revision"] as? Int,
@@ -175,7 +188,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         watchdog = nil
         isReady = true
         setInsets(top: insets.top, bottom: insets.bottom)
-        if let latestConversation, let job = queue.enqueue(.conversation, latestConversation) { run(job) }
+        if let latestConversation, let job = queue.enqueue(latestKind, latestConversation) { run(job) }
         if let latestContext, let job = queue.enqueue(.context, latestContext) { run(job) }
     }
 }

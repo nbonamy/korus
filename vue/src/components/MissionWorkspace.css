@@ -85,6 +85,10 @@
   overflow: auto;
 }
 
+.mission-workspace__workbench-scroll--requirements {
+  padding-bottom: 0;
+}
+
 .mission-workspace__stage-heading {
   display: flex;
   min-width: 0;
@@ -128,8 +132,15 @@
 
 .mission-workspace__stage-actions {
   display: flex;
+  flex-shrink: 0;
   min-height: 34px;
   align-items: center;
+}
+
+.mission-workspace__start-options {
+  display: grid;
+  gap: var(--space-6);
+  padding-bottom: var(--space-4);
 }
 
 .mission-workspace__run-status {

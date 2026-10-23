@@ -1,6 +1,6 @@
 {
   "name": "@workspace/electron",
-  "version": "0.36.3",
+  "version": "0.39.2",
   "private": true,
   "description": "Native Codex team desktop app.",
   "main": ".vite/build/main.js",
@@ -26,11 +26,11 @@
     "prepare:mobile-simulator": "node ../scripts/prepare-mobile-simulator.mjs"
   },
   "dependencies": {
-    "@codex-app-sdk/electron": "0.16.2",
+    "@codex-app-sdk/electron": "0.16.5",
     "@grpc/grpc-js": "1.14.6",
     "@grpc/proto-loader": "0.8.1",
-    "@workspace/core": "0.36.3",
-    "@workspace/vue": "0.36.3",
+    "@workspace/core": "0.39.2",
+    "@workspace/vue": "0.39.2",
     "autolib": "github:nbonamy/witsy-autolib#v1.2.4",
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",

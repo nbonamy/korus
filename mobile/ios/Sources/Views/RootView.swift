@@ -65,6 +65,7 @@ struct RootView: View {
                     .offset(x: reveal)
             }
             .background(Color(.systemBackground))
+            .animation(drawerAnimation(open: model.drawerOpen), value: model.drawerOpen)
             .onChange(of: isDragging) { _, active in
                 // A cancelled gesture has no onEnded callback.
                 if !active && drag != 0 { setDrawer(model.drawerOpen) }
@@ -98,9 +99,14 @@ struct RootView: View {
 
     private func setDrawer(_ open: Bool) {
         // Commit both values together so settling begins at the finger's current offset.
-        withAnimation(.smooth(duration: open ? 0.32 : 0.2)) {
+        // Explicit settling also handles cancelled drags where drawerOpen does not change.
+        withAnimation(drawerAnimation(open: open)) {
             model.drawerOpen = open
             drag = 0
         }
+    }
+
+    private func drawerAnimation(open: Bool) -> Animation {
+        .smooth(duration: open ? 0.32 : 0.2)
     }
 }

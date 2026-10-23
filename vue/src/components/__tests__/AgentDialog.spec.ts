@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { mountProvisioningHost } from './provisioning-host';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick } from 'vue';
 import { backendChoicesKey } from '../backend-selection';
@@ -585,7 +586,7 @@ describe('AgentDialog', () => {
     await wrapper.get('.new-source-worktree-dialog__branch-input').setValue('feature/source-folder');
     await wrapper.find('.new-source-worktree-dialog .app-button--primary').trigger('click');
     await flushPromises();
-    wrapper.getComponent({ name: 'StagedOperationProgress' }).vm.$emit('complete');
+    mountProvisioningHost().getComponent({ name: 'StagedOperationProgress' }).vm.$emit('complete');
     await nextTick();
     await saveButton(wrapper).trigger('click');
 

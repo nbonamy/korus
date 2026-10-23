@@ -63,7 +63,7 @@ desktop preference cannot enable a tool the host does not provide.
 | `backend` | `daemon`, provider drivers, MCP, persistence, git/files, automations, work providers | `core` |
 | `vue` | reusable product shell, receives a typed `AppClient` at bootstrap | `core` |
 | `electron`, `web` | host composition roots | `core`, `vue`; start a built `daemon` artifact, never import backend sources |
-| `mobile` | native iOS shell, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
+| `mobile` | native mobile shells, companion engine, and shared Vue transcript | `core`, `vue`; no Electron, provider process or backend filesystem authority |
 
 Cross-package imports use package names, never deep relative paths. `core` stays
 runtime-thin so every client shares one contract without inheriting file authority.
@@ -88,23 +88,78 @@ Browser pane. Remote loopback previews require an owning-host browser and are no
 opened against the desktop's localhost.
 
 The mobile companion engine is a narrow workspace/read/send port over the companion
-protocol. SwiftUI owns navigation and the composer. App-lock protection uses a separate scene
-window above native sheets and full-screen presentations when authentication is
-required; brief app switches within the unlock grace period retain the last screen.
+protocol. SwiftUI and Jetpack Compose own native navigation and the composer. On iOS,
+app-lock protection uses a separate scene window above native sheets and full-screen
+presentations when authentication is required; brief app switches within the unlock
+grace period retain the last screen.
 Locked settings cannot disable protection. A background WKWebView hosts
 the TypeScript engine; a separate WKWebView renders authoritative provider snapshots
 through the shared Vue conversation pane without a transcript reducer. Native safe
 area insets reserve the header and composer space, including the scroll-to-bottom
-control. History requests route through the owning daemon to provider-owned paging.
-A conversation crosses the engine-to-transcript bridge whole, so the bridge is paced
-rather than per-update: the engine sends the transcript once per change of its own
-content, capped at ten transfers per second during streaming (the provider replica
-has already applied every event), and changes around it (agent status, names, history, engine
-choice) travel as a small context message that never resends the transcript.
-Unchanged workspace parts keep their identity to avoid unnecessary derived updates.
+control. Android uses separate engine, transcript and changes WebViews at a bundled
+HTTPS asset origin. Its main-frame message port is restricted to that origin and
+page; encrypted pairing storage uses AndroidKeyStore.
+Retained Android pages use application-derived themed contexts with the native
+window's configuration. Appearance changes preserve the transport and provider
+replica without retaining the window's Activity. Transcript presentation waits
+for a mounted, measured native viewport before requesting a paint acknowledgment.
+Read acknowledgments also require the engine's current ready generation. Native
+loading presentation lasts through the selected frame's paint; a retained transcript
+stays usable during reconnects. Android bounds page startup and rendering by foreground
+visibility, replaces failed WebViews for retry, and retains native composer drafts across engine
+recovery without replaying uncertain sends.
+The bundled native bridge initializes the transport's required browser compatibility
+APIs before the companion starts; an older system WebView must not silently lose pairing.
+Android app lock uses system device-owner authentication and the same unlock grace.
+Application activity visibility owns that grace so transferring to the internal
+scanner does not count as backgrounding. Camera frames are decoded locally through
+a bundled QR decoder; only a complete pairing code can leave the scanner. Analysis
+releases every frame and rejects queued results after a pause or dismissal.
+Locked presentation removes native sheets and image dialogs; navigation remains
+model-owned. Both native shells gate activity and read acknowledgments
+on an unlocked screen; notification navigation waits for authentication.
+Android instrumentation uses a separate application ID so tests cannot replace a
+paired development installation. Native drafts and attachment imports retain the
+complete host/conversation target through navigation and delivery acknowledgment.
+Android reads picker-granted content URIs on a worker, normalizes photos before
+upload, and exposes only its temporary camera directory through FileProvider.
+Camera source files are removed after processing or cancellation. History requests
+route through the owning daemon to provider-owned paging.
+Native image viewers consume displayed image bytes or web URLs, never laptop paths.
+The transcript resolves host files through the engine before opening the viewer.
+Android shares its bounded worker-based loader and native zoom surface between
+conversation images and composer attachments; late image events cannot open over a
+different selected conversation or a locked screen.
+Native composer completions use the engine's scoped skill and mention catalogs.
+Chips are presentation metadata over canonical prompt text; editing and copying
+preserve full tokens and their UTF-16 selections. Catalog loading and target
+invalidation stay in the engine rather than a second native catalog cache.
+Native sidebar organization and idle-sort preferences belong to a host/team pair.
+The engine projects activity groups and their order; native clients render those
+groups with stable agent identity across activity transitions.
+Recent mobile provider replicas are retained in memory independently of the connection.
+Hidden subscriptions expire without deleting their last usable content; count and byte
+budgets evict older entries. Reconnection revalidates the full host, team, provider and
+session identity before enabling conversation actions. Forgetting a host clears its cache.
+A capable daemon accepts a conversation checkpoint and replays a bounded journal of
+opaque provider events, or acknowledges an unchanged conversation without a transcript.
+A reset changes the checkpoint generation; unavailable continuity falls back to an
+authoritative snapshot. Older daemons retain the snapshot subscription protocol.
+The iOS transcript page retains provider-owned replicas and receives checkpointed batches
+through the native bridge. Each batch covers updates since the page's last painted
+acknowledgment, so the latest pending batch can replace older pending work without losing
+events. A missing page replica requests a full baseline. Native code routes opaque payloads;
+it does not reduce provider conversations. Android receives paced whole-conversation
+transfers, capped at ten per second. Context-only changes travel separately on both clients.
+Cached content stays readable during refresh; iOS distinguishes initial loading, updating,
+offline viewing and retryable refresh failure. Freshness and read acknowledgments require
+the selected connection generation and its rendered content. Unchanged workspace parts
+keep their identity to avoid unnecessary derived updates.
 Git changes use a separate bundled web view with the shared desktop diff renderer.
-Native controls own its scope and presentation; patches cross a separate, on-demand
-bridge event rather than repeating in workspace or conversation state.
+Native controls own its scope and presentation, bound to the captured conversation.
+Closing or replacing that conversation clears Android's native patch cache. Patches
+cross a separate, on-demand bridge event rather than repeating in workspace or
+conversation state.
 The native side routes on an event type without parsing the transcript payload, hands
 the page one message at a time, and replaces anything that piled up with the newest.
 Unread activity belongs to the owning daemon and persists with each agent. Clients
@@ -112,12 +167,15 @@ acknowledge the attention revision they displayed; older acknowledgments cannot
 clear newer activity. Desktop and companion indicators consume the same metadata.
 The phone acknowledges only its rendered, unlocked foreground conversation with the drawer
 closed; cached subscriptions and background updates never count as reading.
+Android suspends read acknowledgments while a notification target is being validated.
+A failed navigation can reuse the painted receipt only while its full conversation
+identity and generation remain current.
 
 Mobile attention alerts originate from live completed-turn and normalized request
 creation events in the owning daemon. Snapshots do not create alerts. An event ID
-binds the host, conversation and turn/request across the foreground stream and APNs;
+binds the host, conversation and turn/request across the foreground stream and push;
 native presentation suppresses duplicates and the visible conversation. A live
-foreground phone receives only the in-app stream, not an APNs push. Stream closure
+foreground phone receives only the in-app stream, without a system push. Stream closure
 or an expired inbound heartbeat restores push eligibility independently per device.
 Desktop-originated turns suppress push while Electron reports current focus;
 mobile-originated work and unknown origins remain eligible. Prompt provenance is
@@ -130,20 +188,34 @@ the paired host and current full conversation target before opening it. Explicit
 navigation or forgetting the laptop cancels a pending tap; connection interruptions
 are not evidence that its conversation is missing.
 Push device tokens belong to each authenticated pairing and are persisted privately
-with its grant; revocation removes them. The relay holds the APNs signing keys and
-accepts bounded, rate-limited notification requests only from admitted laptops for
+with its grant; revocation removes them. The relay holds APNs signing keys and FCM
+service-account credentials and accepts bounded, rate-limited requests only from admitted laptops for
 their registered phones, with phone-signed consent scoped to the relay, laptop,
-token, environment and expiration. Public relay admission needs no account or
-operator enrollment; pairing proof and desktop approval still gate access.
-APNs receives agent names, attention kinds and opaque navigation IDs, never
+token, push service, environment and expiration. Existing Apple consent bytes remain
+compatible; FCM consent explicitly binds the push service. Public relay admission
+needs no account or operator enrollment; pairing proof and desktop approval still
+gate access.
+Push providers receive agent names, attention kinds and opaque navigation IDs, never
 conversation text, prompts, approvals or tool arguments.
 Foreground APNs delivery uses the same native banner path with system presentation
 suppressed; background delivery belongs to iOS. The native app bundle ID and APNs
 topic both use the product app ID. Sandbox and production credentials are separate.
+Android initializes Firebase only with configured client metadata and notification
+consent. It registers the installation with FCM and presents data-only messages
+through the same native inbox as foreground events. System notification taps retain
+the captured target; opening or dismissing an alert does not substitute for the
+engine's validated navigation and rendered-conversation read acknowledgment.
+Firebase initialization, registration and revocation run on a serial worker;
+completion returns to the main thread and cannot override newer consent state.
 
 Companion workspace subscriptions ignore context-usage, turn-diff and file-activity
 events: those projections are absent from the mobile workspace, and conversation
 content travels through the subscribed provider stream.
+Native request forms consume the engine's app-owned questions and approvals. Replies
+retain the request's full host, location, team, agent and session identity; the engine
+owns delivery and reconciliation. Android holds answer drafts, including secret fields,
+only in its ViewModel and invalidates them when the request disappears or changes its
+questions. Opening a request suspends dictation and conversation read acknowledgments.
 Mobile prompts start a turn when idle. For active work, the phone defaults to
 steering and supports a saved queue preference and per-message overrides. The owning
 daemon decides at admission time and owns the same queue shown by desktop and mobile;
@@ -157,16 +229,18 @@ provider outcome. The phone reconciles timed-out admissions while connected,
 without replaying them; late acceptance clears only the captured native draft
 and attachments. An unresolved outcome keeps its warning and draft but permits
 an explicit new send after the user checks the conversation.
-The composer microphone uses Apple's Speech framework with on-device recognition
-required and native microphone permissions. Audio stays on the phone; partial and
-final transcripts update only the active draft. On-device results can reset after
+The composer microphone uses Apple's Speech framework on iOS and Android's on-device
+recognizer on Android 12 or later, with native microphone permission. An unavailable
+local recognizer never falls back to a network service. Audio stays on the phone;
+partial and final transcripts update only the captured active draft. Results can reset after
 silence, so completed utterances are retained separately from the current hypothesis.
 Successful recognition rollover preserves the draft and keeps listening until stopped.
-Sending, navigation, and backgrounding stop capture and invalidate late recognition
-callbacks. Keyboard dictation remains
-available through the system text field.
+Sending, navigation, backgrounding and locking stop capture and invalidate late
+permission and recognition callbacks. Startup and final recognition waits are bounded;
+a stalled recognizer releases the editor with its latest words intact.
+Keyboard dictation remains available through the system text field.
 
-Pairing identities, laptop records, and each laptop's last-opened team and agent use
+On iOS, pairing identities, laptop records, and each laptop's last-opened team and agent use
 device-only Keychain entries accessible while unlocked. Selection restoration checks
 the connected workspace and falls back in desktop team/agent order. The engine's
 optional protected draft store persists prompt intent
@@ -403,6 +477,10 @@ clears or changes it, Korus never re-detects.
   which Git action Korus is taking over and asks for a whole-task handoff before
   touching the branch; Korus then adds the authoritative result and reports to the
   delegator, keeping a linked worktree alive until the handoff finishes.
+  A merge without a delegator can opt into reporting to another conversation in
+  the same repository on the owning host. The daemon refreshes workspace identity
+  before accepting the recipient; this delivery choice never changes delegation
+  ownership. Reporting remains off until the user enables it and chooses a recipient.
 - Worktree delegation preferences belong to app settings. A delegation can
   override its starting context and add task instructions. App-submitted user
   overrides retain their provenance through prompt admission and persistence.
@@ -428,6 +506,11 @@ clears or changes it, Korus never re-detects.
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree
   still points at the recorded PR head (a closed PR keeps its remote branch).
+- Agent worktree deletion publishes roster removal before filesystem cleanup.
+  Selection prefers another agent from the same repository within the team,
+  honoring client ordering. Auxiliary agent data remains available until cleanup
+  succeeds; failure restores the agent and team membership for retry without
+  replacing navigation or roster changes made during cleanup.
 - Merge branch cleanup removes the local branch and its same-named origin branch
   after integration succeeds. Origin cleanup uses its push destination and an
   inspected-head lease; default branches and remote commits outside the merged
@@ -499,17 +582,32 @@ publishes only after saving.
 - Stage approval is one revision-checked `daemon` command (accept, advance and
   queue the next run in one transaction). Renderers never chain accept, advance and
   run writes. Only the user accepts Requirements, Tickets and Review.
+  Reusing a lead waits for its active provider turn to finish before refreshing
+  stage instructions and sending the next kickoff.
 - Canonical artifacts are Markdown under `$APP_HOME/missions/<id>/artifacts`.
   Workers reach them through identity-bound MCP tools with optimistic revisions;
   the renderer and providers get metadata, never file access. Stage skills are
   bundled in the daemon and loaded through `read-skill`, scoped to the caller's
   assigned stage. Persisted skill references use names; legacy paths are accepted
   on read but never used to load instructions.
+- Requirements use the shared interactive plan-review format and editor regardless
+  of the Workflows preference. Mission instructions share the Markdown conventions
+  for choices and diagrams with Plan mode. Review feedback stays in the Mission
+  conversation; approval advances the Mission through its existing command.
 - Each ticket names exactly one repository. Worktrees are created only for
   affected repositories when code work begins, sharing one Mission suffix and
   branch name. Repositories run in parallel, work within one repository is
   serialized, and each worktree records a baseline commit for whole-Mission diff
   review. Failed or cancelled attempts keep their workspace and conversation.
+  Implementation assignments bind a stable ticket ID to the run and repository;
+  one-based ticket numbers are display context. Workers receive the full assigned
+  ticket and accepted requirements rather than reconstructing assignments from a
+  backlog. Identity-bound submission updates only that ticket and serially merges
+  its evidence with other repositories' results. Legacy runs retain index fallback.
+- Tickets approval can persist an independent implementation provider, model and effort.
+  Host catalog policy is checked before provisioning and worker launch. This
+  selection applies to implementation workers and retries without changing the lead
+  or the Review configuration.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.
@@ -638,15 +736,20 @@ so browser tools keep working without changing the user's selection.
 
 Provider-native Markdown proposals own plan review identity and approval. Korus adds
 section and selected-text comments and decorates flat Markdown checkbox lists as
-multiple choices and `( )` / `(x)` lists as single choices. Code examples, nested
+multiple choices and `( )` / `(x)` lists as single choices. Other code examples, nested
 lists and mixed lists retain normal Markdown rendering. Authored HTML remains
 escaped by the shared Markdown renderer. Model-selected defaults are proposals;
 only explicitly confirmed groups become feedback. Confirmation survives answer
 edits and reloads; toggling it off or resetting the group clears it. Unconfirmed
 drafts remain saved without ratifying defaults.
 
+Fenced Mermaid diagrams stay in the native proposal Markdown and render through
+the shared read-only Visualize renderer. Whole-diagram comments use the existing
+review draft and retain source context for the agent. Plans do not create a
+Visualize session or editable canvas state.
+
 The owning host's Workflows setting enables interactive plans by default. Enabled
-Plan-mode turns receive hidden Markdown choice guidance; disabling it leaves
+Plan-mode turns receive hidden Markdown choice and diagram guidance; disabling it leaves
 ordinary Markdown and native review actions without choice controls.
 
 Draft feedback belongs to the agent, conversation and native review ID. The owning

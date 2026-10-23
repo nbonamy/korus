@@ -1,7 +1,8 @@
+import { CompanionJournal, type CompanionCheckpoint, type CompanionSync } from '@workspace/core/companion-journal';
 import { createAntigravityConversationReplica } from '@workspace/core/antigravity-conversation-replica';
 import { createClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import type { CompanionReset } from '@workspace/core/companion-protocol';
+import { isConversationFrame, type CompanionReset } from '@workspace/core/companion-protocol';
 
 type Followed = { revision: number; touchedAt: number; apply(event: unknown): void; snapshot(): unknown };
 
@@ -16,6 +17,7 @@ const maxConversations = 64;
  * updates are applied here and only a gap, or a copy that has gone quiet, sends the request back to the provider.
  */
 export class ConversationSource {
+  private readonly journal = new CompanionJournal();
   private readonly frames = new Map<string, CompanionReset>();
   private readonly followed = new Map<string, Followed>();
 
@@ -27,6 +29,7 @@ export class ConversationSource {
       for (const id of this.frames.keys()) if (!agents.has(id)) this.forget(id);
       return;
     }
+    if (isConversationFrame(event)) this.journal.observe(event as import('@workspace/core/contracts').ProviderConversationFrame);
     if (event.type === 'codex.conversationSnapshotChanged') {
       this.retain(event); this.followed.delete(event.agentId);
     } else if (event.type === 'claude.conversationSnapshotChanged' || event.type === 'antigravity.conversationSnapshotChanged') {
@@ -44,9 +47,9 @@ export class ConversationSource {
     }
   }
 
-  clear(): void { this.frames.clear(); this.followed.clear(); }
+  clear(): void { this.frames.clear(); this.followed.clear(); this.journal.clear(); }
 
-  private forget(agentId: string): void { this.frames.delete(agentId); this.followed.delete(agentId); }
+  private forget(agentId: string): void { this.frames.delete(agentId); this.followed.delete(agentId); this.journal.forget(agentId); }
 
   private retain(event: CompanionReset): void {
     // Provider routing data only: daemon app snapshots must not stay alive with the transcript.
@@ -54,6 +57,17 @@ export class ConversationSource {
     this.frames.delete(agentId);
     this.frames.set(agentId, { type, agentId, backend, threadId, backendSessionId, conversationId, turnId, seq, occurredAt, payload } as CompanionReset);
     while (this.frames.size > maxConversations) this.forget(this.frames.keys().next().value!);
+  }
+
+  async synchronize(agentId: string, since: CompanionCheckpoint | null): Promise<CompanionSync> {
+    const resumed = since && this.journal.resume(agentId, since);
+    if (resumed) return resumed;
+    const frame = await this.read(agentId);
+    const head = this.journal.checkpoint(agentId);
+    if (!head) throw new Error('Conversation checkpoint unavailable.');
+    const checkpoint = { epoch: head.epoch, revision: frame.payload.revision };
+    const tail = this.journal.resume(agentId, checkpoint);
+    return { checkpoint: tail?.checkpoint ?? checkpoint, frames: [frame, ...tail?.frames ?? []] };
   }
 
   async read(agentId: string): Promise<CompanionReset> {

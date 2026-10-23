@@ -155,7 +155,7 @@ function submit() {
       ...(form.model.trim() ? { model: form.model.trim() } : {}),
       ...(form.reasoningEffort.trim() ? { reasoningEffort: form.reasoningEffort.trim() } : {}) }
     : { kind: form.kind, agentId: form.agentId };
-  emit('submit', { name: form.name.trim(), enabled: form.enabled, prompt: form.prompt.trim(), target, schedule: schedule.value });
+  emit('submit', { name: form.name.trim(), enabled: form.enabled, prompt: form.prompt.trim(), target, schedule: { ...schedule.value } });
 }
 </script>
 <style scoped>

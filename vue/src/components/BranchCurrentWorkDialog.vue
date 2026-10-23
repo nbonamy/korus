@@ -1,5 +1,5 @@
 <template>
-  <FormDialog v-if="modelValue && !operation" :model-value="modelValue" :title="$t('branchWork.title')" :subtitle="$t('branchWork.description')" width="600px" @update:model-value="dismiss">
+  <FormDialog v-if="modelValue && !operationState" :model-value="modelValue" :title="$t('branchWork.title')" :subtitle="$t('branchWork.description')" width="600px" @update:model-value="dismiss">
     <p v-if="loading" role="status">{{ $t('branchWork.loading') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <div v-if="preview?.recoveries?.length && !result" class="branch-work__result">
@@ -22,14 +22,14 @@
       <button v-if="result?.state !== 'completed'" class="app-button app-button--primary" type="button" :disabled="busy || (!result && !valid)" @click="submit">{{ busy ? $t('branchWork.working') : result || error ? $t('branchWork.retry') : $t('branchWork.submit') }}</button>
     </template>
   </FormDialog>
-  <WorkspaceProvisioningProgressDialog :operation="operation" @close="completeOperation" />
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult, BranchWorkProgress } from '@workspace/core/branch-current-work';
 import FormDialog from '../shared/dialog/FormDialog.vue';
-import WorkspaceProvisioningProgressDialog, { type WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
 import { translate } from '../i18n';
 import { localizedErrorMessage } from '../i18n/errors';
 
@@ -58,6 +58,8 @@ const operation = computed<WorkspaceProvisioningOperation | null>(() => {
     ...(error.value || result.value?.detail ? { error: error.value ?? result.value?.detail } : {}),
   } };
 });
+watch(operation, (value) => publishProvisioningOperation('branchMove', value, { onClose: completeOperation }), { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('branchMove', null));
 const valid = computed(() => preview.value && branchName.value.trim());
 watch(() => props.modelValue, open => { if (open && !busy.value && result.value?.state !== 'recovery') void refresh(); }, { immediate: true });
 async function refresh(): Promise<void> {
@@ -92,6 +94,12 @@ async function submit(): Promise<void> {
     operationState.value = 'error';
   }
   finally { busy.value = false; }
+  // Backgrounded and clean: finish quietly instead of pulling the user into the new agent.
+  if (isProvisioningBackgrounded(request.value.requestId) && result.value?.state === 'completed' && !result.value.retainedPaths.length) {
+    operationState.value = null;
+    emit('transferred', result.value);
+    dismiss(false);
+  }
 }
 function completeOperation(): void {
   operationState.value = null;

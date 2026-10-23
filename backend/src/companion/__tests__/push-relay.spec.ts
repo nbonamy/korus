@@ -8,8 +8,8 @@ const host = 'h'.repeat(52); const relayId = 'relay';
 let phone: Awaited<ReturnType<typeof generateKeyPair>>; let peerId: string;
 beforeEach(async () => { phone = await generateKeyPair('Ed25519'); peerId = peerIdFromPrivateKey(phone).toString(); });
 const source = '192.0.2.1';
-async function input(hostId = host, token = 'ab'.repeat(32)) {
-  const registration = { token, environment: 'development' as const };
+async function input(hostId = host, token = 'ab'.repeat(32), transport?: 'fcm') {
+  const registration = { token, environment: 'development' as const, ...(transport ? { transport } : {}) };
   const expiresAt = 100000;
   const signature = Buffer.from(await phone.sign(companionPushAuthorizationMessage(relayId, hostId, peerId, registration, expiresAt))).toString('base64');
   return { peerId, registration: { ...registration, authorization: { expiresAt, signature } }, notification: {
@@ -18,6 +18,32 @@ async function input(hostId = host, token = 'ab'.repeat(32)) {
   } };
 }
 describe('push relay admission', () => {
+  it('admits consented read checkpoints and rejects missing or invalid revisions before delivery', async () => {
+    const send = vi.fn(async () => 'sent' as const); const valid = await input();
+    const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);
+    const notification = { ...valid.notification, id: 'read', kind: 'read', revision: 2 };
+    for (const revision of [undefined, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(relay.send(host, source, { ...valid, notification: { ...notification, revision } })).rejects.toThrow();
+    }
+    expect(send).not.toHaveBeenCalled();
+    expect(await relay.send(host, source, { ...valid, notification })).toBe('sent');
+    expect(send).toHaveBeenCalledExactlyOnceWith(valid.registration, notification);
+  });
+  it('admits opaque FCM tokens with phone consent and rejects switching the signed delivery service', async () => {
+    const send = vi.fn(async () => 'sent' as const);
+    const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);
+    // Both services can carry a hexadecimal token: rejection must come from consent, not syntax.
+    const hex = await input(host, 'ab'.repeat(32), 'fcm');
+    const { transport: _transport, ...legacy } = hex.registration;
+    await expect(relay.send(host, source, { ...hex, registration: legacy })).rejects.toThrow();
+    expect(send).not.toHaveBeenCalled();
+    const opaque = await input(host, 'device-token:APA91b-example_-registration', 'fcm');
+    expect(await relay.send(host, source, opaque)).toBe('sent');
+    expect(send).toHaveBeenCalledExactlyOnceWith(opaque.registration, opaque.notification);
+    await expect(relay.send(host, source, { ...opaque, registration: { ...opaque.registration, token: 'another:opaque-token' } })).rejects.toThrow();
+    await expect(relay.send(host, source, { ...opaque, registration: { ...opaque.registration, token: 'x'.repeat(4097) } })).rejects.toThrow();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it('requires phone consent bound to the relay, laptop, device token, environment and expiry', async () => {
     const send = vi.fn(async () => 'sent' as const);
     const relay = new CompanionPushRelay(relayId, () => true, { send }, () => 1000);

@@ -7,6 +7,41 @@ import { createDemoConnector } from '../demo-connector';
 import { createEngine } from '../engine';
 
 describe('native activity drawer feed', () => {
+  it('uses desktop section ordering and switches only Idle between recency and repository order', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T12:00:00Z'));
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.connect = async id => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      const base = workspace.agents[0]!;
+      const rows = [
+        ['demo-agent', 'idle', '11:00'], ['idle-new', 'idle', '11:30'],
+        ['working-new', 'working', '11:59'], ['working-old', 'working', '11:58'],
+        ['input-new', 'awaitingInput', '11:51'], ['input-old', 'awaitingInput', '11:50'],
+        ['done-new', 'idle', '11:59'], ['done-old', 'idle', '11:58'],
+      ] as const;
+      workspace.agents = rows.map(([id, type, time]) => ({ ...base, id, name: id, hasSubmittedPrompt: true,
+        status: { type }, lastActivityAt: `2026-10-16T${time}:00Z` }));
+      workspace.teams[0]!.agentIds = workspace.agents.map(a => a.id);
+      return { ...session, getWorkspace: async () => projectCompanionWorkspace(workspace) };
+    };
+    const engine = createEngine({ connector, post() {} });
+    const order = () => engine.snapshot().activityGroups.map(g => [g.activity, g.sessions.map(s => s.agentId)]);
+    try {
+      await engine.start();
+      const recent = order();
+      expect(recent).toStrictEqual([
+        ['attention', ['input-old', 'input-new']], ['recent', ['done-old', 'done-new']],
+        ['working', ['working-old', 'working-new']], ['idle', ['idle-new', 'demo-agent']],
+      ]);
+      const selected = engine.snapshot().agentId;
+      await engine.dispatch({ type: 'idleSort', order: 'repository' });
+      expect(order()).toStrictEqual([...recent.slice(0, 3), ['idle', ['demo-agent', 'idle-new']]]);
+      expect(engine.snapshot().agentId).toBe(selected);
+      await engine.dispatch({ type: 'idleSort', order: 'activity' });
+      expect(order()).toStrictEqual(recent);
+    } finally { engine.dispose(); vi.useRealTimers(); }
+  });
+
   it('moves live work through attention, working, recent and idle without changing the open conversation', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
     const connector = createDemoConnector(); const connect = connector.connect;

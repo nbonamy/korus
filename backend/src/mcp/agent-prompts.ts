@@ -87,6 +87,9 @@ export function appDeveloperInstructions(
     'Automatic review requires an explicit user request for automatic review; generic review/finish/ship requests and readiness are not authorization. Local commits require separate explicit approval. Load korus-review-launch before starting it.',
     `For explicitly requested recurring prompts, use ${product.name} create-automation, not other schedulers; load korus-automations. Suggestions do not authorize scheduling.`,
   ];
+  if (agent.backend !== 'codex') {
+    instructions.push('When generate-image is available, load korus-imagegen with read-skill before generating raster images or showing its results. Embed the selected image inline in your response following that skill.');
+  }
   if (effects.celebrationsEnabled !== false) {
     instructions.push(
       'After a meaningful win—especially a successful release, major feature, migration, or hard fix—request a celebration in finish_turn with celebration: true. Korus chooses the visual effect.',

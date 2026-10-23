@@ -79,12 +79,26 @@ host's snapshot. A generic Codex interaction defect is an SDK defect. Never add 
 global message list or provider-neutral reducer to `app-state.ts`; Korus-only
 overlays read the provider frame or an explicit coordination projection.
 
-Split layouts hold equal conversation panes, never parent/child agents.
-`useSplitWorkspace` owns client-local assignment and focus per team. Controllers and
+Split layouts hold peer conversation panes, never parent/child agents.
+`useSplitWorkspace` owns layout, assignment, focus and split ratios per team,
+persisted in client-local storage so devices retain their own workspace preferences.
+The grid constrains displayed ratios to keep panes usable at the current window size;
+compact screens show one conversation without replacing the saved layout. Controllers and
 async actions keep an explicit agent ID (background updates never select a pane); only
 the focused conversation handles global composer and interrupt shortcuts; hydration
 watches stable conversation identity, not snapshot object identity. One artifact
 sidebar follows the selected agent, keeping each agent's tabs separately.
+
+Desktop conversation image previews preserve the native host's attachment
+capabilities. Local paths in assistant image Markdown use the daemon file-preview
+API with the containing pane's agent identity, so project and remote-host files
+are resolved on their owning host. The renderer receives bounded image data URLs;
+it does not read the filesystem or treat project paths as attachment capabilities.
+
+The file explorer uses directory entries from the owning daemon rather than the
+composer's bounded file catalog. Directory pages are cached by the explorer's
+agent and folder identity; refresh invalidates those pages. Workspace search
+runs independently of loaded tree nodes, so an unopened directory remains searchable.
 
 ### Surfaces
 
@@ -146,6 +160,12 @@ Git command availability and dispatch come from the focused agent's workflow con
 which retains ownership of operation state, confirmations and host routing.
 
 ## Interaction
+
+Git merge and agent worktree deletion share `GitOperationFeedback`. Their operation
+lifetime is independent of dialog visibility: backgrounding dismisses the dialog
+without cancelling the request, and completion reports through a notification.
+Each request retains its original agent and cleanup choices; completion must not
+replace a newer dialog or navigation selection.
 
 - **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one
   padded body, labels above controls, divided footer, no second gutter). Footer:

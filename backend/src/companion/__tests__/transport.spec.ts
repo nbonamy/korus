@@ -8,7 +8,10 @@ import { identify } from '@libp2p/identify';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { multiaddr } from '@multiformats/multiaddr';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
+import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
 import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
 import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
@@ -18,7 +21,7 @@ import { CompanionOutboundConnector } from '../connector';
 import { CompanionGateway } from '../gateway';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { CompanionWorkspace, CompanionReset } from '@workspace/core/companion-protocol';
-import type { Libp2p } from '@libp2p/interface';
+import type { Libp2p, PrivateKey } from '@libp2p/interface';
 import { logMain } from '../../log';
 vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
 const stops: (() => void | Promise<void>)[] = [];
@@ -61,26 +64,51 @@ describe('encrypted companion circuit', () => {
   }, 15000);
 
   it('transfers a history response larger than four MiB over the encrypted circuit', async () => {
-    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
-    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
-    stops.push(() => relay.stop());
-    const address = relay.getMultiaddrs()[0]!.toString();
-    const port = address.match(/\/tcp\/(\d+)/)![1];
-    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
-    stops.push(() => phone.stop());
+    const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const large = { frame: { payload: { snapshot: { messages: [{ id: 'earlier', text: 'history '.repeat(700_000) }] } } }, hasOlder: true };
     const gateway = { grants: [{ peerId: phone.peerId.toString() }], pairingInvitations: () => [], request: async () => large } as unknown as CompanionGateway;
     const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
     expect(await rpc(phone, `${address}/p2p-circuit/p2p/${hostId}`, 'conversation.loadOlder', {})).toMatchObject({ result: large });
   }, 15_000);
+  it('loads screenshot-heavy provider data beyond the legacy response limit over a negotiated circuit', async () => {
+    const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
+    const image = `data:image/png;base64,${randomBytes(26 * 1024 * 1024).toString('base64')}`;
+    const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: sdkSnapshot('thread', { messages: [{ id: 'screenshot', role: 'assistant', status: 'complete', createdAt: '2026-10-17T00:00:00Z', parts: [{ type: 'media', media: { url: image, mimeType: 'image/png' } }] }] }) } } as unknown as CompanionReset;
+    expect(Buffer.byteLength(JSON.stringify(frame))).toBeGreaterThan(companionResponseLimit);
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => frame,
+      loadOlderHistory: async () => ({ hasOlder: false }), save: async () => {},
+    } as unknown as ConstructorParameters<typeof CompanionGateway>[2]);
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const circuit = multiaddr(`${address}/p2p-circuit/p2p/${hostId}`);
+    const stream = await phone.dialProtocol(circuit, ['/workspace/companion-updates/2.0.0', companionUpdatesProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    stream.maxReadBufferLength = companionResponseLimit + 4;
+    const received: any[] = []; let ended = false;
+    const reader = (async () => { try { for await (const value of readCompanionResponses(stream)) received.push(value); } catch { /* Peer reset is observed through ended. */ } finally { ended = true; } })();
+    stops.push(async () => { stream.abort(new Error('Test complete')); await reader.catch(() => {}); });
+    const request = async (method: string, args: unknown) => {
+      const id = randomUUID(); stream.send(encodeCompanionFrame({ v: 1, id, method, args }));
+      await expect.poll(() => ended ? 'stream-ended' : received.some(value => value.id === id), { timeout: 15_000 }).toBe(true);
+    };
+    await request('snapshot.get', {});
+    await request('conversation.subscribe', { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) });
+    expect(received.find(value => value.update?.type === 'conversation')?.update.frame).toStrictEqual(frame);
+    expect(ended).toBe(false);
+    // History reads use the same codec on the one-shot protocol.
+    const historyStream = await phone.dialProtocol(circuit, ['/workspace/companion/2.0.0', companionProtocol], { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    historyStream.maxReadBufferLength = companionResponseLimit + 4;
+    const id = randomUUID();
+    historyStream.send(encodeCompanionFrame({ v: 1, id, method: 'conversation.loadOlder', args: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) } }));
+    await historyStream.close();
+    const page = await readFirstCompanionResponse(historyStream);
+    historyStream.abort(new Error('Test complete'));
+    expect(page).toStrictEqual({ v: 1, id, result: { frame, hasOlder: false } });
+  }, 30_000);
   it('pushes provider events over one authenticated duplex stream and closes it on revocation', async () => {
-    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
-    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
-    stops.push(() => relay.stop());
-    const address = relay.getMultiaddrs()[0]!.toString(); const port = address.match(/\/tcp\/(\d+)/)![1];
-    const phone = await createLibp2p({ transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
-    stops.push(() => phone.stop());
+    const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
     const events = new Set<(event: AppBackendEvent) => void>();
     const frame = { type: 'codex.conversationSnapshotChanged', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: {} } } as CompanionReset;
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
@@ -120,6 +148,65 @@ describe('encrypted companion circuit', () => {
     expect(logMain).toHaveBeenCalledWith('companion', 'updates ended', expect.objectContaining({ elapsedMs: expect.any(Number), sequence: expect.any(Number) }));
     expect(() => gateway.subscribe(phone.peerId.toString(), () => {}, () => {})).toThrow('authorized');
   }, 15_000);
+  it('reconnects to the relay after it restarts and routes again', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relayKey = await generateKeyPair('Ed25519');
+    const port = await freePort(); const listen = `/ip4/127.0.0.1/tcp/${port}/ws`;
+    let relay = await createCompanionRelay({ key: relayKey, listen, hostIds: [hostId] });
+    stops.push(() => relay.stop());
+    const connector = new CompanionOutboundConnector(hostKey, { grants: [], pairingInvitations: () => [] } as unknown as CompanionGateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    expect(connector.connected).toBe(true);
+    await relay.stop();
+    await expect.poll(() => connector.connected, { timeout: 5_000 }).toBe(false);
+    relay = await createCompanionRelay({ key: relayKey, listen, hostIds: [hostId] });
+    await expect.poll(() => connector.connected, { timeout: 20_000, interval: 250 }).toBe(true);
+  }, 40_000);
+  it('keeps one update channel per phone, replacing a stale one from an older connection', async () => {
+    const { hostKey, hostId, relay, address, port, phone, phoneKey } = await relayAndPhone();
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: [] }], agents: [] } as CompanionWorkspace;
+    const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      onEvent: () => () => {}, workspace: async () => workspace, save: async () => {}, revoked: () => {},
+    } as never);
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const open = async (node: Libp2p) => {
+      const stream = await node.dialProtocol(multiaddr(`${address}/p2p-circuit/p2p/${hostId}`), companionUpdatesProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+      const received: any[] = []; const decoder = new CompanionFrameDecoder(companionResponseLimit); let ended = false;
+      const reader = (async () => { try { for await (const chunk of stream) received.push(...decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())); } catch {} finally { ended = true; } })();
+      stops.push(async () => { stream.abort(new Error('Test complete')); await reader; });
+      stream.send(encodeCompanionFrame({ v: 1, id: randomUUID(), method: 'snapshot.get', args: {} }));
+      await expect.poll(() => received.some((item) => item.update?.type === 'workspace')).toBe(true);
+      return { ended: () => ended, received };
+    };
+    const first = await open(phone);
+    const second = await open(await newPhone(phoneKey));
+    await expect.poll(() => first.ended()).toBe(true);
+    expect(second.ended()).toBe(false);
+  }, 20_000);
+  it('streams a catch-up replay longer than the send queue without aborting the updates stream', async () => {
+    const { hostKey, hostId, relay, address, port, phone } = await relayAndPhone();
+    const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: ['agent'] }], agents: [{ id: 'agent', teamId: 'team', backend: 'codex', backendSession: { kind: 'codex', threadId: 'thread' } }] } as CompanionWorkspace;
+    const replay = Array.from({ length: 600 }, (_, index) => ({ type: 'codex.conversationEventReceived', backend: 'codex', agentId: 'agent', threadId: 'thread', seq: index + 2, occurredAt: 'now', payload: { revision: index + 2, event: { type: 'provider-event', payload: { text: `Event ${index}` } } } }));
+    const gateway = new CompanionGateway(hostId, { grants: [{ peerId: phone.peerId.toString(), name: 'Phone', createdAt: 1 }], commands: {} }, {
+      onEvent: () => () => {}, workspace: async () => workspace, conversation: async () => { throw new Error('No snapshot.'); },
+      synchronize: async () => ({ checkpoint: { epoch: 'epoch', revision: 601 }, frames: replay }) as never,
+      loadOlderHistory: async () => ({ hasOlder: false }), submit: async () => {}, models: async () => [], skills: async () => [], selectModel: async () => {}, startReview: async () => {}, interrupt: async () => {}, restart: async () => {}, branches: async () => [], createChat: async () => 'created', createQuickChat: async () => 'created', setBackend: async () => {}, close: async () => {}, closePreview: async () => ({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false }), setApprovalPreset: async () => {}, setPermissionMode: async () => {}, save: async () => {}, revoked: () => {},
+    });
+    const connector = new CompanionOutboundConnector(hostKey, gateway); stops.push(() => connector.stop());
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    const stream = await phone.dialProtocol(multiaddr(`${address}/p2p-circuit/p2p/${hostId}`), companionUpdatesProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
+    const received: any[] = []; const decoder = new CompanionFrameDecoder(companionResponseLimit);
+    const reader = (async () => { try { for await (const chunk of stream) received.push(...decoder.push(chunk instanceof Uint8Array ? chunk : chunk.subarray())); } catch {} })();
+    stops.push(async () => { stream.abort(new Error('Test complete')); await reader; });
+    const request = (method: string, args: unknown) => stream.send(encodeCompanionFrame({ v: 1, id: randomUUID(), method, args }));
+    request('snapshot.get', {});
+    await expect.poll(() => received.some((item) => item.update?.type === 'workspace')).toBe(true);
+    request('conversation.synchronize', { target: { hostId, locationId: 'local', teamId: 'team', agentId: 'agent', sessionId: JSON.stringify({ kind: 'codex', threadId: 'thread' }) }, checkpoint: { epoch: 'epoch', revision: 1 } });
+    await expect.poll(() => received.some((item) => item.result?.checkpoint), { timeout: 10_000 }).toBe(true);
+    expect(received.filter((item) => item.update?.type === 'conversation').map((item) => item.update.frame.payload.revision)).toStrictEqual(replay.map((item) => item.payload.revision));
+    expect(stream.status).toBe('open');
+  }, 30_000);
   it('establishes a real Noise circuit, requires approval, pins peer identities and revokes reconnects', async () => {
     const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
     const relayKey = await generateKeyPair('Ed25519');
@@ -172,6 +259,30 @@ describe('encrypted companion circuit', () => {
     expect(revoked).toHaveProperty('error');
   }, 25_000);
 });
+/** A relay that routes one laptop identity, and a phone that has not yet been given a grant. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+async function relayAndPhone() {
+  const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+  const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', hostIds: [hostId] });
+  stops.push(() => relay.stop());
+  const address = relay.getMultiaddrs()[0]!.toString();
+  const port = address.match(/\/tcp\/(\d+)/)![1];
+  const phoneKey = await generateKeyPair('Ed25519');
+  const phone = await newPhone(phoneKey);
+  return { hostKey, hostId, relay, address, port, phone, phoneKey };
+}
+/** The same phone identity can hold several connections, as after a network change. */
+async function newPhone(privateKey?: PrivateKey) {
+  const phone = await createLibp2p({ ...(privateKey ? { privateKey } : {}), transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() } });
+  stops.push(() => phone.stop());
+  return phone;
+}
 async function rpc(phone: Libp2p, address: string, method: string, args: unknown) {
   const stream = await phone.dialProtocol(multiaddr(address), companionProtocol, { signal: AbortSignal.timeout(5000), runOnLimitedConnection: true });
   stream.maxReadBufferLength = companionResponseLimit + 4;

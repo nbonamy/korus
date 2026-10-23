@@ -169,6 +169,10 @@ export type AppBackendRequestMap = {
     params: { agentId: string };
     result: AgentGitWorkflow;
   };
+  [backendMethods.agentClosePreview]: {
+    params: { agentId: string };
+    result: import('../agent-close').AgentClosePreview;
+  };
   [backendMethods.agentTasksList]: {
     params: { agentId: string };
     result: import('../delegated-task').DelegatedTask[];

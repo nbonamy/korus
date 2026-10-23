@@ -6,6 +6,9 @@
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
     :mission-implementation-start-progress="missionImplementationStartProgress"
+    :agent-creation-progresses="agentCreationProgresses"
+    @clear-agent-creation-progress="clearAgentCreationProgress"
+    @background-agent-creation-progress="backgroundAgentCreationProgress"
     :active-agent="activeAgent"
     :unread-agent-ids="unreadAgentIds"
     :codex-conversation-snapshot="activeCodexConversationSnapshot"
@@ -203,10 +206,12 @@
   <AgentCloseDialog
     :visible="pendingAgentClose !== null"
     :agent="pendingAgentClose?.agent"
-    :workflow="pendingAgentClose?.workflow"
+    :preview="pendingAgentClose?.preview"
     :busy="agentCloseBusy"
+    :deleting-worktree="pendingAgentClose?.deleteWorktree"
     :error="agentCloseError"
     @close="cancelAgentClose"
+    @background="backgroundAgentClose"
     @keep-worktree="confirmAgentClose(false)"
     @delete-worktree="(deleteRemoteBranch, discardChanges) => confirmAgentClose(true, deleteRemoteBranch, discardChanges)"
   />
@@ -224,10 +229,6 @@
     :error="pullRequestCleanupError"
     @close="cancelPullRequestCleanup"
     @confirm="confirmPullRequestCleanup"
-  />
-  <WorkspaceProvisioningProgressDialog
-    :operation="agentCreationProgress ? { mode: 'single', progress: agentCreationProgress } : null"
-    @close="clearAgentCreationProgress"
   />
   <ConfettiOverlay />
   <Transition name="backend-restart-overlay">
@@ -251,21 +252,23 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
-import type { Agent, AgentGitWorkflow, DesktopUpdateStatus } from '@workspace/core/contracts';
+import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
+import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
 import AgentCloseDialog from './components/AgentCloseDialog.vue';
 import PullRequestCleanupDialog from './components/PullRequestCleanupDialog.vue';
-import WorkspaceProvisioningProgressDialog from './components/WorkspaceProvisioningProgressDialog.vue';
 import SessionCompressionDialog from './components/SessionCompressionDialog.vue';
 import { useAppState } from './app-state';
 import ConfettiOverlay from './shared/confetti/ConfettiOverlay.vue';
 import { applyAppTheme, subscribeToSystemAppearance } from './theme/apply-theme';
 import { appHostCapabilities, appApi } from './platform-api';
 import { localizedErrorMessage } from './i18n/errors';
+import { agentDisplayName } from '@workspace/core/agent-display';
 
 const { t } = useI18n();
 
@@ -322,7 +325,7 @@ const {
   daemonStatusError,
   codexResourceSharingStatus,
   backendRestartInProgress,
-  agentCreationProgress,
+  agentCreationProgresses,
   missionImplementationStartProgress,
   sourceRepositories,
   openInApplications,
@@ -357,6 +360,7 @@ const {
   openAgentPath,
   createAgent,
   clearAgentCreationProgress,
+  backgroundAgentCreationProgress,
   createMission,
   selectMission,
   deleteMission,
@@ -513,9 +517,13 @@ const agentConversationActions: AgentConversationActions = {
 };
 
 const updateStatus = ref<DesktopUpdateStatus>({ state: 'idle' });
-const pendingAgentClose = ref<{ agent: Agent; workflow: AgentGitWorkflow } | null>(null);
-const agentCloseBusy = ref(false);
-const agentCloseError = ref<string | null>(null);
+const pendingAgentClose = ref<{
+  agent: Agent; preview: AgentClosePreview; running: boolean; error: string | null;
+  deleteWorktree: boolean; backgrounded: boolean;
+} | null>(null);
+const agentCloseBusy = computed(() => pendingAgentClose.value?.running ?? false);
+const agentCloseError = computed(() => pendingAgentClose.value?.error ?? null);
+const closingAgentIds = new Set<string>();
 const pendingPullRequestCleanup = ref<Agent | null>(null);
 const pullRequestCleanupBusy = ref(false);
 const pullRequestCleanupError = ref<string | null>(null);
@@ -530,17 +538,13 @@ async function installUpdate(): Promise<void> {
 }
 
 async function requestCloseAgent(agentId: string): Promise<void> {
+  if (closingAgentIds.has(agentId) || agentCloseBusy.value) return;
   const agent = snapshot.value.agents.find((candidate) => candidate.id === agentId);
   if (!agent) return;
-  if (isAgentFolderShared(agent)) {
-    await closeAgentAction(agentId);
-    return;
-  }
   try {
-    const workflow = await getAgentGitWorkflow(agentId);
-    if (workflow.isLinkedWorktree) {
-      pendingAgentClose.value = { agent, workflow };
-      agentCloseError.value = null;
+    const preview = await appApi!.getAgentClosePreview(agentId);
+    if (preview.isLinkedWorktree) {
+      pendingAgentClose.value = { agent, preview, running: false, error: null, deleteWorktree: false, backgrounded: false };
       return;
     }
   } catch {
@@ -549,32 +553,25 @@ async function requestCloseAgent(agentId: string): Promise<void> {
   await closeAgentAction(agentId);
 }
 
-function isAgentFolderShared(agent: Agent): boolean {
-  if (!agent.folder) return false;
-  const location = agentBackendLocation(agent);
-  return snapshot.value.agents.some((candidate) => (
-    candidate.id !== agent.id
-    && candidate.folder === agent.folder
-    && agentBackendLocation(candidate) === location
-  ));
-}
-
-function agentBackendLocation(agent: Agent): string {
-  const team = snapshot.value.teams.find((candidate) => candidate.id === agent.teamId);
-  return team?.remoteConnectionId ? `remote:${team.remoteConnectionId}` : 'local';
-}
-
 function cancelAgentClose(): void {
   if (agentCloseBusy.value) return;
   pendingAgentClose.value = null;
-  agentCloseError.value = null;
+}
+
+function backgroundAgentClose(): void {
+  const pending = pendingAgentClose.value;
+  if (!pending?.running) return;
+  pending.backgrounded = true;
+  pendingAgentClose.value = null;
 }
 
 async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = false, discardChanges = false): Promise<void> {
   const pending = pendingAgentClose.value;
   if (!pending || agentCloseBusy.value) return;
-  agentCloseBusy.value = true;
-  agentCloseError.value = null;
+  pending.running = true;
+  pending.error = null;
+  pending.deleteWorktree = deleteWorktree;
+  closingAgentIds.add(pending.agent.id);
   try {
     await closeAgentAction(pending.agent.id, deleteWorktree ? {
       deleteWorktree: true,
@@ -582,11 +579,20 @@ async function confirmAgentClose(deleteWorktree: boolean, deleteRemoteBranch = f
       discardChanges,
       confirmed: true,
     } : undefined);
-    pendingAgentClose.value = null;
+    if (pending.backgrounded) {
+      const title = t(deleteWorktree ? 'surface.agentCloseDialog.worktreeDeleted' : 'surface.agentCloseDialog.agentClosed');
+      ElMessage.success(`${title}: ${pending.preview.branch ?? agentDisplayName(pending.agent)}`);
+    }
+    if (pendingAgentClose.value === pending) pendingAgentClose.value = null;
   } catch (error) {
-    agentCloseError.value = error instanceof Error ? error.message : String(error);
+    pending.error = localizedErrorMessage(error, t);
+    if (pending.backgrounded) {
+      const title = t(deleteWorktree ? 'surface.agentCloseDialog.worktreeDeletionFailed' : 'surface.agentCloseDialog.agentCloseFailed');
+      ElMessage.error(`${title}: ${pending.error}`);
+    }
   } finally {
-    agentCloseBusy.value = false;
+    pending.running = false;
+    closingAgentIds.delete(pending.agent.id);
   }
 }
 

@@ -1,13 +1,12 @@
 <template>
   <div class="run-profiles-control">
-    <el-popover v-model:visible="menuOpen" placement="bottom-end" trigger="click" :teleported="false" :width="300" :show-arrow="false" popper-class="app-popover">
-      <template #reference>
-        <button class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')" aria-haspopup="menu" :aria-expanded="menuOpen">
+    <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('runProfiles.title')" :items="menuItems" :width="300" max-height="60vh" @select="selectAction">
+      <template #trigger="{ attrs }">
+        <button v-bind="attrs" class="run-profiles-control__trigger" type="button" :aria-label="$t('runProfiles.title')" :title="$t('runProfiles.title')">
           <PlayerPlayIcon aria-hidden="true" /><ChevronDown aria-hidden="true" />
         </button>
       </template>
-      <AppMenu class="app-menu--embedded run-profiles-control__menu" :ariaLabel="$t('runProfiles.title')" :items="menuItems" @select="selectAction" />
-    </el-popover>
+    </AppMenuButton>
   </div>
   <RunProfileImport v-if="visible && importing" :agent-id="agent.id" :profiles="catalog?.profiles ?? []" :subtitle="`${hostLabel} · ${catalog?.worktree ?? agent.folder ?? ''}`" @done="importing = false; refresh()" @cancel="importing = false; refresh()" />
   <FormDialog v-if="!importing" :model-value="visible" :title="$t(confirmation ? 'runProfiles.runCommand' : 'runProfiles.title')" :subtitle="`${hostLabel} · ${catalog?.worktree ?? agent.folder ?? ''}`" width="680px" @update:model-value="setVisible">
@@ -74,7 +73,7 @@ import type { RunProfile, RunProfileCatalog, RunProfileInput } from '@workspace/
 import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { ChevronDown, LogsIcon, PlayerPlayIcon, SettingsIcon, X } from '../shared/icons/app-icons';
 import { translate } from '../i18n';
@@ -180,7 +179,6 @@ onBeforeUnmount(() => { revision++; clearTimeout(timer); emit('visibility', fals
 .run-profiles-control__trigger { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-lowest); color: var(--color-text-muted); cursor: pointer; -webkit-app-region: no-drag; }
 .run-profiles-control__trigger:hover { background: var(--color-surface-low); color: var(--color-text); }
 .run-profiles-control__trigger svg { width: var(--icon-md); height: var(--icon-md); }
-.run-profiles-control__menu { max-height: 60vh; overflow: auto; }
 .run-profiles__body { max-height: 60vh; overflow: auto; }
 .run-profiles__list { list-style: none; padding: 0; margin: 0; }
 .run-profiles__list li { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }

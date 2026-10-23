@@ -40,6 +40,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import { agentFolder } from '@workspace/core/agent-folder';
 import { shouldSyncConversationTitleFromAgent } from '@workspace/core/conversation-title';
 import type { CodexConversation, CodexSurface } from '@codex-app-sdk/backend';
+import { CodexImageGeneration } from './codex-image-generation';
 import type {
   CodexConversationEvent,
   CodexConversationSummary,
@@ -103,9 +104,11 @@ type SubagentOwner = {
 };
 
 export class CodexSurfaceAgentAdapter {
+  private readonly imageGeneration: CodexImageGeneration;
   private readonly listeners = new Set<AdapterListener>();
   private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private readonly sessionsByAgentId = new Map<string, AgentConversation>();
+  private readonly sessionInitializations = new Map<string, Promise<AgentConversation>>();
   private readonly historyHydratedAtByAgentId = new Map<string, number>();
   private readonly agentIdsByThreadId = new Map<string, string>();
   private readonly approvalOwners = new Map<string, AgentConversation>();
@@ -127,6 +130,7 @@ export class CodexSurfaceAgentAdapter {
     private readonly surface: CodexSurface,
     private readonly closeSurface: () => Promise<void> = () => surface.close(),
   ) {
+    this.imageGeneration = new CodexImageGeneration(surface);
     this.accountIdentity = JSON.stringify(surface.getSnapshot().authentication.account);
     this.unsubscribeSurface = surface.onEvent((event) => this.handleSurfaceEvent(event));
   }
@@ -359,6 +363,10 @@ export class CodexSurfaceAgentAdapter {
     });
   }
 
+  generateImage(input: import('@workspace/core/backend-driver').BackendImageGenerationInput, signal?: AbortSignal) {
+    return this.imageGeneration.generate(input, signal);
+  }
+
   async runCodeReview(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult> {
     await this.start();
     if (input.reviewerSession && input.reviewerSession.kind !== 'codex') {
@@ -528,6 +536,7 @@ export class CodexSurfaceAgentAdapter {
   }
 
   releaseConversation(agentId: string): void {
+    this.sessionInitializations.delete(agentId);
     const session = this.sessionsByAgentId.get(agentId);
     if (!session) return;
     session.unsubscribe();
@@ -856,12 +865,14 @@ export class CodexSurfaceAgentAdapter {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.imageGeneration.close();
     this.resetCreditTokens.clear();
     for (const cancel of this.resetReadCancellations) cancel();
     this.resetReadCancellations.clear();
     this.unsubscribeSurface();
     for (const session of this.sessionsByAgentId.values()) session.unsubscribe();
     this.sessionsByAgentId.clear();
+    this.sessionInitializations.clear();
     this.historyHydratedAtByAgentId.clear();
     this.agentIdsByThreadId.clear();
     this.approvalOwners.clear();
@@ -878,8 +889,17 @@ export class CodexSurfaceAgentAdapter {
     agent: Agent,
     extensionContext: unknown = agent,
   ): Promise<AgentConversation> {
-    const existing = this.sessionsByAgentId.get(agent.id);
     const requestedThreadId = codexThreadId(agent);
+    const pending = this.sessionInitializations.get(agent.id);
+    if (pending) {
+      const session = await pending;
+      if (!requestedThreadId || session.handle.id === requestedThreadId) {
+        session.agent = agent;
+        return session;
+      }
+      return this.ensureSession(agent, extensionContext);
+    }
+    const existing = this.sessionsByAgentId.get(agent.id);
     if (existing && (!requestedThreadId || existing.handle.id === requestedThreadId)) {
       existing.agent = agent;
       return existing;
@@ -887,7 +907,27 @@ export class CodexSurfaceAgentAdapter {
     if (existing) this.releaseConversation(agent.id);
     if (requestedThreadId) return this.bindAndLoad(agent, requestedThreadId);
 
+    let initialization!: Promise<AgentConversation>;
+    initialization = this.createAgentConversation(agent, extensionContext, () => (
+      !this.closed && this.sessionInitializations.get(agent.id) === initialization
+    ));
+    this.sessionInitializations.set(agent.id, initialization);
+    try {
+      return await initialization;
+    } finally {
+      if (this.sessionInitializations.get(agent.id) === initialization) {
+        this.sessionInitializations.delete(agent.id);
+      }
+    }
+  }
+
+  private async createAgentConversation(
+    agent: Agent,
+    extensionContext: unknown,
+    isCurrent: () => boolean,
+  ): Promise<AgentConversation> {
     await this.start();
+    if (!isCurrent()) throw new Error('Codex conversation initialization was cancelled.');
     const defaults = agent.backendDefaults?.kind === 'codex'
       ? { ...agent.backendDefaults }
       : undefined;
@@ -903,6 +943,10 @@ export class CodexSurfaceAgentAdapter {
     }, { extensionContext });
     const threadId = snapshot.activeConversationId;
     if (!threadId) throw new Error('Codex did not create a conversation.');
+    if (!isCurrent()) {
+      if (!this.closed) this.surface.forgetConversation(threadId);
+      throw new Error('Codex conversation initialization was cancelled.');
+    }
     const session = this.bindRuntime(agent, threadId, true, false);
     try {
       if (shouldSyncConversationTitleFromAgent(agent)) {
@@ -911,6 +955,9 @@ export class CodexSurfaceAgentAdapter {
     } catch {
       // Naming is best effort and must not prevent the first prompt. daemon
       // retries through its normal post-session title synchronization.
+    }
+    if (this.closed || this.sessionsByAgentId.get(agent.id) !== session) {
+      throw new Error('Codex conversation initialization was cancelled.');
     }
     return session;
   }

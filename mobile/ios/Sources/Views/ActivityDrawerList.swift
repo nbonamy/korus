@@ -12,6 +12,9 @@ struct ActivityDrawerList: View {
     private var visible: Bool { model.drawerOpen && scenePhase == .active }
 
     var body: some View {
+        let repositories = Dictionary(uniqueKeysWithValues: model.groups.flatMap { group in
+            group.sessions.map { ($0.agentId, group) }
+        })
         ScrollView {
             LazyVStack(spacing: 4) {
                 // A single ForEach preserves each agent's identity across section boundaries.
@@ -24,7 +27,7 @@ struct ActivityDrawerList: View {
                             .transition(.opacity)
                     case .agent(let session):
                         Button { model.select(agent: session.agentId) } label: {
-                            ActivitySessionRow(session: session, isActive: session.agentId == model.activeAgentID)
+                            ActivitySessionRow(session: session, repository: repositories[session.agentId], isActive: session.agentId == model.activeAgentID)
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity)
@@ -48,6 +51,7 @@ struct ActivityDrawerList: View {
 }
 
 private struct ActivityHeader: View {
+    @Environment(AppModel.self) private var model
     let group: SidebarGroup
     let reduceMotion: Bool
     let animateSymbols: Bool
@@ -78,6 +82,20 @@ private struct ActivityHeader: View {
             .font(.system(size: 15, weight: .medium)).frame(width: 20, height: 20)
             Text(group.label).font(.subheadline.weight(.semibold))
             Spacer(minLength: 0)
+            if group.activity == .idle {
+                Menu {
+                    Picker("Sort Idle agents", selection: Binding(get: { model.sidebarIdleSort }, set: model.chooseSidebarIdleSort)) {
+                        ForEach(SidebarIdleSort.allCases, id: \.self) { order in
+                            Text(order.label).tag(order)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.subheadline).padding(.horizontal, 8)
+                }
+                .accessibilityLabel("Sort Idle agents")
+                .accessibilityValue(model.sidebarIdleSort.label)
+            }
         }
         .foregroundStyle(color)
         .accessibilityAddTraits(.isHeader)
@@ -86,14 +104,17 @@ private struct ActivityHeader: View {
 
 private struct ActivitySessionRow: View {
     let session: SidebarSession
+    let repository: SidebarGroup?
     let isActive: Bool
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: session.quickChat ? "bubble.left" : session.kind.symbol)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(session.quickChat ? .secondary : session.kind.color)
-                .frame(width: 24)
+            if let repository {
+                GroupIcon(group: repository)
+            } else {
+                Image(systemName: session.quickChat ? "bubble.left" : "folder")
+                    .foregroundStyle(.secondary).frame(width: 24)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
                 if let subtitle = session.subtitle, !subtitle.isEmpty {

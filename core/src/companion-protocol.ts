@@ -4,8 +4,18 @@ import type { AccountRateLimits, Agent, AgentBackend, AgentGitStatus, ModelFavor
 
 export const companionProtocol = '/workspace/companion/1.0.0';
 export const companionUpdatesProtocol = '/workspace/companion-updates/1.0.0';
+/** Gzip responses are negotiated separately so older paired apps keep their JSON framing. */
+export const companionCompressedProtocol = '/workspace/companion/2.0.0';
+export const companionCompressedUpdatesProtocol = '/workspace/companion-updates/2.0.0';
+export const companionDecodedResponseLimit = 128 * 1024 * 1024;
 /** Match the native app lock: quick app switches retain the authenticated connection. */
 export const companionBackgroundGraceMs = 5 * 60_000;
+/** The update channel's liveness contract, shared by the phone and the laptop. */
+export const companionHeartbeatIntervalMs = 15_000;
+export const companionRequestTimeoutMs = 15_000;
+export const companionIdleTimeoutMs = 45_000;
+/** A backgrounded phone sends nothing, so the laptop waits out the grace period before calling a stream idle. */
+export const companionBackgroundIdleTimeoutMs = companionBackgroundGraceMs + companionIdleTimeoutMs;
 export type CompanionUpdate = { type: 'notification'; notification: CompanionNotification } | { type: 'workspace'; workspace: CompanionWorkspace } | { type: 'conversation'; frame: ProviderConversationFrame };
 export const companionMaxUploadBytes = 2_500_000;
 export const companionMaxUploads = 5;
@@ -16,12 +26,17 @@ export const companionResponseLimit = 32 * 1024 * 1024;
 export type CompanionTarget = { hostId: string; locationId: string; teamId: string; agentId: string; sessionId: string | null };
 export type CompanionRequestReply = { target: CompanionTarget; id: string; conversationId: string; outcome: AgentRequestResponse['outcome'] };
 export type CompanionCloseOptions = { deleteWorktree: true; deleteRemoteBranch: boolean; discardChanges: boolean; confirmed: true };
-export type CompanionClosePreview = { target: CompanionTarget; isLinkedWorktree: boolean; branch: string | null; upstream: string | null; hasChanges: boolean };
+export type CompanionClosePreview = { target: CompanionTarget } & import('./agent-close').AgentClosePreview;
 export type CompanionReset = Extract<ProviderConversationFrame, { type: 'codex.conversationSnapshotChanged' | 'claude.conversationSnapshotChanged' | 'antigravity.conversationSnapshotChanged' }>;
+const conversationFrameType = /^(codex|claude|antigravity)\.conversation(SnapshotChanged|EventReceived)$/;
+/** A provider conversation frame is a full reset or one event after it; these two checks are the only definition of either. */
+export const isConversationFrame = (frame: { type: string }): boolean => conversationFrameType.test(frame.type);
+export const isConversationReset = (frame: ProviderConversationFrame): frame is CompanionReset =>
+  frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
+export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
 export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
@@ -29,7 +44,7 @@ export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: 
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
 export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'github' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
 export type CompanionGitHubRepository = { id: string; name: string };
 /** Image bytes resolved by the conversation's host, never a host-local file URL. */
@@ -65,6 +80,9 @@ export function companionTarget(hostId: string, team: Team, agent: Agent): Compa
 /** App framing only. Cryptographic authentication and encryption are owned by Noise/libp2p. */
 export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit): Uint8Array {
   const payload = new TextEncoder().encode(JSON.stringify(value));
+  return encodeCompanionPayload(payload, limit);
+}
+export function encodeCompanionPayload(payload: Uint8Array, limit: number): Uint8Array {
   if (payload.byteLength > limit) throw new Error('Companion frame too large.');
   const frame = new Uint8Array(4 + payload.byteLength);
   new DataView(frame.buffer).setUint32(0, payload.byteLength);
@@ -73,7 +91,7 @@ export function encodeCompanionFrame(value: unknown, limit = companionFrameLimit
 }
 export class CompanionFrameDecoder {
   private buffered = new Uint8Array(0);
-  constructor(private readonly limit = companionFrameLimit) {}
+  constructor(private readonly limit = companionFrameLimit, private readonly decode: (payload: Uint8Array) => unknown = decodeCompanionPayload) {}
   push(chunk: Uint8Array): unknown[] {
     const combined = new Uint8Array(this.buffered.byteLength + chunk.byteLength);
     combined.set(this.buffered); combined.set(chunk, this.buffered.byteLength);
@@ -83,8 +101,7 @@ export class CompanionFrameDecoder {
       const size = new DataView(combined.buffer, combined.byteOffset + offset, 4).getUint32(0);
       if (size > this.limit || size === 0) throw new Error('Invalid companion frame length.');
       if (combined.byteLength - offset - 4 < size) break;
-      const payload = new TextDecoder('utf-8', { fatal: true }).decode(combined.subarray(offset + 4, offset + 4 + size));
-      frames.push(JSON.parse(payload));
+      frames.push(this.decode(combined.subarray(offset + 4, offset + 4 + size)));
       offset += size + 4;
     }
     this.buffered = combined.slice(offset);
@@ -101,4 +118,9 @@ export async function* readCompanionFrames(source: AsyncIterable<Uint8Array | { 
 export async function readFirstCompanionFrame(source: AsyncIterable<Uint8Array | { subarray(): Uint8Array }>, limit = companionFrameLimit): Promise<unknown> {
   for await (const frame of readCompanionFrames(source, limit)) return frame;
   throw new Error('Stream closed without a frame.');
+}
+
+/** Strict JSON decoding shared by plain and negotiated compressed responses. */
+export function decodeCompanionPayload(payload: Uint8Array): unknown {
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload));
 }

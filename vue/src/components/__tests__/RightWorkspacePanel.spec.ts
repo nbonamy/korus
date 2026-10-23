@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { ElTooltip } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentSubagentTree, OpenInApplicationCatalog, RendererMessage } from '@workspace/core/contracts';
@@ -7,6 +7,8 @@ import RightWorkspacePanel from '../RightWorkspacePanel.vue';
 import BrowserPanel from '../BrowserPanel.vue';
 import { rightWorkspaceFileTab, type RightWorkspaceFilePanel, type RightWorkspaceFileTab, type RightWorkspaceImagePanel, type RightWorkspaceImageTab, type RightWorkspaceTab } from '../right-workspace';
 import type { SidePanelMarkdownState } from '../side-panel';
+// Menus open in a popper attached to the body.
+const bodyAll = (selector: string) => Array.from(document.body.querySelectorAll(selector)).map((element) => new DOMWrapper(element));
 
 class ResizeObserverStub {
   observe() {}
@@ -38,6 +40,7 @@ function mountPanel(
     browserSetVisible: vi.fn().mockResolvedValue(undefined),
     browserClose: vi.fn().mockResolvedValue(undefined),
     onEvent: vi.fn(() => vi.fn()),
+    listAgentDirectory: vi.fn().mockResolvedValue({ entries: [{ kind: 'file', name: 'README.md', path: 'README.md' }], nextCursor: null }),
   } as never;
   return mount(RightWorkspacePanel, {
     props: {
@@ -134,7 +137,7 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview'], ['visualize'], ['review'], ['simulator'], ['browser'], ['files']]);
 
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    const visualizeMenuItem = wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Visualize');
+    const visualizeMenuItem = bodyAll('[role="menuitem"]').find(item => item.text() === 'Visualize');
     expect(visualizeMenuItem).toBeDefined();
     await visualizeMenuItem!.trigger('click');
     expect(wrapper.emitted('openTab')?.at(-1)).toStrictEqual(['visualize']);
@@ -256,8 +259,8 @@ describe('RightWorkspacePanel', () => {
     const wrapper = mountPanel(['files'], 'files');
     await wrapper.setProps({
       filesPaneOpen: true,
-      files: [{ name: 'README.md', path: 'README.md' }],
     });
+    await flushPromises();
 
     expect(wrapper.get('[role="tab"]').text()).toBe('Open file');
     expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('README.md');
@@ -275,6 +278,7 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.find('.right-workspace-panel__files-pane').exists()).toBe(false);
 
     await wrapper.setProps({ activeTab: 'files', filesPaneOpen: true });
+    await flushPromises();
     expect(wrapper.get('.right-workspace-panel__files-pane').text()).toContain('README.md');
   });
 
@@ -302,8 +306,8 @@ describe('RightWorkspacePanel', () => {
     const wrapper = mountPanel();
 
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(wrapper.findAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
-    await wrapper.findAll('.app-menu__item')[0]?.trigger('click');
+    expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Visualize', 'Changes', 'Simulator', 'Browser', 'Files']);
+    await bodyAll('.app-menu__item')[0]?.trigger('click');
 
     expect(wrapper.emitted('openTab')).toStrictEqual([['codeReview']]);
   });
@@ -329,7 +333,7 @@ describe('RightWorkspacePanel', () => {
     });
 
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(wrapper.findAll('.app-menu__item').map((item) => item.text())).not.toContain('Backlog');
+    expect(bodyAll('.app-menu__item').map((item) => item.text())).not.toContain('Backlog');
   });
 
   it('omits the embedded Browser when the host does not provide it', async () => {
@@ -338,7 +342,7 @@ describe('RightWorkspacePanel', () => {
     expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).toContain('Review');
     expect(wrapper.get('[aria-label="Open a workspace tab"]').text()).not.toContain('Browser');
     await wrapper.get('[aria-label="Open right workspace tab"]').trigger('click');
-    expect(wrapper.findAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Visualize', 'Changes', 'Simulator', 'Files']);
+    expect(bodyAll('.app-menu__item').map((item) => item.text())).toStrictEqual(['Review', 'Visualize', 'Changes', 'Simulator', 'Files']);
   });
 
   it('renders file previews as independently closable workspace tabs', async () => {

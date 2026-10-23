@@ -269,6 +269,7 @@
         <template #ship="{ openConversation }">
           <MissionShipBoard
             :agents="snapshot.agents"
+            :teams="snapshot.teams"
             :mission="selectedMission"
             :execute-mission="executeMission"
             :git-statuses="snapshot.agentGitStatuses"
@@ -316,8 +317,8 @@
         :review-finding-attachment="activeReviewFindingAttachment"
         :create-agent-git-pull-request="props.createAgentGitPullRequest"
         :current-agent="currentAgent"
-        :empty-split-pane="!split.focusedPane.value.agentId"
-        :split-headers="split.layout.value !== 'single'"
+        :empty-split-pane="!hasFocusedConversation"
+        :split-headers="splitLayout !== 'single'"
         :latest-turn-id-for-agent="latestTurnIdForAgent"
         :current-agent-git-status="currentAgentGitStatus"
         :current-backend-runtime="currentBackendRuntime"
@@ -387,8 +388,8 @@
         <template v-if="!compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
           <SplitLayoutControl :model-value="split.layout.value" @update:model-value="split.setLayout" />
         </template>
-        <template v-if="split.layout.value !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
-          <AgentSplitGrid :layout="split.layout.value" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" @focus="focusSplitPane">
+        <template v-if="splitLayout !== 'single' && props.agentConversationFor && splitActions" #conversation="{ plan, planVisible, closePlan, headerBindingsFor }">
+          <AgentSplitGrid :layout="splitLayout" :panes="split.panes.value" :focused-pane-id="split.focusedPaneId.value" :ratios="split.ratios.value" @resize="split.resize" @focus="focusSplitPane">
             <template #header="{ agentId, topRight, topLeft }">
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
@@ -561,10 +562,7 @@
       @image-error="handleImageAnnotationError"
       @save="saveImageAnnotation"
     />
-    <WorkspaceProvisioningProgressDialog
-      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : workItemCreationProgress"
-      @close="closeProvisioningProgress"
-    />
+    <ProvisioningOperationHost />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -624,7 +622,9 @@ import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
-import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
+import ProvisioningOperationHost from './ProvisioningOperationHost.vue';
+import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
+import { publishProvisioningOperation } from './provisioning-operations';
 import RepositorySessionSourceDialog from './RepositorySessionSourceDialog.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
@@ -803,6 +803,7 @@ const props = withDefaults(defineProps<{
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
   executeMission?: (input: import('@workspace/core/mission-execution').MissionExecutionInput) => Promise<void>;
   missionImplementationStartProgress?: MissionImplementationStartProgress | null;
+  agentCreationProgresses?: AgentCreationProgress[];
   createQuickChat?: (input: CreateQuickChatInput) => Promise<Agent | null | void>;
   createTeam?: (input: CreateTeamInput) => Promise<Team | null | void>;
   updateTeam?: (input: UpdateTeamInput) => Promise<void>;
@@ -1006,6 +1007,8 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'clear-agent-creation-progress': [id: string];
+  'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
   'close-team': [teamId: string];
   'disconnect-team': [teamId: string];
@@ -1429,6 +1432,7 @@ const workItemRouting = useWorkItemRouting({
     sourceRepositories: () => props.sourceRepositories,
   },
   ui: {
+    notifyError: (message) => ElMessage.error(message),
     confirmReassignment: async (message) => {
       try {
         await ElMessageBox.confirm(
@@ -1467,6 +1471,7 @@ const {
   createIsolatedAgent: createIsolatedWorkItemAgent,
   creationProgress: workItemCreationProgress,
   closeCreationProgress: closeWorkItemCreationProgress,
+  backgroundCreationProgress: backgroundWorkItemCreationProgress,
   newAgentItem: pendingNewAgentWorkItem,
   newAgentTeamName: pendingNewAgentTeamName,
   newAgentWorktreeBranchName: pendingWorkItemBranchName,
@@ -1503,6 +1508,7 @@ const {
   close: closeRepositorySessionSource,
   closeWorktree: closeRepositorySessionWorktree,
   closeCreationProgress: closeRepositorySessionCreationProgress,
+  backgroundCreationProgress: backgroundRepositorySessionCreationProgress,
   creationProgress: repositorySessionCreationProgress,
   createForSourceBranch: openNewAgentForSourceBranch,
   createFromWorktree: createRepositorySessionFromWorktree,
@@ -1663,15 +1669,12 @@ const split = useSplitWorkspace({
   teamId: () => activeTeam.value?.id,
   selectAgent: id => emit('select-agent', id),
 });
-// One pane at a time on phones, including layouts restored from a team's saved workspace.
-watch(
-  [compactViewport, split.layout],
-  ([compact, layout]) => { if (compact && layout !== 'single') split.setLayout('single'); },
-  { immediate: true },
-);
+// Compact screens display one conversation without changing the saved team layout.
+const splitLayout = computed(() => compactViewport.value ? 'single' : split.layout.value);
+const hasFocusedConversation = computed(() => compactViewport.value || Boolean(split.focusedPane.value.agentId));
 const rightWorkspaceState = useRightWorkspaceState({
   currentAgentId: () => currentAgent.value?.id,
-  sharedVisibilityGroupId: () => split.layout.value === 'single' ? undefined : activeTeam.value?.id,
+  sharedVisibilityGroupId: () => splitLayout.value === 'single' ? undefined : activeTeam.value?.id,
   workspaceBody: () => agentWorkspace.value?.workspaceBodyElement() ?? null,
 });
 const documentWorkspaces = useDocumentWorkspaces({
@@ -1691,7 +1694,7 @@ function setSplitPanel(agentId: string, instance: unknown): void {
   else splitPanels.delete(agentId);
 }
 function focusedConversationPanel() {
-  return split.layout.value === 'single' ? agentWorkspace.value : splitPanels.get(split.focusedPane.value.agentId ?? '');
+  return splitLayout.value === 'single' ? agentWorkspace.value : splitPanels.get(split.focusedPane.value.agentId ?? '');
 }
 const pendingComposerFocusAgentId = ref<string | null>(null);
 // A cold conversation has no composer until history hydration replaces its loader.
@@ -1719,7 +1722,7 @@ watch([
   });
 }, { flush: 'post' });
 function addFocusedVisualizationAnnotation(annotation: import('./use-visualization-annotations').VisualizationAnnotationInput): void {
-  if (split.layout.value === 'single') addVisualizationAnnotation(annotation);
+  if (splitLayout.value === 'single') addVisualizationAnnotation(annotation);
   else splitPanels.get(currentAgent.value?.id ?? '')?.addVisualizationAnnotation(annotation);
 }
 const splitActions = computed<AgentConversationActions | undefined>(() => props.agentConversationActions ? {
@@ -2454,7 +2457,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
     agents: () => props.snapshot.agents,
     attachmentsEnabled: () => props.backendCapabilities.attachments,
     composerAttachments: () => props.composerAttachments,
-    currentAgent: () => split.focusedPane.value.agentId ? currentAgent.value : null,
+    currentAgent: () => hasFocusedConversation.value ? currentAgent.value : null,
     canReplaceConversation: () => Boolean(currentAgent.value && summaryReplacementAgentIds.value.includes(currentAgent.value.id)),
     isAgentWorkspaceVisible: () => isAgentWorkspaceVisible.value,
     isModalDialogVisible: () => isModalDialogVisible.value,
@@ -2510,7 +2513,7 @@ const { quickAgentShortcutsVisible, executeAppCommand } = useAppShellCommands({
 });
 
 const paletteActions = computed(() => {
-  const agent = split.focusedPane.value.agentId ? currentAgent.value : null;
+  const agent = hasFocusedConversation.value ? currentAgent.value : null;
   const team = activeTeam.value;
   const remote = team?.remoteConnectionId;
   return commandPaletteActions({
@@ -2684,11 +2687,32 @@ function scheduleDebugAgentCreationUpdate(
 }
 
 const provisioningProgress = computed(() => debugAgentCreationProgress.value ?? repositorySessionCreationProgress.value);
+// Local flows first, then agent-delegated creations (one, or several side by side).
+const provisioningOperation = computed<WorkspaceProvisioningOperation | null>(() => {
+  if (provisioningProgress.value) return { mode: 'single', progress: provisioningProgress.value };
+  if (workItemCreationProgress.value) return workItemCreationProgress.value;
+  const delegated = props.agentCreationProgresses ?? [];
+  if (delegated.length === 1) return { mode: 'single', progress: delegated[0]! };
+  return delegated.length > 1 ? { mode: 'batch', progress: delegated } : null;
+});
+
+watch(provisioningOperation, (operation) => {
+  publishProvisioningOperation('shell', operation, { onClose: closeProvisioningProgress, onBackground: backgroundProvisioningProgress });
+}, { immediate: true });
+onBeforeUnmount(() => publishProvisioningOperation('shell', null));
 
 function closeProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   closeRepositorySessionCreationProgress(id);
   closeWorkItemCreationProgress(id);
+  emit('clear-agent-creation-progress', id);
+}
+
+function backgroundProvisioningProgress(id: string): void {
+  closeDebugAgentCreationProgress(id);
+  backgroundRepositorySessionCreationProgress(id);
+  backgroundWorkItemCreationProgress(id);
+  emit('background-agent-creation-progress', id);
 }
 
 function closeDebugAgentCreationProgress(id: string): void {

@@ -86,3 +86,55 @@ describe('companion event subscriptions', () => {
     } finally { f.subscription.close(); }
   });
 });
+
+it('joins checkpoint catch-up to the live stream without replaying snapshots or duplicating racing updates', async () => {
+  const f = fixture();
+  try {
+    await f.subscription.request('snapshot.get', {});
+    let resolve!: (value: unknown) => void;
+    f.request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const pending = f.subscription.request('conversation.synchronize', { target, checkpoint: { epoch: 'epoch', revision: 1 } });
+    f.event(frame(2)); f.event(frame(3));
+    resolve({ checkpoint: { epoch: 'epoch', revision: 2 }, frames: [frame(2)] });
+    expect(await pending).toStrictEqual({ checkpoint: { epoch: 'epoch', revision: 2 } });
+    expect(f.emit.mock.calls.filter(([v]) => v.type === 'conversation').map(([v]) => v.frame.payload.revision)).toStrictEqual([2, 3]);
+  } finally { f.subscription.close(); }
+});
+
+it('emits each catch-up frame only after the previous one was accepted', async () => {
+  const f = fixture();
+  try {
+    await f.subscription.request('snapshot.get', {});
+    const accepted: number[] = []; const gates: (() => void)[] = [];
+    f.emit.mockImplementation((update: { type: string; frame?: { payload: { revision: number } } }) => {
+      if (update.type !== 'conversation') return;
+      accepted.push(update.frame!.payload.revision);
+      return new Promise<void>((resolve) => { gates.push(resolve); });
+    });
+    f.request.mockImplementationOnce(async () => ({ checkpoint: { epoch: 'epoch', revision: 4 }, frames: [frame(2), frame(3), frame(4)] }));
+    const pending = f.subscription.request('conversation.synchronize', { target, checkpoint: { epoch: 'epoch', revision: 1 } });
+    await vi.waitFor(() => expect(accepted).toStrictEqual([2]));
+    gates.shift()!(); await vi.waitFor(() => expect(accepted).toStrictEqual([2, 3]));
+    gates.shift()!(); await vi.waitFor(() => expect(accepted).toStrictEqual([2, 3, 4]));
+    gates.shift()!();
+    await expect(pending).resolves.toStrictEqual({ checkpoint: { epoch: 'epoch', revision: 4 } });
+  } finally { f.subscription.close(); }
+});
+
+it('fails only the catch-up when live frames outrun it, and keeps the stream', async () => {
+  const f = fixture();
+  try {
+    await f.subscription.request('snapshot.get', {});
+    let release!: (value: unknown) => void;
+    f.request.mockImplementationOnce(() => new Promise(done => { release = done; }));
+    const pending = f.subscription.request('conversation.synchronize', { target, checkpoint: { epoch: 'epoch', revision: 1 } });
+    const failed = expect(pending).rejects.toThrow('faster than');
+    for (let revision = 2; revision < 400; revision++) f.event(frame(revision));
+    release({ checkpoint: { epoch: 'epoch', revision: 1 }, frames: [] });
+    await failed;
+    expect(f.failed).not.toHaveBeenCalled();
+    expect(f.emit.mock.calls.some(([update]) => update.type === 'conversation')).toBe(false);
+    f.event(frame(401));
+    expect(f.emit.mock.calls.some(([update]) => update.type === 'conversation')).toBe(false);
+  } finally { f.subscription.close(); }
+});

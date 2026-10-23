@@ -73,6 +73,9 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Version", value: version)
+                    if let url = model.privacyPolicyURL {
+                        Link(destination: url) { Label("Privacy Policy", systemImage: "hand.raised") }
+                    }
                 } header: {
                     Text(model.productName)
                 }

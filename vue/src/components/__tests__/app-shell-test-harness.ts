@@ -122,6 +122,7 @@ export function mountShell(overrides: Partial<{
   selectedServiceTier: string | null;
   previewAgentFile: (agentId: string, path: string) => Promise<AgentFilePreviewResult>;
   unreadAgentIds: string[];
+  agentCreationProgresses: import('@workspace/core/contracts').AgentCreationProgress[];
   composerAttachments: readonly CodexNativeAttachment[];
   composerState: { text: string; selectionStart: number; selectionEnd: number };
   queuedPrompts: import('@workspace/core/contracts').AgentQueuedPrompt[];
@@ -213,6 +214,7 @@ export function mountShell(overrides: Partial<{
       connectionState: overrides.connectionState ?? { status: 'connected' },
       activeAgent: snapshot.agents.find((agent) => agent.id === snapshot.activeAgentId) ?? null,
       unreadAgentIds: overrides.unreadAgentIds ?? [],
+      agentCreationProgresses: overrides.agentCreationProgresses ?? [],
       agentFiles: overrides.agentFiles ?? [],
       backendModels: overrides.backendModels ?? [],
       selectedModelId: overrides.selectedModelId ?? null,

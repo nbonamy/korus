@@ -18,6 +18,21 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/nbonamy/korus/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nbonamy/korus" alt="Latest Korus release" />
+  </a>
+  <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
+    <img src="https://github.com/nbonamy/korus/actions/workflows/quality.yml/badge.svg?branch=main&amp;event=push" alt="Quality checks" />
+  </a>
+  <a href="https://github.com/nbonamy/korus/actions/workflows/quality.yml">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fnbonamy%2Fkorus%2Fbadges%2Fcoverage.json" alt="Statement coverage across all workspaces" />
+  </a>
+  <a href="https://tooomm.github.io/github-release-stats/?username=nbonamy&amp;repository=korus">
+    <img src="https://img.shields.io/github/downloads/nbonamy/korus/total?color=orange" alt="GitHub release asset downloads" />
+  </a>
+</p>
+
+<p align="center">
   <img src="website/assets/app-screenshot.png" alt="Korus with repository-grouped agents, a conversation, and input-needed status, shown with demo data" width="960" />
 </p>
 
@@ -130,8 +145,12 @@ each engine's account, conversation location, and enabled state.
 Requirements:
 
 - macOS arm64, Windows x64, or Linux x64/arm64;
-- Node 22.23.3 and npm 10.9.4 (the CI toolchain);
+- Node 26 (use the exact version pinned in [.nvmrc](.nvmrc)) and npm 10.9.4;
 - a separately installed runtime for each coding engine you want to use.
+
+Use this reference toolchain for local development and checks to match CI.
+The packaged desktop app includes its own Node runtime; users do not need to
+install Node to run it.
 
 ```bash
 npm ci

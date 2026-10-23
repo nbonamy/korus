@@ -17,6 +17,7 @@ describe('agent chat service', () => {
     if (interactive && planMode) {
       expect(prompt).toContain('- [ ] / - [x]');
       expect(prompt).toContain('- ( ) / - (x)');
+      expect(prompt).toContain('```mermaid');
       expect(prompt).toContain('Do not call display-markdown for the proposal.');
       expect(prompt.replace(/<context>[\s\S]*?<\/context>/gu, '').trim()).toBe('Plan the requested change.');
     } else expect(prompt).toBe('Plan the requested change.');

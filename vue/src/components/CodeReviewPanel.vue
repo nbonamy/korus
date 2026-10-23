@@ -344,6 +344,7 @@ import { useBackendChoices } from './backend-selection';
 import { useCodeReviewSettings } from './code-review-settings';
 import type { BackendModelOption } from '@workspace/core/contracts';
 import type { CodeReviewPriority } from '@workspace/core/code-review';
+import { codeReviewAvailability, preferredReviewBackend } from '@workspace/core/code-review';
 
 const props = defineProps<{
   agent: Agent;
@@ -378,7 +379,8 @@ const scope = ref<CodeReviewStartInput["scope"]["type"]>("uncommitted");
 const threadMode = ref<CodeReviewThreadMode>("independent");
 const reviewSettings = useCodeReviewSettings();
 const remembered = reviewSettings.preferences();
-const reviewBackend = ref<Agent['backend'] | undefined>(remembered?.backend ?? props.agent.backend);
+const connectedBackends = useBackendChoices(() => props.agent.teamId);
+const reviewBackend = ref<Agent['backend'] | undefined>(preferredReviewBackend(props.agent.backend, connectedBackends.value, remembered?.backend));
 const automatic = ref(remembered?.automation.enabled ?? false);
 const automaticSettingsOpen = ref(false);
 const maxPriority = ref<CodeReviewPriority>(remembered?.automation.maxPriority ?? 'p2');
@@ -420,11 +422,10 @@ watch([effectiveBackend, () => props.agent.id, () => Boolean(props.agent.codeRev
 watch(reviewModel, () => {
   if (!effortOptions.value.some(option => option.reasoningEffort === reviewEffort.value)) reviewEffort.value = '';
 });
-const connectedBackends = useBackendChoices(() => props.agent.teamId);
 watch(() => props.agent.id, () => {
   automaticSettingsOpen.value = false;
   const latest = reviewSettings.preferences();
-  reviewBackend.value = latest?.backend ?? props.agent.backend;
+  reviewBackend.value = preferredReviewBackend(props.agent.backend, connectedBackends.value, latest?.backend);
   automatic.value = latest?.automation.enabled ?? false;
   maxPriority.value = latest?.automation.maxPriority ?? 'p2';
   maxRounds.value = latest?.automation.maxRounds ?? 3;
@@ -436,18 +437,13 @@ const canStopTurn = computed(() => session.value?.status === 'reviewing' || sess
   || props.agent.status.type === 'working' || props.agent.status.type === 'awaitingInput');
 const branchScope = computed(() => props.gitStatus?.diffCatalog?.branch);
 const scopeCatalogReady = computed(() => Boolean(props.gitStatus?.diffCatalog) && props.gitStatus?.state !== "unknown");
-const hasUncommittedChanges = computed(() => {
-  const catalog = props.gitStatus?.diffCatalog;
-  return !scopeCatalogReady.value || !catalog || hasDiffChanges(catalog.uncommitted);
-});
-const hasBranchChanges = computed(() => {
-  const catalog = props.gitStatus?.diffCatalog;
-  return Boolean(catalog?.branch && catalog.commits.length > 0 && hasDiffChanges(catalog.branch));
-});
+const availability = computed(() => codeReviewAvailability(props.agent, props.gitStatus));
+const hasUncommittedChanges = computed(() => availability.value.uncommitted);
+const hasBranchChanges = computed(() => availability.value.branchChanges);
 const nothingToReview = computed(() => scopeCatalogReady.value
   && !hasUncommittedChanges.value
   && !hasBranchChanges.value);
-const currentThreadAvailable = computed(() => Boolean(props.agent.backendSession));
+const currentThreadAvailable = computed(() => availability.value.currentThread);
 const uncommittedDescription = computed(() => hasUncommittedChanges.value
   ? t("surface.codeReviewPanel.uncommittedDescription")
   : t("surface.codeReviewPanel.uncommittedUnavailable"));
@@ -690,10 +686,6 @@ function findingStateLabel(finding: CodeReviewFinding): string {
 
 function priorityRank(priority: CodeReviewFinding["priority"]): number {
   return { p0: 0, p1: 1, p2: 2, p3: 3 }[priority];
-}
-
-function hasDiffChanges(summary: { addedLines: number; removedLines: number; changedFiles: number }): boolean {
-  return summary.changedFiles > 0 || summary.addedLines > 0 || summary.removedLines > 0;
 }
 </script>
 

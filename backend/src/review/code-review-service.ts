@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
 import {
   activeCodeReviewRound,
+  activeReviewForAgent,
   codeReviewLedger,
   isCodeReviewStartInput,
   type CodeReviewAutomationSettings,
@@ -116,11 +117,7 @@ export class CodeReviewService {
     if (current && current.status !== 'finished' && current.status !== 'failed') {
       throw new Error('This agent already has an active code review.');
     }
-    const existing = this.options.snapshot.agents.find((candidate) => (
-      candidate.codeReview?.targetAgentId === agent.id
-      && candidate.codeReview.status !== 'finished'
-      && candidate.codeReview.status !== 'failed'
-    ));
+    const existing = activeReviewForAgent(this.options.snapshot.agents, agent);
     if (existing) throw new Error('This agent already has an active code review.');
 
     const reviewer = input.threadMode === 'current'
@@ -1058,6 +1055,10 @@ function reviewOutcomeSummary(session: CodeReviewSession, fixedCount: number, re
   return parts.join(' ');
 }
 
+function reviewToolDiscoveryInstructions(): string {
+  return `If ${product.mcpServerName} tools are deferred or listed without input schemas, use ToolSearch (or your provider's tool-discovery equivalent) to load the schemas for read-skill, report_finding, update_finding and finish_review_round before calling them. Never guess fields. Korus review rounds use report_finding; native ReportFindings has a different schema and does not save to the Korus ledger.`;
+}
+
 function reviewPrompt(session: CodeReviewSession): string {
   const mcpServerName = product.mcpServerName;
   const ledger = codeReviewLedger(session);
@@ -1070,6 +1071,7 @@ function reviewPrompt(session: CodeReviewSession): string {
     ? `the current branch against ${session.scope.baseRef}`
     : 'the current uncommitted changes';
   return `<context>
+${reviewToolDiscoveryInstructions()}
 Load korus-reviewer through read-skill before inspection. Cumulative review ledger:
 
 ${JSON.stringify(ledger, null, 2)}
@@ -1097,7 +1099,8 @@ Round: ${round.number}
 
 ${findingContext}
 
-Load korus-reviewer through read-skill for the remediation procedure. Fix only these selected findings and record each verified fix with update_finding.
+${reviewToolDiscoveryInstructions()}
+Load korus-reviewer through read-skill for the remediation procedure. Fix only these selected findings and record each verified fix with update_finding using findingId, status:"fixed" and evidence.
 ${session.automation ? `Automatic remediation: run the relevant tests and checks. Every fixed finding MUST include evidence naming the commands and results (or a specific reason a check does not apply). If validation fails or a fix needs a product decision, leave the finding unresolved and explain the blocker. Do not commit, stage, push, merge, change branches, or discard changes. ${session.automation.autoCommit === true ? 'Auto-commit is enabled: the review workflow owns the local commit after validation.' : 'Auto-commit is disabled. Leave all fixes uncommitted; the review workflow will not stage or commit them.'} Preserve unrelated files; no background work may remain when this turn ends.` : ''}`;
   return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} ${noun} I selected.`;
 }
@@ -1129,6 +1132,7 @@ Review: ${session.id}
 Round: ${round.id}
 Finding: ${JSON.stringify(findingContext, null, 2)}
 
+${reviewToolDiscoveryInstructions()}
 Load korus-reviewer through read-skill for finding discussion, then answer this specific question.
 </context>
 

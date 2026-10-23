@@ -10,6 +10,7 @@ import { clearConfetti } from '../shared/confetti/use-confetti';
 import { stubElectronTestWindow, stubLegacyElectronTestWindow } from '../test/client';
 import { clearFirstRunOnboardingStage } from '../onboarding-session';
 import { workItem, deferred } from './app-state-test-harness';
+import { claudeConversationSnapshot } from '../test/claude-conversation-fixtures';
 import { emptyAntigravitySnapshot } from '@workspace/core/antigravity-conversation-replica';
 
 describe('useAppState', () => {
@@ -872,6 +873,58 @@ describe('useAppState', () => {
     expect(state.activeAgent.value?.backendSession).toBeUndefined();
     expect(state.activeAntigravityConversationSnapshot.value).toBeNull();
     expect(state.agentConversationFor(second.id)?.antigravitySnapshot?.messages).toHaveLength(1);
+  });
+
+  it('clears the visible Claude conversation when restarting', async () => {
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    const initialSnapshot = createInitialSnapshot();
+    const agent = initialSnapshot.agents[0]!;
+    agent.backend = 'claude';
+    agent.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    const restartedSnapshot = structuredClone(initialSnapshot);
+    delete restartedSnapshot.agents[0]!.backendSession;
+    stubElectronTestWindow({ app: {
+      getSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
+      onEvent: vi.fn(listener => { listeners.push(listener); return () => {}; }),
+      restartAgent: vi.fn().mockResolvedValue(restartedSnapshot),
+    } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    listeners[0]?.({ seq: 1, occurredAt: '', agentId: agent.id, backend: 'claude',
+      type: 'claude.conversationSnapshotChanged',
+      payload: { revision: 1, snapshot: claudeConversationSnapshot([], { agentId: agent.id, sessionId: 'claude-session-1' }) } });
+    expect(state.activeClaudeConversationSnapshot.value).not.toBeNull();
+
+    await state.restartAgent(agent.id);
+
+    expect(state.activeAgent.value?.backendSession).toBeUndefined();
+    expect(state.activeClaudeConversationSnapshot.value).toBeNull();
+    expect(state.agentConversationFor(agent.id)?.claudeSnapshot).toBeNull();
+  });
+
+  it('loads the conversation of a freshly forked Claude agent', async () => {
+    const initialSnapshot = createInitialSnapshot();
+    const source = initialSnapshot.agents[0]!;
+    source.backend = 'claude';
+    source.backendSession = { kind: 'claude', sessionId: 'claude-session-1', transport: 'stdio' };
+    const forkedSnapshot = structuredClone(initialSnapshot);
+    const fork = { ...structuredClone(source), id: 'agent-fork', backendSession: { kind: 'claude' as const, sessionId: 'claude-fork-1', transport: 'stdio' as const } };
+    forkedSnapshot.agents.push(fork);
+    forkedSnapshot.activeAgentId = fork.id;
+    const loadConversationHistory = vi.fn().mockResolvedValueOnce(structuredClone(initialSnapshot)).mockResolvedValue(forkedSnapshot);
+    stubElectronTestWindow({ app: {
+      getSnapshot: vi.fn().mockResolvedValue(initialSnapshot),
+      onEvent: vi.fn(() => () => {}),
+      forkAgent: vi.fn().mockResolvedValue(forkedSnapshot),
+      loadConversationHistory,
+    } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+
+    loadConversationHistory.mockClear();
+    await state.forkAgent(source.id);
+
+    expect(loadConversationHistory).toHaveBeenCalledWith(fork.id);
   });
 
   it('clears a failed history state when the agent is restarted', async () => {

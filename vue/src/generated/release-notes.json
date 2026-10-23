@@ -1,7 +1,43 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.36.3",
+  "currentVersion": "0.39.2",
   "releases": [
+    {
+      "version": "0.39.2",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "935119742b4b3261b114bdf4bbf84bc2bb58b64325d2d3865a1ba2d2fda54981",
+      "markdown": "### New features\n\n- Run project and worktree creation, Mission startup, and worktree deletion in\n  the background while continuing to use Korus.\n- Filter the GitHub backlog by issues or pull requests, and choose Assigned to me\n  directly from the assignee filter.\n\n### Improvements and fixes\n\n- Closing an agent with worktree cleanup immediately removes it from the roster\n  and selects another teammate from the same repository when available. Failed\n  cleanup restores the agent for retry without replacing your current selection.\n- Concurrent worktree creation in the same repository avoids Git lock conflicts.\n- Recent backlog sorting uses repository timestamps when issue activity is\n  unavailable, instead of falling back to alphabetical order.\n- Starting work uses a more compact dialog, with provider and source choices\n  alongside repository selection.\n- Menus consistently indicate the current selection across backlog views,\n  repository sorting, and conversation layouts."
+    },
+    {
+      "version": "0.39.1",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "13f0e4320514bdfeb0645a9314ce32ca3ee83787ba2a05b912c40151833a91a5",
+      "markdown": "### Improvements and fixes\n\n- The file explorer shows workspace folders reliably in large projects. Folders\n  load on expansion, and large listings offer Load more instead of silently\n  omitting entries.\n- Search finds files in unopened folders, with pagination for large result sets.\n- Refresh the explorer to discover newly created files while keeping folders open."
+    },
+    {
+      "version": "0.39.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "f96216ca16511d5f247909db89dee4561d007a4085f2c51dc8d65bf0ce25320d",
+      "markdown": "### New features\n\n- Resize conversation panes with draggable dividers or keyboard controls. Team\n  layouts, assigned agents, focused panes, and split sizes persist across restarts.\n- Include read-only diagrams in interactive plans and comment on each diagram.\n- Review Mission requirements with annotations and question answers, regardless\n  of the interactive-plan workflow setting.\n- Choose the implementation provider, model, and reasoning effort in a Start\n  implementation dialog, independently of the Mission lead's provider.\n\n### Improvements and fixes\n\n- Mission stage handoffs wait for the lead's active turn to finish, preventing\n  approved requirements from leaving Tickets queued and the lead stuck working.\n- Mission workers retain their ticket assignments and receive actionable errors\n  when submitting results, allowing corrections after a failed submission.\n- Agent names remain visible in narrow conversation headers while repository\n  and branch details truncate first.\n- Question cards fill the conversation width and resize with the sidebar and pane.\n- Concurrent operations on a new Codex agent share conversation initialization,\n  preventing missing-rollout errors when starting work from an issue.\n- Quitting the desktop app uses the native shutdown sequence reliably.\n- Reading a conversation clears its mobile notification. Read events stay silent,\n  and later alerts replace earlier notifications for the same conversation.\n- Merge-report recipients follow the sidebar's manual agent order.\n- Browse files directly from an empty file pane, and open local Markdown links\n  in workspace tabs without replacing the app."
+    },
+    {
+      "version": "0.38.0",
+      "releasedAt": "2026-10-22",
+      "sourceSha256": "7ac8ff54466313d119c65e2a7095cca96bc88c98087af2e07852f53e8050a935",
+      "markdown": "### New features\n\n- Claude and other non-Codex agents can generate images through Codex and display\n  the results inline in their replies.\n- Send merge reports to another agent in the same repository when a branch has\n  no originating agent. Reporting stays off until you choose a recipient.\n- Configure the models available from each provider with an administrator-managed\n  `requirements.json` file, shared by desktop and mobile.\n- Connect native Android companions with encrypted pairing and push notifications.\n- On mobile, open existing projects from the connected host, duplicate agents,\n  and rename agents from their conversation.\n\n### Improvements and fixes\n\n- Large mobile conversations, including image-heavy histories, transfer with\n  compression instead of failing at the uncompressed response limit.\n- Mobile conversations retain loaded history, drafts, attachments, and streaming\n  replies across refreshes and reconnects, catching up without reloading the\n  whole conversation. Slow conversation requests no longer disconnect the session.\n- Mobile recovery is more reliable after brief backgrounding, with quieter\n  connection indicators and clearer conversation-loading feedback.\n- Restarting a Claude agent clears its old conversation, and newly forked\n  conversations display their inherited history immediately.\n- Review agents receive the full skill instructions and explicit errors for\n  unsupported finding-update fields, preventing fixes from going unrecorded.\n- Tool activity titles use readable names without MCP prefixes, underscores,\n  or hyphens; shell commands keep their original text."
+    },
+    {
+      "version": "0.37.1",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "015234e50fb9e9ca85487bb8e74291ba2e3d3aba2eb8bb7d2aa11852ca03099a",
+      "markdown": "### Improvements and fixes\n\n- Creating and editing automations saves correctly without an object-cloning error.\n- Analytics records token usage and output speed for the first turn in new Codex\n  conversations. Previously unmeasured turns remain unchanged.\n- Git diff controls use the same background as the other header controls."
+    },
+    {
+      "version": "0.37.0",
+      "releasedAt": "2026-10-16",
+      "sourceSha256": "5eb3bece1513cbdb5e8c8de3e970755f8c70498f41431f016f6b722231c599ec",
+      "markdown": "### New features\n\n- Get started with your existing Codex and Claude CLI sign-ins and settings.\n  New setups reuse your CLI configuration by default; saved choices and existing\n  conversations stay intact. Separate setups remain available with their own sign-in.\n- Use an authenticated GitHub CLI for repositories, backlog, and pull requests\n  without signing in again. Direct GitHub access remains available, and canceling\n  or disconnecting it preserves available CLI access. Hosted GitHub MCP requires\n  a direct connection.\n\n### Improvements and fixes\n\n- Onboarding highlights separate setups that still need sign-in and warns before\n  continuing without connecting them.\n- GitHub and Linear connection flows load independently.\n- Switching Codex configurations refreshes plugin availability, avoiding\n  tool startup failures such as `node_repl`.\n- Independent review threads use `👀 <thread name>`, or the branch name when\n  the source thread has no custom name."
+    },
     {
       "version": "0.36.3",
       "releasedAt": "2026-10-16",

@@ -9,26 +9,7 @@
         <BacklogSourceSelector class="cockpit-view__provider" size="small" full-width :provider="workProvider ?? 'github'" :providers="workProviders ?? []" :show-source="false" @select-provider="emit('select-work-provider', $event)" />
         <div class="cockpit-view__navigation-section">
           <strong class="app-section-label">{{ $t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.sources' : 'surface.cockpitView.repositories') }}</strong>
-          <el-dropdown
-            placement="bottom-end"
-            trigger="click"
-            @command="selectRepositorySortMode"
-          >
-            <button
-              class="cockpit-view__repository-sort"
-              type="button"
-              :aria-label="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })"
-            >
-              {{ repositorySortLabel }}
-              <IconChevronDown aria-hidden="true" />
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="recent">{{ $t('surface.cockpitView.recentActivity') }}</el-dropdown-item>
-                <el-dropdown-item command="alphabetical">{{ $t('surface.cockpitView.alphabetical') }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <AppMenuChip :label="repositorySortLabel" :ariaLabel="$t('dynamic.cockpit.sortRepositories', { sort: repositorySortDescription })" :items="repositorySortMenuItems" @select="selectRepositorySortMode($event as RepositorySortMode)" />
         </div>
         <label class="cockpit-view__repository-filter">
           <IconSearch aria-hidden="true" />
@@ -170,13 +151,15 @@
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
-import { IconChevronDown, IconFolder, IconGripVertical, IconSearch, IconStar, IconStarFilled } from '@tabler/icons-vue';
+import { IconClockHour8, IconFolder, IconGripVertical, IconSearch, IconSortAZ, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { ExternalLinkIcon } from '../shared/icons/app-icons';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
+import AppMenuChip from '../shared/menu/AppMenuChip.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
@@ -256,6 +239,10 @@ watch(() => `${props.workProvider}:${props.workBacklog?.selectedRepositoryId}`, 
   activeSummaryFilter.value = null;
 });
 const repositorySortMode = ref<RepositorySortMode>('recent');
+const repositorySortMenuItems = computed<AppMenuItem[]>(() => [
+  { id: 'recent', type: 'radio', checked: repositorySortMode.value === 'recent', label: translate('surface.cockpitView.recentActivity'), icon: IconClockHour8 },
+  { id: 'alphabetical', type: 'radio', checked: repositorySortMode.value === 'alphabetical', label: translate('surface.cockpitView.alphabetical'), icon: IconSortAZ },
+]);
 const repositorySortLabel = computed(() => repositorySortMode.value === 'recent' ? translate('surface.cockpitView.recent') : 'A–Z');
 const repositorySortDescription = computed(() => repositorySortMode.value === 'recent' ? 'recent activity' : 'name');
 const sortedRepositories = computed(() => [...(props.workBacklog?.repositories ?? [])].sort((left, right) => {
@@ -263,7 +250,7 @@ const sortedRepositories = computed(() => [...(props.workBacklog?.repositories ?
     return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' });
   }
   const activity = repositoryActivityAt(right).localeCompare(repositoryActivityAt(left));
-  return activity || left.name.localeCompare(right.name);
+  return activity || (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '') || left.name.localeCompare(right.name);
 }));
 const filteredRepositories = computed(() => {
   const query = repositoryFilter.value.trim().toLocaleLowerCase();
@@ -473,31 +460,6 @@ function selectWorkView(view: InboxView): void {
   color: var(--color-text-muted);
   font-size: var(--font-size-13);
   line-height: var(--line-height-20);
-}
-
-.cockpit-view__repository-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  color: var(--color-text-muted);
-  background: transparent;
-  font: inherit;
-  font-size: var(--font-size-12);
-  line-height: var(--line-height-20);
-  cursor: pointer;
-}
-
-.cockpit-view__repository-sort:hover {
-  color: var(--color-text);
-  background: var(--color-surface-low);
-}
-
-.cockpit-view__repository-sort svg {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
 }
 
 .cockpit-view__repositories {

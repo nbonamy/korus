@@ -27,6 +27,7 @@ import { RuntimeScheduler } from './scheduling/runtime-scheduler';
 import { AppMcpService } from './mcp/service';
 import { HostedMcpGateway } from './mcp/hosted-mcp-gateway';
 import { runtimeGitHubOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
+import { loadRequirements } from './requirements';
 import { LinearWorkProviderDriver } from './work-integrations/linear-driver';
 import { AppBackendServer } from './server';
 import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, backupProviderSetup, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from './state';
@@ -45,6 +46,8 @@ import { VisualizeService } from './visualize-service';
 import { createVisualizeToolModuleProvider } from './mcp/visualize-tools';
 import { DurableTaskService } from './agents/durable-task-service';
 import { createTaskToolModuleProvider } from './mcp/task-tools';
+import { createImageGenerationToolModuleProvider } from './mcp/image-generation-tools';
+import { ImageGenerationService } from './image-generation-service';
 import { loadBackendTasks, saveBackendTasks } from './state';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type { RendererMessage } from '@workspace/core/contracts';
@@ -68,6 +71,7 @@ export type DaemonRuntime = {
 };
 
 export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promise<DaemonRuntime> {
+  const requirements = await loadRequirements(backendHomeDir());
   const computerUseAvailable = options.features?.computerUse !== false;
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
   const snapshot = await loadBackendSnapshot();
@@ -167,6 +171,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
+      createImageGenerationToolModuleProvider(new ImageGenerationService({
+        snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
+        generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,
+      })),
       createMobileSimulatorToolModuleProvider(options.features?.mobileSimulator !== false
         ? (agentId, input) => options.requestClient(backendMethods.clientMobileSimulatorExecute, { agentId, input })
         : undefined),
@@ -188,7 +196,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     ].filter(Boolean).join('\n\n') || undefined,
   };
   const backendDrivers = createDefaultBackendDrivers(driverOptions);
-  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend));
+  const driverRpc: BackendDriverRpc = new BackendDriverRpc(backendDrivers, worktreeManager, backend => server.requireConnectedEngine(backend), backend => providerUpdates.isUpdating(backend), requirements);
   const updater = new ProviderUpdateRuntime({
     command: backend => backend === 'codex'
       ? resolveCodexExecutable(snapshot.general.codexBinaryPath) ?? (snapshot.general.codexBinaryPath?.trim() || 'codex')
@@ -276,7 +284,6 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
-    desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet)).focused === true,
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
       if (response && 'error' in response && method === backendMethods.agentPromptSteer && response.error.code === appRpcErrorCodes.invalidParams) throw new PromptRejectedError('Prompt was rejected before dispatch.');
@@ -285,9 +292,9 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     },
   });
   server = new AppBackendServer({
+    requirements,
     usage,
     companionControl: (input) => companion.control(input),
-    onPromptSource: (agent, clientId) => companion.recordPrompt(agent, clientId),
     documents,
     tasks,
     providerSetup,

@@ -64,7 +64,8 @@ const daemonStatus = ref<DaemonStatus | null>(null);
 const daemonStatusError = ref<string | null>(null);
 const codexResourceSharingStatus = ref<CodexResourceSharingStatus>({ enabled: true, migrationRequired: false });
 const backendRestartInProgress = ref(false);
-const agentCreationProgress = ref<AgentCreationProgress | null>(null);
+const agentCreationProgresses = ref<AgentCreationProgress[]>([]);
+const backgroundedAgentCreationIds = new Set<string>();
 const missionImplementationStartProgress = ref<MissionImplementationStartProgress | null>(null);
 const codexConversationFramesByAgentId = ref<Record<string, {
   replica: CodexConversationReplica;
@@ -502,7 +503,8 @@ export function useAppState() {
     antigravityConversations.reset();
     recoveringCodexConversationAgentIds.clear();
     recoveringClaudeConversationAgentIds.clear();
-    agentCreationProgress.value = null;
+    agentCreationProgresses.value = [];
+    backgroundedAgentCreationIds.clear();
 
     isLoading.value = true;
     bufferedMainEvents = [];
@@ -1458,11 +1460,17 @@ export function useAppState() {
       return;
     }
 
+    const previousAgentIds = new Set(snapshot.value.agents.map((agent) => agent.id));
     const nextSnapshot = turnId === undefined
       ? await appApi.forkAgent(agentId)
       : await appApi.forkAgent(agentId, turnId);
     adoptNavigationSnapshot(nextSnapshot);
-    await loadActiveAgentCatalogs();
+    const fork = nextSnapshot.agents.find((agent) => !previousAgentIds.has(agent.id));
+    await Promise.all([
+      loadActiveAgentCatalogs(),
+      // A fork has a session but no conversation frame yet; load it so it doesn't show as an empty chat.
+      ...(fork && agentNeedsHistory(fork.id) ? [hydrateAgentHistory(fork.id)] : []),
+    ]);
   }
 
   async function handoffAgent(agentId: string, input: import('@workspace/core/agent-handoff').AgentHandoffInput): Promise<void> {
@@ -1540,6 +1548,8 @@ export function useAppState() {
     }
 
     adoptBackgroundSnapshot(await appApi.restartAgent(agentId));
+    const { [agentId]: _discarded, ...claudeFrames } = claudeConversationFramesByAgentId.value;
+    claudeConversationFramesByAgentId.value = claudeFrames;
     resetAgentHistory(agentId);
   }
 
@@ -1548,7 +1558,7 @@ export function useAppState() {
       return;
     }
 
-    adoptNavigationSnapshot(await (input
+    adoptBackgroundSnapshot(await (input
       ? appApi.closeAgent(agentId, input)
       : appApi.closeAgent(agentId)));
     await loadActiveAgentCatalogs();
@@ -1706,7 +1716,7 @@ export function useAppState() {
     daemonStatusError,
     codexResourceSharingStatus,
     backendRestartInProgress,
-    agentCreationProgress,
+    agentCreationProgresses,
     missionImplementationStartProgress,
     loadBackendModels: loadBackendModelsForActiveAgent,
     loadBackendPlugins: loadBackendPluginsForActiveAgent,
@@ -1851,6 +1861,7 @@ export function useAppState() {
     steerPrompt,
     steerPromptToAgent,
     clearAgentCreationProgress,
+    backgroundAgentCreationProgress,
     interruptActiveAgent,
     interruptAgentById,
     deleteTurn,
@@ -1873,7 +1884,21 @@ export function useAppState() {
 }
 
 function clearAgentCreationProgress(id: string): void {
-  if (agentCreationProgress.value?.id === id) agentCreationProgress.value = null;
+  agentCreationProgresses.value = agentCreationProgresses.value.filter((entry) => entry.id !== id);
+}
+
+function backgroundAgentCreationProgress(id: string): void {
+  const entry = agentCreationProgresses.value.find((candidate) => candidate.id === id);
+  if (!entry) return;
+  if (entry.state === 'running') backgroundedAgentCreationIds.add(id);
+  clearAgentCreationProgress(id);
+}
+
+function upsertAgentCreationProgress(progress: AgentCreationProgress): void {
+  const index = agentCreationProgresses.value.findIndex((entry) => entry.id === progress.id);
+  agentCreationProgresses.value = index < 0
+    ? [...agentCreationProgresses.value, progress]
+    : agentCreationProgresses.value.map((entry, position) => position === index ? progress : entry);
 }
 
 function emptyComposerState(): CodexComposerState {
@@ -2243,11 +2268,18 @@ function syncCelebrationFromMainEvent(event: Extract<RendererOnlySnapshotEvent, 
 }
 
 function syncAgentCreationProgressFromMainEvent(event: Extract<RendererOnlySnapshotEvent, { type: 'agentCreation.progress' }>): void {
-  if (event.payload.state === 'running') {
-    if (event.agentId === snapshot.value.activeAgentId) agentCreationProgress.value = event.payload;
+  if (backgroundedAgentCreationIds.has(event.payload.id)) {
+    if (event.payload.state === 'running') return;
+    backgroundedAgentCreationIds.delete(event.payload.id);
+    // Failures need attention even after the user sent the setup to the background.
+    if (event.payload.state === 'error') upsertAgentCreationProgress(event.payload);
     return;
   }
-  if (agentCreationProgress.value?.id === event.payload.id) agentCreationProgress.value = event.payload;
+  if (event.payload.state === 'running') {
+    if (event.agentId === snapshot.value.activeAgentId) upsertAgentCreationProgress(event.payload);
+    return;
+  }
+  if (agentCreationProgresses.value.some((entry) => entry.id === event.payload.id)) upsertAgentCreationProgress(event.payload);
 }
 
 function recoverRendererAfterBackendConnection(): Promise<void> {

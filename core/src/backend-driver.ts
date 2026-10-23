@@ -85,6 +85,11 @@ export type BackendTextGenerationResult = {
   text: string;
 };
 
+export type BackendImageGenerationInput = { prompt: string; cwd: string };
+export type BackendImageGenerationResult = {
+  images: { mimeType: string; data?: string; path?: string }[];
+};
+
 export type BackendCodeReviewInput = {
   prompt: string;
   cwd: string;
@@ -109,6 +114,7 @@ export type AgentBackendDriver = {
   getAccountRateLimits?(): Promise<import('./contracts').AccountRateLimits | null>;
   getCapabilities(agent: Agent): BackendCapabilities;
   generateText?(agent: Agent, input: BackendTextGenerationInput): Promise<BackendTextGenerationResult>;
+  generateImage?(agent: Agent, input: BackendImageGenerationInput, signal?: AbortSignal): Promise<BackendImageGenerationResult>;
   runCodeReview?(agent: Agent, input: BackendCodeReviewInput): Promise<BackendCodeReviewResult>;
   disposeCodeReview?(agent: Agent, reviewerSession: BackendSession): Promise<void>;
   tryHandlePromptCommand?(agent: Agent, prompt: string): Promise<BackendSendResult> | null;

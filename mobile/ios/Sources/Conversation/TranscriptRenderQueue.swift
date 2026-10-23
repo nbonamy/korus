@@ -1,10 +1,10 @@
-/// Hands the transcript page one message at a time: the page redraws a whole conversation per message, so
-/// messages that pile up while it works are folded into the newest instead of each being drawn.
+/// Transfers cover every event since the page last acknowledged painting, so the latest pending batch subsumes an older batch.
+/// Hands the transcript page one message at a time and folds queued presentation work into the newest.
 struct TranscriptRenderQueue {
-    enum Kind: Equatable { case conversation, context }
+    enum Kind: Equatable { case conversation, transfer, context }
     struct Job: Equatable { let kind: Kind; let json: String }
 
-    private var conversation: String?
+    private var conversation: Job?
     private var context: String?
     private(set) var isBusy = false
 
@@ -12,7 +12,7 @@ struct TranscriptRenderQueue {
     /// a newer context only replaces an older context. Returns the job to start now, if the page is free.
     mutating func enqueue(_ kind: Kind, _ json: String) -> Job? {
         switch kind {
-        case .conversation: conversation = json; context = nil
+        case .conversation, .transfer: conversation = Job(kind: kind, json: json); context = nil
         case .context: context = json
         }
         return isBusy ? nil : start()
@@ -25,7 +25,7 @@ struct TranscriptRenderQueue {
     }
 
     private mutating func start() -> Job? {
-        if let json = conversation { conversation = nil; isBusy = true; return Job(kind: .conversation, json: json) }
+        if let job = conversation { conversation = nil; isBusy = true; return job }
         if let json = context { context = nil; isBusy = true; return Job(kind: .context, json: json) }
         return nil
     }

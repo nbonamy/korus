@@ -43,46 +43,48 @@
         </div>
       </section>
 
-      <section class="work-item-assignment-picker__section">
-        <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
-        <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
-          <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" :agent-id="modelCatalogAgentId" :disabled="busy" />
-        </div>
-        <el-select
-          v-else
-          v-model="selectedAgentId"
-          :disabled="busy"
-          :aria-label="t('repositoryBacklog.existingSession')"
-          :placeholder="t('repositoryBacklog.chooseSession')"
-        >
-          <el-option
-            v-for="session in eligibleSessions"
-            :key="session.agentId"
-            :label="session.label"
-            :value="session.agentId"
-          />
-        </el-select>
-      </section>
+      <div class="work-item-assignment-picker__target-row">
+        <section class="work-item-assignment-picker__section">
+          <h3 class="app-section-label">{{ t('repositoryBacklog.session') }}</h3>
+          <div v-if="destination === 'new'" class="work-item-assignment-picker__model-selectors">
+            <BackendModelSelector v-model:backend="backend" v-model:model="model" v-model:reasoning-effort="reasoningEffort" :agent-id="modelCatalogAgentId" :disabled="busy" />
+          </div>
+          <el-select
+            v-else
+            v-model="selectedAgentId"
+            :disabled="busy"
+            :aria-label="t('repositoryBacklog.existingSession')"
+            :placeholder="t('repositoryBacklog.chooseSession')"
+          >
+            <el-option
+              v-for="session in eligibleSessions"
+              :key="session.agentId"
+              :label="session.label"
+              :value="session.agentId"
+            />
+          </el-select>
+        </section>
 
-      <section class="work-item-assignment-picker__section">
-        <h3 class="app-section-label">{{ t('repositoryBacklog.branch') }}</h3>
-        <el-input
-          class="work-item-assignment-picker__branch"
-          :model-value="displayedBranch"
-          :aria-label="t('repositoryBacklog.branch')"
-          readonly
-        >
-          <template #prefix>
-            <IconGitPullRequest v-if="item.kind === 'pullRequest'" aria-hidden="true" />
-            <IconGitBranch v-else aria-hidden="true" />
-          </template>
-        </el-input>
-        <!-- Always laid out so switching destination does not shift the content below. -->
-        <p class="work-item-assignment-picker__branch-warning" :class="{ 'is-hidden': destination !== 'existing' }">
-          <IconAlertTriangle aria-hidden="true" />
-          <span>{{ t('repositoryBacklog.existingSessionBranchWarning') }}</span>
-        </p>
-      </section>
+        <section class="work-item-assignment-picker__section">
+          <h3 class="app-section-label">{{ t('repositoryBacklog.branch') }}</h3>
+          <el-input
+            class="work-item-assignment-picker__branch"
+            :model-value="displayedBranch"
+            :aria-label="t('repositoryBacklog.branch')"
+            readonly
+          >
+            <template #prefix>
+              <IconGitPullRequest v-if="item.kind === 'pullRequest'" aria-hidden="true" />
+              <IconGitBranch v-else aria-hidden="true" />
+            </template>
+          </el-input>
+        </section>
+      </div>
+      <!-- Always laid out so switching destination does not shift the content below. -->
+      <p class="work-item-assignment-picker__branch-warning" :class="{ 'is-hidden': destination !== 'existing' }">
+        <IconAlertTriangle aria-hidden="true" />
+        <span>{{ t('repositoryBacklog.existingSessionBranchWarning') }}</span>
+      </p>
 
       <div class="work-item-assignment-picker__body"><slot /></div>
 
@@ -234,7 +236,13 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
 .work-item-assignment-picker__target-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-6);
+}
+
+.work-item-assignment-picker__target-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
 }
 
 .work-item-assignment-picker__model-selectors {
@@ -264,7 +272,7 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
 
 .work-item-assignment-picker__target-options > button {
   min-width: 0;
-  min-height: 66px;
+  min-height: 60px;
   display: grid;
   grid-template-columns: var(--icon-lg) minmax(0, 1fr);
   grid-template-rows: auto auto;
@@ -272,7 +280,7 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
   column-gap: var(--space-6);
   row-gap: var(--space-1);
   align-content: center;
-  padding: var(--space-4) var(--space-6);
+  padding: 0 var(--space-8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   color: var(--color-text);
@@ -331,7 +339,7 @@ function selection(reuseExisting = false): Omit<WorkItemAssignmentSelection, 'ac
 
 .work-item-assignment-picker__branch :deep(.el-input__inner) {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-11);
+  font-size: var(--font-size-12);
 }
 
 .work-item-assignment-picker__branch :deep(svg) {

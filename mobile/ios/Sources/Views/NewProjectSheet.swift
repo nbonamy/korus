@@ -1,25 +1,29 @@
 import SwiftUI
 
 enum NewProjectSource: String, Identifiable, CaseIterable {
-    case new, github, url
+    case new, existing = "local", github, url
+    var usesRepositoryPicker: Bool { self == .github || self == .existing }
     var id: String { rawValue }
     var title: String {
-        switch self { case .new: "New Project"; case .github: "GitHub Repository"; case .url: "Repository URL" }
+        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "GitHub Repository"; case .url: "Repository URL" }
     }
     var menuTitle: String {
-        switch self { case .new: "New Project"; case .github: "From GitHub"; case .url: "From URL" }
+        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "From GitHub"; case .url: "From URL" }
     }
     var symbol: String {
-        switch self { case .new: "folder.badge.plus"; case .github: "chevron.left.forwardslash.chevron.right"; case .url: "link" }
+        switch self { case .new: "folder.badge.plus"; case .existing: "folder"; case .github: "chevron.left.forwardslash.chevron.right"; case .url: "link" }
     }
 }
 
 struct NewAgentMenu: View {
     let enabled: Bool
+    let quickChat: () -> Void
     let select: (NewProjectSource) -> Void
 
     var body: some View {
         Menu {
+            Button("Quick Chat", systemImage: "square.and.pencil", action: quickChat)
+            Divider()
             ForEach(NewProjectSource.allCases) { source in
                 Button(source.menuTitle, systemImage: source.symbol) { select(source) }
             }
@@ -80,7 +84,7 @@ struct NewProjectSheet: View {
                     } actions: {
                         Button("Reconnect") { model.reconnect() }
                     }
-                } else if source == .github && !creatingBranch { githubPicker }
+                } else if source.usesRepositoryPicker && !creatingBranch { repositoryPicker }
                 else { projectForm }
             }
             .navigationTitle(busy ? "" : title)
@@ -98,7 +102,7 @@ struct NewProjectSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                if !busy && model.connection == .connected && (source != .github || creatingBranch) {
+                if !busy && model.connection == .connected && (!source.usesRepositoryPicker || creatingBranch) {
                     Button(action: { creatingBranch ? startBranch() : start(trimmed) }) {
                         Text(creatingBranch ? "Create Branch" : source == .new ? "Create Project" : "Clone Repository")
                             .font(.body.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 50)
@@ -110,29 +114,29 @@ struct NewProjectSheet: View {
             }
         }
         .appSheetSurface()
-        .presentationDetents(busy ? [.medium] : source == .github ? [.large] : [.medium, .large])
+        .presentationDetents(busy ? [.medium] : source.usesRepositoryPicker ? [.large] : [.medium, .large])
         .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(busy ? .hidden : .visible)
         .interactiveDismissDisabled(busy)
         .task {
-            if source == .github { model.command("loadProjectRepositories") }
+            if source.usesRepositoryPicker { model.command("loadProjectRepositories", ["source": source.rawValue]) }
             else { focused = true }
         }
         .task(id: repository?.id) {
-            if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id]) }
+            if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id, "source": source.rawValue]) }
         }
         .onChange(of: busy) { _, busy in if busy { focused = false } }
         .onChange(of: model.connection) { _, connection in
-            if connection == .connected && source == .github {
-                if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id]) }
-                else { model.command("loadProjectRepositories") }
+            if connection == .connected && source.usesRepositoryPicker {
+                if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id, "source": source.rawValue]) }
+                else { model.command("loadProjectRepositories", ["source": source.rawValue]) }
             }
         }
         .onDisappear { model.command("dismissProjectRepositories") }
     }
 
     /// Only the results scroll; the engine, context and search stay in place.
-    private var githubPicker: some View {
+    private var repositoryPicker: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let repository {
                 Text(repository.name).font(.subheadline).foregroundStyle(.secondary)
@@ -158,8 +162,11 @@ struct NewProjectSheet: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .onChange(of: query) { _, _ in scroll.scrollTo("catalog-top", anchor: .top) }
                     .onChange(of: branchQuery) { _, _ in scroll.scrollTo("catalog-top", anchor: .top) }
-                    .onChange(of: repository?.id) { _, _ in scroll.scrollTo("catalog-top", anchor: .top) }
                 }
+                // A repository catalog and its branches have different lazy
+                // layouts. Recreate the scroll view instead of retaining the
+                // repository list's off-screen content when switching catalogs.
+                .id(repository?.id ?? "project-repositories")
             }
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
             .clipShape(.rect(cornerRadius: 16))
@@ -234,9 +241,9 @@ struct NewProjectSheet: View {
                     .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
         default:
-            Text("Couldn’t load repositories. Check the GitHub connection in Korus on your laptop.")
+            Text(source == .existing ? "Couldn’t load repositories. Check the source folder in \(model.productName) on your computer." : "Couldn’t load repositories. Check the GitHub connection in \(model.productName) on your computer.")
                 .foregroundStyle(.secondary).padding(16)
-            Button("Retry") { model.command("loadProjectRepositories") }.padding(16)
+            Button("Retry") { model.command("loadProjectRepositories", ["source": source.rawValue]) }.padding(16)
         }
     }
 
@@ -261,7 +268,7 @@ struct NewProjectSheet: View {
                 Button {
                     focused = false
                     selectedBranch = branch.name
-                    model.createProject(source: .github, value: repository.id, backend: selectedBackend, branch: branch.name)
+                    model.createProject(source: source, value: repository.id, backend: selectedBackend, branch: branch.name)
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
@@ -280,7 +287,7 @@ struct NewProjectSheet: View {
             }
         default:
             Text("Couldn’t load branches. Check repository access and try again.").foregroundStyle(.secondary).padding(16)
-            Button("Retry") { model.command("loadProjectBranches", ["repositoryId": repository.id]) }.padding(16)
+            Button("Retry") { model.command("loadProjectBranches", ["repositoryId": repository.id, "source": source.rawValue]) }.padding(16)
         }
     }
 
@@ -310,7 +317,7 @@ struct NewProjectSheet: View {
     private func startBranch() {
         guard validBranch, let repository else { return }
         focused = false
-        model.createProject(source: .github, value: repository.id, backend: selectedBackend,
+        model.createProject(source: source, value: repository.id, backend: selectedBackend,
                             worktree: ["branchName": trimmedBranch, "baseBranch": baseBranch])
     }
 

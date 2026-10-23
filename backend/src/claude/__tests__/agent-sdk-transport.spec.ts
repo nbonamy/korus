@@ -275,7 +275,6 @@ describe('ClaudeAgentSdkTransport', () => {
       model: 'sonnet',
       permissionMode: 'default',
       sessionId: '11111111-1111-4111-8111-111111111111',
-      allowedTools: ['mcp__korus__*'],
       disallowedTools: ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'],
       mcpServers: {
         korus: {
@@ -292,6 +291,7 @@ describe('ClaudeAgentSdkTransport', () => {
         CLAUDE_AGENT_SDK_CLIENT_APP: 'agent-workspace',
       }),
     });
+    expect(harness.options[0]).not.toHaveProperty('allowedTools');
     expect(harness.options[0]?.env).not.toHaveProperty('NODE_OPTIONS');
     expect(harness.inputs[0]).toMatchObject({
       type: 'user',
@@ -530,6 +530,30 @@ describe('ClaudeAgentSdkTransport', () => {
     harness.emit({ type: 'result', subtype: 'success', session_id: '22222222-2222-4222-8222-222222222222', is_error: false });
     await turn.done;
     await transport.close();
+  });
+
+  it('auto-approves allowed tools in the permission callback without prompting', async () => {
+    const harness = createQueryHarness();
+    const transport = new ClaudeAgentSdkTransport({
+      createQuery: harness.createQuery,
+      createSessionId: () => '44444444-4444-4444-8444-444444444444',
+    });
+    const requests: ClaudePermissionRequest[] = [];
+    transport.startTurn({
+      cwd: '/tmp/project',
+      prompt: 'review',
+      allowedTools: ['mcp__korus__report_finding', 'mcp__other__*'],
+    }, () => undefined, (request) => requests.push(request));
+    await vi.waitFor(() => expect(harness.inputs).toHaveLength(1));
+    const canUseTool = harness.options[0]!.canUseTool!;
+    const context = (requestId: string) => ({ signal: new AbortController().signal, toolUseID: requestId, requestId });
+
+    await expect(canUseTool('mcp__korus__report_finding', { a: 1 }, context('r1'))).resolves.toEqual({ behavior: 'allow', updatedInput: { a: 1 } });
+    await expect(canUseTool('mcp__other__anything', {}, context('r2'))).resolves.toEqual({ behavior: 'allow', updatedInput: {} });
+    expect(requests).toHaveLength(0);
+
+    void canUseTool('mcp__korus__delete_everything', {}, context('r3'));
+    expect(requests).toHaveLength(1);
   });
 
   it('bridges Agent SDK permission requests and conversation-scoped decisions', async () => {

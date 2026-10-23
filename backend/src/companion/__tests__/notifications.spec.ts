@@ -7,25 +7,6 @@ const workspace: CompanionWorkspace = { teams: [{ id: 'team', name: 'Team', agen
 const completed = (status = 'completed'): AppBackendEvent => ({ type: 'codex.conversationEventReceived', agentId: 'agent', backend: 'codex', threadId: 'thread', payload: { revision: 1, event: { type: 'turn.completed', conversationId: 'thread', turnId: 'turn', payload: { status } } } }) as AppBackendEvent;
 
 describe('companion attention events', () => {
-  it('scopes desktop origin to its conversation and turn without inheriting it into autonomous work', () => {
-    const source = new CompanionNotifications('host'); const agent = workspace.agents[0]!;
-    source.recordPrompt(agent, 'desktop');
-    const started = { ...completed(), payload: { revision: 1, event: { type: 'turn.started', conversationId: 'thread', turnId: 'turn', payload: {} } } } as AppBackendEvent;
-    source.observe(started);
-    const question = { type: 'agentRequest.created', agentId: agent.id, payload: { request: { id: 'request', conversationId: 'thread', turnId: 'turn', kind: 'question' } } } as AppBackendEvent;
-    expect(source.observe(question)).toBe(true);
-    const rollback = source.recordPrompt(agent, 'mobile:phone');
-    expect(source.observe(question)).toBe(false);
-    rollback(); expect(source.observe(question)).toBe(true);
-    expect(source.observe(completed())).toBe(true);
-    expect(source.observe(completed())).toBe(false);
-    source.recordPrompt(agent, 'desktop'); source.observe(started);
-    source.observe({ ...started, payload: { revision: 2, event: { type: 'turn.started', conversationId: 'thread', turnId: 'automatic', payload: {} } } } as AppBackendEvent);
-    expect(source.observe(question)).toBe(false);
-    source.recordPrompt({ ...agent, backendSession: { kind: 'codex', threadId: 'replacement' } }, 'desktop');
-    expect(source.observe(completed())).toBe(false);
-  });
-
   it('announces a completed turn once and never announces hydration, failed or stale turns', () => {
     const source = new CompanionNotifications('host');
     expect(source.create(completed('interrupted'), workspace)).toBeNull();

@@ -35,9 +35,10 @@ by mutating user-global tool config.
 - **Codex:** `thread/start|resume` config sets `mcp_servers.korus.url` and
   `default_tools_approval_mode = "approve"`, scoped to Korus tools; the rest of the
   session keeps normal approvals.
-- **Claude:** the Agent SDK gets the same URL in `mcpServers` and an
-  `allowedTools: ["mcp__korus__*"]` rule. Hosted servers are added without
-  allowlisting, so their normal permission flow remains.
+- **Claude:** the Agent SDK gets the same URL in `mcpServers`. Korus approves
+  `mcp__korus__*` in its `canUseTool` callback rather than the SDK's `allowedTools`
+  option, which would bypass the callback for other tools. Hosted servers keep
+  their normal permission flow.
 - **Antigravity:** the daemon selects native `allow_once` for MCP calls whose
   metadata identifies the session-supplied Korus server. Questions, built-in tools
   and other servers keep native approvals; tool titles never establish trust.
@@ -46,7 +47,10 @@ by mutating user-global tool config.
   engine-native subagents (inside the Codex/Claude session) from Korus co-agents
   (`create-agent`); ambiguous requests to delegate require a clarifying question.
 - App-owned procedures are bundled Markdown skills, loaded on demand through
-  `read-skill`. Injected instructions contain their catalog and essential policy,
+  `read-skill`. Its response carries the full procedure in both text content and
+  `structuredContent.markdown`, so clients that prefer structured results still
+  deliver the instructions. The body is not injected separately. Injected
+  instructions contain their catalog and essential policy,
   not full skill bodies or filesystem paths. The reader serves only registered
   names and rechecks tool-module availability, feature enablement, active review
   context and the caller's Mission stage. It cannot read personal skills or
@@ -169,7 +173,11 @@ Each review session gets a stable URL derived from its durable session ID (provi
 conversations may retain their initial MCP config) adding `report_finding`,
 `update_finding`, `delete_finding` and `finish_review_round`. They mutate the
 persisted ledger before returning and are model-only; user decisions are backend
-commands. `finish_review_round({ findingCount })` must equal the round's saved
+commands. Finding updates reject unknown arguments before mutating the ledger;
+provider-native finding tools do not populate it. Tool deferral belongs to the
+provider: review prompts require schema discovery before calls when schemas are
+deferred or absent, rather than changing provider-wide discovery behavior.
+`finish_review_round({ findingCount })` must equal the round's saved
 finding count across all priorities (zero must be confirmed explicitly); a mismatch
 errors and tells the model to reconcile via `report_finding`. A later finding
 mutation invalidates an earlier acknowledgment, restarted inspections need a fresh
@@ -201,7 +209,12 @@ Registered per authenticated request by independent modules
   inspection; backend ownership checks separately control mutations and reject
   stale or superseded attempts. A failed attempt stays recoverable: its worker can
   continue and submit later, and success clears the error. Mission and run IDs are
-  inferred from identity, never model input. Mission workers get no generic
+  inferred from identity, never model input. Implementation workers read their
+  explicit ticket assignment through `get-mission-assignment` and submit evidence
+  against its stable ticket ID; the daemon owns backlog updates and aggregation.
+  Existing full-artifact submissions remain compatible, with assignment errors
+  identifying the expected ticket and recovery call. Other stages still submit
+  complete artifacts. Mission workers get no generic
   thread-flag tools. Behavior is in
   [architecture.md](architecture.md#missions).
 - **Browser:** `browser-open` opens the agent's Browser workspace without changing
@@ -212,6 +225,26 @@ Registered per authenticated request by independent modules
   the targeted pane to acknowledge layout before reading the guest's actual CSS
   dimensions. Hidden/closed panes cannot report a successful resize. Device presets
   change viewport size only, not user agent, touch input or pixel density.
+
+## Image generation
+
+Non-Codex agents can request raster images through an internal Codex Luna
+conversation on the owning daemon. Codex must be enabled and connected. The job
+uses the existing SDK conversation operations without creating a Korus teammate
+or changing the caller's conversation or model settings. Only media attached to
+completed image-generation items is returned; assistant-authored image links
+are not generation results.
+
+The tool points agents to the bundled `korus-imagegen` procedure for generation,
+asset placement and inline image responses. Its result includes Markdown image
+syntax with the actual saved path, so the requesting agent can embed its selected
+output in the answer rather than only reading the image or reporting a filename.
+
+The daemon saves images with unique filenames under the app-owned Codex home's
+generated-images folder and returns image content with those paths. Provider file
+results must resolve inside that folder. Project assets are copied into the
+workspace by the requesting agent. Cancellation interrupts the internal turn,
+and completion or failure deletes its conversation.
 
 ## Mobile Simulators
 

@@ -7,12 +7,93 @@ import PullRequestCleanupDialog from '../components/PullRequestCleanupDialog.vue
 import SessionCompressionDialog from '../components/SessionCompressionDialog.vue';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { setElectronTestClient } from '../test/client';
+import { ElMessage } from 'element-plus';
+import type { AppSnapshot } from '@workspace/core/contracts';
+import { deferred } from './app-state-test-harness';
 
 afterEach(() => {
   delete window.app;
 });
 
 describe('App', () => {
+  it.each(['success', 'error'])('backgrounds worktree deletion and reports %s without disturbing a later close dialog', async outcome => {
+    // The operation must outlive its dialog, retain its original agent, reject
+    // duplicate submissions, and never clear or overwrite a later dialog.
+    const snapshot = createInitialSnapshot();
+    const [first, second] = snapshot.agents;
+    const pending = deferred<AppSnapshot>();
+    const closeAgent = vi.fn(() => pending.promise);
+    const getAgentClosePreview = vi.fn(async () => ({ isLinkedWorktree: true, branch: 'fix/api', upstream: null, hasChanges: false }));
+    const success = vi.spyOn(ElMessage, 'success').mockImplementation(() => undefined as never);
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => undefined as never);
+    setElectronTestClient({ getSnapshot: async () => snapshot, getAgentClosePreview, closeAgent, onEvent: vi.fn(),
+      selectAgent: async agentId => ({ ...snapshot, activeAgentId: agentId }) });
+    const wrapper = mount(App, { global: { stubs: { AppShell: true } } });
+    await flushPromises();
+    const shell = wrapper.getComponent(AppShell);
+    shell.vm.$emit('close-agent', first!.id);
+    await flushPromises();
+    const dialog = wrapper.getComponent(AgentCloseDialog);
+    await dialog.get('.app-button--primary').trigger('click');
+    await flushPromises();
+    expect(dialog.get('[role="status"]').attributes('aria-busy')).toBe('true');
+    const background = dialog.findAll('button').find(button => button.text() === 'Run in background');
+    expect(background).toBeDefined();
+    await background!.trigger('click');
+    expect(dialog.props('visible')).toBe(false);
+    shell.vm.$emit('close-agent', first!.id);
+    await flushPromises();
+    expect(getAgentClosePreview).toHaveBeenCalledTimes(1);
+    expect(closeAgent).toHaveBeenCalledExactlyOnceWith(first!.id, { deleteWorktree: true, deleteRemoteBranch: false, discardChanges: false, confirmed: true });
+    shell.vm.$emit('close-agent', second!.id);
+    await flushPromises();
+    expect(dialog.props('agent')?.id).toBe(second!.id);
+    expect(dialog.props('visible')).toBe(true);
+    shell.vm.$emit('select-agent', second!.id);
+    await flushPromises();
+    const fallback = { ...second!, id: 'fallback-agent', name: 'Fallback' };
+    if (outcome === 'success') pending.resolve({ ...snapshot, agents: [second!, fallback], activeAgentId: fallback.id });
+    else pending.reject(new Error('Worktree is locked'));
+    await flushPromises();
+    expect(dialog.props('agent')?.id).toBe(second!.id);
+    expect(dialog.props('visible')).toBe(true);
+    expect(dialog.props('busy')).toBe(false);
+    expect(dialog.find('[role="alert"]').exists()).toBe(false);
+    expect(shell.props('activeAgent')?.id).toBe(second!.id);
+    if (outcome === 'success') expect(success).toHaveBeenCalledWith('Worktree deleted: fix/api');
+    else expect(error).toHaveBeenCalledWith('Worktree deletion failed: Worktree is locked');
+    success.mockRestore(); error.mockRestore();
+  });
+
+  it('keeps deletion consent after a foreground failure and retries only on explicit submission', async () => {
+    const snapshot = createInitialSnapshot();
+    const pending = deferred<AppSnapshot>();
+    const closeAgent = vi.fn().mockImplementationOnce(() => pending.promise).mockResolvedValue({ ...snapshot, agents: [] });
+    setElectronTestClient({ getSnapshot: async () => snapshot, closeAgent, onEvent: vi.fn(),
+      getAgentClosePreview: async () => ({ isLinkedWorktree: true, branch: 'fix/api', upstream: 'origin/fix/api', hasChanges: true }) });
+    const wrapper = mount(App, { global: { stubs: { AppShell: true } } });
+    await flushPromises();
+    wrapper.getComponent(AppShell).vm.$emit('close-agent', snapshot.agents[0]!.id);
+    await flushPromises();
+    const dialog = wrapper.getComponent(AgentCloseDialog);
+    expect(dialog.get('.agent-close-dialog__remote input').element).toHaveProperty('checked', false);
+    await dialog.get('.agent-close-dialog__discard input').setValue(true);
+    await dialog.get('.agent-close-dialog__remote input').setValue(true);
+    await dialog.get('.app-button--primary').trigger('click');
+    await flushPromises();
+    expect(dialog.get('[role="status"]').attributes('aria-busy')).toBe('true');
+    pending.reject(new Error('Cleanup failed'));
+    await flushPromises();
+    expect(dialog.get('[role="alert"]').text()).toBe('Cleanup failed');
+    expect(closeAgent).toHaveBeenCalledTimes(1);
+    expect(dialog.get('.agent-close-dialog__discard input').element).toHaveProperty('checked', true);
+    expect(dialog.get('.agent-close-dialog__remote input').element).toHaveProperty('checked', true);
+    await dialog.get('.app-button--primary').trigger('click');
+    await flushPromises();
+    expect(closeAgent).toHaveBeenLastCalledWith(snapshot.agents[0]!.id, { deleteWorktree: true, deleteRemoteBranch: true, discardChanges: true, confirmed: true });
+    expect(dialog.props('visible')).toBe(false);
+  });
+
   it('opens a plan review from a backend domain event without a panel request', async () => {
     const snapshot = createInitialSnapshot();
     let emitEvent!: (event: import('@workspace/core/contracts').MainToRendererEvent) => void;
@@ -189,60 +270,6 @@ describe('App', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it('prompts for linked-worktree cleanup and forwards the confirmed cleanup policy', async () => {
-    const snapshot = createInitialSnapshot();
-    snapshot.agents = [snapshot.agents[0]!];
-    snapshot.teams[0]!.agentIds = [snapshot.agents[0]!.id];
-    const getAgentGitWorkflow = vi.fn().mockResolvedValue({
-      repository: 'owner/repo',
-      folder: snapshot.agents[0]!.folder,
-      isLinkedWorktree: true,
-      branch: 'fix/gh-22',
-      detached: false,
-      remote: 'origin',
-      upstream: 'origin/fix/gh-22',
-      ahead: 0,
-      behind: 0,
-      files: [],
-      stagedFiles: [],
-      unstagedFiles: [],
-      githubConnected: true,
-    });
-    const closeAgent = vi.fn().mockResolvedValue({ ...snapshot, agents: [] });
-    setElectronTestClient({
-      getSnapshot: vi.fn().mockResolvedValue(snapshot),
-      getAgentGitWorkflow,
-      closeAgent,
-      onEvent: vi.fn(),
-    });
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          AppShell: true,
-          ElPopover: { template: '<div><slot name="reference" /><slot /></div>' },
-        },
-      },
-    });
-    await flushPromises();
-
-    wrapper.findComponent(AppShell).vm.$emit('close-agent', snapshot.agents[0]!.id);
-    await flushPromises();
-
-    expect(getAgentGitWorkflow).toHaveBeenCalledWith(snapshot.agents[0]!.id);
-    const dialog = wrapper.findComponent(AgentCloseDialog);
-    expect(dialog.props('visible')).toBe(true);
-
-    dialog.vm.$emit('delete-worktree', true, true);
-    await flushPromises();
-
-    expect(closeAgent).toHaveBeenCalledWith(snapshot.agents[0]!.id, {
-      deleteWorktree: true,
-      deleteRemoteBranch: true,
-      discardChanges: true,
-      confirmed: true,
-    });
-  });
-
   it('closes an agent without offering cleanup when another agent uses the same worktree', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
@@ -253,14 +280,14 @@ describe('App', () => {
     };
     snapshot.agents = [agent, otherAgent];
     snapshot.teams[0]!.agentIds = [agent.id, otherAgent.id];
-    const getAgentGitWorkflow = vi.fn();
+    const getAgentClosePreview = vi.fn().mockResolvedValue({ isLinkedWorktree: false, branch: null, upstream: null, hasChanges: false });
     const closeAgent = vi.fn().mockResolvedValue({
       ...snapshot,
       agents: snapshot.agents.filter((candidate) => candidate.id !== agent.id),
     });
     setElectronTestClient({
       getSnapshot: vi.fn().mockResolvedValue(snapshot),
-      getAgentGitWorkflow,
+      getAgentClosePreview,
       closeAgent,
       onEvent: vi.fn(),
     });
@@ -279,7 +306,7 @@ describe('App', () => {
 
     expect(wrapper.findComponent(AgentCloseDialog).props('visible')).toBe(false);
     expect(closeAgent).toHaveBeenCalledWith(agent.id);
-    expect(getAgentGitWorkflow).not.toHaveBeenCalled();
+    expect(getAgentClosePreview).toHaveBeenCalledWith(agent.id);
   });
 
   it('does not treat matching folder paths on different backend locations as a shared worktree', async () => {
@@ -302,10 +329,11 @@ describe('App', () => {
       remoteConnectionId: 'connection-devbox',
       remoteTeamId: 'remote-team',
     });
-    const getAgentGitWorkflow = vi.fn().mockResolvedValue({
+    const getAgentClosePreview = vi.fn().mockResolvedValue({
       repository: 'owner/repo',
       folder: agent.folder,
       isLinkedWorktree: true,
+      hasChanges: false,
       branch: 'fix/local-worktree',
       detached: false,
       remote: 'origin',
@@ -320,7 +348,7 @@ describe('App', () => {
     const closeAgent = vi.fn();
     setElectronTestClient({
       getSnapshot: vi.fn().mockResolvedValue(snapshot),
-      getAgentGitWorkflow,
+      getAgentClosePreview,
       closeAgent,
       onEvent: vi.fn(),
     });
@@ -337,7 +365,7 @@ describe('App', () => {
     wrapper.findComponent(AppShell).vm.$emit('close-agent', agent.id);
     await flushPromises();
 
-    expect(getAgentGitWorkflow).toHaveBeenCalledWith(agent.id);
+    expect(getAgentClosePreview).toHaveBeenCalledWith(agent.id);
     expect(wrapper.findComponent(AgentCloseDialog).props('visible')).toBe(true);
     expect(closeAgent).not.toHaveBeenCalled();
   });

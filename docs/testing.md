@@ -17,6 +17,16 @@ Korus tests its adapter translations and product behavior, not either SDK. Wire
 framing, decoding and lifecycle tests for its own process/socket transports remain.
 Real provider smoke tests are opt-in and never part of the normal gate.
 
+Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
+their conversations from the persisted fixture identity and rejects provider
+operations for those sessions. They exercise the real Mission and conversation
+components without starting model turns; they are presentation fixtures, not
+evidence that live provider execution works. Keep failure and recovery fixtures
+separate from screenshot presets.
+Debug workspace rows never grant filesystem ownership. Deleting a fixture keeps
+borrowed agents and provider conversations; synthetic screenshot agents are removed
+locally without provider operations.
+
 ## Quality Bar
 
 Every behavior change needs coverage at the owning runtime boundary; write the
@@ -45,8 +55,20 @@ approvals, diffs, filesystem, git or teams.
 - Isolate and clean up: tests are idempotent, close streams, child processes, file
   handles and subscriptions in `finally`.
 - Mock external boundaries, never the logic under test.
+- Native Compose effect deadlines use the Compose test clock. Let lifecycle and
+  composition updates settle before advancing it; real elapsed waits belong to
+  platform handlers and WebView deadlines that use elapsed time.
+- Native touch automation waits for stable screen coordinates when opening
+  system-animated sheets. Compose idleness does not settle window or keyboard
+  animations.
 
 ## Test Value Gate
+
+Start with the existing owner-boundary tests. Extend the closest workflow and
+remove checks it supersedes. Add a separate test only for a concrete regression
+those workflows cannot catch; a new function, branch or file is not sufficient
+reason. Keep scenarios independently readable rather than combining unrelated
+behaviors to reduce the test count.
 
 Name the regression a test protects in one sentence. Accept it only if:
 
@@ -54,7 +76,7 @@ Name the regression a test protects in one sentence. Accept it only if:
 2. that regression would fail it for the right reason;
 3. a harmless refactor, rewording, file move or equivalent implementation keeps it
    green;
-4. no closer layer already protects the same contract in more detail.
+4. no existing owner-boundary test already proves the same behavior.
 
 Otherwise do not add it, and remove an existing test that fails the gate when no
 realistic regression risk is lost. A test that survives replacing the implementation
@@ -80,6 +102,8 @@ persistence guarantee, or an error/security/architecture boundary.
   higher-boundary test cannot reliably observe. Table-driven rows must be
   distinct behaviors.
 - Keep snapshots rare; prefer explicit assertions.
+- Report the behavior proved and remaining limits. Raw test counts and coverage
+  percentages alone do not establish correctness.
 
 ## Main Process And Preload
 
@@ -168,6 +192,9 @@ regressions; do not reintroduce a transcript reducer to benchmark provider traff
 
 ## Gates
 
+Run local checks with the Node 26 reference toolchain pinned in `.nvmrc` and
+the npm version declared in `package.json` so results use the same toolchain as CI.
+
 `package.json` scripts are the reference. `npm test`, `npm run test:coverage`,
 `npm run lint` (includes every workspace typecheck and the Knip dead-code check) and
 `npm run build`. Prefer `npm run test:ai` for agent-driven full runs: same suites,
@@ -176,10 +203,15 @@ commands (`test:electron`, `typecheck:web`, …). For visual changes add a local
 app/screenshot check when the app can boot; for protocol or persistence changes run
 the touched module's tests plus the full coverage gate.
 
-The independent Quality workflow runs on every push, PR and manual dispatch. It
-owns lint/typechecks, the full suite under coverage, script tests, and retained
-coverage reports. The release workflow runs ordinary workspace and script tests,
-without coverage, before builds and publication. The workflows are independent:
+The independent Quality workflow runs on branch pushes, PRs and manual dispatch.
+Tag pushes do not trigger it. It owns lint/typechecks, the full suite under
+coverage, script tests, and retained coverage reports. The README badge combines
+covered and total statement counts
+from every declared workspace. Only successful runs for the current `main` commit
+publish badge data to the separate `badges` branch; PRs have no publication authority.
+The publishing job alone has repository write permission and retains badge history
+independently of application source. The release workflow runs ordinary workspace
+and script tests, without coverage, before builds and publication. The workflows are independent:
 Quality failures do not block releases; release test failures do. Run against the
 installed SDK package boundary; source aliases do not substitute for package
 verification. Desktop smoke (boot, create or

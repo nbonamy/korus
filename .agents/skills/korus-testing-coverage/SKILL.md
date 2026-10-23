@@ -27,8 +27,9 @@ owning public seam, the test does not belong.
 - For provider-independent services, test their own external boundary: Electron
   shell, filesystem, git, clocks, and OS dialogs.
 - Prefer realistic component interaction over mutating internals directly.
-- New shared components, public helpers, reducers, adapters, and persistence
-  code should have direct tests.
+- Extend existing owner-boundary workflows first. A shared component, helper,
+  reducer or adapter does not automatically need its own test suite; apply the
+  Test Value Gate before adding one.
 - If focused tests pass but broader verification fails, reproduce and fix the
   broader failure.
 
@@ -53,8 +54,8 @@ owning public seam, the test does not belong.
   functions without blocking thresholds. Preserve the measured surface.
 - Coverage complements mandatory meaningful behavioral/regression tests and
   owning-boundary verification; it cannot replace them.
-- Quality CI owns coverage on every push. Release CI independently runs ordinary
-  tests without coverage against installed SDK packages; follow
+- Quality CI owns coverage on every branch push. Release CI independently runs
+  ordinary tests without coverage against installed SDK packages; follow
   `prepare-release` rather than duplicating its gates locally.
 
 ## Standard Gates

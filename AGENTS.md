@@ -134,12 +134,14 @@ handoff.
   ask.
 
 Before adding or retaining a test, apply the mandatory **Test Value Gate** in
-`docs/testing.md`. A test must protect observable behavior, an owned contract,
-a meaningful state transition, or a realistic error/security/architecture
-boundary. Prefer E2E and integration tests. Isolate a system only when a
-concrete regression cannot be reliably observed at those boundaries, and write
-down its failure modes before implementation. When UI isolation is necessary,
-mount and exercise the component through its rendered behavior.
+`docs/testing.md`. Default to extending an existing owner-boundary workflow,
+not adding a new test for each change or helper. A test must protect observable
+behavior, an owned contract, a meaningful state transition, or a realistic
+error/security/architecture boundary. Prefer E2E and integration tests. Isolate
+a system only when a concrete regression cannot be reliably observed at those
+boundaries, and write down its failure modes before implementation. When UI
+isolation is necessary, mount and exercise the component through its rendered
+behavior.
 Tests must never read production source files as text to assert their contents;
 this includes TypeScript, Vue, stylesheets, scripts, package manifests, and
 configuration. Enforce static architecture rules with lint, type, AST, or
@@ -151,13 +153,16 @@ statement coverage. Lines, branches, and functions remain reported diagnostics
 without blocking thresholds. Do not lower the statement threshold or shrink
 the measured surface to land a change. Coverage does not replace meaningful
 behavioral/regression tests or verification at the owning runtime boundary.
-Quality CI enforces coverage on every push. Release CI independently requires the
-full test suite without coverage; it does not wait for Quality CI.
+Quality CI enforces coverage on every branch push. Release CI independently
+requires the full test suite without coverage; it does not wait for Quality CI.
 
 Before editing code, read `docs/testing.md`. Before editing UI, also read
 `docs/frontend.md`.
 
 ## Build
+
+Use the Node 26 reference toolchain for development, tests, and builds. Read
+`.nvmrc` for the exact Node version and `package.json` for the npm version.
 
 The app builds through Electron Forge. Keep build outputs, generated protocol
 bindings, copied id8 renderer code, and packaged resources clearly separated
@@ -193,6 +198,8 @@ commit, or push work. Curate it only when Nicolas explicitly invokes
 
 - `korus-dod`: Definition of Done checklist for scope, architecture,
   tests, coverage, security, UX, docs, worktree hygiene, and handoff.
+- `korus-desktop-update`: Build and activate a signed macOS desktop update,
+  restart the installed app and its owned daemon, or inspect the guarded update.
 - `korus-frontend-dev`: Vue, Element Plus, app shell, chat rendering,
   artifact panes, design tokens, themes, and frontend tests.
 - `korus-live-preview`: isolated, parallel-safe, branch-faithful web

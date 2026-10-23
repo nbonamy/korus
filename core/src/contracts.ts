@@ -758,6 +758,12 @@ export type AppCommand =
 export type CreateAgentInput = {
   name: string | null;
   folder: string;
+  /** Open the selected repository branch without moving its primary checkout. */
+  repositorySession?: {
+    existingBranch?: string;
+    fetchRemoteBranch?: boolean;
+    worktree?: Omit<CreateSourceWorktreeInput, 'repoPath' | 'remoteConnectionId'>;
+  };
   avatar?: string;
   backend?: AgentBackend;
   backendDefaults?: BackendDefaults;
@@ -772,6 +778,9 @@ export type CreateQuickChatInput = {
   backend?: AgentBackend;
   teamId?: string;
 };
+
+/** Explicit command outcome; requested with entityResult, without changing legacy snapshot responses. */
+export type CreatedAgentResult = { agentId: string; snapshot: AppSnapshot };
 
 export type CreateTeamInput = {
   name: string;
@@ -804,6 +813,7 @@ export type UpdateAgentInput = {
 export type DuplicateAgentOptions = {
   select?: boolean;
   name?: string;
+  backend?: AgentBackend;
 };
 
 export type MoveAgentToTeamInput = {
@@ -892,6 +902,7 @@ export type AppApi = {
   startRunProfile(agentId: string, input: import('./run-profiles').RunProfileStartInput): Promise<import('./run-profiles').ProfileRun>;
   stopProfileRun(agentId: string, runId: string): Promise<import('./run-profiles').ProfileRun>;
   stopAgentProfileRuns(agentId: string): Promise<void>;
+  listAgentDirectory(agentId: string, input?: import('./contracts/workspace').AgentDirectoryInput): Promise<import('./contracts/workspace').AgentDirectoryPage>;
   getDocumentWorkspaces(): Promise<import('./document-workspace').DocumentWorkspaces>;
   updateDocumentWorkspace(agentId: string, change: import('./document-workspace').DocumentWorkspaceChange): Promise<import('./document-workspace').DocumentWorkspace>;
   readWorkspaceDocument(agentId: string, tabId: string): Promise<import('./document-workspace').DocumentReadResult>;
@@ -906,6 +917,7 @@ export type AppApi = {
   getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
   getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
   getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
+  getAgentClosePreview(agentId: string): Promise<import('./agent-close').AgentClosePreview>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;
   generateAgentGitMessage(agentId: string, input: AgentGitMessageGenerationInput): Promise<AgentGitMessageGenerationResult>;

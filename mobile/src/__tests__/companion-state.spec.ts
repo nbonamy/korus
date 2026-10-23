@@ -5,6 +5,23 @@ import { createDemoConnector } from '../demo-connector';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 
 describe('companion state', () => {
+  it('restarts the retry schedule when the app returns to the foreground', async () => {
+    vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const connector = createDemoConnector(); const original = connector.connect;
+    let lost!: () => void; let fail = false;
+    const connect = vi.fn(async (id: string) => { if (fail) throw new Error('offline'); const session = await original(id); return { ...session, onDisconnect(listener: () => void) { lost = listener; return () => {}; } }; });
+    connector.connect = connect;
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); fail = true; lost();
+      for (const delay of [1000, 2000, 4000]) await vi.advanceTimersByTimeAsync(delay);
+      const attempts = connect.mock.calls.length;
+      await state.setActive(false); await state.setActive(true); await state.reconnect();
+      expect(connect).toHaveBeenCalledTimes(attempts + 1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(connect).toHaveBeenCalledTimes(attempts + 2);
+    } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
   it('backs off repeated disconnects during history loading until a conversation actually synchronizes', async () => {
     vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const connector = createDemoConnector(); const original = connector.connect;
@@ -576,4 +593,39 @@ describe('companion state', () => {
       expect(state.error.value).toBe('mobile.errors.commandFailed');
     } finally { state.dispose(); }
   });
+});
+
+it('shows a stale cached conversation immediately but separates its paint generation from completed catch-up', async () => {
+  const connector = createDemoConnector(); const connect = connector.connect;
+  let stale = false;
+  let current!: CompanionWorkspace;
+  let publish!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;
+  let finish!: (frame: CompanionConversation | null) => void;
+  let cached: CompanionConversation | null;
+  connector.connect = async id => {
+    const session = await connect(id); const base = await session.getWorkspace();
+    current = { ...base, agents: base.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+    return { ...session, getWorkspace: async () => current, onUpdate: listener => { publish = listener; return () => {}; }, cachedConversation: () => cached, isConversationCurrent: () => !stale,
+      async loadConversation(id) {
+        if (stale) return new Promise<CompanionConversation | null>(resolve => { finish = resolve; });
+        cached = await session.loadConversation(id); return cached;
+      },
+    };
+  };
+  const state = createCompanionState(connector);
+  try {
+    await state.connect('demo-laptop'); await state.selectTeam('demo-team');
+    stale = true;
+    const refresh = state.selectAgent('demo-agent');
+    const cachedGeneration = state.conversationGeneration.value;
+    expect(state.conversation.value).toBe(cached!);
+    expect(state.loading.value).toBe(false);
+    expect(state.refreshing.value).toBe(true);
+    expect(state.conversationReady.value).toBe(false);
+    publish(current, cached!);
+    expect(state.conversationReady.value).toBe(false); // A replayed frame is not the catch-up barrier.
+    finish(cached!); await refresh;
+    expect(state.conversationGeneration.value).toBeGreaterThan(cachedGeneration);
+    expect(state.conversationReady.value).toBe(true);
+  } finally { state.dispose(); }
 });

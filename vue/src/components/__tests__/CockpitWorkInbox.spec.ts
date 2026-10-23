@@ -18,7 +18,7 @@ describe('CockpitWorkInbox', () => {
     await wrapper.findAll('.cockpit-inbox__selection input')[0]!.setValue(true);
     const row = wrapper.findAll('.cockpit-inbox__row')[1]!;
     expect(row.findAll('button').map(button => button.attributes('aria-label'))).toEqual([
-      'View #22', 'Start work on #22', 'View #22 in GitHub',
+      'View #22', 'Start work on #22', 'More actions for #22',
     ]);
     await row.get('[aria-label="Start work on #22"]').trigger('click');
     await wrapper.get('[aria-label="Coding agent and model"]').trigger('click');
@@ -143,7 +143,7 @@ describe('CockpitWorkInbox', () => {
     expect(wrapper.emitted('select-assigned-agent')).toStrictEqual([['agent-one']]);
   });
 
-  it('keeps view, assign, and GitHub actions inline without an overflow menu', async () => {
+  it('keeps view and start inline and tucks the provider link into an overflow menu', async () => {
     const assigned = item(21, 'Assigned work', 'repo-one');
     const ready = item(22, 'Ready work', 'repo-two');
     const wrapper = mountInbox([assigned, ready], {
@@ -158,7 +158,9 @@ describe('CockpitWorkInbox', () => {
 
     await rows[0]?.get('.cockpit-inbox__row-action').trigger('click');
     await rows[1]?.get('.cockpit-inbox__row-action').trigger('click');
-    await rows[0]?.get('.cockpit-inbox__external-action').trigger('click');
+    await rows[0]?.get('[aria-label="More actions for #21"]').trigger('click');
+    document.body.querySelector<HTMLButtonElement>('.app-menu__item')!.click();
+    await flushPromises();
 
     expect(wrapper.emitted('select-assigned-agent')).toStrictEqual([['agent-one']]);
     expect(wrapper.get('.work-item-detail').text()).toContain('Ready work');
@@ -188,13 +190,75 @@ describe('CockpitWorkInbox', () => {
     expect(wrapper.text()).toContain('repo-one #21');
     expect(wrapper.text()).toContain('repo-two #22');
     await wrapper.get('.cockpit-inbox__filter-button').trigger('click');
-    const selects = wrapper.findAllComponents({ name: 'ElSelect' });
+    const selects = wrapper.findAllComponents({ name: 'ElSelect' }).filter((select) => select.attributes('aria-label') !== 'Item type');
     await selects[0]?.vm.$emit('update:modelValue', 'repo-two');
     await selects[1]?.vm.$emit('update:modelValue', 'bug');
     await selects[2]?.vm.$emit('update:modelValue', 'nicolas');
     expect(wrapper.emitted('select-repository')).toStrictEqual([['repo-two']]);
     expect(wrapper.emitted('select-tag')).toStrictEqual([['bug']]);
     expect(wrapper.emitted('select-assignee')).toStrictEqual([['nicolas']]);
+  });
+
+  it('shows the default assigned-to-me scope as an active assignee filter', async () => {
+    const wrapper = mountInbox([item(21, 'Mine', 'repo-one')], {}, { globalScope: 'assignedToMe' });
+    const filterButton = wrapper.get('.cockpit-inbox__filter-button');
+    expect(filterButton.text()).toContain('1');
+    await filterButton.trigger('click');
+    const assignee = wrapper.findAllComponents({ name: 'ElSelect' }).filter((select) => select.attributes('aria-label') !== 'Item type')[2]!;
+    expect(assignee.props('modelValue')).toBe('@me');
+    await assignee.vm.$emit('update:modelValue', null);
+    expect(wrapper.emitted('select-assignee')).toStrictEqual([[null]]);
+    await assignee.vm.$emit('update:modelValue', '@me');
+    expect(wrapper.emitted('select-global-scope')).toStrictEqual([['assignedToMe']]);
+
+    const everyone = mountInbox([item(21, 'Mine', 'repo-one')], {}, { globalScope: 'all' });
+    expect(everyone.get('.cockpit-inbox__filter-button').text()).not.toContain('1');
+  });
+
+  it('filters by item type only when the provider has pull requests', async () => {
+    const pullRequest = { ...item(31, 'Fix the parser', 'repo-one'), kind: 'pullRequest' as const };
+    const wrapper = mountInbox([item(30, 'Parser crashes', 'repo-one'), pullRequest]);
+    await wrapper.findAll('.cockpit-inbox__views > button')[0]?.trigger('click');
+    const typeFilter = () => wrapper.findAllComponents({ name: 'ElSelect' }).find((select) => select.attributes('aria-label') === 'Item type')!;
+    expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(2);
+    await typeFilter().vm.$emit('update:modelValue', ['pullRequest']);
+    expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(1);
+    expect(wrapper.text()).toContain('Fix the parser');
+    await typeFilter().vm.$emit('update:modelValue', ['issue']);
+    expect(wrapper.text()).toContain('Parser crashes');
+    expect(wrapper.text()).not.toContain('Fix the parser');
+    await typeFilter().vm.$emit('update:modelValue', []);
+    expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(2);
+
+    await wrapper.setProps({ connection: { provider: 'linear', status: 'connected' } });
+    expect(wrapper.find('[aria-label="Item type"]').exists()).toBe(false);
+  });
+
+  it('collapses an empty search back to its icon on blur and keeps a typed query open', async () => {
+    const wrapper = mountInbox([item(40, 'Searchable work', 'repo-one')]);
+    await wrapper.get('.cockpit-inbox__icon-button').trigger('click');
+    await wrapper.vm.$nextTick();
+    const input = () => wrapper.get('input.cockpit-inbox__search-input');
+    await input().trigger('blur');
+    expect(wrapper.find('.cockpit-inbox__search-input').exists()).toBe(false);
+    await wrapper.get('.cockpit-inbox__icon-button').trigger('click');
+    await wrapper.vm.$nextTick();
+    await input().setValue('search');
+    await input().trigger('blur');
+    expect(wrapper.find('.cockpit-inbox__search-input').exists()).toBe(true);
+  });
+
+  it('opens the item in its provider from the row overflow menu without selecting the row', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const wrapper = mountInbox([item(42, 'Overflow work', 'repo-one')]);
+    await wrapper.findAll('.cockpit-inbox__views > button')[0]?.trigger('click');
+    await wrapper.get('[aria-label="More actions for #42"]').trigger('click');
+    expect(document.body.querySelector('.app-menu__item')!.textContent).toContain('View in GitHub');
+    document.body.querySelector<HTMLButtonElement>('.app-menu__item')!.click();
+    await flushPromises();
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('/repo-one/issues/42'), '_blank', 'noreferrer');
+    expect(wrapper.get<HTMLInputElement>('.cockpit-inbox__selection input').element.checked).toBe(false);
+    open.mockRestore();
   });
 
   it('selects visible work and confirms a batch action and team', async () => {

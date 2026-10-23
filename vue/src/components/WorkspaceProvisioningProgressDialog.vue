@@ -23,10 +23,13 @@
       :steps="steps"
       @complete="close"
     />
-    <template v-if="operationState === 'error'" #footer>
+    <template v-if="operationState === 'error' || canRunInBackground" #footer>
       <div class="app-dialog__footer">
-        <button class="app-button app-button--tertiary" type="button" @click="close">
+        <button v-if="operationState === 'error'" class="app-button app-button--tertiary" type="button" @click="close">
           {{ t('common.close') }}
+        </button>
+        <button v-else class="app-button app-button--secondary" type="button" @click="runInBackground">
+          {{ t('common.runInBackground') }}
         </button>
       </div>
     </template>
@@ -46,6 +49,7 @@ import { backendDisplayName } from '@workspace/core/backend-driver';
 export type WorkspaceProvisioningOperation =
   | { mode: 'branchMove'; progress: BranchWorkProgress }
   | { mode: 'single'; progress: AgentCreationProgress }
+  | { mode: 'batch'; progress: AgentCreationProgress[] }
   | {
       mode: 'multiple';
       id: string;
@@ -60,20 +64,34 @@ const props = defineProps<{ operation: WorkspaceProvisioningOperation | null }>(
 
 const emit = defineEmits<{
   close: [id: string];
+  background: [id: string];
 }>();
 const { t } = useI18n();
 const progress = computed(() => props.operation?.mode === 'single' ? props.operation.progress : null);
 const branchMove = computed(() => props.operation?.mode === 'branchMove' ? props.operation.progress : null);
-const operationId = computed(() => props.operation?.mode === 'single' || props.operation?.mode === 'branchMove' ? props.operation.progress.id : props.operation?.id);
-const operationState = computed(() => props.operation?.mode === 'single' || props.operation?.mode === 'branchMove'
-  ? props.operation.progress.state
-  : props.operation?.state ?? 'running');
+const batch = computed(() => props.operation?.mode === 'batch' ? props.operation.progress : null);
+// A batch keeps one stable key so entries joining or finishing do not restart the progress animation.
+const operationId = computed(() => {
+  if (props.operation?.mode === 'batch') return 'batch';
+  return props.operation?.mode === 'single' || props.operation?.mode === 'branchMove' ? props.operation.progress.id : props.operation?.id;
+});
+const operationIds = computed(() => batch.value ? batch.value.map((entry) => entry.id) : operationId.value ? [operationId.value] : []);
+const operationState = computed(() => {
+  if (batch.value) {
+    if (batch.value.some((entry) => entry.state === 'running')) return 'running';
+    return batch.value.some((entry) => entry.state === 'error') ? 'error' : 'success';
+  }
+  return props.operation?.mode === 'single' || props.operation?.mode === 'branchMove'
+    ? props.operation.progress.state
+    : props.operation?.mode === 'multiple' ? props.operation.state : 'running';
+});
 const eyebrow = computed(() => branchMove.value ? t('branchWork.progressEyebrow') : props.operation?.mode === 'multiple'
   ? t('missions.implementationStartEyebrow')
   : t('agentCreationProgress.eyebrow'));
 const title = computed(() => {
   if (branchMove.value) return t('branchWork.progressTitle');
   if (props.operation?.mode === 'multiple') return t('missions.implementationStartTitle');
+  if (batch.value) return t('agentCreationProgress.creatingAgents', { count: batch.value.length });
   if (progress.value?.createProject) return t('agentCreationProgress.creatingProject', { repository: progress.value.repositoryName });
   return progress.value?.createWorktree
     ? t('agentCreationProgress.buildingIsolatedHome', { repository: progress.value.repositoryName })
@@ -81,7 +99,9 @@ const title = computed(() => {
 });
 const completeTitle = computed(() => branchMove.value ? t('branchWork.progressReady', { branch: branchMove.value.branchName }) : props.operation?.mode === 'multiple'
   ? t('missions.implementationStartComplete')
-  : t('agentCreationProgress.ready', {
+  : batch.value
+    ? t('agentCreationProgress.agentsReady', { count: batch.value.length })
+    : t('agentCreationProgress.ready', {
       agent: progress.value?.agentName ?? progress.value?.branchName ?? progress.value?.repositoryName ?? '',
     }));
 const errorTitle = computed(() => branchMove.value ? t('branchWork.progressFailed') : props.operation?.mode === 'multiple'
@@ -89,13 +109,20 @@ const errorTitle = computed(() => branchMove.value ? t('branchWork.progressFaile
   : t('agentCreationProgress.failed'));
 const errorDetail = computed(() => branchMove.value ? branchMove.value.error : props.operation?.mode === 'multiple'
   ? props.operation.error
-  : progress.value?.error);
+  : batch.value
+    ? batch.value.find((entry) => entry.state === 'error')?.error
+    : progress.value?.error);
 const activeStep = computed(() => {
   if (branchMove.value) return ['creatingWorktree', 'movingChanges', 'creatingAgent', 'resettingSource'].indexOf(branchMove.value.phase);
   if (props.operation?.mode === 'multiple') {
     if (props.operation.phase === 'startingAgents') return 2;
     if (props.operation.phase === 'initializingWorkspaces') return 1;
     return 0;
+  }
+  if (batch.value) {
+    const order = { creatingProject: 0, creatingWorktree: 0, initializingWorktree: 1, creatingAgent: 2, startingPrompt: 3 } as const;
+    const running = batch.value.filter((entry) => entry.state === 'running');
+    return Math.min(...(running.length ? running : batch.value).map((entry) => entry.phase ? order[entry.phase] : 0));
   }
   if (!progress.value?.phase) return undefined;
   if (!progress.value.createWorktree) {
@@ -126,6 +153,26 @@ const steps = computed<StagedOperationStep[]>(() => {
     {
       title: t('missions.implementationStartAgents'),
       detail: t('missions.implementationStartAgentsDetail', { count: props.operation.ticketCount }),
+    },
+  ];
+  if (batch.value) return [
+    {
+      title: t('agentCreationProgress.createWorktrees'),
+      detail: batch.value.map((entry) => entry.branchName ?? entry.repositoryName).join(', '),
+    },
+    {
+      title: t('agentCreationProgress.initializeWorktree'),
+      detail: batch.value.find((entry) => entry.initializationDetail)?.initializationDetail ?? t('agentCreationProgress.checkProjectSetup'),
+    },
+    {
+      title: t('agentCreationProgress.startSessions'),
+      detail: t('agentCreationProgress.sessionsDetail', { count: batch.value.length }),
+    },
+    {
+      title: batch.value.some((entry) => entry.hasPrompt)
+        ? t('agentCreationProgress.handOverInstructions')
+        : t('agentCreationProgress.finishSetup'),
+      detail: [...new Set(batch.value.map((entry) => entry.repositoryName))].join(', '),
     },
   ];
   const current = progress.value;
@@ -161,8 +208,14 @@ const steps = computed<StagedOperationStep[]>(() => {
   ];
 });
 
+const canRunInBackground = computed(() => props.operation !== null && operationState.value === 'running');
+
+function runInBackground(): void {
+  for (const id of operationIds.value) emit('background', id);
+}
+
 function close(): void {
-  if (operationId.value) emit('close', operationId.value);
+  for (const id of operationIds.value) emit('close', id);
 }
 
 function onVisibilityChanged(visible: boolean): void {

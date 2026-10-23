@@ -35,6 +35,9 @@ import ConversationPane from '@workspace/vue/components/ConversationPane.vue';
 import { backendChoicesKey } from '@workspace/vue/components/backend-selection';
 import type { CompanionConversation, CompanionHistoryState } from '../../src/companion-port';
 import { handler } from './native';
+import { TranscriptReplicas } from '../../src/transcript-replica';
+import type { ProviderConversationFrame } from '@workspace/core/contracts';
+import type { CompanionCheckpoint } from '@workspace/core/companion-journal';
 
 const frame = shallowRef<CompanionConversation | null>(null);
 const agent = shallowRef<Agent | null>(null);
@@ -164,9 +167,25 @@ function applyContext(message: Context) {
   history.value = message.history ?? { hasOlder: false, loadingOlder: false, failed: false };
 }
 
+const replicas = new TranscriptReplicas();
+let generation = -1;
 let presentation = 0;
 window.companionTranscript = {
   setImage,
+  async setTransfer(json: string) {
+    const message = JSON.parse(json) as Context & { identity: string; checkpoint: CompanionCheckpoint; frames: ProviderConversationFrame[] };
+    if (message.generation < generation) return null;
+    generation = message.generation;
+    if (!message.agent || message.frames.some(frame => frame.agentId !== message.agentId || frame.backend !== message.agent?.backend)) return { needsReset: true, identity: message.identity };
+    const cached = replicas.apply(message.identity, message.checkpoint, message.frames);
+    if (!cached) return { needsReset: true, identity: message.identity };
+    const revision = ++presentation;
+    currentAgentId = message.agentId; frame.value = cached.frame; applyContext(message);
+    await nextTick();
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    if (revision !== presentation) return null;
+    return { identity: message.identity, checkpoint: cached.checkpoint, agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation };
+  },
   setContent(json) {
     if ((JSON.parse(json) as { type?: string }).type === 'conversationImage') { setImage(json); return; }
     const reply = JSON.parse(json) as { requestId: string; agentId: string; sessionId: string; chunk?: ConversationContentChunk; error?: string };
@@ -180,6 +199,8 @@ window.companionTranscript = {
   async setConversation(json) {
     const revision = ++presentation;
     const message = JSON.parse(json) as Context & { frame: CompanionConversation | null };
+    generation = message.generation ?? generation;
+    if (!message.agent) replicas.clear();
     currentAgentId = message.agentId ?? message.agent?.id ?? '';
     frame.value = message.frame;
     applyContext(message);
@@ -192,7 +213,8 @@ window.companionTranscript = {
   /** The chat's surroundings changed, not its conversation: a small update, applied only to the chat it was made for. */
   async setContext(json) {
     const message = JSON.parse(json) as Context;
-    if (message.agentId !== currentAgentId) return null;
+    if (message.agentId !== currentAgentId || (message.generation !== undefined && message.generation < generation)) return null;
+    if (JSON.stringify(message.agent?.backendSession) !== JSON.stringify(agent.value?.backendSession)) return null;
     const revision = presentation;
     applyContext(message);
     if (!message.ready || !message.agent) return null;

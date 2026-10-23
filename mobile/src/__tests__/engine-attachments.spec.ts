@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEngine, type EngineEvent } from '../engine';
 import { createDemoConnector } from '../demo-connector';
+import type { CompanionSession } from '../companion-port';
 
 const photo = { type: 'image' as const, name: 'Photo.jpg', mimeType: 'image/jpeg', data: 'aW1hZ2U=' };
 function fixture(remote = false) {
@@ -19,6 +20,45 @@ function fixture(remote = false) {
 }
 
 describe('native attachment submission', () => {
+  it('confirms an accepted prompt to the native composer while its conversation refresh is still pending', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const events: EngineEvent[] = [];
+    let update: Parameters<NonNullable<CompanionSession['onUpdate']>>[0] = () => {};
+    let refreshing = false; let holdRefresh = false; let release!: () => void;
+    const refresh = new Promise<void>(resolve => { release = resolve; });
+    connector.connect = async id => {
+      const session = await connect(id);
+      const original = await session.getWorkspace();
+      const workspace = { ...original, agents: original.agents.map(agent => ({ ...agent, backendSession: { kind: 'codex' as const, threadId: agent.id } })) };
+      return { ...session,
+        getWorkspace: async () => workspace,
+        onUpdate(listener) { update = listener; return () => {}; },
+        async sendPrompt(target, text) {
+          await session.sendPrompt(target, text);
+          update(workspace, await session.loadConversation(target.agentId));
+        },
+        async loadConversation(agentId) {
+          if (holdRefresh) { refreshing = true; await refresh; }
+          return session.loadConversation(agentId);
+        },
+      };
+    };
+    const engine = createEngine({ connector, post: event => events.push(event) });
+    let sending: Promise<void> | undefined;
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' }); await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      holdRefresh = true;
+      sending = engine.dispatch({ type: 'send', requestId: 'accepted', target: engine.snapshot().composerTarget!, text: 'Hello' });
+      await vi.waitFor(() => expect(refreshing).toBe(true));
+      await vi.waitFor(() => expect(events.filter(event => event.type === 'conversation').at(-1)).toMatchObject({
+        frame: { payload: { snapshot: { messages: expect.arrayContaining([expect.objectContaining({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] })]) } } },
+      }));
+      expect(events.filter(event => event.type === 'sendResult')).toStrictEqual([{ type: 'sendResult', requestId: 'accepted', status: 'accepted' }]);
+      release(); await sending;
+      expect(events.filter(event => event.type === 'sendResult')).toHaveLength(1);
+    } finally { release(); await sending; engine.dispose(); }
+  });
+
   it('delivers a late final receipt to the original native submission without replaying its attachment', async () => {
     vi.useFakeTimers(); const f = fixture();
     try {

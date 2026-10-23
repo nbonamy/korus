@@ -308,7 +308,13 @@ export function duplicateAgentInSnapshot(
     return null;
   }
 
+  const backend = options.backend === undefined ? source.backend : resolveAgentBackend(snapshot, options.backend);
   const duplicate = copiedAgent(snapshot, source, 'copy', createdAt, createId, options.name);
+  if (backend !== source.backend) {
+    duplicate.backend = backend;
+    duplicate.backendDefaults = defaultBackendDefaults(backend);
+    applyProviderDefaults(snapshot, duplicate);
+  }
   insertAgentAfterSource(snapshot, source, duplicate);
   if (options.select !== false) {
     snapshot.activeTeamId = duplicate.teamId ?? snapshot.activeTeamId;
@@ -553,6 +559,8 @@ export function reorderRepositoryInTeam(
   return sourceAgents;
 }
 
+export function canChangeAgentConversation(agent: Pick<Agent, 'status'>): boolean { return agent.status.type === 'idle'; }
+
 export function restartAgentConversation(snapshot: AppSnapshot, agentId: string, updatedAt = new Date().toISOString()): Agent | null {
   const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
   if (!agent) {
@@ -593,31 +601,33 @@ export function resumeAgentConversationInSnapshot(
   return agent;
 }
 
-export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Agent | null {
+export function removeAgentFromRoster(snapshot: AppSnapshot, agentId: string): Agent | null {
   const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
   if (!agent) {
     return null;
   }
 
   snapshot.agents = snapshot.agents.filter((candidate) => candidate.id !== agentId);
-  releaseRemovedAutomationTargetsInSnapshot(snapshot);
-  delete snapshot.agentRequests?.[agentId];
-  delete snapshot.backendApprovals[agentId];
-  snapshot.workBacklog.assignments = Object.fromEntries(
-    Object.entries(snapshot.workBacklog.assignments)
-      .filter(([, assignment]) => assignment.agentId !== agentId),
-  );
 
   for (const team of snapshot.teams) {
     team.agentIds = team.agentIds.filter((candidate) => candidate !== agentId);
     if (team.activeAgentId === agentId) {
-      team.activeAgentId = team.agentIds[0];
+      team.activeAgentId = agentAfterRosterRemoval(snapshot, agent, team.agentIds)?.id;
     }
   }
 
   if (snapshot.activeAgentId === agentId) {
-    const sameTeamNextAgent = snapshot.agents.find((candidate) => candidate.teamId === agent.teamId);
+    const sameTeamNextAgent = agentAfterRosterRemoval(snapshot, agent);
     snapshot.activeAgentId = sameTeamNextAgent?.id ?? null;
+  }
+
+  for (const preferences of Object.values(snapshot.clientPreferences ?? {})) {
+    const next = agentAfterRosterRemoval(snapshot, agent, preferences.agentOrderByTeam?.[agent.teamId ?? '']);
+    if (preferences.activeAgentId === agentId) preferences.activeAgentId = next?.id ?? null;
+    if (agent.teamId && preferences.activeAgentByTeam?.[agent.teamId] === agentId) {
+      if (next) preferences.activeAgentByTeam[agent.teamId] = next.id;
+      else delete preferences.activeAgentByTeam[agent.teamId];
+    }
   }
 
   if (snapshot.activeTeamId === agent.teamId && snapshot.activeAgentId) {
@@ -628,8 +638,33 @@ export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Ag
   return agent;
 }
 
+function agentAfterRosterRemoval(snapshot: AppSnapshot, removed: Agent, order: string[] = []): Agent | undefined {
+  const team = snapshot.teams.find(candidate => candidate.id === removed.teamId);
+  const candidates = [...new Set([...order, ...(team?.agentIds ?? [])])]
+    .filter(id => team?.agentIds.includes(id))
+    .flatMap(id => snapshot.agents.find(candidate => candidate.id === id) ?? []);
+  const repository = workspaceSidebarRepositoryRootForAgent(removed);
+  return candidates.find(candidate => repository
+    ? workspaceSidebarRepositoryRootForAgent(candidate) === repository
+    : removed.folder && candidate.folder === removed.folder) ?? candidates[0];
+}
+
+export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Agent | null {
+  const agent = removeAgentFromRoster(snapshot, agentId);
+  if (!agent) return null;
+  releaseRemovedAutomationTargetsInSnapshot(snapshot);
+  delete snapshot.agentRequests?.[agentId];
+  delete snapshot.backendApprovals[agentId];
+  snapshot.workBacklog.assignments = Object.fromEntries(
+    Object.entries(snapshot.workBacklog.assignments)
+      .filter(([, assignment]) => assignment.agentId !== agentId),
+  );
+
+  return agent;
+}
+
 function ensureAgentCanChange(agent: Agent, message: string): void {
-  if (agent.status.type !== 'idle') {
+  if (!canChangeAgentConversation(agent)) {
     throw new Error(message);
   }
 }

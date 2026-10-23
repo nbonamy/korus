@@ -285,6 +285,8 @@ export class AppController {
     ipc.handle(ipcChannels.listAgentFiles, async (_event, agentId: string) => {
       return this.listAgentFiles(agentId);
     });
+    ipc.handle(ipcChannels.listAgentDirectory, (_event, agentId: string, input?: import('@workspace/core/contracts/workspace').AgentDirectoryInput) =>
+      this.requireBackendClient().request(backendMethods.agentDirectoryList, { agentId, input }));
     ipc.handle(ipcChannels.listAgentTasks, (_event, agentId) => this.requireBackendClient().request(backendMethods.agentTasksList, { agentId }));
     ipc.handle(ipcChannels.cancelAgentTask, (_event, agentId, taskId) => this.requireBackendClient().request(backendMethods.agentTaskCancel, { agentId, taskId }));
 
@@ -1762,7 +1764,7 @@ export class AppController {
       populateDebugVisualize: (scenario) => this.populateDebugVisualize(scenario),
       getDebugMissionStage: () => this.debugMission()?.stage,
       getDebugMissionReviewState: () => this.debugMissionReviewState(),
-      setDebugMissionStage: (stage, reviewState) => this.setDebugMissionStage(stage, reviewState),
+      setDebugMissionStage: (stage, reviewState, preset) => this.setDebugMissionStage(stage, reviewState, preset),
       injectDebugCodeReview: (scenario) => this.injectDebugCodeReview(scenario),
       isDebugThreadFlagSet: (id) => this.isDebugThreadFlagSet(id),
       setDebugThreadFlag: (id, value) => this.setDebugThreadFlag(id, value),
@@ -1790,10 +1792,10 @@ export class AppController {
       : 'identified';
   }
 
-  private setDebugMissionStage(stage: MissionStage, reviewState?: MissionReviewDebugState): void {
+  private setDebugMissionStage(stage: MissionStage, reviewState?: MissionReviewDebugState, preset?: 'screenshot'): void {
     const mission = this.debugMission();
     if (!mission || !this.backendClient || app?.isPackaged) return;
-    void this.backendClient.request<AppSnapshot>(backendMethods.debugMissionStageSet, { missionId: mission.id, stage, ...(reviewState ? { reviewState } : {}) })
+    void this.backendClient.request<AppSnapshot>(backendMethods.debugMissionStageSet, { missionId: mission.id, stage, ...(reviewState ? { reviewState } : {}), ...(preset ? { preset } : {}) })
       .then(snapshot => this.adoptBackendSnapshot(snapshot))
       .then(() => this.refreshAppMenu())
       .catch((error) => warnMain('debug', 'failed to load mission fixture', {

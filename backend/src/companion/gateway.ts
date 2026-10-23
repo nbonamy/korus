@@ -1,3 +1,4 @@
+import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentRequestResponse } from '@workspace/core/agent-request';
@@ -10,9 +11,11 @@ import { z } from 'zod';
 import type { AgentBackend, AgentGitDiff, AgentGitDiffTarget, BackendSkillSummary, BackendPluginSummary, SourceBranch } from '@workspace/core/contracts';
 import type { CompanionReviewSetup } from '@workspace/core/companion-review';
 import type { CompanionCloseOptions, CompanionClosePreview, CompanionGrant, CompanionPending, CompanionReset, CompanionTarget, CompanionWorkspace } from '@workspace/core/companion-protocol';
-import { companionSessionId, companionMaxUploadBytes, companionMaxUploads } from '@workspace/core/companion-protocol';
+import { companionSessionId, companionMaxUploadBytes, companionMaxUploads, isConversationReset } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
+import { canChangeAgentConversation } from '@workspace/core/agent-manager';
+import { isCodeReviewStartInput } from '@workspace/core/code-review';
 import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion-projection';
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
@@ -21,6 +24,8 @@ import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, 
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
+import { companionMaxDevices, companionMaxInvitations } from '@workspace/core/companion-relay';
+import { pushRegistrationSchema } from './push-registration';
 
 const identity = z.string().min(1).max(200);
 const targetSchema = z.object({ hostId: identity, locationId: identity, teamId: identity, agentId: identity, sessionId: z.string().max(500).nullable() }).strict();
@@ -38,19 +43,21 @@ const promptOptionsSchema = z.object({
   serviceTier: z.string().min(1).max(80).nullable().optional(), planMode: z.boolean().optional(), inputMethod: z.enum(['typed', 'dictated']).optional(),
   delegation: z.object({ startingContext: z.enum(['conversation', 'handoff']), instructions: z.string().max(100_000).optional() }).strict().optional(),
 }).strict();
+// Strict transport shape and size limits remain gateway-owned; review policy is shared.
 const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z.discriminatedUnion('type', [z.object({ type: z.literal('uncommitted') }).strict(), z.object({ type: z.literal('branch'), baseRef: z.string().min(1).max(200) }).strict()]),
   threadMode: z.enum(['current', 'independent']), instructions: z.string().max(100_000).optional(),
   backend: z.enum(['codex', 'claude', 'antigravity']).optional(), model: identity.optional(), reasoningEffort: z.string().min(1).max(40).optional(),
   automation: z.object({ enabled: z.boolean(), maxPriority: z.enum(['p0', 'p1', 'p2', 'p3']), maxRounds: z.number().int().min(1).max(10), autoCommit: z.boolean().optional() }).strict().optional(),
-}).strict().refine(input => input.threadMode === 'independent' || (!input.automation?.enabled && !input.model && !input.reasoningEffort)) }).strict();
+}).strict().refine(isCodeReviewStartInput) }).strict();
 /** A branch name git accepts and no option or path trick can hide in. */
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
 const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.');
-const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
-  if ((input.branch || input.worktree) && input.source !== 'github') return false;
+const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'local', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+  if ((input.branch || input.worktree) && !['github', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
+  if (input.source === 'local') return /^\/[a-f0-9]{16}\/[^/]+$/u.test(input.value);
   if (input.source !== 'url') return true;
   if (/^git@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+$/u.test(input.value)) return true;
   try { const url = new URL(input.value); return ['https:', 'ssh:'].includes(url.protocol) && Boolean(url.hostname) && url.pathname.length > 1 && !url.password && (!url.username || url.protocol === 'ssh:'); }
@@ -70,6 +77,10 @@ export type GatewayPort = {
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
+  localRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
+  localBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
+  duplicateAgent?(agentId: string, backend: AgentBackend): Promise<string>;
+  renameAgent?(agentId: string, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
@@ -77,6 +88,7 @@ export type GatewayPort = {
   respondRequest?(response: AgentRequestResponse): Promise<void>;
   onEvent?(listener: (event: AppBackendEvent) => void): () => void;
   workspace(): Promise<CompanionWorkspace>;
+  synchronize?(agentId: string, checkpoint: CompanionCheckpoint | null): Promise<CompanionSync>;
   conversation(agentId: string): Promise<CompanionReset>;
   loadOlderHistory(agentId: string): Promise<BackendHistoryLoadResult>;
   readConversationContent?(agentId: string, input: ConversationContentInput): Promise<ConversationContentChunk>;
@@ -180,6 +192,19 @@ const agentOperations = {
     },
   }),
   'conversation.subscribe': agentOperation(onlyTarget)({ act: (port, agent) => port.conversation(agent.id), read: { verify: currentReset } }),
+  'conversation.synchronize': agentOperation(withTarget(z.object({ checkpoint: z.object({ epoch: z.string().min(1).max(100), revision: z.number().int().nonnegative().safe() }).strict().nullable() }).strict()))({
+    act: (port, agent, { checkpoint }) => {
+      if (!port.synchronize) throw new Error('Conversation synchronization unavailable.');
+      return port.synchronize(agent.id, checkpoint);
+    },
+    read: { verify: (result, current, target) => {
+      for (const frame of result.frames) {
+        if (isConversationReset(frame)) currentReset(frame as CompanionReset, current, target);
+        else if (frame.agentId !== target.agentId || frame.backend !== current.backend || (current.backendSession?.kind === 'codex' && frame.threadId !== current.backendSession.threadId)) throw new Error('Conversation session mismatch.');
+      }
+      return result;
+    } },
+  }),
   'conversation.loadOlder': agentOperation(onlyTarget)({
     act: async (port, agent) => {
       const page = await port.loadOlderHistory(agent.id);
@@ -240,8 +265,23 @@ const agentOperations = {
     },
     act: async (port, agent, { backend }) => { await port.setBackend(agent.id, backend); return {}; },
   }),
+  'agent.rename': agentOperation(withTarget(z.object({ name: z.string().trim().min(1).max(200) }).strict()))({
+    act: async (port, agent, { name }) => {
+      if (!port.renameAgent) throw new Error('Agent renaming is unavailable.');
+      await port.renameAgent(agent.id, name); return {};
+    },
+  }),
+  'agent.duplicate': agentOperation(withTarget(z.object({ backend: z.enum(['codex', 'claude', 'antigravity']) }).strict()))({
+    check: (agent, { backend }, { backends }) => {
+      if (!backends?.[agent.teamId ?? '']?.includes(backend)) throw new Error('That engine is not available.');
+    },
+    act: async (port, agent, { backend }) => {
+      if (!port.duplicateAgent) throw new Error('Agent duplication is unavailable.');
+      return { agentId: await port.duplicateAgent(agent.id, backend) };
+    },
+  }),
   'agent.restart': agentOperation(onlyTarget)({
-    check: (agent) => { if (agent.status.type === 'working' || agent.status.type === 'awaitingInput') throw new Error('Stop the agent before restarting.'); },
+    check: (agent) => { if (!canChangeAgentConversation(agent)) throw new Error('Stop the agent before restarting.'); },
     act: async (port, agent) => { await port.restart(agent.id); return {}; },
   }),
   'agent.close.preview': agentOperation(onlyTarget)({ act: async (port, agent, _input, target) => ({ ...await port.closePreview(agent.id), target }), read: {} }),
@@ -274,7 +314,7 @@ export class CompanionGateway {
   private readonly creations = new ChatCreations();
   private readonly ledger = new CommandLedger((key) => this.state.commands[key]);
   private readonly pairingAttempts: WindowBudget;
-  constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now) {
+  constructor(readonly hostId: string, private state: GatewayState, private readonly port: GatewayPort, private readonly now = Date.now, private readonly autoAcceptCode?: string) {
     this.pairingAttempts = new WindowBudget(10, pairingLifetimeMs, 200, now);
   }
   get grants() { return this.state.grants.map((grant) => ({ ...grant })); }
@@ -283,7 +323,7 @@ export class CompanionGateway {
   pairingInvitations() { this.expire(); return [...this.invitations.values()].map(({ code, expiresAt }) => ({ code, expiresAt })); }
   invite() {
     this.expire();
-    if (this.invitations.size >= 5) throw new Error('Too many active invitations.');
+    if (this.invitations.size >= companionMaxInvitations) throw new Error('Too many active invitations.');
     let code = generatePairingCode();
     while (this.invitations.has(normalizePairingCode(code)!)) code = generatePairingCode();
     const expiresAt = this.now() + pairingLifetimeMs;
@@ -303,7 +343,7 @@ export class CompanionGateway {
       this.expire();
       const pending = this.pending.get(id);
       if (!pending) throw new Error('Pairing request expired or consumed.');
-      if (approve && this.state.grants.length >= 20 && !this.state.grants.some((grant) => grant.peerId === pending.peerId)) throw new Error('Too many paired devices.');
+      if (approve && this.state.grants.length >= companionMaxDevices && !this.state.grants.some((grant) => grant.peerId === pending.peerId)) throw new Error('Too many paired devices.');
       const next = { ...this.state, grants: this.state.grants.filter((grant) => grant.peerId !== pending.peerId) };
       if (approve) next.grants.push({ peerId: pending.peerId, name: pending.name, createdAt: this.now() });
       await this.port.save(next);
@@ -311,9 +351,8 @@ export class CompanionGateway {
       this.pending.delete(id); this.invitations.delete(pending.code);
     });
   }
-  async notify(notification: CompanionNotification, allowPush: () => Promise<boolean> = async () => true) {
+  async notify(notification: CompanionNotification) {
     for (const listener of this.notifications) listener(notification);
-    if (!await allowPush()) return;
     await Promise.all(this.state.grants.map(async grant => {
       const registration = this.state.push?.[grant.peerId];
       if (!registration || !this.port.push || [...this.livePhones.get(grant.peerId) ?? []].some(subscription => subscription.foreground)) return;
@@ -341,6 +380,7 @@ export class CompanionGateway {
     this.livePhones.set(peerId, subscriptions);
     const subscription = new CompanionSubscription({
       onClose: () => { subscriptions.delete(subscription); if (!subscriptions.size) this.livePhones.delete(peerId); },
+      // By identity, not by device id: pairing the same phone again replaces its grant and ends the streams of the old one.
       authorized: () => this.state.grants.includes(grant),
       onNotification: listener => { this.notifications.add(listener); return () => { this.notifications.delete(listener); }; },
       onEvent: (listener) => this.port.onEvent!(listener),
@@ -367,6 +407,16 @@ export class CompanionGateway {
    * inside the mutation lock.
    */
   private readonly operations: Record<string, Operation> = {
+    'project.local.list': async (peer, args) => {
+      const { teamId } = z.object({ teamId: identity }).strict().parse(args);
+      if (!this.port.localRepositories) throw new Error('Repositories are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.localRepositories!(remote));
+    },
+    'project.local.branches': async (peer, args) => {
+      const { teamId, repositoryId } = repositorySchema.parse(args);
+      if (!this.port.localBranches) throw new Error('Branches are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.localBranches!(repositoryId, remote));
+    },
     'project.github.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);
       if (!this.port.githubRepositories) throw new Error('GitHub repositories are unavailable.');
@@ -401,7 +451,7 @@ export class CompanionGateway {
       return usage;
     },
     'notifications.register': async (peer, args) => {
-      const registration = z.object({ token: z.string().regex(/^[a-f0-9]{32,512}$/), environment: z.enum(['development', 'production']), authorization: z.object({ expiresAt: z.number().int().positive(), signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/) }).strict().optional() }).strict().nullable().parse(args);
+      const registration = pushRegistrationSchema.nullable().parse(args);
       await this.mutate(async () => {
         this.requireGrant(peer);
         const push = { ...this.state.push };
@@ -417,7 +467,7 @@ export class CompanionGateway {
       const { repositoryIcons, ...projected } = projectCompanionWorkspace(workspace);
       // Icons are large and rarely change: send them only when the phone's copy is out of date.
       const version = createHash('sha256').update(JSON.stringify(Object.entries(repositoryIcons).sort())).digest('hex').slice(0, 16);
-      return { ...projected, iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
+      return { ...projected, ...(this.port.synchronize ? { conversationSync: true } : {}), iconsVersion: version, ...(version === iconsVersion ? {} : { repositoryIcons }) };
     },
     'prompt.submit': (peer, args) => {
       const command = commandSchema.parse(args);
@@ -466,6 +516,16 @@ export class CompanionGateway {
   private claim(peerId: string, args: unknown) {
     const request = z.object({ code: z.string().length(8), name: z.string().trim().min(1).max(80) }).strict().parse(args);
     if (!this.pairingAttempts.take(peerId)) throw new Error('Too many pairing attempts.');
+    if (request.code === this.autoAcceptCode) return this.mutate(async () => {
+      if (!this.state.grants.some(grant => grant.peerId === peerId)) {
+        if (this.state.grants.length >= companionMaxDevices) throw new Error('Too many paired devices.');
+        const grant = { peerId, name: request.name, createdAt: this.now() };
+        const next = { ...this.state, grants: [...this.state.grants, grant] };
+        await this.port.save(next);
+        this.state = next;
+      }
+      return { pendingId: randomUUID(), state: 'approved' };
+    });
     const invitation = this.invitations.get(request.code);
     if (!invitation) throw new Error('Invalid or expired invitation.');
     if (invitation.pendingId) {

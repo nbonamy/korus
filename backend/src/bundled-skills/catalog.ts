@@ -14,6 +14,7 @@ import reviewer from './korus-reviewer/SKILL.md?raw';
 import automations from './korus-automations/SKILL.md?raw';
 import browser from './korus-browser/SKILL.md?raw';
 import simulator from './korus-simulator/SKILL.md?raw';
+import imagegen from './korus-imagegen/SKILL.md?raw';
 
 type SkillContext = { computerUseEnabled?: boolean; missionStage?: MissionStage; toolModules?: readonly string[] };
 type Skill = { name: string; description: string; markdown: string };
@@ -31,6 +32,7 @@ function skill(source: string): Skill {
 const generalSkills = [skill(html), skill(visualize), skill(delegation)];
 const computerUseSkill = skill(computerUse);
 const moduleSkills = [
+  ['image-generation', skill(imagegen)],
   ['in-app-browser', skill(browser)],
   ['mobile-simulator', skill(simulator)],
   ['automatic-review', skill(reviewLaunch)],

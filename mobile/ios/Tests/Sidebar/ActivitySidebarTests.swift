@@ -2,7 +2,7 @@ import XCTest
 @testable import CompanionSidebar
 
 // Native-only failure modes: a cross-section move changes row identity; a view choice leaks
-// across teams/laptops, resets on relaunch, or defaults to the wrong organization.
+// across teams/laptops, resets on relaunch, or defaults to the wrong organization or Idle order.
 final class ActivitySidebarTests: XCTestCase {
     func testAgentIdentitySurvivesCrossSectionMovesAndEmptyHeadersDisappear() {
         let session = SidebarSession(agentId: "a", title: "Mobile", kind: .worktree, status: .working)
@@ -29,5 +29,11 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertEqual(SidebarPreferences(defaults: defaults).organization(hostId: "laptop", teamId: "one"), .repository)
         XCTAssertEqual(preferences.organization(hostId: "laptop", teamId: "two"), .activity)
         XCTAssertEqual(preferences.organization(hostId: "other", teamId: "one"), .activity)
+        XCTAssertEqual(preferences.idleSort(hostId: "laptop", teamId: "one"), .activity)
+        preferences.setIdleSort(.repository, hostId: "laptop", teamId: "one")
+        XCTAssertEqual(SidebarPreferences(defaults: defaults).idleSort(hostId: "laptop", teamId: "one"), .repository)
+        XCTAssertEqual(preferences.idleSort(hostId: "laptop", teamId: "two"), .activity)
+        XCTAssertEqual(preferences.idleSort(hostId: "other", teamId: "one"), .activity)
+        XCTAssertEqual(preferences.organization(hostId: "laptop", teamId: "one"), .repository)
     }
 }

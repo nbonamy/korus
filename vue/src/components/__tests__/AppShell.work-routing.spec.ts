@@ -149,6 +149,7 @@ describe('AppShell work routing', () => {
     expect(createAgent).toHaveBeenCalledWith({
       name: null,
       folder: '/Users/nbonamy/src/agent-workspace',
+      repositorySession: { existingBranch: 'main' },
       backend: 'codex',
       sourceRepositoryName: 'agent-workspace',
       teamId: 'team-app',
@@ -223,15 +224,14 @@ describe('AppShell work routing', () => {
       repositoryRoot: '/Users/nbonamy/src/agent-workspace',
     });
     await flushPromises();
+    createSourceWorktree.mockClear();
     sourceDialog.vm.$emit('select-branch', { name: 'feat/work-routing', isDefault: false });
     await flushPromises();
-    expect(createSourceWorktree).toHaveBeenCalledWith({
-      repoPath: '/Users/nbonamy/src/agent-workspace',
-      branchName: 'feat/work-routing',
-    });
+    expect(createSourceWorktree).not.toHaveBeenCalled();
     expect(createAgent).toHaveBeenCalledWith({
       name: null,
-      folder: '/Users/nbonamy/src/agent-workspace-work-routing',
+      folder: '/Users/nbonamy/src/agent-workspace',
+      repositorySession: { existingBranch: 'feat/work-routing' },
       backend: 'codex',
       sourceRepositoryName: 'agent-workspace',
       teamId: 'team-app',
@@ -414,7 +414,7 @@ describe('AppShell work routing', () => {
     acquire.vm.$emit('select-repository', githubRepository);
     await flushPromises();
 
-    expect(cloneSourceRepository).toHaveBeenCalledWith({ url: githubRepository.url });
+    expect(cloneSourceRepository).toHaveBeenCalledWith({ url: githubRepository.url, reuseExisting: true });
     expect(listSourceBranches).toHaveBeenCalledWith('/Users/nbonamy/src/new-project', undefined);
     expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('repositoryName')).toBe('new-project');
   });
@@ -466,6 +466,7 @@ describe('AppShell work routing', () => {
 
     expect(cloneSourceRepository).toHaveBeenCalledWith({
       url: githubRepository.url,
+      reuseExisting: true,
       remoteConnectionId: 'connection-devbox',
     });
     expect(listSourceBranches).toHaveBeenCalledWith(
@@ -474,7 +475,7 @@ describe('AppShell work routing', () => {
     );
   });
 
-  it('opens an existing checkout only when its remote matches the selected GitHub repository', async () => {
+  it('opens the existing checkout returned by daemon acquisition', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'nbonamy' }];
     const githubRepository: WorkSource = {
@@ -486,7 +487,7 @@ describe('AppShell work routing', () => {
       url: 'https://github.com/nbonamy/existing-project',
       isPrivate: true,
     };
-    const cloneSourceRepository = vi.fn();
+    const cloneSourceRepository = vi.fn().mockResolvedValue({ name: 'renamed-locally', path: '/Users/nbonamy/src/renamed-locally', worktrees: [] });
     const listSourceBranches = vi.fn().mockResolvedValue([]);
     const wrapper = mountShell({
       snapshot,
@@ -506,7 +507,7 @@ describe('AppShell work routing', () => {
     wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).vm.$emit('select-repository', githubRepository);
     await flushPromises();
 
-    expect(cloneSourceRepository).not.toHaveBeenCalled();
+    expect(cloneSourceRepository).toHaveBeenCalledWith({ url: githubRepository.url, reuseExisting: true });
     expect(listSourceBranches).toHaveBeenCalledWith('/Users/nbonamy/src/renamed-locally', undefined);
   });
 

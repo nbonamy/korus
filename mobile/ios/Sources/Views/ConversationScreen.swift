@@ -18,7 +18,7 @@ struct ConversationScreen: View {
                 if model.showConnectionLost && !model.hasTranscript {
                     ConnectionLostView(reconnect: model.reconnect)
                         .background(Color(.systemBackground).ignoresSafeArea())
-                } else if model.conversationLoadFailed {
+                } else if model.conversationLoadFailed && !model.hasTranscript {
                     ContentUnavailableView {
                         Label("Couldn’t load this conversation", systemImage: "exclamationmark.bubble")
                     } description: { Text("Try again to reconnect to this conversation.") }
@@ -30,6 +30,24 @@ struct ConversationScreen: View {
                         Color(.systemBackground).ignoresSafeArea()
                         ProgressView("Loading conversation…")
                     }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if model.hasTranscript && (model.connection == .connected && (model.conversationLoadFailed || model.showUpdating) || model.showReconnecting) {
+                    HStack(spacing: 7) {
+                        if model.conversationLoadFailed {
+                            Text("Couldn’t update")
+                            Button("Retry") { model.retryConversation() }
+                        } else {
+                            ProgressView().controlSize(.mini)
+                            Text(model.connection == .connected ? "Updating…" : "Reconnecting…")
+                        }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 6)
+                    .accessibilityElement(children: .contain)
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -66,7 +84,7 @@ struct ConversationScreen: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        withAnimation(.smooth(duration: 0.32)) { model.drawerOpen.toggle() }
+                        model.drawerOpen.toggle()
                     } label: {
                         Image(systemName: "line.3.horizontal")
                     }
@@ -83,18 +101,23 @@ struct ConversationScreen: View {
                                 .disabled(!model.canManageSession)
                             Divider()
                         }
+                        Button("Rename Agent", systemImage: "pencil") { model.openAgentRename() }
+                            .disabled(!model.canManageSession)
+                        Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
+                            .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
+                        Divider()
                         Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
                             .disabled(!model.canManageSession || model.isWorking)
                         Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
                             .disabled(!model.canManageSession)
                     } label: {
-                        if model.sessionAction == "previewClose" { ProgressView() }
+                        if model.sessionAction == "previewClose" || model.duplicatingAgent { ProgressView() }
                         else { Image(systemName: "ellipsis") }
                     }
                     .buttonBorderShape(.circle)
                     .toolbarDot(model.git.uncommitted?.state == "dirty")
                     .accessibilityLabel("Session actions")
-                    .accessibilityValue(model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
+                    .accessibilityValue(model.duplicatingAgent ? "Duplicating agent" : model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
                 }
             }
             .toolbarTitleDisplayMode(.inline)
@@ -111,6 +134,11 @@ struct ConversationScreen: View {
             .sheet(item: Binding(get: { model.closePreview }, set: { if $0 == nil { model.cancelCloseSession() } })) { preview in
                 CloseSessionSheet(preview: preview)
             }
+            .sheet(item: Binding(get: { model.agentRename }, set: { model.agentRename = $0 })) { draft in
+                RenameAgentSheet(name: draft.name, enabled: model.canManageSession && model.composerDrafts.target == draft.target,
+                    cancel: { model.agentRename = nil }, save: { model.renameAgent(draft.target, name: $0) })
+            }
+            .onChange(of: model.composerDrafts.target) { _, _ in model.agentRename = nil }
             .alert("Session action failed", isPresented: Binding(get: { model.sessionActionFailed && model.closePreview == nil }, set: { if !$0 { model.dismissSessionError() } })) {
                 Button("OK", role: .cancel) { model.dismissSessionError() }
             } message: { Text("The laptop couldn’t complete the action. Check the connection and try again.") }

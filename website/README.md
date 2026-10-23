@@ -4,6 +4,10 @@ This contains the static landing page and VitePress documentation for [meetkorus
 
 ## Local preview
 
+Use the repository's Node 26 reference toolchain, with the exact version pinned
+in [`.nvmrc`](../.nvmrc) and npm setup covered in the
+[development requirements](../README.md#development).
+
 ```bash
 npm run docs:build
 node website/build.mjs
@@ -18,6 +22,12 @@ same definition and sends `__PRODUCT_DOWNLOAD_URL__` guide links to the platform
 the built artifact so the name and documentation are both available.
 
 ## Documentation
+
+The public privacy policy is authored in `privacy/index.html` and published at
+`/privacy/`. The website build expands its shared product metadata and includes
+it in the static artifact beside the landing page and guide.
+Keep the policy's contact links inside Cloudflare's `email_off` comments so
+the public email address remains accessible without JavaScript.
 
 The public user guide lives in `website/docs/` and uses VitePress with a
 customized default theme. The navigation follows Getting started, Providers,
@@ -59,8 +69,8 @@ for documentation routes.
 
 ## Product preview
 
-The visual identity uses warm off-white, charcoal, and restrained slate-blue
-accents. Films keep charcoal title cards and the same quiet accent palette;
+The website uses white and neutral-gray surfaces, near-black text, blue accents,
+and system UI typography. Films keep charcoal title cards and a quiet accent palette;
 green and red communicate success and defects. Shared film branding comes
 from `videos/product.mjs`, including the closing URL from product metadata.
 

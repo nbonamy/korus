@@ -7,6 +7,8 @@
 	<!-- Encryption is supplied by Apple CryptoKit and operating-system networking. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array><string>remote-notification</string></array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIApplicationSceneManifest</key>
@@ -37,6 +39,8 @@
 	<string>Connect to the relay you selected.</string>
 	<key>CompanionPushEnvironment</key>
 	<string>$(COMPANION_PUSH_ENVIRONMENT)</string>
+	<key>CompanionPrivacyPolicyURL</key>
+	<string>$(COMPANION_PRIVACY_POLICY_URL)</string>
 	<key>CompanionRelayURL</key>
 	<string>$(COMPANION_RELAY_URL)</string>
 	<key>CompanionRelayPeerID</key>

@@ -1,4 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { mountProvisioningHost } from './provisioning-host';
+import { activeProvisioningOperation, backgroundProvisioningOperation } from '../provisioning-operations';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BranchCurrentWorkDialog from '../BranchCurrentWorkDialog.vue';
 import type { BranchWorkInput, BranchWorkPreview } from '@workspace/core/branch-current-work';
@@ -25,6 +27,7 @@ describe('BranchCurrentWorkDialog', () => {
     vi.useFakeTimers();
     const transfer = vi.fn(async (_agentId: string, input: BranchWorkInput) => { structuredClone(input); return { state: 'completed' as const, folder: '/worktree', branchName: 'feature/work', agentId: 'worker', retainedPaths: [] }; });
     const wrapper = mount(BranchCurrentWorkDialog, { props: { modelValue: true, agentId: 'parent', load: async () => preview, transfer } });
+    mountProvisioningHost();
     await flushPromises();
     expect(wrapper.findAll('input')).toHaveLength(1);
     expect(wrapper.get('input[name="branch"]').attributes('aria-label')).toBe('Branch name');
@@ -49,7 +52,8 @@ describe('BranchCurrentWorkDialog', () => {
     await wrapper.get('input[name="branch"]').setValue('feature/work');
     await button(wrapper, 'Branch').trigger('click'); await flushPromises();
     expect(wrapper.find('input').exists()).toBe(false);
-    const rows = () => wrapper.findAll('.staged-operation-progress li');
+    const host = mountProvisioningHost();
+    const rows = () => host.findAll('.staged-operation-progress li');
     expect(rows()).toHaveLength(4);
     expect(rows()[0]!.classes()).toContain('is-active');
     const input = transfer.mock.calls[0]![1];
@@ -67,15 +71,34 @@ describe('BranchCurrentWorkDialog', () => {
     wrapper.unmount();
   });
 
+  it('finishes a backgrounded transfer without opening the new agent', async () => {
+    let finish!: (value: { state: 'completed'; folder: string; branchName: string; agentId: string; retainedPaths: string[] }) => void;
+    const pending = new Promise<Parameters<typeof finish>[0]>(resolve => { finish = resolve; });
+    const transfer = vi.fn(async (_agentId: string, input: BranchWorkInput) => { structuredClone(input); return pending; });
+    const wrapper = mount(BranchCurrentWorkDialog, { props: { modelValue: true, agentId: 'parent', load: async () => preview, transfer } });
+    await flushPromises();
+    await wrapper.get('input[name="branch"]').setValue('feature/work');
+    await button(wrapper, 'Branch').trigger('click'); await flushPromises();
+    backgroundProvisioningOperation(transfer.mock.calls[0]![1].requestId);
+    expect(activeProvisioningOperation.value).toBeNull();
+    finish({ state: 'completed', folder: '/worktree', branchName: 'feature/work', agentId: 'worker', retainedPaths: [] });
+    await flushPromises();
+    expect(wrapper.emitted('transferred')).toHaveLength(1);
+    expect(wrapper.emitted('inspect-agent')).toBeUndefined();
+    expect(wrapper.emitted('update:modelValue')).toStrictEqual([[false]]);
+    wrapper.unmount();
+  });
+
   it('keeps the same frozen request on retry and exposes recovery without creating another agent', async () => {
     const transfer = vi.fn().mockResolvedValueOnce({ state: 'recovery', folder: '/worktree', branchName: 'feature/work', retainedPaths: ['tracked.ts'], detail: 'Agent persistence failed' })
       .mockResolvedValueOnce({ state: 'completed', folder: '/worktree', branchName: 'feature/work', retainedPaths: [] });
     const wrapper = mount(BranchCurrentWorkDialog, { props: { modelValue: true, agentId: 'parent', load: async () => preview, transfer } });
     await flushPromises();
     await wrapper.get('input[name="branch"]').setValue('feature/work');
+    const host = mountProvisioningHost();
     await button(wrapper, 'Branch').trigger('click'); await flushPromises();
-    expect(wrapper.text()).toContain('Agent persistence failed');
-    await button(wrapper, 'Close').trigger('click'); await flushPromises();
+    expect(host.text()).toContain('Agent persistence failed');
+    await button(host, 'Close').trigger('click'); await flushPromises();
     expect(wrapper.text()).toContain('/worktree');
     await button(wrapper, 'Retry').trigger('click'); await flushPromises();
     expect(transfer.mock.calls[1]).toStrictEqual(transfer.mock.calls[0]);

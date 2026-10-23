@@ -47,12 +47,13 @@ describe('AppController', () => {
     const controller = new AppController(snapshot, createBackendClient({ request }));
     (controller as unknown as { selectMission(missionId: string | null): void }).selectMission(mission.id);
     const options = (controller as unknown as {
-      debugMenuOptions(): { getDebugMissionStage(): MissionStage | undefined; setDebugMissionStage(stage: MissionStage, reviewState?: 'identified' | 'remediated'): void };
+      debugMenuOptions(): { getDebugMissionStage(): MissionStage | undefined; setDebugMissionStage(stage: MissionStage, reviewState?: 'identified' | 'remediated', preset?: 'screenshot'): void };
     }).debugMenuOptions();
 
     expect(options.getDebugMissionStage()).toBe('requirements');
     options.setDebugMissionStage('implementation');
     options.setDebugMissionStage('review', 'remediated');
+    options.setDebugMissionStage('implementation', undefined, 'screenshot');
 
     await vi.waitFor(() => expect(request).toHaveBeenCalledWith(
       backendMethods.debugMissionStageSet,
@@ -61,6 +62,10 @@ describe('AppController', () => {
     expect(request).toHaveBeenCalledWith(
       backendMethods.debugMissionStageSet,
       { missionId: mission.id, stage: 'review', reviewState: 'remediated' },
+    );
+    expect(request).toHaveBeenCalledWith(
+      backendMethods.debugMissionStageSet,
+      { missionId: mission.id, stage: 'implementation', preset: 'screenshot' },
     );
   });
 

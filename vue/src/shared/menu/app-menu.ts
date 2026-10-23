@@ -29,6 +29,8 @@ export type AppMenuRadioItem = AppMenuItemBase & {
 
 export type AppMenuSubmenuItem = AppMenuItemBase & {
   type: 'submenu';
+  /** Marks the submenu's own entry as the current choice (shown as a check). */
+  checked?: boolean;
   items: AppMenuItem[];
   submenuWidth?: 'default' | 'wide';
 };

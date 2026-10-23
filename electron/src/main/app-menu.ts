@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { app, clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts';
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
@@ -27,7 +27,7 @@ export type AppMenuCallbacks = {
   populateDebugVisualize?: (scenario: VisualizeDebugScenario) => void;
   getDebugMissionStage?: () => MissionStage | undefined;
   getDebugMissionReviewState?: () => MissionReviewDebugState | undefined;
-  setDebugMissionStage?: (stage: MissionStage, reviewState?: MissionReviewDebugState) => void;
+  setDebugMissionStage?: (stage: MissionStage, reviewState?: MissionReviewDebugState, preset?: 'screenshot') => void;
   injectDebugCodeReview?: (scenario: DebugCodeReviewScenario) => void;
   isDebugThreadFlagSet?: (id: ThreadFlagId) => boolean;
   setDebugThreadFlag?: (id: ThreadFlagId, value: boolean) => void;
@@ -213,13 +213,17 @@ function buildDebugMissionFixtures(callbacks: AppMenuCallbacks): MenuItemConstru
     { label: 'Review — Findings Remediated', stage: 'review', reviewState: 'remediated' },
     { label: 'Ship', stage: 'ship' },
   ];
-  return fixtures.map(({ label, stage, reviewState }) => ({
+  return [...fixtures.map(({ label, stage, reviewState }): MenuItemConstructorOptions => ({
     label,
     type: 'radio',
     checked: callbacks.getDebugMissionStage?.() === stage && (stage !== 'review' || callbacks.getDebugMissionReviewState?.() === reviewState),
     enabled: Boolean(callbacks.setDebugMissionStage && callbacks.getDebugMissionStage?.()),
     click: () => callbacks.setDebugMissionStage?.(stage, reviewState),
-  }));
+  })), { type: 'separator' }, {
+    label: 'Implementation — Website Screenshot',
+    enabled: Boolean(callbacks.setDebugMissionStage && callbacks.getDebugMissionStage?.()),
+    click: () => callbacks.setDebugMissionStage?.('implementation', undefined, 'screenshot'),
+  }];
 }
 
 function buildDebugCodeReviewFixtures(callbacks: AppMenuCallbacks): MenuItemConstructorOptions[] {
@@ -420,7 +424,7 @@ function buildAppMenu(callbacks: AppMenuCallbacks, options: AppMenuOptions): Men
       {
         label: mainT('menu.quitApp'),
         accelerator: shortcutAccelerator('quit'),
-        click: () => callbacks.sendAppCommand({ type: 'quit' }),
+        click: () => app.quit(),
       },
     ],
   };
@@ -466,7 +470,7 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
       {
         label: mainT('menu.quit'),
         accelerator: shortcutAccelerator('quit'),
-        click: () => callbacks.sendAppCommand({ type: 'quit' }),
+        click: () => app.quit(),
       },
     ],
   };

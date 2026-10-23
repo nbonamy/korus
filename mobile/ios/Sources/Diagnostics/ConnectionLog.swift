@@ -11,13 +11,14 @@ final class ConnectionLog: Sendable {
         self.maxBytes = maxBytes
     }
 
-    func append(_ record: [String: Any]) {
-        // Keep this boundary narrow even if a future engine caller passes extra fields.
-        let keys: Set<String> = ["event", "at", "streamId", "requestId", "method", "reason", "stage",
+    /// Keep this boundary narrow even if a future engine caller passes extra fields.
+    private static let allowedKeys: Set<String> = ["event", "at", "streamId", "requestId", "method", "reason", "stage",
                                  "elapsedMs", "idleMs", "pending", "sequence", "oldestMethod", "oldestAgeMs",
                                  "agentId", "errorName", "errorCode", "reused", "connectionCount",
                                  "connectionId", "remainingBytes", "remainingSeconds", "closeCode", "wasClean"]
-        let safe = record.filter { keys.contains($0.key) && ($0.value is String || $0.value is NSNumber) }
+
+    func append(_ record: [String: Any]) {
+        let safe = record.filter { Self.allowedKeys.contains($0.key) && ($0.value is String || $0.value is NSNumber) }
         guard var line = try? JSONSerialization.data(withJSONObject: safe, options: [.sortedKeys]), line.count < min(4096, maxBytes) else { return }
         line.append(0x0a)
         lock.lock()

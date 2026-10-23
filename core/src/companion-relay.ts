@@ -13,5 +13,12 @@ export function relayAddress(origin: string, peerId: string, allowLocalDevelopme
   return `/${protocol}/${host.replace(/^\[|\]$/g, '')}/tcp/${url.port || 443}${url.protocol === 'wss:' ? '/tls' : ''}/ws/p2p/${peerId}`;
 }
 export const companionAdmissionProtocol = '/workspace/companion-admission/2.0.0';
+/** What the laptop may ask the relay to route, and how often it renews that request. */
+export const companionMaxDevices = 20;
+export const companionMaxInvitations = 5;
+export const companionAdmissionIntervalMs = 20_000;
+/** The relay keeps a laptop's routing for several missed renewals. */
+export const companionAdmissionLeaseMs = 120_000;
+export const companionPeerIdPattern = /^[a-zA-Z0-9]{32,128}$/;
 /** The pinned relay is trusted for the initial introduction; both endpoints pin the introduced peer identity. */
 export const companionRendezvousProtocol = '/workspace/companion-rendezvous/2.0.0';

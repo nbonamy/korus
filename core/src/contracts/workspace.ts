@@ -23,6 +23,10 @@ export type AgentFileSearchItem = {
   path: string;
 };
 
+export type AgentDirectoryInput = { path?: string; cursor?: number; query?: string };
+export type AgentDirectoryEntry = AgentFileSearchItem & { kind: 'folder' | 'file' };
+export type AgentDirectoryPage = { entries: AgentDirectoryEntry[]; nextCursor: number | null };
+
 export type AgentFilePreviewResult = {
   path: string;
   size: number;
@@ -60,6 +64,8 @@ export type SourceRepository = {
 export type CloneSourceRepositoryInput = {
   url: string;
   remoteConnectionId?: string;
+  /** Acquire a configured checkout of the same remote instead of cloning another copy. */
+  reuseExisting?: boolean;
 };
 
 export type CreateSourceRepositoryInput = {

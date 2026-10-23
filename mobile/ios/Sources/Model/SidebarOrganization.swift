@@ -10,6 +10,12 @@ enum SidebarOrganization: String, CaseIterable, Sendable {
     var label: String { self == .activity ? "Activity" : "Repository" }
 }
 
+enum SidebarIdleSort: String, CaseIterable, Sendable {
+    case activity, repository
+
+    var label: String { self == .activity ? "Recent activity" : "Repository" }
+}
+
 struct SidebarPreferences {
     var defaults: UserDefaults = .standard
 
@@ -19,6 +25,14 @@ struct SidebarPreferences {
 
     func setOrganization(_ organization: SidebarOrganization, hostId: String, teamId: String) {
         defaults.set(organization.rawValue, forKey: key(hostId, teamId))
+    }
+
+    func idleSort(hostId: String, teamId: String) -> SidebarIdleSort {
+        defaults.string(forKey: "sidebar.idleSort:\(hostId):\(teamId)").flatMap(SidebarIdleSort.init(rawValue:)) ?? .activity
+    }
+
+    func setIdleSort(_ order: SidebarIdleSort, hostId: String, teamId: String) {
+        defaults.set(order.rawValue, forKey: "sidebar.idleSort:\(hostId):\(teamId)")
     }
 
     private func key(_ hostId: String, _ teamId: String) -> String {

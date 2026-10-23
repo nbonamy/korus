@@ -28,9 +28,12 @@ export function createAppBrowserClient(options: CreateAppBrowserClientOptions): 
   const operations = new Map<string, (...args: unknown[]) => unknown>();
   const onEvent = (listener: (event: MainToRendererEvent) => void) => transport.onEvent(listener);
   const noopSubscription = () => () => undefined;
+  // Selection is renderer-owned; this hook only refreshes Electron's debug menu.
+  const selectMission = async () => undefined;
   return new Proxy({}, {
     get(_target, property) {
       if (property === 'onEvent') return onEvent;
+      if (property === 'selectMission') return selectMission;
       if (property === 'onAppCommand' || property === 'onUpdateStatusChanged') return noopSubscription;
       if (typeof property !== 'string') return undefined;
       let operation = operations.get(property);

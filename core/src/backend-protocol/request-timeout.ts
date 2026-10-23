@@ -15,6 +15,7 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.agentClosePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,
@@ -89,6 +90,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentProfileRunStop]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentProfileRunsStop]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentFilesList]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentDirectoryList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFolderValidate]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitLogGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.agentGitLogCommitGet]: IO_REQUEST_TIMEOUT_MS,
@@ -187,7 +189,9 @@ const requestTimeoutByMethod = {
   [backendMethods.workspaceFilePreview]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFileChunkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.workspaceFilesList]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.workspaceDirectoryList]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.driverTextGenerate]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.driverImageGenerate]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.driverCodeReviewRun]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.driverCodeReviewDispose]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.driverGoalClear]: QUICK_REQUEST_TIMEOUT_MS,

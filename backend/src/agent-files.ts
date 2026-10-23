@@ -7,7 +7,7 @@ const DEFAULT_AGENT_FILE_LIMIT = 1000;
 const DEFAULT_AGENT_FILE_DEPTH = 8;
 const DEFAULT_AGENT_FILE_READ_BYTES = 2 * 1024 * 1024;
 
-const skippedDirectoryNames = new Set([
+export const skippedDirectoryNames = new Set([
   '.git',
   '.next',
   '.nuxt',

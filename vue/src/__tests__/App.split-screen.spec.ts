@@ -22,6 +22,117 @@ async function chooseLayout(wrapper: ReturnType<typeof mount>, label: string) {
 }
 
 describe('split-screen conversations', () => {
+  it('resizes both dividers without replacing composers and restores each team workspace after a restart', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const [first, second] = snapshot.agents;
+    const originalTeam = snapshot.teams[0]!;
+    const otherAgent = { ...first!, id: 'other-agent', teamId: 'other-team', name: 'Other' };
+    snapshot.agents.push(otherAgent);
+    snapshot.teams.push({ ...originalTeam, id: 'other-team', name: 'Other team', agentIds: [otherAgent.id] });
+    const { api } = installBackendFixture(snapshot);
+    api.selectAgent.mockImplementation(async id => ({
+      ...snapshot, activeAgentId: id,
+      teams: snapshot.teams.map(team => team.agentIds.includes(id) ? { ...team, activeAgentId: id } : team),
+    }));
+    api.selectTeam.mockImplementation(async id => {
+      snapshot.activeTeamId = id;
+      snapshot.activeAgentId = snapshot.teams.find(team => team.id === id)!.agentIds[0]!;
+      return { ...snapshot };
+    });
+    const mountApp = async () => {
+      const wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+      await flushPromises();
+      return wrapper;
+    };
+    let wrapper = await mountApp();
+    const switchTeam = async (name: string) => {
+      await wrapper.get(`.team-rail__team[aria-label="${name}"]`).trigger('click');
+      await flushPromises();
+    };
+    await chooseLayout(wrapper, '4-Pane Split');
+    const grid = wrapper.get('.agent-split-grid');
+    vi.spyOn(grid.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1000, height: 600 } as DOMRect);
+    const composers = wrapper.findAll('[contenteditable="true"]').map(editor => editor.element);
+    const drag = async (orientation: string, start: number, end: number) => {
+      const handle = wrapper.get(`[role="separator"][aria-label="Resize conversation ${orientation === 'vertical' ? 'columns' : 'rows'}"]`);
+      const dispatch = async (type: string, position: number) => {
+        handle.element.dispatchEvent(Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+          pointerId: 1, button: 0, clientX: orientation === 'vertical' ? position : 500,
+          clientY: orientation === 'horizontal' ? position : 300,
+        }));
+        await flushPromises();
+      };
+      await dispatch('pointerdown', start);
+      await dispatch('pointermove', end);
+      await dispatch('pointerup', end);
+      return handle;
+    };
+    const columns = await drag('vertical', 500, 620);
+    const rows = await drag('horizontal', 300, 312);
+    expect(columns.attributes('aria-valuenow')).toBe('62');
+    expect(rows.attributes('aria-valuenow')).toBe('52');
+    expect(wrapper.findAll('[contenteditable="true"]').map(editor => editor.element)).toStrictEqual(composers);
+    await columns.trigger('keydown', { key: 'ArrowLeft' });
+    expect(columns.attributes('aria-valuenow')).toBe('60');
+    await rows.trigger('keydown', { key: 'End' });
+    expect(rows.attributes('aria-valuenow')).toBe('53');
+    await rows.trigger('dblclick');
+    expect(rows.attributes('aria-valuenow')).toBe('50');
+    // Persist a deliberate assignment change and an empty focused pane.
+    await wrapper.findAll('.agent-split-grid__pane')[0]!.trigger('pointerdown');
+    await chooseLayout(wrapper, 'Single Pane');
+    const secondRow = wrapper.findAll('.agent-sidebar__agent').find(row => row.text().includes(second!.name!))!;
+    await secondRow.trigger('click');
+    await flushPromises();
+    await chooseLayout(wrapper, '4-Pane Split');
+    await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
+    await switchTeam('Other team');
+    await chooseLayout(wrapper, 'Horizontal Split');
+    await wrapper.get('[aria-label="Resize conversation rows"]').trigger('keydown', { key: 'ArrowDown' });
+    wrapper.unmount();
+
+    wrapper = await mountApp();
+    expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe('2-horizontal');
+    expect(wrapper.get('[aria-label="Resize conversation rows"]').attributes('aria-valuenow')).toBe('52');
+    await switchTeam(originalTeam.name);
+    expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe('4-quadrant');
+    expect(wrapper.findAll('.agent-split-grid__pane').map(pane => pane.attributes('data-agent-id') ?? null))
+      .toStrictEqual([second!.id, first!.id, null, null]);
+    expect(wrapper.get('.agent-split-grid__pane--focused').attributes('data-agent-id')).toBeUndefined();
+    expect(wrapper.get('[aria-label="Resize conversation columns"]').attributes('aria-valuenow')).toBe('60');
+    expect(wrapper.get('[aria-label="Resize conversation rows"]').attributes('aria-valuenow')).toBe('50');
+  });
+
+  it('preserves the saved split layout while a narrow window shows one conversation', async () => {
+    let compact = false;
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    vi.stubGlobal('matchMedia', () => ({
+      get matches() { return compact; },
+      addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+    }));
+    const resizeWindow = async (value: boolean) => {
+      compact = value;
+      for (const listener of listeners) listener({ matches: value } as MediaQueryListEvent);
+      await flushPromises();
+    };
+    installBackendFixture(createInitialSnapshot());
+    let wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    await flushPromises();
+    await chooseLayout(wrapper, '4-Pane Split');
+    await wrapper.findAll('.agent-split-grid__pane')[3]!.trigger('pointerdown');
+    await resizeWindow(true);
+    expect(wrapper.find('.agent-split-grid').exists()).toBe(false);
+    expect(wrapper.find('[contenteditable="true"]').exists()).toBe(true);
+    wrapper.unmount();
+    wrapper = mount(App, { attachTo: document.body, global: { components: { ElPopover } } });
+    await flushPromises();
+    await resizeWindow(false);
+    expect(wrapper.get('.agent-split-grid').attributes('data-layout')).toBe('4-quadrant');
+    expect(wrapper.get('.agent-split-grid__pane--focused').attributes('data-agent-id')).toBeUndefined();
+  });
+
   it('keeps slash review instructions scoped to the sending pane and clears them when its tab closes', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

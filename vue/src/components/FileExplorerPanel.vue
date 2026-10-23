@@ -9,14 +9,16 @@
         :placeholder="$t('surface.fileExplorerPanel.searchFiles')"
         @keydown.escape="query = ''"
       />
+      <button class="file-explorer__refresh" type="button" :aria-label="$t('surface.fileExplorerPanel.refreshFiles')" @click="refresh">
+        <RefreshIcon aria-hidden="true" />
+      </button>
     </header>
 
-    <p v-if="loading && files.length === 0" class="file-explorer__status">{{ $t('surface.fileExplorerPanel.loadingFiles') }}</p>
-    <p v-else-if="error" class="file-explorer__status file-explorer__status--error">{{ error }}</p>
-    <p v-else-if="files.length === 0" class="file-explorer__status">{{ $t('surface.fileExplorerPanel.noFilesInThisWorkspace') }}</p>
-    <p v-else-if="visibleRows.length === 0" class="file-explorer__status">{{ $t('surface.fileExplorerPanel.noMatchingFiles') }}</p>
+    <p v-if="error" class="file-explorer__status file-explorer__status--error">{{ error }}</p>
+    <p v-if="loading && visibleRows.length === 0" class="file-explorer__status">{{ $t('surface.fileExplorerPanel.loadingFiles') }}</p>
+    <p v-else-if="!error && visibleRows.length === 0" class="file-explorer__status">{{ query.trim() ? $t('surface.fileExplorerPanel.noMatchingFiles') : $t('surface.fileExplorerPanel.noFilesInThisWorkspace') }}</p>
 
-    <div v-else class="file-explorer__tree" role="tree" :aria-label="$t('surface.fileExplorerPanel.workspaceFileTree')">
+    <div v-if="visibleRows.length" class="file-explorer__tree" role="tree" :aria-label="$t('surface.fileExplorerPanel.workspaceFileTree')">
       <div
         v-for="row in visibleRows"
         :key="`${row.kind}:${row.path}`"
@@ -26,7 +28,15 @@
         :aria-expanded="row.kind === 'folder' ? expanded.has(row.path) : undefined"
       >
         <button
-          v-if="row.kind === 'folder'"
+          v-if="row.kind === 'more'"
+          class="file-explorer__item"
+          type="button"
+          :disabled="Boolean(query.trim() ? searchPage?.loading : pages.get(row.path)?.loading)"
+          :aria-label="$t('surface.fileExplorerPanel.loadMoreFiles')"
+          @click="loadMore(row.path)"
+        >{{ $t('surface.fileExplorerPanel.loadMoreFiles') }}</button>
+        <button
+          v-else-if="row.kind === 'folder'"
           class="file-explorer__item file-explorer__folder"
           type="button"
           @click="toggleFolder(row.path)"
@@ -51,78 +61,102 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
-import type { AgentFileSearchItem } from '@workspace/core/contracts';
-import { ChevronRightIcon, FileTextIcon, FolderIcon } from '../shared/icons/app-icons';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { AgentDirectoryEntry, AgentDirectoryInput, AgentDirectoryPage } from '@workspace/core/contracts/workspace';
+import { ChevronRightIcon, FileTextIcon, FolderIcon, RefreshIcon } from '../shared/icons/app-icons';
 
-type ExplorerRow = { id: string; kind: 'folder' | 'file'; name: string; path: string; depth: number };
-type ExplorerNode = { kind: 'folder'; name: string; path: string; folders: Map<string, ExplorerNode>; files: AgentFileSearchItem[] };
-
-const props = withDefaults(defineProps<{
-  files: AgentFileSearchItem[];
-  loading?: boolean;
-  error?: string | null;
-}>(), { loading: false, error: null });
-
-const emit = defineEmits<{
-  preview: [path: string];
-}>();
-
+type Page = AgentDirectoryPage & { loading: boolean; error?: string };
+type Row = { kind: 'folder' | 'file' | 'more'; name: string; path: string; depth: number };
+const props = defineProps<{ loadDirectory: (input: AgentDirectoryInput) => Promise<AgentDirectoryPage> }>();
+const emit = defineEmits<{ preview: [path: string] }>();
 const query = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
 const expanded = ref(new Set<string>());
-
-const visibleRows = computed<ExplorerRow[]>(() => {
-  const needle = query.value.trim().toLocaleLowerCase();
-  const matchingFiles = needle
-    ? props.files.filter((file) => file.path.toLocaleLowerCase().includes(needle))
-    : props.files;
-  const root = folderNode('', '');
-  for (const file of matchingFiles) {
-    const parts = file.path.split('/');
-    let parent = root;
-    for (let index = 0; index < parts.length - 1; index += 1) {
-      const folderPath = parts.slice(0, index + 1).join('/');
-      const name = parts[index]!;
-      const existing = parent.folders.get(name);
-      const folder = existing ?? folderNode(name, folderPath);
-      if (!existing) parent.folders.set(name, folder);
-      parent = folder;
+const pages = ref(new Map<string, Page>());
+const searchPage = ref<Page>();
+let epoch = 0;
+let searchVersion = 0;
+let disposed = false;
+const loading = computed(() => query.value.trim() ? searchPage.value?.loading : !pages.value.has('') || [...pages.value.values()].some(page => page.loading));
+const error = computed(() => query.value.trim() ? searchPage.value?.error : [...pages.value.values()].find(page => page.error)?.error);
+const visibleRows = computed<Row[]>(() => {
+  if (query.value.trim()) return [
+    ...(searchPage.value?.entries ?? []).map(entry => ({ ...entry, name: entry.path, depth: 0 })),
+    ...(searchPage.value?.nextCursor != null ? [{ kind: 'more' as const, name: '', path: '', depth: 0 }] : []),
+  ];
+  const rows: Row[] = [];
+  const flatten = (path: string, depth: number) => {
+    const page = pages.value.get(path);
+    for (const entry of page?.entries ?? []) {
+      rows.push({ ...entry, depth });
+      if (entry.kind === 'folder' && expanded.value.has(entry.path)) flatten(entry.path, depth + 1);
     }
-    parent.files.push(file);
-  }
-  const rows: ExplorerRow[] = [];
-  flattenFolder(root, -1, rows, Boolean(needle));
+    if (page?.nextCursor != null) rows.push({ kind: 'more', name: '', path, depth });
+  };
+  flatten('', 0);
   return rows;
 });
 
-onMounted(() => void nextTick(() => searchInput.value?.focus()));
-
-function fileRow(file: AgentFileSearchItem, depth: number): ExplorerRow {
-  return { id: encodeURIComponent(file.path), kind: 'file', name: file.name, path: file.path, depth };
-}
-
-function folderNode(name: string, path: string): ExplorerNode {
-  return { kind: 'folder', name, path, folders: new Map(), files: [] };
-}
-
-function flattenFolder(folder: ExplorerNode, depth: number, rows: ExplorerRow[], forceExpanded = false): void {
-  const folders = [...folder.folders.values()].sort((a, b) => a.name.localeCompare(b.name));
-  for (const child of folders) {
-    rows.push({ id: child.path, kind: 'folder', name: child.name, path: child.path, depth: depth + 1 });
-    if (forceExpanded || expanded.value.has(child.path)) flattenFolder(child, depth + 1, rows, forceExpanded);
-  }
-  for (const file of folder.files.sort((a, b) => a.name.localeCompare(b.name))) {
-    rows.push(fileRow(file, depth + 1));
+async function loadPage(path: string, append = false): Promise<void> {
+  if (disposed) return;
+  const previous = pages.value.get(path);
+  if (previous?.loading) return;
+  const token = epoch;
+  pages.value.set(path, { entries: previous?.entries ?? [], nextCursor: previous?.nextCursor ?? null, loading: true });
+  try {
+    const page = await props.loadDirectory({ path, ...(append ? { cursor: previous!.nextCursor! } : {}) });
+    if (disposed || token !== epoch) return;
+    pages.value.set(path, { ...page, entries: mergeEntries(append ? previous?.entries ?? [] : [], page.entries), loading: false });
+  } catch (cause) {
+    if (!disposed && token === epoch) pages.value.set(path, { entries: previous?.entries ?? [], nextCursor: previous?.nextCursor ?? null, loading: false, error: String(cause instanceof Error ? cause.message : cause) });
   }
 }
 
+async function searchFiles(append = false): Promise<void> {
+  const needle = query.value.trim();
+  const token = ++searchVersion;
+  const previous = searchPage.value;
+  searchPage.value = { entries: append ? previous?.entries ?? [] : [], nextCursor: previous?.nextCursor ?? null, loading: true };
+  try {
+    const page = await props.loadDirectory({ query: needle, ...(append ? { cursor: previous!.nextCursor! } : {}) });
+    if (disposed || token !== searchVersion) return;
+    searchPage.value = { ...page, entries: mergeEntries(append ? previous?.entries ?? [] : [], page.entries), loading: false };
+  } catch (cause) {
+    if (!disposed && token === searchVersion) searchPage.value = { entries: previous?.entries ?? [], nextCursor: previous?.nextCursor ?? null, loading: false, error: String(cause instanceof Error ? cause.message : cause) };
+  }
+}
+
+function mergeEntries(previous: AgentDirectoryEntry[], entries: AgentDirectoryEntry[]): AgentDirectoryEntry[] {
+  return [...new Map([...previous, ...entries].map(entry => [entry.path, entry])).values()];
+}
 function toggleFolder(path: string): void {
-  const next = new Set(expanded.value);
-  if (next.has(path)) next.delete(path); else next.add(path);
-  expanded.value = next;
+  if (expanded.value.has(path)) expanded.value.delete(path);
+  else {
+    expanded.value.add(path);
+    if (!pages.value.has(path) || pages.value.get(path)?.error) void loadPage(path);
+  }
 }
-
+function loadMore(path: string): void {
+  if (query.value.trim()) void searchFiles(true); else void loadPage(path, true);
+}
+async function refresh(): Promise<void> {
+  epoch += 1;
+  pages.value.clear();
+  if (query.value.trim()) void searchFiles();
+  await loadPage('');
+  for (const path of [...expanded.value].sort((a, b) => a.split('/').length - b.split('/').length)) {
+    if ([...pages.value.values()].some(page => page.entries.some(entry => entry.kind === 'folder' && entry.path === path))) await loadPage(path);
+  }
+}
+watch(query, (value, _old, cleanup) => {
+  searchVersion += 1;
+  searchPage.value = value.trim() ? { entries: [], nextCursor: null, loading: true } : undefined;
+  if (!value.trim()) return;
+  const timer = setTimeout(() => void searchFiles(), 180);
+  cleanup(() => clearTimeout(timer));
+});
+onMounted(() => { void loadPage(''); void nextTick(() => searchInput.value?.focus()); });
+onBeforeUnmount(() => { disposed = true; epoch += 1; searchVersion += 1; });
 </script>
 
 <style scoped>
@@ -150,6 +184,20 @@ function toggleFolder(path: string): void {
   border-radius: var(--radius-md);
   color: var(--color-text);
   background: var(--color-surface-low);
+}
+
+.file-explorer__refresh {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2);
+  border: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.file-explorer__refresh svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .file-explorer__tree {

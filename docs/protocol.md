@@ -14,6 +14,11 @@ renderer-local). This document records the conventions behind them.
 
 ## Conventions
 
+Creation commands can return an explicit created-agent identity with their client
+snapshot when requested. Callers use that identity rather than inferring a command
+outcome from the currently selected agent. Legacy snapshot responses retain their
+shape; client navigation remains separate from the shared product operation.
+
 - Names are `resource[/subresource]/verb`, lower camel case, action last.
   Renames have no aliases: stale local or remote daemons must be restarted or
   synced.
