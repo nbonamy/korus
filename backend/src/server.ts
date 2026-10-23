@@ -45,7 +45,7 @@ import { isAgentGitDiffTarget } from '@workspace/core/snapshot-guard-collections
 import { backendDisplayName } from '@workspace/core/backend-driver';
 import type { AgentBackendDriver, BackendApprovalPresetResult, BackendConversationForkResult, BackendConversationResumeResult, BackendEvent, BackendGoalResult, BackendPermissionModeResult, BackendSendResult, BackendConversationReplacementResult } from '@workspace/core/backend-driver';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
-import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
+import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgentInSnapshot, createForkedAgentDraft, createQuickChatInSnapshot, duplicateAgentInSnapshot, moveAgentToTeamInSnapshot, removeAgentFromRoster, removeWorkItemAssignmentFromSnapshot, restartAgentConversation, resumeAgentConversationInSnapshot, updateAgentFromInput } from '@workspace/core/agent-manager';
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { readEngineInstructions, saveEngineInstructions } from './engine-instructions';
@@ -206,6 +206,7 @@ export class AppBackendServer {
   private readonly delegatedWorkReports: DelegatedWorkReportPort;
   private readonly agentHandoffs: AgentHandoffService;
   private readonly handoffListeners = new Set<(event: BackendPublishedEvent) => void>();
+  private readonly agentClosuresInFlight = new Set<string>();
   private readonly agentWorkspaces: AgentWorkspaceService;
   private readonly subagentIdentities: SubagentIdentityService;
   private readonly agentGitService: AgentGitService;
@@ -1402,53 +1403,83 @@ export class AppBackendServer {
           agentId,
           ...(input ? { input } : {}),
         }, async (existingAgent) => {
-          const finishedPullRequest = input?.pullRequestCleanup === true
-            ? existingAgent.pullRequest
-            : undefined;
-          if (input?.pullRequestCleanup === true) {
-            if (!finishedPullRequest || (finishedPullRequest.state !== 'merged' && finishedPullRequest.state !== 'closed')) {
-              throw new Error('This agent does not have a finished pull request ready for cleanup.');
+          if (this.agentClosuresInFlight.has(agentId)) throw new Error('This agent is already closing.');
+          this.agentClosuresInFlight.add(agentId);
+          try {
+            const finishedPullRequest = input?.pullRequestCleanup === true
+              ? existingAgent.pullRequest
+              : undefined;
+            if (input?.pullRequestCleanup === true) {
+              if (!finishedPullRequest || (finishedPullRequest.state !== 'merged' && finishedPullRequest.state !== 'closed')) {
+                throw new Error('This agent does not have a finished pull request ready for cleanup.');
+              }
+              if (existingAgent.status.type === 'working' || existingAgent.status.type === 'awaitingInput') {
+                throw new Error('Wait for the agent to finish before cleaning up its pull request.');
+              }
+              if (finishedPullRequest.state === 'closed' && input.deleteRemoteBranch === true) {
+                throw new Error('Keep the remote branch when cleaning up a pull request that was closed without merging.');
+              }
             }
-            if (existingAgent.status.type === 'working' || existingAgent.status.type === 'awaitingInput') {
-              throw new Error('Wait for the agent to finish before cleaning up its pull request.');
+            if (input?.deleteWorktree) {
+              const folder = requireAgentFolder(existingAgent);
+              const sharedAgent = this.snapshot.agents.find((agent) => agent.id !== agentId && agent.folder === folder);
+              if (sharedAgent) throw new Error(`The worktree is also used by ${sharedAgent.name}.`);
+              await this.agentGitService.validateLinkedWorktreeDeletion(
+                folder,
+                input.deleteRemoteBranch === true,
+                finishedPullRequest?.headSha,
+                input.discardChanges === true,
+              );
             }
-            if (finishedPullRequest.state === 'closed' && input.deleteRemoteBranch === true) {
-              throw new Error('Keep the remote branch when cleaning up a pull request that was closed without merging.');
+            if (existingAgent.backendSession) {
+              await this.retireConversation(existingAgent);
+              await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
+                backend: existingAgent.backend,
+                agentId,
+              });
             }
+            if (input?.deleteWorktree) {
+              const index = this.snapshot.agents.findIndex(agent => agent.id === agentId);
+              const teamPositions = this.snapshot.teams.flatMap(team => {
+                const position = team.agentIds.indexOf(agentId);
+                return position < 0 ? [] : [{ teamId: team.id, position, nextId: team.agentIds[position + 1] }];
+              });
+              const restoreRoster = () => {
+                if (!this.snapshot.agents.some(agent => agent.id === agentId)) this.snapshot.agents.splice(index, 0, existingAgent);
+                for (const saved of teamPositions) {
+                  const team = this.snapshot.teams.find(team => team.id === saved.teamId);
+                  if (!team || team.agentIds.includes(agentId)) continue;
+                  const next = saved.nextId ? team.agentIds.indexOf(saved.nextId) : -1;
+                  team.agentIds.splice(next < 0 ? saved.position : next, 0, agentId);
+                }
+              };
+              removeAgentFromRoster(this.snapshot, agentId);
+              try {
+                await this.persistAndEmitSnapshot();
+                await this.agentGitService.deleteLinkedWorktree(
+                  requireAgentFolder(existingAgent),
+                  input.deleteRemoteBranch === true,
+                  finishedPullRequest?.headSha,
+                  input.discardChanges === true,
+                );
+              } catch (error) {
+                restoreRoster();
+                await this.persistAndEmitSnapshot();
+                throw error;
+              }
+              // Finalize auxiliary agent data only after cleanup succeeds.
+              restoreRoster();
+            }
+            this.codeReviews?.closeForAgentRemoval(existingAgent);
+            const agent = closeAgentInSnapshot(this.snapshot, agentId);
+            this.agentRequests.clearAgent(agentId);
+            if (!agent) {
+              throw new Error(`Agent not found: ${agentId}`);
+            }
+            return this.persistAndEmitSnapshot();
+          } finally {
+            this.agentClosuresInFlight.delete(agentId);
           }
-          if (input?.deleteWorktree) {
-            const folder = requireAgentFolder(existingAgent);
-            const sharedAgent = this.snapshot.agents.find((agent) => agent.id !== agentId && agent.folder === folder);
-            if (sharedAgent) throw new Error(`The worktree is also used by ${sharedAgent.name}.`);
-            await this.agentGitService.validateLinkedWorktreeDeletion(
-              folder,
-              input.deleteRemoteBranch === true,
-              finishedPullRequest?.headSha,
-              input.discardChanges === true,
-            );
-          }
-          if (existingAgent.backendSession) {
-            await this.retireConversation(existingAgent);
-            await this.driverRpc?.handle(backendMethods.driverConversationRelease, {
-              backend: existingAgent.backend,
-              agentId,
-            });
-          }
-          if (input?.deleteWorktree) {
-            await this.agentGitService.deleteLinkedWorktree(
-              requireAgentFolder(existingAgent),
-              input.deleteRemoteBranch === true,
-              finishedPullRequest?.headSha,
-              input.discardChanges === true,
-            );
-          }
-          this.codeReviews?.closeForAgentRemoval(existingAgent);
-          const agent = closeAgentInSnapshot(this.snapshot, agentId);
-          this.agentRequests.clearAgent(agentId);
-          if (!agent) {
-            throw new Error(`Agent not found: ${agentId}`);
-          }
-          return this.persistAndEmitSnapshot();
         });
       }
       case backendMethods.agentDocumentWrite: {

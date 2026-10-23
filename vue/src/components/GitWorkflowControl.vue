@@ -269,7 +269,7 @@
       <div
         v-else-if="pullRequestOperation.status === 'creating'"
         class="app-dialog__footer"
-      ><button class="app-button app-button--secondary" type="button" @click="runPullRequestInBackground">{{ $t('surface.gitWorkflowControl.runInBackground') }}</button></div>
+      ><button class="app-button app-button--secondary" type="button" @click="runPullRequestInBackground">{{ $t('common.runInBackground') }}</button></div>
       <div
         v-else-if="pullRequestOperation.status === 'error'"
         class="app-dialog__footer"
@@ -359,7 +359,7 @@
     <template #footer>
       <div v-if="mergeTargetDirtyWarning" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
       <div v-else-if="mergeOperation.status === 'confirming'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--secondary" type="button" :disabled="busy || !canMerge" @click="merge(false)">{{ $t('surface.gitWorkflowControl.merge') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !canMerge || !pushCapable" @click="merge(true)">{{ $t('surface.gitWorkflowControl.mergeAndPush') }}</button></div>
-      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button class="app-button app-button--secondary" type="button" @click="runMergeInBackground">{{ $t('surface.gitWorkflowControl.runInBackground') }}</button></div>
+      <div v-else-if="mergeOperationRunning" class="app-dialog__footer"><button class="app-button app-button--secondary" type="button" @click="runMergeInBackground">{{ $t('common.runInBackground') }}</button></div>
       <div v-else-if="mergeOperation.status === 'warning'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button></div>
       <div v-else-if="mergeOperation.status === 'error'" class="app-dialog__footer"><button class="app-button app-button--tertiary" type="button" @click="mergeDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button><button class="app-button app-button--primary" type="button" @click="mergeOperation.mergeCreated ? retryMergePush() : merge(mergeOperation.pushAfter)">{{ mergeOperation.mergeCreated ? $t('surface.gitWorkflowControl.retryPush') : $t('surface.gitWorkflowControl.retry') }}</button></div>
     </template>

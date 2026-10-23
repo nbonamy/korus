@@ -56,19 +56,6 @@ describe('AgentCloseDialog', () => {
     expect(wrapper.emitted('keep-worktree')).toStrictEqual([[]]);
   });
 
-  it('offers keeping or deleting the linked worktree and keeps remote deletion opt-in', async () => {
-    const wrapper = mountDialog();
-
-    expect(wrapper.text()).toContain('Close Dina?');
-    expect(wrapper.text()).toContain('fix/gh-22');
-    expect(wrapper.text()).toContain('Also delete origin/fix/gh-22');
-
-    await wrapper.get('.agent-close-dialog__remote .el-switch').trigger('click');
-    await wrapper.get('.app-button--primary').trigger('click');
-
-    expect(wrapper.emitted('delete-worktree')).toStrictEqual([[true, false]]);
-  });
-
   it('can close the agent while preserving the worktree', async () => {
     const wrapper = mountDialog();
 

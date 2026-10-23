@@ -5,6 +5,8 @@
     :teleported="false"
     width="520px"
     :show-close="false"
+    :close-on-click-modal="!busy"
+    :close-on-press-escape="!busy"
     destroy-on-close
     @update:model-value="onVisibilityChanged"
   >
@@ -14,7 +16,12 @@
       </div>
     </template>
 
-    <div class="agent-close-dialog__body">
+    <GitOperationFeedback v-if="busy" status="running"
+      :title="$t(deletingWorktree ? 'surface.agentCloseDialog.deletingWorktree' : 'surface.agentCloseDialog.closingAgent')"
+      :detail="preview?.branch ?? undefined">
+      <template #icon><Trash2Icon /></template>
+    </GitOperationFeedback>
+    <div v-else class="agent-close-dialog__body">
       <p> {{ $t('surface.agentCloseDialog.thisAgentIsUsingTheLinkedWorktree') }} <strong>{{ preview?.branch }}</strong>.
       </p>
       <p> {{ $t('surface.agentCloseDialog.deletingTheWorktreeAlsoDeletesItsLocalBranchKeepingItLea') }} </p>
@@ -30,7 +37,10 @@
     </div>
 
     <template #footer>
-      <div class="app-dialog__footer">
+      <div v-if="busy" class="app-dialog__footer">
+        <button class="app-button app-button--secondary" type="button" @click="emit('background')">{{ $t('common.runInBackground') }}</button>
+      </div>
+      <div v-else class="app-dialog__footer">
         <button class="app-button app-button--tertiary" type="button" :disabled="busy" @click="emit('close')"> {{ $t('surface.agentCloseDialog.cancel') }} </button>
         <button class="app-button app-button--secondary" type="button" :disabled="busy" @click="emit('keep-worktree')"> {{ $t('surface.agentCloseDialog.keepWorktree') }} </button>
         <button class="app-button app-button--primary" type="button" :aria-busy="busy" :disabled="busy || (hasChanges && !discardChanges)" @click="deleteWorktree"> {{ $t('surface.agentCloseDialog.deleteWorktree') }} </button>
@@ -43,22 +53,27 @@
 import { computed, ref, watch } from 'vue';
 import type { Agent } from '@workspace/core/contracts';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
+import GitOperationFeedback from './GitOperationFeedback.vue';
+import { Trash2Icon } from '../shared/icons/app-icons';
 
 const props = withDefaults(defineProps<{
   agent?: Agent | null;
   busy?: boolean;
+  deletingWorktree?: boolean;
   error?: string | null;
   visible: boolean;
   preview?: AgentClosePreview | null;
 }>(), {
   agent: null,
   busy: false,
+  deletingWorktree: false,
   error: null,
   preview: null,
 });
 
 const emit = defineEmits<{
   close: [];
+  background: [];
   'delete-worktree': [deleteRemoteBranch: boolean, discardChanges: boolean];
   'keep-worktree': [];
 }>();

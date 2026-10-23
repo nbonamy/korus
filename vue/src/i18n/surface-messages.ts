@@ -113,7 +113,13 @@ export const surfaceMessages = {
     "cancel": "Cancel",
     "keepWorktree": "Keep worktree",
     "discardChanges": "You have uncommitted changes. Confirm you’re OK with losing them to continue.",
-    "deleteWorktree": "Delete worktree"
+    "deleteWorktree": "Delete worktree",
+    "deletingWorktree": "Deleting worktree",
+    "closingAgent": "Closing agent",
+    "worktreeDeleted": "Worktree deleted",
+    "agentClosed": "Agent closed",
+    "worktreeDeletionFailed": "Worktree deletion failed",
+    "agentCloseFailed": "Agent close failed"
   },
   "agentDialog": {
     "name": "Name",
@@ -553,7 +559,6 @@ export const surfaceMessages = {
     "reportBackTo": "Report to {name} agent",
     "reportToAnotherAgent": "Report to another agent",
     "reportRecipient": "Report recipient",
-    "runInBackground": "Run in background",
     "buildingHandoffReport": "Building handoff report",
     "waitingForWorkerSummary": "Waiting for the worker’s final summary.",
     "mergeIsAvailableOnceAMergeTargetIsConfiguredForThisWorkt": "Merge is available once a merge target is configured for this worktree.",

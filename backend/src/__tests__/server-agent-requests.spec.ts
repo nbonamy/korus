@@ -17,6 +17,65 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it.each([
+    { outcome: 'success', discardChanges: false },
+    { outcome: 'failure', discardChanges: true },
+  ])('removes the agent before cleanup and handles $outcome without overwriting newer roster changes', async ({ outcome, discardChanges }) => {
+    const snapshot = createTestSnapshot();
+    const base = { teamId: 'team-test', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: 'created', updatedAt: 'updated' };
+    const closing = { ...base, id: 'closing', name: 'Closing', folder: '/repo-feature', workspace: { ...gitWorkspace('/repo-feature', 'repo', 'feature'), primaryWorktreeRoot: '/repo', isLinkedWorktree: true } };
+    const unrelated = { ...base, id: 'unrelated', name: 'Other repository', folder: '/other', workspace: gitWorkspace('/other', 'other', 'main') };
+    const peer = { ...base, id: 'peer', name: 'Same repository', folder: '/repo', workspace: gitWorkspace('/repo', 'repo', 'main') };
+    snapshot.agents = [closing, unrelated, peer];
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    snapshot.teams[0]!.activeAgentId = unrelated.id;
+    snapshot.activeAgentId = unrelated.id;
+    snapshot.clientPreferences = {
+      desktop: { activeAgentId: closing.id, activeTeamId: 'team-test', activeAgentByTeam: { 'team-test': closing.id } },
+      observer: { activeAgentId: unrelated.id, activeTeamId: 'team-test' },
+    };
+    let complete!: () => void;
+    let fail!: (error: Error) => void;
+    const pending = new Promise<void>((resolve, reject) => { complete = resolve; fail = reject; });
+    const validateLinkedWorktreeDeletion = vi.fn();
+    const deleteLinkedWorktree = vi.fn(() => pending);
+    const saved: typeof snapshot[] = [];
+    const server = new AppBackendServer({ version: 'test', snapshot,
+      agentGitService: { validateLinkedWorktreeDeletion, deleteLinkedWorktree } as unknown as AgentGitService,
+      saveSnapshot: async value => { saved.push(structuredClone(value)); },
+    });
+    try {
+      const closingPromise = server.handleMessage({ jsonrpc: '2.0', id: 'close', method: backendMethods.agentDelete,
+        params: { agentId: closing.id, input: { deleteWorktree: true, deleteRemoteBranch: true, discardChanges, confirmed: true } } });
+      await vi.waitFor(() => expect(deleteLinkedWorktree).toHaveBeenCalledOnce());
+      expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith(closing.folder, true, undefined, discardChanges);
+      expect(deleteLinkedWorktree).toHaveBeenCalledWith(closing.folder, true, undefined, discardChanges);
+      expect(snapshot.agents.map(agent => agent.id)).toStrictEqual([unrelated.id, peer.id]);
+      expect(saved[0]!.agents.some(agent => agent.id === closing.id)).toBe(false);
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'during', method: backendMethods.snapshotGet }))
+        .resolves.toMatchObject({ result: { snapshot: { activeAgentId: peer.id } } });
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'observer', method: backendMethods.snapshotGet, params: { _clientId: 'observer' } }))
+        .resolves.toMatchObject({ result: { snapshot: { activeAgentId: unrelated.id } } });
+      // Another user action during cleanup must survive both completion and rollback.
+      await server.handleMessage({ jsonrpc: '2.0', id: 'rename', method: backendMethods.teamUpdate, params: { input: { id: 'team-test', name: 'Renamed team', color: '#1B4FB2' } } });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'navigate', method: backendMethods.clientNavigationSelectAgent, params: { agentId: unrelated.id } });
+      if (outcome === 'failure') {
+        fail(new Error('Worktree is locked'));
+        await expect(closingPromise).rejects.toThrow('Worktree is locked');
+        expect(snapshot.agents.find(agent => agent.id === closing.id)).toStrictEqual(closing);
+        expect(snapshot.teams[0]!.agentIds).toStrictEqual([closing.id, unrelated.id, peer.id]);
+      } else {
+        complete();
+        await closingPromise;
+        expect(snapshot.agents.some(agent => agent.id === closing.id)).toBe(false);
+      }
+      expect(snapshot.teams[0]!.name).toBe('Renamed team');
+      await expect(server.handleMessage({ jsonrpc: '2.0', id: 'after', method: backendMethods.snapshotGet }))
+        .resolves.toMatchObject({ result: { snapshot: { activeAgentId: unrelated.id } } });
+      expect(saved.at(-1)!.agents.some(agent => agent.id === closing.id)).toBe(outcome === 'failure');
+    } finally { await server.close(); }
+  });
+
   it('browses directory levels without hiding later folders, pages large folders, and searches unloaded files', async () => {
     const folder = await mkdtemp(path.join(os.tmpdir(), 'korus-explorer-'));
     const snapshot = createTestSnapshot();
@@ -415,43 +474,6 @@ describe('AppBackendServer', () => {
       expect(snapshot.agents).toContain(agent);
       expect(deleteLinkedWorktree).not.toHaveBeenCalled();
     } finally { await server.close(); }
-  });
-
-  it.each([false, true])('deletes a confirmed linked worktree, forwarding discardChanges=%s', async (discardChanges) => {
-    const snapshot = createTestSnapshot();
-    snapshot.teams[0]!.agentIds = ['agent-dina'];
-    snapshot.agents = [{
-      id: 'agent-dina',
-      teamId: 'team-test',
-      name: 'Dina',
-      folder: '/repo-fix-gh-22',
-      backend: 'codex',
-      status: { type: 'idle' },
-      createdAt: '2026-08-01T00:00:00.000Z',
-      updatedAt: '2026-08-01T00:00:00.000Z',
-    }];
-    snapshot.activeAgentId = 'agent-dina';
-    const validateLinkedWorktreeDeletion = vi.fn();
-    const deleteLinkedWorktree = vi.fn();
-    const server = new AppBackendServer({
-      version: 'test-version',
-      snapshot,
-      agentGitService: { validateLinkedWorktreeDeletion, deleteLinkedWorktree } as unknown as AgentGitService,
-    });
-
-    await expect(server.handleMessage({
-      jsonrpc: '2.0',
-      id: 'close-agent-worktree',
-      method: backendMethods.agentDelete,
-      params: {
-        agentId: 'agent-dina',
-        input: { deleteWorktree: true, deleteRemoteBranch: true, confirmed: true, discardChanges },
-      },
-    })).resolves.toMatchObject({ result: { agents: [] } });
-
-    expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith('/repo-fix-gh-22', true, undefined, discardChanges);
-    expect(deleteLinkedWorktree).toHaveBeenCalledWith('/repo-fix-gh-22', true, undefined, discardChanges);
-    await server.close();
   });
 
   it('cleans up a closed pull request after verifying its recorded head', async () => {

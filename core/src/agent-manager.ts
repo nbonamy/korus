@@ -601,13 +601,57 @@ export function resumeAgentConversationInSnapshot(
   return agent;
 }
 
-export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Agent | null {
+export function removeAgentFromRoster(snapshot: AppSnapshot, agentId: string): Agent | null {
   const agent = snapshot.agents.find((candidate) => candidate.id === agentId);
   if (!agent) {
     return null;
   }
 
   snapshot.agents = snapshot.agents.filter((candidate) => candidate.id !== agentId);
+
+  for (const team of snapshot.teams) {
+    team.agentIds = team.agentIds.filter((candidate) => candidate !== agentId);
+    if (team.activeAgentId === agentId) {
+      team.activeAgentId = agentAfterRosterRemoval(snapshot, agent, team.agentIds)?.id;
+    }
+  }
+
+  if (snapshot.activeAgentId === agentId) {
+    const sameTeamNextAgent = agentAfterRosterRemoval(snapshot, agent);
+    snapshot.activeAgentId = sameTeamNextAgent?.id ?? null;
+  }
+
+  for (const preferences of Object.values(snapshot.clientPreferences ?? {})) {
+    const next = agentAfterRosterRemoval(snapshot, agent, preferences.agentOrderByTeam?.[agent.teamId ?? '']);
+    if (preferences.activeAgentId === agentId) preferences.activeAgentId = next?.id ?? null;
+    if (agent.teamId && preferences.activeAgentByTeam?.[agent.teamId] === agentId) {
+      if (next) preferences.activeAgentByTeam[agent.teamId] = next.id;
+      else delete preferences.activeAgentByTeam[agent.teamId];
+    }
+  }
+
+  if (snapshot.activeTeamId === agent.teamId && snapshot.activeAgentId) {
+    const activeAgent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
+    snapshot.activeTeamId = activeAgent?.teamId ?? snapshot.activeTeamId;
+  }
+
+  return agent;
+}
+
+function agentAfterRosterRemoval(snapshot: AppSnapshot, removed: Agent, order: string[] = []): Agent | undefined {
+  const team = snapshot.teams.find(candidate => candidate.id === removed.teamId);
+  const candidates = [...new Set([...order, ...(team?.agentIds ?? [])])]
+    .filter(id => team?.agentIds.includes(id))
+    .flatMap(id => snapshot.agents.find(candidate => candidate.id === id) ?? []);
+  const repository = workspaceSidebarRepositoryRootForAgent(removed);
+  return candidates.find(candidate => repository
+    ? workspaceSidebarRepositoryRootForAgent(candidate) === repository
+    : removed.folder && candidate.folder === removed.folder) ?? candidates[0];
+}
+
+export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Agent | null {
+  const agent = removeAgentFromRoster(snapshot, agentId);
+  if (!agent) return null;
   releaseRemovedAutomationTargetsInSnapshot(snapshot);
   delete snapshot.agentRequests?.[agentId];
   delete snapshot.backendApprovals[agentId];
@@ -615,23 +659,6 @@ export function closeAgentInSnapshot(snapshot: AppSnapshot, agentId: string): Ag
     Object.entries(snapshot.workBacklog.assignments)
       .filter(([, assignment]) => assignment.agentId !== agentId),
   );
-
-  for (const team of snapshot.teams) {
-    team.agentIds = team.agentIds.filter((candidate) => candidate !== agentId);
-    if (team.activeAgentId === agentId) {
-      team.activeAgentId = team.agentIds[0];
-    }
-  }
-
-  if (snapshot.activeAgentId === agentId) {
-    const sameTeamNextAgent = snapshot.agents.find((candidate) => candidate.teamId === agent.teamId);
-    snapshot.activeAgentId = sameTeamNextAgent?.id ?? null;
-  }
-
-  if (snapshot.activeTeamId === agent.teamId && snapshot.activeAgentId) {
-    const activeAgent = snapshot.agents.find((candidate) => candidate.id === snapshot.activeAgentId);
-    snapshot.activeTeamId = activeAgent?.teamId ?? snapshot.activeTeamId;
-  }
 
   return agent;
 }

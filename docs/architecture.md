@@ -487,6 +487,11 @@ clears or changes it, Korus never re-detects.
   polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
   cleanup is accepted only for an idle agent whose unshared, clean linked worktree
   still points at the recorded PR head (a closed PR keeps its remote branch).
+- Agent worktree deletion publishes roster removal before filesystem cleanup.
+  Selection prefers another agent from the same repository within the team,
+  honoring client ordering. Auxiliary agent data remains available until cleanup
+  succeeds; failure restores the agent and team membership for retry without
+  replacing navigation or roster changes made during cleanup.
 - Merge branch cleanup removes the local branch and its same-named origin branch
   after integration succeeds. Origin cleanup uses its push destination and an
   inspected-head lease; default branches and remote commits outside the merged

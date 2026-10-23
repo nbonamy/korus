@@ -241,6 +241,7 @@ export const messages = {
       reviewSummary: 'Review findings and delivery decision', pullRequest: 'Pull request', complete: 'Complete mission', support: 'Stage conversation',
     },
     common: {
+      runInBackground: 'Run in background',
       back: 'Back',
       cancel: 'Cancel',
       clearText: 'Clear text',

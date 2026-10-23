@@ -161,6 +161,12 @@ which retains ownership of operation state, confirmations and host routing.
 
 ## Interaction
 
+Git merge and agent worktree deletion share `GitOperationFeedback`. Their operation
+lifetime is independent of dialog visibility: backgrounding dismisses the dialog
+without cancelling the request, and completion reports through a notification.
+Each request retains its original agent and cleanup choices; completion must not
+replace a newer dialog or navigation selection.
+
 - **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one
   padded body, labels above controls, divided footer, no second gutter). Footer:
   dismiss tertiary, alternatives secondary, at most one primary. Compact pickers use

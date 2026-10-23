@@ -1556,7 +1556,7 @@ export function useAppState() {
       return;
     }
 
-    adoptNavigationSnapshot(await (input
+    adoptBackgroundSnapshot(await (input
       ? appApi.closeAgent(agentId, input)
       : appApi.closeAgent(agentId)));
     await loadActiveAgentCatalogs();
