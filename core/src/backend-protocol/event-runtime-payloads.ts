@@ -376,6 +376,7 @@ function expectClaudeConversationEvent(value: unknown, path: string): void {
     'turn.started',
     'turn.proposedPlanDelta',
     'turn.proposedPlanCompleted',
+    'turn.executionPlanUpdated',
     'turn.completed',
     'context.compactionStarted',
     'context.compactionCompleted',

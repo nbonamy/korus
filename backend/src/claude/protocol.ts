@@ -51,6 +51,8 @@ export type ClaudeSdkMessage =
     type: 'user';
     uuid?: string;
     isReplay?: boolean;
+    tool_use_result?: unknown;
+    toolUseResult?: unknown;
     session_id?: string;
     message?: {
       role?: string;

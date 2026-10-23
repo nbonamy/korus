@@ -46,6 +46,10 @@ type ClaudeConversationEventBase = {
 
 export type ClaudeConversationEvent =
   | ClaudeConversationEventBase & {
+      type: 'turn.executionPlanUpdated';
+      payload: { plan: ThreadPlan | null };
+    }
+  | ClaudeConversationEventBase & {
       type: 'history.prepended';
       payload: { messages: RendererMessage[]; hasOlder: boolean };
     }

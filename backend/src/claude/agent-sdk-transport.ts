@@ -931,6 +931,7 @@ function claudeEnvironment(
   env.CLAUDE_CONFIG_DIR = claudeConfigDirectoryOverride();
   delete env.NODE_OPTIONS;
   env.CLAUDE_AGENT_SDK_CLIENT_APP = 'agent-workspace';
+  env.CLAUDE_CODE_ENABLE_TODO_TOOLS = '1';
   return env;
 }
 

@@ -29,6 +29,11 @@ export function applyClaudeConversationEvent(
 ): void {
   if (event.agentId !== snapshot.agentId) return;
 
+  if (event.type === 'turn.executionPlanUpdated') {
+    snapshot.plan = event.payload.plan;
+    return;
+  }
+
   if (event.type === 'history.prepended') {
     if (event.backendSessionId !== snapshot.sessionId) return;
     const known = new Set(snapshot.messages.map((message) => message.id));

@@ -44,6 +44,7 @@ import {
 import { ClaudeProviderCatalog } from './claude-provider-catalog';
 import { listClaudeTranscriptSummaries, loadClaudeTranscriptHistory, type ClaudeTranscriptHistory } from './transcript-history-adapter';
 import { ClaudeHistoryWindow } from './history-window';
+import { ClaudeTaskPlan } from './claude-task-plan';
 import { ClaudeSubagents } from './claude-subagents';
 import { claudeToolResultText } from './claude-tool-result';
 import {
@@ -143,6 +144,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private readonly goalsByAgentId = new Map<string, ThreadGoal>();
   private readonly goalRefreshIds = new Map<string, symbol>();
   private readonly conversationReplicasByAgentId = new Map<string, ClaudeConversationReplica>();
+  private readonly taskPlansByAgentId = new Map<string, ClaudeTaskPlan>();
   private readonly conversationRevisionsByAgentId = new Map<string, number>();
   private readonly historyWindows = new Map<string, ClaudeHistoryWindow>();
   private readonly historyLoads = new Map<string, symbol>();
@@ -414,6 +416,12 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         type: 'turn.started',
         payload: { turn: { id: turnId, backend: this.backend } },
       });
+      const taskPlan = this.taskPlansByAgentId.get(agent.id)?.startTurn(turnId);
+      if (taskPlan) {
+        this.emitConversation({ agentId: agent.id, backend: 'claude',
+          backendSessionId: existingSessionId ?? undefined, turnId,
+          type: 'turn.executionPlanUpdated', payload: { plan: taskPlan } });
+      }
       this.emit({
         agentId: agent.id,
         type: 'agent.statusChanged',
@@ -516,6 +524,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     this.goalRefreshIds.delete(agentId);
     this.goalsByAgentId.delete(agentId);
     this.conversationReplicasByAgentId.delete(agentId);
+    this.taskPlansByAgentId.delete(agentId);
     this.conversationRevisionsByAgentId.delete(agentId);
     const sessionId = this.liveSessionIdsByAgentId.get(agentId);
     this.contextUsageSessionIdsByAgentId.delete(agentId);
@@ -554,6 +563,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       agent,
       history.backendSession.kind === 'claude' ? history.backendSession.sessionId : null,
       history.messages,
+      history.taskPlan,
     );
     for (const event of history.subagentEvents ?? []) this.emit(event);
 
@@ -615,6 +625,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       agent,
       resolvedBackendSession.kind === 'claude' ? resolvedBackendSession.sessionId : ref.sessionId,
       history?.messages ?? [],
+      history?.taskPlan,
     );
     if (resolvedBackendSession.kind === 'claude') {
       this.turnBoundariesByAgentId.delete(agent.id);
@@ -779,6 +790,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
     this.activeTurnsByAgentId.clear();
     this.conversationReplicasByAgentId.clear();
+    this.taskPlansByAgentId.clear();
     this.historyWindows.clear();
     this.historyLoads.clear();
     this.conversationRevisionsByAgentId.clear();
@@ -1102,6 +1114,14 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         },
       });
       this.emitClaudeFileActivity(activeTurn, block.tool_use_id, status);
+      const tasks = this.taskPlansByAgentId.get(activeTurn.agentId);
+      const output = message.type === 'user' ? message.tool_use_result : undefined;
+      if (completedToolPart && tasks?.apply(completedToolPart, output ?? block.content,
+        activeTurn.sessionId ?? activeTurn.agentId, activeTurn.turnId, new Date().toISOString())) {
+        this.emitConversation({ agentId: activeTurn.agentId, backend: 'claude',
+          backendSessionId: activeTurn.sessionId ?? undefined, turnId: activeTurn.turnId,
+          type: 'turn.executionPlanUpdated', payload: { plan: tasks.plan } });
+      }
     }
   }
 
@@ -1662,7 +1682,9 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     agent: Agent,
     sessionId: string | null,
     messages: RendererMessage[],
+    taskPlan = new ClaudeTaskPlan(),
   ): void {
+    this.taskPlansByAgentId.set(agent.id, taskPlan);
     const window = new ClaudeHistoryWindow(sessionId, messages);
     this.historyWindows.set(agent.id, window);
     const page = window.older();
@@ -1678,7 +1700,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       historyLoading: false,
       historyState: { hasOlder: page.hasOlder, loadingOlder: false },
       contextUsage: agent.contextUsage ?? null,
-      plan: agent.plan ?? null,
+      plan: taskPlan.plan ?? agent.plan ?? null,
       error: null,
     });
   }

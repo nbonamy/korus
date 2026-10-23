@@ -9,6 +9,7 @@ import { claudeToolPart, completedClaudeToolPart } from './claude-tool-part-adap
 import { claudeToolResultText } from './claude-tool-result';
 import { claudeMessageContentBlocks, parseClaudeSdkMessage, type ClaudeSdkContentBlock, type ClaudeSdkMessage } from './protocol';
 import { claudeSubagentHistoryEvents } from './claude-subagents';
+import { ClaudeTaskPlan } from './claude-task-plan';
 
 export type ClaudeTranscriptHistory = {
   backendSession: BackendSession;
@@ -17,6 +18,7 @@ export type ClaudeTranscriptHistory = {
   nativeMessageTurnIds?: Record<string, string>;
   goal?: ThreadGoal | null;
   subagentEvents?: import('@workspace/core/backend-driver').BackendEvent[];
+  taskPlan?: ClaudeTaskPlan;
 };
 
 export type ClaudeTranscriptHistoryOptions = {
@@ -81,13 +83,15 @@ export async function loadClaudeTranscriptHistory(
   const nativeMessageTurnIds: Record<string, string> = {};
   const goal = claudeTranscriptGoal(content, agent.backendSession.sessionId);
   const subagentEvents = claudeSubagentHistoryEvents(content, agent.id, agent.backendSession.sessionId);
+  const taskPlan = new ClaudeTaskPlan();
   return {
     backendSession: {
       ...session,
       transcriptSessionId: sessionId,
       ...settings,
     },
-    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds),
+    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds, false, taskPlan),
+    ...(taskPlan.plan ? { taskPlan } : {}),
     turnBoundaries,
     nativeMessageTurnIds,
     ...(subagentEvents.length ? { subagentEvents } : {}),
@@ -222,7 +226,7 @@ export async function listClaudeTranscriptSummaries(
   return summaries;
 }
 
-export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false): RendererMessage[] {
+export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false, taskPlan?: ClaudeTaskPlan): RendererMessage[] {
   const messages: RendererMessage[] = [];
   let currentTurnId: string | null = null;
   let currentTurnCreatedAt: string | null = null;
@@ -269,7 +273,10 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
       if (toolResults.length > 0) {
         for (const toolResult of toolResults) {
           pendingTools.delete(toolResult.tool_use_id);
-          applyToolResult(assistantParts, toolResult);
+          const completed = applyToolResult(assistantParts, toolResult);
+          if (completed && currentTurnId) taskPlan?.apply(completed,
+            entry.toolUseResult ?? entry.tool_use_result ?? toolResult.content,
+            sessionId, currentTurnId, timestampToIso(entry.timestamp));
         }
         rememberBoundary(entry);
         continue;
@@ -286,6 +293,7 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
 
       flushAssistantMessage();
       currentTurnId = claudeTurnId(entry, sessionId, messages.length);
+      taskPlan?.startTurn(currentTurnId);
       if (nativeMessageTurnIds && entry.uuid) nativeMessageTurnIds[entry.uuid] = currentTurnId;
       currentTurnCreatedAt = timestampToIso(entry.timestamp);
       assistantSegmentIndex = 0;
@@ -484,7 +492,7 @@ function messageText(message: ClaudeSdkMessage): string {
     .trim();
 }
 
-function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkContentBlock, { type: 'tool_result' }>): void {
+function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkContentBlock, { type: 'tool_result' }>): RendererToolPart | undefined {
   const toolPart = parts.find((part): part is RendererToolPart => part.type === 'tool' && part.id === block.tool_use_id);
   if (!toolPart) {
     return;
@@ -499,6 +507,7 @@ function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkC
       claudeToolResultText(block.content),
     ),
   );
+  return toolPart;
 }
 
 function claudeTurnId(entry: TranscriptLine, sessionId: string, index: number): string {

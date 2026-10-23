@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Agent } from '@workspace/core/contracts';
+import { createClaudeConversationReplica, type ClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { decodeAppBackendEvent, type AppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { getLocalClaudeAuthentication } from '../authentication';
 import { ClaudeBackendDriver } from '../claude-driver';
@@ -47,6 +48,89 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
     await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
+  });
+
+  it.each(['tasks', 'todos'])('projects confirmed native %s into execution plans across completion and history reload', async format => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-tasks-'));
+    homes.push(home);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const { sdk, driver, snapshot, events, send } = setup(false, undefined, [], home);
+    const history: object[] = [{ type: 'user', uuid: 'prompt', message: { content: 'Implement login' } }];
+    const readPlan = (frames = events) => {
+      let replica: ClaudeConversationReplica | undefined;
+      for (const raw of frames) {
+        const frame = decodeAppBackendEvent(JSON.parse(JSON.stringify(raw)));
+        if (frame.agentId !== 'claude-a') continue;
+        if (frame.type === 'claude.conversationSnapshotChanged') replica = createClaudeConversationReplica(frame.payload.snapshot);
+        if (frame.type === 'claude.conversationEventReceived') replica?.apply(frame.payload.event);
+      }
+      return replica?.getSnapshot().plan;
+    };
+    const pending = send('claude-a', 'Implement login');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await pending;
+    let index = 0;
+    const tool = async (name: string, input: object, result: object, failed = false) => {
+      const id = `task-tool-${++index}`;
+      const call = { type: 'assistant', uuid: `call-${index}`, session_id: sessionId, message: { content: [{ type: 'tool_use', id, name, input }] } };
+      const reply = { type: 'user', uuid: `reply-${index}`, session_id: sessionId, tool_use_result: result,
+        message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'Native task result', is_error: failed }] } };
+      history.push(call, { ...reply, tool_use_result: undefined, toolUseResult: result });
+      sdk.emit(call); sdk.emit(reply);
+      await vi.waitFor(() => expect(events.some(frame => frame.type === 'claude.conversationEventReceived' && frame.payload.event.type === 'item.updated'
+        && frame.payload.event.payload.itemId === id && frame.payload.event.payload.status === (failed ? 'failed' : 'completed'))).toBe(true));
+    };
+    const todos = (status: string) => ({ todos: [{ content: 'Implement login', status, activeForm: 'Implementing login' }] });
+    if (format === 'tasks') await tool('TaskCreate', { subject: 'Implement login', description: 'Login', activeForm: 'Implementing login' }, { task: { id: '7', subject: 'Implement login' } });
+    else await tool('TodoWrite', todos('pending'), { newTodos: todos('pending').todos });
+    expect(readPlan()).toMatchObject({ kind: 'execution', status: 'inProgress', steps: [{ step: 'Implement login', status: 'pending' }] });
+    expect(sdk.options[0]!.env).toMatchObject({ CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' });
+    if (format === 'tasks') {
+      await tool('TaskList', {}, { tasks: [{ id: '7', subject: 'Implement login', status: 'pending' }, { id: '8', subject: 'Verify login', status: 'pending' }] });
+      await tool('TaskGet', { taskId: '8' }, { task: { id: '8', subject: 'Verify login', status: 'completed' } });
+      expect(readPlan()?.steps).toStrictEqual([{ step: 'Implement login', status: 'pending' }, { step: 'Verify login', status: 'completed' }]);
+      await tool('TaskUpdate', { taskId: '8', status: 'deleted' }, { success: true, taskId: '8', updatedFields: ['status'] });
+    }
+    if (format === 'tasks') await tool('TaskUpdate', { task_id: '7', status: 'in_progress' }, { success: true, taskId: '7', updatedFields: ['status'] });
+    else await tool('TodoWrite', todos('in_progress'), { newTodos: todos('in_progress').todos });
+    expect(readPlan()?.steps).toStrictEqual([{ step: 'Implementing login', status: 'inProgress' }]);
+    if (format === 'tasks') await tool('TaskUpdate', { taskId: '7', status: 'completed' }, { success: false, taskId: '7', updatedFields: [], error: 'Task locked' });
+    else await tool('TodoWrite', todos('completed'), {}, true);
+    expect(readPlan()?.steps).toStrictEqual([{ step: 'Implementing login', status: 'inProgress' }]);
+    const previousTurnId = readPlan()!.turnId;
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    const continuing = send('claude-a', 'Continue login');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(2));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await continuing;
+    history.push({ type: 'user', uuid: 'continue', message: { content: 'Continue login' } });
+    expect(readPlan()).toMatchObject({ turnId: expect.not.stringMatching(previousTurnId), steps: [{ step: 'Implementing login', status: 'inProgress' }] });
+    const project = path.join(home, '.claude', 'projects', '-tmp-project');
+    await mkdir(project, { recursive: true });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), history.map(entry => JSON.stringify({ timestamp: '2026-10-23T12:00:00Z', ...entry })).join('\n'));
+    const restored = setup(false, undefined, [], home);
+    restored.snapshot.agents[0]!.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    await restored.driver.loadConversation(restored.snapshot.agents[0]!);
+    expect(readPlan(restored.events)).toMatchObject({ turnId: 'claude-continue', steps: [{ step: 'Implementing login', status: 'inProgress' }] });
+    if (format === 'tasks') await tool('TaskUpdate', { taskId: '7', subject: 'Ship login', status: 'completed' }, { success: true, taskId: '7', updatedFields: ['subject', 'status'] });
+    else await tool('TodoWrite', todos('completed'), { newTodos: todos('completed').todos });
+    expect(readPlan()).toMatchObject({ status: 'completed', steps: [{ step: format === 'tasks' ? 'Ship login' : 'Implement login', status: 'completed' }] });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    await writeFile(path.join(project, `${sessionId}.jsonl`), history.map(entry => JSON.stringify({ timestamp: '2026-10-23T12:00:00Z', ...entry })).join('\n'));
+    await driver.releaseConversation('claude-a');
+    events.length = 0;
+    await driver.loadConversation(snapshot.agents[0]!);
+    expect(readPlan()).toMatchObject({ kind: 'execution', status: 'completed', steps: [{ step: format === 'tasks' ? 'Ship login' : 'Implement login', status: 'completed' }] });
+    const next = send('claude-a', 'Clear finished tasks');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(3));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await next;
+    if (format === 'tasks') await tool('TaskUpdate', { taskId: '7', status: 'deleted' }, { success: true, taskId: '7', updatedFields: ['status'] });
+    else await tool('TodoWrite', { todos: [] }, { newTodos: [] });
+    expect(readPlan()).toBeNull();
   });
 
   it('discovers native subagents, reads their own sidechain, and retains completion after the parent turn and reload', async () => {

@@ -173,6 +173,12 @@ null folder reference.
   `ExitPlanMode.input.plan` becomes `turn.proposedPlanCompleted`. The app-owned
   agent plan is the source of truth, not Claude's file. Comments keep Plan mode and
   send a follow-up; confirming clears it and sends the implementation prompt.
+- **Task lists:** confirmed native Task tool results and legacy `TodoWrite` updates
+  project into the existing execution-plan panel. Task IDs come from structured
+  results; failed operations do not advance progress. The Claude host retains the
+  session's task projection, rebuilds it from native history before paging, and
+  transports the resulting plan with conversation frames. Proposed-plan review
+  remains separate. Sessions opt into native todo tools for progress display.
 - **Attachments:** supported images, PDFs and text/source files go as native content
   blocks; other binaries are available by trusted local path.
 - **Context and compaction:** usage comes from `getContextUsage()` after init, turns
