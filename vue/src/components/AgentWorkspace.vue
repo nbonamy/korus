@@ -398,11 +398,19 @@ watch(
 
     const existing = executionPlanStates[agentId];
     if (!existing || existing.turnId !== turnId) {
-      executionPlanStates[agentId] = { open: true, turnId };
+      // A finished list that is just being loaded (a restart) has nothing left to watch. One that finishes
+      // while open stays up until the next turn starts, which stops it matching `currentTurnPlan`.
+      executionPlanStates[agentId] = { open: !isPlanFinished(currentTurnPlan.value), turnId };
     }
   },
   { immediate: true },
 );
+
+// Plans restored from the agent record can carry a stale status, so judge by the steps too.
+function isPlanFinished(plan: ThreadPlan | null): boolean {
+  if (!plan) return false;
+  return plan.status === 'completed' || (plan.steps.length > 0 && plan.steps.every((step) => step.status === 'completed'));
+}
 
 function toggleExecutionPlan(): void {
   const agentId = currentAgent.value?.id;

@@ -165,6 +165,43 @@ describe('AgentWorkspace', () => {
     }
   });
 
+  describe('task list panel', () => {
+    const plan = (status: 'inProgress' | 'completed', turnId = 'turn-1') => ({
+      threadId: 'thread-1', turnId, kind: 'execution' as const, status, explanation: '', markdown: '', updatedAt: '',
+      steps: [{ step: 'First', status: status === 'completed' ? 'completed' as const : 'inProgress' as const }],
+    });
+    const planVisible = (wrapper: ReturnType<typeof mountWorkspace>['wrapper']) =>
+      wrapper.findComponent({ name: 'ConversationPane' }).props('planVisible');
+
+    it('stays open when the last task completes and goes away when the next turn starts', async () => {
+      const { wrapper } = mountWorkspace();
+      await wrapper.setProps({ conversationPlan: plan('inProgress'), latestConversationTurnId: 'turn-1' });
+      expect(planVisible(wrapper)).toBe(true);
+      await wrapper.setProps({ conversationPlan: plan('completed') });
+      expect(planVisible(wrapper)).toBe(true);
+      expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).not.toBeNull();
+      await wrapper.setProps({ latestConversationTurnId: 'turn-2' });
+      expect(wrapper.findComponent({ name: 'ConversationPane' }).props('plan')).toBeNull();
+      wrapper.unmount();
+    });
+
+    it('treats a restored list with every step done as finished even if its stored status is stale', async () => {
+      const { wrapper } = mountWorkspace();
+      await wrapper.setProps({ conversationPlan: { ...plan('inProgress'), steps: [{ step: 'Only step', status: 'completed' }] } });
+      expect(planVisible(wrapper)).toBe(false);
+      wrapper.unmount();
+    });
+
+    it('starts closed when a finished list is restored, and opens again for a new list', async () => {
+      const { wrapper } = mountWorkspace();
+      await wrapper.setProps({ conversationPlan: plan('completed') });
+      expect(planVisible(wrapper)).toBe(false);
+      await wrapper.setProps({ conversationPlan: plan('inProgress', 'turn-2') });
+      expect(planVisible(wrapper)).toBe(true);
+      wrapper.unmount();
+    });
+  });
+
   it('persists the selected Git diff target on the active agent', async () => {
     const { currentAgent, updateAgent, wrapper } = mountWorkspace();
 
