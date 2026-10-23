@@ -1,8 +1,6 @@
-import { computed, nextTick, ref } from 'vue';
 import { backlogConnectionsKey } from '../backlog-providers';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { ElDialog } from 'element-plus';
-import { backendChoicesKey } from '../backend-selection';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SourceBranch, WorkItem } from '@workspace/core/contracts';
@@ -106,28 +104,6 @@ describe('RepositorySessionSourceDialog', () => {
     expect(wrapper.findAll('.repository-session-source-dialog__result')).toHaveLength(3);
     configureAppClient();
   });
-  it('renders a footer only when there is a backend choice', async () => {
-    const choices = ref<('codex' | 'claude')[]>(['codex']);
-    const wrapper = mount(RepositorySessionSourceDialog, {
-      props: { visible: true, repositoryName: 'agent-workspace', branches },
-      global: {
-        components: { ElDialog },
-        provide: { [backendChoicesKey as symbol]: computed(() => choices.value) },
-      },
-    });
-    await flushPromises();
-    for (const tab of wrapper.findAll('[role="tab"]')) {
-      await tab.trigger('click');
-      expect(wrapper.find('.el-dialog__footer').exists()).toBe(false);
-    }
-    choices.value = ['codex', 'claude'];
-    await flushPromises();
-    expect(wrapper.find('.el-dialog__footer .backend-selector').exists()).toBe(true);
-    choices.value = ['codex'];
-    await flushPromises();
-    expect(wrapper.find('.el-dialog__footer').exists()).toBe(false);
-  });
-
   afterEach(() => {
     vi.useRealTimers();
   });

@@ -148,7 +148,7 @@ function selectModel(id: string) {
   color: var(--color-text);
   background: var(--color-surface-lowest);
   font: inherit;
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-13);
   font-weight: var(--font-weight-regular);
   text-align: left;
   cursor: pointer;
