@@ -6,6 +6,9 @@
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
     :mission-implementation-start-progress="missionImplementationStartProgress"
+    :agent-creation-progresses="agentCreationProgresses"
+    @clear-agent-creation-progress="clearAgentCreationProgress"
+    @background-agent-creation-progress="backgroundAgentCreationProgress"
     :active-agent="activeAgent"
     :unread-agent-ids="unreadAgentIds"
     :codex-conversation-snapshot="activeCodexConversationSnapshot"
@@ -227,10 +230,6 @@
     @close="cancelPullRequestCleanup"
     @confirm="confirmPullRequestCleanup"
   />
-  <WorkspaceProvisioningProgressDialog
-    :operation="agentCreationProgress ? { mode: 'single', progress: agentCreationProgress } : null"
-    @close="clearAgentCreationProgress"
-  />
   <ConfettiOverlay />
   <Transition name="backend-restart-overlay">
     <div
@@ -263,7 +262,6 @@ import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
 import AgentCloseDialog from './components/AgentCloseDialog.vue';
 import PullRequestCleanupDialog from './components/PullRequestCleanupDialog.vue';
-import WorkspaceProvisioningProgressDialog from './components/WorkspaceProvisioningProgressDialog.vue';
 import SessionCompressionDialog from './components/SessionCompressionDialog.vue';
 import { useAppState } from './app-state';
 import ConfettiOverlay from './shared/confetti/ConfettiOverlay.vue';
@@ -327,7 +325,7 @@ const {
   daemonStatusError,
   codexResourceSharingStatus,
   backendRestartInProgress,
-  agentCreationProgress,
+  agentCreationProgresses,
   missionImplementationStartProgress,
   sourceRepositories,
   openInApplications,
@@ -362,6 +360,7 @@ const {
   openAgentPath,
   createAgent,
   clearAgentCreationProgress,
+  backgroundAgentCreationProgress,
   createMission,
   selectMission,
   deleteMission,

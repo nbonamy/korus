@@ -54,6 +54,7 @@ export function useRepositorySession(options: {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const creationProgress = ref<AgentCreationProgress | null>(null);
+  const backgroundedCreationIds = new Set<string>();
   const worktreeSource = ref<RepositorySessionSource | null>(null);
   const worktreeBranches = ref<SourceBranch[]>([]);
   const worktreeBranchesLoading = ref(false);
@@ -268,9 +269,16 @@ export function useRepositorySession(options: {
       update({ phase: 'startingPrompt', agentId: agent.id, agentName: agentDisplayName(agent) });
       await handOverToNewAgent(agent, item);
       update({ state: 'success' });
+      backgroundedCreationIds.delete(id);
     } catch (caught) {
+      const backgrounded = backgroundedCreationIds.delete(id);
       if (isAssignmentCancelled(caught)) {
         if (creationProgress.value?.id === id) creationProgress.value = null;
+        return;
+      }
+      if (backgrounded) {
+        // The progress dialog is gone, so a failure must not be swallowed.
+        options.notifyError(caught instanceof Error ? caught.message : String(caught));
         return;
       }
       update({ state: 'error', error: caught instanceof Error ? caught.message : String(caught) });
@@ -288,6 +296,12 @@ export function useRepositorySession(options: {
 
   function closeCreationProgress(id: string): void {
     if (creationProgress.value?.id === id) creationProgress.value = null;
+  }
+
+  function backgroundCreationProgress(id: string): void {
+    if (creationProgress.value?.id !== id) return;
+    if (creationProgress.value.state === 'running') backgroundedCreationIds.add(id);
+    creationProgress.value = null;
   }
 
   async function createSession(nextSource: RepositorySessionSource, branch: SourceBranch, teamId?: string): Promise<void> {
@@ -317,6 +331,7 @@ export function useRepositorySession(options: {
     close,
     closeWorktree,
     closeCreationProgress,
+    backgroundCreationProgress,
     creationProgress,
     createForSourceBranch,
     createFromWorktree,

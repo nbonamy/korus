@@ -80,7 +80,7 @@ export function useWorkItemRouting(options: {
   ui: WorkItemRoutingUi;
 }) {
   const pendingNewAgentItem = ref<WorkItem | null>(null);
-  const creationProgress = ref<Exclude<WorkspaceProvisioningOperation, { mode: 'branchMove' }> | null>(null);
+  const creationProgress = ref<Exclude<WorkspaceProvisioningOperation, { mode: 'branchMove' | 'batch' }> | null>(null);
 
   const newAgentTeamName = computed(() => (
     pendingNewAgentItem.value ? workItemTeamName(pendingNewAgentItem.value) : ''

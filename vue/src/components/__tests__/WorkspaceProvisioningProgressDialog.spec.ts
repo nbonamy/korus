@@ -47,6 +47,44 @@ describe('WorkspaceProvisioningProgressDialog', () => {
     expect(wrapper.emitted('close')).toStrictEqual([['project-1']]);
   });
 
+  it('offers to run agent creation in the background only while it is running', async () => {
+    const progress = {
+      id: 'agent-creation-1', state: 'running' as const, backend: 'codex' as const,
+      repositoryName: 'codex-app-sdk', createWorktree: true, hasPrompt: true, phase: 'creatingWorktree' as const,
+    };
+    const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'single', progress } } });
+    const background = () => wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Run in background');
+    await background()!.trigger('click');
+    expect(wrapper.emitted('background')).toStrictEqual([['agent-creation-1']]);
+    await wrapper.setProps({ operation: { mode: 'single', progress: { ...progress, state: 'error', error: 'Nope' } } });
+    expect(background()).toBeUndefined();
+    await wrapper.setProps({ operation: { mode: 'branchMove', progress: { id: 'move', agentId: 'parent', branchName: 'b', state: 'running', phase: 'movingChanges' } } });
+    expect(background()).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('shows concurrent agent creations as one aggregate operation', async () => {
+    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'korus', createWorktree: true, hasPrompt: true };
+    const progress = [
+      { ...base, id: 'a', branchName: 'fix/a', phase: 'initializingWorktree' as const },
+      { ...base, id: 'b', branchName: 'fix/b', phase: 'creatingAgent' as const },
+    ];
+    const wrapper = mount(WorkspaceProvisioningProgressDialog, { props: { operation: { mode: 'batch', progress } } });
+    const steps = () => wrapper.findAll('.staged-operation-progress li');
+    expect(wrapper.text()).toContain('Creating 2 agents');
+    expect(steps()[1]!.classes()).toContain('is-active');
+    expect(steps()[0]!.text()).toContain('fix/a, fix/b');
+    await wrapper.findAll('.app-dialog__footer button').find((button) => button.text() === 'Run in background')!.trigger('click');
+    expect(wrapper.emitted('background')).toStrictEqual([['a'], ['b']]);
+    await wrapper.setProps({ operation: { mode: 'batch', progress: [
+      { ...progress[0]!, state: 'success' as const }, { ...progress[1]!, state: 'error' as const, error: 'Backend offline' },
+    ] } });
+    expect(wrapper.get('[role="status"]').text()).toContain('Backend offline');
+    await wrapper.get('.app-dialog__footer button').trigger('click');
+    expect(wrapper.emitted('close')).toStrictEqual([['a'], ['b']]);
+    wrapper.unmount();
+  });
+
   it('shows the delegated worktree handoff and closes after the success animation', async () => {
     vi.useFakeTimers();
     const initialProgress = {

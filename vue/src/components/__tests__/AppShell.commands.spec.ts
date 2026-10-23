@@ -1042,6 +1042,40 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('debug-mark-unread')).toStrictEqual([[]]);
   });
 
+  it('hides agent creation progress when it is sent to the background', async () => {
+    let listener: (command: AppCommand) => void = () => undefined;
+    window.app = {
+      onAppCommand: vi.fn((nextListener: (command: AppCommand) => void) => {
+        listener = nextListener;
+        return () => undefined;
+      }),
+      onEvent: vi.fn(() => vi.fn()),
+    } as Partial<AppApi> as AppApi;
+    const wrapper = mountShell();
+    await nextTick();
+    listener({ type: 'debug-operation-progress', kind: 'worktreeInitialization' });
+    await nextTick();
+    const dialog = wrapper.findAllComponents({ name: 'WorkspaceProvisioningProgressDialog' })
+      .find((candidate) => candidate.props('operation') !== null);
+    if (!dialog) throw new Error('Expected active agent creation progress dialog.');
+    const background = dialog.findAll('button').find((button) => button.text() === 'Run in background');
+    await background!.trigger('click');
+    await nextTick();
+    expect(dialog.props('operation')).toBeNull();
+  });
+
+  it('shows backend-driven agent creations in the shared dialog and reports its actions', async () => {
+    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'agent-workspace', createWorktree: true, hasPrompt: true, phase: 'creatingWorktree' as const };
+    const wrapper = mountShell({ agentCreationProgresses: [{ ...base, id: 'agent-creation-1' }, { ...base, id: 'agent-creation-2' }] });
+    await nextTick();
+    const dialogs = wrapper.findAllComponents({ name: 'WorkspaceProvisioningProgressDialog' });
+    const active = dialogs.filter((candidate) => candidate.props('operation') !== null);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.props('operation')).toMatchObject({ mode: 'batch' });
+    await wrapper.findAll('button').find((button) => button.text() === 'Run in background')!.trigger('click');
+    expect(wrapper.emitted('background-agent-creation-progress')).toStrictEqual([['agent-creation-1'], ['agent-creation-2']]);
+  });
+
   it('previews the real worktree initialization progress from a Debug command', async () => {
     vi.useFakeTimers();
     let listener: (command: AppCommand) => void = () => undefined;

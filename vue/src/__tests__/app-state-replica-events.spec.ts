@@ -239,7 +239,7 @@ describe('useAppState', () => {
       payload: { ...progress, id: 'ignored' },
       occurredAt: '2026-06-05T00:00:01.000Z',
     });
-    expect(state.agentCreationProgress.value).toBeNull();
+    expect(state.agentCreationProgresses.value).toStrictEqual([]);
 
     listeners[0]?.({
       seq: 2,
@@ -248,7 +248,7 @@ describe('useAppState', () => {
       payload: progress,
       occurredAt: '2026-06-05T00:00:02.000Z',
     });
-    expect(state.agentCreationProgress.value).toStrictEqual(progress);
+    expect(state.agentCreationProgresses.value).toStrictEqual([progress]);
 
     listeners[0]?.({
       seq: 3,
@@ -257,10 +257,76 @@ describe('useAppState', () => {
       payload: { ...progress, state: 'success', agentId: 'agent-worker', agentName: 'feature/contracts' },
       occurredAt: '2026-06-05T00:00:03.000Z',
     });
-    expect(state.agentCreationProgress.value).toMatchObject({ state: 'success', agentName: 'feature/contracts' });
+    expect(state.agentCreationProgresses.value[0]).toMatchObject({ state: 'success', agentName: 'feature/contracts' });
 
     state.clearAgentCreationProgress('agent-creation-1');
-    expect(state.agentCreationProgress.value).toBeNull();
+    expect(state.agentCreationProgresses.value).toStrictEqual([]);
+  });
+
+  it('tracks concurrent agent creations side by side', async () => {
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    stubElectronTestWindow({
+      app: {
+        getSnapshot: vi.fn().mockResolvedValue({ ...createInitialSnapshot(), activeAgentId: 'agent-dina' }),
+        onEvent: vi.fn((listener) => {
+          listeners.push(listener);
+          return () => undefined;
+        }),
+      } satisfies Partial<AppApi>,
+    });
+    const state = useAppState();
+    await state.loadSnapshot();
+    const base = { state: 'running' as const, backend: 'codex' as const, repositoryName: 'repo', createWorktree: true, hasPrompt: true };
+    const emit = (seq: number, payload: Record<string, unknown>) => listeners[0]?.({
+      seq, agentId: 'agent-dina', type: 'agentCreation.progress', payload: { ...base, ...payload }, occurredAt: '2026-06-05T00:00:00.000Z',
+    } as MainToRendererEvent);
+    emit(1, { id: 'a' });
+    emit(2, { id: 'b' });
+    emit(3, { id: 'a', phase: 'creatingAgent' });
+    expect(state.agentCreationProgresses.value).toMatchObject([{ id: 'a', phase: 'creatingAgent' }, { id: 'b' }]);
+    emit(4, { id: 'b', state: 'success' });
+    expect(state.agentCreationProgresses.value).toMatchObject([{ id: 'a' }, { id: 'b', state: 'success' }]);
+    state.clearAgentCreationProgress('b');
+    expect(state.agentCreationProgresses.value.map((entry) => entry.id)).toStrictEqual(['a']);
+  });
+
+  it('hides agent creation progress in the background and only resurfaces failures', async () => {
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    stubElectronTestWindow({
+      app: {
+        getSnapshot: vi.fn().mockResolvedValue({ ...createInitialSnapshot(), activeAgentId: 'agent-dina' }),
+        onEvent: vi.fn((listener) => {
+          listeners.push(listener);
+          return () => undefined;
+        }),
+      } satisfies Partial<AppApi>,
+    });
+    const state = useAppState();
+    await state.loadSnapshot();
+    const progress = {
+      id: 'agent-creation-1',
+      state: 'running' as const,
+      backend: 'codex' as const,
+      repositoryName: 'codex-app-sdk',
+      createWorktree: true,
+      hasPrompt: true,
+    };
+    const emit = (seq: number, id: string, payload: Record<string, unknown>) => listeners[0]?.({
+      seq, agentId: 'agent-dina', type: 'agentCreation.progress', payload: { ...progress, id, ...payload }, occurredAt: '2026-06-05T00:00:00.000Z',
+    } as MainToRendererEvent);
+
+    emit(1, 'agent-creation-1', {});
+    expect(state.agentCreationProgresses.value.map((entry) => entry.id)).toStrictEqual(['agent-creation-1']);
+    state.backgroundAgentCreationProgress('agent-creation-1');
+    expect(state.agentCreationProgresses.value).toStrictEqual([]);
+    emit(2, 'agent-creation-1', { phase: 'creatingAgent' });
+    emit(3, 'agent-creation-1', { state: 'success', agentId: 'agent-worker' });
+    expect(state.agentCreationProgresses.value).toStrictEqual([]);
+
+    emit(4, 'agent-creation-2', {});
+    state.backgroundAgentCreationProgress('agent-creation-2');
+    emit(5, 'agent-creation-2', { state: 'error', error: 'Backend offline' });
+    expect(state.agentCreationProgresses.value).toMatchObject([{ id: 'agent-creation-2', state: 'error', error: 'Backend offline' }]);
   });
 
   it('tracks aggregate Mission Implementation startup progress', async () => {
@@ -371,7 +437,7 @@ describe('useAppState', () => {
     await state.loadSnapshot();
     state.sidePanelRequest.value = null;
     state.fileActivity.value = null;
-    state.agentCreationProgress.value = null;
+    state.agentCreationProgresses.value = [];
     state.answeredClientRequestIds.value = new Set();
     const originalSnapshot = state.snapshot.value;
 
@@ -446,7 +512,7 @@ describe('useAppState', () => {
     expect(state.snapshot.value).toBe(originalSnapshot);
     expect(state.sidePanelRequest.value).toBeNull();
     expect(state.fileActivity.value).toBeNull();
-    expect(state.agentCreationProgress.value).toBeNull();
+    expect(state.agentCreationProgresses.value).toStrictEqual([]);
     expect(state.answeredClientRequestIds.value).toEqual(new Set());
     expect(useConfetti().bursts.value).toStrictEqual([]);
   });

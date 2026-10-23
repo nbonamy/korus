@@ -563,8 +563,9 @@
       @save="saveImageAnnotation"
     />
     <WorkspaceProvisioningProgressDialog
-      :operation="provisioningProgress ? { mode: 'single', progress: provisioningProgress } : workItemCreationProgress"
+      :operation="provisioningOperation"
       @close="closeProvisioningProgress"
+      @background="backgroundProvisioningProgress"
     />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
@@ -625,7 +626,7 @@ import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { appApi, appHostCapabilities, appClientPlatform } from '../platform-api';
 import { codeReviewSettingsKey, useCodeReviewSettings } from './code-review-settings';
 import AgentDialog from './AgentDialog.vue';
-import WorkspaceProvisioningProgressDialog from './WorkspaceProvisioningProgressDialog.vue';
+import WorkspaceProvisioningProgressDialog, { type WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
 import RepositorySessionSourceDialog from './RepositorySessionSourceDialog.vue';
 import { resolveRepositorySessionContext, type RepositorySessionSource } from './repository-session-context';
 import NewSourceWorktreeDialog from './NewSourceWorktreeDialog.vue';
@@ -804,6 +805,7 @@ const props = withDefaults(defineProps<{
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
   executeMission?: (input: import('@workspace/core/mission-execution').MissionExecutionInput) => Promise<void>;
   missionImplementationStartProgress?: MissionImplementationStartProgress | null;
+  agentCreationProgresses?: AgentCreationProgress[];
   createQuickChat?: (input: CreateQuickChatInput) => Promise<Agent | null | void>;
   createTeam?: (input: CreateTeamInput) => Promise<Team | null | void>;
   updateTeam?: (input: UpdateTeamInput) => Promise<void>;
@@ -1007,6 +1009,8 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'clear-agent-creation-progress': [id: string];
+  'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
   'close-team': [teamId: string];
   'disconnect-team': [teamId: string];
@@ -1504,6 +1508,7 @@ const {
   close: closeRepositorySessionSource,
   closeWorktree: closeRepositorySessionWorktree,
   closeCreationProgress: closeRepositorySessionCreationProgress,
+  backgroundCreationProgress: backgroundRepositorySessionCreationProgress,
   creationProgress: repositorySessionCreationProgress,
   createForSourceBranch: openNewAgentForSourceBranch,
   createFromWorktree: createRepositorySessionFromWorktree,
@@ -2682,11 +2687,27 @@ function scheduleDebugAgentCreationUpdate(
 }
 
 const provisioningProgress = computed(() => debugAgentCreationProgress.value ?? repositorySessionCreationProgress.value);
+// Local flows first, then agent-delegated creations (one, or several side by side).
+const provisioningOperation = computed<WorkspaceProvisioningOperation | null>(() => {
+  if (provisioningProgress.value) return { mode: 'single', progress: provisioningProgress.value };
+  if (workItemCreationProgress.value) return workItemCreationProgress.value;
+  const delegated = props.agentCreationProgresses ?? [];
+  if (delegated.length === 1) return { mode: 'single', progress: delegated[0]! };
+  return delegated.length > 1 ? { mode: 'batch', progress: delegated } : null;
+});
 
 function closeProvisioningProgress(id: string): void {
   closeDebugAgentCreationProgress(id);
   closeRepositorySessionCreationProgress(id);
   closeWorkItemCreationProgress(id);
+  emit('clear-agent-creation-progress', id);
+}
+
+function backgroundProvisioningProgress(id: string): void {
+  closeDebugAgentCreationProgress(id);
+  backgroundRepositorySessionCreationProgress(id);
+  closeWorkItemCreationProgress(id);
+  emit('background-agent-creation-progress', id);
 }
 
 function closeDebugAgentCreationProgress(id: string): void {
