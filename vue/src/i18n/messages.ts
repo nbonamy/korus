@@ -128,7 +128,7 @@ export const messages = {
       waiting: 'Waiting for {provider} authorization',
     },
     automationSources: { connect: 'Connect {provider} in Settings before saving an automation.', noSources: 'No accessible backlog sources.', codeRepositoryFor: 'Code repository for {source}', refresh: 'Refresh' },
-    backlogSource: { provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}' },
+    backlogSource: { provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}', viewInProvider: 'View in {provider}' },
     linearIntegration: {
       name: 'Linear', connectLabel: 'Connect Linear', disconnectLabel: 'Disconnect Linear',
       cancelLabel: 'Cancel Linear authorization',

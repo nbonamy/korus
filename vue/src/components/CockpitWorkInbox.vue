@@ -15,6 +15,18 @@
       </nav>
 
       <div class="cockpit-inbox__actions">
+        <el-select
+          v-if="workProviderDefinition(connection.provider).pullRequests"
+          v-model="kindFilter"
+          class="cockpit-inbox__kind-filter"
+          multiple
+          collapse-tags
+          :placeholder="$t('surface.cockpitWorkInbox.allTypes')"
+          :aria-label="$t('surface.cockpitWorkInbox.itemType')"
+        >
+          <el-option :label="$t('surface.cockpitWorkInbox.issues')" value="issue" />
+          <el-option :label="$t('surface.cockpitWorkInbox.pullRequests')" value="pullRequest" />
+        </el-select>
         <el-input
           v-if="searchOpen"
           ref="searchInput"
@@ -24,6 +36,7 @@
           :placeholder="$t('surface.cockpitWorkInbox.searchWork')"
           :aria-label="$t('surface.cockpitWorkInbox.searchWork')"
           @update:model-value="updateSearchQuery"
+          @blur="closeSearchWhenEmpty"
         />
         <button
           v-else
@@ -50,7 +63,8 @@
                 <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
               </el-select>
             </label>
-            <label> {{ $t('surface.cockpitWorkInbox.assignee') }} <el-select :model-value="selectedAssigneeLogin" clearable filterable :placeholder="$t('surface.cockpitWorkInbox.allAssignees')" :aria-label="$t('surface.cockpitWorkInbox.assigneeFilter')" @update:model-value="selectAssignee">
+            <label> {{ $t('surface.cockpitWorkInbox.assignee') }} <el-select :model-value="assigneeSelection" clearable filterable :placeholder="$t('surface.cockpitWorkInbox.allAssignees')" :aria-label="$t('surface.cockpitWorkInbox.assigneeFilter')" @update:model-value="selectAssignee">
+                <el-option v-if="!selectedRepositoryId" :label="$t('surface.cockpitWorkInbox.assignedToMe')" :value="assignedToMeValue" />
                 <el-option v-for="assignee in assigneeOptions" :key="assignee" :label="assignee" :value="assignee" />
               </el-select>
             </label>
@@ -157,16 +171,22 @@
                   <PlayerPlayIcon aria-hidden="true" />
                 </button>
               </el-tooltip>
-              <el-tooltip :content="$t('backlogSource.viewProvider', { identifier: workItemDisplayIdentifier(row.item), provider: providerLabel })" placement="top" :show-after="300">
-                <button
-                  class="cockpit-inbox__external-action"
-                  type="button"
-                  :aria-label="$t('backlogSource.viewProvider', { identifier: workItemDisplayIdentifier(row.item), provider: providerLabel })"
-                  @click.stop="openSource(row.item)"
-                >
-                  <ExternalLinkIcon aria-hidden="true" />
-                </button>
-              </el-tooltip>
+              <AppMenuButton
+                :ariaLabel="$t('surface.cockpitWorkInbox.moreActions', { identifier: workItemDisplayIdentifier(row.item) })"
+                :items="rowMenuItems(row.item)"
+                @select="openSource(row.item)"
+              >
+                <template #trigger="{ attrs }">
+                  <button
+                    v-bind="attrs"
+                    class="cockpit-inbox__row-action"
+                    type="button"
+                    :aria-label="$t('surface.cockpitWorkInbox.moreActions', { identifier: workItemDisplayIdentifier(row.item) })"
+                  >
+                    <DotsVerticalIcon aria-hidden="true" />
+                  </button>
+                </template>
+              </AppMenuButton>
             </div>
           </article>
         </div>
@@ -260,9 +280,11 @@ import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, Wor
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
-import { ExternalLinkIcon, EyeIcon, GitBranchIcon, GitHubIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, GitHubIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
 import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 import BackendModelSelector from './BackendModelSelector.vue';
 import type { StartWorkItemsInput } from './use-work-item-routing';
 
@@ -353,17 +375,25 @@ const providerLabel = computed(() => workProviderDefinition(props.connection.pro
 const repositoryIcons = computed(() => props.repositoryIcons);
 const tagOptions = computed(() => [...new Set(props.items.flatMap((item) => item.labels.map((label) => label.name)))].sort());
 const assigneeOptions = computed(() => [...new Set(props.items.flatMap((item) => item.assignees ?? []))].sort());
-const activeFilterCount = computed(() => [props.selectedRepositoryId, props.selectedTagName, props.selectedAssigneeLogin].filter(Boolean).length);
+// The global feed defaults to "assigned to me"; surface it as the active assignee filter.
+const assignedToMeValue = '@me';
+const assigneeSelection = computed(() => props.selectedAssigneeLogin
+  ?? (!props.selectedRepositoryId && props.globalScope === 'assignedToMe' ? assignedToMeValue : null));
+const activeFilterCount = computed(() => [props.selectedRepositoryId, props.selectedTagName, assigneeSelection.value].filter(Boolean).length);
 const scopePromptVisible = computed(() => (
   !props.selectedRepositoryId && !props.globalScope && (activeView.value === 'all' || activeView.value === 'backlog')
 ));
 const allRows = computed<InboxRow[]>(() => props.items.filter((item) => item.state === 'open').map(toRow));
+// Empty means every type; the control only exists for providers that have pull requests.
+const kindFilter = ref<Array<'issue' | 'pullRequest'>>([]);
+const activeKindFilter = computed(() => workProviderDefinition(props.connection.provider).pullRequests ? kindFilter.value : []);
 const filteredRows = computed(() => {
   const query = effectiveSearchQuery.value.trim().toLocaleLowerCase();
   return allRows.value.filter((row) => {
     if (props.selectedRepositoryId && row.item.sourceId !== props.selectedRepositoryId) return false;
     if (props.selectedTagName && !row.item.labels.some((label) => label.name === props.selectedTagName)) return false;
     if (props.selectedAssigneeLogin && !(row.item.assignees ?? []).includes(props.selectedAssigneeLogin)) return false;
+    if (activeKindFilter.value.length && !activeKindFilter.value.includes(row.item.kind === 'pullRequest' ? 'pullRequest' : 'issue')) return false;
     if (query && !`${row.item.sourceName} ${row.item.identifier ?? row.item.number} ${row.item.title}`.toLocaleLowerCase().includes(query)) return false;
     return true;
   });
@@ -574,6 +604,17 @@ async function openSearch(): Promise<void> {
   await nextTick();
   searchInput.value?.focus();
 }
+function rowMenuItems(item: WorkItem): AppMenuItem[] {
+  return [{
+    id: 'external',
+    type: 'action',
+    label: translate('backlogSource.viewInProvider', { provider: providerLabel.value }),
+    icon: ExternalLinkIcon,
+  }];
+}
+function closeSearchWhenEmpty(): void {
+  if (!effectiveSearchQuery.value.trim()) searchOpen.value = false;
+}
 function updateSearchQuery(value: unknown): void {
   const query = typeof value === 'string' ? value : '';
   effectiveSearchQuery.value = query;
@@ -591,7 +632,10 @@ function openSource(item: WorkItem): void { window.open(item.url, '_blank', 'nor
 function normalized(value: unknown): string | null { return typeof value === 'string' && value ? value : null; }
 function selectRepository(value: unknown): void { emit('select-repository', normalized(value)); }
 function selectTag(value: unknown): void { emit('select-tag', normalized(value)); }
-function selectAssignee(value: unknown): void { emit('select-assignee', normalized(value)); }
+function selectAssignee(value: unknown): void {
+  if (value === assignedToMeValue) emit('select-global-scope', 'assignedToMe');
+  else emit('select-assignee', normalized(value));
+}
 </script>
 
 <style scoped>
@@ -753,6 +797,10 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   cursor: pointer;
 }
 
+.cockpit-inbox__kind-filter {
+  width: 140px;
+}
+
 .cockpit-inbox__filter-button {
   padding: 0 var(--space-6);
   font-size: var(--font-size-13);
@@ -776,12 +824,6 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   padding: 0 var(--space-6);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
-}
-
-.cockpit-inbox__refresh {
-  border-color: transparent;
-  color: var(--color-text-muted);
-  background: transparent;
 }
 
 .cockpit-inbox__search-input {
@@ -1074,8 +1116,7 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   padding-left: var(--space-2);
 }
 
-.cockpit-inbox__row-action,
-.cockpit-inbox__external-action {
+.cockpit-inbox__row-action {
   width: 28px;
   height: 28px;
   display: grid;
@@ -1089,20 +1130,17 @@ function selectAssignee(value: unknown): void { emit('select-assignee', normaliz
   cursor: pointer;
 }
 
-.cockpit-inbox__row-action svg,
-.cockpit-inbox__external-action svg {
+.cockpit-inbox__row-action svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
 
-.cockpit-inbox__row-action:hover,
-.cockpit-inbox__external-action:hover {
+.cockpit-inbox__row-action:hover {
   color: var(--color-text);
   background: var(--color-surface-low);
 }
 
-.cockpit-inbox__row-action:focus-visible,
-.cockpit-inbox__external-action:focus-visible {
+.cockpit-inbox__row-action:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
