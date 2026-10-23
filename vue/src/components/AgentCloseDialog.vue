@@ -7,17 +7,18 @@
     :show-close="false"
     :close-on-click-modal="!busy"
     :close-on-press-escape="!busy"
+    :title="busy ? $t(operationTitleKey) : undefined"
     destroy-on-close
     @update:model-value="onVisibilityChanged"
   >
     <template #header>
       <div class="app-form-dialog__header agent-close-dialog__header">
-        <h2 class="app-dialog__title">{{ $t('surface.agentCloseDialog.close') }} {{ agent?.name }}?</h2>
+        <h2 v-if="!busy && agent" class="app-dialog__title">{{ $t('surface.agentCloseDialog.close', { name: agentDisplayName(agent) }) }}</h2>
       </div>
     </template>
 
     <GitOperationFeedback v-if="busy" status="running"
-      :title="$t(deletingWorktree ? 'surface.agentCloseDialog.deletingWorktree' : 'surface.agentCloseDialog.closingAgent')"
+      :title="$t(operationTitleKey)"
       :detail="preview?.branch ?? undefined">
       <template #icon><Trash2Icon /></template>
     </GitOperationFeedback>
@@ -53,6 +54,7 @@
 import { computed, ref, watch } from 'vue';
 import type { Agent } from '@workspace/core/contracts';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
+import { agentDisplayName } from '@workspace/core/agent-display';
 import GitOperationFeedback from './GitOperationFeedback.vue';
 import { Trash2Icon } from '../shared/icons/app-icons';
 
@@ -82,6 +84,7 @@ const deleteRemoteBranch = ref(false);
 const discardChanges = ref(false);
 const hasChanges = computed(() => props.preview?.hasChanges ?? false);
 const remoteBranch = computed(() => props.preview?.upstream);
+const operationTitleKey = computed(() => props.deletingWorktree ? 'surface.agentCloseDialog.deletingWorktree' : 'surface.agentCloseDialog.closingAgent');
 
 watch(() => props.visible, (visible) => {
   if (visible) {

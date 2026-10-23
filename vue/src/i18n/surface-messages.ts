@@ -106,7 +106,7 @@ export const surfaceMessages = {
     "adjustAvatar": "Adjust Avatar"
   },
   "agentCloseDialog": {
-    "close": "Close",
+    "close": "Close {name}?",
     "thisAgentIsUsingTheLinkedWorktree": "This agent is using the linked worktree",
     "deletingTheWorktreeAlsoDeletesItsLocalBranchKeepingItLea": "Deleting the worktree also deletes its local branch. Keeping it leaves both untouched.",
     "alsoDelete": "Also delete",

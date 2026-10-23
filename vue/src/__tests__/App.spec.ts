@@ -21,6 +21,8 @@ describe('App', () => {
     // duplicate submissions, and never clear or overwrite a later dialog.
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
+    first!.name = null;
+    first!.workspace = { kind: 'git', folder: '/repo-fix-api', repositoryRoot: '/repo', primaryWorktreeRoot: '/repo', repositoryName: 'repo', branch: 'fix/api', isLinkedWorktree: true, updatedAt: first!.updatedAt };
     const pending = deferred<AppSnapshot>();
     const closeAgent = vi.fn(() => pending.promise);
     const getAgentClosePreview = vi.fn(async () => ({ isLinkedWorktree: true, branch: 'fix/api', upstream: null, hasChanges: false }));
@@ -34,9 +36,11 @@ describe('App', () => {
     shell.vm.$emit('close-agent', first!.id);
     await flushPromises();
     const dialog = wrapper.getComponent(AgentCloseDialog);
+    expect(dialog.get('h2').text()).toBe('Close fix/api?');
     await dialog.get('.app-button--primary').trigger('click');
     await flushPromises();
     expect(dialog.get('[role="status"]').attributes('aria-busy')).toBe('true');
+    expect(dialog.find('h2').exists()).toBe(false);
     const background = dialog.findAll('button').find(button => button.text() === 'Run in background');
     expect(background).toBeDefined();
     await background!.trigger('click');
