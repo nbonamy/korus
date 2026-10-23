@@ -30,21 +30,35 @@
     </template>
 
     <div v-if="!selectedWorkItem && purpose === 'session'" class="repository-session-source-dialog__toolbar">
-      <el-tabs v-model="tab" class="repository-session-source-dialog__tabs" :aria-label="t('repositories.sessionSource.type')">
-        <el-tab-pane v-for="option in tabs" :key="option.id" :name="option.id" :label="option.label" />
-      </el-tabs>
+      <div class="repository-session-source-dialog__toolbar-start">
+        <el-tabs v-model="tab" class="repository-session-source-dialog__tabs" :aria-label="t('repositories.sessionSource.type')">
+          <el-tab-pane v-for="option in tabs" :key="option.id" :name="option.id" :label="option.label" />
+        </el-tabs>
+        <BacklogSourceSelector
+          v-if="tab === 'issues' && backlog.providers.value.length"
+          chip
+          size="small"
+          :provider="backlog.provider.value"
+          :providers="backlog.providers.value"
+          :sources="backlog.sources.value"
+          :source-id="backlog.sourceId.value"
+          :show-source="!workProviderDefinition(backlog.provider.value).repositoryBacked"
+          @select-provider="backlog.selectProvider"
+          @select-source="selectSource"
+        />
+      </div>
       <span class="repository-session-source-dialog__repository"><RepositoryIcon aria-hidden="true" />{{ repositoryName }}</span>
     </div>
 
     <BacklogSourceSelector
-      v-if="!selectedWorkItem && (purpose === 'missionIssue' || tab === 'issues') && backlog.providers.value.length"
+      v-if="!selectedWorkItem && purpose === 'missionIssue' && backlog.providers.value.length"
       class="repository-session-source-dialog__sources"
       size="small"
       :provider="backlog.provider.value"
       :providers="backlog.providers.value"
       :sources="backlog.sources.value"
       :source-id="backlog.sourceId.value"
-      :show-source="purpose === 'missionIssue' || !workProviderDefinition(backlog.provider.value).repositoryBacked"
+      show-source
       @select-provider="backlog.selectProvider"
       @select-source="selectSource"
     />
@@ -348,6 +362,28 @@ function customWorkItem(selection: Omit<WorkItemAssignmentSelection, 'action'>):
   padding: var(--space-3) var(--space-8);
   border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
+}
+
+.repository-session-source-dialog__toolbar-start {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.repository-session-source-dialog__toolbar-start :deep(.backlog-source-selector) {
+  /* The chip is taller than the field beside it; centre both instead of top-aligning the field. */
+  align-items: center;
+}
+
+.repository-session-source-dialog__tabs :deep(.el-tabs__nav-wrap) {
+  margin-bottom: 0;
+}
+
+.repository-session-source-dialog__toolbar-start :deep(.backlog-source-selector__source) {
+  /* An explicit width: inside a shrink-to-fit row the select would otherwise collapse to its chevron. */
+  width: 220px;
+  flex: 0 1 220px;
 }
 
 .repository-session-source-dialog__tabs {

@@ -104,6 +104,28 @@ describe('RepositorySessionSourceDialog', () => {
     expect(wrapper.findAll('.repository-session-source-dialog__result')).toHaveLength(3);
     configureAppClient();
   });
+  it('puts the provider choice beside the tabs on the Issues tab', async () => {
+    const { api } = createClientApiMock();
+    configureAppClient({ platform: 'desktop', api });
+    api.listWorkSources.mockResolvedValue([]);
+    api.listWorkItems.mockResolvedValue([]);
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'linear', status: 'connected' }];
+    api.getAutomationSnapshot.mockResolvedValue(snapshot);
+    const wrapper = mount(RepositorySessionSourceDialog, { props: { visible: true, repositoryName: 'agent-workspace', branches, workItems: [], location: { kind: 'remote' as const, remoteConnectionId: 'remote-one' } } });
+    await flushPromises();
+    expect(wrapper.find('.repository-session-source-dialog__toolbar [aria-label="Backlog provider"]').exists()).toBe(false);
+    await wrapper.findAll('[role="tab"]')[2].trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.repository-session-source-dialog__toolbar-start [aria-label="Backlog provider"]').exists()).toBe(true);
+    expect(wrapper.findAll('[aria-label="Backlog provider"]')).toHaveLength(1);
+    expect(wrapper.get('.repository-session-source-dialog__toolbar > .repository-session-source-dialog__repository').text()).toContain('agent-workspace');
+    await wrapper.get('[aria-label="Backlog provider"] select').setValue('linear');
+    await flushPromises();
+    expect(wrapper.find('.repository-session-source-dialog__toolbar-start [aria-label="Team / project"]').exists()).toBe(true);
+    configureAppClient();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
