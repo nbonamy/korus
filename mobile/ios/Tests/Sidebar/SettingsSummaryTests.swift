@@ -21,4 +21,11 @@ final class SettingsSummaryTests: XCTestCase {
         XCTAssertEqual(LaptopSummary.text(names: ["MacBook Pro"]), "MacBook Pro")
         XCTAssertEqual(LaptopSummary.text(names: ["MacBook Pro", "Mac mini"]), "2 laptops")
     }
+
+    func testLaptopNamesAreTrimmedAndRefusedWhenBlankOrTooLong() {
+        XCTAssertEqual(LaptopName.cleaned("  Work Mac "), "Work Mac")
+        XCTAssertNil(LaptopName.cleaned("   "))
+        XCTAssertNil(LaptopName.cleaned(String(repeating: "x", count: 61)))
+        XCTAssertEqual(LaptopName.cleaned(String(repeating: "x", count: 60))?.count, 60)
+    }
 }

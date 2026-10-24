@@ -16,6 +16,15 @@ extension ConnectionState {
     }
 }
 
+enum LaptopName {
+    static let maxLength = 60
+    /// The name to save, or nil when the person has typed nothing usable.
+    static func cleaned(_ value: String) -> String? {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || name.count > maxLength ? nil : name
+    }
+}
+
 enum LaptopSummary {
     /// What the Connections row shows: the laptop's name, or how many there are.
     static func text(names: [String]) -> String {

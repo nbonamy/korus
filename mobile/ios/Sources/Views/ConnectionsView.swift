@@ -4,6 +4,8 @@ struct ConnectionsView: View {
     @Environment(AppModel.self) private var model
     let closeSettings: () -> Void
     @State private var forgetting: EngineState.Laptop?
+    @State private var renaming: EngineState.Laptop?
+    @State private var newName = ""
 
     var body: some View {
         AppSheetList {
@@ -28,6 +30,7 @@ struct ConnectionsView: View {
                         }
                         .buttonStyle(.plain)
                         Menu {
+                            Button("Rename", systemImage: "pencil") { newName = laptop.name; renaming = laptop }
                             Button("Forget connection", systemImage: "trash", role: .destructive) { forgetting = laptop }
                         } label: {
                             Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
@@ -46,6 +49,15 @@ struct ConnectionsView: View {
         }
         .navigationTitle("Connections")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Rename laptop", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") {
+                if let laptop = renaming, let name = LaptopName.cleaned(newName) { model.command("renameLaptop", ["laptopId": laptop.id, "name": name]) }
+                renaming = nil
+            }
+            .disabled(LaptopName.cleaned(newName) == nil)
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
         .forgetLaptopConfirmation($forgetting) { laptop in
             model.command("forget", ["laptopId": laptop.id])
             if laptop.id == model.laptopID { closeSettings() }
