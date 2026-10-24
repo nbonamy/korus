@@ -274,6 +274,12 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
       ok: true,
       value: [{ id: 11, url: 'https://example.test/login' }],
     });
+    // Wildcard hosts match the real host only, never text in the path or query.
+    expect(await request('tabs.query', { url: ['https://*.test/*'] })).toMatchObject({ ok: true, value: [{ id: 11 }, { id: 12 }] });
+    expect(await request('tabs.query', { url: ['https://*.example.test/*'] })).toMatchObject({ ok: true, value: [{ id: 11 }] });
+    await first.loadURL('https://evil.test/?a.example.test/');
+    expect(await request('tabs.query', { url: ['https://*.example.test/*'] })).toMatchObject({ ok: true, value: [] });
+    await first.loadURL('https://example.test/login');
     expect(await request('tabs.getCurrent')).toMatchObject({ ok: true, value: { id: 11 } });
     expect(await request('tabs.get', 12)).toMatchObject({ ok: true, value: { id: 12 } });
     expect(await request('tabs.get', 99)).toMatchObject({ ok: false });

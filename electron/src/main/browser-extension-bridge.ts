@@ -29,8 +29,22 @@ function extensionId(event: BridgeEvent): string | null {
 function originMatches(pattern: string, url: string): boolean {
   if (!/^https?:/.test(url)) return false;
   if (pattern === '<all_urls>') return true;
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`).test(url);
+  const parts = /^(\*|https?):\/\/(\*|(?:\*\.)?[^/*:]+)(\/.*)$/.exec(pattern);
+  if (!parts) return false;
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return false;
+  }
+  const [, scheme, host, path] = parts;
+  if (scheme !== '*' && `${scheme}:` !== target.protocol) return false;
+  if (host.startsWith('*.')) {
+    const suffix = host.slice(2).toLowerCase();
+    if (target.hostname !== suffix && !target.hostname.endsWith(`.${suffix}`)) return false;
+  } else if (host !== '*' && host.toLowerCase() !== target.hostname) return false;
+  const escaped = path.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`).test(target.pathname + target.search);
 }
 
 /** Korus-owned adapter for documented Chrome APIs absent from Electron.

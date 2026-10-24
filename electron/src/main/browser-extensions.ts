@@ -209,7 +209,13 @@ export class BrowserExtensions {
         ))
       )
         return this.state(profile);
-      await this.clearData(profile, record);
+      try {
+        await this.clearData(profile, record);
+      } catch (error) {
+        // Cleanup unloads the extension first; restore the loaded state to match its still-installed record.
+        await this.synchronize(profile, true, id).catch(() => {});
+        throw error;
+      }
       profile.records = (await this.options.request({ action: 'remove', id: id! })).extensions;
       await this.synchronize(profile, true, id);
     } else if (action === 'open') await this.openAction(profile, id!);

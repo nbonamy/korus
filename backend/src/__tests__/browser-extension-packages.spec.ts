@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { generateKeyPairSync, sign, createHash } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserExtensionPackages, verifyCrx3 } from '../browser-extension-packages';
@@ -160,6 +160,31 @@ describe('browser-extension package boundary', () => {
     const repair = await restarted.manage('other-desktop', { action: 'prepare', id, chromeVersion: '150' });
     await restarted.manage('other-desktop', { action: 'commit', token: repair.candidate!.token });
     expect((await restarted.manage('other-desktop', { action: 'list' })).extensions[0].error).toBeUndefined();
+  });
+
+  it('prunes superseded and abandoned package directories on the next prepare', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'browser-extension-test-'));
+    roots.push(root);
+    let bytes = packageBytes('1.0.0.1');
+    const service = new BrowserExtensionPackages(root, {
+      catalog: [{ id, name: 'Owned fixture' }],
+      download: async () => bytes,
+    });
+    const prepare = () => service.manage('desktop', { action: 'prepare', id, chromeVersion: '150.0.0.0' });
+    const first = await prepare();
+    await service.manage('desktop', { action: 'commit', token: first.candidate!.token });
+    bytes = packageBytes('1.0.0.2');
+    const second = await prepare();
+    expect(await readdir(path.join(root, 'packages', id))).toHaveLength(2);
+    await service.manage('desktop', { action: 'cancel', token: second.candidate!.token });
+    bytes = packageBytes('1.0.0.3');
+    const third = await prepare();
+    await service.manage('desktop', { action: 'commit', token: third.candidate!.token });
+    bytes = packageBytes('1.0.0.4');
+    await prepare();
+    const remaining = await readdir(path.join(root, 'packages', id));
+    expect(remaining).toHaveLength(2);
+    expect(remaining).toContain(path.basename((await service.manage('desktop', { action: 'list' })).extensions[0].path!));
   });
 
   it('rejects signed but unsafe archives without replacing a package', async () => {

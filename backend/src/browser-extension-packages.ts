@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { resolveExtensionNativeHost } from './browser-extension-native-host';
 import { fromBuffer, type ZipFile, type Entry } from 'yauzl';
@@ -253,6 +253,8 @@ async function unpack(archive: Buffer, target: string, publicKey: Buffer, check 
 export class BrowserExtensionPackages {
   private pending: Promise<unknown> = Promise.resolve();
   private readonly candidates = new Map<string, Candidate>();
+  /** Packages fully verified by this process, keyed by id and hash. `list` always re-verifies; other operations reuse it. */
+  private readonly verified = new Map<string, Manifest>();
   private readonly catalog: readonly BrowserExtensionDefinition[];
   constructor(
     private readonly root: string,
@@ -276,15 +278,39 @@ export class BrowserExtensionPackages {
   private packagePath(id: string, hash: string): string {
     return path.join(this.root, 'packages', id, hash);
   }
-  private async installedManifest(id: string, record: Stored): Promise<Manifest> {
+  private async installedManifest(id: string, record: Stored, fresh = false): Promise<Manifest> {
     if (!/^[a-f0-9]{64}$/.test(record.hash)) throw new Error('Invalid installed extension record.');
-    const target = this.packagePath(id, record.hash);
-    const bytes = await readFile(path.join(target, 'verified.crx'));
-    if (digest(bytes) !== record.hash) throw new Error('Installed extension package failed verification.');
-    const verified = verifyCrx3(bytes, id);
-    const manifest = await unpack(verified.archive, target, verified.publicKey, true);
+    const cacheKey = `${id}\0${record.hash}`;
+    if (fresh) this.verified.delete(cacheKey);
+    let manifest = this.verified.get(cacheKey);
+    if (!manifest) {
+      const target = this.packagePath(id, record.hash);
+      const bytes = await readFile(path.join(target, 'verified.crx'));
+      if (digest(bytes) !== record.hash) throw new Error('Installed extension package failed verification.');
+      const verified = verifyCrx3(bytes, id);
+      manifest = await unpack(verified.archive, target, verified.publicKey, true);
+      this.verified.set(cacheKey, manifest);
+    }
     if (manifest.version !== record.version) throw new Error('Installed extension version does not match.');
     return manifest;
+  }
+  /** Drops package directories that no profile record or pending candidate references. */
+  private async prune(id: string, registry: Registry): Promise<void> {
+    const keep = new Set<string>([
+      ...Object.values(registry).flatMap((profile) => (profile[id] ? [profile[id].hash] : [])),
+      ...[...this.candidates.values()].filter((candidate) => candidate.id === id).map((candidate) => candidate.hash),
+    ]);
+    let names: string[];
+    try {
+      names = await readdir(path.join(this.root, 'packages', id));
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (keep.has(name)) continue;
+      this.verified.delete(`${id}\0${name}`);
+      await rm(path.join(this.root, 'packages', id, name), { recursive: true, force: true });
+    }
   }
   private async apply(
     clientId: string,
@@ -313,6 +339,7 @@ export class BrowserExtensionPackages {
       throw new Error('Unsupported browser extension.');
     const entry = 'id' in input ? records[input.id] : undefined;
     if (input.action === 'prepare') {
+      await this.prune(input.id, registry);
       const bytes = await (this.options.download ?? downloadOfficial)(input.id, input.chromeVersion);
       const verified = verifyCrx3(bytes, input.id),
         hash = digest(bytes);
@@ -440,8 +467,10 @@ export class BrowserExtensionPackages {
         input.action === 'remove' &&
         !Object.values(registry).some((profile) => profile[input.id]) &&
         ![...this.candidates.values()].some((candidate) => candidate.id === input.id)
-      )
+      ) {
+        for (const key of this.verified.keys()) if (key.startsWith(`${input.id}\0`)) this.verified.delete(key);
         await rm(path.join(this.root, 'packages', input.id), { recursive: true, force: true });
+      }
     }
     const extensions: BrowserExtensionPackage[] = [];
     for (const manager of this.catalog) {
@@ -454,7 +483,7 @@ export class BrowserExtensionPackages {
         if (!/^[a-f0-9]{64}$/.test(record.hash) || !Array.isArray(record.permissions))
           throw new Error('Invalid installed extension record.');
         const packagePath = this.packagePath(manager.id, record.hash);
-        const manifest = await this.installedManifest(manager.id, record);
+        const manifest = await this.installedManifest(manager.id, record, input.action === 'list');
         extensions.push({
           ...manager,
           version: record.version,

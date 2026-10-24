@@ -133,7 +133,6 @@ export class BrowserPane {
       visible: true,
     };
     this.panes.set(key, pane);
-    if (navigationEnabled) await this.options.onGuestReady?.(agentId, browserId, guest, browserWindow);
     guest.setWindowOpenHandler(() => ({ action: 'deny' }));
     const preventDisallowedNavigation = (event: { preventDefault(): void }, target: string): void => {
       if (!pane.navigationEnabled) {
@@ -165,6 +164,15 @@ export class BrowserPane {
       pane.consoleMessages.push({ level: String(level), message, timestamp: new Date().toISOString() });
       if (pane.consoleMessages.length > 100) pane.consoleMessages.shift();
     });
+    // Navigation policy is already in place; a failed extension profile must not leave a half-registered pane.
+    if (navigationEnabled) {
+      try {
+        await this.options.onGuestReady?.(agentId, browserId, guest, browserWindow);
+      } catch (error) {
+        if (this.panes.get(key) === pane) this.panes.delete(key);
+        throw error;
+      }
+    }
     return pane;
   }
 

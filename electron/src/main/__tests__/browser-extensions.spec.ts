@@ -208,6 +208,7 @@ it('preserves other extensions across update failure, disable, repair, and scope
   approve = true;
   vi.spyOn(host.session.extensions, 'loadExtension').mockRejectedValueOnce(new Error('Cleanup unavailable'));
   await expect(runtime.manage('agent', 'remove', 'first')).rejects.toThrow('Cleanup unavailable');
+  expect(host.loaded.has('first')).toBe(true);
   await runtime.manage('agent', 'reinstall', 'first');
   expect(host.windows.some((window) => !window.destroyed && window.url.includes('korusStorageRelay'))).toBe(true);
   const removed = await runtime.manage('agent', 'remove', 'first');

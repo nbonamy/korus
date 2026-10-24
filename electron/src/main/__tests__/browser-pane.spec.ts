@@ -265,6 +265,20 @@ describe('browser pane helpers', () => {
     } finally { await pane.closeAll(); }
   });
 
+  it('keeps navigation policy installed and drops the pane when the extension profile fails to attach', async () => {
+    const owner = { webContents: {} };
+    const guest = electronMocks.createGuest(owner, 63);
+    const onGuestReady = vi.fn().mockRejectedValueOnce(new Error('profile unavailable')).mockResolvedValue(undefined);
+    const pane = new BrowserPane({ onAnnotation: vi.fn(), onGuestReady });
+    try {
+      await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).rejects.toThrow('profile unavailable');
+      expect(guest.setWindowOpenHandler).toHaveBeenCalled();
+      expect(guest.emitNavigation('will-navigate', 'about:config').preventDefault).toHaveBeenCalledOnce();
+      await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).resolves.toMatchObject({ url: 'about:blank' });
+      expect(onGuestReady).toHaveBeenCalledTimes(2);
+    } finally { await pane.closeAll(); }
+  });
+
   it('opens existing workspace files while rejecting escapes and symlinks outside the workspace', async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-browser-workspace-'));
     const outside = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-browser-outside-'));
