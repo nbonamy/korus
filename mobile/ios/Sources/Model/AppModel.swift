@@ -90,6 +90,7 @@ final class AppModel {
     var failedRequest: String?
     var closePreview: EngineState.ClosePreview?
     var chatCreation: EngineState.ChatCreation = .idle
+    var teamCreation: EngineState.ChatCreation = .idle
     var backends: [String] = []
     var backend: String?
     private var duplicateTarget: ComposerTarget?
@@ -276,6 +277,7 @@ final class AppModel {
         set(\.allTeams, nextAllTeams)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
+        set(\.teamCreation, state.teamCreation ?? .idle)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
         set(\.backend, state.backend)

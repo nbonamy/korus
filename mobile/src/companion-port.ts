@@ -29,6 +29,7 @@ type CompanionLink = {
 };
 /** What the app can ask of the paired laptop over a link. */
 type CompanionOperations = {
+  createTeam?(name: string): Promise<string>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;

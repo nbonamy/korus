@@ -60,6 +60,7 @@ export type EngineState = {
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
+  teamCreation: 'idle' | 'creating' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
@@ -100,6 +101,7 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
@@ -287,7 +289,7 @@ export function createEngine(port: EnginePort) {
       ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(), branches: state.branches.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
@@ -522,6 +524,17 @@ export function createEngine(port: EnginePort) {
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
+      case 'createTeam': {
+        const epoch = restoreEpoch;
+        const id = await state.createTeam(command.name);
+        if (id && epoch === restoreEpoch) {
+          allTeams.value = false;
+          await state.selectTeam(id);
+          await rememberSelection();
+        }
+        return;
+      }
+      case 'dismissTeamCreation': return state.dismissTeamCreation();
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {

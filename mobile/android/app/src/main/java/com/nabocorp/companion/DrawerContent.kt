@@ -32,6 +32,7 @@ import org.json.JSONObject
     val state = model.state
     val sidebar = model.sidebar
     val activity = sidebar.organization == "activity"
+    var newTeam by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight().safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.app_icon), model.product.string("name"), Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
@@ -48,6 +49,11 @@ import org.json.JSONObject
                     DrawerTeamPill(team.string("name"), selected, unread) {
                         model.command("selectTeam", "id" to team.string("id"))
                     }
+                }
+                IconButton(onClick = { newTeam = true }, enabled = state.connection.isConnected && state.string("teamCreation") != "creating",
+                    modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerLow).semantics { contentDescription = "New team" }) {
+                    if (state.string("teamCreation") == "creating") CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.Add, null)
                 }
             }
         }
@@ -131,6 +137,28 @@ import org.json.JSONObject
             IconButton(onClick = { model.sheet = "settings"; close() }, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)) { Icon(Icons.Outlined.Settings, "Settings") }
         }
     }
+    if (newTeam) NewTeamDialog(model) { newTeam = false; model.command("dismissTeamCreation") }
+}
+
+@Composable private fun NewTeamDialog(model: CompanionModel, dismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var submitted by remember { mutableStateOf(false) }
+    val phase = model.state.string("teamCreation", "idle")
+    val busy = phase == "creating"
+    val cleanName = name.trim()
+    val teamIds = model.state.items("teams").map { it.string("id") }
+    val originalTeamIds = remember { teamIds }
+    LaunchedEffect(phase, teamIds) {
+        if (phase == "idle" && submitted && teamIds != originalTeamIds) dismiss()
+    }
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("New Team") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, enabled = !busy)
+            if (phase == "failed") Text("Couldn’t create the team. Check the connection and try again.", color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(enabled = !busy && model.state.connection.isConnected && cleanName.isNotEmpty() && cleanName.length <= 100,
+            onClick = { submitted = true; model.command("createTeam", "name" to cleanName) }) { Text("Create") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("Cancel") } })
 }
 
 @Composable private fun DrawerTeamPill(name: String, selected: Boolean, unread: Boolean, description: String = name + if (unread) ", unread activity" else "", select: () -> Unit) {

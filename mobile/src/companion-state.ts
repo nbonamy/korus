@@ -53,6 +53,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const goalBusy = computed(() => pendingGoals.has(goalKey()));
 
   const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
+  const teamCreation = ref<'idle' | 'creating' | 'failed'>('idle');
   const laptopId = ref('');
   const teamId = ref('');
   const agentId = ref('');
@@ -289,7 +290,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
 
   function closeSession() {
     composer.forgetAllPermissions();
-    actions.reset(); chatCreation.value = 'idle';
+    actions.reset(); chatCreation.value = 'idle'; teamCreation.value = 'idle';
     receipts.clear();
     clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -574,6 +575,25 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       sending[draftKey] = false;
     }
   }
+  /** Creates through the owning laptop and reconciles its authoritative workspace. */
+  async function createTeam(value: string): Promise<string | null> {
+    const name = value.trim(); const active = session;
+    if (!active || status.value !== 'connected' || teamCreation.value === 'creating' || !name || name.length > 100) return null;
+    teamCreation.value = 'creating';
+    try {
+      if (!active.createTeam) throw new Error('Team creation unavailable.');
+      const id = await active.createTeam(name);
+      if (!await refreshWorkspace(active)) return null;
+      if (!workspace.value.teams.some(team => team.id === id)) throw new Error('Created team is unavailable.');
+      teamCreation.value = 'idle';
+      return id;
+    } catch {
+      if (session === active) teamCreation.value = 'failed';
+      return null;
+    }
+  }
+  const dismissTeamCreation = () => { if (teamCreation.value !== 'creating') teamCreation.value = 'idle'; };
+
   /** Starts a chat and opens it once the laptop has it ready. */
   async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined, team = teamId.value) {
     const active = session; const epoch = selectionEpoch;
@@ -647,7 +667,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead,
+    teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {

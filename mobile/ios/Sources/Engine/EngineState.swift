@@ -109,6 +109,7 @@ struct EngineState: Decodable {
     let sessionActionFailed: Bool
     let closePreview: ClosePreview?
     let chatCreation: ChatCreation
+    let teamCreation: ChatCreation?
     let branches: RepositoryBranches?
     let backend: String?
     let backends: [String]

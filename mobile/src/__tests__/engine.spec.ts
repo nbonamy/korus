@@ -405,6 +405,45 @@ describe('companion engine', () => {
       expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
     } finally { engine.dispose(); }
   });
+  it('creates a named team once, keeps errors retryable, and selects its empty workspace without losing the previous draft', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let workspace: CompanionWorkspace;
+    let finish!: () => void;
+    const createTeam = vi.fn<(name: string) => Promise<string>>(async () => { throw new Error('Unavailable'); });
+    connector.connect = async id => {
+      const session = await connect(id); workspace ??= await session.getWorkspace();
+      return { ...session, getWorkspace: async () => workspace, createTeam };
+    };
+    const store = selectionStorage(); const { engine, latest } = open(connector, store);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'draft', text: 'Keep this draft' });
+      await engine.dispatch({ type: 'createTeam', name: '  ' });
+      expect(createTeam).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'createTeam', name: '  Mobile team  ' });
+      expect(createTeam).toHaveBeenCalledExactlyOnceWith('Mobile team');
+      expect(latest()).toMatchObject({ teamCreation: 'failed', teamId: 'demo-team', draft: 'Keep this draft' });
+      await engine.dispatch({ type: 'dismissTeamCreation' });
+      expect(latest().teamCreation).toBe('idle');
+      createTeam.mockImplementation(async name => {
+        await new Promise<void>(resolve => { finish = resolve; });
+        workspace = { ...workspace, teams: [...workspace.teams, { id: 'new-team', name, agentIds: [] }] };
+        return 'new-team';
+      });
+      const creating = engine.dispatch({ type: 'createTeam', name: 'Mobile team' });
+      expect(latest().teamCreation).toBe('creating');
+      await engine.dispatch({ type: 'createTeam', name: 'Duplicate' });
+      expect(createTeam).toHaveBeenCalledTimes(2);
+      finish(); await creating;
+      expect(latest()).toMatchObject({ teamCreation: 'idle', teamId: 'new-team', agentId: '', allTeams: false, groups: [], canSend: false });
+      expect(latest().teams.find(team => team.id === 'new-team')?.name).toBe('Mobile team');
+      expect(await store.read('demo-laptop')).toEqual({ teamId: 'new-team', agentId: '' });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(latest().draft).toBe('Keep this draft');
+      await engine.dispatch({ type: 'disconnect' });
+      await engine.dispatch({ type: 'createTeam', name: 'Offline' });
+      expect(createTeam).toHaveBeenCalledTimes(2);
+    } finally { engine.dispose(); }
+  });
   it('restores the last opened team and agent after restarting, separately for each laptop', async () => {
     const store = selectionStorage();
     await store.write('another-laptop', { teamId: 'other-team', agentId: 'other-agent' });

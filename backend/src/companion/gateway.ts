@@ -73,6 +73,7 @@ const commandSchema = z.object({ target: targetSchema, text: z.string().max(100_
 export type GatewayState = { push?: Record<string, CompanionPushRegistration>; grants: CompanionGrant[]; commands: Record<string, StoredCommand> };
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
+  createTeam?(name: string): Promise<string>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
@@ -409,6 +410,12 @@ export class CompanionGateway {
    * inside the mutation lock.
    */
   private readonly operations: Record<string, Operation> = {
+    'team.create': async (peer, args) => {
+      const { name } = z.object({ name: z.string().trim().min(1).max(100) }).strict().parse(args);
+      if (!this.port.createTeam) throw new Error('Team creation is unavailable.');
+      this.requireGrant(peer);
+      return { teamId: await this.port.createTeam(name) };
+    },
     'project.local.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);
       if (!this.port.localRepositories) throw new Error('Repositories are unavailable.');
