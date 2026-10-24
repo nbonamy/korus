@@ -850,7 +850,7 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
-  browserExtensions(agentId: string, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
+  browserExtensions(agentId: string | null, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
   clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
@@ -1046,6 +1046,7 @@ export type AppApi = {
   browserGoBack(agentId: string, browserId: string): Promise<BrowserState>;
   browserGoForward(agentId: string, browserId: string): Promise<BrowserState>;
   browserReload(agentId: string, browserId: string): Promise<BrowserState>;
+  browserClearBrowsingData(): Promise<void>;
   browserGetZoom(agentId: string, browserId: string): Promise<number>;
   browserSetZoom(agentId: string, browserId: string, percent: number): Promise<number>;
   browserCopyScreenshot(agentId: string, browserId: string, rect?: BrowserBounds): Promise<void>;

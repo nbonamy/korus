@@ -56,6 +56,8 @@ const electronMocks = vi.hoisted(() => {
     goBack = vi.fn();
     goForward = vi.fn();
     reload = vi.fn();
+    navigationHistory = { clear: vi.fn() };
+    stop = vi.fn();
     isLoading = vi.fn(() => false);
     once = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       this.listeners.set(event, listener);
@@ -81,7 +83,7 @@ const electronMocks = vi.hoisted(() => {
     }
   }
 
-  function createGuest(owner: { webContents: object }, id: number, partition = 'persist:agent-workspace-browser-agent-one') {
+  function createGuest(owner: { webContents: object }, id: number, partition = 'persist:workspace-browser') {
     const guest = new WebContentsMock(id);
     guest.hostWebContents = owner.webContents;
     guest.session = fromPartition(partition);
@@ -91,7 +93,7 @@ const electronMocks = vi.hoisted(() => {
 
   function fromPartition(partition: string) {
     let value = sessions.get(partition);
-    if (!value) { value = {}; sessions.set(partition, value); }
+    if (!value) { value = { clearData: vi.fn(async () => {}), clearAuthCache: vi.fn(async () => {}), clearCodeCaches: vi.fn(async () => {}), flushStorageData: vi.fn() }; sessions.set(partition, value); }
     return value;
   }
 
@@ -355,6 +357,33 @@ describe('browser pane helpers', () => {
     }
   });
 
+  it('shares one persistent profile across agents and clears website data without extension storage', async () => {
+    // Regressions: per-agent cookies, clearing app/extension storage, surviving
+    // sessionStorage/history, or a failed clear reported as success.
+    const owner = { webContents: {} };
+    const first = electronMocks.createGuest(owner, 70);
+    const second = electronMocks.createGuest(owner, 71);
+    const visualization = electronMocks.createGuest(owner, 72, 'agent-workspace-visualization-agent-one');
+    const pane = new BrowserPane({ onAnnotation: vi.fn() });
+    await pane.open(owner as never, 'agent-one', 'primary', 'https://one.example', '', 70);
+    await pane.open(owner as never, 'agent-two', 'primary', 'https://two.example', '', 71);
+    expect(first.session).toBe(second.session);
+    const shared = first.session as any;
+    await pane.clearBrowsingData();
+    expect(first.getURL()).toBe('about:blank');
+    expect(second.getURL()).toBe('about:blank');
+    expect(first.navigationHistory.clear).toHaveBeenCalledOnce();
+    expect(second.navigationHistory.clear).toHaveBeenCalledOnce();
+    expect(shared.clearData).toHaveBeenCalledExactlyOnceWith({ excludeOrigins: [
+      'chrome-extension://nngceckbapebfimnlniiiahkandclblb',
+      'chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa',
+    ] });
+    expect(shared.clearAuthCache).toHaveBeenCalledOnce();
+    expect((visualization.session as any).clearData).not.toHaveBeenCalled();
+    shared.clearData.mockRejectedValueOnce(new Error('Disk unavailable'));
+    await expect(pane.clearBrowsingData()).rejects.toThrow('Disk unavailable');
+  });
+
   it('uses a safe, stable profile partition name for each agent', () => {
     expect(safePartitionName('agent:/one')).toBe('agent--one');
     expect(safePartitionName('')).toBe('default');
@@ -414,7 +443,7 @@ describe('browser pane helpers', () => {
     expect(electronMocks.writeImage).toHaveBeenCalledTimes(2);
   });
 
-  it('rejects guests owned by another window or another agent session', async () => {
+  it('rejects guests owned by another window or an unapproved session', async () => {
     const browserWindow = {
       webContents: {},
       isDestroyed: vi.fn(() => false),

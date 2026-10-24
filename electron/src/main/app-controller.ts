@@ -63,7 +63,7 @@ export class AppController {
   private extensions(): BrowserExtensions {
     return this.extensionService ??= new BrowserExtensions({
       parent: () => this.mainWindow,
-      request: (agentId, input) => this.requireBackendClient().request(backendMethods.browserExtensionPackages, { agentId, input }),
+      request: (input) => this.requireBackendClient().request(backendMethods.browserExtensionPackages, { input }),
     });
   }
   private mainWindow: BrowserWindow | null = null;
@@ -210,7 +210,8 @@ export class AppController {
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
     ipc.handle(ipcChannels.getSnapshot, () => this.getSnapshot());
     ipc.handle(ipcChannels.browserExtensions, (_event, agentId, action, id, browserId) => {
-      if (!this.snapshot?.agents.some(agent => agent.id === agentId)) throw new Error('Agent not found.');
+      if (agentId !== null && !this.snapshot?.agents.some(agent => agent.id === agentId)) throw new Error('Agent not found.');
+      if (action === 'open' && agentId === null) throw new Error('Select a browser tab first.');
       return this.extensions().manage(agentId, action, id, browserId);
     });
     ipc.handle(ipcChannels.getSnapshotState, () => this.getSnapshotState());
@@ -710,6 +711,7 @@ export class AppController {
     ipc.handle(ipcChannels.browserGoBack, (_event, agentId: string, browserId: string) => this.browserPane.goBack(agentId, browserId));
     ipc.handle(ipcChannels.browserGoForward, (_event, agentId: string, browserId: string) => this.browserPane.goForward(agentId, browserId));
     ipc.handle(ipcChannels.browserReload, (_event, agentId: string, browserId: string) => this.browserPane.reload(agentId, browserId));
+    ipc.handle(ipcChannels.browserClearBrowsingData, () => this.browserPane.clearBrowsingData());
     ipc.handle(ipcChannels.browserGetZoom, (_event, agentId: string, browserId: string) => this.browserPane.getZoom(agentId, browserId));
     ipc.handle(ipcChannels.browserSetZoom, (_event, agentId: string, browserId: string, percent: number) => this.browserPane.setZoom(agentId, browserId, percent));
     ipc.handle(ipcChannels.browserCopyScreenshot, (_event, agentId: string, browserId: string, rect?: BrowserBounds) => this.browserPane.copyScreenshot(agentId, browserId, rect));

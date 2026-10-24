@@ -202,6 +202,7 @@ const api: AppApi = {
   browserGoBack: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserGoBack, agentId, browserId),
   browserGoForward: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserGoForward, agentId, browserId),
   browserReload: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserReload, agentId, browserId),
+  browserClearBrowsingData: () => ipc.invoke(ipcChannels.browserClearBrowsingData),
   browserGetZoom: (agentId: string, browserId: string) => ipc.invoke(ipcChannels.browserGetZoom, agentId, browserId),
   browserSetZoom: (agentId: string, browserId: string, percent: number) => ipc.invoke(ipcChannels.browserSetZoom, agentId, browserId, percent),
   browserCopyScreenshot: (agentId: string, browserId: string, rect?: BrowserBounds) => ipc.invoke(ipcChannels.browserCopyScreenshot, agentId, browserId, rect),

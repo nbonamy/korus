@@ -111,7 +111,19 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
     expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'primary', 'https://example.com/latest?q=one#section', 52);
     expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'docs', 'https://example.org/next', 53);
-    restarted.unmount();
+    // A clear-data operation sends real blank-page navigation to every guest.
+    // Those cleared URLs must survive workspace restoration too.
+    restarted.findAll('webview').forEach(guest => guest.element.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'about:blank', isMainFrame: true })));
+    await settlePersistence();
+    expect(stored.tabs.map(tab => tab.browser?.url)).toEqual(['about:blank', 'about:blank']);
+    restarted.unmount(); browserOpen.mockClear();
+    const cleared = mountShell(); await flushPromises();
+    cleared.findAll('webview').forEach((guest, index) => readyBrowserGuest(guest.element, 62 + index));
+    await flushPromises();
+    expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'primary', 'about:blank', 62);
+    expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'docs', 'about:blank', 63);
+    expect(cleared.findAll<HTMLInputElement>('[aria-label="Browser address"]').map(input => input.element.value)).toEqual(['', '']);
+    cleared.unmount();
   });
 
   it('restores document tabs, selected tab and collapsed layout, and retains an inactive-agent display', async () => {

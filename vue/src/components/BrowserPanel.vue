@@ -101,8 +101,8 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
-import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconX, IconZoom } from '@tabler/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconTrash, IconX, IconZoom } from '@tabler/icons-vue';
 import { PRIMARY_BROWSER_ID, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type MainToRendererEvent } from '@workspace/core/contracts';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { browserDevicePresets, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
@@ -175,6 +175,7 @@ const deviceWidth = ref(390);
 const deviceHeight = ref(844);
 const capturingArea = ref(false);
 const screenshotPending = ref(false);
+const clearingData = ref(false);
 const selectionStart = ref<{ x: number; y: number } | null>(null);
 const selectionRect = ref<BrowserBounds | null>(null);
 const browserReady = ref(false);
@@ -199,6 +200,10 @@ const menuItems = computed<AppMenuItem[]>(() => [
   ...(!props.visualization ? [{ id: 'screenshot-divider', type: 'separator' } satisfies AppMenuItem] : []),
   { id: 'screenshot', type: 'action', label: translate('surface.browserPanel.screenshot'), icon: IconCamera, disabled: !browserReadyForControls.value || screenshotPending.value },
   { id: 'screenshot-area', type: 'action', label: translate('surface.browserPanel.screenshotArea'), icon: IconCrop, disabled: !browserReadyForControls.value || screenshotPending.value },
+  ...(!props.visualization ? [
+    { id: 'data-divider', type: 'separator' } satisfies AppMenuItem,
+    { id: 'clear-data', type: 'action', label: translate('surface.browserPanel.clearBrowsingData'), icon: IconTrash, disabled: clearingData.value } satisfies AppMenuItem,
+  ] : []),
 ]);
 const guestFrameStyle = computed(() => deviceToolbarVisible.value && devicePreset.value !== 'responsive' && !props.visualization
   ? { width: `${deviceWidth.value}px`, height: `${deviceHeight.value}px` }
@@ -344,8 +349,13 @@ async function ensureGuest(): Promise<number> {
 
 function handleGuestNavigation(event: Event): void {
   const navigation = event as Event & { url?: string; isMainFrame?: boolean };
-  if (!browserReady.value || props.visualization || !navigation.url || navigation.url === 'about:blank'
-    || navigation.isMainFrame === false) return;
+  if (!browserReady.value || props.visualization || !navigation.url || navigation.isMainFrame === false) return;
+  if (navigation.url === 'about:blank') {
+    state.value = { url: 'about:blank', title: '', canGoBack: false, canGoForward: false };
+    address.value = '';
+    zoomPercent.value = 100;
+    return;
+  }
   state.value = { ...state.value, url: navigation.url };
   if (document.activeElement !== addressInput.value) address.value = navigation.url;
   void syncZoom();
@@ -429,9 +439,31 @@ async function selectMenuAction(itemId: string): Promise<void> {
     await syncBounds();
   } else if (itemId === 'screenshot') {
     await copyScreenshot();
+  } else if (itemId === 'clear-data') {
+    await clearBrowsingData();
   } else if (itemId === 'screenshot-area') {
     capturingArea.value = true;
     selectionRect.value = null;
+  }
+}
+
+async function clearBrowsingData(): Promise<void> {
+  if (clearingData.value) return;
+  try {
+    await ElMessageBox.confirm(
+      translate('surface.browserPanel.clearDataMessage'),
+      translate('surface.browserPanel.clearDataTitle'),
+      { type: 'warning', confirmButtonText: translate('surface.browserPanel.clearDataConfirm'), cancelButtonText: translate('common.cancel'), confirmButtonClass: 'app-button app-button--danger' },
+    );
+  } catch { return; }
+  clearingData.value = true;
+  error.value = null;
+  try {
+    await requireBrowserApi().browserClearBrowsingData();
+  } catch (reason) {
+    error.value = messageFor(reason);
+  } finally {
+    clearingData.value = false;
   }
 }
 
@@ -568,7 +600,7 @@ async function runNavigation(action: () => Promise<BrowserState>): Promise<void>
   try {
     state.value = await action();
     browserReady.value = true;
-    address.value = state.value.url;
+    address.value = state.value.url === 'about:blank' ? '' : state.value.url;
   } catch (reason) {
     error.value = messageFor(reason);
   } finally {

@@ -2,7 +2,7 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import bitwardenIcon from '../../assets/browser-extensions/bitwarden.svg';
 import { serialize } from 'node:v8';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import BrowserPanel from '../BrowserPanel.vue';
 import { setElectronTestClient } from '../../test/client';
 import type { AppCommand, MainToRendererEvent } from '@workspace/core/contracts';
@@ -42,6 +42,7 @@ function mountPanel(
     canGoForward: true,
   });
   const api = {
+    browserClearBrowsingData: vi.fn().mockResolvedValue(undefined),
     browserExtensions: vi.fn().mockResolvedValue({ extensions: options.extensions ?? [] }),
     updateSettings: vi.fn().mockResolvedValue(createInitialSnapshot()),
     browserOpen,
@@ -529,6 +530,37 @@ describe('BrowserPanel', () => {
     expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(true);
     await trigger.trigger('click');
     expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(false);
+  });
+
+  it('confirms clearing shared browsing data, preserves cancellation, and shows failures', async () => {
+    const { api, wrapper } = mountPanel({}, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[aria-label="Browser address"]').setValue('https://example.com');
+    await wrapper.get('form.browser-panel__address').trigger('submit');
+    await flushPromises();
+    const confirmation = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel');
+    const chooseClear = async () => {
+      await wrapper.get('[aria-label="Browser menu"]').trigger('click');
+      await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Clear browsing data…')!.trigger('click');
+      await flushPromises();
+    };
+    await chooseClear();
+    expect(api.browserClearBrowsingData).not.toHaveBeenCalled();
+    expect(confirmation).toHaveBeenCalledWith(expect.stringContaining('all agents'), 'Clear browsing data?', expect.objectContaining({ confirmButtonText: 'Clear data' }));
+    confirmation.mockResolvedValue('confirm' as never);
+    await chooseClear();
+    expect(api.browserClearBrowsingData).toHaveBeenCalledExactlyOnceWith();
+    wrapper.get('webview').element.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'about:blank', isMainFrame: true }));
+    await flushPromises();
+    expect(wrapper.get<HTMLInputElement>('[aria-label="Browser address"]').element.value).toBe('');
+    expect(wrapper.emitted('url-change')?.at(-1)).toStrictEqual(['about:blank']);
+    api.browserClearBrowsingData.mockRejectedValueOnce(new Error('Could not clear data'));
+    await chooseClear();
+    expect(wrapper.get('[role="alert"]').text()).toContain('Could not clear data');
+    await wrapper.setProps({ visualization: { path: '/chart.html', title: 'Chart' } });
+    await wrapper.get('[aria-label="Browser menu"]').trigger('click');
+    expect(new DOMWrapper(document.body).findAll('[role="menuitem"]').some(item => item.text() === 'Clear browsing data…')).toBe(false);
+    wrapper.unmount();
   });
 
   it('changes page zoom through the browser guest and resets it from the menu', async () => {

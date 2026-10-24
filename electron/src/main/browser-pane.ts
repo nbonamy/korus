@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BrowserAnnotation, BrowserBounds, BrowserState, BrowserViewportBounds } from '@workspace/core/contracts';
+import { supportedBrowserExtensions } from '@workspace/core/browser-extensions';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { parseBrowserViewport, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
 export { safePartitionName } from '@workspace/core/browser-guest';
@@ -164,6 +165,26 @@ export class BrowserPane {
       if (pane.consoleMessages.length > 100) pane.consoleMessages.shift();
     });
     return pane;
+  }
+
+  async clearBrowsingData(): Promise<void> {
+    const browsing = [...this.panes.values()].filter(pane => pane.navigationEnabled && !pane.webContents.isDestroyed());
+    // Stop website scripts and discard their per-tab session storage/history.
+    // Extension pages, workers and authenticated storage remain in place.
+    for (const pane of browsing) {
+      pane.webContents.stop();
+      await pane.webContents.executeJavaScript('try { sessionStorage.clear(); } catch {}');
+      await pane.webContents.loadURL('about:blank');
+      pane.webContents.navigationHistory.clear();
+      pane.consoleMessages = [];
+    }
+    const shared = session.fromPartition(browserGuestPartition('shared'));
+    await shared.clearData({
+      excludeOrigins: supportedBrowserExtensions.map(extension => `chrome-extension://${extension.id}`),
+    });
+    await shared.clearAuthCache();
+    await shared.clearCodeCaches({ urls: [] });
+    shared.flushStorageData();
   }
 
   async navigate(agentId: string, browserId: string, url: string): Promise<BrowserState> {

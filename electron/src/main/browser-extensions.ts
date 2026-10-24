@@ -25,7 +25,7 @@ type Profile = {
   suspended: Set<string>;
 };
 type Options = {
-  request(agentId: string, input: BrowserExtensionPackageRequest): Promise<BrowserExtensionPackageState>;
+  request(input: BrowserExtensionPackageRequest): Promise<BrowserExtensionPackageState>;
   parent(): BrowserWindow | null;
   catalog?: readonly BrowserExtensionDefinition[];
   preloadPath?: string;
@@ -34,16 +34,15 @@ type Options = {
 
 /** Desktop extension lifecycle. Files and durable grants belong to daemon. */
 export class BrowserExtensions {
-  private readonly profiles = new Map<string, Promise<Profile>>();
-  private readonly operations = new Map<string, Promise<unknown>>();
+  private sharedProfile: Promise<Profile> | null = null;
+  private pendingOperation: Promise<unknown> = Promise.resolve();
   constructor(private readonly options: Options) {}
   private get catalog(): readonly BrowserExtensionDefinition[] {
     return this.options.catalog ?? supportedBrowserExtensions;
   }
   async dispose(): Promise<void> {
-    for (const pending of this.profiles.values()) {
-      const profile = await pending.catch(() => null);
-      if (!profile) continue;
+    const profile = await this.sharedProfile?.catch(() => null);
+    if (profile) {
       for (const record of profile.records) {
         profile.suspended.add(record.id);
         this.stopRelay(profile, record.id);
@@ -52,50 +51,42 @@ export class BrowserExtensions {
       }
       profile.bridge.dispose();
     }
-    this.profiles.clear();
+    this.sharedProfile = null;
   }
 
   async attachGuest(agentId: string, browserId: string, contents: WebContents, window: BrowserWindow): Promise<void> {
-    const profile = await this.profile(agentId);
+    const profile = await this.profile();
     if (contents.session !== profile.session) throw new Error('Browser extension profile mismatch.');
-    profile.tabs.set(browserId, contents);
+    profile.tabs.set(`${agentId}\0${browserId}`, contents);
     profile.bridge.attachTab(contents, window);
   }
   async selectGuest(agentId: string, browserId: string): Promise<void> {
-    const profile = await this.profile(agentId),
-      tab = profile.tabs.get(browserId);
+    const profile = await this.profile(),
+      tab = profile.tabs.get(`${agentId}\0${browserId}`);
     if (tab && !tab.isDestroyed()) profile.bridge.selectTab(tab.id);
   }
   manage(
-    agentId: string,
+    agentId: string | null,
     action: BrowserExtensionAction,
     id?: string,
     browserId?: string,
   ): Promise<BrowserExtensionState> {
-    const previous = this.operations.get(agentId) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(() => this.apply(agentId, action, id, browserId));
-    this.operations.set(agentId, next);
-    void next
-      .finally(() => {
-        if (this.operations.get(agentId) === next) this.operations.delete(agentId);
-      })
-      .catch(() => {});
+    const next = this.pendingOperation.catch(() => {}).then(() => this.apply(agentId, action, id, browserId));
+    this.pendingOperation = next;
     return next;
   }
-  private async profile(agentId: string): Promise<Profile> {
-    let pending = this.profiles.get(agentId);
-    if (!pending) {
-      pending = this.createProfile(agentId);
-      this.profiles.set(agentId, pending);
-      void pending.catch(() => {
-        if (this.profiles.get(agentId) === pending) this.profiles.delete(agentId);
+  private profile(): Promise<Profile> {
+    if (!this.sharedProfile) {
+      this.sharedProfile = this.createProfile().catch(error => {
+        this.sharedProfile = null;
+        throw error;
       });
     }
-    return pending;
+    return this.sharedProfile;
   }
-  private async createProfile(agentId: string): Promise<Profile> {
-    const state = await this.options.request(agentId, { action: 'list' });
-    const ses = session.fromPartition(browserGuestPartition(agentId));
+  private async createProfile(): Promise<Profile> {
+    const state = await this.options.request({ action: 'list' });
+    const ses = session.fromPartition(browserGuestPartition('shared'));
     const profile: Profile = {
       session: ses,
       records: state.extensions,
@@ -114,7 +105,7 @@ export class BrowserExtensions {
       async (id, permissions, remove) => {
         const name = this.catalog.find((extension) => extension.id === id)!.name;
         if (!remove && !(await this.confirmPermissions(name, permissions, 'Allow'))) return false;
-        const result = await this.options.request(agentId, {
+        const result = await this.options.request({
           action: 'permissions',
           id,
           permissions,
@@ -125,7 +116,7 @@ export class BrowserExtensions {
       },
       (id, url, active) => this.openPage(profile, id, url, active),
       async (id, host) => {
-        const state = await this.options.request(agentId, { action: 'nativeHost', id, host });
+        const state = await this.options.request({ action: 'nativeHost', id, host });
         if (!state.nativeHost) throw new Error('Native desktop integration is unavailable.');
         return state.nativeHost;
       },
@@ -141,7 +132,7 @@ export class BrowserExtensions {
     return profile;
   }
   private async apply(
-    agentId: string,
+    agentId: string | null,
     action: BrowserExtensionAction,
     id?: string,
     browserId?: string,
@@ -150,11 +141,11 @@ export class BrowserExtensions {
       throw new Error('Invalid extension action.');
     if (action !== 'list' && !this.catalog.some((extension) => extension.id === id))
       throw new Error('Unsupported browser extension.');
-    const profile = await this.profile(agentId);
+    const profile = await this.profile();
     let message: string | undefined;
-    if (browserId) await this.selectGuest(agentId, browserId);
+    if (browserId && agentId) await this.selectGuest(agentId, browserId);
     if (action === 'install' || action === 'update' || action === 'reinstall') {
-      const state = await this.options.request(agentId, {
+      const state = await this.options.request({
         action: 'prepare',
         id: id!,
         chromeVersion: process.versions.chrome,
@@ -162,7 +153,7 @@ export class BrowserExtensions {
       const candidate = state.candidate!;
       const previous = profile.records.find((record) => record.id === id);
       if (action === 'update' && candidate.version === previous?.version && !profile.errors.has(id!)) {
-        await this.options.request(agentId, {
+        await this.options.request({
           action: 'cancel',
           token: candidate.token,
         });
@@ -175,7 +166,7 @@ export class BrowserExtensions {
             action === 'update' ? 'Update' : action === 'reinstall' ? 'Reinstall' : 'Install',
           );
           if (!approved) {
-            await this.options.request(agentId, {
+            await this.options.request({
               action: 'cancel',
               token: candidate.token,
             });
@@ -183,7 +174,7 @@ export class BrowserExtensions {
           }
         }
         profile.records = (
-          await this.options.request(agentId, {
+          await this.options.request({
             action: 'commit',
             token: candidate.token,
           })
@@ -200,7 +191,7 @@ export class BrowserExtensions {
       }
     } else if (action === 'enable' || action === 'disable') {
       profile.records = (
-        await this.options.request(agentId, {
+        await this.options.request({
           action: 'enabled',
           id: id!,
           enabled: action === 'enable',
@@ -218,8 +209,8 @@ export class BrowserExtensions {
         ))
       )
         return this.state(profile);
-      await this.clearData(agentId, profile, record);
-      profile.records = (await this.options.request(agentId, { action: 'remove', id: id! })).extensions;
+      await this.clearData(profile, record);
+      profile.records = (await this.options.request({ action: 'remove', id: id! })).extensions;
       await this.synchronize(profile, true, id);
     } else if (action === 'open') await this.openAction(profile, id!);
     return { ...this.state(profile), ...(message ? { message } : {}) };
@@ -390,8 +381,8 @@ export class BrowserExtensions {
       throw error;
     }
   }
-  private async clearData(agentId: string, profile: Profile, record: BrowserExtensionPackage): Promise<void> {
-    const cleanup = await this.options.request(agentId, {
+  private async clearData(profile: Profile, record: BrowserExtensionPackage): Promise<void> {
+    const cleanup = await this.options.request({
       action: 'cleanup',
       id: record.id,
     });
@@ -436,7 +427,7 @@ export class BrowserExtensions {
   }
   private confirmPermissions(name: string, permissions: string[], action: string): Promise<boolean> {
     const message = action === 'Allow' ? `Allow more access for ${name}?` : `${action} ${name}?`;
-    const detail = `${name} requests additional access to:\n\n${extensionPermissionSummary(permissions)}\n\nThis applies to this agent’s browser. Agents using it can interact with pages you sign into.`;
+    const detail = `${name} requests additional access to:\n\n${extensionPermissionSummary(permissions)}\n\nThis applies to the shared browser. All agents can interact with pages you sign into.`;
     return this.confirm(message, detail, action, permissions.join('\n'));
   }
   private async confirm(message: string, detail: string, action = 'Continue', permissions?: string): Promise<boolean> {

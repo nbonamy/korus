@@ -7,7 +7,7 @@ import os from 'node:os';
 import { BrowserExtensionPackages, verifyCrx3 } from '../browser-extension-packages';
 
 // Failure modes: forged archive/key, wrong identity, archive traversal, permission
-// escalation, lost installation on failed update, cross-profile data removal.
+// escalation, lost installation on failed update, cross-client data removal.
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const publicKey = keys.publicKey.export({ type: 'spki', format: 'der' });
 const idBytes = createHash('sha256').update(publicKey).digest().subarray(0, 16);
@@ -109,7 +109,7 @@ describe('browser-extension package boundary', () => {
     expect(() => verifyCrx3(Buffer.alloc(8), id)).toThrow(/CRX/i);
   });
 
-  it('preserves the installed version on failure, accepts fourth-component updates, and isolates profile removal', async () => {
+  it('preserves the installed version on failure, accepts fourth-component updates, and isolates desktop removal', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'browser-extension-test-'));
     roots.push(root);
     let bytes = packageBytes();
@@ -117,49 +117,49 @@ describe('browser-extension package boundary', () => {
       catalog: [{ id, name: 'Owned fixture' }],
       download: async () => bytes,
     });
-    const prepare = () => service.manage('desktop', 'agent-one', { action: 'prepare', id, chromeVersion: '150.0.0.0' });
+    const prepare = () => service.manage('desktop', { action: 'prepare', id, chromeVersion: '150.0.0.0' });
     const initial = await prepare();
     expect(initial.candidate?.permissions).toEqual(['storage', 'https://example.test/*']);
     await expect(
-      service.manage('desktop', 'other', { action: 'commit', token: initial.candidate!.token }),
+      service.manage('other-desktop', { action: 'commit', token: initial.candidate!.token }),
     ).rejects.toThrow(/candidate/i);
-    await service.manage('desktop', 'agent-one', { action: 'commit', token: initial.candidate!.token });
-    const installed = (await service.manage('desktop', 'agent-one', { action: 'list' })).extensions[0];
+    await service.manage('desktop', { action: 'commit', token: initial.candidate!.token });
+    const installed = (await service.manage('desktop', { action: 'list' })).extensions[0];
     expect(installed).toMatchObject({ id, version: '8.12.42.36', enabled: true });
     bytes = packageBytes('8.12.42.37');
     bytes[bytes.length - 1] ^= 1;
     await expect(prepare()).rejects.toThrow(/signature/i);
-    expect((await service.manage('desktop', 'agent-one', { action: 'list' })).extensions[0].version).toBe('8.12.42.36');
+    expect((await service.manage('desktop', { action: 'list' })).extensions[0].version).toBe('8.12.42.36');
     expect(JSON.parse(await readFile(path.join(installed.path!, 'manifest.json'), 'utf8')).version).toBe('8.12.42.36');
     bytes = packageBytes('8.12.42.37', {}, ['storage', 'tabs']);
     const update = await prepare();
     expect(update.candidate?.addedPermissions).toEqual(['tabs']);
-    await service.manage('desktop', 'agent-one', { action: 'commit', token: update.candidate!.token });
-    const second = await service.manage('desktop', 'agent-two', { action: 'prepare', id, chromeVersion: '150.0.0.0' });
-    await service.manage('desktop', 'agent-two', { action: 'commit', token: second.candidate!.token });
-    await service.manage('desktop', 'agent-one', { action: 'enabled', id, enabled: false });
+    await service.manage('desktop', { action: 'commit', token: update.candidate!.token });
+    const second = await service.manage('other-desktop', { action: 'prepare', id, chromeVersion: '150.0.0.0' });
+    await service.manage('other-desktop', { action: 'commit', token: second.candidate!.token });
+    await service.manage('desktop', { action: 'enabled', id, enabled: false });
     const restarted = new BrowserExtensionPackages(root, {
       catalog: [{ id, name: 'Owned fixture' }],
       download: async () => bytes,
     });
-    expect((await restarted.manage('desktop', 'agent-one', { action: 'list' })).extensions[0].enabled).toBe(false);
-    await restarted.manage('desktop', 'agent-one', { action: 'remove', id });
-    expect((await restarted.manage('desktop', 'agent-one', { action: 'list' })).extensions[0].version).toBeUndefined();
-    const retained = (await restarted.manage('desktop', 'agent-two', { action: 'list' })).extensions[0];
+    expect((await restarted.manage('desktop', { action: 'list' })).extensions[0].enabled).toBe(false);
+    await restarted.manage('desktop', { action: 'remove', id });
+    expect((await restarted.manage('desktop', { action: 'list' })).extensions[0].version).toBeUndefined();
+    const retained = (await restarted.manage('other-desktop', { action: 'list' })).extensions[0];
     expect(retained.version).toBe('8.12.42.37');
     expect(JSON.parse(await readFile(path.join(retained.path!, 'manifest.json'), 'utf8')).version).toBe(
       retained.version,
     );
     await expect(
-      restarted.manage('desktop', 'agent-two', { action: 'prepare', id: 'b'.repeat(32), chromeVersion: '150' }),
+      restarted.manage('other-desktop', { action: 'prepare', id: 'b'.repeat(32), chromeVersion: '150' }),
     ).rejects.toThrow(/supported/i);
     await writeFile(path.join(retained.path!, 'popup.html'), '<p>tampered</p>');
-    const corrupted = (await restarted.manage('desktop', 'agent-two', { action: 'list' })).extensions[0];
+    const corrupted = (await restarted.manage('other-desktop', { action: 'list' })).extensions[0];
     expect(corrupted.error).toMatch(/verification/i);
     expect(corrupted.path).toBeUndefined();
-    const repair = await restarted.manage('desktop', 'agent-two', { action: 'prepare', id, chromeVersion: '150' });
-    await restarted.manage('desktop', 'agent-two', { action: 'commit', token: repair.candidate!.token });
-    expect((await restarted.manage('desktop', 'agent-two', { action: 'list' })).extensions[0].error).toBeUndefined();
+    const repair = await restarted.manage('other-desktop', { action: 'prepare', id, chromeVersion: '150' });
+    await restarted.manage('other-desktop', { action: 'commit', token: repair.candidate!.token });
+    expect((await restarted.manage('other-desktop', { action: 'list' })).extensions[0].error).toBeUndefined();
   });
 
   it('rejects signed but unsafe archives without replacing a package', async () => {
@@ -170,9 +170,9 @@ describe('browser-extension package boundary', () => {
       download: async () => packageBytes('1', { '../escape': 'bad' }),
     });
     await expect(
-      service.manage('desktop', 'agent-one', { action: 'prepare', id, chromeVersion: '150' }),
+      service.manage('desktop', { action: 'prepare', id, chromeVersion: '150' }),
     ).rejects.toThrow();
-    expect((await service.manage('desktop', 'agent-one', { action: 'list' })).extensions[0].version).toBeUndefined();
+    expect((await service.manage('desktop', { action: 'list' })).extensions[0].version).toBeUndefined();
   });
   it('restores only consented native access and resolves a registered host for its allowed origin', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'browser-native-grants-'));
@@ -189,31 +189,31 @@ describe('browser-extension package boundary', () => {
       nativeHostDirectories: [hosts],
     };
     const service = new BrowserExtensionPackages(root, options);
-    const candidate = await service.manage('desktop', 'agent', { action: 'prepare', id, chromeVersion: '150' });
-    await service.manage('desktop', 'agent', { action: 'commit', token: candidate.candidate!.token });
+    const candidate = await service.manage('desktop', { action: 'prepare', id, chromeVersion: '150' });
+    await service.manage('desktop', { action: 'commit', token: candidate.candidate!.token });
     const hostRequest = { action: 'nativeHost', id, host: name } as const;
-    await expect(service.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/permission/i);
-    await service.manage('desktop', 'agent', { action: 'permissions', id, permissions: ['nativeMessaging'] });
+    await expect(service.manage('desktop', hostRequest)).rejects.toThrow(/permission/i);
+    await service.manage('desktop', { action: 'permissions', id, permissions: ['nativeMessaging'] });
     const restarted = new BrowserExtensionPackages(root, options);
-    expect((await restarted.manage('desktop', 'agent', { action: 'list' })).extensions[0].permissions).toContain(
+    expect((await restarted.manage('desktop', { action: 'list' })).extensions[0].permissions).toContain(
       'nativeMessaging',
     );
-    expect((await restarted.manage('desktop', 'agent', hostRequest)).nativeHost).toEqual({
+    expect((await restarted.manage('desktop', hostRequest)).nativeHost).toEqual({
       name,
       path: process.execPath,
     });
-    await expect(restarted.manage('desktop', 'other-agent', hostRequest)).rejects.toThrow(/permission/i);
-    await expect(restarted.manage('desktop', 'agent', { ...hostRequest, host: '../arbitrary' })).rejects.toThrow(
+    await expect(restarted.manage('other-desktop', hostRequest)).rejects.toThrow(/permission/i);
+    await expect(restarted.manage('desktop', { ...hostRequest, host: '../arbitrary' })).rejects.toThrow(
       /host/i,
     );
     await writeFile(filename, JSON.stringify({ ...manifest, allowed_origins: ['chrome-extension://other/'] }));
-    await expect(restarted.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/origin/i);
-    await service.manage('desktop', 'agent', {
+    await expect(restarted.manage('desktop', hostRequest)).rejects.toThrow(/origin/i);
+    await service.manage('desktop', {
       action: 'permissions',
       id,
       permissions: ['nativeMessaging'],
       remove: true,
     });
-    await expect(service.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/permission/i);
+    await expect(service.manage('desktop', hostRequest)).rejects.toThrow(/permission/i);
   });
 });

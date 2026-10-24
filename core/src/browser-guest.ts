@@ -1,13 +1,16 @@
-/** The renderer creates the guest element; Electron main retains navigation policy. */
+/**
+ * Browsing shares one desktop profile; visualizations remain isolated per agent.
+ * The renderer creates the guest element; Electron main retains navigation policy.
+ */
 export function browserGuestPartition(agentId: string, visualization = false): string {
   const name = safePartitionName(agentId);
   return visualization
     ? `agent-workspace-visualization-${name}`
-    : `persist:agent-workspace-browser-${name}`;
+    : 'persist:workspace-browser';
 }
 
 export function isBrowserGuestPartition(value: string): boolean {
-  return /^persist:agent-workspace-browser-[a-zA-Z\d_-]+$|^agent-workspace-visualization-[a-zA-Z\d_-]+$/u.test(value);
+  return /^persist:workspace-browser$|^agent-workspace-visualization-[a-zA-Z\d_-]+$/u.test(value);
 }
 
 export function safePartitionName(agentId: string): string {

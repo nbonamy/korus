@@ -718,7 +718,7 @@ export class AppBackendServer {
     const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
     if (message.method === backendMethods.browserExtensionPackages) {
       try {
-        return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireString(params?.agentId, 'agentId'), requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
+        return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
     }
     if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {

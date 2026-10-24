@@ -28,14 +28,14 @@ describe('main window options', () => {
       preload: '/tmp/untrusted.js', nodeIntegration: true, sandbox: false, webviewTag: true,
     };
     secureBrowserGuestAttachment(deny, preferences, {
-      src: 'about:blank', partition: 'persist:agent-workspace-browser-agent-one', preload: '/tmp/untrusted.js', allowpopups: '',
+      src: 'about:blank', partition: 'persist:workspace-browser', preload: '/tmp/untrusted.js', allowpopups: '',
     });
     expect(deny.preventDefault).not.toHaveBeenCalled();
     expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, webviewTag: false });
     expect(preferences).not.toHaveProperty('preload');
 
     const reject = { preventDefault: vi.fn() };
-    secureBrowserGuestAttachment(reject, {}, { src: 'https://example.com', partition: 'persist:agent-workspace-browser-agent-one' });
+    secureBrowserGuestAttachment(reject, {}, { src: 'https://example.com', partition: 'persist:workspace-browser' });
     expect(reject.preventDefault).toHaveBeenCalledOnce();
     reject.preventDefault.mockClear();
     secureBrowserGuestAttachment(reject, {}, { src: 'about:blank', partition: 'persist:untrusted' });

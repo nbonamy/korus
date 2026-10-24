@@ -13,6 +13,7 @@ const host = vi.hoisted(() => ({
 vi.mock('../browser-extension-bridge', () => ({
   BrowserExtensionBridge: class {
     attachTab() {}
+    selectTab() {}
     setStorageRelay() {}
     dispose() {}
   },
@@ -96,7 +97,7 @@ it('preserves other extensions across update failure, disable, repair, and scope
   let version = '2',
     fail = false,
     approve = true;
-  const request = vi.fn(async (_agent: string, input: any): Promise<any> => {
+  const request = vi.fn(async (input: any): Promise<any> => {
     if (input.action === 'prepare') {
       if (fail) throw new Error('Verification failed');
       return {
@@ -133,7 +134,9 @@ it('preserves other extensions across update failure, disable, repair, and scope
     reload: vi.fn(),
   };
   await runtime.attachGuest('agent', 'primary', contents as never, {} as never);
-  await runtime.manage('agent', 'open', 'second');
+  const secondContents = { ...contents, reload: vi.fn() };
+  await runtime.attachGuest('other-agent', 'primary', secondContents as never, {} as never);
+  await runtime.manage('other-agent', 'open', 'second');
   const otherWindow = host.windows.find((window) => window.url.endsWith('second/popup.html'));
   fail = true;
   await expect(runtime.manage('agent', 'update', 'first')).rejects.toThrow('Verification failed');
@@ -141,7 +144,7 @@ it('preserves other extensions across update failure, disable, repair, and scope
   fail = false;
   approve = false;
   await runtime.manage('agent', 'update', 'first');
-  expect(request.mock.calls.some(([, input]) => input.action === 'cancel')).toBe(true);
+  expect(request.mock.calls.some(([input]) => input.action === 'cancel')).toBe(true);
   expect((await runtime.manage('agent', 'list')).extensions[0].version).toBe('1');
   approve = true;
   host.showMessageBox.mockResolvedValueOnce({ response: 2 }).mockImplementationOnce(async () => {
@@ -168,6 +171,7 @@ it('preserves other extensions across update failure, disable, repair, and scope
   expect((await runtime.manage('agent', 'list')).extensions[0].version).toBe('2');
   expect(otherWindow.destroyed).toBe(false);
   expect(contents.reload).toHaveBeenCalledOnce();
+  expect(secondContents.reload).toHaveBeenCalledOnce();
   expect((await runtime.manage('agent', 'update', 'first')).message).toBe('Already up to date.');
   version = '3';
   vi.spyOn(host.session.extensions, 'loadExtension').mockRejectedValueOnce(new Error('Unsupported runtime API'));
@@ -232,7 +236,7 @@ it('opens visible vendor setup after install alongside a passive relay', async (
   const runtime = new BrowserExtensions({
     catalog,
     parent: () => null,
-    request: async (_agent, input) => {
+    request: async (input) => {
       if (input.action === 'prepare') {
         candidate = input.id;
         return {

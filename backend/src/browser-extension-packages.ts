@@ -267,10 +267,9 @@ export class BrowserExtensionPackages {
 
   manage(
     clientId: string,
-    profileId: string,
     input: BrowserExtensionPackageRequest,
   ): Promise<BrowserExtensionPackageState> {
-    const next = this.pending.catch(() => {}).then(() => this.apply(clientId, profileId, input));
+    const next = this.pending.catch(() => {}).then(() => this.apply(clientId, input));
     this.pending = next;
     return next;
   }
@@ -289,19 +288,16 @@ export class BrowserExtensionPackages {
   }
   private async apply(
     clientId: string,
-    profileId: string,
     input: BrowserExtensionPackageRequest,
   ): Promise<BrowserExtensionPackageState> {
     if (
       !clientId ||
-      !profileId ||
       clientId.length > 200 ||
-      profileId.length > 200 ||
       !input ||
       typeof input !== 'object'
     )
       throw new Error('Invalid browser profile.');
-    const owner = digest(`${clientId}\0${profileId}`),
+    const owner = digest(`${clientId}\0shared-browser`),
       file = path.join(this.root, 'registry.json');
     let registry: Registry = {};
     try {
