@@ -18,7 +18,7 @@
       <li v-for="(step, index) in steps" :key="`${step.title}-${index}`" :class="stepClass(index)">
         <span class="staged-operation-progress__step-marker">
           <CheckIcon v-if="displayStep > index" aria-hidden="true" />
-          <LoaderIcon v-else-if="displayStep === index && state !== 'error'" aria-hidden="true" />
+          <span v-else-if="displayStep === index && state !== 'error'" class="app-spinner app-spinner--sm" aria-hidden="true" />
           <CircleXIcon v-else-if="displayStep === index" aria-hidden="true" />
           <span v-else aria-hidden="true" />
         </span>
@@ -37,7 +37,6 @@ import {
   IconCheck as CheckIcon,
   IconCircleCheck as CircleCheckIcon,
   IconCircleX as CircleXIcon,
-  IconLoader2 as LoaderIcon,
   IconSparkles as SparklesIcon,
 } from '@tabler/icons-vue';
 
@@ -256,36 +255,16 @@ function clearTimers(): void {
   height: var(--icon-md);
 }
 
-.staged-operation-progress__step-marker > span {
+.staged-operation-progress__step-marker > span:not(.app-spinner) {
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
   background: var(--color-text-muted);
 }
 
-.staged-operation-progress
-  li.is-active
-  .staged-operation-progress__step-marker
-  svg {
-  animation: staged-operation-progress-spin 0.9s linear infinite;
-}
-
-@keyframes staged-operation-progress-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .staged-operation-progress li {
     transition-duration: 1ms;
-  }
-
-  .staged-operation-progress
-    li.is-active
-    .staged-operation-progress__step-marker
-    svg {
-    animation-duration: 1ms;
   }
 }
 </style>

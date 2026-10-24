@@ -167,7 +167,7 @@
             >
               <span
                 v-if="daemonOperation !== null"
-                class="settings-general-panel__spinner"
+                class="app-spinner"
                 aria-hidden="true"
               />
               <Circle
@@ -498,21 +498,6 @@ async function promptForRestartAfterDaemonChange(enabled: boolean): Promise<void
 .settings-general-panel__status-icon--ok {
   color: var(--color-success);
   fill: currentColor;
-}
-
-.settings-general-panel__spinner {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 999px;
-  animation: settings-general-panel-spin 0.8s linear infinite;
-}
-
-@keyframes settings-general-panel-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 780px) {

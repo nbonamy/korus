@@ -180,14 +180,14 @@
         aria-live="polite"
       >
         <template v-if="findings.length === 0">
-          <span class="code-review-panel__spinner" aria-hidden="true" />
+          <span class="app-spinner app-spinner--xl app-spinner--primary" aria-hidden="true" />
           <div class="code-review-panel__working-copy">
             <strong>{{ $t('surface.codeReviewPanel.reviewInProgress') }}</strong>
             <span>{{ reviewingScope }}</span>
           </div>
         </template>
         <template v-else>
-          <span class="code-review-panel__spinner" aria-hidden="true" />
+          <span class="app-spinner app-spinner--lg app-spinner--primary" aria-hidden="true" />
           <strong>{{ reviewingScope }}</strong>
           <span class="code-review-panel__working-count">{{
             $t('surface.codeReviewPanel.findingsFound', { count: findings.length })
@@ -1006,9 +1006,7 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
   text-align: center;
 }
 
-.code-review-panel__working.is-waiting .code-review-panel__spinner {
-  width: var(--space-20);
-  height: var(--space-20);
+.code-review-panel__working.is-waiting .app-spinner {
   margin-bottom: var(--space-8);
 }
 
@@ -1049,21 +1047,6 @@ function priorityRank(priority: CodeReviewFinding["priority"]): number {
 
 .code-review-panel__clear svg {
   color: var(--color-success);
-}
-
-.code-review-panel__spinner {
-  width: var(--space-10);
-  height: var(--space-10);
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: review-spin 0.8s linear infinite;
-}
-
-@keyframes review-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .code-review-panel__findings {

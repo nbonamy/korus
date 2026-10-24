@@ -39,6 +39,7 @@
     ],
     "no-descending-specificity": null,
     "no-empty-source": null,
-    "declaration-property-value-no-unknown": null
+    "declaration-property-value-no-unknown": null,
+    "keyframes-name-pattern": "^(?:(?!.*(?:spin|rotate)).*|app-spin|activity-working-spin|git-operation-feedback-spin|repository-backlog-spin)$"
   }
 }

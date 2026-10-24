@@ -47,9 +47,9 @@
             {{ t(codexConnected ? (codexEnabled ? 'auth.codexConnected' : 'auth.enableCodex') : 'auth.connectCodex') }}
           </el-button>
           <div class="codex-login__detection">
-            <button v-if="cancellable" class="codex-login__cancel" type="button" :disabled="cancelling" @click="emit('cancel')"><i class="codex-login__spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+            <button v-if="cancellable" class="codex-login__cancel" type="button" :disabled="cancelling" @click="emit('cancel')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
             <template v-else>
-            <span v-if="!missing('codex') && updatingProvider === 'codex'" class="codex-login__checking" role="status" aria-busy="true"><i class="codex-login__spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
+            <span v-if="!missing('codex') && updatingProvider === 'codex'" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="codexConnected || detected('codex')"><CheckIcon aria-hidden="true" /> {{ t(codexConnected ? 'auth.connected' : 'auth.detected') }}</span>
             <ProviderInstallActions v-if="missing('codex')" backend="codex" :busy="updatingProvider === 'codex'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'codex')" />
             <button v-else-if="detected('codex') && updatingProvider !== 'codex'" type="button" :disabled="loading || continuing || Boolean(updatingProvider)" @click="emit('customize', 'codex')">{{ t('auth.customize') }}</button>
@@ -62,7 +62,7 @@
             {{ t(claudeConnected ? (claudeEnabled ? 'auth.claudeConnected' : 'auth.enableClaude') : 'auth.connectClaude') }}
           </el-button>
           <div class="codex-login__detection">
-            <span v-if="!missing('claude') && (updatingProvider === 'claude' || claudeLoading)" class="codex-login__checking" role="status" aria-busy="true"><i class="codex-login__spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
+            <span v-if="!missing('claude') && (updatingProvider === 'claude' || claudeLoading)" class="codex-login__checking" role="status" aria-busy="true"><i class="app-spinner" aria-hidden="true" /> {{ t('auth.checking') }}</span>
             <span v-else-if="claudeConnected || detected('claude')"><CheckIcon aria-hidden="true" /> {{ t(claudeConnected ? 'auth.connected' : 'auth.detected') }}</span>
             <ProviderInstallActions v-if="missing('claude')" backend="claude" :busy="updatingProvider === 'claude'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'claude')" />
             <button v-else-if="detected('claude') && updatingProvider !== 'claude' && !claudeLoading" type="button" :disabled="continuing || Boolean(updatingProvider)" @click="emit('customize', 'claude')">{{ t('auth.customize') }}</button>
@@ -75,7 +75,7 @@
             </el-button>
             <div class="codex-login__detection">
               <ProviderInstallActions v-if="missing('antigravity')" backend="antigravity" :busy="updatingProvider === 'antigravity'" :disabled="Boolean(updatingProvider)" @refresh="emit('refresh-provider', 'antigravity')" @install="emit('install-provider', 'antigravity')" />
-              <button v-else-if="antigravityPending" class="codex-login__cancel" type="button" @click="emit('cancel-antigravity')"><i class="codex-login__spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
+              <button v-else-if="antigravityPending" class="codex-login__cancel" type="button" @click="emit('cancel-antigravity')"><i class="app-spinner" aria-hidden="true" />{{ t('auth.cancel') }}</button>
               <template v-else>
                 <span v-if="updatingProvider === 'antigravity' || antigravityLoading" role="status">{{ t('auth.checking') }}</span>
                 <span v-else-if="antigravityConnected || detected('antigravity')"><CheckIcon aria-hidden="true" /> {{ t(antigravityConnected ? 'auth.connected' : 'auth.detected') }}</span>
@@ -225,19 +225,6 @@ const needsSignIn = (backend: AgentBackend, connected?: boolean) => !connected
   color: var(--color-text-muted);
 }
 
-.codex-login__spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-border);
-  border-top-color: currentColor;
-  border-radius: var(--radius-full);
-  animation: codex-login-spin 900ms linear infinite;
-}
-
-@keyframes codex-login-spin {
-  to { transform: rotate(360deg); }
-}
-
 .codex-login__detection > button {
   -webkit-app-region: no-drag;
   min-height: 0;
@@ -357,10 +344,6 @@ const needsSignIn = (backend: AgentBackend, connected?: boolean) => !connected
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .codex-login__spinner {
-    animation: none;
-  }
-
   .codex-login__progress-segment {
     animation: none;
     transform: translateX(150%);

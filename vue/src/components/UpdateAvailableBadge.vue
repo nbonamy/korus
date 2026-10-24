@@ -35,7 +35,7 @@ function title(): string {
     aria-live="polite"
   >
     <span
-      class="update-status-badge__spinner"
+      class="app-spinner app-spinner--sm update-status-badge__spinner"
       aria-hidden="true"
     />
     {{ $t('surface.updateAvailableBadge.downloadingUpdate') }}
@@ -75,16 +75,6 @@ function title(): string {
   background: var(--color-primary);
 }
 
-.update-status-badge__spinner {
-  width: 10px;
-  height: 10px;
-  margin-right: var(--space-3);
-  border: 1.5px solid color-mix(in srgb, currentColor 38%, transparent);
-  border-top-color: currentColor;
-  border-radius: var(--radius-full);
-  animation: update-status-spin 800ms linear infinite;
-}
-
 .update-available-badge {
   border-color: var(--color-success);
   color: var(--color-on-success);
@@ -103,15 +93,7 @@ function title(): string {
   outline-offset: 2px;
 }
 
-@keyframes update-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .update-status-badge__spinner {
-    animation: none;
-  }
+.update-status-badge__spinner {
+  margin-right: var(--space-3);
 }
 </style>

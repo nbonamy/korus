@@ -146,7 +146,7 @@ describe('CodexLoginLanding', () => {
     expect.soft(status.find('button').exists()).toBe(false);
     expect(status.get('[role="status"]').attributes('aria-busy')).toBe('true');
     expect(status.get('[role="status"]').text()).toBe('Checking…');
-    expect(status.find('.codex-login__spinner').exists()).toBe(true);
+    expect(status.find('.app-spinner').exists()).toBe(true);
 
     await wrapper.setProps({ updatingProvider: null, claudeLoading: false });
 
@@ -167,7 +167,7 @@ describe('CodexLoginLanding', () => {
     expect(wrapper.text()).toContain('Connect Claude Code');
     const codexStatus = wrapper.get('.codex-login__provider .codex-login__detection');
     const cancel = codexStatus.get('.codex-login__cancel');
-    expect(cancel.find('.codex-login__spinner').exists()).toBe(true);
+    expect(cancel.find('.app-spinner').exists()).toBe(true);
     expect(wrapper.get('.codex-login__providers .el-button').classes()).not.toContain('is-loading');
     expect(codexStatus.text()).not.toContain('Detected');
     expect(codexStatus.text()).not.toContain('Customize');

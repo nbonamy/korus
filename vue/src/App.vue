@@ -241,7 +241,7 @@
       aria-busy="true"
     >
       <div class="backend-restart-overlay__card">
-        <span class="backend-restart-overlay__spinner" aria-hidden="true" />
+        <span class="app-spinner app-spinner--lg app-spinner--primary" aria-hidden="true" />
         <div class="backend-restart-overlay__copy">
           <strong>{{ $t('surface.app.applyingResourceChanges') }}</strong>
           <span>{{ $t('surface.app.restartingTheBackendAndReconnectingYourChats') }}</span>
@@ -745,16 +745,6 @@ watch(() => snapshot.value.theme, (theme) => {
   box-shadow: var(--shadow-lg);
 }
 
-.backend-restart-overlay__spinner {
-  width: var(--space-10);
-  height: var(--space-10);
-  flex: 0 0 auto;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: backend-restart-spin 0.8s linear infinite;
-}
-
 .backend-restart-overlay__copy {
   display: grid;
   gap: var(--space-1);
@@ -782,15 +772,4 @@ watch(() => snapshot.value.theme, (theme) => {
   opacity: 0;
 }
 
-@keyframes backend-restart-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .backend-restart-overlay__spinner {
-    animation: none;
-  }
-}
 </style>

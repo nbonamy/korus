@@ -152,15 +152,6 @@
   white-space: nowrap;
 }
 
-.mission-workspace__activity-indicator {
-  width: var(--space-8);
-  height: var(--space-8);
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: var(--radius-full);
-  animation: mission-workspace-activity-spin 900ms linear infinite;
-}
-
 .mission-workspace__error {
   margin-top: var(--space-8) !important;
   padding: var(--space-6);
@@ -224,17 +215,6 @@
   height: var(--icon-md);
 }
 
-@keyframes mission-workspace-activity-spin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mission-workspace__activity-indicator {
-    animation: none;
-  }
-}
 
 @container (max-width: 980px) {
   .mission-workspace__body {

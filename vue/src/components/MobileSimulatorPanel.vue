@@ -72,7 +72,7 @@
       </div>
       <h3>{{ $t('surface.mobileSimulator.emptyTitle') }}</h3>
       <p v-if="!loaded" class="mobile-simulator__loading" role="status">
-        <IconLoader2 class="mobile-simulator__spin" aria-hidden="true" />{{ $t('surface.mobileSimulator.loading') }}
+        <span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t('surface.mobileSimulator.loading') }}
       </p>
       <template v-else>
         <el-segmented
@@ -101,7 +101,7 @@
             <span class="mobile-simulator__device-name">{{ device.name }}</span>
             <span class="mobile-simulator__device-action">
               <template v-if="!usable(device)">{{ $t('surface.mobileSimulator.inUse') }}</template>
-              <template v-else-if="pending === device.id"><IconLoader2 class="mobile-simulator__spin" aria-hidden="true" />{{ $t(device.state === 'booted' ? 'surface.mobileSimulator.attaching' : 'surface.mobileSimulator.booting') }}</template>
+              <template v-else-if="pending === device.id"><span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t(device.state === 'booted' ? 'surface.mobileSimulator.attaching' : 'surface.mobileSimulator.booting') }}</template>
               <template v-else>{{ $t(device.state === 'booted' ? 'surface.mobileSimulator.attach' : 'surface.mobileSimulator.boot') }}</template>
             </span>
           </button>
@@ -116,7 +116,7 @@
       </template>
     </div>
     <div v-else-if="poweringOff" class="mobile-simulator__screen mobile-simulator__screen--status" role="status">
-      <IconLoader2 class="mobile-simulator__spin" aria-hidden="true" />{{ $t('surface.mobileSimulator.poweringOff') }}
+      <span class="app-spinner app-spinner--sm" aria-hidden="true" />{{ $t('surface.mobileSimulator.poweringOff') }}
     </div>
     <div v-else class="mobile-simulator__screen">
       <MobileLiveScreen
@@ -208,7 +208,6 @@ import {
   IconChevronDown,
   IconDeviceMobile,
   IconHome,
-  IconLoader2,
   IconLogout,
   IconPower,
   IconRefresh,
@@ -687,14 +686,6 @@ onBeforeUnmount(() => {
 .mobile-simulator__device-action svg {
   width: 14px;
   height: 14px;
-}
-.mobile-simulator__spin {
-  animation: mobile-simulator-spin 1s linear infinite;
-}
-@keyframes mobile-simulator-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 .mobile-simulator__segments {
   margin-bottom: var(--space-8);
