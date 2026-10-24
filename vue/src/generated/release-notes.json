@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.39.3",
+  "currentVersion": "0.40.0",
   "releases": [
+    {
+      "version": "0.40.0",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "998289f3fc0047b3009024177579f2d4150c5973d3efa3c90435cbc74764437b",
+      "markdown": "### New features\n\n- Install and manage coding-agent skills from Settings. Discover curated skills\n  and packs, install from GitHub or skills.sh, and sync skills across configured\n  agents. Browse existing installations, read skill documents, refresh managed\n  packs, and delete personal skills with confirmation while protecting system skills.\n- Featured skills include Cloudflare's Security audit, Vercel's Web design\n  guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack.\n- Automatically resume conversations after a usage limit resets. A compact\n  composer drawer shows the reset time and a saved Auto-resume toggle, enabled\n  by default. Pending resumes survive restarts and cancel when you send a prompt\n  or start a different conversation.\n\n### Improvements and fixes\n\n- Completed execution plans stay closed after a restart and clear when the next\n  turn starts.\n- Sending a message shows \"other agent\" while the recipient's name is unknown."
+    },
     {
       "version": "0.39.3",
       "releasedAt": "2026-10-23",

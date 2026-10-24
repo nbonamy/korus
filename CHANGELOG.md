@@ -4,6 +4,27 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.40.0] - 2026-10-23
+
+### New features
+
+- Install and manage coding-agent skills from Settings. Discover curated skills
+  and packs, install from GitHub or skills.sh, and sync skills across configured
+  agents. Browse existing installations, read skill documents, refresh managed
+  packs, and delete personal skills with confirmation while protecting system skills.
+- Featured skills include Cloudflare's Security audit, Vercel's Web design
+  guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack.
+- Automatically resume conversations after a usage limit resets. A compact
+  composer drawer shows the reset time and a saved Auto-resume toggle, enabled
+  by default. Pending resumes survive restarts and cancel when you send a prompt
+  or start a different conversation.
+
+### Improvements and fixes
+
+- Completed execution plans stay closed after a restart and clear when the next
+  turn starts.
+- Sending a message shows "other agent" while the recipient's name is unknown.
+
 ## [0.39.3] - 2026-10-23
 
 ### Improvements and fixes
