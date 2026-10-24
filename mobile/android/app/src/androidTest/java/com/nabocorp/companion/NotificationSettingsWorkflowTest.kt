@@ -24,9 +24,9 @@ class NotificationSettingsWorkflowTest {
                 activity.setContent { CompanionTheme { CompanionApp(engine.model, activity::enableNotifications, {}, {}, {}, {}, {}) } }
             }
             app.runOnIdle { engine.model.sheet = "settings" }
-            app.onNodeWithText("Enable notifications").performScrollTo().performClick()
+            app.onNodeWithText("Notifications").performScrollTo().performClick()
             // Verification builds deliberately have no Firebase client configuration.
-            app.onNodeWithText("Notifications unavailable").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Unavailable").performScrollTo().assertIsDisplayed()
         }
     }
 
@@ -58,7 +58,7 @@ class NotificationSettingsWorkflowTest {
             app.onNodeWithText("Cancel").assertIsDisplayed().performClick()
             app.onNodeWithText("Forget this laptop?").assertDoesNotExist()
             app.onNodeWithContentDescription("Back to Settings").performClick()
-            app.onNodeWithText("Usage").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Usage and limits").performScrollTo().assertIsDisplayed()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
             assertEquals("agent", engine.model.state.string("agentId"))
