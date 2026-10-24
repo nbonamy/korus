@@ -1502,6 +1502,7 @@ export const messages = {
               running: 'Registering agent',
             },
             sendMessage: {
+              otherAgent: 'other agent',
               completed: 'Sent message to {target}',
               failed: 'Failed sending message to {target}',
               running: 'Sending message to {target}',
