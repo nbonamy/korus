@@ -140,7 +140,8 @@ Do not commit these rebuildable outputs; deployments upload them with the rest
 of the static artifact. YouTube uploads are independent of the website.
 
 Keep visuals free of private repository names, messages, and account details.
-The page positions Korus as a team of coding agents it orchestrates. Lead with
+The page positions Korus as the way to see, follow and steer AI coding work
+beyond the wall of text. Lead with
 the problems visitors recognize, explain the value without becoming a release
 changelog, and promise only what the shipped product does.
 
