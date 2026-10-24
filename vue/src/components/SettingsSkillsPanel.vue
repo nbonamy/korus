@@ -121,6 +121,7 @@ import webDesignArtwork from '../assets/skills/web-design-guidelines.webp?url';
 import impeccableArtwork from '../assets/skills/impeccable.webp?url';
 import mattPocockArtwork from '../assets/skills/matt-pocock.webp?url';
 import pstackArtwork from '../assets/skills/pstack.webp?url';
+import superpowersArtwork from '../assets/skills/superpowers.webp?url';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import FormDialog from '../shared/dialog/FormDialog.vue';
@@ -133,7 +134,7 @@ import type { AppDataListRow } from './app-data-list';
 const state = ref<SkillManagerState>();
 const skillArtwork: Record<string, string> = {
   'security-audit': securityArtwork, 'web-design-guidelines': webDesignArtwork,
-  impeccable: impeccableArtwork, 'matt-pocock': mattPocockArtwork, pstack: pstackArtwork,
+  impeccable: impeccableArtwork, 'matt-pocock': mattPocockArtwork, pstack: pstackArtwork, superpowers: superpowersArtwork,
 };
 const document = ref<SkillDocument>(), documentDialog = ref(false), documentVersion = ref('0'), viewingName = ref('');
 const view = ref('discover'), query = ref(''), installDialog = ref(false), kind = ref<'personal' | 'builtIn'>('personal');

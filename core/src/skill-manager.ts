@@ -16,6 +16,7 @@ export const curatedSkills: readonly CuratedSkill[] = [
   { name: 'web-design-guidelines', title: 'Web design guidelines', author: 'Vercel', description: 'Review interfaces for accessibility, usability and design consistency.', source: 'https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines' },
   { name: 'impeccable', title: 'Impeccable', author: 'Paul Bakaus', description: 'Shape, critique and polish interfaces with a complete design toolkit.', source: 'https://github.com/pbakaus/impeccable/tree/main/.agents/skills/impeccable' },
   { name: 'matt-pocock', title: 'Matt Pocock’s skills', author: 'Matt Pocock', description: 'A complete pack for engineering, planning, testing and everyday development.', source: 'https://github.com/mattpocock/skills/tree/main/skills', kind: 'pack' },
+  { name: 'superpowers', title: 'Superpowers', author: 'Jesse Vincent', description: 'A complete development workflow: brainstorming, plans, test-driven development, systematic debugging and verification.', source: 'https://github.com/obra/superpowers/tree/main/skills', kind: 'pack' },
   { name: 'pstack', title: 'pstack', author: 'Lauren Tan · community port', description: 'Engineering workflows and principles for investigation, implementation and review.', source: 'https://github.com/backnotprop/pstack/tree/main/skills', kind: 'pack' },
 ] as const;
 
