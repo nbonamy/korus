@@ -98,7 +98,7 @@ Choose **GitHub** or **Linear** when both are connected, then a repository or Li
 
 Use the star beside a repository or Linear source to keep it in **Favorites**. Drag a favorite by its handle to reorder it, or focus the handle and use the up and down arrow keys. Favorites and their order are saved separately for each backlog provider. Removing a favorite does not disconnect the source or remove its agents.
 
-In a repository backlog, search by issue identifier or title and use the state, assignee, and label filters to narrow the list. Open an item to read its details before assigning work. For an issue:
+In a repository backlog, search by issue identifier or title and use the state, assignee, and label filters to narrow the list. GitHub also offers an item-type filter for **Issues** or **Pull requests**, and **Assigned to me** in the assignee filter. Open an item to read its details before assigning work. For an issue:
 
 1. Choose **New agent** for a new agent and worktree, or **Existing agent** when offered. An existing agent keeps working on its current branch; Korus never creates or switches a branch or worktree for it.
 2. For a new agent, choose the coding engine, model, and reasoning effort, and check the branch it will be created on.
@@ -134,6 +134,18 @@ Workspace tabs stay associated with their agent. Switching agents changes the co
 
 In a split conversation layout, the artifact sidebar follows the focused agent.
 
+Drag the dividers to resize conversation panes, or focus a divider and use the arrow keys. Each team keeps its pane assignments, focused pane, and sizes across restarts.
+
+Project creation, new worktrees, Mission startup, and worktree deletion show progress in one dialog. Choose **Run in background** to keep working while the operation continues; check its final result before depending on the new folder or cleanup.
+
+## Continue from your phone
+
+The iPhone and Android companions connect to your computer's Korus workspace. Enable mobile access in **Settings → Connections** on the desktop, create a pairing invitation, then scan or enter its code on the phone and approve the device on the desktop. Your computer needs to remain available for the phone to follow or send work.
+
+The companion remembers multiple computers. Use **Connections** in mobile Settings to add or switch computers, rename a saved connection, or forget one you no longer use. Pairings start with the computer's name; renaming a connection changes the label on that phone. Forgetting removes its saved connection rather than deleting work on the computer. Revoke a lost device from the desktop.
+
+Use the mobile sidebar to browse one team or **All teams**, switch between repository and activity views, and create a team. Select an agent to follow its conversation, respond to requests, or send a follow-up. Mobile Settings also offers usage, follow-up behavior, notification controls, and optional app lock.
+
 ## Understand usage and performance
 
 Open **Settings → Analytics** to see usage recorded by Korus:
@@ -141,6 +153,8 @@ Open **Settings → Analytics** to see usage recorded by Korus:
 - **Token activity** shows the past year across providers. This overview stays independent of the filters below it.
 - **Usage** shows token totals, input and output, usage share, and trends. Choose a provider, a 7-, 30-, or 90-day window or custom dates, and group the results by provider or model.
 - **Model performance** compares time to first token and output speed when measurements are available. **N/A** means a measurement is unavailable, not zero.
+
+The **Output speed over time** chart plots a separate line for each model. Use the date and provider filters to compare how measured generation speed changes across your work.
 
 Use these statistics to understand the work you run in Korus, not as an invoice or a complete account usage report. They cover recorded activity rather than importing earlier provider history; different providers may report different token details.
 

@@ -60,8 +60,11 @@ and API usage are billed separately.
   send messages, queue follow-up work, and coordinate through Korus's
   built-in MCP tools.
 - **Browse without leaving** — Every agent can keep an in-app browser for
-  research, local previews, and browser-based tools—even while another agent is
-  selected.
+  research, local previews, and browser-based tools. Share website sign-ins across
+  agents and use Bitwarden or 1Password from the browser toolbar.
+- **Teach agents new skills** — Discover curated skills and packs, install from
+  GitHub or skills.sh, read their instructions, and sync them across your local
+  coding agents in Settings.
 - **Use the computer when code is not enough** — Opt-in Computer Use lets agents
   inspect and operate macOS applications while you keep the session visible.
 - **Review with context** — Open Git changes, source files, turn-specific diffs,
@@ -69,6 +72,9 @@ and API usage are billed separately.
 - **Keep Codex work accessible from your phone** — Pair Codex mobile with
   Korus's Codex connection while agents continue running through the background
   backend. This pairing is specific to Codex.
+- **Take your team with you** — Pair the iPhone or Android companion with your
+  computers, switch saved connections, and follow agents across teams. Respond to
+  requests and send follow-ups while work continues on the connected computer.
 - **Bring your backlog** — Connect GitHub or Linear to browse issues, start
   agent work, or shape a Mission. Choose the code repository separately from a
   Linear team or project; GitHub remains the home for pull requests.
@@ -86,7 +92,8 @@ and API usage are billed separately.
   original conversation stays open; pushing and merging remain separate decisions.
 - **Review** — Use `/review` to assess a branch or uncommitted changes with an
   independent reviewer or the current agent. Inspect structured findings,
-  choose which fixes to apply, and run another review round.
+  choose which fixes to apply, and run another review round. Save shared review
+  instructions in Settings → Workflows.
 - **Visualize** — Use `/visualize` to explore designs on an editable diagram
   canvas beside the conversation. Annotate a shape to request a targeted change
   without losing your other edits.
@@ -109,9 +116,15 @@ interrupting a running tool. Claude also supports idle conversation forks in
 the same folder and native goals; its goals do not support token budgets.
 
 Keep two or four agents visible in split panes, with one shared artifact sidebar
-following the focused agent. With the background backend enabled, closing the
+following the focused agent. Resize panes and keep each team's layout across
+restarts. Let project creation, worktree setup, and cleanup run in the background
+while you continue working. With the background backend enabled, closing the
 desktop app leaves the team running. Saved workspace state is restored when
 you return.
+
+When a provider supplies a usage-limit reset time, Auto-resume can continue the
+conversation after the reset. Track token usage and output speed over time in
+Settings → Analytics.
 
 ## Get Korus
 
@@ -134,9 +147,9 @@ To run from source, see [Development](#development).
 4. Create a team, add an agent from a repository, and start coding. When multiple
    engines are enabled, choose which one the agent uses.
 
-By default, Korus keeps its conversations separate from your existing agent
-chats. Choose Customize for an installed engine during setup
-to use your existing setup instead. A separate setup requires its own sign-in.
+Korus uses your existing Codex and Claude Code setup by default, including their
+sign-in. Choose Customize during setup to keep Korus conversations in a separate
+environment instead. A separate setup requires its own sign-in.
 You can also share existing provider skills with a separate setup. Settings shows
 each engine's account, conversation location, and enabled state.
 
@@ -146,7 +159,7 @@ Requirements:
 
 - macOS arm64, Windows x64, or Linux x64/arm64;
 - Node 26 (use the exact version pinned in [.nvmrc](.nvmrc)) and npm 10.9.4;
-- a separately installed runtime for each coding engine you want to use.
+- a connected account for at least one [coding engine](website/docs/providers/index.md).
 
 Use this reference toolchain for local development and checks to match CI.
 The packaged desktop app includes its own Node runtime; users do not need to

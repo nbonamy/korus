@@ -19,11 +19,11 @@ Korus's **Worktree initialization** setting controls extra setup. **Auto-detect*
 1. Open a team with an agent in the repository.
 2. Use the **+** beside that repository group and choose the new-worktree option.
 3. In **New Worktree**, choose **Start from** and enter a branch such as `feat/export-csv`. Check the destination folder wherever the creation flow lets you change it. If Korus offers an existing worktree, verify its path and branch before reusing it.
-4. Select the provider when more than one is available, create the worktree, and send the implementation task to the new session.
+4. Create the worktree and send the implementation task to the new session. Provider selection is part of the start-work flow; the worktree dialog handles the branch and checkout.
 
 When creating an agent through the agent dialog, the equivalent choice is **Repository**, then **Work in… → New Worktree…**.
 
-Korus displays provisioning progress. When it finishes, check the new agent's folder and branch before asking it to edit files.
+Korus displays provisioning progress. Choose **Run in background** to keep working while it prepares the checkout and agent. When it finishes, check the new agent's folder and branch before asking it to edit files. Worktree deletion can also run in the background; inspect the result before assuming cleanup is complete.
 
 ## Delegate implementation
 

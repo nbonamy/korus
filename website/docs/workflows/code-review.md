@@ -23,6 +23,10 @@ There must be something to review: staged, unstaged, or untracked changes, or a 
 
 Choose the scope deliberately. If the feature is committed on a branch, reviewing only uncommitted changes will miss those commits. Check the displayed base for a branch review before starting.
 
+## Set reusable review instructions
+
+In **Settings → Workflows → Code review**, save **Review instructions** for standards you want every reviewer to apply, such as checking authorization, compatibility, or migration safety. They accompany review agents, including automatic reviews and fresh rounds, alongside any instructions you supply for an individual review.
+
 ## Automatic remediation
 
 Enable **Automatic remediation** to let an independent reviewer find, fix, and check issues over several rounds. In **Configure**, choose which priorities to fix and the maximum number of rounds. The defaults are critical, high, and medium findings (P0–P2) and three rounds, including the final verification review.

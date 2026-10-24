@@ -51,6 +51,16 @@ Confirm the development server is running and the URL uses the correct port. Ins
 
 The in-app Browser is separate from your Chrome browser and its existing tabs. Follow [Browser](../features/browser) when the task specifically needs Chrome or an existing browser login.
 
+## A password manager will not fill a login
+
+Check **Settings → Browser** to confirm the extension is installed and enabled. Open its toolbar popup, finish sign-in, and unlock the vault. Check that the saved login matches the page's address and grant any site access the extension needs. If Bitwarden reports missing desktop integration, enable browser integration in the Bitwarden desktop app.
+
+Use the extension's **Update** or **Reinstall** action when needed, then reload the page. **Clear browsing data…** signs agents out of websites but preserves extension data; **Remove** uninstalls the extension and clears its Korus storage. See [Browser](../features/browser#use-your-password-manager).
+
+## A skill is missing from an agent
+
+Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote teams use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
+
 ## Computer Use cannot act
 
 Enable the capability in **Settings → Plugins**, then check **Settings → General → System permissions** for the required macOS access. Record whether discovery, a window observation, an interaction, or capture failed.

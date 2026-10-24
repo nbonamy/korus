@@ -43,7 +43,9 @@ The stage rail, artifact workbench, and conversation stay together in the Missio
 
 Wait for a proposal, read it, and give feedback before choosing **Approve and continue**. In Requirements, select text to leave inline comments and send them to the lead. In Tickets, open a ticket card to inspect its details and comment on the relevant text. You can also request changes directly in chat.
 
-Approving Requirements starts ticket shaping. Approving Tickets creates isolated Mission worktrees in the affected repositories and starts implementation workers. This is the point where code work begins; inspect repository assignments and dependencies before accepting the backlog.
+Approving Requirements starts ticket shaping. When the tickets are ready, the **Start implementation** dialog lets you choose the coding agent, model, and reasoning effort for implementation independently of the Mission lead. Inspect repository assignments and dependencies, then confirm to create isolated Mission worktrees and start the workers. This is the point where code work begins.
+
+Mission startup shows provisioning progress. **Run in background** lets you return to other conversations while it prepares the workspaces and workers.
 
 ## Follow implementation
 

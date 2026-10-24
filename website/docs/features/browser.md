@@ -4,7 +4,7 @@ description: Use the agent's in-app browser for research and local previews.
 
 # Browser
 
-Each agent can use an in-app browser alongside its conversation for research and local verification. It has its own browsing session; it does not inherit your Chrome tabs, cookies, or extensions.
+Each agent can use an in-app browser alongside its conversation for research and local verification. All agents share Korus's browser accounts, cookies, extensions, and preferences, so you can sign in once and keep working across agents. This profile is separate from your Chrome browser.
 
 ## Open a page
 
@@ -20,6 +20,18 @@ installation instructions.
 ```
 
 For a local preview, ask the agent to start the project's development server and open the URL it reports. If the page cannot load, check that the server is still running and that the URL and port are reachable from the desktop browser.
+
+## Use your password manager
+
+Install **Bitwarden** or **1Password** from **Settings → Browser → Extensions**. Choose **Install** beside the manager you use, then open it from the browser toolbar to sign in and unlock your vault. Follow the extension's setup flow and approve any additional permissions it requests only when you want to grant them.
+
+Use the extension to fill logins and forms inside Korus's browser. If Bitwarden asks to connect to its desktop app, enable browser integration in Bitwarden and keep the desktop app available. The extension and website sign-ins are shared across agents; check which page an agent is using before giving it a task in a signed-in account.
+
+In **Settings → Browser**, each installed extension's **…** menu offers **Update**, **Disable** or **Enable**, **Reinstall**, and **Remove**. Disabling pauses an extension without uninstalling it. Removing an extension also clears its saved data in Korus; it does not delete your password-manager account or vault at the provider.
+
+## Clear shared browsing data
+
+Choose **Clear browsing data…** from the browser's **…** menu. After confirmation, Korus clears website cookies, site data, history, and cache across all agents and resets their open pages. This signs you out of websites. Extensions, their saved data, and their permissions are kept.
 
 ## Save and reopen bookmarks
 

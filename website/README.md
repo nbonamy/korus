@@ -83,12 +83,16 @@ Re-export the films after updating their shared `website/assets/app-icon.png`.
 The hero leads with three visitor problems—parallel work, reliable results,
 and big ideas—each answered by a self-hosted product film: Delegation, Code
 Review, and Mission. Quick Chat and Visualize films sit in the feature cards.
-Activity view, Automations, and Background runtime show real screenshots from
+Activity view, Automations, and Skills show real screenshots from
 `assets/screens/`, captured from the running app with neutral demo data (a
 sample storefront team, no private repository names or account details).
 Refresh them with the `korus-live-preview` skill when those surfaces change,
 and bump the `?v=` query on the image URLs. Computer Use and the choice of
 agents stay text-only until a faithful capture exists.
+
+The Skills capture shows the real Discover panel with its curated catalog in an
+isolated preview. It contains no private skill names, provider accounts, or
+repository data.
 
 The Activity view capture focuses on the sidebar so its priorities remain
 readable. It uses isolated Storefront demo agents, including a pending question,

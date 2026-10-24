@@ -40,6 +40,8 @@ For issue-driven work, connect [GitHub or Linear](./providers/#connect-github-or
 
 Use [Automations](./features/automations) to schedule recurring prompts in an agent or Quick Chat.
 
+Install and sync reusable workflows in [Settings → Skills](./providers/#manage-agent-skills). Bring Bitwarden or 1Password into the [in-app browser](./features/browser#use-your-password-manager), and [continue from your phone](./features/workspace#continue-from-your-phone) when you step away from the desktop.
+
 ::: tip Looking for developer documentation?
 This guide covers using Korus. Architecture, protocol, frontend, and testing notes live in the repository's `docs/` directory.
 :::

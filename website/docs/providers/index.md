@@ -90,6 +90,30 @@ A Linear team or project identifies **where the issue lives**, not **where code 
 
 Git branches, commits, pushes, and pull requests still belong to the code repository. Linear supplies backlog work; it does not replace GitHub's pull-request workflow. See [Browse and start backlog work](../features/workspace#browse-and-start-backlog-work) and [Missions](../workflows/missions) for the entry points.
 
+## Manage agent skills
+
+Open **Settings → Skills** to give your coding agents reusable instructions for design, security, testing, and other work.
+
+### Discover and install
+
+The **Discover** tab offers individual skills and packs, including Security audit, Web design guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack. Choose **Install** or **Install pack** to add one.
+
+To bring another source, choose **Install skill** and paste a GitHub repository or skill-folder URL, a skills.sh skill URL, or a `skills add` command. When several coding agents are configured, select which should receive the installation. Packs install the skills they contain; check the source and instructions before using code or workflows from an unfamiliar author.
+
+### Inspect and sync
+
+The **Installed** tab includes skills installed through Korus and skills already present in your local coding-agent setups. Search by name or description, switch between **Personal** and **Built-in**, and check the provider icons to see where a skill is available.
+
+Open a skill's **… → View skill** action to read its instructions. When installed copies differ, the viewer lets you inspect each version. Installing a skill does not by itself run its workflow; select or request the skill in a conversation when you want the agent to use it.
+
+Choose **Sync** to make personal skills available across your configured local coding agents, or **Sync this skill** for one entry. Existing conflicting installations are preserved. If a provider still shows a conflict, decide which copy to keep, remove or rename the conflicting installation, and sync again. Remote computers manage their own skills.
+
+### Refresh or remove
+
+Use **Refresh** on a managed skill or pack in Discover to download its source again. In Installed, **Delete skill** asks for confirmation before removing that skill's installed folders across configured coding agents. **Uninstall** on a pack removes the skills Korus installed from that pack. Original sources of linked skills are kept, and built-in skills are protected from deletion.
+
+Skills add instructions and workflows; your provider account still supplies model access. They are separate from browser extensions and coding-provider plugins.
+
 ## Choosing an engine
 
 When multiple engines are available, choose an engine when starting new work. With only one available engine, Korus can use it without showing a picker. Models, reasoning controls, and permission choices depend on that engine.

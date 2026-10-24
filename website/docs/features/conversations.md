@@ -22,7 +22,9 @@ Choose a model in the composer before sending when you need a particular provide
 
 The composer's **+** menu includes **Review**, **Delegate**, and **Visualize** across supported engines. These open [Code Review](../workflows/code-review), request [worktree delegation](../workflows/worktrees#delegate-implementation), and open [Visualize](./visualize), respectively. The corresponding slash commands remain available.
 
-After a response, the empty composer may suggest a follow-up. It is a hint, not a draft or a sent message; it does not replace anything you have typed. Enter the request you want to send.
+After a response, the empty composer may suggest a follow-up. Press **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
+
+Use **Image Gen** in the skill picker when you want a Claude or other non-Codex agent to generate or edit an image through Codex. A connected Codex setup supplies that image capability. Manage reusable workflows in [Settings → Skills](../providers/#manage-agent-skills).
 
 ## Attach an app window on macOS
 
@@ -66,6 +68,8 @@ Keep planning and implementation separate: **Revise** asks for another proposal;
 Korus renders messages, tool calls, command output, plans, approvals, and file changes. Use those details to check what the agent inspected and what it actually validated.
 
 Open a document or diff in the workspace when you need to examine it while continuing the discussion.
+
+Claude Code's native task lists also appear in the execution-plan panel, with progress restored when you reopen the conversation. Completed task lists stay closed after a restart and clear when the next turn starts.
 
 ## Steer, queue, or interrupt
 
@@ -133,5 +137,7 @@ Claude goals use Claude Code's native goal behavior and require native goal hook
 ## Resume work
 
 Korus restores durable workspace state when you return. Older messages load through conversation history; use the retry action if history loading reports a failure.
+
+When a provider reports a usage limit with a reset time, the composer shows an **Auto-resume** drawer. Auto-resume is on by default: Korus can continue the conversation when the limit resets. Turn it off in the drawer if you want to resume manually. Pending resumes survive restarts; sending your own prompt or starting a different conversation cancels the pending automatic resume.
 
 Its background daemon can keep agent work running after the desktop window closes. The host still needs to be running and connected; stopping the daemon or sleeping the host interrupts that availability. Check the conversation and current status before submitting another instruction.
