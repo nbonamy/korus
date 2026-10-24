@@ -89,7 +89,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const branches = branchList.state;
   const dismissBranches = branchList.reset;
   const stopBranches = watch([laptopId, teamId, status], dismissBranches, { flush: 'sync' });
-  const loadBranches = (repositoryId: string) => branchList.load({ repositoryId }, active => teamId.value ? active.listBranches?.(teamId.value, repositoryId) : undefined);
+  const loadBranches = (repositoryId: string, team = teamId.value) => branchList.load({ repositoryId }, active => team ? active.listBranches?.(team, repositoryId) : undefined);
   const projectBranchList = createRemoteList<CompanionProjectBranch, { repositoryId: string | null }>(remote, { repositoryId: null });
   const projectBranches = projectBranchList.state;
   const dismissProjectBranches = projectBranchList.reset;
@@ -575,8 +575,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     }
   }
   /** Starts a chat and opens it once the laptop has it ready. */
-  async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined) {
-    const active = session; const team = teamId.value; const epoch = selectionEpoch;
+  async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined, team = teamId.value) {
+    const active = session; const epoch = selectionEpoch;
     if (!active || !team || status.value !== 'connected' || chatCreation.value === 'creating') return;
     chatCreation.value = 'creating';
     try {
@@ -584,12 +584,12 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (!created) throw new Error('Chat creation unavailable.');
       if (!(await refreshWorkspace(active))) return;
       chatCreation.value = 'idle';
-      if (epoch === selectionEpoch) await selectAgent(created);
+      if (epoch === selectionEpoch) await selectTeam(workspace.value.agents.find(agent => agent.id === created)?.teamId ?? team, created);
     } catch {
       if (active === session) chatCreation.value = 'failed';
     }
   }
-  const createChat = (chat: Omit<CompanionNewChat, 'teamId'>) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }));
+  const createChat = (chat: Omit<CompanionNewChat, 'teamId'>, team = teamId.value) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }), team);
   const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
   const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
   const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {

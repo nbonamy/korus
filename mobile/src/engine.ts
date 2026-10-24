@@ -40,6 +40,7 @@ export type EngineState = {
   pairingError: string;
   teams: { id: string; name: string; avatar?: string; isUnread: boolean }[];
   teamId: string;
+  allTeams: boolean;
   laptopId: string;
   groups: MobileSidebarGroup[];
   activityGroups: MobileActivityGroup[];
@@ -123,7 +124,7 @@ export type EngineCommand =
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
-  | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
+  | { type: 'selectAllTeams' } | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
@@ -157,6 +158,22 @@ export function createEngine(port: EnginePort) {
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
   const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
+  // Sidebar scope is independent of the team that owns the open conversation and new work.
+  const allTeams = ref(false);
+  const showingAllTeams = computed(() => allTeams.value && state.workspace.value.teams.length > 1);
+  const sidebarAgents = computed(() => {
+    if (!showingAllTeams.value) return state.agents.value;
+    const order = new Map(state.workspace.value.teams.flatMap(team => team.agentIds).map((id, index) => [id, index]));
+    return [...state.workspace.value.agents].sort((a, b) => (order.get(a.id) ?? order.size) - (order.get(b.id) ?? order.size));
+  });
+  const sidebarGroups = computed(() => projectMobileGroups(sidebarAgents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons));
+  function repositoryTeam(repositoryId: string): string {
+    if (!showingAllTeams.value) return state.teamId.value;
+    const group = sidebarGroups.value.find(group => group.repositoryRoot === repositoryId);
+    const members = new Set(group?.sessions.map(session => session.agentId));
+    const owners = sidebarAgents.value.filter(agent => members.has(agent.id));
+    return owners.find(agent => agent.teamId === state.teamId.value)?.teamId ?? owners[0]?.teamId ?? state.teamId.value;
+  }
   const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
   // The state starts out foreground; tell it when the app was launched in the background.
@@ -177,7 +194,8 @@ export function createEngine(port: EnginePort) {
   async function rememberSelection() {
     if (!state.laptopId.value || !port.selectionStore) return;
     // Navigation remains usable if device storage is temporarily unavailable.
-    await port.selectionStore.write(state.laptopId.value, { teamId: state.teamId.value, agentId: state.agentId.value }).catch(() => {});
+    await port.selectionStore.write(state.laptopId.value, { teamId: state.teamId.value, agentId: state.agentId.value,
+      ...(showingAllTeams.value ? { allTeams: true } : {}) }).catch(() => {});
   }
 
   async function preferredLaptop() {
@@ -188,6 +206,7 @@ export function createEngine(port: EnginePort) {
 
   async function connect(laptopId: string) {
     choosingConnection = false;
+    if (laptopId !== state.laptopId.value) allTeams.value = false;
     ++restoringSelection;
     try {
       const epoch = ++restoreEpoch;
@@ -200,6 +219,8 @@ export function createEngine(port: EnginePort) {
       const team = teams.find((candidate) => candidate.id === saved?.teamId)
         ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
       await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
+      if (disposed || epoch !== restoreEpoch) return;
+      if (saved) allTeams.value = saved.allTeams === true;
       if (!disposed && epoch === restoreEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
@@ -227,7 +248,7 @@ export function createEngine(port: EnginePort) {
   function snapshot(): EngineState {
     const agent = state.agent.value;
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
-    const groups = projectMobileGroups(state.agents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons);
+    const groups = sidebarGroups.value;
     const active = activeSession(groups);
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
@@ -235,7 +256,7 @@ export function createEngine(port: EnginePort) {
     return {
       git: state.git.view.value,
       laptopId: state.laptopId.value,
-      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value, sidebarIdleSort.value),
+      activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
       queuedPromptPending: state.queuedPromptPending.value,
       queuedPromptFailed: state.queuedPromptFailed.value,
@@ -246,7 +267,7 @@ export function createEngine(port: EnginePort) {
       usage: state.usage.value,
       startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
-      teamId: state.teamId.value, groups, agentId: state.agentId.value,
+      teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
@@ -501,11 +522,13 @@ export function createEngine(port: EnginePort) {
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
-      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; await state.selectTeam(command.id); return rememberSelection();
+      case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
+      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
         ++notificationEpoch; pendingNotification = null;
         ++restoreEpoch;
-        const loading = state.selectAgent(command.id);
+        const owner = showingAllTeams.value ? state.workspace.value.agents.find(agent => agent.id === command.id) : undefined;
+        const loading = owner?.teamId && owner.teamId !== state.teamId.value ? state.selectTeam(owner.teamId, owner.id) : state.selectAgent(command.id);
         await rememberSelection();
         return loading;
       }
@@ -530,7 +553,7 @@ export function createEngine(port: EnginePort) {
       case 'restartSession': await state.restartSession(); return rememberSelection();
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
-      case 'loadBranches': return state.loadBranches(command.repositoryId);
+      case 'loadBranches': return state.loadBranches(command.repositoryId, repositoryTeam(command.repositoryId));
       case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId, command.source);
       case 'dismissProjectBranches': return state.dismissProjectBranches();
       case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
@@ -539,7 +562,7 @@ export function createEngine(port: EnginePort) {
       case 'renameAgent': return state.renameAgent(command.target, command.name);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) }, repositoryTeam(command.repositoryId));
       case 'backend': return state.selectBackend(command.backend);
       case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();

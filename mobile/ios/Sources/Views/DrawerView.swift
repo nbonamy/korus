@@ -12,7 +12,7 @@ struct DrawerView: View {
             organization
             if model.sidebarOrganization == .activity {
                 ActivityDrawerList(groups: model.activityGroups)
-                    .id("\(model.laptopID):\(model.teamID)")
+                    .id("\(model.laptopID):\(model.sidebarScopeID)")
             } else {
                 repositoryList
             }
@@ -115,18 +115,19 @@ struct DrawerView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 GlassEffectContainer(spacing: 8) {
                     HStack(spacing: 8) {
+                        if model.teams.count > 1 {
+                            teamPill("All", selected: model.allTeams) { model.command("selectAllTeams") }
+                                .accessibilityLabel("All teams")
+                        }
                         ForEach(model.teams) { team in
-                            Button { model.select(team: team.id) } label: {
+                            let selected = !model.allTeams && team.id == model.teamID
+                            teamPill(selected: selected, action: { model.select(team: team.id) }) {
                                 HStack(spacing: 6) {
                                     Text(team.name)
-                                    if team.isUnread == true && team.id != model.teamID { UnreadDot() }
+                                    if team.isUnread == true && !selected { UnreadDot() }
                                 }
                             }
                             .accessibilityLabel(team.name + (team.isUnread == true ? ", unread activity" : ""))
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14).padding(.vertical, 8)
-                            .foregroundStyle(team.id == model.teamID ? Color.white : Color.primary)
-                            .glassEffect(team.id == model.teamID ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
                         }
                     }
                     .padding(.leading, 4).padding(.trailing, 20)
@@ -138,6 +139,19 @@ struct DrawerView: View {
         .padding(.leading, 20)
         .padding(.top, 2)
         .padding(.bottom, 4)
+    }
+
+    private func teamPill(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        teamPill(selected: selected, action: action) { Text(title) }
+    }
+
+    private func teamPill<Label: View>(selected: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action, label: label)
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .glassEffect(selected ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var footer: some View {

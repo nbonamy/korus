@@ -321,6 +321,90 @@ describe('companion engine', () => {
       remove: async ({ key }) => { values.delete(key); },
     });
   }
+  it('shows all teams from the loaded workspace without extra reads and keeps chat actions and saved selection on the owning team', async () => {
+    const store = selectionStorage();
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let workspace: CompanionWorkspace;
+    let update!: Parameters<NonNullable<CompanionSession['onUpdate']>>[0];
+    const getWorkspace = vi.fn(async () => workspace);
+    const sendPrompt = vi.fn<CompanionSession['sendPrompt']>(async () => {});
+    const createQuickChat = vi.fn(async () => 'demo-reviewer');
+    const loadConversation = vi.fn();
+    connector.connect = async id => {
+      const session = await connect(id);
+      workspace ??= { ...await session.getWorkspace(),
+        teams: [{ id: 'demo-team', name: 'First', agentIds: ['demo-agent'] }, { id: 'second-team', name: 'Second', agentIds: ['demo-reviewer'] }],
+        agents: (await session.getWorkspace()).agents.map(agent => ({ ...agent, teamId: agent.id === 'demo-reviewer' ? 'second-team' : 'demo-team' })),
+        backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } };
+      return { ...session, getWorkspace, sendPrompt, createQuickChat,
+        loadConversation: async agentId => { loadConversation(agentId); return session.loadConversation(agentId); },
+        onUpdate(listener) { update = listener; return () => {}; } };
+    };
+    const first = open(connector, store);
+    const ids = () => first.latest().groups.flatMap(group => group.sessions.map(agent => agent.agentId));
+    try {
+      await first.engine.start();
+      expect(ids()).toEqual(['demo-agent']);
+      const loads = loadConversation.mock.calls.length;
+      await first.engine.dispatch({ type: 'selectAllTeams' });
+      expect(first.latest()).toMatchObject({ allTeams: true, agentId: 'demo-agent', teamId: 'demo-team' });
+      expect(ids()).toEqual(['demo-agent', 'demo-reviewer']);
+      expect(first.latest().activityGroups.flatMap(group => group.sessions.map(agent => agent.agentId))).toEqual(ids());
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      expect(loadConversation).toHaveBeenCalledTimes(loads);
+      workspace = { ...workspace!, agents: workspace!.agents.map(agent => agent.id === 'demo-reviewer' ? { ...agent, status: { type: 'working' } } : agent) };
+      update(workspace, null); await nextTick();
+      expect(first.latest().activityGroups.find(group => group.activity === 'working')?.sessions.map(agent => agent.agentId)).toEqual(['demo-reviewer']);
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      await first.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(first.latest()).toMatchObject({ allTeams: true, teamId: 'second-team', agentId: 'demo-reviewer', composerTarget: { teamId: 'second-team', agentId: 'demo-reviewer' } });
+      expect(ids()).toHaveLength(2);
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      await first.engine.dispatch({ type: 'send', text: 'For the second team' });
+      expect(sendPrompt.mock.calls[0]?.[0]).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer' });
+      await first.engine.dispatch({ type: 'newQuickChat', backend: 'codex' });
+      expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', backend: 'codex' });
+      expect(await store.read('demo-laptop')).toEqual({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true });
+    } finally { first.engine.dispose(); }
+    const restored = open(connector, store);
+    try {
+      await restored.engine.start();
+      expect(restored.latest()).toMatchObject({ allTeams: true, teamId: 'second-team', agentId: 'demo-reviewer' });
+      expect(restored.latest().groups.flatMap(group => group.sessions)).toHaveLength(2);
+      await restored.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(restored.latest()).toMatchObject({ allTeams: false, teamId: 'demo-team', agentId: 'demo-agent' });
+      expect(restored.latest().groups.flatMap(group => group.sessions.map(agent => agent.agentId))).toEqual(['demo-agent']);
+      await restored.engine.dispatch({ type: 'selectAllTeams' });
+      workspace = { ...workspace!, teams: [workspace!.teams[0]!], agents: [workspace!.agents[0]!] };
+      update(workspace, null); await nextTick();
+      expect(restored.latest().allTeams).toBe(false);
+      expect(restored.latest().groups.flatMap(group => group.sessions)).toHaveLength(1);
+    } finally { restored.engine.dispose(); }
+  });
+  it('routes repository branch reads and creation from All to the repository owner without changing scope', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const listBranches = vi.fn(async () => []);
+    const createChat = vi.fn(async () => 'demo-reviewer');
+    connector.connect = async id => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      return { ...session, listBranches, createChat, getWorkspace: async () => ({ ...workspace,
+        teams: [{ id: 'demo-team', name: 'First', agentIds: ['demo-agent'] }, { id: 'second-team', name: 'Second', agentIds: ['demo-reviewer'] }],
+        agents: workspace.agents.map(agent => agent.id !== 'demo-reviewer' ? agent : { ...agent, teamId: 'second-team', workspace: {
+          kind: 'git' as const, folder: '/second/repo', repositoryRoot: '/second/repo', primaryWorktreeRoot: '/second/repo',
+          repositoryName: 'Second repo', branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: agent.updatedAt,
+        } }), backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } }) };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectAllTeams' });
+      await engine.dispatch({ type: 'loadBranches', repositoryId: '/second/repo' });
+      expect(listBranches).toHaveBeenCalledExactlyOnceWith('second-team', '/second/repo');
+      expect(latest()).toMatchObject({ teamId: 'demo-team', allTeams: true });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
+    } finally { engine.dispose(); }
+  });
   it('restores the last opened team and agent after restarting, separately for each laptop', async () => {
     const store = selectionStorage();
     await store.write('another-laptop', { teamId: 'other-team', agentId: 'other-agent' });

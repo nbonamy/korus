@@ -37,16 +37,16 @@ import org.json.JSONObject
             Image(painterResource(R.drawable.app_icon), model.product.string("name"), Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
             Spacer(Modifier.width(14.dp))
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.items("teams").forEach { team ->
-                    val selected = team.string("id") == state.string("teamId")
+                val teams = state.items("teams")
+                val allTeams = state.optBoolean("allTeams")
+                if (teams.size > 1) {
+                    DrawerTeamPill("All", allTeams, false, "All teams") { model.command("selectAllTeams") }
+                }
+                teams.forEach { team ->
+                    val selected = !allTeams && team.string("id") == state.string("teamId")
                     val unread = team.optBoolean("isUnread") && !selected
-                    Row(Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
-                        .selectable(selected = selected, role = Role.Tab, onClick = { model.command("selectTeam", "id" to team.string("id")) })
-                        .semantics { contentDescription = team.string("name") + if (unread) ", unread activity" else "" }
-                        .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(team.string("name"), color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                        if (unread) UnreadDot()
+                    DrawerTeamPill(team.string("name"), selected, unread) {
+                        model.command("selectTeam", "id" to team.string("id"))
                     }
                 }
             }
@@ -130,6 +130,17 @@ import org.json.JSONObject
             }
             IconButton(onClick = { model.sheet = "settings"; close() }, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)) { Icon(Icons.Outlined.Settings, "Settings") }
         }
+    }
+}
+
+@Composable private fun DrawerTeamPill(name: String, selected: Boolean, unread: Boolean, description: String = name + if (unread) ", unread activity" else "", select: () -> Unit) {
+    Row(Modifier.heightIn(min = 48.dp).clip(CircleShape)
+        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
+        .selectable(selected = selected, role = Role.Tab, onClick = select)
+        .semantics { contentDescription = description }
+        .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(name, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        if (unread) UnreadDot()
     }
 }
 

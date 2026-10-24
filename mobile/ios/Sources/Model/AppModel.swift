@@ -57,6 +57,8 @@ final class AppModel {
     var pairingError = ""
     var teams: [Team] = []
     var teamID = ""
+    var allTeams = false
+    var sidebarScopeID: String { allTeams ? "__all__" : teamID }
     var groups: [SidebarGroup] = []
     var activityGroups: [SidebarGroup] = []
     private(set) var laptopID = ""
@@ -262,13 +264,16 @@ final class AppModel {
         set(\.teams, state.teams)
         if teamID != state.teamId { existingBranchGroup = nil; newProjectSource = nil }
         let hostID = state.laptopId ?? state.composerTarget?.hostId ?? ""
-        if laptopID != hostID || teamID != state.teamId {
-            sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: state.teamId)
-            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: state.teamId)
+        let nextAllTeams = state.allTeams == true
+        let scopeID = nextAllTeams ? "__all__" : state.teamId
+        if laptopID != hostID || sidebarScopeID != scopeID {
+            sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: scopeID)
+            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: scopeID)
             command("idleSort", ["order": sidebarIdleSort.rawValue])
         }
         set(\.laptopID, hostID)
         set(\.teamID, state.teamId)
+        set(\.allTeams, nextAllTeams)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
@@ -332,12 +337,12 @@ final class AppModel {
 
     func chooseSidebarOrganization(_ organization: SidebarOrganization) {
         sidebarOrganization = organization
-        sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: teamID)
+        sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: sidebarScopeID)
     }
 
     func chooseSidebarIdleSort(_ order: SidebarIdleSort) {
         sidebarIdleSort = order
-        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: teamID)
+        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: sidebarScopeID)
         command("idleSort", ["order": order.rawValue])
     }
 
