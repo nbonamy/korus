@@ -113,7 +113,11 @@ it("persists only statistics in SQLite and replaces late measurements without in
       await ledger.observe(event, { teamId: null, repository: null }),
     ).toBe(false);
     expect(ledger.query({ group: "model" })).toMatchObject({
-      daily: [{ day: "2026-10-15", started: 1, tokens: { total: 120 } }],
+      daily: [{
+        day: "2026-10-15", started: 1, tokens: { total: 120 },
+        speed: { turns: 1, outputTokens: 20, generationMs: 10000, ttftMs: 2000, ttftTurns: 1 },
+        groups: [{ label: event.model, speed: { turns: 1, outputTokens: 20, generationMs: 10000, ttftMs: 2000, ttftTurns: 1 } }],
+      }],
       rows: [
         {
           label: event.model,

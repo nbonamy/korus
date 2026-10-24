@@ -647,7 +647,9 @@ with measured working time after the first generated output. A turn without both
 measurements has no speed.
 
 The ledger retains up to one year and 50,000 executions and exposes grouped
-queries to Analytics through app-owned contracts. Clearing statistics deletes the
-local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
+queries to Analytics through app-owned contracts. Daily groups carry the same
+additive timing samples as period totals, so rates use summed output divided by
+summed generation time rather than averaging per-turn rates. Clearing statistics
+deletes the local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.

@@ -66,6 +66,103 @@ const chooseProvider = async (wrapper: ReturnType<typeof mount>, value: string) 
   wrapper
     .getComponent({ name: "ElSelect" })
     .vm.$emit("update:modelValue", value);
+
+it("plots daily model output rates without stacking or treating missing measurements as zero", async () => {
+  const day = (offset: number) =>
+    new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+  const row = (label: string, outputTokens: number, generationMs: number) => ({
+    label,
+    started: 2,
+    completed: 2,
+    failed: 0,
+    interrupted: 0,
+    inProgress: 0,
+    measuredTurns: 2,
+    tokens: null,
+    speed: { turns: 2, outputTokens, generationMs, ttftMs: 2000, ttftTurns: 2 },
+  });
+  const first = [row("sonnet", 100, 4000), row("gpt-6-luna", 250, 10000)];
+  const summary = {
+    recordedSince: 1,
+    retainedSince: 1,
+    rows: [row("sonnet", 300, 8000), row("gpt-6-luna", 250, 10000)],
+    daily: [
+      {
+        day: day(2),
+        started: 4,
+        measuredTurns: 4,
+        tokens: null,
+        groups: first,
+      },
+      {
+        day: day(1),
+        started: 1,
+        measuredTurns: 0,
+        tokens: null,
+        groups: [{ ...first[0]!, speed: undefined }],
+      },
+      {
+        day: day(0),
+        started: 2,
+        measuredTurns: 2,
+        tokens: null,
+        groups: [row("sonnet", 200, 4000)],
+      },
+    ],
+  };
+  const getUsage = vi.fn(async () => summary);
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await wrapper
+      .findAll('[role="tab"]')
+      .find((tab) => tab.text() === "Model performance")!
+      .trigger("click");
+    const chart = wrapper.get('svg[aria-label="Output speed over time"]');
+    const sonnet = chart.get(`[aria-label="${day(2)} · sonnet: 25 tokens/s"]`);
+    const gpt = chart.get(`[aria-label="${day(2)} · gpt-6-luna: 25 tokens/s"]`);
+    expect(sonnet.attributes("cy")).toBe(gpt.attributes("cy"));
+    expect(chart.findAll("circle")).toHaveLength(3);
+    await sonnet.trigger("focus");
+    expect(wrapper.get(".chart-tooltip").text()).toContain("25 tokens/s");
+    expect(wrapper.get(".chart-tooltip").text()).not.toContain("Total");
+    const latest = chart.get(`[aria-label="${day(0)} · sonnet: 50 tokens/s"]`);
+    chart.element.dispatchEvent(
+      new MouseEvent("pointermove", {
+        clientX:
+          (Number(sonnet.attributes("cx")) + Number(latest.attributes("cx"))) /
+          2,
+      }),
+    );
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".chart-tooltip").text()).toContain("N/A");
+    expect(chart.findAll("path.layer")).toHaveLength(0);
+    // Isolated observations remain points; no line crosses the unmeasured day.
+    expect(
+      chart
+        .findAll("path.edge")
+        .every((path) => !path.attributes("d")?.includes("C")),
+    ).toBe(true);
+    await chooseProvider(wrapper, "claude");
+    await flushPromises();
+    expect(getUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "claude", group: "model" }),
+    );
+    getUsage.mockResolvedValue({ ...summary, rows: [], daily: [] });
+    await wrapper.get('[aria-label="Refresh"]').trigger("click");
+    await flushPromises();
+    expect(
+      wrapper.find('svg[aria-label="Output speed over time"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get('[aria-label="Output speed over time"]').text(),
+    ).toContain("N/A");
+  } finally {
+    wrapper.unmount();
+  }
+});
+
 it("shows unknown consumption with measured denominators and filters the local owning API", async () => {
   const getUsage = vi.fn().mockResolvedValue({
     recordedSince: 1,

@@ -1,9 +1,9 @@
 <template>
-  <section class="usage-trend" :aria-label="$t('analytics.trend')">
+  <section class="usage-trend" :aria-label="title">
     <slot name="header">
       <header>
         <div class="chart-heading">
-          <h3>{{ $t("analytics.trend") }}</h3>
+          <h3>{{ title }}</h3>
           <p v-if="subtitle">{{ subtitle }}</p>
         </div>
         <slot name="controls" />
@@ -18,11 +18,11 @@
         :width="width"
         :height="height"
         role="img"
-        :aria-label="$t('analytics.trend')"
+        :aria-label="title"
         @pointermove="track"
         @pointerleave="active = null"
       >
-        <defs>
+        <defs v-if="!isSpeed">
           <linearGradient
             v-for="layer in layers"
             :id="gradientId(layer.series.key)"
@@ -49,14 +49,16 @@
           </text>
         </g>
         <g class="layers">
-          <path
-            v-for="layer in layers"
-            :key="layer.series.key"
-            class="layer"
-            :class="{ dimmed: hovered && !layer.vals[hovered.index] }"
-            :d="layer.area"
-            :fill="`url(#${gradientId(layer.series.key)})`"
-          />
+          <template v-if="!isSpeed">
+            <path
+              v-for="layer in layers"
+              :key="layer.series.key"
+              class="layer"
+              :class="{ dimmed: hovered && !layer.vals[hovered.index] }"
+              :d="layer.area"
+              :fill="`url(#${gradientId(layer.series.key)})`"
+            />
+          </template>
           <path
             v-for="layer in layers"
             :key="'edge-' + layer.series.key"
@@ -78,7 +80,7 @@
             <circle
               v-if="layer.vals[point.index]"
               class="marker"
-              :class="{ visible: active === point.index }"
+              :class="{ visible: isSpeed || active === point.index }"
               :cx="point.x"
               :cy="yOf(layer.upper[point.index]!)"
               r="4.5"
@@ -89,7 +91,7 @@
                 ' · ' +
                 layer.series.label +
                 ': ' +
-                chartFormat(layer.vals[point.index], true)
+                metricFormat(layer.vals[point.index]!)
               "
               @focus="active = point.index"
               @blur="active = null"
@@ -127,10 +129,16 @@
           >
             <i :style="{ background: segment.color }" />
             <span class="tooltip-name">{{ segment.label }}</span>
-            <b>{{ chartFormat(segment.value, true) }}</b>
+            <b>{{ metricFormat(segment.value) }}</b>
           </li>
         </ul>
-        <div v-if="hovered.segments.length > 1" class="tooltip-total">
+        <p v-if="isSpeed && !hovered.segments.length">
+          {{ $t("analytics.notAvailable") }}
+        </p>
+        <div
+          v-if="!isSpeed && hovered.segments.length > 1"
+          class="tooltip-total"
+        >
           <span>{{ $t("analytics.total") }}</span>
           <b>{{ chartFormat(hovered.total, true) }}</b>
         </div>
@@ -146,22 +154,39 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
+import { translate } from "../i18n";
 import {
   chartValue,
   chartFormat,
   niceScale,
   smoothPath,
+  tokensPerSecond,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
 const props = defineProps<{
   daily: NonNullable<UsageSummary["daily"]>;
   series: UsageSeries[];
-  measure: UsageMeasure;
+  measure: UsageMeasure | "speed";
   from: string;
   to: string;
   subtitle?: string;
 }>();
+const isSpeed = computed(() => props.measure === "speed");
+const title = computed(() =>
+  translate(isSpeed.value ? "analytics.speedTrend" : "analytics.trend"),
+);
+type DailyGroup = NonNullable<
+  NonNullable<UsageSummary["daily"]>[number]["groups"]
+>[number];
+const valueOf = (group: DailyGroup) =>
+  props.measure === "speed"
+    ? tokensPerSecond(group.speed)
+    : chartValue(group, props.measure);
+const metricFormat = (value: number) =>
+  isSpeed.value
+    ? `${chartFormat(value, true)} ${translate("analytics.tokensPerSecond")}`
+    : chartFormat(value, true);
 const uid = useId();
 const gradientId = (key: string) =>
   `${uid}-${props.series.findIndex((item) => item.key === key)}`;
@@ -191,7 +216,7 @@ const observed = computed(() =>
     row.groups?.some(
       (group) =>
         props.series.some((series) => series.key === group.label) &&
-        chartValue(group, props.measure) !== null,
+        valueOf(group) !== null,
     ),
   ),
 );
@@ -208,9 +233,9 @@ const values = computed(() => {
     let top = 0;
     const segments = props.series.flatMap((series) => {
       const group = row?.groups?.find((group) => group.label === series.key);
-      const value = group ? chartValue(group, props.measure) : null;
+      const value = group ? valueOf(group) : null;
       if (value == null || value === 0) return [];
-      top += value;
+      top = isSpeed.value ? Math.max(top, value) : top + value;
       return [{ ...series, value, top }];
     });
     rows.push({ day, segments, total: top });
@@ -261,6 +286,24 @@ const layers = computed(() => {
         row.segments.find((segment) => segment.key === series.key)?.value ?? 0,
     );
     if (!vals.some((value) => value > 0)) return [];
+    if (isSpeed.value) {
+      // Missing timing is a gap, not a zero-rate observation.
+      const runs: { x: number; y: number }[][] = [];
+      vals.forEach((value, index) => {
+        if (!value) return;
+        if (index === 0 || !vals[index - 1]) runs.push([]);
+        runs.at(-1)!.push({ x: xOf(index), y: yOf(value) });
+      });
+      return [
+        {
+          series,
+          vals,
+          upper: vals,
+          edge: runs.map((run) => smoothPath(run)).join(""),
+          area: "",
+        },
+      ];
+    }
     const lower = [...base];
     vals.forEach((value, index) => (base[index]! += value));
     const upper = [...base];

@@ -78,7 +78,12 @@
         />
         <UsageBreakdown :series="series" :grouping="grouping" />
       </template>
-      <UsagePerformance v-else :summary="projections.model" />
+      <UsagePerformance
+        v-else
+        :summary="projections.model"
+        :from="filter.from"
+        :to="filter.to"
+      />
     </div>
   </SettingsPanelFrame>
 </template>

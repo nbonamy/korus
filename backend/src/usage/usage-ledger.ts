@@ -272,12 +272,14 @@ export class UsageLedger {
         started: row.started,
         tokens: row.tokens,
         measuredTurns: row.measuredTurns,
+        ...(row.speed ? { speed: row.speed } : {}),
         groups: [...dailyGroups.get(day)!.values()].map(
-          ({ label, started, tokens, measuredTurns }) => ({
+          ({ label, started, tokens, measuredTurns, speed }) => ({
             label,
             started,
             tokens,
             measuredTurns,
+            ...(speed ? { speed } : {}),
           }),
         ),
       })),

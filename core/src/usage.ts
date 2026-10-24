@@ -56,6 +56,14 @@ export type UsageFilter = {
   agentId?: string;
   group?: "provider" | "model" | "teamId" | "repository" | "agentId";
 };
+/** Additive timing samples; divide summed output by summed generation time for a rate. */
+export type UsageSpeed = {
+  turns: number;
+  outputTokens: number;
+  generationMs: number;
+  ttftMs: number;
+  ttftTurns: number;
+};
 export type UsageSummary = {
   available?: boolean;
   daily?: {
@@ -63,12 +71,14 @@ export type UsageSummary = {
     started: number;
     tokens: Consumption | null;
     measuredTurns: number;
+    speed?: UsageSpeed;
     /** Same grouping as rows, retaining each day's observed contributions. */
     groups?: {
       label: string;
       started: number;
       tokens: Consumption | null;
       measuredTurns: number;
+      speed?: UsageSpeed;
     }[];
   }[];
   recordedSince: number;
@@ -83,13 +93,7 @@ export type UsageSummary = {
     measuredTurns: number;
     tokens: Consumption | null;
     /** Turns with provider-reported output tokens and measured timing. */
-    speed?: {
-      turns: number;
-      outputTokens: number;
-      generationMs: number;
-      ttftMs: number;
-      ttftTurns: number;
-    };
+    speed?: UsageSpeed;
   }[];
 };
 export function validConsumption(value: unknown): value is Consumption {

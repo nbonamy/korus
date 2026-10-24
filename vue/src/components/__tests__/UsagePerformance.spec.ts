@@ -5,6 +5,8 @@ import UsagePerformance from "../UsagePerformance.vue";
 it("compacts large performance values", () => {
   const wrapper = mount(UsagePerformance, {
     props: {
+      from: "2026-10-24",
+      to: "2026-10-24",
       summary: {
         recordedSince: 0,
         retainedSince: 0,
