@@ -11,6 +11,7 @@ export const backendMethods = {
   agentTasksList: 'agent/tasks/list',
   agentTaskCancel: 'agent/task/cancel',
   engineInstructionsRead: 'settings/instructions/read',
+  skillsManage: 'settings/skills/manage',
   engineInstructionsSave: 'settings/instructions/save',
   agentApprovalPresetUpdate: 'agent/approvalPreset/update',
   agentCodeReviewStart: 'agent/codeReview/start',

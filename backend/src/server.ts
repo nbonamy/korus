@@ -49,6 +49,7 @@ import { assignWorkItemToAgentInSnapshot, attachForkedAgentInSnapshot, closeAgen
 import { clearAutomationExecutionHistoryInSnapshot, createAutomationInSnapshot, deleteAutomationExecutionFromSnapshot, deleteAutomationFromSnapshot, updateAutomationInSnapshot } from '@workspace/core/automation-manager';
 import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { readEngineInstructions, saveEngineInstructions } from './engine-instructions';
+import { SkillManager } from './skill-manager';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { closeTeamInSnapshot, createTeamInSnapshot, updateTeamInSnapshot } from '@workspace/core/team-manager';
 import { teamColors } from '@workspace/core/team-colors';
@@ -220,11 +221,13 @@ export class AppBackendServer {
   private lastEventSeq = 0;
   private conversationsReconciliation?: Promise<void>;
   private readonly providerSetup?: import('./provider-setup').ProviderSetup;
+  private readonly skills: SkillManager;
   private readonly providerConnections?: ProviderConnections;
 
   constructor(private readonly options: AppBackendServerOptions) {
     this.tasks = options.tasks;
     this.providerSetup = options.providerSetup;
+    this.skills = new SkillManager(() => this.providerSetup?.skillLocations() ?? []);
     this.version = options.version;
     this.pid = options.pid ?? process.pid;
     this.snapshot = options.snapshot ?? createEmptySnapshot();
@@ -2353,6 +2356,23 @@ export class AppBackendServer {
           await this.providerConnections?.refresh();
         }
         return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
+      }
+      case backendMethods.skillsManage: {
+        const input = requireRecord(message.params).input;
+        const state = await this.skills.manage(input);
+        if (['install', 'sync', 'remove'].includes(String(requireRecord(input).action)) && this.driverRpc) {
+          const seen = new Set<string>();
+          for (const agent of this.snapshot.agents) {
+            const key = JSON.stringify([agent.backend, agent.folder]);
+            if (this.remoteTeams.connectionIdForAgent(agent) || isMissionScreenshotAgent(agent) || seen.has(key)) continue;
+            seen.add(key);
+            try {
+              const skills = await this.driverRpc.handle(backendMethods.driverSkillsList, { agent, forceReload: true }) as import('@workspace/core/contracts').BackendSkillSummary[];
+              this.handleBackendEvent({ type: 'skills.changed', backend: agent.backend, payload: { cwd: agent.folder, status: 'loaded', skills } });
+            } catch (error) { state.issues.push(`${agent.name}: skill discovery failed. ${error instanceof Error ? error.message : String(error)}`); }
+          }
+        }
+        return createAppRpcResult(message.id, state);
       }
       case backendMethods.engineInstructionsRead: {
         const { engine } = requireRecord(message.params);

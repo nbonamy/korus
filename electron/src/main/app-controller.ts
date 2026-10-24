@@ -523,6 +523,7 @@ export class AppController {
     });
     ipc.handle(ipcChannels.getPluginStatus, () => this.getPluginStatus());
     ipc.handle(ipcChannels.readEngineInstructions, (_event, engine) => this.requireBackendClient().request<{ text: string; path: string }>(backendMethods.engineInstructionsRead, { engine }));
+    ipc.handle(ipcChannels.manageSkills, (_event, input) => this.requireBackendClient().request(backendMethods.skillsManage, { input }));
     ipc.handle(ipcChannels.saveEngineInstructions, (_event, input) => this.requireBackendClient().request<void>(backendMethods.engineInstructionsSave, { input }));
     ipc.handle(ipcChannels.getCodexAuthentication, (_event, remoteConnectionId?: string) => this.getCodexAuthentication(remoteConnectionId));
     ipc.handle(ipcChannels.getClaudeAuthentication, (_event, remoteConnectionId?: string) => this.getClaudeAuthentication(remoteConnectionId));

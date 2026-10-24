@@ -36,6 +36,15 @@ export class ProviderSetup {
     return [...this.lifecycles.keys()].map(backend => this.status(backend));
   }
 
+  skillLocations(): import('@workspace/core/skill-manager').SkillProviderLocation[] {
+    for (const backend of this.lifecycles.keys()) this.invalidateInstallation(backend);
+    return this.list().filter(provider => provider.installed).flatMap(provider =>
+      [
+        ...(this.lifecycle(provider.backend).skillDirectories?.(provider) ?? []).map(directory => ({ backend: provider.backend, directory })),
+        ...(this.lifecycle(provider.backend).skillDiscoveryDirectories?.(provider) ?? []).map(directory => ({ backend: provider.backend, directory, discoveryOnly: true })),
+      ]);
+  }
+
   isChanging(backend?: AgentBackend): boolean { return this.changingBackend !== null && (!backend || this.changingBackend === backend); }
 
   async configure(backend: AgentBackend, choice: ProviderSetupChange): Promise<ProviderSetupStatus> {

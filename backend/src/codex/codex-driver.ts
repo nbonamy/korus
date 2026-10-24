@@ -97,8 +97,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return this.sessionManager.listModels();
   }
 
-  async listSkills(agent: Agent): Promise<BackendSkillSummary[]> {
-    return this.sessionManager.listSkills(agent);
+  async listSkills(agent: Agent, forceReload = false): Promise<BackendSkillSummary[]> {
+    return this.sessionManager.listSkills(agent, forceReload);
   }
 
   async listPlugins(_agent: Agent): Promise<BackendPluginSummary[]> {

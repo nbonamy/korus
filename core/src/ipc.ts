@@ -32,6 +32,7 @@ export const ipcChannels = {
   respondToThreadFlag: 'agent:thread-flag:respond',
   respondToPlanReview: 'agent:plan-review:respond',
   readEngineInstructions: 'settings:instructions:read',
+  manageSkills: 'settings:skills:manage',
   saveEngineInstructions: 'settings:instructions:save',
   getSnapshot: 'app:get-snapshot',
   getSnapshotState: 'app:get-snapshot-state',

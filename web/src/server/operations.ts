@@ -130,6 +130,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   markAgentRead: [backendMethods.agentMarkRead, named('agentId', 'revision')],
   selectAgent: [backendMethods.clientNavigationSelectAgent, named('agentId')],
   readEngineInstructions: [backendMethods.engineInstructionsRead, named('engine')],
+  manageSkills: [backendMethods.skillsManage, named('input')],
   saveEngineInstructions: [backendMethods.engineInstructionsSave, named('input')],
   getCodexResourceSharingStatus: [backendMethods.settingsCodexResourceSharingGet],
   setCodexResourceSharing: [backendMethods.settingsCodexResourceSharingSet, named('input')],

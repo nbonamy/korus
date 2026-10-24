@@ -151,7 +151,7 @@ export type AgentBackendDriver = {
   continueInterruptedTurn?(agent: Agent): Promise<BackendTurnActionResult>;
   listModels?(agent: Agent): Promise<BackendModelOption[]>;
   listPlugins?(agent: Agent): Promise<BackendPluginSummary[]>;
-  listSkills?(agent: Agent): Promise<BackendSkillSummary[]>;
+  listSkills?(agent: Agent, forceReload?: boolean): Promise<BackendSkillSummary[]>;
   getRemoteControlStatus?(): Promise<DevicePairingStatus>;
   enableRemoteControl?(): Promise<DevicePairingStatus>;
   disableRemoteControl?(): Promise<DevicePairingStatus>;

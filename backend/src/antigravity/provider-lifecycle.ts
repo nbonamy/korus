@@ -11,6 +11,7 @@ export function createAntigravityLifecycle(): ProviderLifecycle {
   const existing = process.env.GEMINI_HOME && path.resolve(process.env.GEMINI_HOME) !== isolated
     ? path.resolve(process.env.GEMINI_HOME) : path.join(homedir(), '.gemini');
   return {
+    skillDirectories: home => ['config', 'antigravity-cli'].map(directory => path.join(home.homePath, directory, 'skills')),
     home: (_snapshot, choice = { isolated: true, shareSkills: false }) => ({ ...choice, homePath: choice.isolated ? isolated : existing }),
     installed: () => Boolean(resolveAcpRuntime()),
     install: installAcpRuntime,

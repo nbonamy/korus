@@ -140,6 +140,7 @@ const api: AppApi = {
   clearUsage: () => ipc.invoke(ipcChannels.clearUsage),
   updateSettings: (input: UpdateSettingsInput) => ipc.invoke(ipcChannels.updateSettings, input),
   readEngineInstructions: (engine) => ipc.invoke(ipcChannels.readEngineInstructions, engine),
+  manageSkills: input => ipc.invoke(ipcChannels.manageSkills, input),
   saveEngineInstructions: (input) => ipc.invoke(ipcChannels.saveEngineInstructions, input),
   previewSpokenAnnouncementVoice: (voice: SpokenAnnouncementVoice) => ipc.invoke(ipcChannels.previewSpokenAnnouncementVoice, voice),
   getCodexResourceSharingStatus: () => ipc.invoke(ipcChannels.getCodexResourceSharingStatus),

@@ -578,7 +578,8 @@ export class BackendDriverRpc {
       case backendMethods.driverSkillsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.backend);
-        return driver.listSkills ? driver.listSkills(agent) : [];
+        if (!driver.listSkills) return [];
+        return requireRecord(params).forceReload === true ? driver.listSkills(agent, true) : driver.listSkills(agent);
       }
       case backendMethods.sourceFolderDetect:
         return detectSourceFolder();

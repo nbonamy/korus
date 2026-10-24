@@ -384,6 +384,25 @@ existing home (`providerHomes.<backend>.shareSkills`); private resources are
 never overwritten. Credentials are never copied; an isolated home authenticates
 on its own. Existing-home changes affect the user's external provider setup too.
 
+The daemon skill manager keeps downloaded skills in `APP_HOME/skills`, with
+revision receipts and provider-owned skill-directory links. Installs resolve
+GitHub references to commit hashes and copy complete skill folders without
+executing installer commands. Sync adds links for newly configured local
+providers; personal directories and links are preserved on conflicts. Confirmed deletion removes a skill from all discovered local provider roots and
+its managed content, including owned links in previously selected homes. Linked
+skill folders are unlinked without deleting their external source; nested skills
+inside linked packs must be removed by their pack installer. System skills are
+protected using both discovered and resolved paths; any protected installation
+blocks deletion of the grouped skill across providers.
+The installed inventory also discovers existing skills in native provider homes
+and read-only provider roots, including Codex's global user skill directory.
+Discovery follows linked skill folders with bounded traversal and groups presence
+by skill name; presence does not imply matching versions across providers.
+Personal and bundled skills are never adopted or removed by inventory or Sync.
+Document reads return distinct installed SKILL.md contents without executing them.
+Remote hosts manage their own installations. Existing local agents receive a
+refreshed skill catalog without replacing their conversations.
+
 Switching between an isolated and an existing home is an explicit roster reset:
 the client confirms the exact local agent IDs (quick chats included);
 `ProviderSetup` rechecks after async preparation, refuses active agents and
