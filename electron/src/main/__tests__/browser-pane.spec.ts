@@ -42,6 +42,14 @@ const electronMocks = vi.hoisted(() => {
     close = vi.fn(() => { this.destroyed = true; });
     executeJavaScript = vi.fn().mockResolvedValue(undefined);
     focus = vi.fn();
+    isFocused = () => this.focus.mock.calls.length > 0;
+    private debuggerAttached = false;
+    debugger = {
+      isAttached: vi.fn(() => this.debuggerAttached),
+      attach: vi.fn(() => { this.debuggerAttached = true; }),
+      detach: vi.fn(() => { this.debuggerAttached = false; }),
+      sendCommand: vi.fn(async (_method: string, _params: unknown) => ({})),
+    };
     getTitle = vi.fn(() => this.url ? `Title for ${this.url}` : '');
     getType = vi.fn(() => 'webview');
     getURL = vi.fn(() => this.url);
@@ -51,12 +59,8 @@ const electronMocks = vi.hoisted(() => {
       this.listeners.set(event, listener);
     });
     setWindowOpenHandler = vi.fn();
-    canGoBack = vi.fn(() => false);
-    canGoForward = vi.fn(() => false);
-    goBack = vi.fn();
-    goForward = vi.fn();
     reload = vi.fn();
-    navigationHistory = { clear: vi.fn() };
+    navigationHistory = { clear: vi.fn(), canGoBack: vi.fn(() => false), canGoForward: vi.fn(() => false), goBack: vi.fn(), goForward: vi.fn() };
     stop = vi.fn();
     isLoading = vi.fn(() => false);
     once = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
@@ -461,7 +465,7 @@ describe('browser pane helpers', () => {
     const guest = electronMocks.createGuest(window, 40);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(window as never, 'agent-one', 'primary', 'https://example.com', '', 40);
-    guest.canGoBack.mockReturnValue(true);
+    guest.navigationHistory.canGoBack.mockReturnValue(true);
     guest.isLoading.mockReturnValue(true);
     let settled = false;
     const back = pane.goBack('agent-one', 'primary').then(state => { settled = true; return state; });
@@ -469,13 +473,13 @@ describe('browser pane helpers', () => {
     expect(settled).toBe(false);
     guest.emit('did-finish-load');
     expect(await back).toMatchObject({ url: 'https://example.com/', canGoBack: true });
-    expect(guest.goBack).toHaveBeenCalledOnce();
+    expect(guest.navigationHistory.goBack).toHaveBeenCalledOnce();
     guest.isLoading.mockReturnValue(false);
     await pane.goForward('agent-one', 'primary');
-    expect(guest.goForward).not.toHaveBeenCalled();
-    guest.canGoForward.mockReturnValue(true);
+    expect(guest.navigationHistory.goForward).not.toHaveBeenCalled();
+    guest.navigationHistory.canGoForward.mockReturnValue(true);
     await pane.goForward('agent-one', 'primary');
-    expect(guest.goForward).toHaveBeenCalledOnce();
+    expect(guest.navigationHistory.goForward).toHaveBeenCalledOnce();
     await pane.reload('agent-one', 'primary');
     expect(guest.reload).toHaveBeenCalledOnce();
     for (let index = 0; index < 105; index++) guest.emit('console-message', {}, 2, 'message-' + index);
@@ -488,14 +492,21 @@ describe('browser pane helpers', () => {
   });
 
   it('executes browser commands against the guest DOM with input events and error propagation', async () => {
-    const window = { webContents: {} };
+    const focusWindow = vi.fn();
+    const window = { webContents: {}, focus: focusWindow, isFocused: () => focusWindow.mock.calls.length > 0 };
     const guest = electronMocks.createGuest(window, 41);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(window as never, 'agent-one', 'primary', '', '', 41);
     document.body.innerHTML = '<button id="save">Save</button><input id="name" value="old"><div id="label">Label</div>';
     const button = document.querySelector<HTMLButtonElement>('#save')!;
     const input = document.querySelector<HTMLInputElement>('#name')!;
+    // Real clicks must reach the native guest, respect zoom and remain inside
+    // its viewport; selector lookup alone must never synthesize the action.
     const click = vi.fn();
+    const point = vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ x: 20, y: 10, left: 20, top: 10, right: 100, bottom: 50, width: 80, height: 40, toJSON() {} });
+    button.scrollIntoView = vi.fn();
+    const oldHitTest = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => button });
     const changed = vi.fn();
     button.addEventListener('click', click);
     input.addEventListener('input', changed);
@@ -505,16 +516,41 @@ describe('browser pane helpers', () => {
         selector: '#save', element: { tag: 'button', text: 'Save' },
       });
       await pane.execute('agent-one', 'primary', 'click', { selector: '#save' });
-      expect(click).toHaveBeenCalledOnce();
+      expect(click).not.toHaveBeenCalled();
+      expect(guest.focus).toHaveBeenCalled();
+      expect(guest.debugger.sendCommand.mock.calls.map(([method, event]) => ({ method, event }))).toStrictEqual([
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mouseMoved', x: 60, y: 30 } },
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mousePressed', x: 60, y: 30, button: 'left', clickCount: 1 } },
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mouseReleased', x: 60, y: 30, button: 'left', clickCount: 1 } },
+      ]);
+      guest.getZoomFactor.mockReturnValue(1.25);
+      await pane.execute('agent-one', 'primary', 'click', { x: 40, y: 20 });
+      expect(guest.debugger.sendCommand).toHaveBeenLastCalledWith('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 40, y: 20, button: 'left', clickCount: 1 });
+      expect(guest.focus).toHaveBeenCalledOnce();
+      expect(focusWindow).toHaveBeenCalledOnce();
+      const deliveries = guest.debugger.sendCommand.mock.calls.length;
+      for (const invalid of [{}, { x: 10 }, { x: -1, y: 0 }, { x: 99999, y: 0 }, { selector: '#save', x: 1, y: 2 }])
+        await expect(pane.execute('agent-one', 'primary', 'click', invalid)).rejects.toThrow();
+      expect(guest.debugger.sendCommand).toHaveBeenCalledTimes(deliveries);
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(2);
+      guest.debugger.sendCommand.mockRejectedValueOnce(new Error('Input unavailable'));
+      await expect(pane.execute('agent-one', 'primary', 'click', { x: 30, y: 20 })).rejects.toThrow('Input unavailable');
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(3);
+      guest.debugger.isAttached.mockReturnValue(true);
+      await pane.execute('agent-one', 'primary', 'click', { x: 30, y: 20 });
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(3);
       await pane.execute('agent-one', 'primary', 'type', { selector: '#name', text: 'new' });
       await pane.execute('agent-one', 'primary', 'type', { selector: '#name', text: ' value', clear: false });
       expect(input.value).toBe('new value');
       expect(changed).toHaveBeenCalledTimes(2);
       await expect(pane.execute('agent-one', 'primary', 'type', { selector: '#label', text: 'oops' })).rejects.toThrow('not editable');
       await expect(pane.execute('agent-one', 'primary', 'click', { selector: '#missing' })).rejects.toThrow('No element');
+      await expect(pane.execute('agent-one', 'primary', 'click', { selector: 'button, input' })).rejects.toThrow('one element');
       await expect(pane.execute('agent-one', 'primary', 'unknown', {})).rejects.toThrow('Unsupported');
     } finally {
       await pane.closeAll();
+      point.mockRestore();
+      if (oldHitTest) Object.defineProperty(document, 'elementFromPoint', oldHitTest); else Reflect.deleteProperty(document, 'elementFromPoint');
       document.body.innerHTML = '';
     }
   });

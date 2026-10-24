@@ -70,9 +70,7 @@ export class BrowserExtensionBridge {
           : { ok: false, error: 'Extension session is unavailable.' };
       });
     }
-    session.registerPreloadScript({ id: 'browser-extension-frame', type: 'frame', filePath: preloadPath });
-    session.registerPreloadScript({ id: 'browser-extension-worker', type: 'service-worker', filePath: preloadPath });
-    session.serviceWorkers.on('running-status-changed', (status) => {
+    const handleWorkerStatus = (status: { runningStatus: string; versionId: number }): void => {
       if (status.runningStatus === 'stopped') {
         for (const entry of this.nativePorts.values()) {
           const worker = entry.context as Electron.ServiceWorkerMain;
@@ -110,7 +108,14 @@ export class BrowserExtensionBridge {
       } catch {
         /* A starting worker acquires its keepalive when running. */
       }
-    });
+    };
+    session.serviceWorkers.on('running-status-changed', handleWorkerStatus);
+    // A persistent session may already have started its worker before the
+    // browser/profile finished restoring. Attach IPC before exposing more APIs.
+    for (const versionId of Object.keys(session.serviceWorkers.getAllRunning()))
+      handleWorkerStatus({ versionId: Number(versionId), runningStatus: 'running' });
+    session.registerPreloadScript({ id: 'browser-extension-frame', type: 'frame', filePath: preloadPath });
+    session.registerPreloadScript({ id: 'browser-extension-worker', type: 'service-worker', filePath: preloadPath });
     session.extensions.on('extension-unloaded', (_event, extension) => this.forgetExtension(extension.id));
   }
 
@@ -165,7 +170,7 @@ export class BrowserExtensionBridge {
     this.emit('tabs.onCreated', [description()]);
   }
   selectTab(id: number): void {
-    if (this.tabs.has(id)) {
+    if (this.tabs.has(id) && this.activeTab !== id) {
       this.activeTab = id;
       this.emit('tabs.onActivated', [{ tabId: id, windowId: this.tabs.get(id)!.window.id }]);
     }

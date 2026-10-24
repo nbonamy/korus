@@ -48,7 +48,7 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     };
     const session = {
       extensions: new EventEmitter(),
-      serviceWorkers: new EventEmitter(),
+      serviceWorkers: Object.assign(new EventEmitter(), { getAllRunning: () => ({}) }),
       registerPreloadScript: vi.fn(),
     };
     let allow = false,
@@ -162,7 +162,7 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     const record = { id, name: '1Password', enabled: true, permissions: [] as string[] };
     const session = {
       extensions: new EventEmitter(),
-      serviceWorkers: new EventEmitter(),
+      serviceWorkers: Object.assign(new EventEmitter(), { getAllRunning: () => ({}) }),
       registerPreloadScript: vi.fn(),
     };
     const bridge = new BrowserExtensionBridge(
@@ -208,7 +208,7 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
       extensions: Object.assign(new EventEmitter(), {
         getExtension: () => ({ id, manifest: { options_ui: { page: 'options.html' } } }),
       }),
-      serviceWorkers: new EventEmitter(),
+      serviceWorkers: Object.assign(new EventEmitter(), { getAllRunning: () => ({}) }),
       registerPreloadScript: vi.fn(),
     };
     const window = {
@@ -261,6 +261,15 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     const frame = { url: `chrome-extension://${id}/popup.html`, origin: `chrome-extension://${id}`, send: vi.fn() };
     const sender = { sender: first, senderFrame: frame };
     const request = (operation: string, ...args: unknown[]) => bridge.dispatch(sender as never, operation, args);
+    // Refocusing the selected guest must not report a tab switch and dismiss
+    // extension menus before their next real mouse click.
+    await request('subscribe', 'tabs.onActivated');
+    bridge.selectTab(first.id);
+    expect(frame.send.mock.calls.filter(([, name]) => name === 'tabs.onActivated')).toHaveLength(0);
+    bridge.selectTab(second.id);
+    bridge.selectTab(second.id);
+    expect(frame.send.mock.calls.filter(([, name]) => name === 'tabs.onActivated')).toHaveLength(1);
+    bridge.selectTab(first.id);
     expect(await request('tabs.query', { active: true, windowId: 1, url: ['https://example.test/*'] })).toMatchObject({
       ok: true,
       value: [{ id: 11, url: 'https://example.test/login' }],
@@ -344,27 +353,31 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     expect(await request('tabs.get', 11)).toMatchObject({ ok: false });
     bridge.dispose();
   });
-  it('releases a worker keepalive when the extension is unloaded', () => {
+  it('serves an already-running extension worker and releases its keepalive on unload', async () => {
     const end = vi.fn(),
       id = 'nngceckbapebfimnlniiiahkandclblb';
+    const handlers = new Map<string, (...args: any[]) => unknown>();
     const worker = {
       scope: `chrome-extension://${id}/`,
       versionId: 7,
-      ipc: { handle: vi.fn() },
+      ipc: { handle: vi.fn((channel, listener) => handlers.set(channel, listener)) },
       startTask: vi.fn(() => ({ end })),
     };
-    const workers = Object.assign(new EventEmitter(), { getWorkerFromVersionID: () => worker });
+    const workers = Object.assign(new EventEmitter(), { getWorkerFromVersionID: () => worker, getAllRunning: () => ({ 7: { scope: worker.scope } }) });
     const extensions = new EventEmitter();
-    new BrowserExtensionBridge(
-      { extensions, serviceWorkers: workers, registerPreloadScript: vi.fn() } as never,
+    const session = { extensions, serviceWorkers: workers, registerPreloadScript: vi.fn() };
+    const bridge = new BrowserExtensionBridge(
+      session as never,
       '/preload.cjs',
-      () => [],
+      () => [{ id, name: 'Owned worker', enabled: true, permissions: ['storage'] }],
       async () => false,
     );
+    expect(await handlers.get('browser-extension:call')?.({ session, serviceWorker: worker }, 'permissions.contains', [{ permissions: ['storage'] }])).toStrictEqual({ ok: true, value: true });
     workers.emit('running-status-changed', { runningStatus: 'starting', versionId: 7 });
     expect(worker.startTask).toHaveBeenCalledOnce();
     extensions.emit('extension-unloaded', {}, { id });
     expect(end).toHaveBeenCalledOnce();
+    bridge.dispose();
   });
   it('uses sender identity, denies native hosts, and revokes optional grants', async () => {
     const id = 'nngceckbapebfimnlniiiahkandclblb';
@@ -377,7 +390,7 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     };
     const session = {
       extensions: Object.assign(new EventEmitter(), { getExtension: () => ({ id, manifest: {} }) }),
-      serviceWorkers: new EventEmitter(),
+      serviceWorkers: Object.assign(new EventEmitter(), { getAllRunning: () => ({}) }),
       registerPreloadScript: vi.fn(),
     };
     const consent = vi.fn(async (_id, permissions: string[], remove: boolean) => {
