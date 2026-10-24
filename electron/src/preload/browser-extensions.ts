@@ -292,12 +292,17 @@ function installBrowserExtensionApis(storageRelayIds: string[]): void {
       const callback = typeof args.at(-1) === 'function' ? args.pop() : undefined;
       const result = call(`webNavigation.${name}`, args).then(async (value) => {
         const hydrate = async (frame: Api): Promise<Api> => {
-          const native = await chrome.scripting.executeScript({
-            target: { tabId: args[0].tabId, frameIds: [frame.frameId] },
-            func: () => null,
-          });
-          if (!native[0]?.documentId) throw new Error('Document identity is unavailable.');
-          return { ...frame, documentId: native[0].documentId };
+          try {
+            const native = await chrome.scripting.executeScript({
+              target: { tabId: args[0].tabId, frameIds: [frame.frameId] },
+              func: () => null,
+            });
+            if (native[0]?.documentId) return { ...frame, documentId: native[0].documentId };
+          } catch {
+            // Navigation metadata does not require script access. Embedded
+            // extension UI and disappearing frames can deny this identity probe.
+          }
+          return frame;
         };
         return Array.isArray(value) ? Promise.all(value.map(hydrate)) : value ? hydrate(value) : null;
       });

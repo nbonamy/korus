@@ -277,7 +277,9 @@ export class BrowserExtensions {
       throw new Error('Unsupported extension navigation.');
     const window = this.window(profile, id, active);
     profile.bridge.attachTab(window.webContents, window);
-    await window.loadURL(url.href);
+    // Resolve tab creation before document-start messages can fire, so the
+    // extension can register its ready handshake. Navigation has its own events.
+    void window.loadURL(url.href).catch(() => {});
     return window.webContents;
   }
   private window(profile: Profile, id: string, show: boolean, javascript = true, popup = false): BrowserWindow {

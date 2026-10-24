@@ -9,9 +9,12 @@ const host = vi.hoisted(() => ({
   loaded: new Map<string, any>(),
   session: null as any,
   showMessageBox: vi.fn(),
+  load: vi.fn(async (_url: string) => {}),
+  openPage: null as null | ((id: string, url: string, active: boolean) => Promise<any>),
 }));
 vi.mock('../browser-extension-bridge', () => ({
   BrowserExtensionBridge: class {
+    constructor(...args: any[]) { host.openPage = args[4]; }
     attachTab() {}
     selectTab() {}
     setStorageRelay() {}
@@ -37,6 +40,7 @@ vi.mock('electron', () => ({
     }
     async loadURL(url: string) {
       this.url = url;
+      await host.load(url);
     }
     isVisible() {
       return this.visible;
@@ -58,6 +62,8 @@ beforeEach(() => {
   host.windows.length = 0;
   host.loaded.clear();
   host.showMessageBox.mockReset().mockResolvedValue({ response: 0 });
+  host.load.mockReset().mockResolvedValue(undefined);
+  host.openPage = null;
   host.session = {
     serviceWorkers: { getAllRunning: () => ({}) },
     clearStorageData: vi.fn(async () => {}),
@@ -268,4 +274,31 @@ it('opens visible vendor setup after install alongside a passive relay', async (
   expect(host.windows.filter((window) => window.isVisible()).map((window) => window.url)).toContain(
     'chrome-extension://second/app.html#/welcome',
   );
+});
+
+it('returns a created tab before page load so the extension can register its ready handshake', async () => {
+  // Waiting for load loses document-start ready messages; a later navigation
+  // failure must not turn an already-created tab into a rejected create call.
+  const runtime = new BrowserExtensions({ parent: () => null, request: async () => ({ extensions: [] }) });
+  await runtime.manage(null, 'list');
+  let rejectLoad!: (error: Error) => void;
+  host.load.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectLoad = reject; }));
+  const ready = new EventEmitter(), onReady = vi.fn();
+  let created: any;
+  const creation = host.openPage!('second', 'https://example.test/editor', true).then(contents => {
+    created = contents;
+    ready.once('ready', onReady);
+    return contents;
+  });
+  try {
+    await vi.waitFor(() => expect(created).toBe(host.windows[0].webContents));
+    ready.emit('ready');
+    expect(onReady).toHaveBeenCalledOnce();
+    rejectLoad(new Error('Navigation failed after tab creation'));
+    await expect(creation).resolves.toBe(created);
+  } finally {
+    rejectLoad(new Error('Owned navigation cleanup'));
+    await creation.catch(() => {});
+    await runtime.dispose();
+  }
 });

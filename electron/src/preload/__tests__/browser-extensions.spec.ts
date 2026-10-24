@@ -35,6 +35,43 @@ it('preserves native worker storage delivery for an extension without a relay', 
   expect(listener).toHaveBeenCalledWith({ ownedMarker: { newValue: true } }, 'local');
 });
 
+it('enumerates accessible page frames when an embedded extension frame denies document identity injection', async () => {
+  // Frame metadata must survive denied injection or a disappearing document;
+  // available native IDs must stay authoritative and host failures must reject.
+  const frames = [
+    { frameId: 0, parentFrameId: -1, url: 'https://example.test/login' },
+    { frameId: 8, parentFrameId: 0, url: 'chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa/inline/menu/menu.html' },
+    { frameId: 9, parentFrameId: 0, url: 'about:blank' },
+  ];
+  let documentId = 'native-document-one';
+  vi.stubGlobal('chrome', {
+    runtime: { id: 'aeblfdkhhhdcdjpifhhbdiojplfjncoa' },
+    scripting: { executeScript: vi.fn(async ({ target }: { target: { frameIds: number[] } }) => {
+      if (target.frameIds[0] === 8) throw new Error('Cannot access contents of url.');
+      return target.frameIds[0] === 9 ? [] : [{ documentId }];
+    }) },
+  });
+  vi.stubGlobal('browser', { runtime: {} });
+  Object.defineProperty(process, 'type', { configurable: true, value: 'service-worker' });
+  host.call.mockImplementation(async (_channel, operation, args) => ({ ok: true, value: operation.endsWith('getAllFrames') ? frames : frames.find(frame => frame.frameId === (args[0] as any).frameId) ?? null }));
+  await import('../browser-extensions');
+  const navigation = (globalThis as any).browser.webNavigation;
+  expect(await navigation.getAllFrames({ tabId: 3 })).toStrictEqual([
+    { ...frames[0], documentId }, frames[1], frames[2],
+  ]);
+  const callback = vi.fn();
+  navigation.getAllFrames({ tabId: 3 }, callback);
+  await vi.waitFor(() => expect(callback).toHaveBeenCalledExactlyOnceWith([
+    { ...frames[0], documentId }, frames[1], frames[2],
+  ]));
+  documentId = 'native-document-after-reload';
+  expect(await navigation.getFrame({ tabId: 3, frameId: 0 })).toStrictEqual({ ...frames[0], documentId });
+  expect(await navigation.getFrame({ tabId: 3, frameId: 8 })).toStrictEqual(frames[1]);
+  expect(await navigation.getFrame({ tabId: 3, frameId: 99 })).toBeNull();
+  host.call.mockResolvedValue({ ok: false, error: 'webNavigation permission is required.' });
+  await expect(navigation.getAllFrames({ tabId: 3 })).rejects.toThrow('permission');
+});
+
 it('delivers Bitwarden root and area storage changes through both namespaces', async () => {
   const nativeEvent = { addListener: vi.fn() };
   vi.stubGlobal('chrome', { runtime: { id: 'nngceckbapebfimnlniiiahkandclblb' }, storage: { onChanged: nativeEvent, local: { onChanged: nativeEvent }, session: { onChanged: nativeEvent } } });
