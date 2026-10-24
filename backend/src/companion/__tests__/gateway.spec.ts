@@ -37,6 +37,17 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('tells a newly approved phone what the laptop is called, and stays silent when it does not know', async () => {
+    const f = fixture();
+    const approve = async (peer: string) => {
+      const result = await claim(f.gateway, peer, f.gateway.invite().code); await f.gateway.decide(result.pendingId, true);
+      return f.gateway.request(peer, 'pair.status', { pendingId: result.pendingId });
+    };
+    expect(await approve('plain')).toStrictEqual({ state: 'approved', grant: expect.objectContaining({ peerId: 'plain' }) });
+    (f.port as Record<string, unknown>).hostName = () => 'Studio Mac';
+    expect(await approve('named')).toMatchObject({ state: 'approved', hostName: 'Studio Mac' });
+  });
+
   it('serializes automatic grants and keeps them unauthorized until persistence finishes', async () => {
     const code = 'ABCDEFGH';
     const f = fixture(code);

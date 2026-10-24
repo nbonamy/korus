@@ -83,6 +83,8 @@ export type GatewayPort = {
   renameAgent?(agentId: string, name: string): Promise<void>;
   createProject?(input: CompanionProjectInput, remoteConnectionId: string | undefined, authorize: () => Promise<void>): Promise<string>;
   usage?(): Promise<CompanionUsage[]>;
+  /** What the person calls this computer, so a phone can name the pairing without asking. */
+  hostName?(): string;
   push?(peerId: string, registration: CompanionPushRegistration, notification: CompanionNotification): Promise<'sent' | 'invalid' | 'unavailable'>;
   markRead?(agentId: string, revision: number): Promise<void>;
   respondRequest?(response: AgentRequestResponse): Promise<void>;
@@ -546,7 +548,8 @@ export class CompanionGateway {
   private pairStatus(peerId: string, args: unknown) {
     const { pendingId } = z.object({ pendingId: z.string().uuid() }).strict().parse(args);
     const grant = this.state.grants.find((grant) => grant.peerId === peerId);
-    if (grant) return { state: 'approved', grant };
+    const hostName = this.port.hostName?.();
+    if (grant) return { state: 'approved', grant, ...(hostName ? { hostName } : {}) };
     const pending = this.pending.get(pendingId);
     if (!pending || pending.peerId !== peerId) throw new Error('Pairing denied or expired.');
     return { state: 'awaitingApproval' };

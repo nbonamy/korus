@@ -18,6 +18,7 @@ import { CompanionGateway, type GatewayState } from './gateway';
 import { CompanionOutboundConnector } from './connector';
 import { ConversationSource } from './conversation-source';
 import { warnMain } from '../log';
+import { systemHostName } from './host-name';
 import { setTimeout as delay } from 'node:timers/promises';
 import { storePromptUploads } from './uploads';
 import { readReviewSetup } from './review-setup';
@@ -59,6 +60,8 @@ function relayFromEnvironment(env: NodeJS.ProcessEnv): { relay: Relay | null; er
 export class CompanionManager {
   private saved!: Saved;
   private key!: PrivateKey;
+  /** What the person calls this computer, read once; phones pairing before it is known get no name from us. */
+  private hostName = '';
   private gateway!: CompanionGateway;
   private notifications?: CompanionNotifications;
   private notificationWork = Promise.resolve();
@@ -163,7 +166,9 @@ export class CompanionManager {
     this.saved = saved;
     this.notifications = new CompanionNotifications(peerIdFromPrivateKey(this.key).toString());
     const projects = new CompanionProjectAcquisition(this.backend);
+    void systemHostName().then((name) => { this.hostName = name; }).catch(() => {});
     this.gateway = new CompanionGateway(peerIdFromPrivateKey(this.key).toString(), saved.gateway, {
+      hostName: () => this.hostName,
       gitDiff: (agentId, target) => this.backend.request(backendMethods.agentGitDiffGet, { agentId, target, _clientId: 'companion-read' }),
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
       localRepositories: remote => projects.localList(remote),
