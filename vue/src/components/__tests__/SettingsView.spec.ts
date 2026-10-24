@@ -259,6 +259,21 @@ describe('SettingsView', () => {
     wrapper.unmount();
   });
 
+  it('opens Skills and Workflows with the same introduction banner as the other settings panels', async () => {
+    setElectronTestClient({ manageSkills: vi.fn().mockResolvedValue({ skills: [], providers: [], curated: curatedSkills, issues: [] }) });
+    const mountTab = (activeTab: 'skills' | 'workflows') => mount(SettingsView, { attachTo: document.body, props: { activeTab, settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    const skills = mountTab('skills');
+    await flushPromises();
+    expect(skills.get('.settings-intro').text()).toContain('Teach your agents new skills');
+    expect(skills.find('.settings-intro svg.settings-illustration').exists()).toBe(true);
+    skills.unmount();
+    const workflows = mountTab('workflows');
+    await flushPromises();
+    expect(workflows.get('.settings-intro').text()).toContain('Shape how your agents work');
+    expect(workflows.find('.settings-intro svg.settings-illustration').exists()).toBe(true);
+    workflows.unmount();
+  });
+
   it('keeps GitHub and Linear connection buttons independent of backlog loading and each other', async () => {
     let finishGitHub!: () => void;
     let finishLinear!: () => void;

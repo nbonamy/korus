@@ -1,8 +1,12 @@
 import { product } from '@workspace/core/product';
 // Component-scoped renderer copy. Keep keys stable when editing messages.
 export const surfaceMessages = {
+  settingsWorkflowsPanel: {
+    introTitle: 'Shape how your agents work',
+    introDescription: 'Choose how agents plan before they build and how they hand work to other agents.',
+  },
   skills: {
-    title: 'Skills', sync: 'Sync', syncLabel: 'Sync skills', install: 'Install', installPack: 'Install pack', installed: 'Installed',
+    title: 'Skills', introTitle: 'Teach your agents new skills', introDescription: 'Install curated skills and packs, or add your own, and keep every coding agent in step.', sync: 'Sync', syncLabel: 'Sync skills', install: 'Install', installPack: 'Install pack', installed: 'Installed',
     installing: 'Installing…', managed: 'Installed skills', source: 'Skill source',
     placeholder: 'GitHub URL, skills.sh URL or skills add command',
     discover: 'Discover', installSkill: 'Install skill', skill: 'Skill', search: 'Search skills', searchPlaceholder: 'Search skills…',
