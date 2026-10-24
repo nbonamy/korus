@@ -26,7 +26,7 @@ struct SettingsView: View {
                         row("Connections", systemImage: "laptopcomputer", value: LaptopSummary.text(names: model.laptops.map(\.name)))
                     }
                     NavigationLink { UsageView() } label: {
-                        Label("Usage and limits", systemImage: "gauge.with.dots.needle.33percent")
+                        plainLabel("Usage and limits", systemImage: "gauge.with.dots.needle.33percent")
                     }
                 } header: { sectionTitle("Account") }
 
@@ -42,7 +42,7 @@ struct SettingsView: View {
                         Button("Retry notification setup", systemImage: "arrow.clockwise") { Task { await model.push.refresh() } }
                     }
                     Toggle(isOn: Binding(get: { lock.isEnabled }, set: { on in Task { await lock.setEnabled(on) } })) {
-                        Label("Lock with Face ID", systemImage: "faceid")
+                        plainLabel("Lock with Face ID", systemImage: "faceid")
                     }
                     .disabled(!lock.canProtect || lock.isAuthenticating)
                 } header: { sectionTitle("Preferences") } footer: {
@@ -51,7 +51,7 @@ struct SettingsView: View {
 
                 Section {
                     if let url = model.privacyPolicyURL {
-                        Link(destination: url) { Label("Privacy Policy", systemImage: "hand.raised") }
+                        Link(destination: url) { plainLabel("Privacy Policy", systemImage: "hand.raised") }.tint(.primary)
                     }
                     row("Version", systemImage: "info.circle", value: version)
                 } header: { sectionTitle("About") }
@@ -59,7 +59,7 @@ struct SettingsView: View {
                 if let laptop = currentLaptop {
                     Section {
                         Button(role: .destructive) { forgetting = laptop } label: {
-                            Label("Forget this laptop", systemImage: "rectangle.portrait.and.arrow.right")
+                            Label("Forget this laptop", systemImage: "rectangle.portrait.and.arrow.right").foregroundStyle(.red)
                         }
                     }
                 }
@@ -67,7 +67,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button(role: .close) { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button(role: .close) { dismiss() } }
             }
             .forgetLaptopConfirmation($forgetting) { laptop in
                 model.command("forget", ["laptopId": laptop.id])
@@ -104,8 +104,13 @@ struct SettingsView: View {
                 if chevron { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
             }
         } label: {
-            Label(title, systemImage: systemImage)
+            plainLabel(title, systemImage: systemImage)
         }
+    }
+
+    /// Settings rows read as a quiet list: the icons are the text's color, not the app's accent.
+    private func plainLabel(_ title: String, systemImage: String) -> some View {
+        Label { Text(title) } icon: { Image(systemName: systemImage).foregroundStyle(.primary) }
     }
 }
 
