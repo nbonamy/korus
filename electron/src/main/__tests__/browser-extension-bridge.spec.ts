@@ -24,6 +24,40 @@ vi.mock('electron', () => ({
 // The bridge owns sender identity, optional grants and scoped tab visibility.
 // Exercising its IPC dispatch protects these boundaries without running a vault.
 describe('Korus extension bridge', () => {
+  it('forgets extension frames once they can no longer receive events', async () => {
+    const id = 'nngceckbapebfimnlniiiahkandclblb';
+    const session = {
+      extensions: new EventEmitter(),
+      serviceWorkers: Object.assign(new EventEmitter(), { getAllRunning: () => ({}) }),
+      registerPreloadScript: vi.fn(),
+    };
+    const bridge = new BrowserExtensionBridge(
+      session as never,
+      '/preload.cjs',
+      () => [{ id, name: 'Bitwarden', enabled: true, permissions: [] }],
+      async () => true,
+    );
+    const gone = vi.fn(() => {
+      throw new Error('Render frame was disposed.');
+    });
+    const live = vi.fn();
+    const subscribe = (send: () => void) =>
+      bridge.dispatch(
+        {
+          sender: { session },
+          senderFrame: { url: `chrome-extension://${id}/menu.html`, origin: `chrome-extension://${id}`, send },
+        } as never,
+        'subscribe',
+        ['tabs.onActivated'],
+      );
+    await subscribe(gone);
+    await subscribe(live);
+    bridge.emit('tabs.onActivated', [{ tabId: 1 }]);
+    bridge.emit('tabs.onActivated', [{ tabId: 2 }]);
+    expect(gone).toHaveBeenCalledTimes(1);
+    expect(live).toHaveBeenCalledTimes(2);
+  });
+
   it('requires native consent and isolates framed native ports through revoke and unload', async () => {
     // Protect UTF-8 framing, split/coalesced replies, profile/context isolation,
     // refusal before consent, oversized input and lifetime cleanup at the IPC seam.

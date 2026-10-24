@@ -217,7 +217,7 @@ export class BrowserExtensionBridge {
   }
 
   emit(name: string, args: unknown[], target?: string): void {
-    for (const listener of this.listeners.values()) {
+    for (const [key, listener] of this.listeners) {
       const record = this.records().find((record) => record.id === listener.extensionId && record.enabled);
       if (!record || (target && target !== record.id) || !listener.names.has(name)) continue;
       if (name.startsWith('webNavigation.') && !record.permissions.includes('webNavigation')) continue;
@@ -226,7 +226,8 @@ export class BrowserExtensionBridge {
         const sender = listener.event.serviceWorker ?? listener.event.senderFrame;
         if (sender && !('isDestroyed' in sender && sender.isDestroyed())) sender.send(EVENTS, name, values);
       } catch {
-        /* A terminated context registers again when Chromium restarts it. */
+        // A restarted worker subscribes again. A frame is never reused once it is gone.
+        if (!listener.event.serviceWorker) this.listeners.delete(key);
       }
     }
   }

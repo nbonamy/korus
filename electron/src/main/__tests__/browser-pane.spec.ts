@@ -265,7 +265,7 @@ describe('browser pane helpers', () => {
     } finally { await pane.closeAll(); }
   });
 
-  it('keeps navigation policy installed and drops the pane when the extension profile fails to attach', async () => {
+  it('keeps navigation policy installed and retries the extension attach on the same handlers when the profile fails', async () => {
     const owner = { webContents: {} };
     const guest = electronMocks.createGuest(owner, 63);
     const onGuestReady = vi.fn().mockRejectedValueOnce(new Error('profile unavailable')).mockResolvedValue(undefined);
@@ -274,7 +274,11 @@ describe('browser pane helpers', () => {
       await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).rejects.toThrow('profile unavailable');
       expect(guest.setWindowOpenHandler).toHaveBeenCalled();
       expect(guest.emitNavigation('will-navigate', 'about:config').preventDefault).toHaveBeenCalledOnce();
+      const handlers = guest.on.mock.calls.length;
       await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).resolves.toMatchObject({ url: 'about:blank' });
+      expect(onGuestReady).toHaveBeenCalledTimes(2);
+      expect(guest.on.mock.calls).toHaveLength(handlers);
+      await pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63);
       expect(onGuestReady).toHaveBeenCalledTimes(2);
     } finally { await pane.closeAll(); }
   });

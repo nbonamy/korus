@@ -29,6 +29,7 @@ type HostedBrowserPane = {
   browserWindow: BrowserWindow;
   consoleMessages: Array<{ level: string; message: string; timestamp: string }>;
   contentOffset: { x: number; y: number };
+  extensionsAttached: boolean;
   fileRoot: string;
   navigationEnabled: boolean;
   presentedTitle: string | null;
@@ -110,6 +111,7 @@ export class BrowserPane {
       previous.navigationEnabled = navigationEnabled;
       previous.presentedTitle = null;
       previous.presentedUrl = null;
+      await this.attachExtensions(previous);
       return previous;
     }
     await this.close(agentId, browserId);
@@ -125,6 +127,7 @@ export class BrowserPane {
       browserWindow,
       consoleMessages: [],
       contentOffset: { x: 0, y: 0 },
+      extensionsAttached: false,
       fileRoot,
       navigationEnabled,
       presentedTitle: null,
@@ -164,16 +167,22 @@ export class BrowserPane {
       pane.consoleMessages.push({ level: String(level), message, timestamp: new Date().toISOString() });
       if (pane.consoleMessages.length > 100) pane.consoleMessages.shift();
     });
-    // Navigation policy is already in place; a failed extension profile must not leave a half-registered pane.
-    if (navigationEnabled) {
-      try {
-        await this.options.onGuestReady?.(agentId, browserId, guest, browserWindow);
-      } catch (error) {
-        if (this.panes.get(key) === pane) this.panes.delete(key);
-        throw error;
-      }
-    }
+    await this.attachExtensions(pane);
     return pane;
+  }
+
+  /**
+   * Navigation policy is installed before this runs. A failed extension profile keeps the
+   * pane registered (one handler set per guest) and the next open retries the attach.
+   */
+  private async attachExtensions(pane: HostedBrowserPane): Promise<void> {
+    if (!pane.navigationEnabled) {
+      pane.extensionsAttached = true;
+      return;
+    }
+    if (pane.extensionsAttached) return;
+    await this.options.onGuestReady?.(pane.agentId, pane.browserId, pane.webContents, pane.browserWindow);
+    pane.extensionsAttached = true;
   }
 
   async clearBrowsingData(): Promise<void> {
