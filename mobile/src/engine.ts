@@ -66,6 +66,7 @@ export type EngineState = {
   backend: string | null;
   canSelectBackend: boolean;
   draft: string;
+  suggestedPrompt: string | null;
   mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; description: string }[] };
   skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
@@ -247,6 +248,7 @@ export function createEngine(port: EnginePort) {
       teamId: state.teamId.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
+      suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,

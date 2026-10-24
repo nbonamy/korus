@@ -11,6 +11,7 @@ struct ComposerEditor: UIViewRepresentable {
     let editable: Bool
     let maxLines: Int
     var placeholder = "Message"
+    var suggestedPrompt: String? = nil
     var pastePhotos: (([NSItemProvider]) -> Void)? = nil
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -49,6 +50,7 @@ struct ComposerEditor: UIViewRepresentable {
         }
         view.placeholder.text = placeholder
         view.accessibilityLabel = placeholder
+        view.accessibilityHint = suggestedPrompt == nil ? nil : "Press Space to use this suggestion."
         view.pastePhotos = pastePhotos
         view.isEditable = editable
         view.placeholder.isHidden = !text.isEmpty
@@ -78,6 +80,13 @@ struct ComposerEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             guard !updating, let view = textView as? ComposerTextView else { return }
+            if parent.editable, parent.text.isEmpty, view.document.text == " ", view.markedTextRange == nil,
+               let suggestion = parent.suggestedPrompt, !suggestion.isEmpty {
+                updating = true
+                view.render(ComposerChipText(text: suggestion, suggestions: parent.suggestions),
+                    selection: NSRange(location: suggestion.utf16.count, length: 0), font: UIFont.preferredFont(forTextStyle: .body))
+                updating = false
+            }
             let document = view.document
             let selection = document.canonicalRange(view.selectedRange)
             parent.text = document.text

@@ -111,6 +111,7 @@ struct EngineState: Decodable {
     let branches: RepositoryBranches?
     let backend: String?
     let backends: [String]
+    let suggestedPrompt: String?
     let draft: String
     let models: [Model]
     let composer: Composer

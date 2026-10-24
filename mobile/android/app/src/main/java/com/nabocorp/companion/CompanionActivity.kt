@@ -247,6 +247,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
 @Composable internal fun Composer(model: CompanionModel, pickAttachment: (AttachmentSource) -> Unit, toggleDictation: () -> Unit) {
     val state = model.state
     val composer = state.obj("composer")
+    val suggestion = state.string("suggestedPrompt").takeIf { it.isNotBlank() && !model.composerDrafts.goalMode && !composer.optBoolean("planMode") }
     val selected = state.items("models").firstOrNull { it.string("id") == composer.string("modelId") }
     val drafts = model.composerDrafts
     val catalogItems = (state.obj("skills").items("items") + state.obj("mentions").items("items")).map(ComposerSuggestion::parse)
@@ -389,7 +390,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         key(editorTarget) {
                             BasicTextField(value = editor.value, onValueChange = { next ->
                                 if (model.composerDrafts.target == editorTarget) {
-                                    editorFocused = true; editor.edit(next)
+                                    editorFocused = true
+                                    val accepted = if (editor.value.text.isEmpty() && next.text == " " && next.composition == null && suggestion != null)
+                                        next.copy(text = suggestion, selection = androidx.compose.ui.text.TextRange(suggestion.length)) else next
+                                    editor.edit(accepted)
                                     if (model.draft != editor.value.text) model.editDraft(editor.value.text)
                                 }
                             },
@@ -401,8 +405,9 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                 enabled = drafts.target != null && !drafts.sending && !dictation.active,
                                 decorationBox = { input ->
                                     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                                        if (editor.value.text.isEmpty()) Text(when { drafts.goalMode -> "Describe your goal"; composer.optBoolean("planMode") -> "Describe what to plan"; else -> "Message" },
-                                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (editor.value.text.isEmpty()) Text(when { drafts.goalMode -> "Describe your goal"; composer.optBoolean("planMode") -> "Describe what to plan"; else -> suggestion ?: "Message" },
+                                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = if (expanded) 8 else 1, overflow = TextOverflow.Ellipsis)
                                         input()
                                     }
                                 })

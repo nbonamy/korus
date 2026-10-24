@@ -93,9 +93,10 @@ describe('companion workspace projection', () => {
     expect(first!.backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access' });
   });
   it('keeps only presentation fields', () => {
-    const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
+    const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, suggestedPrompt: 'Run the tests', mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
     expect(first).not.toHaveProperty('mcpSessionId');
-    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt'];
+    expect(first!.suggestedPrompt).toBe('Run the tests');
+    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt', 'suggestedPrompt'];
     expect(Object.keys(first!).every((key) => allowed.includes(key))).toBe(true);
   });
 

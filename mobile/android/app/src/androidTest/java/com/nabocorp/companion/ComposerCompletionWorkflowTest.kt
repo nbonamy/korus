@@ -38,6 +38,36 @@ class ComposerCompletionWorkflowTest {
         return layouts.last().layoutInput.text.text.replace('\u00a0', ' ')
     }
 
+    @Test fun followUpPlaceholderBecomesAnEditableDraftOnlyOnSpaceInAnEmptyComposer() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            val suggestion = "Review the changes 🦞"
+            engine.state(state().put("suggestedPrompt", suggestion)); mount(engine)
+            app.onNodeWithText(suggestion).assertIsDisplayed()
+            assertEquals("", engine.model.draft)
+            app.onNodeWithTag("composer").performTextInput(" ")
+            app.onNodeWithTag("composer").assertTextEquals(suggestion)
+            app.onNodeWithTag("composer").performTextInput(" please")
+            app.onNodeWithTag("composer").assertTextEquals("$suggestion please")
+            assertTrue(engine.commands().none { it.string("type") == "send" })
+            app.onNodeWithTag("composer").performTextClearance()
+            app.onNodeWithTag("composer").performTextInput("My own prompt")
+            engine.state(state().put("suggestedPrompt", "A newer suggestion"))
+            app.onNodeWithTag("composer").assertTextEquals("My own prompt")
+            app.onNodeWithTag("composer").performTextInput(" ")
+            app.onNodeWithTag("composer").assertTextEquals("My own prompt ")
+            engine.state(state("other"))
+            app.onNodeWithText("A newer suggestion").assertDoesNotExist()
+            app.onNodeWithTag("composer").performTextInput(" ")
+            assertEquals(" ", engine.model.draft)
+            engine.state(state().put("suggestedPrompt", "A newer suggestion").put("composer", json("planMode" to true)))
+            app.onNodeWithTag("composer").performTextClearance()
+            app.onNodeWithText("Describe what to plan").assertIsDisplayed()
+            app.onNodeWithTag("composer").performTextInput(" ")
+            assertEquals(" ", engine.model.draft)
+        }
+    }
+
     @Test fun choosingAMentionAtTheCursorPreservesUnicodeAndSuffixAndSendsCanonicalText() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }

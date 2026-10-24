@@ -122,7 +122,8 @@ struct ComposerView: View {
                 ComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
                     query: $activeQuery, suggestions: model.skills.items + model.mentions.items, editable: !model.dictation.active && !model.composerDrafts.sending,
                     maxLines: expanded ? 8 : 1,
-                    placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : "Message",
+                    placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : model.composerSuggestion ?? "Message",
+                    suggestedPrompt: model.composerSuggestion,
                     pastePhotos: canAttach ? { providers in
                         guard let request = model.composerDrafts.beginImport() else { return }
                         loadPhotos(providers, request: request)

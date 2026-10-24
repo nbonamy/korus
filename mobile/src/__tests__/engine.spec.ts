@@ -586,6 +586,37 @@ describe('companion engine', () => {
       expect(await store.readLastLaptop()).toBeNull();
     } finally { engine.dispose(); }
   });
+  it('keeps follow-up suggestions scoped to the selected agent, updates them live and leaves drafts untouched', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let publish!: () => void;
+    let suggestion: string | undefined = 'Run the tests';
+    connector.connect = async id => {
+      const session = await connect(id);
+      const getWorkspace = async () => {
+        const workspace = await session.getWorkspace();
+        return { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, suggestedPrompt: suggestion } : agent) };
+      };
+      return { ...session, getWorkspace, onUpdate(listener) {
+        publish = async () => listener(await getWorkspace(), null);
+        return () => {};
+      } };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start();
+      expect(latest().suggestedPrompt).toBe('Run the tests');
+      expect(latest().draft).toBe('');
+      await engine.dispatch({ type: 'draft', text: 'My own request' });
+      suggestion = 'Review the changes'; await publish(); await nextTick();
+      expect(latest()).toMatchObject({ suggestedPrompt: suggestion, draft: 'My own request' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(latest().suggestedPrompt).toBeNull();
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(latest()).toMatchObject({ suggestedPrompt: suggestion, draft: 'My own request' });
+      suggestion = undefined; await publish(); await nextTick();
+      expect(latest()).toMatchObject({ suggestedPrompt: null, draft: 'My own request' });
+    } finally { engine.dispose(); }
+  });
   it('pairs with a code, reports awaiting approval, then connects', async () => {
     const connector = unpaired();
     connector.pair = vi.fn(async (_code, _name, pending) => { pending(); Object.defineProperty(connector, 'laptops', { value: [{ id: 'demo-laptop', name: 'Laptop' }] }); return 'demo-laptop'; });

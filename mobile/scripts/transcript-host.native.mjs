@@ -30,6 +30,7 @@ try {
   const sdk = run('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path']);
   const sources = ['Tests/TranscriptHost/TranscriptHostProbe.swift', 'Sources/Engine/TranscriptHost.swift', 'Sources/Engine/WebAssets.swift',
     'Sources/Conversation/TranscriptRenderQueue.swift', 'Sources/Conversation/ConversationLoadingState.swift', 'Sources/Conversation/ImagePreview.swift', 'Sources/Conversation/ExternalLink.swift',
+    'Sources/Composer/ComposerCompletion.swift', 'Sources/Composer/ComposerChipText.swift', 'Sources/Views/ComposerEditor.swift',
     'Sources/Lock/AppLock.swift', 'Sources/Views/LockView.swift', 'Sources/Views/StartupView.swift', 'Sources/Conversation/StreamBackgroundExecution.swift'];
   run('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-ios26.0-simulator`, '-sdk', sdk,
     '-o', path.join(app, 'TranscriptTests'), ...sources.map(source => path.join(ios, source))]);

@@ -119,6 +119,8 @@ final class AppModel {
     var queuedPrompts: [EngineState.QueuedPrompt] = []
     var queuedPromptPending: String?
     var queuedPromptFailed = false
+    var suggestedPrompt: String?
+    var composerSuggestion: String? { goalMode || planMode ? nil : suggestedPrompt }
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
@@ -253,6 +255,7 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
