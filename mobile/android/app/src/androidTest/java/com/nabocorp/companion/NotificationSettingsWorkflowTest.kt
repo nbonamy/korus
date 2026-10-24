@@ -51,7 +51,7 @@ class NotificationSettingsWorkflowTest {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, true)
             app.onNodeWithText("Connections").performScrollTo().performClick()
-            app.onNodeWithText("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
             app.onNodeWithContentDescription("Manage Computer").performClick()
             app.onNodeWithText("Forget connection").performClick()
             app.onNodeWithText("Forget this laptop?").assertIsDisplayed()
@@ -72,7 +72,7 @@ class NotificationSettingsWorkflowTest {
             val twoLaptops = state(true).put("laptops", JSONArray().put(json("id" to "host", "name" to "Computer")).put(json("id" to "other", "name" to "Travel laptop")))
             engine.state(twoLaptops)
             app.onNodeWithText("Connections").performScrollTo().performClick()
-            app.onNodeWithText("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
             app.onNodeWithContentDescription("Manage Travel laptop").performClick()
             app.onNodeWithText("Forget connection").performClick()
             app.onNodeWithText("Forget Laptop").performClick()

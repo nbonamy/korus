@@ -18,12 +18,11 @@ struct ConnectionsView: View {
                             closeSettings()
                         } label: {
                             HStack {
-                                Image(systemName: "laptopcomputer").foregroundStyle(Color.accentColor)
+                                Image(systemName: "laptopcomputer").foregroundStyle(.primary)
                                 Text(laptop.name).foregroundStyle(.primary)
                                 Spacer()
                                 if laptop.id == model.laptopID {
-                                    Label("Current", systemImage: "checkmark")
-                                        .font(.subheadline).foregroundStyle(.secondary)
+                                    Image(systemName: "checkmark").foregroundStyle(.secondary).accessibilityLabel("Current")
                                 }
                             }
                             .contentShape(Rectangle())

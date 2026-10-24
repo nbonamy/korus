@@ -146,8 +146,7 @@ internal fun cleanLaptopName(value: String): String? = value.trim().takeIf { it.
                     model.dismissSheet()
                 }, trailing = {
                     if (id == currentId) {
-                        Text("Current", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Outlined.Check, "Current", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreHoriz, "Manage $name") }
