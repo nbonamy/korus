@@ -105,6 +105,17 @@ internal fun notificationValue(status: String) = when (status) {
     Text(text, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** The name to save for a laptop, or null when the person has typed nothing usable. */
+internal fun cleanLaptopName(value: String): String? = value.trim().takeIf { it.isNotEmpty() && it.length <= 60 }
+
+@Composable private fun RenameLaptopDialog(laptop: org.json.JSONObject, onCancel: () -> Unit, onSave: (String) -> Unit) {
+    var name by remember { mutableStateOf(laptop.string("name")) }
+    AlertDialog(onDismissRequest = onCancel, title = { Text("Rename laptop") },
+        text = { OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }) },
+        confirmButton = { TextButton(enabled = cleanLaptopName(name) != null, onClick = { cleanLaptopName(name)?.let(onSave) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } })
+}
+
 @Composable private fun ForgetLaptopDialog(laptop: org.json.JSONObject, onCancel: () -> Unit, onForget: () -> Unit) {
     AlertDialog(onDismissRequest = onCancel, title = { Text("Forget this laptop?") },
         text = { Text("${laptop.string("name")} will be removed from this phone. You will need a new pairing code to connect again.") },
@@ -119,6 +130,7 @@ internal fun notificationValue(status: String) = when (status) {
 @Composable internal fun ConnectionsContent(model: CompanionModel) {
     val currentId = model.state.string("laptopId")
     var forgetting by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var renaming by remember { mutableStateOf<org.json.JSONObject?>(null) }
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         AppSection {
             val laptops = model.state.optJSONArray("laptops")
@@ -140,6 +152,7 @@ internal fun notificationValue(status: String) = when (status) {
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreHoriz, "Manage $name") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = laptop })
                             DropdownMenuItem(text = { Text("Forget connection", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; forgetting = laptop })
                         }
                     }
@@ -155,6 +168,12 @@ internal fun notificationValue(status: String) = when (status) {
         }
         AppSection {
             AppRow("Add connection", icon = Icons.Outlined.Add, onClick = { model.command("chooseConnection"); model.dismissSheet() })
+        }
+    }
+    renaming?.let { laptop ->
+        RenameLaptopDialog(laptop, onCancel = { renaming = null }) { name ->
+            model.command("renameLaptop", "laptopId" to laptop.string("id"), "name" to name)
+            renaming = null
         }
     }
     forgetting?.let { laptop ->
