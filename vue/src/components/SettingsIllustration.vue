@@ -1,6 +1,12 @@
 <template>
   <svg class="settings-illustration" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-    <template v-if="kind === 'appshots'">
+    <template v-if="kind === 'browser'">
+      <circle class="settings-illustration__accent-surface" cx="32" cy="32" r="23" />
+      <ellipse class="settings-illustration__accent" cx="32" cy="32" rx="10" ry="23" />
+      <path class="settings-illustration__accent" d="M9 32h46" />
+      <path class="settings-illustration__line" d="M13 19h38M13 45h38" />
+    </template>
+    <template v-else-if="kind === 'appshots'">
       <path class="settings-illustration__accent" d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8" />
       <rect class="settings-illustration__surface" x="15" y="15" width="34" height="34" rx="5" />
       <circle class="settings-illustration__dot settings-illustration__dot--error" cx="21" cy="21" r="1.8" />

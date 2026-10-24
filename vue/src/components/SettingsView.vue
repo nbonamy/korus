@@ -15,6 +15,7 @@
     <main class="settings-view__content">
       <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
         <UsagePanel v-if="activeTab === 'usage'" />
+        <SettingsBrowserPanel v-else-if="activeTab === 'browser' && appHostCapabilities.embeddedBrowser" />
         <SettingsGeneralPanel
           v-else-if="activeTab === 'general'"
           :choose-source-folder="chooseSourceFolder"
@@ -152,6 +153,7 @@ import { computed, ref } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
 import UsagePanel from './UsagePanel.vue';
+import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';

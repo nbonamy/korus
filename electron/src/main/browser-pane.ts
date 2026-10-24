@@ -5,11 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BrowserAnnotation, BrowserBounds, BrowserState, BrowserViewportBounds } from '@workspace/core/contracts';
+import { supportedBrowserExtensions } from '@workspace/core/browser-extensions';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { parseBrowserViewport, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
 export { safePartitionName } from '@workspace/core/browser-guest';
 
 type BrowserPaneOptions = {
+  onGuestReady?(agentId: string, browserId: string, contents: WebContents, window: BrowserWindow): Promise<void>;
+  onGuestSelected?(agentId: string, browserId: string): void;
   onAnnotation(annotation: BrowserAnnotation): void;
   onViewportRequest?(request: BrowserViewportRequest): void;
 };
@@ -26,6 +29,7 @@ type HostedBrowserPane = {
   browserWindow: BrowserWindow;
   consoleMessages: Array<{ level: string; message: string; timestamp: string }>;
   contentOffset: { x: number; y: number };
+  extensionsAttached: boolean;
   fileRoot: string;
   navigationEnabled: boolean;
   presentedTitle: string | null;
@@ -42,6 +46,7 @@ const maximumVisualizationBytes = 1_048_576;
  */
 export class BrowserPane {
   private readonly panes = new Map<string, HostedBrowserPane>();
+  private readonly clicks = new WeakMap<WebContents, Promise<unknown>>();
   private readonly viewportRequests = new Map<string, {
     request: BrowserViewportRequest;
     resolve: (value: unknown) => void;
@@ -106,6 +111,7 @@ export class BrowserPane {
       previous.navigationEnabled = navigationEnabled;
       previous.presentedTitle = null;
       previous.presentedUrl = null;
+      await this.attachExtensions(previous);
       return previous;
     }
     await this.close(agentId, browserId);
@@ -121,6 +127,7 @@ export class BrowserPane {
       browserWindow,
       consoleMessages: [],
       contentOffset: { x: 0, y: 0 },
+      extensionsAttached: false,
       fileRoot,
       navigationEnabled,
       presentedTitle: null,
@@ -142,12 +149,60 @@ export class BrowserPane {
       }
     };
     guest.on('will-navigate', preventDisallowedNavigation);
-    guest.on('will-redirect', preventDisallowedNavigation);
+    guest.on('will-redirect', (event, target, _inPlace, isMainFrame) => {
+      // Chromium redirects dynamic web-accessible resource URLs to their loaded
+      // extension origin. Keep its subframe access checks; the browser's URL
+      // policy still governs top-level navigation and every other redirect.
+      if (!isMainFrame && pane.navigationEnabled) {
+        try {
+          const url = new URL(target);
+          if (url.protocol === 'chrome-extension:' && guest.session.extensions.getExtension(url.hostname)) return;
+        } catch {
+          // Invalid destinations fall through to the normal navigation policy.
+        }
+      }
+      preventDisallowedNavigation(event, target);
+    });
     guest.on('console-message', (_event, level, message) => {
       pane.consoleMessages.push({ level: String(level), message, timestamp: new Date().toISOString() });
       if (pane.consoleMessages.length > 100) pane.consoleMessages.shift();
     });
+    await this.attachExtensions(pane);
     return pane;
+  }
+
+  /**
+   * Navigation policy is installed before this runs. A failed extension profile keeps the
+   * pane registered (one handler set per guest) and the next open retries the attach.
+   */
+  private async attachExtensions(pane: HostedBrowserPane): Promise<void> {
+    if (!pane.navigationEnabled) {
+      pane.extensionsAttached = true;
+      return;
+    }
+    if (pane.extensionsAttached) return;
+    await this.options.onGuestReady?.(pane.agentId, pane.browserId, pane.webContents, pane.browserWindow);
+    pane.extensionsAttached = true;
+  }
+
+  async clearBrowsingData(): Promise<void> {
+    const browsing = [...this.panes.values()].filter(pane => pane.navigationEnabled && !pane.webContents.isDestroyed());
+    // Stop website scripts and discard their per-tab session storage/history.
+    // Extension pages, workers and authenticated storage remain in place.
+    for (const pane of browsing) {
+      pane.webContents.stop();
+      await pane.webContents.executeJavaScript('try { sessionStorage.clear(); } catch {}');
+      await pane.webContents.loadURL('about:blank');
+      pane.webContents.navigationHistory.clear();
+      pane.consoleMessages = [];
+    }
+    const shared = session.fromPartition(browserGuestPartition('shared'));
+    await shared.clearData({
+      excludeOrigins: supportedBrowserExtensions.map(extension => `chrome-extension://${extension.id}`),
+    });
+    await shared.clearAuthCache();
+    await shared.clearCodeCaches({ urls: [] });
+    shared.flushStorageData();
   }
 
   async navigate(agentId: string, browserId: string, url: string): Promise<BrowserState> {
@@ -168,14 +223,14 @@ export class BrowserPane {
   async goBack(agentId: string, browserId: string): Promise<BrowserState> {
     const pane = this.requirePane(agentId, browserId);
     const webContents = pane.webContents;
-    if (webContents.canGoBack()) webContents.goBack();
+    if (webContents.navigationHistory.canGoBack()) webContents.navigationHistory.goBack();
     return this.waitForNavigation(pane);
   }
 
   async goForward(agentId: string, browserId: string): Promise<BrowserState> {
     const pane = this.requirePane(agentId, browserId);
     const webContents = pane.webContents;
-    if (webContents.canGoForward()) webContents.goForward();
+    if (webContents.navigationHistory.canGoForward()) webContents.navigationHistory.goForward();
     return this.waitForNavigation(pane);
   }
 
@@ -228,6 +283,7 @@ export class BrowserPane {
   setVisible(agentId: string, browserId: string, visible: boolean): void {
     const pane = this.requirePane(agentId, browserId);
     pane.visible = visible;
+    if (visible && pane.navigationEnabled) this.options.onGuestSelected?.(agentId, browserId);
     if (!visible) this.rejectViewportRequest(agentId, browserId, 'Browser pane was hidden.');
     if (pane.annotationOverlay && !pane.annotationOverlay.isDestroyed()) {
       if (visible) pane.annotationOverlay.show();
@@ -304,9 +360,57 @@ export class BrowserPane {
     await Promise.all([...this.panes.values()].map((pane) => this.close(pane.agentId, pane.browserId)));
   }
 
+  private async click(pane: HostedBrowserPane, input: Record<string, unknown>): Promise<unknown> {
+    if (!pane.visible) throw new Error('Open this agent’s Browser pane before clicking.');
+    const selector = typeof input.selector === 'string' ? input.selector.trim() : undefined;
+    const selectorOnly = Boolean(selector) && input.x === undefined && input.y === undefined;
+    const pointOnly = input.selector === undefined && typeof input.x === 'number' && Number.isFinite(input.x)
+      && typeof input.y === 'number' && Number.isFinite(input.y) && input.x >= 0 && input.y >= 0;
+    if (!selectorOnly && !pointOnly) throw new Error('Provide either one CSS selector or both x and y in viewport CSS pixels.');
+    const target = selectorOnly ? { selector } : { x: input.x, y: input.y };
+    const point = await pane.webContents.executeJavaScript(`(() => {
+      const input = ${JSON.stringify(target)};
+      let x = input.x, y = input.y;
+      if (input.selector) {
+        const matches = document.querySelectorAll(input.selector);
+        if (!matches.length) throw new Error('No element matches selector: ' + input.selector);
+        if (matches.length !== 1) throw new Error('The selector must match exactly one element.');
+        const element = matches[0];
+        element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+        const rect = element.getBoundingClientRect();
+        if (!rect.width || !rect.height || getComputedStyle(element).visibility === 'hidden') throw new Error('The element is not visible.');
+        x = rect.left + rect.width / 2; y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        if (hit !== element && !element.contains(hit)) throw new Error('The element is covered.');
+      }
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) throw new Error('Click coordinates are outside the browser viewport.');
+      return { x, y, width: innerWidth, height: innerHeight };
+    })()`);
+    if (!pane.browserWindow.isFocused()) pane.browserWindow.focus();
+    if (!pane.webContents.isFocused()) pane.webContents.focus();
+    // Chromium routes viewport CSS coordinates into out-of-process extension
+    // frames. Electron's sendInputEvent can instead hit the page behind them.
+    const debugger_ = pane.webContents.debugger;
+    const attachedHere = !debugger_.isAttached();
+    if (attachedHere) debugger_.attach('1.3');
+    try {
+      await debugger_.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
+      await debugger_.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+      await debugger_.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+    } finally {
+      if (attachedHere && debugger_.isAttached()) debugger_.detach();
+    }
+    return { clicked: selectorOnly ? selector : target };
+  }
+
   async execute(agentId: string, browserId: string, command: string, arguments_: Record<string, unknown>): Promise<unknown> {
     const pane = this.requirePane(agentId, browserId);
     const webContents = pane.webContents;
+    if (command === 'click') {
+      const next = (this.clicks.get(webContents) ?? Promise.resolve()).catch(() => {}).then(() => this.click(pane, arguments_));
+      this.clicks.set(webContents, next);
+      return next;
+    }
     if (command === 'viewport') {
       const viewport = parseBrowserViewport(arguments_);
       if (!pane.navigationEnabled || !pane.visible) throw new Error('Open this agent’s Browser pane before changing its viewport.');
@@ -336,7 +440,6 @@ export class BrowserPane {
       if (!root) throw new Error('No element matches selector: ' + input.selector);
       const describe = (element) => { const rect = element.getBoundingClientRect(); return { tag: element.tagName.toLowerCase(), text: (element.innerText || element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 4000), html: element.outerHTML.slice(0, 12000), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } }; };
       if (input.command === 'dom') return { url: location.href, title: document.title, selector: input.selector || 'body', element: describe(root) };
-      if (input.command === 'click') { root.focus?.(); root.click?.(); return { clicked: input.selector }; }
       if (input.command === 'type') { if (!('value' in root)) throw new Error('Selected element is not editable.'); root.focus(); if (input.clear) root.value = ''; root.value += input.text; root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: input.text })); root.dispatchEvent(new Event('change', { bubbles: true })); return { typed: input.text.length, selector: input.selector }; }
       if (input.command === 'scroll') { (input.selector ? root : window).scrollBy({ top: input.deltaY, behavior: 'instant' }); return { scrolled: input.deltaY, selector: input.selector || 'window' }; }
       throw new Error('Unsupported browser command.');
@@ -501,8 +604,8 @@ export class BrowserPane {
     return {
       url: pane.presentedUrl ?? webContents.getURL(),
       title: pane.presentedTitle ?? webContents.getTitle(),
-      canGoBack: webContents.canGoBack(),
-      canGoForward: webContents.canGoForward(),
+      canGoBack: webContents.navigationHistory.canGoBack(),
+      canGoForward: webContents.navigationHistory.canGoForward(),
     };
   }
 

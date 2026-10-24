@@ -367,6 +367,7 @@ describe('SettingsView', () => {
       'General',
       'Analytics',
       'Appearance',
+      'Browser',
       'Voice',
       'Personalization',
       'Screenshots',

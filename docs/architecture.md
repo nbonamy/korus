@@ -727,8 +727,8 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 ## In-app Browser
 
 A desktop preview surface in the tabbed right workspace. The renderer hosts a
-sandboxed `<webview>` with a per-agent persistent partition; Electron main
-validates the guest and owns navigation and annotation policy. The renderer never
+sandboxed `<webview>` with one persistent browser partition shared by all agents.
+Electron main validates the guest and owns navigation and annotation policy. The renderer never
 receives the guest's `WebContents`, cookies or page-scripting access, and
 annotations arrive as structured metadata the renderer batches into one prompt.
 Open browser tabs retain their browser identity and latest URL in the per-client
@@ -741,6 +741,34 @@ The settings store retains their client identity separately from shared defaults
 The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
+
+Browser extensions share that persistent partition. Visualization guests use
+separate, temporary per-agent partitions. Clearing browsing data resets website
+storage, cookies, cache and open-page history across agents while preserving
+extension storage and grants.
+Electron owns extension loading, vendor windows, tab registration and the
+app-authored Chrome API adapter; extension documents remain sandboxed and ordinary
+websites receive no adapter transport. The adapter derives identity from the
+calling extension context and enforces optional grants for its own APIs.
+Browser subframe redirects to loaded extensions retain Chromium's resource access
+checks; the host's top-level URL policy must not cancel dynamic extension resource
+redirects. Visualization guests retain their navigation restrictions. Optional
+Chromium permissions that Electron cannot grant and revoke are rejected. Native
+desktop connections require a current `nativeMessaging` grant and a host listed
+for that extension. `daemon` validates the installed host registration, executable
+and allowed extension origin; Electron owns the framed native process connection.
+Revocation, context teardown and extension unload close those connections. Native
+payloads and host stderr are never logged.
+
+`daemon` owns the supported extension allowlist, official CRX3 downloads,
+signature and identity verification, package files and per-client grants.
+Verified packages are reused locally while account data stays in the shared
+Electron partition. The explicit Install action authorizes initial permissions;
+updates and runtime requests require consent for additional permissions. Failed
+downloads or verification preserve the installed package. Compatibility is not
+gated by a tested-version catalog. The passive Bitwarden storage relay belongs to
+the extension lifecycle and closes on unload. Explicit removal uses an app-owned
+same-identity cleanup context before deleting the extension's scoped storage.
 
 ## Interactive planning
 

@@ -173,7 +173,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
 };
 
 const desktopOnlyOperations = new Set([
-  'browserClearAnnotations', 'browserClose', 'browserGoBack', 'browserGoForward', 'browserNavigate',
+  'browserClearBrowsingData', 'browserExtensions', 'browserClearAnnotations', 'browserClose', 'browserGoBack', 'browserGoForward', 'browserNavigate',
   'browserOpen', 'browserReload', 'browserResolveAnnotation', 'browserCopyScreenshot', 'browserGetZoom', 'browserSetAnnotationMode', 'browserSetBounds', 'browserSetZoom',
   'browserSetVisible', 'browserViewportApplied', 'chooseAgentFolder', 'chooseSourceFolder',
   'chooseDocumentSavePath', 'chooseSourceWorktreeDestination', 'getDaemonStatus', 'getOpenInApplications', 'getSystemPermissions',

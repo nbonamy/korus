@@ -1,6 +1,7 @@
 import type { AppCommand, AppApi, MainToRendererEvent } from './contracts';
 
 export const ipcChannels = {
+  browserExtensions: 'browser:extensions',
   getUsage: 'usage:get',
   clearUsage: 'usage:clear',
   mobileSimulator: 'mobile:execute',
@@ -197,6 +198,7 @@ export const ipcChannels = {
   browserGoBack: 'browser:go-back',
   browserGoForward: 'browser:go-forward',
   browserReload: 'browser:reload',
+  browserClearBrowsingData: 'browser:data:clear',
   browserGetZoom: 'browser:zoom:get',
   browserSetZoom: 'browser:zoom:set',
   browserCopyScreenshot: 'browser:screenshot:copy',

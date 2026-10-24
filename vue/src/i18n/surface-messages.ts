@@ -280,6 +280,10 @@ export const surfaceMessages = {
     "openExternalFailed": "Could not open the external browser.",
     "annotating": "Annotating",
     "browserMenu": "Browser menu",
+    "clearBrowsingData": "Clear browsing data…",
+    "clearDataTitle": "Clear browsing data?",
+    "clearDataMessage": "Clear all cookies, site data, browsing history and cache shared by all agents? This signs you out of websites and resets open browser pages. Extensions and their saved data will be kept.",
+    "clearDataConfirm": "Clear data",
     "bookmarks": "Bookmarks",
     "bookmarkPage": "Bookmark this page",
     "editBookmark": "Edit bookmark",
@@ -1066,6 +1070,13 @@ export const surfaceMessages = {
     "groupApp": "App",
     "groupAgents": "Agents",
     "groupWorkspace": "Workspace"
+  },
+  "browserExtensions": {
+    "introTitle": "Make the browser your own",
+    "actions": "{name} actions",
+    "browser": "Browser", "extensions": "Extensions",
+    "profileHint": "All agents share the same browser accounts, extensions and preferences. Official extension updates may temporarily break compatibility.",
+    "disabled": "Disabled", "notInstalled": "Not installed", "install": "Install", "update": "Update", "enable": "Enable", "disable": "Disable", "remove": "Remove", "reinstall": "Reinstall", "installing": "Installing…"
   },
   "settingsVoicePanel": {
     "whenToSpeak": "When to speak",

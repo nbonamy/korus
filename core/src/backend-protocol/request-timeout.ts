@@ -15,6 +15,7 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.browserExtensionPackages]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.agentClosePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,

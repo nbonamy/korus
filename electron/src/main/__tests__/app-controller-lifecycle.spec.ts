@@ -519,8 +519,11 @@ describe('controller desktop lifecycle', () => {
     app.emit('activate');
     expect(native.createWindow).toHaveBeenCalledOnce();
     window.isDestroyed.mockReturnValue(true);
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    // A hidden extension document can outlive the main window.
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{} as never]);
     native.createWindow.mockReturnValue(windowFixture());
+    app.emit('open-url', { preventDefault: vi.fn() }, `${product.protocolScheme}://new?prompt=with-hidden-extension`);
+    expect(native.createWindow).toHaveBeenCalledTimes(2);
     app.emit('activate');
     expect(native.createWindow).toHaveBeenCalledTimes(2);
     app.emit('before-quit', { preventDefault: vi.fn() });

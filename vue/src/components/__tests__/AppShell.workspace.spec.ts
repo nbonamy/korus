@@ -11,6 +11,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppCommand, AppApi } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemComposerPrompt } from '@workspace/core/work-item-prompts';
 import { setElectronTestClient } from '../../test/client';
+import { useAppState } from '../../app-state';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { useConfetti } from '../../shared/confetti/use-confetti';
 
@@ -110,7 +111,19 @@ describe('AppShell workspace and plans', () => {
     await flushPromises();
     expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'primary', 'https://example.com/latest?q=one#section', 52);
     expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'docs', 'https://example.org/next', 53);
-    restarted.unmount();
+    // A clear-data operation sends real blank-page navigation to every guest.
+    // Those cleared URLs must survive workspace restoration too.
+    restarted.findAll('webview').forEach(guest => guest.element.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'about:blank', isMainFrame: true })));
+    await settlePersistence();
+    expect(stored.tabs.map(tab => tab.browser?.url)).toEqual(['about:blank', 'about:blank']);
+    restarted.unmount(); browserOpen.mockClear();
+    const cleared = mountShell(); await flushPromises();
+    cleared.findAll('webview').forEach((guest, index) => readyBrowserGuest(guest.element, 62 + index));
+    await flushPromises();
+    expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'primary', 'about:blank', 62);
+    expect(browserOpen).toHaveBeenCalledWith('agent-dina', 'docs', 'about:blank', 63);
+    expect(cleared.findAll<HTMLInputElement>('[aria-label="Browser address"]').map(input => input.element.value)).toEqual(['', '']);
+    cleared.unmount();
   });
 
   it('restores document tabs, selected tab and collapsed layout, and retains an inactive-agent display', async () => {
@@ -628,6 +641,36 @@ describe('AppShell workspace and plans', () => {
     expect(workspaces.find((panel) => panel.props('agent').id === 'agent-jesse')?.props('tabs')).toStrictEqual(['browser']);
     expect(browserClose).not.toHaveBeenCalled();
     expect(browserSetVisible).toHaveBeenCalledWith('agent-dina', 'primary', true);
+  });
+
+  it('opens Browser settings from the empty browser extensions shortcut', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    let command: (command: AppCommand) => void = () => undefined;
+    setElectronTestClient({
+      onAppCommand: vi.fn(listener => { command = listener; return () => undefined; }),
+      browserExtensions: vi.fn().mockResolvedValue({ extensions: [{ id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', enabled: false, permissions: [] }] }),
+      browserOpen: vi.fn().mockResolvedValue({ url: '', title: '', canGoBack: false, canGoForward: false }),
+      browserSetBounds: vi.fn().mockResolvedValue(undefined),
+      browserSetVisible: vi.fn().mockResolvedValue(undefined),
+      browserGetZoom: vi.fn().mockResolvedValue(100),
+      browserClose: vi.fn().mockResolvedValue(undefined),
+    });
+    const app = useAppState(), previous = app.snapshot.value;
+    app.snapshot.value = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot: app.snapshot.value });
+    try {
+      command({ type: 'open-browser' });
+      await flushPromises();
+      readyBrowserGuest(wrapper.get('webview').element, 42);
+      await flushPromises();
+      await wrapper.get('.browser-panel [aria-label="Extensions"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('#settings-browser-title').text()).toBe('Browser');
+      expect(wrapper.find('[aria-label="Install Bitwarden"]').exists()).toBe(true);
+    } finally {
+      wrapper.unmount();
+      app.snapshot.value = previous;
+    }
   });
 
   it('opens a background agent browser without changing the selected agent', async () => {

@@ -32,6 +32,7 @@
         "src/main.ts",
         "src/preload.ts",
         "src/preload/index.ts",
+        "src/preload/browser-extensions.ts",
         "src/renderer/main.ts"
       ]
     },

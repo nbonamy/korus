@@ -82,6 +82,18 @@ const callbacks = (): AppMenuCallbacks => ({
 });
 
 describe('app menu', () => {
+  it('closes a focused extension window without closing the agent or team', () => {
+    const main = { webContents: {} }, auxiliary = { close: vi.fn() };
+    installAppMenu(main as never, { debugMode: false });
+    const template = electronMenuMocks.buildFromTemplate.mock.calls.at(-1)![0];
+    for (const label of ['Close Agent', 'Close Team']) {
+      menuItem(template, 'File', label)!.click!({} as never, auxiliary as never, {} as never);
+    }
+    expect(auxiliary.close).toHaveBeenCalledTimes(2);
+    expect(sendAppCommand).not.toHaveBeenCalled();
+    menuItem(template, 'File', 'Close Agent')!.click!({} as never, main as never, {} as never);
+    expect(sendAppCommand).toHaveBeenCalledWith(main.webContents, { type: 'close-active-agent' });
+  });
   it('shows Execution Plan as a checkbox reflecting the selected agent plan', () => {
     const cb = callbacks();
     cb.hasDebugExecutionPlan = () => true;

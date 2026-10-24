@@ -57,6 +57,7 @@ describe('in-app browser MCP tools', () => {
     ['browser-get-dom', {}, 'dom', {}],
     ['browser-get-dom', { selector: '#main' }, 'dom', { selector: '#main' }],
     ['browser-click', { selector: '#submit' }, 'click', { selector: '#submit' }],
+    ['browser-click', { x: 120, y: 240 }, 'click', { x: 120, y: 240 }],
     ['browser-type', { selector: '#name', text: 'Dina' }, 'type', { selector: '#name', text: 'Dina' }],
     ['browser-type', { selector: '#name', text: 'Dina', clear: false }, 'type', { selector: '#name', text: 'Dina', clear: false }],
     ['browser-scroll', {}, 'scroll', {}],
@@ -74,6 +75,11 @@ describe('in-app browser MCP tools', () => {
       command,
       arguments: arguments_,
     });
+  });
+
+  it.each([{}, { x: 10 }, { selector: '#field', x: 10, y: 20 }, { x: -1, y: 0 }, { x: Infinity, y: 2 }])('rejects an ambiguous or invalid click target before desktop delivery: %j', async input => {
+    expect(await handlers.get('browser-click')?.(input)).toMatchObject({ isError: true });
+    expect(browser.execute).not.toHaveBeenCalled();
   });
 
   it('returns screenshots as image content without embedding image data in structured content', async () => {
