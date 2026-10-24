@@ -1,5 +1,6 @@
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { AutoResumeService } from './agents/auto-resume-service';
+import { BrowserExtensionPackages } from './browser-extension-packages';
 import { randomUUID } from 'node:crypto';
 import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
@@ -104,6 +105,7 @@ import { VisualizeService, directVisualizationPrompt, generateVisualizationSugge
 import { visualizeDebugScenarios, type VisualizeDebugScenario } from '@workspace/core/visualize';
 
 export type AppBackendServerOptions = {
+  browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
@@ -166,6 +168,7 @@ type BackendHandle =
   };
 
 export class AppBackendServer {
+  private readonly browserExtensionPackages: BrowserExtensionPackages;
   private readonly tasks?: DurableTaskService;
 
   async sendTaskPrompt(agent: Agent, prompt: string): Promise<BackendSendResult> {
@@ -229,6 +232,7 @@ export class AppBackendServer {
   private readonly providerConnections?: ProviderConnections;
 
   constructor(private readonly options: AppBackendServerOptions) {
+    this.browserExtensionPackages = options.browserExtensionPackages ?? new BrowserExtensionPackages(path.join(backendHomeDir(), 'browser-extensions'));
     this.tasks = options.tasks;
     this.providerSetup = options.providerSetup;
     this.skills = new SkillManager(() => this.providerSetup?.skillLocations() ?? []);
@@ -712,6 +716,11 @@ export class AppBackendServer {
     if (!clientId.trim() || clientId.length > 200) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Invalid client identity.');
     if (params) delete params._clientId;
     const request = { ...message, params: params && Object.keys(params).length ? params : undefined };
+    if (message.method === backendMethods.browserExtensionPackages) {
+      try {
+        return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireString(params?.agentId, 'agentId'), requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
+      } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
+    }
     if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');

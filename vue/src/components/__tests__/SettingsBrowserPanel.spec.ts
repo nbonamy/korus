@@ -1,0 +1,47 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it, vi } from 'vitest';
+import { setElectronTestClient } from '../../test/client';
+import SettingsBrowserPanel from '../SettingsBrowserPanel.vue';
+import bitwardenIcon from '../../assets/browser-extensions/bitwarden.svg';
+import onePasswordIcon from '../../assets/browser-extensions/1password.png';
+
+describe('Browser extension settings', () => {
+  it('installs and manages the selected profile without hiding a failed update', async () => {
+    const id = 'nngceckbapebfimnlniiiahkandclblb';
+    const manager = { id, name: 'Bitwarden', enabled: false, permissions: [] };
+    const browserExtensions = vi.fn().mockResolvedValue({ extensions: [manager, { ...manager, id: 'aeblfdkhhhdcdjpifhhbdiojplfjncoa', name: '1Password' }] });
+    setElectronTestClient({ browserExtensions });
+    const wrapper = mount(SettingsBrowserPanel, { props: { agentId: 'agent-one' } });
+    await flushPromises();
+    expect(wrapper.get('.settings-panel__banner').text()).toContain('Make the browser your own');
+    expect(wrapper.get('article').find('img').attributes('alt')).toBe('');
+    expect(wrapper.get('article').find('img').attributes('src')).toBe(bitwardenIcon);
+    expect(wrapper.findAll('article')[1].get('img').attributes('src')).toBe(new URL(onePasswordIcon, location.href).href);
+    let finishInstall!: (result: { extensions: typeof manager[] }) => void;
+    browserExtensions.mockImplementationOnce(() => new Promise((resolve) => { finishInstall = resolve; }));
+    await wrapper.get('[aria-label="Install Bitwarden"]').trigger('click');
+    const installButton = wrapper.get('[aria-label="Install Bitwarden"]');
+    expect(installButton.attributes('aria-busy')).toBe('true');
+    expect(installButton.text()).toContain('Installing');
+    expect(installButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[aria-label="Install 1Password"]').attributes('aria-busy')).toBeUndefined();
+    expect(wrapper.text()).not.toContain('Working…');
+    finishInstall({ extensions: [manager] });
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Install Bitwarden"]').attributes('aria-busy')).toBeUndefined();
+    expect(browserExtensions).toHaveBeenLastCalledWith('agent-one', 'install', id);
+    browserExtensions.mockResolvedValue({ extensions: [{ ...manager, enabled: true, version: '2026.10.0' }] });
+    await wrapper.setProps({ agentId: 'agent-two' });
+    await flushPromises();
+    expect(wrapper.text()).toContain('2026.10.0');
+    browserExtensions.mockRejectedValueOnce(new Error('Download failed; installed version kept.'));
+    await wrapper.get('[aria-label="Update Bitwarden"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('Download failed; installed version kept.');
+    expect(wrapper.get('[aria-label="Update Bitwarden"]').attributes('aria-busy')).toBeUndefined();
+    expect(wrapper.text()).toContain('2026.10.0');
+    expect(wrapper.find('[aria-label="Disable Bitwarden"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Reinstall Bitwarden"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+});

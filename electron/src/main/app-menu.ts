@@ -1,5 +1,5 @@
 import { product } from '@workspace/core/product';
-import { app, clipboard, Menu, MenuItem, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
+import { app, clipboard, Menu, MenuItem, type BaseWindow, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import type { AppCommand, DesktopUpdateStatus } from '@workspace/core/contracts';
 import type { VisualizeDebugScenario } from '@workspace/core/visualize';
 import type { MissionReviewDebugState, MissionStage } from '@workspace/core/missions';
@@ -40,6 +40,7 @@ export type AppMenuCallbacks = {
   reload(): void;
   sendAppCommand(command: AppCommand): void;
   toggleDeveloperTools(): void;
+  closeAuxiliaryWindow?(focusedWindow: BaseWindow | undefined): boolean;
 };
 
 type AppMenuInstallOptions = AppMenuOptions & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'hasDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'getDebugMissionReviewState' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag' | 'getDebugMissingEngines' | 'setDebugMissingEngines' | 'getDebugProviderUpgrades' | 'setDebugProviderUpgrades' | 'getDebugReviewUncommitted' | 'setDebugReviewUncommitted'>>;
@@ -53,6 +54,11 @@ export function installAppMenu(window: BrowserWindow, options: AppMenuInstallOpt
     reload: () => window.webContents.reload(),
     sendAppCommand: (command) => sendAppCommand(window.webContents, command),
     toggleDeveloperTools: () => window.webContents.toggleDevTools(),
+    closeAuxiliaryWindow: focusedWindow => {
+      if (!focusedWindow || focusedWindow === window) return false;
+      focusedWindow.close();
+      return true;
+    },
     sendDebugAgentMessage: options.sendDebugAgentMessage,
     toggleDebugExecutionPlan: options.toggleDebugExecutionPlan,
     hasDebugExecutionPlan: options.hasDebugExecutionPlan,
@@ -459,12 +465,16 @@ function buildFileMenu(callbacks: AppMenuCallbacks): MenuItemConstructorOptions 
       {
         label: mainT('menu.closeAgent'),
         accelerator: shortcutAccelerator('closeAgent'),
-        click: () => callbacks.sendAppCommand({ type: 'close-active-agent' }),
+        click: (_item, focusedWindow) => {
+          if (!callbacks.closeAuxiliaryWindow?.(focusedWindow)) callbacks.sendAppCommand({ type: 'close-active-agent' });
+        },
       },
       {
         label: mainT('menu.closeTeam'),
         accelerator: shortcutAccelerator('closeTeam'),
-        click: () => callbacks.sendAppCommand({ type: 'close-active-team' }),
+        click: (_item, focusedWindow) => {
+          if (!callbacks.closeAuxiliaryWindow?.(focusedWindow)) callbacks.sendAppCommand({ type: 'close-active-team' });
+        },
       },
       { type: 'separator' },
       {

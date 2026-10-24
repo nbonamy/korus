@@ -30,6 +30,7 @@ import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } f
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { DesktopAutoUpdateService } from './auto-update';
 import { BrowserPane, browserPaneKey } from './browser-pane';
+import { BrowserExtensions } from './browser-extensions';
 import { launchChatGptApp } from './chatgpt-app';
 import { appCommandFromDeepLink, appDeepLinkScheme, deepLinksFromArgv } from './deep-links';
 import { ManualUpdateCheckController } from './manual-update-check';
@@ -58,6 +59,13 @@ type PendingBrowserOpen = {
 };
 
 export class AppController {
+  private extensionService: BrowserExtensions | null = null;
+  private extensions(): BrowserExtensions {
+    return this.extensionService ??= new BrowserExtensions({
+      parent: () => this.mainWindow,
+      request: (agentId, input) => this.requireBackendClient().request(backendMethods.browserExtensionPackages, { agentId, input }),
+    });
+  }
   private mainWindow: BrowserWindow | null = null;
   /** Main retains product metadata only; full transcripts are transient IPC values. */
   private snapshot: AppSnapshot | null = null;
@@ -95,6 +103,8 @@ export class AppController {
   })));
 
   private readonly browserPane = new BrowserPane({
+    onGuestReady: (agentId, browserId, contents, window) => this.extensions().attachGuest(agentId, browserId, contents, window),
+    onGuestSelected: (agentId, browserId) => { void this.extensions().selectGuest(agentId, browserId).catch(() => {}); },
     onAnnotation: (annotation) => this.emitBrowserAnnotation(annotation),
     onViewportRequest: (request) => {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) throw new Error('Browser window is not available.');
@@ -199,6 +209,10 @@ export class AppController {
     );
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
     ipc.handle(ipcChannels.getSnapshot, () => this.getSnapshot());
+    ipc.handle(ipcChannels.browserExtensions, (_event, agentId, action, id, browserId) => {
+      if (!this.snapshot?.agents.some(agent => agent.id === agentId)) throw new Error('Agent not found.');
+      return this.extensions().manage(agentId, action, id, browserId);
+    });
     ipc.handle(ipcChannels.getSnapshotState, () => this.getSnapshotState());
 
     ipc.handle(ipcChannels.listSshHosts, () => {
@@ -777,6 +791,7 @@ export class AppController {
     this.reconnectTimer = null;
     this.rejectAllPendingBrowserOpens(new Error('Application is shutting down.'));
     await this.browserPane.closeAll();
+    await this.extensionService?.dispose();
     this.powerSaveBlocker.stop();
     if (this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.removeListener('on-battery', this.handlePowerSourceChanged);
@@ -2102,7 +2117,7 @@ export class AppController {
   private sendOrQueueAppCommand(command: AppCommand): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
       this.pendingDeepLinkCommands.push(command);
-      if (app.isReady() && BrowserWindow.getAllWindows().length === 0) this.createWindow();
+      if (app.isReady()) this.createWindow();
       return;
     }
     sendAppCommand(this.mainWindow.webContents, command);
@@ -2138,7 +2153,7 @@ export function startMainApp(): void {
   const openDeepLinks = (values: readonly string[]): void => {
     let accepted = false;
     for (const value of values) accepted = controller.openDeepLink(value) || accepted;
-    if (accepted && app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+    if (accepted && app.isReady()) {
       controller.createWindow();
     }
   };
@@ -2190,9 +2205,7 @@ export function startMainApp(): void {
   });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      controller.createWindow();
-    }
+    controller.createWindow();
   });
 }
 

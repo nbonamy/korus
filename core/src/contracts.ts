@@ -850,6 +850,7 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
+  browserExtensions(agentId: string, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
   clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;

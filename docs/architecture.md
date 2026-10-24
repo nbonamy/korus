@@ -739,6 +739,24 @@ The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
 
+Browser extensions share the owning agent's persistent browser partition.
+Electron owns extension loading, vendor windows, tab registration and the
+app-authored Chrome API adapter; extension documents remain sandboxed and ordinary
+websites receive no adapter transport. The adapter derives identity from the
+calling extension context and enforces optional grants for its own APIs. Optional
+Chromium permissions that Electron cannot grant and revoke are rejected. Native
+desktop hosts are outside this integration.
+
+`daemon` owns the supported extension allowlist, official CRX3 downloads,
+signature and identity verification, package files and per-client/profile grants.
+Verified packages are reused locally while account data stays in the owning
+Electron partition. The explicit Install action authorizes initial permissions;
+updates and runtime requests require consent for additional permissions. Failed
+downloads or verification preserve the installed package. Compatibility is not
+gated by a tested-version catalog. The passive Bitwarden storage relay belongs to
+the extension lifecycle and closes on unload. Explicit removal uses an app-owned
+same-identity cleanup context before deleting the extension's scoped storage.
+
 ## Interactive planning
 
 Provider-native Markdown proposals own plan review identity and approval. Korus adds

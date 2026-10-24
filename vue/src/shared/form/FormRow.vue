@@ -2,7 +2,9 @@
   <component
     :is="as"
     class="form-row"
+    :class="{ 'form-row--leading': $slots.leading }"
   >
+    <span v-if="$slots.leading" class="form-row__leading"><slot name="leading" /></span>
     <span class="form-row__copy">
       <strong>{{ title }}</strong>
       <span v-if="description">{{ description }}</span>
@@ -52,6 +54,16 @@ withDefaults(defineProps<{
   flex-direction: column;
 }
 
+.form-row--leading {
+  grid-template-columns: auto minmax(0, 1fr) minmax(220px, auto);
+  padding-inline: var(--space-16);
+}
+
+.form-row__leading {
+  display: flex;
+  align-items: center;
+}
+
 .form-row__copy strong {
   color: var(--color-text);
   font-size: var(--font-size-14);
@@ -82,6 +94,14 @@ withDefaults(defineProps<{
   .form-row {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
+  }
+
+  .form-row--leading {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .form-row--leading .form-row__control {
+    grid-column: 2;
   }
 
   .form-row__control {

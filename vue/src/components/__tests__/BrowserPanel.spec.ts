@@ -1,4 +1,5 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import bitwardenIcon from '../../assets/browser-extensions/bitwarden.svg';
 import { serialize } from 'node:v8';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElMessage } from 'element-plus';
@@ -30,7 +31,7 @@ afterEach(() => {
 
 function mountPanel(
   props: { agentId?: string; browserId?: string; initialUrl?: string; openRequestId?: number; visualization?: { path: string; title: string } } = {},
-  options: { deferDomReady?: boolean; attachTo?: Element } = {},
+  options: { deferDomReady?: boolean; attachTo?: Element; extensions?: import('@workspace/core/browser-extensions').BrowserExtensionStatus[] } = {},
 ) {
   let listener: ((event: MainToRendererEvent) => void) | null = null;
   let commandListener: ((command: AppCommand) => void) | null = null;
@@ -41,6 +42,7 @@ function mountPanel(
     canGoForward: true,
   });
   const api = {
+    browserExtensions: vi.fn().mockResolvedValue({ extensions: options.extensions ?? [] }),
     updateSettings: vi.fn().mockResolvedValue(createInitialSnapshot()),
     browserOpen,
     browserOpenVisualization: vi.fn().mockResolvedValue({
@@ -85,6 +87,16 @@ function mountPanel(
 }
 
 describe('BrowserPanel', () => {
+  it('opens an enabled extension in the owning browser and hides it for visualizations', async () => {
+    const { wrapper, api } = mountPanel({ agentId: 'agent-2', browserId: 'second-tab' }, { extensions: [{ id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', enabled: true, version: '1', permissions: [] }] });
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Open Bitwarden"] img').attributes('src')).toBe(bitwardenIcon);
+    await wrapper.get('[aria-label="Open Bitwarden"]').trigger('click'); await flushPromises();
+    expect(api.browserExtensions).toHaveBeenLastCalledWith('agent-2', 'open', 'nngceckbapebfimnlniiiahkandclblb', 'second-tab');
+    await wrapper.setProps({ visualization: { path: '/chart.html', title: 'Chart' } });
+    expect(wrapper.find('[aria-label="Open Bitwarden"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
   it('saves only bookmark preferences and opens a bookmark in the owning agent and browser pane', async () => {
     const appState = useAppState();
     appState.snapshot.value = createInitialSnapshot();

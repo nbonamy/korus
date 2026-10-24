@@ -216,6 +216,7 @@ export function createClientApiMock(
     continueInterruptedTurn: unscripted('continueInterruptedTurn'),
     mobileSimulator: unscripted('mobileSimulator'),
     mobileSimulatorView: unscripted('mobileSimulatorView'),
+    browserExtensions: vi.fn().mockResolvedValue({ extensions: [] }),
     browserOpen: unscripted('browserOpen'),
     browserOpenVisualization: unscripted('browserOpenVisualization'),
     browserNavigate: unscripted('browserNavigate'),

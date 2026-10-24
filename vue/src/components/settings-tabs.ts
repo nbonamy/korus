@@ -12,11 +12,13 @@ import {
   SettingsIcon,
   TerminalIcon,
   UserIcon,
+  WorldIcon,
 } from "../shared/icons/app-icons";
 import type { AgentBackend } from "@workspace/core/contracts";
 
 export type SettingsTab =
   | "usage"
+  | "browser"
   | "workflows"
   | "antigravity"
   | "appearance"
@@ -65,6 +67,7 @@ const settingsDestinations: readonly SettingsDestination[] = [
     icon: PaletteIcon,
     aliases: "theme color light dark font typography text size",
   },
+  { id: "browser", labelKey: "surface.browserExtensions.browser", group: "app", icon: WorldIcon, aliases: "extensions password managers bitwarden 1password browser install" },
   {
     id: "voice",
     labelKey: "surface.settingsSidebar.voice",
@@ -151,11 +154,13 @@ const settingsDestinations: readonly SettingsDestination[] = [
   },
 ];
 export function availableSettingsDestinations(context: {
+  embeddedBrowser?: boolean;
   appshots: boolean;
   availableBackends: readonly AgentBackend[];
 }): SettingsDestination[] {
   return settingsDestinations.filter(
     (destination) =>
+      (destination.id !== "browser" || context.embeddedBrowser === true) &&
       (destination.id !== "appshots" || context.appshots) &&
       (destination.id !== "antigravity" ||
         context.availableBackends.includes("antigravity")),

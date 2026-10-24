@@ -2518,7 +2518,7 @@ const paletteActions = computed(() => {
   const remote = team?.remoteConnectionId;
   return commandPaletteActions({
     shortcuts: shortcutContext.value, agent, team,
-    settings: { appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
+    settings: { embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
     connected: props.connectionState.status === 'connected',
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
     engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),

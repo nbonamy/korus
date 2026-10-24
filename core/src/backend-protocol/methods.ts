@@ -1,4 +1,5 @@
 export const backendMethods = {
+  browserExtensionPackages: 'browser/extensions/packages',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',
   clientFocusGet: 'client/focus/get',

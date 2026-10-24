@@ -10,6 +10,8 @@ import { parseBrowserViewport, type BrowserViewportRequest } from '@workspace/co
 export { safePartitionName } from '@workspace/core/browser-guest';
 
 type BrowserPaneOptions = {
+  onGuestReady?(agentId: string, browserId: string, contents: WebContents, window: BrowserWindow): Promise<void>;
+  onGuestSelected?(agentId: string, browserId: string): void;
   onAnnotation(annotation: BrowserAnnotation): void;
   onViewportRequest?(request: BrowserViewportRequest): void;
 };
@@ -129,6 +131,7 @@ export class BrowserPane {
       visible: true,
     };
     this.panes.set(key, pane);
+    if (navigationEnabled) await this.options.onGuestReady?.(agentId, browserId, guest, browserWindow);
     guest.setWindowOpenHandler(() => ({ action: 'deny' }));
     const preventDisallowedNavigation = (event: { preventDefault(): void }, target: string): void => {
       if (!pane.navigationEnabled) {
@@ -228,6 +231,7 @@ export class BrowserPane {
   setVisible(agentId: string, browserId: string, visible: boolean): void {
     const pane = this.requirePane(agentId, browserId);
     pane.visible = visible;
+    if (visible && pane.navigationEnabled) this.options.onGuestSelected?.(agentId, browserId);
     if (!visible) this.rejectViewportRequest(agentId, browserId, 'Browser pane was hidden.');
     if (pane.annotationOverlay && !pane.annotationOverlay.isDestroyed()) {
       if (visible) pane.annotationOverlay.show();

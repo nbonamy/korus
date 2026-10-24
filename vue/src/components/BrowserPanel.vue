@@ -25,6 +25,9 @@
       <div v-else-if="visualization" class="browser-panel__visualization-title">{{ visualization.title }}</div>
       <div v-else class="browser-panel__annotation-title"><strong>{{ $t('surface.browserPanel.annotating') }}</strong><span>•</span><span>{{ displayHost }}</span></div>
       <div class="browser-panel__actions">
+        <template v-if="!visualization">
+          <button v-for="extension in extensions.filter(extension => extension.enabled && extension.version)" :key="extension.id" type="button" :aria-label="`Open ${extension.name}`" :title="extension.name" @click="openExtension(extension.id)"><BrowserExtensionIcon :id="extension.id" /></button>
+        </template>
         <button v-if="!visualization" class="browser-panel__annotate" type="button" :aria-label="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :title="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :aria-pressed="annotationMode" @click="toggleAnnotation"><IconX v-if="annotationMode" /><IconCirclePlus v-else /></button>
         <AnnotationSendButton
           v-if="annotations.length"
@@ -106,10 +109,21 @@ import AppMenu from '../shared/menu/AppMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { externalBrowserUrl, openInExternalBrowser } from './browser-external';
 import BrowserBookmarks from './BrowserBookmarks.vue';
+import BrowserExtensionIcon from './BrowserExtensionIcon.vue';
 import { normalizeBrowserBookmarks, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
 import { useAppState } from '../app-state';
+import type { BrowserExtensionStatus } from '@workspace/core/browser-extensions';
 
 const appState = useAppState();
+const extensions = ref<BrowserExtensionStatus[]>([]);
+async function refreshExtensions(): Promise<void> {
+  if (props.visualization || !appApi) return;
+  const agentId = props.agentId;
+  try { const result = await appApi.browserExtensions(agentId, 'list'); if (!disposed && props.agentId === agentId) extensions.value = result.extensions; } catch { /* Browsing stays available if extension loading fails. */ }
+}
+async function openExtension(id: string): Promise<void> {
+  try { await appApi?.browserExtensions(props.agentId, 'open', id, props.browserId); } catch (reason) { error.value = messageFor(reason); }
+}
 const bookmarks = computed(() => normalizeBrowserBookmarks(appState.snapshot.value.general.browserBookmarks));
 async function saveBookmarks(bookmarks: BrowserBookmark[]): Promise<void> {
   await appState.updateSettings({ general: { browserBookmarks: bookmarks } });
@@ -194,6 +208,8 @@ let unsubscribeCommands: (() => void) | null = null;
 watch(() => state.value.url, (url) => emit('url-change', url), { immediate: true });
 
 onMounted(async () => {
+  void refreshExtensions();
+  window.addEventListener('focus', refreshExtensions);
   const initialRequestId = props.openRequestId;
   unsubscribe = appApi?.onEvent(handleEvent) ?? null;
   unsubscribeCommands = appApi?.onAppCommand(command => {
@@ -224,6 +240,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshExtensions);
   disposed = true;
   unsubscribe?.();
   unsubscribeCommands?.();
@@ -240,6 +257,7 @@ watch(() => props.visible, async (visible) => {
   if (!appApi || !browserReady) return;
   await appApi.browserSetVisible(props.agentId, props.browserId, visible);
   if (visible) {
+    void refreshExtensions();
     await nextTick();
     await syncBounds();
   }

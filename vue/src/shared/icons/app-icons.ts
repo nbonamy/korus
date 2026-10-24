@@ -91,5 +91,6 @@ export {
   IconViewportShort as ViewportShortIcon,
   IconVolume as VolumeIcon,
   IconVolumeOff as VolumeOffIcon,
+  IconWorld as WorldIcon,
   IconX as X,
 } from '@tabler/icons-vue';
