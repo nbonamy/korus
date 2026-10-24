@@ -5,6 +5,28 @@ enum ConnectionState: String, Codable, Sendable {
     case unpaired, connecting, connected, disconnected, reconnecting, revoked, error
 }
 
+extension ConnectionState {
+    /// One quiet line for the settings header; recovery stays "Connecting…" until the lost-connection notice would show.
+    func summary(laptop: String?, lost: Bool) -> String? {
+        switch self {
+        case .connected: laptop.map { "Connected to \($0)" } ?? "Connected"
+        case .unpaired, .revoked: nil
+        case .connecting, .reconnecting, .disconnected, .error: lost ? "Connection lost" : "Connecting…"
+        }
+    }
+}
+
+enum LaptopSummary {
+    /// What the Connections row shows: the laptop's name, or how many there are.
+    static func text(names: [String]) -> String {
+        switch names.count {
+        case 0: "None"
+        case 1: names[0]
+        default: "\(names.count) laptops"
+        }
+    }
+}
+
 enum AgentStatus: String, Codable, Sendable {
     case idle, working, awaitingInput, error
 }

@@ -46,16 +46,22 @@ struct ConnectionsView: View {
         }
         .navigationTitle("Connections")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Forget this laptop?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }), titleVisibility: .visible) {
-            if let laptop = forgetting {
-                Button("Forget Laptop", role: .destructive) {
-                    model.command("forget", ["laptopId": laptop.id])
-                    if laptop.id == model.laptopID { closeSettings() }
-                    forgetting = nil
-                }
+        .forgetLaptopConfirmation($forgetting) { laptop in
+            model.command("forget", ["laptopId": laptop.id])
+            if laptop.id == model.laptopID { closeSettings() }
+        }
+    }
+}
+
+extension View {
+    /// Asks before removing a laptop from this phone, and does so once confirmed.
+    func forgetLaptopConfirmation(_ laptop: Binding<EngineState.Laptop?>, forget: @escaping (EngineState.Laptop) -> Void) -> some View {
+        confirmationDialog("Forget this laptop?", isPresented: Binding(get: { laptop.wrappedValue != nil }, set: { if !$0 { laptop.wrappedValue = nil } }), titleVisibility: .visible) {
+            if let target = laptop.wrappedValue {
+                Button("Forget Laptop", role: .destructive) { forget(target); laptop.wrappedValue = nil }
             }
         } message: {
-            Text("\(forgetting?.name ?? "This laptop") will be removed from this phone. You will need a new pairing code to connect again.")
+            Text("\(laptop.wrappedValue?.name ?? "This laptop") will be removed from this phone. You will need a new pairing code to connect again.")
         }
     }
 }

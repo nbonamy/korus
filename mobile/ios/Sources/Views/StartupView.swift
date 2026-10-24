@@ -20,6 +20,23 @@ struct StartupView: View {
     }
 }
 
+/// The product's icon, drawn the way the entry screens and settings show it.
+struct BrandMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        if let mark = entryMark {
+            Image(uiImage: mark)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(.rect(cornerRadius: size / 4, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: size / 4.7, y: size / 9.3)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 /// Keeps branding fixed while entry-screen actions change.
 struct BrandedEntryView<Footer: View>: View {
     let productName: String
@@ -29,15 +46,7 @@ struct BrandedEntryView<Footer: View>: View {
         VStack(spacing: 0) {
             Spacer()
             VStack(spacing: 24) {
-                if let mark = entryMark {
-                    Image(uiImage: mark)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 112, height: 112)
-                        .clipShape(.rect(cornerRadius: 28, style: .continuous))
-                        .shadow(color: .black.opacity(0.12), radius: 24, y: 12)
-                        .accessibilityHidden(true)
-                }
+                BrandMark(size: 112)
                 Text(productName)
                     .font(.system(size: 34, weight: .semibold))
                     .tracking(-0.8)

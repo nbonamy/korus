@@ -12,7 +12,11 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
     var onRegistration: (([String: String]?) -> Void)?
     private let reads = NotificationReadState()
     private var pending: [(ChatNotification, Bool)] = []
-    var status = "Notifications"
+    /// Where the person stands on notifications, as the settings row shows it.
+    enum Standing { case undecided, on, off
+        var label: String { switch self { case .undecided: "Set up"; case .on: "On"; case .off: "Off" } }
+    }
+    private(set) var standing = Standing.undecided
     var error: String?
     private var token: String?
 
@@ -26,13 +30,13 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral:
-            status = "Notification settings"
+            standing = .on
             UIApplication.shared.registerForRemoteNotifications()
             if let token { register(token) }
         case .denied:
-            status = "Notifications are off"
+            standing = .off
             onRegistration?(nil)
-        default: status = "Enable notifications"
+        default: standing = .undecided
         }
     }
     func enable() async {
