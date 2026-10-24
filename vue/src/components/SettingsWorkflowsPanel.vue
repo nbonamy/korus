@@ -5,6 +5,7 @@
     </template>
     <SettingsPlanModeSection :settings="settings" :update-settings="updateSettings" />
     <SettingsDelegationSection :settings="settings" :update-settings="updateSettings" />
+    <SettingsReviewSection :settings="settings" :update-settings="updateSettings" />
   </SettingsPanelFrame>
 </template>
 
@@ -15,6 +16,7 @@ import SettingsPanelFrame from './SettingsPanelFrame.vue';
 import SettingsIntro from './SettingsIntro.vue';
 import SettingsPlanModeSection from './SettingsPlanModeSection.vue';
 import SettingsDelegationSection from './SettingsDelegationSection.vue';
+import SettingsReviewSection from './SettingsReviewSection.vue';
 
 defineProps<{ settings: AppGeneralSettings; updateSettings?: (input: UpdateSettingsInput) => Promise<void> }>();
 const { t } = useI18n();

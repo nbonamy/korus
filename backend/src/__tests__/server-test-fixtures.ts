@@ -35,6 +35,7 @@ export function createTestSnapshot(): AppSnapshot {
     general: {
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       preventSleepWhenAgentsRun: true,
       preventSleepWhenRemoteAccessEnabled: true,
       celebrationsEnabled: true,

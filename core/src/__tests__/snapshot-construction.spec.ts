@@ -172,6 +172,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       git: { pull: 'git-config', update: 'merge' },
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       preventSleepWhenAgentsRun: true,
       preventSleepWhenRemoteAccessEnabled: true,
       celebrationsEnabled: true,

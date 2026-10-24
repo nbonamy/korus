@@ -635,9 +635,12 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
-- User-supplied review instructions belong to the review session, survive retries
+- Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.
+  Saved workflow review instructions are separate: the review service appends the
+  current preference in a hidden `<context>` block to every inspection, discussion,
+  remediation and commit prompt, including automatic reviews and fresh rounds.
 - Completion can commit first: with the review's commit option ticked, the review
   agent is asked to commit the reviewed work locally before Finish or Review again
   runs. Korus only verifies that HEAD advanced; it never pushes. The option is

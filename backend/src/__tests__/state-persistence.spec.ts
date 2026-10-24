@@ -44,10 +44,10 @@ describe('state persistence', () => {
     const restored = await new AppStateStore(home).load();
     expect(restored.general.useInteractivePlans).toBe(useInteractivePlans);
   });
-  it.each([false, true])('retains delegation preferences and worker context after reload (execution bound: %s)', async bound => {
+  it.each([false, true])('retains workflow preferences and worker context after reload (execution bound: %s)', async bound => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
-    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.', codeReviewInstructions: 'Check authorization.\nKeep findings actionable.' } });
     snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
     snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { backend: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
     snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
@@ -56,6 +56,7 @@ describe('state persistence', () => {
     snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
     await new AppStateStore(home).save(snapshot);
     const restored = await new AppStateStore(home).load();
+    expect(restored.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
     expect(restored.general.worktreeDelegationStartingContext).toBe('handoff');
     expect(restored.general.worktreeDelegationInstructions).toBe('Keep commits local.\nRun focused tests.');
     expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
@@ -1389,7 +1390,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, autoResumeAfterLimit: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, codeReviewInstructions: '', autoResumeAfterLimit: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {
