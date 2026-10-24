@@ -145,7 +145,20 @@ export class BrowserPane {
       }
     };
     guest.on('will-navigate', preventDisallowedNavigation);
-    guest.on('will-redirect', preventDisallowedNavigation);
+    guest.on('will-redirect', (event, target, _inPlace, isMainFrame) => {
+      // Chromium redirects dynamic web-accessible resource URLs to their loaded
+      // extension origin. Keep its subframe access checks; the browser's URL
+      // policy still governs top-level navigation and every other redirect.
+      if (!isMainFrame && pane.navigationEnabled) {
+        try {
+          const url = new URL(target);
+          if (url.protocol === 'chrome-extension:' && guest.session.extensions.getExtension(url.hostname)) return;
+        } catch {
+          // Invalid destinations fall through to the normal navigation policy.
+        }
+      }
+      preventDisallowedNavigation(event, target);
+    });
     guest.on('console-message', (_event, level, message) => {
       pane.consoleMessages.push({ level: String(level), message, timestamp: new Date().toISOString() });
       if (pane.consoleMessages.length > 100) pane.consoleMessages.shift();

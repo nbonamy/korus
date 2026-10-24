@@ -74,9 +74,9 @@ const electronMocks = vi.hoisted(() => {
 
     constructor(id: number) { this.id = id; }
 
-    emitNavigation(event: 'will-navigate' | 'will-redirect', url: string) {
+    emitNavigation(event: 'will-navigate' | 'will-redirect', url: string, isMainFrame = true) {
       const navigationEvent = { preventDefault: vi.fn() };
-      this.listeners.get(event)?.(navigationEvent, url);
+      this.listeners.get(event)?.(navigationEvent, url, false, isMainFrame);
       return navigationEvent;
     }
   }
@@ -116,6 +116,37 @@ beforeEach(() => {
 });
 
 describe('browser pane helpers', () => {
+  it('allows loaded extension resource redirects in browser subframes while retaining navigation boundaries', async () => {
+    // Dynamic extension URLs redirect to the real extension origin. Blocking
+    // that subframe redirect prevents inline autofill; allowing it at the top
+    // level, for an unloaded extension, or in a visualization weakens policy.
+    const owner = { webContents: {} };
+    const guest = electronMocks.createGuest(owner, 61);
+    const id = 'nngceckbapebfimnlniiiahkandclblb';
+    Object.assign(guest.session!, {
+      extensions: { getExtension: (value: string) => value === id ? { id } : undefined },
+    });
+    const pane = new BrowserPane({ onAnnotation: vi.fn() });
+    await pane.open(owner as never, 'agent-one', 'primary', 'https://example.com', '', 61);
+    const resource = `chrome-extension://${id}/overlay/menu.html`;
+    expect(guest.emitNavigation('will-redirect', resource, false).preventDefault).not.toHaveBeenCalled();
+    expect(guest.emitNavigation('will-redirect', resource).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-navigate', resource).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'chrome-extension://unloaded/menu.html', false).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'file:///outside.html', false).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'https://example.com/next').preventDefault).not.toHaveBeenCalled();
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'browser-extension-redirect-'));
+    try {
+      const document = path.join(directory, 'visualization.html');
+      await writeFile(document, '<!doctype html><p>Owned visualization</p>');
+      const visualization = electronMocks.createGuest(owner, 62, 'agent-workspace-visualization-agent-one');
+      Object.assign(visualization.session!, { extensions: { getExtension: () => ({ id }) } });
+      await pane.openVisualization(owner as never, 'agent-one', 'visualization', document, 'Owned', 62);
+      expect(visualization.emitNavigation('will-redirect', resource, false).preventDefault).toHaveBeenCalledOnce();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it('waits for the matching viewport layout acknowledgement and returns guest measurements', async () => {
     const owner = { webContents: {} };
     const guest = electronMocks.createGuest(owner, 60);

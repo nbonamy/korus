@@ -1,9 +1,11 @@
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { resolveExtensionNativeHost } from './browser-extension-native-host';
 import { fromBuffer, type ZipFile, type Entry } from 'yauzl';
 import {
   supportedBrowserExtensions,
+  type BrowserExtensionDefinition,
   type BrowserExtensionPackage,
   type BrowserExtensionPackageRequest,
   type BrowserExtensionPackageState,
@@ -251,11 +253,12 @@ async function unpack(archive: Buffer, target: string, publicKey: Buffer, check 
 export class BrowserExtensionPackages {
   private pending: Promise<unknown> = Promise.resolve();
   private readonly candidates = new Map<string, Candidate>();
-  private readonly catalog: readonly { id: string; name: string }[];
+  private readonly catalog: readonly BrowserExtensionDefinition[];
   constructor(
     private readonly root: string,
     private readonly options: {
-      catalog?: readonly { id: string; name: string }[];
+      catalog?: readonly BrowserExtensionDefinition[];
+      nativeHostDirectories?: readonly string[];
       download?: (id: string, chrome: string) => Promise<Buffer>;
     } = {},
   ) {
@@ -273,6 +276,16 @@ export class BrowserExtensionPackages {
   }
   private packagePath(id: string, hash: string): string {
     return path.join(this.root, 'packages', id, hash);
+  }
+  private async installedManifest(id: string, record: Stored): Promise<Manifest> {
+    if (!/^[a-f0-9]{64}$/.test(record.hash)) throw new Error('Invalid installed extension record.');
+    const target = this.packagePath(id, record.hash);
+    const bytes = await readFile(path.join(target, 'verified.crx'));
+    if (digest(bytes) !== record.hash) throw new Error('Installed extension package failed verification.');
+    const verified = verifyCrx3(bytes, id);
+    const manifest = await unpack(verified.archive, target, verified.publicKey, true);
+    if (manifest.version !== record.version) throw new Error('Installed extension version does not match.');
+    return manifest;
   }
   private async apply(
     clientId: string,
@@ -299,6 +312,7 @@ export class BrowserExtensionPackages {
     const records = (registry[owner] ??= {});
     let candidate: BrowserExtensionPackageState['candidate'];
     let cleanupPath: string | undefined;
+    let nativeHost: BrowserExtensionPackageState['nativeHost'];
     if ('id' in input && !this.catalog.some((manager) => manager.id === input.id))
       throw new Error('Unsupported browser extension.');
     const entry = 'id' in input ? records[input.id] : undefined;
@@ -391,19 +405,33 @@ export class BrowserExtensionPackages {
       await writeFile(path.join(cleanupPath, 'cleanup.html'), '<!doctype html><title>Extension data cleanup</title>', {
         mode: 0o600,
       });
+    } else if (input.action === 'nativeHost') {
+      if (!this.catalog.find((extension) => extension.id === input.id)?.nativeHosts?.includes(input.host))
+        throw new Error('Unsupported native host.');
+      if (!entry?.enabled || !entry.permissions.includes('nativeMessaging'))
+        throw new Error('Native messaging permission is required.');
+      const manifest = await this.installedManifest(input.id, entry);
+      if (![...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])].includes('nativeMessaging'))
+        throw new Error('Native messaging permission is not declared.');
+      nativeHost = await resolveExtensionNativeHost(input.id, input.host, this.options.nativeHostDirectories);
     } else if (input.action === 'permissions') {
       if (!entry || !Array.isArray(input.permissions)) throw new Error('Manager is not installed.');
-      const manifest = JSON.parse(
-        await readFile(path.join(this.packagePath(input.id, entry.hash), 'manifest.json'), 'utf8'),
-      ) as Manifest;
+      const manifest = await this.installedManifest(input.id, entry);
       const optional = [...(manifest.optional_permissions ?? []), ...(manifest.optional_host_permissions ?? [])];
-      if (input.permissions.some((permission) => permission === 'nativeMessaging' || !optional.includes(permission)))
+      if (
+        input.permissions.some(
+          (permission) =>
+            (permission === 'nativeMessaging' &&
+              !this.catalog.find((extension) => extension.id === input.id)?.nativeHosts?.length) ||
+            !optional.includes(permission),
+        )
+      )
         throw new Error('Permission is not available.');
       entry.permissions = input.remove
         ? entry.permissions.filter((permission) => !input.permissions.includes(permission))
         : [...new Set([...entry.permissions, ...input.permissions])];
     } else if (input.action !== 'list') throw new Error('Invalid browser-extension operation.');
-    if (input.action !== 'list' && input.action !== 'prepare') {
+    if (input.action !== 'list' && input.action !== 'prepare' && input.action !== 'nativeHost') {
       await mkdir(this.root, { recursive: true, mode: 0o700 });
       const temporary = `${file}.${randomUUID()}.tmp`;
       try {
@@ -430,16 +458,19 @@ export class BrowserExtensionPackages {
         if (!/^[a-f0-9]{64}$/.test(record.hash) || !Array.isArray(record.permissions))
           throw new Error('Invalid installed extension record.');
         const packagePath = this.packagePath(manager.id, record.hash);
-        const bytes = await readFile(path.join(packagePath, 'verified.crx'));
-        if (digest(bytes) !== record.hash) throw new Error('Installed extension package failed verification.');
-        const verified = verifyCrx3(bytes, manager.id);
-        const manifest = await unpack(verified.archive, packagePath, verified.publicKey, true);
-        if (manifest.version !== record.version) throw new Error('Installed extension version does not match.');
+        const manifest = await this.installedManifest(manager.id, record);
         extensions.push({
           ...manager,
           version: record.version,
           enabled: record.enabled,
-          permissions: record.permissions,
+          permissions: record.permissions.filter((permission) =>
+            [
+              ...(manifest.permissions ?? []),
+              ...(manifest.host_permissions ?? []),
+              ...(manifest.optional_permissions ?? []),
+              ...(manifest.optional_host_permissions ?? []),
+            ].includes(permission),
+          ),
           optionalPermissions: [
             ...(manifest.optional_permissions ?? []),
             ...(manifest.optional_host_permissions ?? []),
@@ -456,6 +487,11 @@ export class BrowserExtensionPackages {
         });
       }
     }
-    return { extensions, ...(candidate ? { candidate } : {}), ...(cleanupPath ? { cleanupPath } : {}) };
+    return {
+      extensions,
+      ...(nativeHost ? { nativeHost } : {}),
+      ...(candidate ? { candidate } : {}),
+      ...(cleanupPath ? { cleanupPath } : {}),
+    };
   }
 }

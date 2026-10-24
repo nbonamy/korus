@@ -1,6 +1,17 @@
-export type BrowserExtensionDefinition = { id: string; name: string; storageRelayPage?: string; setupPage?: string };
+export type BrowserExtensionDefinition = {
+  id: string;
+  name: string;
+  storageRelayPage?: string;
+  setupPage?: string;
+  nativeHosts?: readonly string[];
+};
 export const supportedBrowserExtensions = [
-  { id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', storageRelayPage: 'sidepanel-disabled.html' },
+  {
+    id: 'nngceckbapebfimnlniiiahkandclblb',
+    name: 'Bitwarden',
+    storageRelayPage: 'sidepanel-disabled.html',
+    nativeHosts: ['com.8bit.bitwarden'],
+  },
   { id: 'aeblfdkhhhdcdjpifhhbdiojplfjncoa', name: '1Password', setupPage: 'app/app.html#/page/welcome' },
 ] as const satisfies readonly BrowserExtensionDefinition[];
 
@@ -26,6 +37,7 @@ export type BrowserExtensionState = { extensions: BrowserExtensionStatus[]; mess
 export type BrowserExtensionPackage = BrowserExtensionStatus & { path?: string; optionalPermissions?: string[] };
 export type BrowserExtensionPackageState = {
   extensions: BrowserExtensionPackage[];
+  nativeHost?: { name: string; path: string };
   cleanupPath?: string;
   candidate?: { token: string; id: string; version: string; permissions: string[]; addedPermissions: string[] };
 };
@@ -36,4 +48,5 @@ export type BrowserExtensionPackageRequest =
   | { action: 'enabled'; id: string; enabled: boolean }
   | { action: 'remove'; id: string }
   | { action: 'cleanup'; id: string }
+  | { action: 'nativeHost'; id: string; host: string }
   | { action: 'permissions'; id: string; permissions: string[]; remove?: boolean };

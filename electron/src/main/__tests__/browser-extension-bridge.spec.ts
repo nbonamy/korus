@@ -1,32 +1,186 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserExtensionBridge } from '../browser-extension-bridge';
 const native = vi.hoisted(() => ({ notifications: [] as any[] }));
 vi.mock('electron', () => ({
-  ipcMain: { handle: vi.fn() }, BrowserWindow: class {},
+  ipcMain: { handle: vi.fn() },
+  BrowserWindow: class {},
   Notification: class extends EventEmitter {
-    static isSupported() { return true; }
+    static isSupported() {
+      return true;
+    }
     show = vi.fn();
     close = vi.fn(() => this.emit('close'));
-    constructor() { super(); native.notifications.push(this); }
+    constructor() {
+      super();
+      native.notifications.push(this);
+    }
   },
 }));
 
 // The bridge owns sender identity, optional grants and scoped tab visibility.
 // Exercising its IPC dispatch protects these boundaries without running a vault.
 describe('Korus extension bridge', () => {
+  it('requires native consent and isolates framed native ports through revoke and unload', async () => {
+    // Protect UTF-8 framing, split/coalesced replies, profile/context isolation,
+    // refusal before consent, oversized input and lifetime cleanup at the IPC seam.
+    vi.stubEnv('KORUS_NATIVE_TEST_SECRET', 'owned-test-marker');
+    const root = await mkdtemp(path.join(tmpdir(), 'extension-native-echo-'));
+    const executable = path.join(root, 'echo.cjs');
+    await writeFile(
+      executable,
+      `#!${process.execPath}
+const frame = value => { const bytes = Buffer.from(JSON.stringify(value)); const header = Buffer.alloc(4); header.writeUInt32LE(bytes.length); return Buffer.concat([header, bytes]); };
+let pending = Buffer.alloc(0);
+process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); while (pending.length >= 4 && pending.length >= 4 + pending.readUInt32LE(0)) { const size = pending.readUInt32LE(0); const value = JSON.parse(pending.subarray(4, size + 4)); pending = pending.subarray(size + 4); if (value.oversize) { const header = Buffer.alloc(4); header.writeUInt32LE(2 * 1024 * 1024); process.stdout.write(header); } else { const reply = Buffer.concat([frame(value.envProbe ? { leaked: Boolean(process.env.KORUS_NATIVE_TEST_SECRET), origin: process.argv[2] } : value), frame({ marker: 'second' })]); process.stdout.write(reply.subarray(0, 3)); setTimeout(() => process.stdout.write(reply.subarray(3)), 5); } } });`,
+      { mode: 0o700 },
+    );
+    const id = 'nngceckbapebfimnlniiiahkandclblb';
+    const record = {
+      id,
+      name: 'Bitwarden',
+      enabled: true,
+      permissions: [] as string[],
+      optionalPermissions: ['nativeMessaging'],
+    };
+    const session = {
+      extensions: new EventEmitter(),
+      serviceWorkers: new EventEmitter(),
+      registerPreloadScript: vi.fn(),
+    };
+    let allow = false,
+      consentRequests = 0;
+    const resolveHost = vi.fn(async (_id: string, host: string) => {
+      if (host !== 'com.8bit.bitwarden') throw new Error('Unsupported native host.');
+      return { name: host, path: executable };
+    });
+    const bridge = new BrowserExtensionBridge(
+      session as never,
+      '/preload.cjs',
+      () => [record],
+      async (_id, permissions, remove) => {
+        if (!remove) consentRequests++;
+        if (!remove && !allow) return false;
+        record.permissions = remove ? [] : [...permissions];
+        return true;
+      },
+      undefined,
+      resolveHost,
+    );
+    const frame = { url: `chrome-extension://${id}/popup.html`, origin: `chrome-extension://${id}`, send: vi.fn() };
+    const sender = { sender: Object.assign(new EventEmitter(), { session }), senderFrame: frame };
+    const request = (operation: string, ...args: unknown[]) => bridge.dispatch(sender as never, operation, args);
+    try {
+      expect(await request('runtime.connectNative', 'owned', 'com.8bit.bitwarden')).toMatchObject({ ok: false });
+      expect(resolveHost).not.toHaveBeenCalled();
+      expect(await request('permissions.request', { permissions: ['nativeMessaging'] })).toEqual({
+        ok: true,
+        value: false,
+      });
+      allow = true;
+      expect(await request('permissions.request', { permissions: ['nativeMessaging'] })).toEqual({
+        ok: true,
+        value: true,
+      });
+      expect(await request('permissions.contains', { permissions: ['nativeMessaging'] })).toEqual({
+        ok: true,
+        value: true,
+      });
+      await request('permissions.request', { permissions: ['nativeMessaging'] });
+      expect(consentRequests).toBe(2);
+      expect(
+        await bridge.dispatch(
+          { ...sender, senderFrame: { ...frame, origin: 'null' } } as never,
+          'runtime.connectNative',
+          ['sandbox', 'com.8bit.bitwarden'],
+        ),
+      ).toMatchObject({ ok: false });
+      expect(await request('runtime.connectNative', 'owned', 'arbitrary')).toMatchObject({ ok: false });
+      expect(await request('runtime.connectNative', 'owned', 'com.8bit.bitwarden')).toEqual({
+        ok: true,
+        value: undefined,
+      });
+      const value = { text: 'owned café 🔐' };
+      expect(await request('runtime.nativePostMessage', 'owned', value)).toMatchObject({ ok: true });
+      await vi.waitFor(() =>
+        expect(frame.send).toHaveBeenCalledWith('browser-extension:event', 'native.message', ['owned', value]),
+      );
+      expect(frame.send).toHaveBeenCalledWith('browser-extension:event', 'native.message', [
+        'owned',
+        { marker: 'second' },
+      ]);
+      const otherFrame = { ...frame, send: vi.fn() };
+      expect(
+        await bridge.dispatch({ ...sender, senderFrame: otherFrame } as never, 'runtime.nativePostMessage', [
+          'owned',
+          value,
+        ]),
+      ).toMatchObject({ ok: false });
+      expect(await request('runtime.sendNativeMessage', 'com.8bit.bitwarden', value)).toEqual({ ok: true, value });
+      expect(await request('runtime.sendNativeMessage', 'com.8bit.bitwarden', { envProbe: true })).toEqual({
+        ok: true,
+        value: { leaked: false, origin: `chrome-extension://${id}/` },
+      });
+      await request('permissions.remove', { permissions: ['nativeMessaging'] });
+      expect(await request('runtime.nativePostMessage', 'owned', value)).toMatchObject({ ok: false });
+      await vi.waitFor(() =>
+        expect(frame.send).toHaveBeenCalledWith('browser-extension:event', 'native.disconnected', [
+          'owned',
+          expect.any(String),
+        ]),
+      );
+      await request('permissions.request', { permissions: ['nativeMessaging'] });
+      await request('runtime.connectNative', 'malformed', 'com.8bit.bitwarden');
+      await request('runtime.nativePostMessage', 'malformed', { oversize: true });
+      await vi.waitFor(() =>
+        expect(frame.send).toHaveBeenCalledWith('browser-extension:event', 'native.disconnected', [
+          'malformed',
+          expect.any(String),
+        ]),
+      );
+      const worker = { scope: `chrome-extension://${id}/`, versionId: 7, send: vi.fn() };
+      const workerSender = { session, serviceWorker: worker };
+      await bridge.dispatch(workerSender as never, 'runtime.connectNative', ['worker', 'com.8bit.bitwarden']);
+      session.serviceWorkers.emit('running-status-changed', { runningStatus: 'stopped', versionId: 7 });
+      expect(
+        await bridge.dispatch(workerSender as never, 'runtime.nativePostMessage', ['worker', value]),
+      ).toMatchObject({ ok: false });
+      await request('runtime.connectNative', 'unload', 'com.8bit.bitwarden');
+      session.extensions.emit('extension-unloaded', {}, { id });
+      expect(await request('runtime.nativePostMessage', 'unload', value)).toMatchObject({ ok: false });
+    } finally {
+      bridge.dispose();
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it('requires a notification grant and closes native notifications on extension unload', async () => {
     const id = 'aeblfdkhhhdcdjpifhhbdiojplfjncoa';
     const record = { id, name: '1Password', enabled: true, permissions: [] as string[] };
-    const session = { extensions: new EventEmitter(), serviceWorkers: new EventEmitter(), registerPreloadScript: vi.fn() };
-    const bridge = new BrowserExtensionBridge(session as never, '/preload.cjs', () => [record], async () => false);
-    const frame = { url: `chrome-extension://${id}/popup.html`, send: vi.fn() };
-    const request = (operation: string, ...args: unknown[]) => bridge.dispatch({ sender: { session }, senderFrame: frame } as never, operation, args);
+    const session = {
+      extensions: new EventEmitter(),
+      serviceWorkers: new EventEmitter(),
+      registerPreloadScript: vi.fn(),
+    };
+    const bridge = new BrowserExtensionBridge(
+      session as never,
+      '/preload.cjs',
+      () => [record],
+      async () => false,
+    );
+    const frame = { url: `chrome-extension://${id}/popup.html`, origin: `chrome-extension://${id}`, send: vi.fn() };
+    const request = (operation: string, ...args: unknown[]) =>
+      bridge.dispatch({ sender: { session }, senderFrame: frame } as never, operation, args);
     expect(await request('notifications.create', 'owned', { title: 'Owned test' })).toMatchObject({ ok: false });
     record.permissions.push('notifications');
     await request('subscribe', 'notifications.onClicked');
     expect(await request('notifications.getPermissionLevel')).toEqual({ ok: true, value: 'granted' });
-    expect(await request('notifications.create', 'owned', { title: 'Owned test', message: 'No account data' })).toEqual({ ok: true, value: 'owned' });
+    expect(await request('notifications.create', 'owned', { title: 'Owned test', message: 'No account data' })).toEqual(
+      { ok: true, value: 'owned' },
+    );
     const notification = native.notifications.at(-1);
     expect(notification.show).toHaveBeenCalledOnce();
     notification.emit('click');
@@ -104,7 +258,7 @@ describe('Korus extension bridge', () => {
     bridge.attachTab(first as never, window as never);
     bridge.attachTab(second as never, window as never);
     bridge.selectTab(first.id);
-    const frame = { url: `chrome-extension://${id}/popup.html`, send: vi.fn() };
+    const frame = { url: `chrome-extension://${id}/popup.html`, origin: `chrome-extension://${id}`, send: vi.fn() };
     const sender = { sender: first, senderFrame: frame };
     const request = (operation: string, ...args: unknown[]) => bridge.dispatch(sender as never, operation, args);
     expect(await request('tabs.query', { active: true, windowId: 1, url: ['https://example.test/*'] })).toMatchObject({
@@ -236,7 +390,7 @@ describe('Korus extension bridge', () => {
     const sender = {
       type: 'frame',
       sender: { session },
-      senderFrame: { url: `chrome-extension://${id}/popup.html`, send: vi.fn() },
+      senderFrame: { url: `chrome-extension://${id}/popup.html`, origin: `chrome-extension://${id}`, send: vi.fn() },
     };
     expect(await bridge.dispatch(sender as never, 'permissions.contains', [{ permissions: ['tabs'] }])).toEqual({
       ok: true,

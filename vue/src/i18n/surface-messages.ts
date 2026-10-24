@@ -1069,6 +1069,7 @@ export const surfaceMessages = {
   },
   "browserExtensions": {
     "introTitle": "Make the browser your own",
+    "actions": "{name} actions",
     "browser": "Browser", "extensions": "Extensions", "chooseAgent": "Select an agent to manage its browser extensions.",
     "profileHint": "Accounts and preferences stay separate for each agent’s browser. Official extension updates may temporarily break compatibility.",
     "disabled": "Disabled", "notInstalled": "Not installed", "install": "Install", "update": "Update", "enable": "Enable", "disable": "Disable", "remove": "Remove", "reinstall": "Reinstall", "installing": "Installing…"

@@ -1,4 +1,5 @@
 import { BrowserWindow, Notification, ipcMain, type Session, type WebContents } from 'electron';
+import { BrowserExtensionNativePort } from './browser-extension-native-port';
 import type { BrowserExtensionPackage } from '@workspace/core/browser-extensions';
 
 type BridgeEvent = {
@@ -18,7 +19,9 @@ const EVENTS = 'browser-extension:event';
 function extensionId(event: BridgeEvent): string | null {
   try {
     const url = new URL(event.serviceWorker?.scope ?? event.senderFrame?.url ?? '');
-    return url.protocol === 'chrome-extension:' ? url.hostname : null;
+    if (url.protocol !== 'chrome-extension:') return null;
+    if (!event.serviceWorker && event.senderFrame?.origin !== `chrome-extension://${url.hostname}`) return null;
+    return url.hostname;
   } catch {
     return null;
   }
@@ -39,6 +42,7 @@ export class BrowserExtensionBridge {
   private readonly listeners = new Map<unknown, Listener>();
   private readonly actions = new Map<string, Record<string, unknown>>();
   private readonly menus = new Map<string, Map<string | number, unknown>>();
+  private readonly nativePorts = new Map<string, { id: string; context: unknown; port: BrowserExtensionNativePort }>();
   private activeTab: number | undefined;
   private readonly workers = new WeakSet<Electron.ServiceWorkerMain>();
   private readonly workerTasks = new Map<Electron.ServiceWorkerMain, { id: string; end: () => void }>();
@@ -53,6 +57,7 @@ export class BrowserExtensionBridge {
     private readonly openPage: (id: string, url: string, active: boolean) => Promise<WebContents> = async () => {
       throw new Error('Extension windows are unavailable.');
     },
+    private readonly resolveNativeHost?: (id: string, host: string) => Promise<{ name: string; path: string }>,
   ) {
     bridges.set(session, this);
     if (!registered) {
@@ -68,6 +73,12 @@ export class BrowserExtensionBridge {
     session.registerPreloadScript({ id: 'browser-extension-frame', type: 'frame', filePath: preloadPath });
     session.registerPreloadScript({ id: 'browser-extension-worker', type: 'service-worker', filePath: preloadPath });
     session.serviceWorkers.on('running-status-changed', (status) => {
+      if (status.runningStatus === 'stopped') {
+        for (const entry of this.nativePorts.values()) {
+          const worker = entry.context as Electron.ServiceWorkerMain;
+          if (worker.versionId === status.versionId) entry.port.close('Extension worker stopped.');
+        }
+      }
       if (status.runningStatus !== 'starting' && status.runningStatus !== 'running') {
         if (status.runningStatus === 'stopped')
           for (const [worker, task] of this.workerTasks)
@@ -79,6 +90,7 @@ export class BrowserExtensionBridge {
               }
               this.workerTasks.delete(worker);
               this.listeners.delete(worker);
+              this.closeNativePorts(undefined, worker);
             }
         return;
       }
@@ -163,6 +175,7 @@ export class BrowserExtensionBridge {
     else this.storageRelays.delete(id);
   }
   forgetExtension(id: string): void {
+    this.closeNativePorts(id);
     for (const [worker, task] of this.workerTasks)
       if (task.id === id) {
         try {
@@ -180,6 +193,7 @@ export class BrowserExtensionBridge {
   }
   dispose(): void {
     for (const { id } of this.workerTasks.values()) this.forgetExtension(id);
+    this.closeNativePorts();
     bridges.delete(this.session);
   }
 
@@ -196,6 +210,66 @@ export class BrowserExtensionBridge {
         /* A terminated context registers again when Chromium restarts it. */
       }
     }
+  }
+  private closeNativePorts(id?: string, context?: unknown): void {
+    for (const entry of this.nativePorts.values())
+      if ((!id || entry.id === id) && (!context || entry.context === context))
+        entry.port.close('Desktop integration disconnected.');
+  }
+  private async openNativePort(
+    record: BrowserExtensionPackage,
+    event: BridgeEvent,
+    connection: string,
+    host: string,
+    receive?: (value: unknown) => void,
+    disconnected?: (reason?: string) => void,
+  ): Promise<BrowserExtensionNativePort> {
+    if (!this.resolveNativeHost) throw new Error('Native desktop integration is unavailable.');
+    if (!connection || connection.length > 128 || this.nativePorts.has(connection) || this.nativePorts.size >= 32)
+      throw new Error('Invalid native connection.');
+    const executable = await this.resolveNativeHost(record.id, host);
+    if (this.nativePorts.has(connection) || this.nativePorts.size >= 32) throw new Error('Invalid native connection.');
+    const current = this.records().find((entry) => entry.id === record.id && entry.enabled);
+    if (!current?.permissions.includes('nativeMessaging') || extensionId(event) !== record.id)
+      throw new Error('Native messaging permission is required.');
+    const context = event.serviceWorker ?? event.senderFrame;
+    if (!context) throw new Error('Unknown native context.');
+    const send = (name: string, args: unknown[]) => {
+      try {
+        (event.serviceWorker ?? event.senderFrame)?.send(EVENTS, name, args);
+      } catch {
+        port.close();
+      }
+    };
+    const onNavigation = () => {
+      if (extensionId(event) !== record.id) port.close();
+    };
+    const onDestroyed = () => port.close();
+    const port = new BrowserExtensionNativePort(
+      executable.path,
+      `chrome-extension://${record.id}/`,
+      (value) => {
+        const owner = this.records().find((entry) => entry.id === record.id && entry.enabled);
+        if (!owner?.permissions.includes('nativeMessaging') || extensionId(event) !== record.id) {
+          port.close();
+          return;
+        }
+        if (receive) receive(value);
+        else send('native.message', [connection, value]);
+      },
+      (reason) => {
+        this.nativePorts.delete(connection);
+        event.sender?.removeListener('destroyed', onDestroyed);
+        event.sender?.removeListener('did-frame-navigate', onNavigation);
+        if (disconnected) disconnected(reason);
+        else send('native.disconnected', [connection, reason]);
+      },
+    );
+    this.nativePorts.set(connection, { id: record.id, context, port });
+    event.sender?.once('destroyed', onDestroyed);
+    event.sender?.on('did-frame-navigate', onNavigation);
+    await port.ready;
+    return port;
   }
   private redactTabEvent(record: BrowserExtensionPackage, name: string, args: unknown[]): unknown[] {
     if (name === 'tabs.onCreated') return [this.describeTab((args[0] as { id: number }).id, record)];
@@ -275,39 +349,76 @@ export class BrowserExtensionBridge {
         origins = Array.isArray(first.origins) ? (first.origins as string[]) : [];
       if (operation === 'permissions.getAll')
         return {
-          permissions: record.permissions.filter(
-            (value) => value !== 'nativeMessaging' && !value.includes('://') && value !== '<all_urls>',
-          ),
+          permissions: record.permissions.filter((value) => !value.includes('://') && value !== '<all_urls>'),
           origins: record.permissions.filter((value) => value.includes('://') || value === '<all_urls>'),
         };
       if (operation === 'permissions.contains')
-        return [...permissions, ...origins].every(
-          (value) => value !== 'nativeMessaging' && record.permissions.includes(value),
-        );
+        return [...permissions, ...origins].every((value) => record.permissions.includes(value));
       if (operation === 'permissions.request' || operation === 'permissions.remove') {
         const requested = [...permissions, ...origins];
-        if (
-          requested.some(
-            (value) =>
-              typeof value !== 'string' ||
-              value === 'nativeMessaging' ||
-              !(record.optionalPermissions ?? []).includes(value),
-          )
-        )
+        if (requested.some((value) => typeof value !== 'string' || !(record.optionalPermissions ?? []).includes(value)))
           return false;
         // Electron cannot dynamically grant/revoke Chromium-owned permissions.
         // Only advertise optional grants whose enforcement belongs to this bridge.
-        if (requested.some((value) => !['tabs', 'webNavigation', 'contextMenus', 'notifications'].includes(value)))
+        if (
+          requested.some(
+            (value) =>
+              ![
+                'tabs',
+                'webNavigation',
+                'contextMenus',
+                'notifications',
+                ...(this.resolveNativeHost ? ['nativeMessaging'] : []),
+              ].includes(value),
+          )
+        )
           return false;
         const remove = operation === 'permissions.remove';
         if (!requested.length) return true;
+        if (!remove && requested.every((value) => record.permissions.includes(value))) return true;
         if (!(await this.changePermissions(record.id, requested, remove))) return false;
+        if (remove && requested.includes('nativeMessaging')) this.closeNativePorts(record.id);
         this.emit(remove ? 'permissions.onRemoved' : 'permissions.onAdded', [{ permissions, origins }], record.id);
         return true;
       }
     }
-    if (operation.startsWith('runtime.') && operation.toLowerCase().includes('native'))
-      throw new Error('Native desktop integration is not supported.');
+    if (operation.startsWith('runtime.') && operation.toLowerCase().includes('native')) {
+      if (!record.permissions.includes('nativeMessaging')) throw new Error('Native messaging permission is required.');
+      const context = event.serviceWorker ?? event.senderFrame;
+      if (operation === 'runtime.connectNative') {
+        await this.openNativePort(record, event, String(args[0]), String(args[1]));
+        return;
+      }
+      if (operation === 'runtime.nativePostMessage' || operation === 'runtime.disconnectNative') {
+        const entry = this.nativePorts.get(String(args[0]));
+        if (!entry || entry.context !== context || entry.id !== record.id)
+          throw new Error('Unknown native connection.');
+        if (operation === 'runtime.nativePostMessage') entry.port.send(args[1]);
+        else entry.port.close();
+        return;
+      }
+      if (operation === 'runtime.sendNativeMessage') {
+        let resolve!: (value: unknown) => void, reject!: (error: Error) => void;
+        const response = new Promise<unknown>((yes, no) => {
+          resolve = yes;
+          reject = no;
+        });
+        void response.catch(() => {});
+        const timer = setTimeout(() => reject(new Error('Native desktop response timed out.')), 30_000);
+        let port: BrowserExtensionNativePort | undefined;
+        try {
+          port = await this.openNativePort(record, event, crypto.randomUUID(), String(args[0]), resolve, (reason) =>
+            reject(new Error(reason ?? 'Native desktop connection closed.')),
+          );
+          port.send(args[1]);
+          return await response;
+        } finally {
+          clearTimeout(timer);
+          port?.close();
+        }
+      }
+      throw new Error('Unsupported native messaging operation.');
+    }
     if (
       /^privacy\.services\.(passwordSavingEnabled|autofillEnabled|autofillAddressEnabled|autofillCreditCardEnabled)\.(get|set|clear)$/.test(
         operation,

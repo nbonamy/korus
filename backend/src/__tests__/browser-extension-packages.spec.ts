@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { generateKeyPairSync, sign, createHash } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserExtensionPackages, verifyCrx3 } from '../browser-extension-packages';
@@ -61,13 +61,19 @@ function zip(files: Record<string, string>): Buffer {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, directory, end]);
 }
-function packageBytes(version = '8.12.42.36', extra: Record<string, string> = {}, permissions = ['storage']): Buffer {
+function packageBytes(
+  version = '8.12.42.36',
+  extra: Record<string, string> = {},
+  permissions = ['storage'],
+  optionalPermissions: string[] = [],
+): Buffer {
   const archive = zip({
     'manifest.json': JSON.stringify({
       manifest_version: 3,
       name: 'Owned fixture',
       version,
       permissions,
+      optional_permissions: optionalPermissions,
       host_permissions: ['https://example.test/*'],
       action: { default_popup: 'popup.html' },
     }),
@@ -167,5 +173,47 @@ describe('browser-extension package boundary', () => {
       service.manage('desktop', 'agent-one', { action: 'prepare', id, chromeVersion: '150' }),
     ).rejects.toThrow();
     expect((await service.manage('desktop', 'agent-one', { action: 'list' })).extensions[0].version).toBeUndefined();
+  });
+  it('restores only consented native access and resolves a registered host for its allowed origin', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'browser-native-grants-'));
+    roots.push(root);
+    const hosts = path.join(root, 'hosts');
+    await mkdir(hosts);
+    const name = 'com.8bit.bitwarden';
+    const filename = path.join(hosts, `${name}.json`);
+    const manifest = { name, type: 'stdio', path: process.execPath, allowed_origins: [`chrome-extension://${id}/`] };
+    await writeFile(filename, JSON.stringify(manifest));
+    const options = {
+      catalog: [{ id, name: 'Owned fixture', nativeHosts: [name] }],
+      download: async () => packageBytes('1', {}, ['storage'], ['nativeMessaging']),
+      nativeHostDirectories: [hosts],
+    };
+    const service = new BrowserExtensionPackages(root, options);
+    const candidate = await service.manage('desktop', 'agent', { action: 'prepare', id, chromeVersion: '150' });
+    await service.manage('desktop', 'agent', { action: 'commit', token: candidate.candidate!.token });
+    const hostRequest = { action: 'nativeHost', id, host: name } as const;
+    await expect(service.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/permission/i);
+    await service.manage('desktop', 'agent', { action: 'permissions', id, permissions: ['nativeMessaging'] });
+    const restarted = new BrowserExtensionPackages(root, options);
+    expect((await restarted.manage('desktop', 'agent', { action: 'list' })).extensions[0].permissions).toContain(
+      'nativeMessaging',
+    );
+    expect((await restarted.manage('desktop', 'agent', hostRequest)).nativeHost).toEqual({
+      name,
+      path: process.execPath,
+    });
+    await expect(restarted.manage('desktop', 'other-agent', hostRequest)).rejects.toThrow(/permission/i);
+    await expect(restarted.manage('desktop', 'agent', { ...hostRequest, host: '../arbitrary' })).rejects.toThrow(
+      /host/i,
+    );
+    await writeFile(filename, JSON.stringify({ ...manifest, allowed_origins: ['chrome-extension://other/'] }));
+    await expect(restarted.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/origin/i);
+    await service.manage('desktop', 'agent', {
+      action: 'permissions',
+      id,
+      permissions: ['nativeMessaging'],
+      remove: true,
+    });
+    await expect(service.manage('desktop', 'agent', hostRequest)).rejects.toThrow(/permission/i);
   });
 });

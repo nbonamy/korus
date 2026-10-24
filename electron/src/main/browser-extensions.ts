@@ -124,6 +124,11 @@ export class BrowserExtensions {
         return true;
       },
       (id, url, active) => this.openPage(profile, id, url, active),
+      async (id, host) => {
+        const state = await this.options.request(agentId, { action: 'nativeHost', id, host });
+        if (!state.nativeHost) throw new Error('Native desktop integration is unavailable.');
+        return state.nativeHost;
+      },
     );
     ses.extensions.on('extension-unloaded', (_event, extension) => this.stopRelay(profile, extension.id));
     ses.extensions.on('extension-ready', (_event, extension) => {
@@ -286,11 +291,12 @@ export class BrowserExtensions {
     await window.loadURL(url.href);
     return window.webContents;
   }
-  private window(profile: Profile, id: string, show: boolean, javascript = true): BrowserWindow {
+  private window(profile: Profile, id: string, show: boolean, javascript = true, popup = false): BrowserWindow {
     const parent = this.options.parent();
     const window = new BrowserWindow({
-      width: 520,
-      height: 740,
+      width: popup ? 480 : 520,
+      height: popup ? 760 : 740,
+      useContentSize: true,
       show,
       ...(parent ? { parent } : {}),
       webPreferences: {
@@ -339,7 +345,7 @@ export class BrowserExtensions {
       existing[0].focus();
       return;
     }
-    const window = this.window(profile, id, true);
+    const window = this.window(profile, id, true, true, true);
     await window.loadURL(new URL(page, `chrome-extension://${id}/`).href);
   }
   private closeWindows(profile: Profile, id: string): void {

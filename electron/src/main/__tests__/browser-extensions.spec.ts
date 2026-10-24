@@ -29,7 +29,7 @@ vi.mock('electron', () => ({
       executeJavaScript: vi.fn(async () => true),
     });
     url = '';
-    constructor(options: { show: boolean }) {
+    constructor(public options: { show: boolean; width: number; height: number; useContentSize?: boolean }) {
       super();
       this.visible = options.show;
       host.windows.push(this);
@@ -253,6 +253,8 @@ it('opens visible vendor setup after install alongside a passive relay', async (
   });
   await runtime.manage('agent', 'install', 'first');
   expect(host.showMessageBox).not.toHaveBeenCalled();
+  const popup = host.windows.find(window => window.isVisible());
+  expect(popup.options).toMatchObject({ width: 480, height: 760, useContentSize: true });
   expect(host.windows.filter((window) => window.isVisible()).map((window) => window.url)).toEqual([
     'chrome-extension://first/popup.html',
   ]);

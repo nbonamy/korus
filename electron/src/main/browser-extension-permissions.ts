@@ -48,7 +48,7 @@ export function extensionPermissionSummary(permissions: readonly string[]): stri
   take(['idle'], 'Detect when your device is inactive');
   take(['management'], 'Manage installed extensions');
   take(['privacy'], 'Access browser privacy settings');
-  take(['nativeMessaging'], 'Request a connection to a desktop app (unavailable in this browser)');
+  take(['nativeMessaging'], 'Connect to the installed desktop app for biometric unlock');
   take(['contextMenus', 'sidePanel'], 'Add browser menus and extension controls');
   take(
     ['storage', 'unlimitedStorage', 'alarms', 'offscreen', 'background'],

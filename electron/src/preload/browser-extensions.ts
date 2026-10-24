@@ -90,7 +90,14 @@ function installBrowserExtensionApis(storageRelayIds: string[]): void {
       },
     };
   };
+  const nativePorts = new Map<string, { receive(value: unknown): void; disconnected(reason?: string): void }>();
   transport.receive((name, args) => {
+    if (name === 'native.message' || name === 'native.disconnected') {
+      const port = nativePorts.get(String(args[0]));
+      if (name === 'native.message') port?.receive(args[1]);
+      else port?.disconnected(typeof args[1] === 'string' ? args[1] : undefined);
+      return;
+    }
     for (const callback of events.get(name) ?? []) {
       try {
         callback(...args);
@@ -113,8 +120,76 @@ function installBrowserExtensionApis(storageRelayIds: string[]): void {
   const runtime = chrome.runtime;
   runtime.openOptionsPage = method('runtime.openOptionsPage');
   runtime.sendNativeMessage = method('runtime.sendNativeMessage');
-  runtime.connectNative = () => {
-    throw new Error('Native desktop integration is not supported.');
+  runtime.connectNative = (host: string): Api => {
+    if (typeof host !== 'string') throw new Error('A native host name is required.');
+    const connection = crypto.randomUUID();
+    const messages = new Set<Function>(),
+      disconnects = new Set<Function>();
+    let closed = false;
+    const localEvent = (listeners: Set<Function>): Api => ({
+      addListener: (listener: Function) => {
+        if (typeof listener === 'function') listeners.add(listener);
+      },
+      removeListener: (listener: Function) => listeners.delete(listener),
+      hasListener: (listener: Function) => listeners.has(listener),
+      hasListeners: () => listeners.size > 0,
+    });
+    const finish = (reason?: string): void => {
+      if (closed) return;
+      closed = true;
+      nativePorts.delete(connection);
+      world.removeEventListener?.('unload', onUnload);
+      for (const listener of disconnects) {
+        try {
+          if (reason) failedCallback(() => listener(port), new Error(reason));
+          else listener(port);
+        } catch {
+          /* Extension listeners do not interrupt cleanup. */
+        }
+      }
+      void ready.then(() => call('runtime.disconnectNative', [connection])).catch(() => {});
+    };
+    const onUnload = () => port.disconnect();
+    const port: Api = {
+      name: host,
+      onMessage: localEvent(messages),
+      onDisconnect: localEvent(disconnects),
+      postMessage(value: unknown) {
+        if (closed) throw new Error('The native desktop connection is closed.');
+        pending = pending
+          .then(() => (closed ? undefined : call('runtime.nativePostMessage', [connection, value])))
+          .then(
+            () => undefined,
+            (error) => finish(error.message),
+          );
+      },
+      disconnect() {
+        if (closed) return;
+        closed = true;
+        nativePorts.delete(connection);
+        world.removeEventListener?.('unload', onUnload);
+        void ready.then(() => call('runtime.disconnectNative', [connection])).catch(() => {});
+      },
+    };
+    nativePorts.set(connection, {
+      receive(value) {
+        for (const listener of messages) {
+          try {
+            listener(value, port);
+          } catch {
+            /* Continue delivery. */
+          }
+        }
+      },
+      disconnected: finish,
+    });
+    world.addEventListener?.('unload', onUnload, { once: true });
+    const ready = call('runtime.connectNative', [connection, host]);
+    let pending: Promise<void> = ready.then(
+      () => undefined,
+      (error) => finish(error.message),
+    );
+    return port;
   };
   replace(
     'permissions',
@@ -257,4 +332,5 @@ function installBrowserExtensionApis(storageRelayIds: string[]): void {
       void call('relay.storage', [changes, area]).catch(() => {});
     });
   }
+  if (storage) replace('storage', storage);
 }
