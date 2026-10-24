@@ -50,10 +50,14 @@ class NotificationSettingsWorkflowTest {
     @Test fun cancellingForgetReturnsToSettingsWithoutLosingPairingOrTheDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, true)
-            app.onNodeWithText("Forget this laptop").performScrollTo().performClick()
+            app.onNodeWithText("Connections").performScrollTo().performClick()
+            app.onNodeWithText("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            app.onNodeWithText("Forget connection").performClick()
             app.onNodeWithText("Forget this laptop?").assertIsDisplayed()
             app.onNodeWithText("Cancel").assertIsDisplayed().performClick()
             app.onNodeWithText("Forget this laptop?").assertDoesNotExist()
+            app.onNodeWithContentDescription("Back to Settings").performClick()
             app.onNodeWithText("Usage").performScrollTo().assertIsDisplayed()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
@@ -62,10 +66,33 @@ class NotificationSettingsWorkflowTest {
         }
     }
 
+    @Test fun connectionsCanSwitchForgetAnInactiveLaptopAndAddAnother() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            openSettings(engine, true)
+            val twoLaptops = state(true).put("laptops", JSONArray().put(json("id" to "host", "name" to "Computer")).put(json("id" to "other", "name" to "Travel laptop")))
+            engine.state(twoLaptops)
+            app.onNodeWithText("Connections").performScrollTo().performClick()
+            app.onNodeWithText("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Travel laptop").performClick()
+            app.onNodeWithText("Forget connection").performClick()
+            app.onNodeWithText("Forget Laptop").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "forget" && it.string("laptopId") == "other" } }
+            assertEquals("connections", engine.model.sheet)
+            app.onNodeWithText("Travel laptop").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "connect" && it.string("laptopId") == "other" } }
+            app.runOnIdle { engine.model.sheet = "connections" }
+            app.onNodeWithText("Add connection").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "chooseConnection" } }
+            engine.state(twoLaptops.put("connection", "unpaired").put("laptopId", "").put("teamId", "").put("agentId", ""))
+            app.onNodeWithText("Connect your laptop").assertIsDisplayed()
+        }
+    }
+
     @Test fun disconnectedComputerCanBeReconnectedFromSettingsWithoutLosingItsDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, false)
             app.waitUntil(7_000) { engine.model.showConnectionLost }
+            app.onNodeWithText("Connections").performScrollTo().performClick()
             val inSheet = hasAnyAncestor(hasScrollAction())
             app.onNode(hasText("Reconnect") and inSheet).performScrollTo().performClick()
             app.waitUntil(5_000) { engine.commands().any { it.string("type") == "reconnect" } }

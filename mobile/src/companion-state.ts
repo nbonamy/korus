@@ -78,6 +78,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
   let reconnectWanted = false;
+  let workspaceLoaded = false;
   let isForeground = true;
   const backoff = createBackoff();
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -298,7 +299,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     closeSession();
     const epoch = connectionEpoch;
     const sameLaptop = laptopId.value === id;
-    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; composer.forgetModels(); }
+    if (!sameLaptop) { workspaceLoaded = false; teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; composer.forgetModels(); }
     laptopId.value = id;
     status.value = reconnecting ? 'reconnecting' : 'connecting';
     error.value = '';
@@ -311,6 +312,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const nextWorkspace = await opened.getWorkspace();
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
+      workspaceLoaded = true;
       if (!isForeground) void session.setActive?.(false).catch(() => {});
       reconcileNotificationReads(nextWorkspace);
       workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
@@ -343,7 +345,11 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) backoff.reset();
     } catch {
       opened?.close();
-      if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
+      if (epoch === connectionEpoch) {
+        error.value = 'mobile.errors.openLaptop';
+        if (workspaceLoaded) { status.value = 'error'; retryConnection(); }
+        else { reconnectWanted = false; status.value = 'unpaired'; }
+      }
     }
   }
   const receipts = createReceiptReconciler({
@@ -591,6 +597,15 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function reconnect(force = false) {
     if (laptopId.value && (force || ['disconnected', 'error'].includes(status.value))) { backoff.reset(); await connect(laptopId.value, true); }
   }
+  function chooseConnection() {
+    disconnect();
+    conversation.value = null;
+    workspace.value = { teams: [], agents: [] };
+    laptopId.value = ''; teamId.value = ''; agentId.value = '';
+    workspaceLoaded = false;
+    error.value = '';
+    status.value = 'unpaired';
+  }
   async function revoke() {
     reconnectWanted = false;
     const id = laptopId.value;
@@ -598,6 +613,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     conversation.value = null;
     workspace.value = { teams: [], agents: [] };
     teamId.value = ''; agentId.value = '';
+    workspaceLoaded = false;
     status.value = 'revoked';
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
@@ -608,7 +624,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return {
     // The link to the laptop.
-    status, error, laptopId, connect, setActive, disconnect, reconnect, revoke, registerPush, pushRegistrationFailed,
+    status, error, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
     teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead,
     // The selected conversation and its history.

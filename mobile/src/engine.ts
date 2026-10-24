@@ -117,7 +117,7 @@ export type EngineCommand =
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
-  | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
+  | { type: 'disconnect' } | { type: 'chooseConnection' } | { type: 'reconnect' } | { type: 'forget'; laptopId?: string }
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
@@ -163,6 +163,7 @@ export function createEngine(port: EnginePort) {
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
+  let choosingConnection = false;
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
@@ -177,12 +178,20 @@ export function createEngine(port: EnginePort) {
     await port.selectionStore.write(state.laptopId.value, { teamId: state.teamId.value, agentId: state.agentId.value }).catch(() => {});
   }
 
+  async function preferredLaptop() {
+    const saved = await port.selectionStore?.readLastLaptop().catch(() => null);
+    return laptops.value.find(laptop => laptop.id === saved)?.id
+      ?? (laptops.value.length === 1 ? laptops.value[0]!.id : null);
+  }
+
   async function connect(laptopId: string) {
+    choosingConnection = false;
     ++restoringSelection;
     try {
       const epoch = ++restoreEpoch;
       await state.connect(laptopId);
       if (disposed || epoch !== restoreEpoch || state.status.value !== 'connected') return;
+      await port.selectionStore?.writeLastLaptop(laptopId).catch(() => {});
       const saved = await port.selectionStore?.read(laptopId).catch(() => null);
       if (disposed || epoch !== restoreEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
@@ -420,6 +429,7 @@ export function createEngine(port: EnginePort) {
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
       case 'disconnect': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; return state.disconnect();
+      case 'chooseConnection': choosingConnection = true; ++notificationEpoch; pendingNotification = null; ++restoreEpoch; state.chooseConnection(); return publish();
       case 'loadUsage': return state.loadUsage();
       case 'idleSort': if (command.order === 'activity' || command.order === 'repository') sidebarIdleSort.value = command.order; return;
       case 'loadChanges': return state.git.load(command.scopeId);
@@ -462,16 +472,23 @@ export function createEngine(port: EnginePort) {
         if (superseded()) return;
         await state.setActive(true);
         if (superseded()) return;
-        if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
-        else await state.reconnect();
+        if (!choosingConnection && !state.laptopId.value && startup.value === 'ready') {
+          const preferred = await preferredLaptop();
+          if (!superseded() && preferred) await connect(preferred);
+        } else await state.reconnect();
         return openPendingNotification();
       }
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
       case 'forget': {
-        ++notificationEpoch; pendingNotification = null;
-        ++restoreEpoch;
-        const laptopId = state.laptopId.value;
-        await state.revoke();
+        const laptopId = command.laptopId ?? state.laptopId.value;
+        if (!laptops.value.some(laptop => laptop.id === laptopId)) return;
+        if (laptopId === state.laptopId.value) {
+          ++notificationEpoch; pendingNotification = null; ++restoreEpoch;
+          await state.revoke();
+        } else {
+          // Local pairing removal succeeds even when the old computer is unavailable.
+          await port.connector.revoke(laptopId).catch(() => {});
+        }
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
@@ -529,14 +546,16 @@ export function createEngine(port: EnginePort) {
     }
   }
 
-  /** Opens the saved pairing when there is exactly one; with several, the person chooses. */
+  /** Reopens the last successful laptop, or the sole saved pairing. */
   async function start() {
     startup.value = 'loading'; publish();
     try {
       await port.connector.initialize?.();
       laptops.value = [...port.connector.laptops];
       publish();
-      if (foreground && laptops.value.length === 1) await connect(laptops.value[0]!.id);
+      const epoch = restoreEpoch;
+      const preferred = await preferredLaptop();
+      if (!disposed && foreground && epoch === restoreEpoch && preferred) await connect(preferred);
       startup.value = 'ready';
     } catch { startup.value = 'error'; }
     publish();

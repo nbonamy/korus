@@ -515,7 +515,6 @@ final class AppModel {
     func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
-    func forget() { command("forget") }
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,

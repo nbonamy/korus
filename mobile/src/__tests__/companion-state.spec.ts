@@ -372,7 +372,7 @@ describe('companion state', () => {
     const connector = createDemoConnector();
     const state = createCompanionState(connector);
     await state.connect('unknown');
-    expect(state.status.value).toBe('error');
+    expect(state.status.value).toBe('unpaired'); expect(state.error.value).toBe('mobile.errors.openLaptop');
     expect(state.workspace.value.agents).toStrictEqual([]);
     await state.connect('demo-laptop');
     expect(state.status.value).toBe('connected');

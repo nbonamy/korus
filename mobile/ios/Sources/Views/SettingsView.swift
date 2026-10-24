@@ -5,7 +5,6 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(AppLock.self) private var lock
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmingForget = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -61,14 +60,9 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    if model.showConnectionLost {
-                        ConnectionLostNotice(reconnect: model.reconnect)
+                    NavigationLink { ConnectionsView(closeSettings: { dismiss() }) } label: {
+                        Label("Connections", systemImage: "laptopcomputer")
                     }
-                    Button(role: .destructive) { confirmingForget = true } label: {
-                        Label { Text("Forget this laptop") } icon: { Image(systemName: "trash").foregroundStyle(.red) }
-                    }
-                } header: {
-                    Text("Laptop")
                 }
 
                 Section {
@@ -83,11 +77,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .confirmationDialog("Forget this laptop?", isPresented: $confirmingForget, titleVisibility: .visible) {
-                Button("Forget Laptop", role: .destructive) { model.forget(); dismiss() }
-            } message: {
-                Text("You will need a new pairing code to connect again.")
-            }
+
         }
         .appSheetSurface()
     }

@@ -421,11 +421,11 @@ describe('companion engine', () => {
       expect(shown(events)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
     } finally { engine.dispose(); }
   });
-  it('keeps startup loading through saved-pairing restoration and connection', async () => {
+  it.each([true, false])('restores saved pairing and offers connect when its host is unavailable (available=%s)', async available => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let initialized!: () => void; let connected!: () => void;
     connector.initialize = () => new Promise<void>((resolve) => { initialized = resolve; });
-    connector.connect = async (id) => { await new Promise<void>((resolve) => { connected = resolve; }); return connect(id); };
+    connector.connect = vi.fn(async (id) => { await new Promise<void>((resolve) => { connected = resolve; }); if (!available) throw new Error('Host unavailable'); return connect(id); });
     const { engine, latest, states } = open(connector);
     expect(latest().startup).toBe('loading');
     const starting = engine.start();
@@ -434,8 +434,14 @@ describe('companion engine', () => {
     initialized(); await vi.waitFor(() => expect(latest().connection).toBe('connecting'));
     expect(latest().startup).toBe('loading');
     connected(); await starting;
-    expect(latest()).toMatchObject({ startup: 'ready', connection: 'connected' });
-    expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    expect(latest()).toMatchObject({ startup: 'ready', connection: available ? 'connected' : 'unpaired' });
+    if (available) expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    else {
+      expect(latest().laptops).toHaveLength(1);
+      connector.connect = connect;
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      expect(latest().connection).toBe('connected');
+    }
     engine.dispose();
   });
   it('shows pairing only after checking storage, and permits retry after a storage failure', async () => {
@@ -522,12 +528,63 @@ describe('companion engine', () => {
     expect(conversation).toMatchObject({ type: 'conversation', agentId: 'demo-agent', agent: { id: 'demo-agent' } });
     engine.dispose();
   });
-  it('lists several saved laptops instead of choosing one', async () => {
-    const connector = createDemoConnector(); Object.defineProperty(connector, 'laptops', { value: [{ id: 'demo-laptop', name: 'A' }, { id: 'other', name: 'B' }] });
-    const { engine, latest } = open(connector);
-    await engine.start();
-    expect(latest().connection).toBe('unpaired'); expect(latest().laptops).toHaveLength(2);
-    engine.dispose();
+  it.each([true, false])('reopens the last successful laptop among several, including after unlocking (foreground=%s)', async foreground => {
+    const store = selectionStorage();
+    const makeConnector = () => {
+      const connector = createDemoConnector();
+      connector.laptops = [{ id: 'other', name: 'Other computer' }, { id: 'demo-laptop', name: 'My laptop' }];
+      return connector;
+    };
+    await store.writeLastLaptop('forgotten-host');
+    const first = open(makeConnector(), store);
+    await first.engine.start();
+    expect(first.latest().connection).toBe('unpaired');
+    await first.engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+    await first.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    first.engine.dispose();
+    const connector = makeConnector(); const connect = vi.spyOn(connector, 'connect');
+    const engine = createEngine({ connector, selectionStore: store, initialActive: foreground, post: () => {} });
+    try {
+      await engine.start();
+      if (!foreground) {
+        expect(connect).not.toHaveBeenCalled();
+        await engine.dispatch({ type: 'activity', active: true });
+      }
+      expect(engine.snapshot()).toMatchObject({ laptopId: 'demo-laptop', connection: 'connected', agentId: 'demo-reviewer' });
+      expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
+      connector.connect = vi.fn(async () => { throw new Error('Unavailable'); });
+      await engine.dispatch({ type: 'connect', laptopId: 'other' });
+      expect(await store.readLastLaptop()).toBe('demo-laptop');
+    } finally { engine.dispose(); }
+  });
+  it('manages saved connections without forgetting the active laptop or losing its draft', async () => {
+    const store = selectionStorage();
+    const connector = createDemoConnector();
+    connector.laptops = [{ id: 'other', name: 'Other computer' }, { id: 'demo-laptop', name: 'My laptop' }];
+    connector.revoke = vi.fn(async id => {
+      connector.laptops = connector.laptops.filter(laptop => laptop.id !== id);
+      if (id === 'other') throw new Error('Old computer offline');
+    });
+    const { engine, latest } = open(connector, store);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      await engine.dispatch({ type: 'draft', text: 'Keep my draft' });
+      await engine.dispatch({ type: 'forget', laptopId: 'other' });
+      expect(latest()).toMatchObject({ laptopId: 'demo-laptop', connection: 'connected', draft: 'Keep my draft', laptops: [{ id: 'demo-laptop', name: 'My laptop' }] });
+      expect(await store.readLastLaptop()).toBe('demo-laptop');
+      await engine.dispatch({ type: 'chooseConnection' });
+      expect(latest()).toMatchObject({ laptopId: '', connection: 'unpaired', teamId: '', agentId: '' });
+      expect(latest().laptops).toHaveLength(1);
+      await engine.dispatch({ type: 'activity', active: false });
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(latest().connection).toBe('unpaired');
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      expect(latest()).toMatchObject({ connection: 'connected', draft: 'Keep my draft' });
+      await engine.dispatch({ type: 'forget', laptopId: 'demo-laptop' });
+      expect(latest()).toMatchObject({ connection: 'revoked', laptops: [] });
+      expect(await store.readLastLaptop()).toBeNull();
+    } finally { engine.dispose(); }
   });
   it('pairs with a code, reports awaiting approval, then connects', async () => {
     const connector = unpaired();

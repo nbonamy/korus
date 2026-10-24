@@ -212,8 +212,8 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         ConversationContent(model,Modifier.padding(padding).fillMaxSize())
                     }
                 }
-                if (model.sheet in listOf("settings", "forget", "usage")) {
-                    BackHandler { if (model.sheet == "usage") model.sheet = "settings" else if (model.sheet == "forget") model.sheet = "settings" else model.dismissSheet() }
+                if (model.sheet in listOf("settings", "connections", "usage")) {
+                    BackHandler { if (model.sheet in listOf("usage", "connections")) model.sheet = "settings" else model.dismissSheet() }
                     Surface(Modifier.fillMaxSize(), color = CompanionColors.sheetBackground) { SheetContent(model, enableNotifications, setAppLockEnabled) }
                 } else if (model.sheet != null && model.sheet != "conversation") {
                     ModalBottomSheet(onDismissRequest = model::dismissSheet, containerColor = CompanionColors.sheetBackground, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = {
@@ -454,13 +454,9 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
 @Composable internal fun SheetContent(model: CompanionModel, enableNotifications: () -> Unit, setAppLockEnabled: (Boolean) -> Unit) {
     val state = model.state
     when (model.sheet) {
-        "settings", "forget" -> {
-            AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
-            if (model.sheet == "forget") AlertDialog(onDismissRequest = { model.sheet = "settings" }, title = { Text("Forget this laptop?") },
-                text = { Text("You will need a new pairing code to connect again.") },
-                confirmButton = { TextButton(onClick = { model.command("forget"); model.sheet = null }) { Text("Forget Laptop", color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { model.sheet = "settings" }) { Text("Cancel") } })
-        }
+        "settings" -> AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
+        "connections" -> AppSheetFrame("Connections", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings") { model.sheet = "settings" } },
+            trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { ConnectionsContent(model) }
         "usage" -> AppSheetFrame("Usage", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Settings") { model.sheet = "settings" } },
             trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.connection.isConnected && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
             UsageContent(state.obj("usage"), state.connection, { model.command("loadUsage") }, { model.command("reconnect") })
