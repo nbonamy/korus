@@ -60,23 +60,32 @@ struct ConversationScreen: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     if let request = model.requests.first {
-                        Button {
-                            model.dictation.cancel()
-                            model.presentedRequest = request
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: request.request.kind == "question" ? "questionmark.bubble" : "hand.raised")
-                                Text(request.title).font(.subheadline.weight(.semibold))
-                                if model.requests.count > 1 { Text("(\(model.requests.count))") }
-                                Spacer()
-                                Text("Review").font(.subheadline)
-                                Image(systemName: "chevron.right").font(.caption)
+                        HStack(spacing: 0) {
+                            Button {
+                                model.dictation.cancel()
+                                model.presentedRequest = request
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: request.request.kind == "question" ? "questionmark.bubble" : "hand.raised")
+                                    Text(request.title).font(.subheadline.weight(.semibold))
+                                    if model.requests.count > 1 { Text("(\(model.requests.count))") }
+                                    Spacer()
+                                    Text("Review").font(.subheadline)
+                                    Image(systemName: "chevron.right").font(.caption)
+                                }
+                                .padding(.horizontal, 20).padding(.vertical, 12)
+                                .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, 20).padding(.vertical, 12)
-                            .contentShape(Rectangle())
+                            .accessibilityLabel("Review request: \(request.title)")
+                            if request.request.kind == "question" {
+                                Button { model.command("dismissRequest", ["key": request.key]) } label: {
+                                    Image(systemName: "xmark").frame(width: 44, height: 44)
+                                }
+                                .disabled(model.respondingRequest == request.key)
+                                .accessibilityLabel("Dismiss question")
+                            }
                         }
                         .background(.regularMaterial)
-                        .accessibilityLabel("Review request: \(request.title)")
                     }
                     ComposerView()
                 }

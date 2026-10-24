@@ -1,3 +1,4 @@
+import type { AgentRequest } from '@workspace/core/agent-request';
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
 import { createRemoteList } from './remote-list';
@@ -171,13 +172,26 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const loadSkills = () => loadCatalog(skillList, 'skills', active => Boolean(active.listSkills), (active, id) => active.listSkills?.(id));
   const loadPlugins = () => loadCatalog(pluginList, 'plugins', active => Boolean(active.listPlugins), (active, id) => active.listPlugins?.(id));
+  // Remember local dismissal and acknowledged consumption while late workspace updates catch up.
+  // Include the request content so a reused identity with a new question remains visible.
+  const hiddenRequests = reactive(new Map<string, string>());
+  function hideRequest(entry: { key: string; request: AgentRequest }) {
+    hiddenRequests.delete(entry.key);
+    hiddenRequests.set(entry.key, JSON.stringify(entry.request));
+    while (hiddenRequests.size > 128) hiddenRequests.delete(hiddenRequests.keys().next().value!);
+    if (failedRequest.value === entry.key) failedRequest.value = null;
+  }
   const requests = computed(() => {
     const owner = agent.value; const target = targetOf(owner);
     if (!owner || !target) return [];
     return (workspace.value.agentRequests?.[owner.id] ?? []).map((request) => ({
       key: JSON.stringify([target, request.id, request.conversationId]), target, request,
-    }));
+    })).filter(entry => hiddenRequests.get(entry.key) !== JSON.stringify(entry.request));
   });
+  function dismissRequest(key: string) {
+    const pending = requests.value.find(entry => entry.key === key);
+    if (pending?.request.kind === 'question' && respondingRequest.value !== key) hideRequest(pending);
+  }
   async function respondRequest(reply: CompanionRequestReply) {
     const pending = requests.value.find((entry) => entry.request.id === reply.id && entry.request.conversationId === reply.conversationId
       && entry.target.hostId === reply.target.hostId && entry.target.locationId === reply.target.locationId
@@ -189,14 +203,21 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       await active.respondRequest!(reply);
       // Acknowledged consumption is safe to hide while the authoritative update catches up.
       if (session === active && epoch === connectionEpoch) {
+        hideRequest(pending);
         workspace.value = { ...workspace.value, agentRequests: { ...workspace.value.agentRequests,
           [reply.target.agentId]: (workspace.value.agentRequests?.[reply.target.agentId] ?? []).filter((request) => request.id !== reply.id || request.conversationId !== reply.conversationId) } };
       }
     } catch {
       if (session === active && epoch === connectionEpoch) {
-        failedRequest.value = pending.key;
         // Reconcile an answer handled on desktop or whose acknowledgment was lost. Never replay it.
-        try { await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
+        let reconciled = false;
+        try { reconciled = await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
+        if (session !== active || epoch !== connectionEpoch) return;
+        const stillPending = workspace.value.agentRequests?.[reply.target.agentId]?.some(request => request.id === reply.id && request.conversationId === reply.conversationId);
+        // Skipping a nonblocking question is also a local dismissal; cancelling it on the laptop is best effort.
+        const optionalSkip = reply.outcome.kind === 'cancelled' && pending.request.kind === 'question' && pending.request.question.blocking === false;
+        if ((reconciled && !stillPending) || optionalSkip) hideRequest(pending);
+        else failedRequest.value = pending.key;
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
@@ -638,7 +659,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     permissions, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode,
     skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
     // Goals and questions the agent asks.
-    goalBusy, goalError, changeGoal, requests, respondRequest, respondingRequest, failedRequest,
+    goalBusy, goalError, changeGoal, requests, dismissRequest, respondRequest, respondingRequest, failedRequest,
     // Actions on the selected chat, and creating new ones.
     renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose,
     confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError,

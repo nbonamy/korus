@@ -111,6 +111,7 @@ export type EngineCommand =
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
+  | { type: 'dismissRequest'; key: string }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
   | { type: 'transcriptApplied'; identity: string; checkpoint: CompanionCheckpoint }
   | { type: 'transcriptReset'; identity: string }
@@ -426,6 +427,7 @@ export function createEngine(port: EnginePort) {
         }
         return;
       }
+      case 'dismissRequest': return state.dismissRequest(command.key);
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);

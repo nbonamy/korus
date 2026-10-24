@@ -22,6 +22,11 @@ struct RequestSheet: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { model.presentedRequest = nil }
                     }
+                    if pending.request.kind == "question" {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Dismiss") { model.command("dismissRequest", ["key": pending.key]) }
+                        }
+                    }
                 }
             }
         }

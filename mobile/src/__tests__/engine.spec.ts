@@ -201,11 +201,12 @@ describe('companion engine', () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const question = { id: 'same-id', conversationId: 'conversation', kind: 'question' as const,
       question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [{ id: 'q', header: 'Choice', question: 'Which?', isOther: true, isSecret: false, options: null }] } };
+    let reviewerPending = true;
     let reject!: (error: Error) => void;
     const respondRequest = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => ({ ...workspace, agentRequests: { 'demo-agent': [question], 'demo-reviewer': [question] } }), respondRequest };
+      return { ...session, getWorkspace: async () => ({ ...workspace, agentRequests: { 'demo-agent': [question], 'demo-reviewer': reviewerPending ? [question] : [] } }), respondRequest };
     };
     const { engine, latest } = open(connector);
     try {
@@ -230,8 +231,57 @@ describe('companion engine', () => {
       await engine.dispatch({ type: 'respondRequest', reply });
       expect(latest().requests).toHaveLength(0);
       expect(latest().failedRequest).toBeNull();
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(0);
       await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
-      expect(latest().requests[0]?.request.id).toBe('same-id');
+      const other = latest().requests[0]!;
+      expect(other.request.id).toBe('same-id');
+      respondRequest.mockImplementationOnce(async () => { reviewerPending = false; throw new Error('Already answered on desktop'); });
+      await engine.dispatch({ type: 'respondRequest', reply: { target: other.target, id: other.request.id, conversationId: other.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest()).toMatchObject({ requests: [], failedRequest: null, respondingRequest: null });
+      reviewerPending = true;
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(0);
+    } finally { engine.dispose(); }
+  });
+
+  it('dismisses questions locally across catch-up without hiding approvals, another agent or a changed question', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let text = 'Old question';
+    const respondRequest = vi.fn(async (_reply: import('@workspace/core/companion-protocol').CompanionRequestReply) => {});
+    connector.connect = async id => {
+      const session = await connect(id);
+      return { ...session, respondRequest, getWorkspace: async () => ({ ...await session.getWorkspace(), agentRequests: Object.fromEntries(['demo-agent', 'demo-reviewer'].map(id => [id, [
+        { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'q', delivery: 'async' as const, blocking: false, questions: [{ id: 'q', header: 'Choice', question: text, isOther: true, isSecret: false, options: null }] } },
+        { id: 'approval', conversationId: 'conversation', kind: 'approval' as const, approval: { id: 'approval', itemId: 'approval-item', conversationId: 'conversation', kind: 'command' as const, title: 'Run?', allowedScopes: ['once' as const] } },
+      ]])) }) };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'draft', text: 'Keep my prompt' });
+      const [question, approval] = latest().requests;
+      await engine.dispatch({ type: 'dismissRequest', key: approval!.key });
+      expect(latest().requests).toHaveLength(2);
+      await engine.dispatch({ type: 'disconnect' });
+      await engine.dispatch({ type: 'dismissRequest', key: question!.key });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(respondRequest).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(latest().draft).toBe('Keep my prompt');
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(latest().requests).toHaveLength(2);
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(latest().requests).toHaveLength(1);
+      text = 'A new question';
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(2);
+      const optional = latest().requests.find(entry => entry.request.kind === 'question')!;
+      respondRequest.mockRejectedValueOnce(new Error('Cancellation could not be confirmed'));
+      await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(latest().failedRequest).toBeNull();
+      expect(respondRequest).toHaveBeenCalledExactlyOnceWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
     } finally { engine.dispose(); }
   });
 
