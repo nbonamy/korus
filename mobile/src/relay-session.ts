@@ -121,6 +121,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       }
     },
     getWorkspace: read,
+    createTeam: async name => (await call<{ teamId: string }>('team.create', { name })).teamId,
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
     getUsage: () => call('usage.get', {}),

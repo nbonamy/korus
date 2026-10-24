@@ -129,6 +129,7 @@ struct DrawerView: View {
                             }
                             .accessibilityLabel(team.name + (team.isUnread == true ? ", unread activity" : ""))
                         }
+                        NewTeamButton()
                     }
                     .padding(.leading, 4).padding(.trailing, 20)
                     // Keep the glass inside the viewport vertically while clipping scrolled pills beside the fixed logo.
@@ -174,6 +175,41 @@ struct DrawerView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
+    }
+}
+
+private struct NewTeamButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var showingPrompt = false
+    @State private var name = ""
+    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        Button {
+            if model.teamCreation != .failed { name = "" }
+            showingPrompt = true
+        } label: {
+            Group {
+                if model.teamCreation == .creating { ProgressView().controlSize(.small) }
+                else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
+            }
+            .frame(width: 44, height: 44)
+            .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .disabled(model.connection != .connected || model.teamCreation == .creating)
+        .accessibilityLabel("New team")
+        .alert("New Team", isPresented: $showingPrompt) {
+            TextField("Name", text: $name)
+            Button("Create") { model.command("createTeam", ["name": cleanName]) }
+                .disabled(cleanName.isEmpty || cleanName.utf16.count > 100 || model.connection != .connected)
+            Button("Cancel", role: .cancel) { model.command("dismissTeamCreation") }
+        } message: {
+            if model.teamCreation == .failed { Text("Couldn’t create the team. Check the connection and try again.") }
+        }
+        .onChange(of: model.teamCreation) { _, phase in
+            if phase == .failed { showingPrompt = true }
+        }
     }
 }
 

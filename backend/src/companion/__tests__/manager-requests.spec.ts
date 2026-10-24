@@ -75,6 +75,25 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
 }
 
 describe('mobile requests across the owning daemon', () => {
+  it('creates a team through the shared daemon service without changing desktop navigation or accepting mobile color or remote overrides', async () => {
+    const sdk = codexSdkFixture();
+    const f = await fixture(sdk.driver, { ...sdkAgent(), teamId: 'team-test' });
+    const desktop = () => f.server.handleMessage({ jsonrpc: '2.0', id: 'desktop', method: backendMethods.snapshotGet, params: {} });
+    const before = await desktop();
+    await expect(f.gateway.request('stranger', 'team.create', { name: 'Mobile team' })).rejects.toThrow('authorized');
+    for (const input of [{ name: '  ' }, { name: 'x'.repeat(101) }, { name: 'Mobile team', color: '#1B4FB2' }, { name: 'Mobile team', remoteConnectionId: 'other' }]) {
+      await expect(f.gateway.request('phone', 'team.create', input)).rejects.toThrow();
+    }
+    const { teamId } = await f.gateway.request('phone', 'team.create', { name: '  Mobile team  ' }) as { teamId: string };
+    const workspace = await f.workspace();
+    expect(workspace.teams.find(team => team.id === teamId)).toMatchObject({ name: 'Mobile team', agentIds: [] });
+    const after = await desktop();
+    if (!before || !('result' in before) || !after || !('result' in after)) throw new Error('Desktop snapshot unavailable');
+    const previous = before.result as { snapshot: import('@workspace/core/contracts').AppSnapshot };
+    const current = after.result as typeof previous;
+    expect(current.snapshot.activeTeamId).toBe(previous.snapshot.activeTeamId);
+    expect(current.snapshot.teams.find(team => team.id === teamId)).toMatchObject({ name: 'Mobile team', color: '#1B4FB2', agentIds: [] });
+  });
   it('reads real workspace Git status and patches through the paired, read-only gateway', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-git-'));
     cleanup.push(() => rm(directory, { recursive: true, force: true }));

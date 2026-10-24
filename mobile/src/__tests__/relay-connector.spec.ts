@@ -398,6 +398,9 @@ describe('native relay host adapter', () => {
     const input = { deleteWorktree: true as const, deleteRemoteBranch: false, discardChanges: true, confirmed: true as const };
     await session.closeSession!(selectedTarget, input);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.close', args: { target: selectedTarget, input } });
+    transport.response = method => method === 'team.create' ? { teamId: 'mobile-team' } : {};
+    expect(await session.createTeam!('Mobile team')).toBe('mobile-team');
+    expect(transport.requests.at(-1)).toStrictEqual({ v: 1, id: expect.any(String), method: 'team.create', args: { name: 'Mobile team' } });
     session.close(); await connector.dispose!();
   });
   it('holds native networking closed in background and reconnects only after foreground resume', async () => {

@@ -12,6 +12,7 @@ import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
 import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
+import { defaultTeamColor } from '@workspace/core/team-colors';
 import { relayAddress } from '@workspace/core/companion-relay';
 import { z } from 'zod';
 import { CompanionGateway, type GatewayState } from './gateway';
@@ -179,6 +180,13 @@ export class CompanionManager {
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
+      createTeam: async name => {
+        const snapshot = await this.backend.request<AppSnapshot>(backendMethods.teamCreate, {
+          input: { name, color: defaultTeamColor }, _clientId: 'companion-write',
+        });
+        if (!snapshot.activeTeamId) throw new Error('Team creation returned no team.');
+        return snapshot.activeTeamId;
+      },
       usage: async () => {
         const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'companion-read' });
         const providers = (snapshot.providerConnections ?? []).filter(provider => provider.installed && provider.connected && provider.enabled !== false
