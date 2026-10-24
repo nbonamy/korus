@@ -8,7 +8,7 @@ import {
   type CodexNativeAttachment,
   type CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
-import { computed, defineComponent, h, nextTick, provide, ref } from 'vue';
+import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';
 import { formatCollaborationMessageEnvelope } from '@workspace/core/collaboration-message-envelope';
@@ -17,6 +17,11 @@ import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
 import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
 import { setElectronTestClient } from '../../test/client';
+import { antigravityBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createAgentComposerState } from '../../agent-composer-state';
+import type { AgentConversationView } from '../../app-state';
+import { agentConversationState } from '../use-agent-conversation';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -66,6 +71,35 @@ const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendere
 
 describe('ConversationPane', () => {
   afterEach(() => { delete nativeWindow.codexAppSdkNative; });
+  // App-owned skills must remain selectable when the provider has no native skill support.
+  it('offers an app-owned imagegen skill in the dollar picker without submitting a prompt', async () => {
+    const snapshot = createInitialSnapshot();
+    const owner = { ...snapshot.agents[0]!, backend: 'antigravity' as const, backendDefaults: { kind: 'antigravity' as const } };
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
+    composer.skills = [{ name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
+    const view = shallowReactive<AgentConversationView>({ agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityBackendCapabilities, approvals: [], sending: false,
+      queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
+    const submit = vi.fn();
+    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: {
+      submit, updateComposerState: state => { view.composerState = state; },
+    } });
+    const wrapper = mountPane({ controller, agent: owner });
+    try {
+      const editor = wrapper.get<HTMLElement>('.chat-rich-text-editor');
+      editor.element.focus();
+      editor.element.textContent = '$ima';
+      const range = document.createRange();
+      range.selectNodeContents(editor.element); range.collapse(false);
+      window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
+      await editor.trigger('input');
+      const option = wrapper.findAll('[role="option"]').find(item => item.text().includes('imagegen'));
+      expect(option?.exists()).toBe(true);
+      await option!.trigger('mousedown');
+      expect(view.composerState.text).toContain('$imagegen');
+      expect(submit).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
   const claudeAgent = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
   it.each([
     ['claude', '/repo/banner.png', '/repo/banner.png'],

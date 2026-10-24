@@ -17,6 +17,34 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it('offers the imagegen bridge alongside native skills only to eligible non-Codex agents', async () => {
+    const snapshot = createTestSnapshot();
+    const native = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
+    const drivers = (['codex', 'claude', 'antigravity'] as const).map(backend => ({
+      backend, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(),
+      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
+    } satisfies AgentBackendDriver));
+    snapshot.agents = drivers.map(({ backend }) => ({ id: backend, teamId: 'team-test', name: backend,
+      backend, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map(drivers.map(driver => [driver.backend, driver]))) });
+    const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'skills', method: backendMethods.agentSkillsList, params: { agentId } });
+    try {
+      await expect(list('codex')).resolves.toMatchObject({ result: [native] });
+      for (const backend of ['claude', 'antigravity']) {
+        await expect(list(backend)).resolves.toMatchObject({ result: [native, {
+          name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true,
+        }] });
+      }
+      snapshot.general.providerEnabled = { codex: false };
+      await expect(list('claude')).resolves.toMatchObject({ result: [native] });
+      snapshot.general.providerEnabled = { codex: true };
+      const ownImagegen = { ...native, name: 'imagegen' };
+      drivers[1]!.listSkills.mockResolvedValue([ownImagegen]);
+      await expect(list('claude')).resolves.toMatchObject({ result: [ownImagegen] });
+    } finally { await server.close(); }
+  });
+
   it.each([
     { outcome: 'success', discardChanges: false },
     { outcome: 'failure', discardChanges: true },

@@ -240,6 +240,11 @@ asset placement and inline image responses. Its result includes Markdown image
 syntax with the actual saved path, so the requesting agent can embed its selected
 output in the answer rather than only reading the image or reporting a filename.
 
+The composer offers this procedure as `$imagegen` to eligible non-Codex agents,
+alongside their native skills. Its `korus:skill/` catalog path identifies a bundled
+MCP procedure, not a filesystem skill. An existing native `imagegen` keeps its name;
+Codex retains its native image-generation skill.
+
 The daemon saves images with unique filenames under the app-owned Codex home's
 generated-images folder and returns image content with those paths. Provider file
 results must resolve inside that folder. Project assets are copied into the

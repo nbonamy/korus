@@ -27,6 +27,7 @@ import { applyMissionDebugFixture } from './mission-debug-fixtures';
 import { applyMissionScreenshotFixture, isMissionScreenshotAgent, missionScreenshotConversation, missionScreenshotModel } from './mission-screenshot-fixture';
 import { createVisualizeDebugFixture } from './visualize-debug-fixtures';
 import { missionStageSkills } from './bundled-skills/catalog';
+import { imageGenerationSkill } from './image-generation-service';
 import { featureStages, type DeleteMissionInput, type Mission, type MissionReviewDebugState, type MissionStage } from '@workspace/core/missions';
 import { missionCreatedWorkspaces, type MissionExecutionInput, type MissionResultInput } from '@workspace/core/mission-execution';
 import { MissionService } from './mission-service';
@@ -1628,7 +1629,11 @@ export class AppBackendServer {
       }
       case backendMethods.agentSkillsList: {
         const agentId = requireAgentId(message.params);
-        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentSkillsList, { agentId }, (agent) => this.handleAgentDriverRequest(agent, backendMethods.driverSkillsList, { agent }));
+        return this.routeAgentResultRequest(message.id, agentId, backendMethods.agentSkillsList, { agentId }, async (agent) => {
+          const skills = await this.handleAgentDriverRequest(agent, backendMethods.driverSkillsList, { agent }) as import('@workspace/core/contracts').BackendSkillSummary[];
+          const bridge = imageGenerationSkill(this.snapshot, agent.id);
+          return bridge && !skills.some(skill => skill.name === bridge.name) ? [...skills, bridge] : skills;
+        });
       }
       case backendMethods.agentCodeReviewStart: {
         const agentId = requireStringParam(message.params, 'agentId');

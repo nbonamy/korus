@@ -108,7 +108,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
     get capabilities() {
       const capabilities = view().capabilities;
       return {
-        models: capabilities.models, skills: capabilities.skills, reasoningEffort: capabilities.reasoningEffort,
+        models: capabilities.models, skills: capabilities.skills || view().composer.skills.some(skill => skill.enabled), reasoningEffort: capabilities.reasoningEffort,
         serviceTier: capabilities.serviceTier, planMode: capabilities.planMode !== 'unsupported',
         goals: capabilities.goals, steerPrompt: capabilities.steerPrompt, interrupt: capabilities.interrupt,
         history: capabilities.history, deleteTurn: capabilities.deleteTurn, editTurn: capabilities.editTurn,
