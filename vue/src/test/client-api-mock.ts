@@ -161,6 +161,7 @@ export function createClientApiMock(
   clearUsage: unscripted('clearUsage'),
     updateSettings: unscripted('updateSettings'),
     readEngineInstructions: unscripted('readEngineInstructions'),
+    manageSkills: unscripted('manageSkills'),
     saveEngineInstructions: unscripted('saveEngineInstructions'),
     previewSpokenAnnouncementVoice: unscripted('previewSpokenAnnouncementVoice'),
     getCodexResourceSharingStatus: unscripted('getCodexResourceSharingStatus'),

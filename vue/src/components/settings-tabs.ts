@@ -26,6 +26,7 @@ export type SettingsTab =
   | "general"
   | "integrations"
   | "plugins"
+  | "skills"
   | "personalization"
   | "git"
   | "voice";
@@ -106,11 +107,18 @@ const settingsDestinations: readonly SettingsDestination[] = [
     aliases: "google engine provider login authentication",
   },
   {
+    id: "skills",
+    labelKey: "surface.skills.title",
+    group: "agents",
+    icon: ListDetailsIcon,
+    aliases: "install skills packs sync shared github curated",
+  },
+  {
     id: "plugins",
     labelKey: "surface.settingsSidebar.plugins",
     group: "agents",
     icon: PuzzleIcon,
-    aliases: "skills MCP tools extensions",
+    aliases: "MCP tools extensions",
   },
   {
     id: "git",

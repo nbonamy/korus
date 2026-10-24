@@ -113,6 +113,7 @@
           @disconnect="provider => runIntegrationAction(provider, disconnectWorkProvider)"
           @open-authorization="openWorkProviderAuthorization"
         />
+        <SettingsSkillsPanel v-else-if="activeTab === 'skills'" />
         <SettingsPluginsPanel
           v-else-if="activeTab === 'plugins'"
           :settings="generalSettings?.plugins"
@@ -163,6 +164,7 @@ import SettingsInstructionsPanel from './SettingsInstructionsPanel.vue';
 import SettingsPersonalizationPanel from './SettingsPersonalizationPanel.vue';
 import SettingsIntegrationsPanel from './SettingsIntegrationsPanel.vue';
 import SettingsPluginsPanel from './SettingsPluginsPanel.vue';
+import SettingsSkillsPanel from './SettingsSkillsPanel.vue';
 import SettingsSidebar from './SettingsSidebar.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';

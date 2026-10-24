@@ -1,14 +1,264 @@
 import { product } from '@workspace/core/product';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ElMessageBox } from 'element-plus';
+import { ElMessageBox, ElTabs, ElTabPane, ElPopover, ElDialog } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsView from '../SettingsView.vue';
 import type { AppApi } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultThemeSettings } from '@workspace/core/settings';
 import { configureAppClient } from '../../platform-api';
 import { setElectronTestClient } from '../../test/client';
+import { curatedSkills, type SkillManagerState } from '@workspace/core/skill-manager';
 
 describe('SettingsView', () => {
+  it('installs a featured skill, offers whole packs, syncs providers and keeps failures visible', async () => {
+    const personal = { name: 'personal-notes', description: 'My private checklist', managed: false, providers: [{ backend: 'codex' as const, path: '/codex/skills/personal-notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/personal-notes', status: 'missing' as const }] };
+    const nativeGuidelines = { ...personal, name: 'web-design-guidelines', providers: personal.providers.map(provider => ({ ...provider, status: 'installed' as const })) };
+    const system = { ...personal, name: 'system-tool', builtIn: true };
+    const initial: SkillManagerState = { skills: [personal, nativeGuidelines, system], providers: ['codex', 'claude'], curated: curatedSkills, issues: [] };
+    const skill = { name: 'security-audit', managed: true, description: 'Security audit', source: 'https://github.com/cloudflare/security-audit-skill', revision: 'a'.repeat(40), providers: [{ backend: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }] };
+    const installed = { ...initial, skills: [...initial.skills, skill] };
+    const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(installed)
+      .mockResolvedValueOnce({ ...installed, issues: ['Claude: existing personal skill was preserved'] })
+      .mockRejectedValueOnce(new Error('GitHub download failed')).mockResolvedValue(installed);
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    expect(wrapper.findAll('[role="tab"]')[0]!.text()).toBe('Discover');
+    expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true');
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    expect(wrapper.text()).toContain('personal-notes');
+    expect(wrapper.find('[aria-label="personal-notes actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="system-tool actions"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Skill type"] select').setValue('builtIn');
+    await wrapper.get('[aria-label="system-tool actions"]').trigger('click'); await flushPromises();
+    expect(skillMenuButton('system-tool', 'Delete skill')!.disabled).toBe(true);
+    await wrapper.get('[aria-label="system-tool actions"]').trigger('keydown', { key: 'Escape' });
+    await wrapper.get('[aria-label="Skill type"] select').setValue('personal');
+    expect(wrapper.get('[aria-label="Claude Code: not installed"]').attributes('role')).toBe('img');
+    expect(wrapper.findAll('[role="columnheader"]').map(header => header.text())).not.toContain('Codex');
+    expect(wrapper.get('[aria-label="Codex: installed"]').attributes('title')).toContain('Codex: installed');
+    await wrapper.get('[aria-label="Search skills"]').setValue('no such skill');
+    expect(wrapper.text()).not.toContain('personal-notes');
+    await wrapper.get('[aria-label="Search skills"]').setValue('');
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toContain('Discover');
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'Discover')!.trigger('click');
+    expect(wrapper.get('[data-skill="web-design-guidelines"] button').attributes('aria-label')).toBe('Uninstall Web design guidelines');
+    const card = wrapper.get('[data-skill="security-audit"]');
+    await card.get('button').trigger('click'); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: curatedSkills.find(skill => skill.name === 'security-audit')!.source });
+    expect(card.get('button').text()).toBe('Refresh');
+    const syncConfirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('confirm' as never);
+    const beforeSync = manageSkills.mock.calls.length;
+    await wrapper.get('[aria-label="Sync skills"]').trigger('click'); await flushPromises();
+    expect(syncConfirm).toHaveBeenCalledWith('This makes all your personal skills available in all your configured coding agents.', 'Sync skills?', expect.objectContaining({ confirmButtonText: 'Sync' }));
+    expect(manageSkills).toHaveBeenCalledTimes(beforeSync);
+    await wrapper.get('[aria-label="Sync skills"]').trigger('click'); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'sync' });
+    expect(wrapper.get('[role="alert"]').text()).toContain('personal skill was preserved');
+    await wrapper.get('[data-skill="matt-pocock"] button').trigger('click'); await flushPromises();
+    expect(manageSkills).toHaveBeenNthCalledWith(4, { action: 'install', source: curatedSkills.find(skill => skill.name === 'matt-pocock')!.source });
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'list' });
+    expect(wrapper.get('[role="alert"]').text()).toContain('GitHub download failed');
+    expect(wrapper.get('[data-skill="matt-pocock"] button').attributes('disabled')).toBeUndefined();
+    await wrapper.findAll('button').find(button => button.text() === 'Install skill')!.trigger('click');
+    await flushPromises();
+    await wrapper.get('[aria-label="Skill source"]').setValue('  https://github.com/example/skills  ');
+    await wrapper.get('#skill-source-form').trigger('submit'); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: 'https://github.com/example/skills' });
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    manageSkills.mockResolvedValueOnce({ ...installed, document: { name: 'personal-notes', files: [{ providers: ['codex'], content: '# Private checklist\n\nCheck the release.' }] } });
+    await wrapper.get('[aria-label="personal-notes actions"]').trigger('click'); await flushPromises();
+    skillMenuButton('personal-notes', 'View skill')!.click(); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'view', name: 'personal-notes' });
+    expect(wrapper.findAll('[role="dialog"]').some(dialog => dialog.text().includes('Check the release.'))).toBe(true);
+    await wrapper.findAll('button').find(button => button.text() === 'Close')!.trigger('click');
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('confirm' as never);
+    await wrapper.get('[aria-label="personal-notes actions"]').trigger('click'); await flushPromises();
+    const beforeCancel = manageSkills.mock.calls.length;
+    skillMenuButton('personal-notes', 'Delete skill')!.click(); await flushPromises();
+    expect(manageSkills).toHaveBeenCalledTimes(beforeCancel);
+    manageSkills.mockResolvedValueOnce({ ...installed, skills: installed.skills.filter(skill => skill.name !== 'personal-notes') });
+    await wrapper.get('[aria-label="personal-notes actions"]').trigger('click'); await flushPromises();
+    skillMenuButton('personal-notes', 'Delete skill')!.click(); await flushPromises();
+    expect(confirm).toHaveBeenCalledTimes(4); // two Sync prompts, then two Delete prompts
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'remove', name: 'personal-notes', confirmed: true });
+    expect(wrapper.find('[aria-label="personal-notes actions"]').exists()).toBe(false);
+
+  });
+  it('shows the featured skills at once and a placeholder for the installed list while it loads', async () => {
+    let resolveList!: (state: SkillManagerState) => void;
+    const manageSkills = vi.fn().mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { resolveList = resolve; }));
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    expect(wrapper.findAll('[data-skill]')).toHaveLength(curatedSkills.length);
+    expect(wrapper.get('[data-skill="security-audit"] button').attributes('disabled')).toBeDefined();
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    expect(wrapper.get('[aria-label="Loading skills…"]').attributes('aria-busy')).toBe('true');
+    resolveList({ skills: [], providers: ['codex'], curated: curatedSkills, issues: [] });
+    await flushPromises();
+    expect(wrapper.find('[aria-label="Loading skills…"]').exists()).toBe(false);
+    expect(wrapper.get('[data-skill="security-audit"] button').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('labels where a skill came from and opens a skill right away while its document loads', async () => {
+    const providers = [{ backend: 'codex' as const, path: '/codex/skills/built-in-browser', status: 'installed' as const }];
+    const base = { description: 'Browser pane', managed: false, providers };
+    const initial: SkillManagerState = {
+      skills: [{ ...base, name: 'built-in-browser', builtIn: true }, { ...base, name: 'notes' }, { ...base, name: 'imagegen', builtIn: true }, { ...base, name: 'copied', origin: 'synced' }],
+      providers: ['codex'], curated: curatedSkills, issues: [],
+    };
+    let resolveView!: (state: SkillManagerState) => void;
+    const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { resolveView = resolve; }));
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    expect(wrapper.find('[aria-label="notes actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="copied actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="built-in-browser actions"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Personal');
+    expect(wrapper.text()).toContain('Synced');
+    await wrapper.get('[aria-label="Skill type"] select').setValue('builtIn');
+    expect(wrapper.find('[aria-label="built-in-browser actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="imagegen actions"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="notes actions"]').exists()).toBe(false);
+    expect(wrapper.findAll('.settings-skills__origin').map(label => label.text())).toEqual(['Built-in', 'Built-in']);
+    await wrapper.get('[aria-label="Skill type"] select').setValue('personal');
+    await wrapper.get('[aria-label="notes actions"]').trigger('click'); await flushPromises();
+    skillMenuButton('notes', 'View skill')!.click(); await flushPromises();
+    const dialog = () => wrapper.findAll('[role="dialog"]').find(candidate => candidate.text().startsWith('notes'));
+    expect(dialog()).toBeDefined();
+    expect(dialog()!.get('[aria-label="Loading skill…"]').attributes('aria-busy')).toBe('true');
+    resolveView({ ...initial, document: { name: 'notes', files: [{ providers: ['codex'], content: '# Notes' }] } });
+    await flushPromises();
+    expect(dialog()!.find('[aria-label="Loading skill…"]').exists()).toBe(false);
+    expect(dialog()!.get('.settings-skills__body h1').text()).toBe('Notes');
+    wrapper.unmount();
+  });
+
+  it('shows a skill as its name, description and rendered Markdown instead of raw front matter', async () => {
+    const providers = [{ backend: 'codex' as const, path: '/codex/skills/review', status: 'installed' as const }];
+    const initial: SkillManagerState = { skills: [{ name: 'review', description: 'Review a change.', managed: false, providers }], providers: ['codex'], curated: curatedSkills, issues: [] };
+    const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce({ ...initial, document: { name: 'review', files: [{ providers: ['codex'], content: '---\nname: review\ndescription: Review a change.\nlicense: MIT\n---\n# Steps\n\nRead the **diff** first.\n' }] } });
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    await wrapper.get('[aria-label="review actions"]').trigger('click'); await flushPromises();
+    skillMenuButton('review', 'View skill')!.click(); await flushPromises();
+    const viewer = wrapper.get('.settings-skills__viewer');
+    expect(wrapper.findAll('[role="dialog"]').some(dialog => dialog.text().startsWith('review') && !dialog.text().includes('SKILL.md'))).toBe(true);
+    expect(viewer.find('h3').exists()).toBe(false);
+    expect(viewer.get('.settings-skills__summary').text()).toBe('Review a change.');
+    expect(viewer.get('.settings-skills__body h1').text()).toBe('Steps');
+    expect(viewer.get('.settings-skills__body strong').text()).toBe('diff');
+    expect(viewer.text()).not.toContain('license');
+    expect(viewer.text()).not.toContain('---');
+    wrapper.unmount();
+  });
+
+  it('shows a spinner on the skill that is being deleted', async () => {
+    const providers = [{ backend: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }];
+    const skills = ['notes', 'other'].map(name => ({ name, description: name, managed: false, providers }));
+    const initial: SkillManagerState = { skills, providers: ['codex'], curated: curatedSkills, issues: [] };
+    let finishRemove!: (state: SkillManagerState) => void;
+    const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { finishRemove = resolve; }));
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValueOnce('confirm' as never);
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    await wrapper.get('[aria-label="notes actions"]').trigger('click'); await flushPromises();
+    skillMenuButton('notes', 'Delete skill')!.click(); await flushPromises();
+    expect(wrapper.get('[aria-label="Deleting notes…"]').attributes('role')).toBe('status');
+    expect(wrapper.find('[aria-label="notes actions"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Deleting other…"]').exists()).toBe(false);
+    finishRemove({ ...initial, skills: [skills[1]!] });
+    await flushPromises();
+    expect(wrapper.find('[aria-label="Deleting notes…"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('installs for every coding agent unless some are unselected in the install dialog', async () => {
+    const initial: SkillManagerState = { skills: [], providers: ['codex', 'claude'], curated: curatedSkills, issues: [] };
+    const manageSkills = vi.fn().mockResolvedValue(initial);
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    await wrapper.findAll('button').find(button => button.text() === 'Install skill')!.trigger('click'); await flushPromises();
+    const agents = () => wrapper.findAllComponents({ name: 'ElSelect' }).find(select => select.attributes('aria-label') === 'Coding agents')!;
+    expect(agents().props('modelValue')).toEqual(['codex', 'claude']);
+    await wrapper.get('[aria-label="Skill source"]').setValue('https://github.com/example/skills');
+    await agents().vm.$emit('update:modelValue', ['codex']);
+    await wrapper.get('#skill-source-form').trigger('submit'); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: 'https://github.com/example/skills', backends: ['codex'] });
+    await wrapper.findAll('button').find(button => button.text() === 'Install skill')!.trigger('click'); await flushPromises();
+    expect(agents().props('modelValue')).toEqual(['codex', 'claude']);
+    await wrapper.get('[aria-label="Skill source"]').setValue('https://github.com/example/skills');
+    await agents().vm.$emit('update:modelValue', []);
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('syncs just one personal skill from its menu, with a spinner on that row, and offers it for no built-in skill', async () => {
+    const providers = [{ backend: 'codex' as const, path: '/codex/skills/notes', status: 'installed' as const }, { backend: 'claude' as const, path: '/claude/skills/notes', status: 'missing' as const }];
+    const skills = [{ name: 'notes', description: 'Notes', managed: false, providers }, { name: 'imagegen', description: 'Images', managed: false, builtIn: true, providers }];
+    const initial: SkillManagerState = { skills, providers: ['codex', 'claude'], curated: curatedSkills, issues: [] };
+    let finishSync!: (state: SkillManagerState) => void;
+    const manageSkills = vi.fn().mockResolvedValueOnce(initial).mockReturnValueOnce(new Promise<SkillManagerState>((resolve) => { finishSync = resolve; }));
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text().startsWith('Installed'))!.trigger('click');
+    await wrapper.get('[aria-label="notes actions"]').trigger('click'); await flushPromises();
+    const labels = [...document.body.querySelectorAll('[aria-label="notes actions"][role="menu"] button')].map(button => button.textContent?.trim());
+    expect(labels.slice(0, 2)).toEqual(['View skill', 'Sync this skill']);
+    skillMenuButton('notes', 'Sync this skill')!.click(); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'sync', name: 'notes' });
+    expect(wrapper.get('[aria-label="Syncing notes…"]').attributes('role')).toBe('status');
+    finishSync(initial); await flushPromises();
+    expect(wrapper.find('[aria-label="Syncing notes…"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Skill type"] select').setValue('builtIn');
+    await wrapper.get('[aria-label="imagegen actions"]').trigger('click'); await flushPromises();
+    expect(skillMenuButton('imagegen', 'Sync this skill')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('offers Refresh and an icon-only Uninstall for what Korus installed, and removes exactly the skills a pack recorded', async () => {
+    const skill = (name: string, extra = {}) => ({ name, description: name, managed: true, source: 'https://github.com/mattpocock/skills', revision: 'a'.repeat(40), providers: [{ backend: 'codex' as const, path: `/codex/skills/${name}`, status: 'installed' as const }], ...extra });
+    const installed: SkillManagerState = { skills: [skill('tdd'), skill('triage'), skill('mine', { managed: false })], providers: ['codex'], curated: curatedSkills, issues: [], installs: { 'matt-pocock': ['tdd', 'triage', 'long-gone'] } };
+    const manageSkills = vi.fn().mockResolvedValueOnce(installed).mockResolvedValueOnce(installed).mockResolvedValueOnce({ ...installed, skills: [skill('mine', { managed: false })], installs: {} });
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('confirm' as never);
+    setElectronTestClient({ manageSkills });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    const buttons = (name: string) => wrapper.findAll(`[data-skill="${name}"] .settings-skills__actions button`);
+    expect(buttons('matt-pocock').map(button => button.text() || button.attributes('aria-label'))).toEqual(['Refresh', 'Uninstall Matt Pocock’s skills']);
+    expect(buttons('pstack').map(button => button.text())).toEqual(['Install pack']);
+    await buttons('matt-pocock')[0]!.trigger('click'); await flushPromises();
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'install', source: curatedSkills.find(entry => entry.name === 'matt-pocock')!.source, refresh: true });
+    await buttons('matt-pocock')[1]!.trigger('click'); await flushPromises();
+    expect(manageSkills).toHaveBeenCalledTimes(2);
+    await buttons('matt-pocock')[1]!.trigger('click'); await flushPromises();
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('tdd, triage'), 'Uninstall Matt Pocock’s skills?', expect.anything());
+    expect(manageSkills).toHaveBeenLastCalledWith({ action: 'remove', names: ['tdd', 'triage'], confirmed: true });
+    expect(buttons('matt-pocock').map(button => button.text())).toEqual(['Install pack']);
+    wrapper.unmount();
+  });
+
+  it('does not offer Refresh for a skill Korus did not install', async () => {
+    const providers = [{ backend: 'codex' as const, path: '/codex/skills/security-audit', status: 'installed' as const }];
+    const initial: SkillManagerState = { skills: [{ name: 'security-audit', description: 'Mine', managed: false, providers }], providers: ['codex'], curated: curatedSkills, issues: [] };
+    setElectronTestClient({ manageSkills: vi.fn().mockResolvedValue(initial) });
+    const wrapper = mount(SettingsView, { attachTo: document.body, props: { activeTab: 'skills', settings: defaultThemeSettings }, global: { components: { ElTabs, ElTabPane, ElPopover, ElDialog } } });
+    await flushPromises();
+    const actions = wrapper.findAll('[data-skill="security-audit"] .settings-skills__actions button');
+    expect(actions.map(button => button.attributes('aria-label') ?? button.text())).toEqual(['Uninstall Security audit']);
+    wrapper.unmount();
+  });
+
   it('keeps GitHub and Linear connection buttons independent of backlog loading and each other', async () => {
     let finishGitHub!: () => void;
     let finishLinear!: () => void;
@@ -107,6 +357,7 @@ describe('SettingsView', () => {
       'Screenshots',
       'Codex',
       'Claude Code',
+      'Skills',
       'Plugins',
       'Git',
       'Workflows',
@@ -344,4 +595,9 @@ describe('SettingsView', () => {
 function bodyButton(label: string): HTMLButtonElement | undefined {
   return [...document.body.querySelectorAll('button')]
     .find((button) => button.textContent?.includes(label));
+}
+
+function skillMenuButton(name: string, label: string): HTMLButtonElement | undefined {
+  const menu = [...document.body.querySelectorAll('[role="menu"]')].find(menu => menu.getAttribute('aria-label') === `${name} actions`);
+  return [...menu?.querySelectorAll('button') ?? []].find(button => button.textContent?.includes(label));
 }

@@ -1,6 +1,19 @@
 import { product } from '@workspace/core/product';
 // Component-scoped renderer copy. Keep keys stable when editing messages.
 export const surfaceMessages = {
+  skills: {
+    title: 'Skills', sync: 'Sync', syncLabel: 'Sync skills', install: 'Install', installPack: 'Install pack', installed: 'Installed',
+    installing: 'Installing…', managed: 'Installed skills', source: 'Skill source',
+    placeholder: 'GitHub URL, skills.sh URL or skills add command',
+    discover: 'Discover', installSkill: 'Install skill', skill: 'Skill', search: 'Search skills', searchPlaceholder: 'Search skills…',
+    noMatches: 'No matching skills.', personal: 'Personal', builtIn: 'Built-in',
+    installedFor: '{provider}: installed', missingFor: '{provider}: not installed', conflictFor: '{provider}: an existing skill was preserved',
+    syncHint: 'Sync skills installed with Korus to your configured coding agents.',
+    empty: 'No skills installed yet.',
+    actions: '{name} actions', view: 'View skill', delete: 'Delete skill', managedCopy: 'Korus copy',
+    deleteTitle: 'Delete {name}?', deleteMessage: 'Delete “{name}” from all configured agents? Its installed folders will be removed. Original sources of linked skills are kept.',
+    unavailable: 'Skills client unavailable.', loading: 'Loading skills…', loadingDocument: 'Loading skill…', synced: 'Synced', kind: 'Skill type', deleting: 'Deleting {name}…', codingAgents: 'Coding agents', syncTitle: 'Sync skills?', syncOne: 'Sync this skill', uninstall: 'Uninstall', uninstallLabel: 'Uninstall {name}', refresh: 'Refresh', uninstalling: 'Uninstalling…', uninstallTitle: 'Uninstall {name}?', uninstallPackMessage: 'Remove the {count} installed skills of “{name}” from all configured agents? This deletes: {skills}. Original sources of linked skills are kept.', syncing: 'Syncing {name}…', syncMessage: 'This makes all your personal skills available in all your configured coding agents.',
+  },
   mobileSimulator: {
     "title": "Mobile simulator",
     "tab": "Simulator",
