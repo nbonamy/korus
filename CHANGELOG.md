@@ -4,6 +4,34 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.41.0] - 2026-10-24
+
+### New features
+
+- Install Bitwarden and 1Password in the in-app browser from Settings. Open your
+  vault from the browser toolbar, and update, disable, reinstall or remove each
+  extension independently.
+- Save custom review instructions in Settings > Workflows. They accompany every
+  review agent, including automatic reviews and fresh rounds.
+- Track output speed over time in Analytics, with a separate line for each model.
+- Select Image Gen from the skill picker in Claude and other non-Codex agents.
+- The mobile companion remembers multiple computers, supports renaming and
+  forgetting saved connections, and uses your computer's name when pairing.
+- Browse agents across all teams and create teams from the mobile sidebar.
+
+### Improvements and fixes
+
+- All agents share browser accounts, cookies and extensions. Existing per-agent
+  website sessions are not migrated; sign in again after upgrading.
+- Clear browsing data across agents without removing extensions or their saved data.
+- Accept a suggested follow-up in an empty composer with Right Arrow or Space,
+  as well as Tab. Accepting the suggestion fills the draft without sending it.
+- Mobile composers offer follow-up suggestions, and mobile Settings groups account,
+  preference and app information more clearly.
+- Dismiss stale mobile questions without retry errors.
+- Suppress phone alerts for the exact conversation being viewed in the focused
+  desktop window.
+
 ## [0.40.0] - 2026-10-23
 
 ### New features
