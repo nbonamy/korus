@@ -23,7 +23,7 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink { ConnectionsView(closeSettings: { dismiss() }) } label: {
-                        row("Connections", systemImage: "laptopcomputer", value: LaptopSummary.text(names: model.laptops.map(\.name)))
+                        plainLabel("Connections", systemImage: "laptopcomputer")
                     }
                     NavigationLink { UsageView() } label: {
                         plainLabel("Usage and limits", systemImage: "gauge.with.dots.needle.33percent")

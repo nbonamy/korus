@@ -16,12 +16,6 @@ final class SettingsSummaryTests: XCTestCase {
         }
     }
 
-    func testConnectionsRowNamesASingleLaptopAndCountsSeveral() {
-        XCTAssertEqual(LaptopSummary.text(names: []), "None")
-        XCTAssertEqual(LaptopSummary.text(names: ["MacBook Pro"]), "MacBook Pro")
-        XCTAssertEqual(LaptopSummary.text(names: ["MacBook Pro", "Mac mini"]), "2 laptops")
-    }
-
     func testLaptopNamesAreTrimmedAndRefusedWhenBlankOrTooLong() {
         XCTAssertEqual(LaptopName.cleaned("  Work Mac "), "Work Mac")
         XCTAssertNil(LaptopName.cleaned("   "))

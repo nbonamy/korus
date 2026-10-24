@@ -50,7 +50,9 @@ class NotificationSettingsWorkflowTest {
     @Test fun cancellingForgetReturnsToSettingsWithoutLosingPairingOrTheDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, true)
-            app.onNodeWithText("Connections").performScrollTo().performClick()
+            app.onNodeWithText("Connections").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Computer").assertDoesNotExist()
+            app.onNodeWithText("Connections").performClick()
             app.onNodeWithContentDescription("Current").assertIsDisplayed()
             app.onNodeWithContentDescription("Manage Computer").performClick()
             app.onNodeWithText("Forget connection").performClick()
@@ -93,12 +95,27 @@ class NotificationSettingsWorkflowTest {
             openSettings(engine, false)
             app.waitUntil(7_000) { engine.model.showConnectionLost }
             app.onNodeWithText("Connections").performScrollTo().performClick()
-            val inSheet = hasAnyAncestor(hasScrollAction())
-            app.onNode(hasText("Reconnect") and inSheet).performScrollTo().performClick()
-            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "reconnect" } }
+            app.onNode(hasText("Connection lost") and hasAnyAncestor(hasScrollAction())).assertDoesNotExist()
+            app.onNodeWithContentDescription("Current").assertDoesNotExist()
+            app.onNodeWithContentDescription("Reconnect to Computer").assertIsDisplayed().performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "reconnect" } == 1 }
+            assertEquals("connections", engine.model.sheet)
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            val inMenu = hasAnyAncestor(isPopup())
+            val rename = app.onNode(hasText("Rename") and inMenu).fetchSemanticsNode().boundsInRoot
+            val reconnect = app.onNode(hasText("Reconnect") and inMenu).fetchSemanticsNode().boundsInRoot
+            val forget = app.onNode(hasText("Forget connection") and inMenu).fetchSemanticsNode().boundsInRoot
+            assertTrue(rename.top < reconnect.top && reconnect.top < forget.top)
+            app.onNode(hasText("Reconnect") and inMenu).performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "reconnect" } == 2 }
             assertEquals("{\"type\":\"reconnect\"}", engine.commands().last { it.string("type") == "reconnect" }.toString())
             engine.state(state(true))
-            app.onNode(hasText("Reconnect") and inSheet).assertDoesNotExist()
+            app.onNodeWithContentDescription("Reconnect to Computer").assertDoesNotExist()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            app.onNode(hasText("Reconnect") and inMenu).assertDoesNotExist()
+            app.onNodeWithText("Rename").performClick()
+            app.onNodeWithText("Cancel").performClick()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
         }

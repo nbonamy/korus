@@ -21,15 +21,29 @@ struct ConnectionsView: View {
                                 Image(systemName: "laptopcomputer").foregroundStyle(.primary)
                                 Text(laptop.name).foregroundStyle(.primary)
                                 Spacer()
-                                if laptop.id == model.laptopID {
-                                    Image(systemName: "checkmark").foregroundStyle(.secondary).accessibilityLabel("Current")
-                                }
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        if laptop.id == model.laptopID {
+                            if model.showConnectionLost {
+                                Button { model.reconnect() } label: {
+                                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Reconnect to \(laptop.name)")
+                            } else if model.connection == .connected {
+                                Image(systemName: "checkmark").foregroundStyle(.secondary).accessibilityLabel("Current")
+                            } else {
+                                ProgressView().accessibilityLabel("Connecting to \(laptop.name)")
+                            }
+                        }
                         Menu {
                             Button("Rename", systemImage: "pencil") { newName = laptop.name; renaming = laptop }
+                            if laptop.id == model.laptopID && model.showConnectionLost {
+                                Button("Reconnect", systemImage: "arrow.clockwise") { model.reconnect() }
+                            }
                             Button("Forget connection", systemImage: "trash", role: .destructive) { forgetting = laptop }
                         } label: {
                             Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
@@ -37,7 +51,6 @@ struct ConnectionsView: View {
                         .accessibilityLabel("Manage \(laptop.name)")
                     }
                 }
-                if model.showConnectionLost { ConnectionLostNotice(reconnect: model.reconnect) }
             }
             Section {
                 Button("Add connection", systemImage: "plus") {
@@ -60,19 +73,6 @@ struct ConnectionsView: View {
         .forgetLaptopConfirmation($forgetting) { laptop in
             model.command("forget", ["laptopId": laptop.id])
             if laptop.id == model.laptopID { closeSettings() }
-        }
-    }
-}
-
-extension View {
-    /// Asks before removing a laptop from this phone, and does so once confirmed.
-    func forgetLaptopConfirmation(_ laptop: Binding<EngineState.Laptop?>, forget: @escaping (EngineState.Laptop) -> Void) -> some View {
-        confirmationDialog("Forget this laptop?", isPresented: Binding(get: { laptop.wrappedValue != nil }, set: { if !$0 { laptop.wrappedValue = nil } }), titleVisibility: .visible) {
-            if let target = laptop.wrappedValue {
-                Button("Forget Laptop", role: .destructive) { forget(target); laptop.wrappedValue = nil }
-            }
-        } message: {
-            Text("\(laptop.wrappedValue?.name ?? "This laptop") will be removed from this phone. You will need a new pairing code to connect again.")
         }
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 // The native view is real. Only its engine-facing model is replaced so catalog
 // responses and deferred branch loading are deterministic, without pairing.
 enum EngineState {
+    struct Laptop { let id: String; let name: String }
     enum ChatCreation { case idle, creating, failed }
     struct ProjectRepositories {
         struct Repository: Identifiable { let id: String; let name: String }
@@ -57,6 +58,8 @@ enum EngineState {
     @State private var model = AppModel()
     @State private var showingRename = false
     @State private var name = "Original"
+    @State private var forgetting: EngineState.Laptop?
+    @State private var forgotten = false
     var body: some Scene {
         WindowGroup {
             @Bindable var model = model
@@ -65,7 +68,10 @@ enum EngineState {
                 Text(model.selection)
                 Button("Rename Agent") { showingRename = true }
                 Text("Agent: \(name)")
+                Button("Forget this laptop") { forgetting = .init(id: "laptop", name: "Work laptop") }
+                Text(forgotten ? "Laptop forgotten" : "Laptop retained")
             }
+            .forgetLaptopConfirmation($forgetting) { _ in forgotten = true }
             .sheet(isPresented: $model.showingProject) { NewProjectSheet(source: .existing).environment(model) }
             .sheet(isPresented: $showingRename) {
                 RenameAgentSheet(name: name, enabled: true, cancel: { showingRename = false }) {

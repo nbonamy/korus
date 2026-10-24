@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         SettingsHeader(model, current?.string("name"))
         AppSection("Account") {
-            AppRow("Connections", icon = Icons.Outlined.Laptop, onClick = { model.sheet = "connections" }, trailing = { SettingValue(laptopSummary(laptops.map { it.string("name") })); Chevron() })
+            AppRow("Connections", icon = Icons.Outlined.Laptop, onClick = { model.sheet = "connections" }, trailing = { Chevron() })
             AppDivider()
             AppRow("Usage and limits", icon = Icons.Outlined.Speed, onClick = { model.sheet = "usage" }, trailing = { Chevron() })
         }
@@ -90,9 +90,6 @@ import androidx.compose.ui.unit.sp
     }
 }
 
-/** What the Connections row shows: the laptop's name, or how many there are. */
-internal fun laptopSummary(names: List<String>) = when (names.size) { 0 -> "None"; 1 -> names[0]; else -> "${names.size} laptops" }
-
 /** The Notifications row's value: the three standings by name, anything more specific as the platform words it. */
 internal fun notificationValue(status: String) = when (status) {
     "Notifications on" -> "On"
@@ -146,24 +143,29 @@ internal fun cleanLaptopName(value: String): String? = value.trim().takeIf { it.
                     model.dismissSheet()
                 }, trailing = {
                     if (id == currentId) {
-                        Icon(Icons.Outlined.Check, "Current", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (model.showConnectionLost) {
+                            IconButton(onClick = { model.command("reconnect") }) {
+                                Icon(Icons.Outlined.Warning, "Reconnect to $name", tint = MaterialTheme.colorScheme.error)
+                            }
+                        } else if (model.state.connection.isConnected) {
+                            Icon(Icons.Outlined.Check, "Current", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        }
                     }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreHoriz, "Manage $name") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = laptop })
+                            if (id == currentId && model.showConnectionLost) {
+                                DropdownMenuItem(text = { Text("Reconnect") }, onClick = { menu = false; model.command("reconnect") })
+                            }
                             DropdownMenuItem(text = { Text("Forget connection", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; forgetting = laptop })
                         }
                     }
                 })
             }
-            if (model.showConnectionLost) {
-                AppDivider()
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Connection lost", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { model.command("reconnect") }) { Text("Reconnect") }
-                }
-            }
+
         }
         AppSection {
             AppRow("Add connection", icon = Icons.Outlined.Add, onClick = { model.command("chooseConnection"); model.dismissSheet() })

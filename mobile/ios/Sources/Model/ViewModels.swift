@@ -25,17 +25,6 @@ enum LaptopName {
     }
 }
 
-enum LaptopSummary {
-    /// What the Connections row shows: the laptop's name, or how many there are.
-    static func text(names: [String]) -> String {
-        switch names.count {
-        case 0: "None"
-        case 1: names[0]
-        default: "\(names.count) laptops"
-        }
-    }
-}
-
 enum AgentStatus: String, Codable, Sendable {
     case idle, working, awaitingInput, error
 }
