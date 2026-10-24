@@ -149,7 +149,8 @@ it('preserves other extensions across update failure, disable, repair, and scope
     return { response: 0 };
   });
   const dialogCount = host.showMessageBox.mock.calls.length;
-  await runtime.manage('agent', 'update', 'first');
+  const updated = await runtime.manage('agent', 'update', 'first');
+  expect(updated.message).toBeUndefined();
   const consent = host.showMessageBox.mock.calls[dialogCount][0];
   expect(consent).toMatchObject({
     message: 'Update First?',
@@ -199,7 +200,8 @@ it('preserves other extensions across update failure, disable, repair, and scope
   await expect(runtime.manage('agent', 'remove', 'first')).rejects.toThrow('Cleanup unavailable');
   await runtime.manage('agent', 'reinstall', 'first');
   expect(host.windows.some((window) => !window.destroyed && window.url.includes('korusStorageRelay'))).toBe(true);
-  await runtime.manage('agent', 'remove', 'first');
+  const removed = await runtime.manage('agent', 'remove', 'first');
+  expect(removed.message).toBeUndefined();
   expect(host.loaded.has('first')).toBe(false);
   expect(host.loaded.has('second')).toBe(true);
   expect(otherWindow.destroyed).toBe(false);

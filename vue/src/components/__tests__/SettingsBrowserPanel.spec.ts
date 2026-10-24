@@ -17,7 +17,7 @@ describe('Browser extension settings', () => {
     expect(wrapper.get('article').find('img').attributes('alt')).toBe('');
     expect(wrapper.get('article').find('img').attributes('src')).toBe(bitwardenIcon);
     expect(wrapper.findAll('article')[1].get('img').attributes('src')).toBe(new URL(onePasswordIcon, location.href).href);
-    let finishInstall!: (result: { extensions: typeof manager[] }) => void;
+    let finishInstall!: (result: { extensions: typeof manager[]; message?: string }) => void;
     browserExtensions.mockImplementationOnce(() => new Promise((resolve) => { finishInstall = resolve; }));
     await wrapper.get('[aria-label="Install Bitwarden"]').trigger('click');
     const installButton = wrapper.get('[aria-label="Install Bitwarden"]');
@@ -26,8 +26,9 @@ describe('Browser extension settings', () => {
     expect(installButton.attributes('disabled')).toBeDefined();
     expect(wrapper.get('[aria-label="Install 1Password"]').attributes('aria-busy')).toBeUndefined();
     expect(wrapper.text()).not.toContain('Working…');
-    finishInstall({ extensions: [manager] });
+    finishInstall({ extensions: [manager], message: 'Extension installed.' });
     await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     expect(wrapper.get('[aria-label="Install Bitwarden"]').attributes('aria-busy')).toBeUndefined();
     expect(browserExtensions).toHaveBeenLastCalledWith('agent-one', 'install', id);
     browserExtensions.mockResolvedValue({ extensions: [{ ...manager, enabled: true, version: '2026.10.0' }] });
@@ -61,12 +62,13 @@ describe('Browser extension settings', () => {
     await menuItems()[2].trigger('click');
     await flushPromises();
     expect(browserExtensions).toHaveBeenLastCalledWith('agent-two', 'reinstall', id);
-    browserExtensions.mockResolvedValue({ extensions: [manager] });
+    browserExtensions.mockResolvedValue({ extensions: [manager], message: 'Extension removed.' });
     await openActions();
     await menuItems()[3].trigger('click');
     await flushPromises();
     expect(browserExtensions).toHaveBeenLastCalledWith('agent-two', 'remove', id);
     expect(wrapper.find('[aria-label="Install Bitwarden"]').exists()).toBe(true);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

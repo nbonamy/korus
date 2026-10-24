@@ -11,6 +11,7 @@ import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AppCommand, AppApi } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemComposerPrompt } from '@workspace/core/work-item-prompts';
 import { setElectronTestClient } from '../../test/client';
+import { useAppState } from '../../app-state';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { useConfetti } from '../../shared/confetti/use-confetti';
 
@@ -628,6 +629,36 @@ describe('AppShell workspace and plans', () => {
     expect(workspaces.find((panel) => panel.props('agent').id === 'agent-jesse')?.props('tabs')).toStrictEqual(['browser']);
     expect(browserClose).not.toHaveBeenCalled();
     expect(browserSetVisible).toHaveBeenCalledWith('agent-dina', 'primary', true);
+  });
+
+  it('opens Browser settings from the empty browser extensions shortcut', async () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    let command: (command: AppCommand) => void = () => undefined;
+    setElectronTestClient({
+      onAppCommand: vi.fn(listener => { command = listener; return () => undefined; }),
+      browserExtensions: vi.fn().mockResolvedValue({ extensions: [{ id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', enabled: false, permissions: [] }] }),
+      browserOpen: vi.fn().mockResolvedValue({ url: '', title: '', canGoBack: false, canGoForward: false }),
+      browserSetBounds: vi.fn().mockResolvedValue(undefined),
+      browserSetVisible: vi.fn().mockResolvedValue(undefined),
+      browserGetZoom: vi.fn().mockResolvedValue(100),
+      browserClose: vi.fn().mockResolvedValue(undefined),
+    });
+    const app = useAppState(), previous = app.snapshot.value;
+    app.snapshot.value = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot: app.snapshot.value });
+    try {
+      command({ type: 'open-browser' });
+      await flushPromises();
+      readyBrowserGuest(wrapper.get('webview').element, 42);
+      await flushPromises();
+      await wrapper.get('.browser-panel [aria-label="Extensions"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('#settings-browser-title').text()).toBe('Browser');
+      expect(wrapper.find('[aria-label="Install Bitwarden"]').exists()).toBe(true);
+    } finally {
+      wrapper.unmount();
+      app.snapshot.value = previous;
+    }
   });
 
   it('opens a background agent browser without changing the selected agent', async () => {

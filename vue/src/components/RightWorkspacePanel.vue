@@ -241,6 +241,7 @@
       :visualization="browserVisualization"
       :visible="visible && activeTab === 'browser'"
       @send-prompt="emit('sendPrompt', $event)"
+      @open-browser-settings="emit('openBrowserSettings')"
       @url-change="updateBrowserUrl('browser', $event)"
     />
 
@@ -254,6 +255,7 @@
         :initial-url="browserPanels[tab]!.url"
         :visible="visible && activeTab === tab"
         @send-prompt="emit('sendPrompt', $event)"
+        @open-browser-settings="emit('openBrowserSettings')"
         @url-change="updateBrowserUrl(tab, $event)"
       />
     </template>
@@ -532,6 +534,7 @@ const emit = defineEmits<{
   }];
   selectTab: [tab: RightWorkspaceTab];
   sendPrompt: [prompt: string];
+  openBrowserSettings: [];
   previewFile: [path: string];
   toggleFilesPane: [];
   resizeFilesPane: [width: number];

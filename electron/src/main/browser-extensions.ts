@@ -189,7 +189,6 @@ export class BrowserExtensions {
           })
         ).extensions;
         await this.synchronize(profile, true, id);
-        message = action === 'update' ? 'Extension updated.' : 'Extension installed.';
         if (
           action === 'install' &&
           ![...profile.windows].some(([window, owner]) => owner === id && !window.isDestroyed() && window.isVisible())
@@ -222,7 +221,6 @@ export class BrowserExtensions {
       await this.clearData(agentId, profile, record);
       profile.records = (await this.options.request(agentId, { action: 'remove', id: id! })).extensions;
       await this.synchronize(profile, true, id);
-      message = 'Extension removed.';
     } else if (action === 'open') await this.openAction(profile, id!);
     return { ...this.state(profile), ...(message ? { message } : {}) };
   }

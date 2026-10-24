@@ -52,7 +52,6 @@
           </template>
         </FormRow>
       </template>
-      <p v-if="message" role="status" class="browser-settings__message">{{ message }}</p>
       <p v-if="error" role="alert" class="browser-settings__error">{{ error }}</p>
     </FormSection>
   </SettingsPanelFrame>
@@ -85,8 +84,7 @@ const extensions = ref<BrowserExtensionStatus[]>(
   supportedBrowserExtensions.map((extension) => ({ ...extension, enabled: false, permissions: [] })),
 );
 const pending = ref(false),
-  error = ref(''),
-  message = ref('');
+  error = ref('');
 const pendingAction = ref<{ action: BrowserExtensionAction; id?: string } | null>(null);
 function isBusy(action: BrowserExtensionAction, id: string): boolean {
   return pendingAction.value?.action === action && pendingAction.value.id === id;
@@ -113,12 +111,10 @@ async function act(action: BrowserExtensionAction, id?: string): Promise<void> {
   pending.value = true;
   pendingAction.value = { action, id };
   error.value = '';
-  message.value = '';
   try {
     const result = await appApi.browserExtensions(agentId, action, id);
     if (request !== sequence || profileId.value !== agentId) return;
     extensions.value = result.extensions;
-    message.value = result.message ?? '';
   } catch (reason) {
     if (request === sequence) error.value = reason instanceof Error ? reason.message : String(reason);
   } finally {

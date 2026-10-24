@@ -103,6 +103,7 @@
       @clarify-finding="emit('clarifyCodeReviewFinding', { agentId: agent.id, ...$event })"
       @select-tab="selectRightWorkspaceTab(agent.id, $event)"
       @send-prompt="forwardPrompt"
+      @open-browser-settings="emit('openBrowserSettings')"
       @annotate-visualization="attachVisualizationAnnotation"
       @dragover="linkDrag.over"
       @drop="linkDrag.drop"
@@ -295,6 +296,7 @@ const emit = defineEmits<{
   }];
   removeReviewFindingAttachment: [];
   sendPrompt: [prompt: string];
+  openBrowserSettings: [];
   'update:planMode': [enabled: boolean];
 }>();
 

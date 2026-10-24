@@ -383,6 +383,7 @@
         @remove-work-item-assignment="$emit('remove-work-item-assignment', $event)"
         @remove-review-finding-attachment="pendingReviewClarification = null"
         @send-prompt="emit('sendPrompt', $event)"
+        @open-browser-settings="openSettings('browser')"
         @update:plan-mode="emit('update:planMode', $event)"
       >
         <template v-if="!compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>

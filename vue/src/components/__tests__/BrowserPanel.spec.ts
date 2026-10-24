@@ -90,6 +90,7 @@ describe('BrowserPanel', () => {
   it('opens an enabled extension in the owning browser and hides it for visualizations', async () => {
     const { wrapper, api } = mountPanel({ agentId: 'agent-2', browserId: 'second-tab' }, { extensions: [{ id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', enabled: true, version: '1', permissions: [] }] });
     await flushPromises();
+    expect(wrapper.find('[aria-label="Extensions"]').exists()).toBe(false);
     expect(wrapper.get('[aria-label="Open Bitwarden"] img').attributes('src')).toBe(bitwardenIcon);
     await wrapper.get('[aria-label="Open Bitwarden"]').trigger('click'); await flushPromises();
     expect(api.browserExtensions).toHaveBeenLastCalledWith('agent-2', 'open', 'nngceckbapebfimnlniiiahkandclblb', 'second-tab');
@@ -494,8 +495,8 @@ describe('BrowserPanel', () => {
     await flushPromises();
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    expect(wrapper.findAll('[role="menuitem"]').some(item => item.text().includes('Close browser'))).toBe(false);
-    const screenshotItem = wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot')!;
+    expect(new DOMWrapper(document.body).findAll('[role="menuitem"]').some(item => item.text().includes('Close browser'))).toBe(false);
+    const screenshotItem = new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot')!;
     expect(screenshotItem.element.previousElementSibling?.getAttribute('role')).toBe('separator');
     wrapper.unmount();
 
@@ -508,26 +509,26 @@ describe('BrowserPanel', () => {
     const trigger = wrapper.get('[aria-label="Browser menu"]');
 
     await trigger.trigger('click');
-    await wrapper.get('[aria-label="Zoom in"]').trigger('pointerdown');
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(true);
+    await new DOMWrapper(document.body).get('[aria-label="Zoom in"]').trigger('pointerdown');
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(true);
 
     await wrapper.get('[aria-label="Browser address"]').trigger('pointerdown');
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(false);
 
     await trigger.trigger('click');
     await wrapper.get('.browser-panel__viewport').trigger('pointerdown');
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(false);
 
     await trigger.trigger('click');
     wrapper.get('webview').element.dispatchEvent(new Event('focus'));
     await wrapper.vm.$nextTick();
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(false);
 
     await trigger.trigger('click');
     await trigger.trigger('pointerdown');
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(true);
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(true);
     await trigger.trigger('click');
-    expect(wrapper.find('.browser-panel__menu').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).find('[role="menu"][aria-label="Browser menu"]').exists()).toBe(false);
   });
 
   it('changes page zoom through the browser guest and resets it from the menu', async () => {
@@ -535,16 +536,25 @@ describe('BrowserPanel', () => {
     await flushPromises();
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    expect(wrapper.get('[role="group"][aria-label="Zoom"]').element.firstElementChild?.tagName.toLowerCase()).toBe('svg');
-    expect(wrapper.get('[aria-label="Reset zoom"]').attributes('disabled')).toBeDefined();
-    await wrapper.get('[aria-label="Zoom in"]').trigger('click');
+    expect(new DOMWrapper(document.body).get('[role="group"][aria-label="Zoom"]').element.firstElementChild?.tagName.toLowerCase()).toBe('svg');
+    expect(new DOMWrapper(document.body).get('[aria-label="Reset zoom"]').attributes('disabled')).toBeDefined();
+    await new DOMWrapper(document.body).get('[aria-label="Zoom in"]').trigger('click');
     await flushPromises();
     expect(api.browserSetZoom).toHaveBeenCalledWith('agent-1', 'primary', 110);
-    expect(wrapper.get('.browser-panel__zoom-actions').text()).toContain('110%');
-    await wrapper.get('[aria-label="Reset zoom"]').trigger('click');
+    expect(new DOMWrapper(document.body).get('.browser-panel__zoom-actions').text()).toContain('110%');
+    await new DOMWrapper(document.body).get('[aria-label="Reset zoom"]').trigger('click');
     await flushPromises();
     expect(api.browserSetZoom).toHaveBeenLastCalledWith('agent-1', 'primary', 100);
-    expect(wrapper.get('.browser-panel__zoom-actions').text()).toContain('100%');
+    expect(new DOMWrapper(document.body).get('.browser-panel__zoom-actions').text()).toContain('100%');
+  });
+
+  it('uses the shared popup and matching text sizes for zoom and menu actions', async () => {
+    const { wrapper } = mountPanel({}, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('[aria-label="Browser menu"]').trigger('click');
+    const popup = new DOMWrapper(document.body).get('.app-popover');
+    expect(getComputedStyle(popup.get('.browser-panel__zoom').element).fontSize)
+      .toBe(getComputedStyle(popup.get('[role="menuitem"]').element).fontSize);
   });
 
   it('shows the guest zoom after opening, navigation, and an external origin zoom change', async () => {
@@ -555,23 +565,23 @@ describe('BrowserPanel', () => {
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.browser-panel__zoom-actions').text()).toContain('125%');
-    expect(wrapper.get('[aria-label="Reset zoom"]').attributes('disabled')).toBeUndefined();
+    expect(new DOMWrapper(document.body).get('.browser-panel__zoom-actions').text()).toContain('125%');
+    expect(new DOMWrapper(document.body).get('[aria-label="Reset zoom"]').attributes('disabled')).toBeUndefined();
 
     api.browserGetZoom.mockResolvedValue(100);
     wrapper.get('webview').element.dispatchEvent(Object.assign(new Event('did-navigate'), {
       url: 'https://another.example/', isMainFrame: true,
     }));
     await flushPromises();
-    expect(wrapper.get('.browser-panel__zoom-actions').text()).toContain('100%');
-    expect(wrapper.get('[aria-label="Reset zoom"]').attributes('disabled')).toBeDefined();
+    expect(new DOMWrapper(document.body).get('.browser-panel__zoom-actions').text()).toContain('100%');
+    expect(new DOMWrapper(document.body).get('[aria-label="Reset zoom"]').attributes('disabled')).toBeDefined();
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     api.browserGetZoom.mockResolvedValue(120);
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.browser-panel__zoom-actions').text()).toContain('120%');
-    await wrapper.get('[aria-label="Zoom in"]').trigger('click');
+    expect(new DOMWrapper(document.body).get('.browser-panel__zoom-actions').text()).toContain('120%');
+    await new DOMWrapper(document.body).get('[aria-label="Zoom in"]').trigger('click');
     expect(api.browserSetZoom).toHaveBeenLastCalledWith('agent-1', 'primary', 125);
   });
 
@@ -580,13 +590,13 @@ describe('BrowserPanel', () => {
     await flushPromises();
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    const toggle = wrapper.get('[role="menuitem"]');
+    const toggle = new DOMWrapper(document.body).get('[role="menuitem"]');
     expect(toggle.text()).toBe('Show device toolbar');
     await toggle.trigger('click');
     await flushPromises();
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    expect(wrapper.get('[role="menuitem"]').text()).toBe('Hide device toolbar');
-    expect(wrapper.find('[role="menuitemcheckbox"]').exists()).toBe(false);
+    expect(new DOMWrapper(document.body).get('[role="menuitem"]').text()).toBe('Hide device toolbar');
+    expect(new DOMWrapper(document.body).find('[role="menuitemcheckbox"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     const mode = wrapper.get<HTMLSelectElement>('[aria-label="Device mode"]');
     await mode.setValue('phone');
@@ -605,7 +615,7 @@ describe('BrowserPanel', () => {
     expect(wrapper.find('.browser-panel__device-toolbar').exists()).toBe(false);
     expect(wrapper.find('.browser-panel__guest-frame webview').exists()).toBe(true);
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    expect(wrapper.get('[role="menuitem"]').text()).toBe('Show device toolbar');
+    expect(new DOMWrapper(document.body).get('[role="menuitem"]').text()).toBe('Show device toolbar');
   });
 
   it('restores a fluid viewport when Responsive is selected and tracks pane resizing', async () => {
@@ -618,7 +628,7 @@ describe('BrowserPanel', () => {
     });
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    await wrapper.get('[role="menuitem"]').trigger('click');
+    await new DOMWrapper(document.body).get('[role="menuitem"]').trigger('click');
     const mode = wrapper.get<HTMLSelectElement>('[aria-label="Device mode"]');
     await mode.setValue('phone');
     expect(wrapper.get('.browser-panel__guest-frame').attributes('style')).toContain('width: 390px');
@@ -639,7 +649,7 @@ describe('BrowserPanel', () => {
     const { api, wrapper } = mountPanel();
     await flushPromises();
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    await wrapper.get('[role="menuitem"]').trigger('click');
+    await new DOMWrapper(document.body).get('[role="menuitem"]').trigger('click');
     await wrapper.get<HTMLSelectElement>('[aria-label="Device mode"]').setValue('phone');
 
     const viewport = wrapper.get<HTMLElement>('.browser-panel__viewport').element;
@@ -668,12 +678,12 @@ describe('BrowserPanel', () => {
     });
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot')!.trigger('click');
+    await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot')!.trigger('click');
     await flushPromises();
     expect(api.browserCopyScreenshot).toHaveBeenCalledWith('agent-1', 'primary', undefined);
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot area')!.trigger('click');
+    await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot area')!.trigger('click');
     const overlay = wrapper.get<HTMLElement>('[aria-label="Select screenshot area"]');
     vi.spyOn(overlay.element, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20, width: 400, height: 300 } as DOMRect);
     overlay.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 50, clientY: 60 }));
@@ -687,7 +697,7 @@ describe('BrowserPanel', () => {
     expect(wrapper.find('[aria-label="Select screenshot area"]').exists()).toBe(false);
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
-    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot area')!.trigger('click');
+    await new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot area')!.trigger('click');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await flushPromises();
     expect(wrapper.find('[aria-label="Select screenshot area"]').exists()).toBe(false);
@@ -702,7 +712,7 @@ describe('BrowserPanel', () => {
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[role="menu"]').exists()).toBe(true);
+    expect(new DOMWrapper(document.body).find('[role="menu"]').exists()).toBe(true);
     expect(api.browserSetVisible).not.toHaveBeenCalled();
   });
 
