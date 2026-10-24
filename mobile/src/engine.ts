@@ -118,7 +118,7 @@ export type EngineCommand =
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
-  | { type: 'disconnect' } | { type: 'chooseConnection' } | { type: 'reconnect' } | { type: 'forget'; laptopId?: string }
+  | { type: 'disconnect' } | { type: 'chooseConnection' } | { type: 'reconnect' } | { type: 'forget'; laptopId?: string } | { type: 'renameLaptop'; laptopId: string; name: string }
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
@@ -481,6 +481,11 @@ export function createEngine(port: EnginePort) {
         return openPendingNotification();
       }
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
+      case 'renameLaptop': {
+        // The screen checks the name as it is typed; a laptop that refuses it is simply left as it was.
+        await port.connector.rename?.(command.laptopId, command.name).catch(() => {});
+        laptops.value = [...port.connector.laptops]; return publish();
+      }
       case 'forget': {
         const laptopId = command.laptopId ?? state.laptopId.value;
         if (!laptops.value.some(laptop => laptop.id === laptopId)) return;

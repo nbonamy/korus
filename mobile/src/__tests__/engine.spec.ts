@@ -890,3 +890,17 @@ it('uses acknowledged transcript checkpoints for warm agent switching and recove
     expect(transfers().at(-1)!.frames).toHaveLength(1);
   } finally { engine.dispose(); cache!.close(); }
 });
+
+it('renames a paired laptop and shows the new name, leaving it alone when the name is refused', async () => {
+  const connector = createDemoConnector(); const events: EngineEvent[] = [];
+  const engine = createEngine({ connector, post: event => events.push(event) });
+  const shownName = () => engine.snapshot().laptops[0]?.name;
+  try {
+    await engine.start();
+    expect(shownName()).toBe('Demo laptop');
+    await engine.dispatch({ type: 'renameLaptop', laptopId: 'demo-laptop', name: 'Work Mac' });
+    expect(shownName()).toBe('Work Mac');
+    await engine.dispatch({ type: 'renameLaptop', laptopId: 'someone-else', name: 'Other' });
+    expect(shownName()).toBe('Work Mac');
+  } finally { engine.dispose(); }
+});

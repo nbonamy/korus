@@ -11,6 +11,11 @@ import type { PairedLaptop, RelayNetwork } from './relay-network';
 export type RelayConfig = { origin: string; peerId: string; allowLocalDevelopment?: boolean };
 
 const maxPairedLaptops = 20;
+const maxNameLength = 60;
+const defaultLaptopName = 'Paired laptop';
+const hasControlCharacters = (value: string) => /[\u0000-\u001f\u007f]/.test(value);
+/** What a laptop says it is called, made fit to show: one line, trimmed and bounded; empty if there is nothing usable. */
+const offeredName = (value: unknown) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxNameLength).trim() : '';
 const lookupTimeoutMs = 15_000;
 const pairingPollMs = 1_000;
 
@@ -60,6 +65,14 @@ export function createPairing(options: { vault: ProtectedVault; relay: RelayConf
     initialize,
     get laptops() { return records.map((record) => ({ id: record.hostId, name: record.name })); },
     find: (laptopId: string) => records.find((record) => record.hostId === laptopId),
+    /** The person's own name for a laptop; blank, overlong or multi-line names are refused. */
+    async rename(laptopId: string, value: string): Promise<void> {
+      const name = typeof value === 'string' ? value.trim() : '';
+      if (!name || name.length > maxNameLength || hasControlCharacters(name)) throw new Error('Invalid laptop name.');
+      if (!records.some((record) => record.hostId === laptopId)) throw new Error('Pair the laptop first.');
+      records = records.map((record) => record.hostId === laptopId ? { ...record, name } : record);
+      await save();
+    },
     /** Forgets a laptop locally and returns what was stored, so the caller can tell the laptop too. */
     async forget(laptopId: string): Promise<PairedLaptop | undefined> {
       const host = records.find((record) => record.hostId === laptopId);
@@ -79,10 +92,10 @@ export function createPairing(options: { vault: ProtectedVault; relay: RelayConf
       const deadline = Date.now() + pairingLifetimeMs;
       while (Date.now() < deadline) {
         if (network.isDisposed()) throw new Error('Pairing cancelled.');
-        const state = await network.request<{ state: string; grant?: unknown }>(laptop, 'pair.status', { pendingId: result.pendingId });
+        const state = await network.request<{ state: string; grant?: unknown; hostName?: unknown }>(laptop, 'pair.status', { pendingId: result.pendingId });
         if (state.state === 'approved' && state.grant) {
           if (network.isDisposed()) throw new Error('Pairing cancelled.');
-          records = [...records.filter((host) => host.hostId !== hostId), { v: 1, ...laptop, name: 'Paired laptop' }];
+          records = [...records.filter((host) => host.hostId !== hostId), { v: 1, ...laptop, name: offeredName(state.hostName) || defaultLaptopName }];
           await save();
           return hostId;
         }

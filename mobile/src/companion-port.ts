@@ -82,6 +82,8 @@ export type CompanionConnector = {
   conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
+  /** Gives a paired laptop the person's own name. */
+  rename?(laptopId: string, name: string): Promise<void>;
   initialize?(): Promise<void>;
   /** False when the build carries no relay: pairing is unavailable rather than misdirected. */
   relayConfigured?: boolean;

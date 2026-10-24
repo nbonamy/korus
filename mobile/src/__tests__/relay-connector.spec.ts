@@ -184,6 +184,28 @@ describe('native relay host adapter', () => {
   });
 
   const connect = (storage = vault()) => createRelayConnector(storage, host.relay);
+  it('names a new pairing after what the laptop calls itself, and keeps the old name for laptops that do not say', async () => {
+    const claimed = () => ({ pendingId: randomUUID(), state: 'awaitingApproval' });
+    transport.response = (method) => method === 'pair.claim' ? claimed() : method === 'pair.status' ? { state: 'approved', grant: {}, hostName: '  Studio\u0000 Mac ' } : {};
+    const named = connect(); await pairWith(named);
+    expect(named.laptops).toEqual([{ id: host.hostId, name: 'Studio Mac' }]);
+    transport.response = (method) => method === 'pair.claim' ? claimed() : method === 'pair.status' ? { state: 'approved', grant: {}, hostName: 42 } : {};
+    const older = connect(); await pairWith(older);
+    expect(older.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
+    await named.dispose!(); await older.dispose!();
+  });
+  it('renames a laptop on the phone and keeps the name, but refuses a blank, overlong or unknown one', async () => {
+    const storage = vault(); const connector = connect(storage); await pairWith(connector);
+    await connector.rename!(host.hostId, '  Work Mac ');
+    expect(connector.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    await expect(connector.rename!(host.hostId, '   ')).rejects.toThrow();
+    await expect(connector.rename!(host.hostId, 'x'.repeat(61))).rejects.toThrow();
+    await expect(connector.rename!('someone-else', 'Other')).rejects.toThrow();
+    expect(connector.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    const restored = connect(storage); await restored.initialize!();
+    expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    await connector.dispose!(); await restored.dispose!();
+  });
   it('pairs and restores over local WS only for the native Debug relay configuration', async () => {
     host.relay.origin = 'ws://laptop.local:47801';
     const storage = vault();

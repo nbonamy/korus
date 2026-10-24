@@ -24,6 +24,7 @@ export function createRelayConnector(vault: ProtectedVault, relay: RelayConfig |
     initialize: pairing.initialize,
     relayConfigured: Boolean(relay),
     pair: pairing.pair,
+    rename: pairing.rename,
     cachedConversation: (target) => caches.peek(target),
     conversationUpdates: (target, since) => caches.updates(target, since),
     async connect(laptopId) {
