@@ -1,6 +1,7 @@
 export { default as GitHubIcon } from './GitHubIcon.vue';
 export { default as LinearIcon } from './LinearIcon.vue';
 export { default as BacklogIcon } from './BacklogIcon.vue';
+export { default as FolderSparkleIcon } from './FolderSparkleIcon.vue';
 export { default as ProductMarkIcon } from './ProductMarkIcon.vue';
 // Softer corners than Tabler's sharp play triangle.
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
@@ -37,6 +38,7 @@ export {
   IconExternalLink as ExternalLinkIcon,
   IconFileArrowRight as FileArrowRightIcon,
   IconFileDiff as FileDiffIcon,
+  IconFileSpark as FileSparkIcon,
   IconFileText as FileTextIcon,
   IconFolder as FolderIcon,
   IconFolderOpen as FolderOpenIcon,

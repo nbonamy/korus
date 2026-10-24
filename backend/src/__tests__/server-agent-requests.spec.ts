@@ -34,6 +34,7 @@ describe('AppBackendServer', () => {
       for (const backend of ['claude', 'antigravity']) {
         await expect(list(backend)).resolves.toMatchObject({ result: [native, {
           name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true,
+          displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
         }] });
       }
       snapshot.general.providerEnabled = { codex: false };

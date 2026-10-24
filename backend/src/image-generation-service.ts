@@ -15,7 +15,9 @@ export function imageGenerationSkill(snapshot: AppSnapshot, agentId: string): Ba
   if (!agent || agent.backend === 'codex' || snapshot.general.providerEnabled?.codex === false
     || snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId)) return;
   const { description } = readBundledSkill('korus-imagegen', { toolModules: ['image-generation'] });
-  return { name: 'imagegen', description, path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true };
+  return { name: 'imagegen', displayName: 'Image Gen', description,
+    shortDescription: 'Generate or edit images for websites, games, and more',
+    path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true };
 }
 
 export class ImageGenerationService {

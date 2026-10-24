@@ -2,6 +2,7 @@ import type { Component } from "vue";
 import {
   AffiliateIcon,
   ChartBarIcon,
+  FolderSparkleIcon,
   GitBranchIcon,
   ListDetailsIcon,
   MicrophoneIcon,
@@ -110,7 +111,7 @@ const settingsDestinations: readonly SettingsDestination[] = [
     id: "skills",
     labelKey: "surface.skills.title",
     group: "agents",
-    icon: ListDetailsIcon,
+    icon: FolderSparkleIcon,
     aliases: "install skills packs sync shared github curated",
   },
   {

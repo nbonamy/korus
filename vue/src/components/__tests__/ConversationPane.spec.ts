@@ -76,7 +76,8 @@ describe('ConversationPane', () => {
     const snapshot = createInitialSnapshot();
     const owner = { ...snapshot.agents[0]!, backend: 'antigravity' as const, backendDefaults: { kind: 'antigravity' as const } };
     const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
-    composer.skills = [{ name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
+    composer.skills = [{ name: 'imagegen', displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
+      path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
     const view = shallowReactive<AgentConversationView>({ agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
       codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityBackendCapabilities, approvals: [], sending: false,
       queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
@@ -93,8 +94,9 @@ describe('ConversationPane', () => {
       range.selectNodeContents(editor.element); range.collapse(false);
       window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
       await editor.trigger('input');
-      const option = wrapper.findAll('[role="option"]').find(item => item.text().includes('imagegen'));
+      const option = wrapper.findAll('[role="option"]').find(item => item.text().includes('Image Gen'));
       expect(option?.exists()).toBe(true);
+      expect(option!.text()).toContain('Generate or edit images for websites, games, and more');
       await option!.trigger('mousedown');
       expect(view.composerState.text).toContain('$imagegen');
       expect(submit).not.toHaveBeenCalled();

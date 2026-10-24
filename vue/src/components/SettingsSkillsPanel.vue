@@ -49,7 +49,7 @@
         <AppDataList v-else class="settings-skills__inventory" :aria-label="$t('surface.skills.managed')" :columns="columns" :rows="rows" :empty-text="$t(query ? 'surface.skills.noMatches' : 'surface.skills.empty')" :aria-busy="busy">
           <template #cell-skill="{ row }">
             <div class="settings-skills__identity">
-              <IconFilePower class="settings-skills__glyph" aria-hidden="true" />
+              <FileSparkIcon class="settings-skills__glyph" aria-hidden="true" />
               <div class="settings-skills__details">
                 <div class="settings-skills__name"><strong :title="String(row.name)">{{ row.name }}</strong><span v-if="!row.managed || row.builtIn" class="settings-skills__origin">{{ originLabel(row) }}</span></div>
                 <span class="settings-skills__description" :title="String(row.description)">{{ row.description }}</span>
@@ -114,8 +114,7 @@ import { backendDisplayName } from '@workspace/core/backend-driver';
 import { renderMarkdown } from '@codex-app-sdk/vue';
 import { appApi, appPlatformActions } from '../platform-api';
 import { translate } from '../i18n';
-import { IconFilePower } from '@tabler/icons-vue';
-import { DotsVerticalIcon, EyeIcon, PlusIcon, RefreshIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, EyeIcon, FileSparkIcon, PlusIcon, RefreshIcon, Trash2Icon } from '../shared/icons/app-icons';
 import securityArtwork from '../assets/skills/security-audit.webp?url';
 import webDesignArtwork from '../assets/skills/web-design-guidelines.webp?url';
 import impeccableArtwork from '../assets/skills/impeccable.webp?url';
