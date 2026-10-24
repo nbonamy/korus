@@ -12,7 +12,7 @@ export function prepareDevelopmentShell(projectRoot = root) {
   const manifest = JSON.parse(readFileSync(path.join(projectRoot, 'electron/package.json'), 'utf8'));
   const shell = path.join(projectRoot, 'electron', '.development-shell');
   mkdirSync(path.join(shell, 'assets'), { recursive: true });
-  copyFileSync(path.join(projectRoot, 'electron/assets/icon.png'), path.join(shell, 'assets/icon.png'));
+  copyFileSync(path.join(projectRoot, 'electron/assets/icon-dev.png'), path.join(shell, 'assets/icon-dev.png'));
   writeFileSync(path.join(shell, 'package.json'), JSON.stringify({
     name: 'desktop-development-shell', version: manifest.version, productName: product.name,
     desktopName: `${product.appId}.development.desktop`,

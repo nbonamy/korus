@@ -71,7 +71,7 @@ describe('main window options', () => {
 
   it('supplies the product title and window icon on Linux', () => {
     expect(createMainWindowOptions(false, undefined, 'linux')).toMatchObject({
-      title: product.name, icon: path.join('/app', 'assets', 'icon.png'),
+      title: product.name, icon: path.join('/app', 'assets', 'icon-dev.png'),
     });
   });
 

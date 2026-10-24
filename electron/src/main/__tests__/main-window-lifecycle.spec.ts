@@ -8,11 +8,12 @@ const host = vi.hoisted(() => ({
   dark: false,
   userData: '', packaged: false, registered: false, windows: [] as unknown[], loadError: null as Error | null,
   loading: null as Promise<void> | null,
+  setDockIcon: vi.fn(),
   register: vi.fn((_accelerator: string, _callback: () => void) => true), unregister: vi.fn(), openExternal: vi.fn(),
 }));
 vi.mock('electron', () => ({
   nativeTheme: Object.defineProperty(new EventEmitter(), 'shouldUseDarkColors', { get: () => host.dark }),
-  app: { quit: vi.fn(), getPath: () => host.userData, getAppPath: () => '/app', get isPackaged() { return host.packaged; } },
+  app: { quit: vi.fn(), getPath: () => host.userData, getAppPath: () => '/app', get isPackaged() { return host.packaged; }, dock: { setIcon: host.setDockIcon } },
   screen: { getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }] },
   globalShortcut: { register: host.register, unregister: host.unregister, isRegistered: () => host.registered },
   shell: { openExternal: host.openExternal },
@@ -71,6 +72,27 @@ afterEach(() => {
 });
 
 describe('main window lifecycle', () => {
+  it.each([
+    { platform: 'darwin', packaged: false },
+    { platform: 'darwin', packaged: true },
+    { platform: 'win32', packaged: false },
+    { platform: 'win32', packaged: true },
+    { platform: 'linux', packaged: false },
+    { platform: 'linux', packaged: true },
+  ])('brands the native window or Dock on $platform (packaged=$packaged)', ({ platform, packaged }) => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: platform } }));
+    host.packaged = packaged;
+    const window = openWindow();
+    const icon = packaged ? path.join('/', 'icon.png') : path.join('/app', 'assets', 'icon-dev.png');
+    if (platform === 'darwin') {
+      if (packaged) expect(host.setDockIcon).not.toHaveBeenCalled();
+      else expect(host.setDockIcon).toHaveBeenCalledExactlyOnceWith(icon);
+    } else {
+      expect(window.options.icon).toBe(icon);
+      expect(host.setDockIcon).not.toHaveBeenCalled();
+    }
+  });
+
   it('tracks system appearance changes and detaches when the window closes', () => {
     vi.stubGlobal('process', Object.create(process, { platform: { value: 'linux' } }));
     const window = openWindow();
