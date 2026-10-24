@@ -24,6 +24,15 @@ describe('settings contracts', () => {
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
+  it('normalizes, updates and clears saved review instructions', () => {
+    const snapshot = createEmptySnapshot();
+    expect(snapshot.general.codeReviewInstructions).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '  Check authorization.\nKeep findings actionable.  ' } });
+    expect(snapshot.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
+    expect(normalizeGeneralSettings({ codeReviewInstructions: 42 }).codeReviewInstructions).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '' } });
+    expect(snapshot.general.codeReviewInstructions).toBe('');
+  });
   it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
     expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
     expect(normalizeGeneralSettings({ backlogRepositoryFavorites: {
@@ -63,6 +72,7 @@ describe('settings contracts', () => {
       git: { pull: 'git-config', update: 'merge' },
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
       celebrationsEnabled: false,
@@ -170,6 +180,7 @@ describe('settings contracts', () => {
       git: { pull: 'git-config', update: 'merge' },
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
       celebrationsEnabled: true,

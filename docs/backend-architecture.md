@@ -395,10 +395,13 @@ before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
 
-Unread results remain eligible for push regardless of where the prompt started or
-which desktop window is focused. A brief grace period lets visible clients
-acknowledge the attention revision before delivery; the daemon rechecks the shared
-read checkpoint after that period. A foreground phone receives live in-app alerts
+Attention alerts are suppressed when the desktop is focused on the exact active
+conversation, matched by host, location, team, agent and session. Other conversations
+remain eligible regardless of where the prompt started; unavailable desktop focus
+information does not suppress alerts. Read-clearing events are always delivered.
+A brief grace period lets visible clients acknowledge the attention revision before
+delivery; the daemon rechecks the shared read checkpoint after that period.
+A foreground phone receives live in-app alerts
 instead of system push. Delivered alerts carry the daemon's persisted agent read
 revision. Acknowledgments from any client clear notifications through that revision on every paired phone;
 newer turns remain unread. Native clients retain the read checkpoint to reject late

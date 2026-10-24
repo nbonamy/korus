@@ -10,7 +10,7 @@ import type { PrivateKey } from '@libp2p/interface';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type { AccountRateLimits, Agent, AppSnapshot, CreatedAgentResult, SourceBranch, SourceWorktree } from '@workspace/core/contracts';
-import type { CompanionControl, CompanionControlResult, CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionTarget, type CompanionControl, type CompanionControlResult, type CompanionWorkspace, type CompanionTarget } from '@workspace/core/companion-protocol';
 import { companionWorkspaceOf } from '@workspace/core/companion-projection';
 import { defaultTeamColor } from '@workspace/core/team-colors';
 import { relayAddress } from '@workspace/core/companion-relay';
@@ -37,6 +37,7 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
+  desktopFocused?(): Promise<boolean>;
   request<Result>(method: string, params?: unknown): Promise<Result>;
   onAccessChanged?: (enabled: boolean) => void;
 };
@@ -93,10 +94,22 @@ export class CompanionManager {
         await ready;
         if (!this.saved.enabled) return;
         const notification = this.notifications!.create(action.event, await this.workspace(), action.revision);
+        if (notification && notification.kind !== 'read' && await this.desktopIsViewing(notification.target)) return;
         if (notification && this.saved.enabled) void this.gateway.notify(notification).catch(() => { warnMain('companion', 'push delivery unavailable'); });
       }).catch(() => { warnMain('companion', 'notification delivery unavailable'); });
     }
     for (const listener of this.eventListeners) listener(event);
+  }
+  private async desktopIsViewing(target: CompanionTarget): Promise<boolean> {
+    try {
+      if (!await this.backend.desktopFocused?.()) return false;
+      const { snapshot } = await this.backend.request<{ snapshot: AppSnapshot }>(backendMethods.snapshotGet, { _clientId: 'desktop' });
+      const agent = snapshot.agents.find(agent => agent.id === snapshot.activeAgentId);
+      const team = snapshot.teams.find(team => team.id === snapshot.activeTeamId && team.id === agent?.teamId);
+      if (!agent || !team) return false;
+      const selected = companionTarget(target.hostId, team, agent);
+      return (Object.keys(target) as (keyof CompanionTarget)[]).every(key => selected[key] === target[key]);
+    } catch { return false; }
   }
   async control(input: CompanionControl): Promise<CompanionControlResult> {
     const action = controlSchema.parse(input);

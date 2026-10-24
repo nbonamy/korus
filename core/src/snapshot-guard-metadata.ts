@@ -550,6 +550,7 @@ function isGeneralSettings(value: unknown): boolean {
     (value.codexEnabled === undefined || typeof value.codexEnabled === 'boolean') &&
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
     optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isBoolean(enabled))) &&
+    optional(value, 'codeReviewInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&

@@ -73,6 +73,17 @@ export class CodeReviewService {
     }
   }
 
+  private runReview(
+    agent: Agent, prompt: string, url: string, reviewerSession?: BackendSession,
+  ): Promise<BackendCodeReviewResult> {
+    const instructions = this.options.snapshot.general.codeReviewInstructions?.trim();
+    if (instructions) {
+      const context = instructions.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'));
+      prompt += `\n\n<context>\nUser's custom review instructions:\n${context}\n</context>`;
+    }
+    return this.options.runReview(agent, prompt, url, reviewerSession);
+  }
+
   startAutomatic(agent: Agent, input: AutomaticReviewStartInput): CodeReviewSession {
     if (agent.codeReview) throw new Error('Reviewers cannot launch another automatic review.');
     if (agent.sessionKind === 'quickChat') throw new Error('Automatic review requires a project workspace.');
@@ -305,7 +316,7 @@ export class CodeReviewService {
       }
       if (!hasChanges) return;
       const context = this.reviewToolContext(agent, session);
-      const result = await this.options.runReview(agent, commitPrompt(), context.url, requiredReviewerSession(round));
+      const result = await this.runReview(agent, commitPrompt(), context.url, requiredReviewerSession(round));
       if (agent.codeReview !== session) return;
       agent.backendSession = result.reviewerSession;
       round.reviewerSession = result.reviewerSession;
@@ -525,7 +536,7 @@ export class CodeReviewService {
         } else await this.assertReviewWorkspace(agent, session, true);
         if ((session.automation.state !== 'running' && session.automation.enabled) || agent.codeReview !== session) return;
       }
-      const result = await this.options.runReview(agent, reviewPrompt(session), context.url, initialReviewerSession);
+      const result = await this.runReview(agent, reviewPrompt(session), context.url, initialReviewerSession);
       if (agent.codeReview !== session || round.status !== 'reviewing') {
         return;
       }
@@ -569,7 +580,7 @@ export class CodeReviewService {
     this.activeRoundTurns.add(round.id);
     const context = this.reviewToolContext(agent, session);
     try {
-      const result = await this.options.runReview(
+      const result = await this.runReview(
         agent,
         discussionPrompt(session, round, finding, question),
         context.url,
@@ -614,7 +625,7 @@ export class CodeReviewService {
           return;
         }
         const context = this.reviewToolContext(agent, session);
-        const result = await this.options.runReview(
+        const result = await this.runReview(
           agent,
           fixPrompt(session, round, findings),
           context.url,

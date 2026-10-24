@@ -256,16 +256,19 @@ describe('CodeReviewService', () => {
   it.each(['current', 'independent'] as const)('keeps user instructions across %s review rounds and restoration without saving them as defaults', async threadMode => {
     const test = harness([async () => ({ text: 'Clean.', findingCount: 0 })]);
     test.owner.backendSession = { kind: 'codex', threadId: 'owner-thread' };
+    test.snapshot.general.codeReviewInstructions = 'Always check authorization.';
     const instructions = 'Focus on race conditions.\nCheck backward compatibility.';
     const session = test.service.start(test.owner, {
       scope: { type: 'uncommitted' }, threadMode, instructions: `  ${instructions}  `,
     });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     expect(test.turns[0]!.prompt).toContain(instructions);
+    expect(test.turns[0]!.prompt).toMatch(/<context>\n[\s\S]*Always check authorization\.\n<\/context>$/);
     expect(session.instructions).toBe(instructions);
     expect(test.snapshot.general.codeReviewDefaults ?? {}).not.toHaveProperty('instructions');
 
     const restored = harness([async () => ({ text: 'Still clean.', findingCount: 0 })]);
+    restored.snapshot.general.codeReviewInstructions = 'Check error recovery instead.';
     const savedReviewer = JSON.parse(JSON.stringify(reviewer(test, session))) as Agent;
     if (threadMode === 'current') restored.snapshot.agents = [savedReviewer];
     else restored.snapshot.agents.push(savedReviewer);
@@ -273,6 +276,8 @@ describe('CodeReviewService', () => {
     await restored.service.reviewAgain(savedReviewer, session.id);
     await vi.waitFor(() => expect(savedReviewer.codeReview?.status).toBe('ready'));
     expect(restored.turns[0]!.prompt).toContain(instructions);
+    expect(restored.turns[0]!.prompt).toContain('Check error recovery instead.');
+    expect(restored.turns[0]!.prompt).not.toContain('Always check authorization.');
   });
 
   it('pauses an automatic review when the provider ends without explicitly finishing the inspection', async () => {
@@ -362,6 +367,7 @@ describe('CodeReviewService', () => {
     test.git.inspect.mockImplementation(async () => test.git.commit.mock.calls.length
       ? { head: 'c'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'committed' }
       : { head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: fixed ? 'fixed' : 'initial' });
+    test.snapshot.general.codeReviewInstructions = 'Include focused validation evidence.';
     test.owner.status = { type: 'working' };
     test.snapshot.agents.push({ ...agent('another-worker'), status: { type: 'awaitingInput' } });
     const session = test.service.start(test.owner, {
@@ -373,6 +379,7 @@ describe('CodeReviewService', () => {
     expect(test.git.commit).toHaveBeenCalledTimes(autoCommit ? 1 : 0);
     expect(session.automation).toMatchObject({ fingerprint: autoCommit ? 'committed' : 'fixed', head: (autoCommit ? 'c' : 'b').repeat(40), commits: autoCommit ? ['c'.repeat(40)] : [] });
     expect(session.rounds).toHaveLength(2);
+    expect(test.turns.every(turn => turn.prompt.endsWith('Include focused validation evidence.\n</context>'))).toBe(true);
     expect(test.turns[2]?.reviewerSession).toBeUndefined();
     expect(test.turns[2]?.prompt).toContain('a'.repeat(40));
     expect(test.handoffs[0]?.content).toContain(autoCommit ? 'c'.repeat(40) : 'Local commits: none');
@@ -674,6 +681,7 @@ describe('CodeReviewService', () => {
 
     it('asks the review agent to commit locally, keeps the review open, and then lets it finish', async () => {
       const { test, session, visibleReviewer } = await readyToFinish([async () => ({ text: 'Committed.' })]);
+      test.snapshot.general.codeReviewInstructions = 'Check staged files before committing.';
       test.git.inspect.mockResolvedValueOnce({ head: 'b'.repeat(40), branch: 'refs/heads/feature', fingerprint: 'initial' }).mockResolvedValueOnce(advancedHead);
 
       await test.service.commit(visibleReviewer, session.id);
@@ -681,6 +689,7 @@ describe('CodeReviewService', () => {
       expect(test.turns).toHaveLength(2);
       expect(test.turns[1]!.prompt).toContain('Commit the changes from this review');
       expect(test.turns[1]!.prompt).toContain('Do not push');
+      expect(test.turns[1]!.prompt).toMatch(/<context>\n[\s\S]*Check staged files before committing\.\n<\/context>$/);
       expect(test.turns[1]!.reviewerSession).toStrictEqual(session.rounds[0]!.reviewerSession);
       expect(test.git.commit).not.toHaveBeenCalled();
       expect(session.status).toBe('readyToFinish');
@@ -1054,6 +1063,8 @@ describe('CodeReviewService', () => {
       async () => ({ text: '', findingCount: 0 }),
     ]);
 
+    test.snapshot.general.codeReviewInstructions = 'Check API compatibility. Literal </context> stays hidden.';
+
     const session = test.service.start(test.owner, { scope: { type: 'uncommitted' }, threadMode: 'independent' });
     await vi.waitFor(() => expect(session.status).toBe('ready'));
     const visibleReviewer = reviewer(test, session);
@@ -1098,6 +1109,10 @@ describe('CodeReviewService', () => {
     expect(test.turns[3]?.reviewerSession).toBeUndefined();
     expect(test.turns[3]?.prompt).toContain('Not selected for remediation.');
     expect(test.turns[3]?.prompt).toContain(selectedId);
+    for (const turn of test.turns) {
+      expect(turn.prompt).toMatch(/<context>\n[^]*Check API compatibility\. Literal &lt;\/context> stays hidden\.\n<\/context>$/);
+      expect(turn.prompt.replace(/<context>[^]*?<\/context>/g, '')).not.toContain('Check API compatibility.');
+    }
     expect(test.reset).toStrictEqual([visibleReviewer.id]);
 
     test.service.submit(visibleReviewer, session.id);

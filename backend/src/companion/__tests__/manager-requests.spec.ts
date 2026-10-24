@@ -31,7 +31,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 
-async function fixture(driver: AgentBackendDriver, agent: Agent) {
+async function fixture(driver: AgentBackendDriver, agent: Agent, desktopFocused?: () => Promise<boolean>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-requests-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const snapshot = createTestSnapshot();
@@ -44,7 +44,7 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
     onEvent: (event) => { events.push(event); manager?.event(event); },
   });
   cleanup.push(() => server.close());
-  const backend: CompanionBackendPort = { async request<Result>(method: string, params?: unknown): Promise<Result> {
+  const backend: CompanionBackendPort = { desktopFocused, async request<Result>(method: string, params?: unknown): Promise<Result> {
     const response = await server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method, params });
     if (!response || 'error' in response) throw new Error(JSON.stringify(response));
     return response.result as Result;
@@ -75,6 +75,36 @@ async function fixture(driver: AgentBackendDriver, agent: Agent) {
 }
 
 describe('mobile requests across the owning daemon', () => {
+  it.each([
+    { focused: true, selected: 'same', pushes: false },
+    { focused: true, selected: 'other', pushes: true },
+    { focused: false, selected: 'same', pushes: true },
+    { focused: 'unavailable', selected: 'same', pushes: true },
+  ])('suppresses an unread completion only for the focused desktop conversation ($focused/$selected)', async ({ focused, selected, pushes }) => {
+    const sdk = codexSdkFixture(); const agent = { ...sdkAgent(), teamId: 'team-test' };
+    const desktopFocused = vi.fn(async () => { if (focused === 'unavailable') throw new Error('No desktop'); return focused === true; });
+    const f = await fixture(sdk.driver, agent, desktopFocused);
+    const other = { ...sdkAgent('other-agent', 'other-conversation'), teamId: agent.teamId };
+    f.snapshot.agents.push(other); f.snapshot.teams[0]!.agentIds.push(other.id);
+    await f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.clientNavigationSelectAgent,
+      params: { agentId: selected === 'same' ? agent.id : other.id, _clientId: 'desktop' } });
+    await f.gateway.request('phone', 'notifications.register', { token: 'ab'.repeat(32), environment: 'development' });
+    transport.push.mockClear();
+    const session = sdk.conversation('conversation-a'); session.setSnapshot({ activeTurnId: 'turn', busy: true });
+    await f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentPromptSend, params: { agentId: agent.id, prompt: 'Hello' } });
+    await vi.waitFor(() => expect(session.handle.sendMessage).toHaveBeenCalledOnce());
+    session.emit({ type: 'turn.started', conversationId: 'conversation-a', turnId: 'turn', seq: 1, occurredAt: '', origin: 'notification', payload: { startedAt: '' } });
+    session.emit({ type: 'turn.completed', conversationId: 'conversation-a', turnId: 'turn', seq: 2, occurredAt: '', origin: 'notification', payload: { status: 'completed', error: null, willRetry: false, startedAt: null, completedAt: null, durationMs: null } });
+    await vi.waitFor(() => expect(desktopFocused).toHaveBeenCalledOnce());
+    if (pushes) await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
+    else expect(transport.push).not.toHaveBeenCalled();
+    expect(f.snapshot.agents[0]!.readState).toMatchObject({ revision: 1, readRevision: 0 });
+    if (!pushes) {
+      await f.server.handleMessage({ jsonrpc: '2.0', id: randomUUID(), method: backendMethods.agentMarkRead, params: { agentId: agent.id, revision: 1 } });
+      await vi.waitFor(() => expect(transport.push).toHaveBeenCalledOnce());
+      expect(transport.push.mock.calls[0]![2]).toMatchObject({ kind: 'read' });
+    }
+  });
   it('creates a team through the shared daemon service without changing desktop navigation or accepting mobile color or remote overrides', async () => {
     const sdk = codexSdkFixture();
     const f = await fixture(sdk.driver, { ...sdkAgent(), teamId: 'team-test' });

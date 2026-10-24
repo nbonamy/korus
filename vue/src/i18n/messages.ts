@@ -671,6 +671,12 @@ export const messages = {
     workflows: {
       title: 'Workflows',
     },
+    reviewSettings: {
+      title: 'Code review',
+      instructions: 'Review instructions',
+      description: 'Applied to every review agent, in addition to instructions for an individual review.',
+      placeholder: 'e.g. Focus on security and backward compatibility',
+    },
     delegation: {
       title: 'Delegation',
       startingContext: 'Starting context',
