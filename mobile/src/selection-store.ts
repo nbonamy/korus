@@ -1,6 +1,6 @@
 import type { ProtectedVault } from './protected-storage';
 
-type SavedSelection = { teamId: string; agentId: string };
+type SavedSelection = { teamId: string; agentId: string; allTeams?: boolean };
 export type SelectionStore = {
   readLastLaptop(): Promise<string | null>;
   writeLastLaptop(laptopId: string): Promise<void>;
@@ -29,7 +29,8 @@ export function createSelectionStore(vault: ProtectedVault): SelectionStore {
       try {
         const saved: unknown = JSON.parse(value);
         if (saved && typeof saved === 'object' && 'teamId' in saved && typeof saved.teamId === 'string'
-          && 'agentId' in saved && typeof saved.agentId === 'string') return { teamId: saved.teamId, agentId: saved.agentId };
+          && 'agentId' in saved && typeof saved.agentId === 'string') return { teamId: saved.teamId, agentId: saved.agentId,
+            ...('allTeams' in saved && saved.allTeams === true ? { allTeams: true } : {}) };
       } catch { /* A damaged preference falls back to the first available conversation. */ }
       return null;
     },

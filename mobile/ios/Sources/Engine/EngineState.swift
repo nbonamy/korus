@@ -90,6 +90,7 @@ struct EngineState: Decodable {
     let teams: [Team]
     let laptopId: String?
     let teamId: String
+    let allTeams: Bool?
     let groups: [Group]
     let activityGroups: [Group]?
     let agentId: String

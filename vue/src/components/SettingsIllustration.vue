@@ -50,6 +50,19 @@
       <rect class="settings-illustration__accent-fill" x="34" y="34" width="22" height="22" rx="5" />
       <path class="settings-illustration__on-accent" d="M45 40v10M40 45h10" />
     </template>
+    <template v-else-if="kind === 'skills'">
+      <path class="settings-illustration__surface" d="M16 8h22l12 12v32a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z" />
+      <path class="settings-illustration__line" d="M38 8v12h12M20 30h16M20 38h12M20 46h8" />
+      <path class="settings-illustration__accent-fill" d="M46 36l2.6 6.4L55 45l-6.4 2.6L46 54l-2.6-6.4L37 45l6.4-2.6z" />
+    </template>
+    <template v-else-if="kind === 'workflows'">
+      <rect class="settings-illustration__surface" x="6" y="8" width="20" height="16" rx="4" />
+      <rect class="settings-illustration__accent-surface" x="38" y="8" width="20" height="16" rx="4" />
+      <rect class="settings-illustration__surface" x="22" y="40" width="20" height="16" rx="4" />
+      <path class="settings-illustration__line" d="M26 16h12" />
+      <path class="settings-illustration__accent" d="M48 24v4a4 4 0 0 1-4 4H32v8" />
+      <circle class="settings-illustration__accent-fill" cx="32" cy="48" r="2.4" />
+    </template>
     <template v-else>
       <rect class="settings-illustration__surface" x="6" y="8" width="30" height="22" rx="4" />
       <path class="settings-illustration__line" d="M14 36h14" />

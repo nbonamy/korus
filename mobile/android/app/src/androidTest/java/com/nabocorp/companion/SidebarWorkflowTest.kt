@@ -57,9 +57,14 @@ class SidebarWorkflowTest {
             val teams = JSONArray((1..12).map { json("id" to "t$it", "name" to "Team $it", "isUnread" to (it == 12)) })
             engine.state(state(team = "t1").put("teams", teams)); mount(engine)
             app.onNodeWithContentDescription("Open workspace").performClick()
+            app.onNodeWithContentDescription("All teams").assertIsNotSelected().performClick()
+            assertCommand(engine, json("type" to "selectAllTeams"))
+            engine.state(state(team = "t1").put("teams", teams).put("allTeams", true))
+            app.onNodeWithContentDescription("All teams").assertIsSelected()
+            app.onNodeWithContentDescription("Team 1").assertIsNotSelected()
             val mark = app.onNodeWithContentDescription(engine.model.product.string("name"))
             val initialMark = mark.assertIsDisplayed().getUnclippedBoundsInRoot()
-            app.onNodeWithContentDescription("Team 1").assertIsSelected()
+            app.onNodeWithContentDescription("Team 1").assertIsNotSelected()
                 .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.Tab))
             app.onNodeWithContentDescription("Team 12, unread activity").performScrollTo().assertIsDisplayed().performClick()
             assertCommand(engine, json("type" to "selectTeam", "id" to "t12"))
@@ -67,6 +72,8 @@ class SidebarWorkflowTest {
             engine.state(state(team = "t12").put("teams", teams))
             app.onNodeWithContentDescription("Team 12").assertIsSelected()
             app.onNodeWithContentDescription("Team 12, unread activity").assertDoesNotExist()
+            engine.state(state(team = "t12").put("teams", JSONArray().put(teams.getJSONObject(11))))
+            app.onNodeWithContentDescription("All teams").assertDoesNotExist()
         }
     }
 

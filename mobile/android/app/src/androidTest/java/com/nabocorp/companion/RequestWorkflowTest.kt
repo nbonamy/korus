@@ -116,6 +116,28 @@ class RequestWorkflowTest {
         }
     }
 
+    @Test fun aQuestionCanBeDismissedFromChatOrItsFormWithoutSendingASkipOrHidingApprovals() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }
+            val request = pending()
+            e.state(state(listOf(request))); mount(e)
+            app.onNodeWithContentDescription("Dismiss question").assertIsDisplayed().performClick()
+            app.waitUntil(5_000) { e.commands().any { it.string("type") == "dismissRequest" } }
+            assertEquals(request.string("key"), e.commands().last { it.string("type") == "dismissRequest" }.string("key"))
+            assertTrue(replies(e).isEmpty())
+            app.onNodeWithTag("request-form").assertDoesNotExist()
+            e.state(state(emptyList()))
+            app.onNodeWithContentDescription("Review request: Your input is needed").assertDoesNotExist()
+            e.state(state(listOf(request))); open()
+            app.onNodeWithText("Dismiss").performClick()
+            app.waitUntil(5_000) { e.commands().count { it.string("type") == "dismissRequest" } == 2 }
+            e.state(state(emptyList())); e.state(state(listOf(pending("approval"))))
+            app.onNodeWithContentDescription("Dismiss question").assertDoesNotExist()
+            app.onNodeWithContentDescription("Review request: Approval needed").assertIsDisplayed()
+            assertTrue(replies(e).isEmpty())
+        }
+    }
+
     @Test fun questionCancellationAndAuthoritativeRemovalNeverReplayOldAnswers() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             app.waitUntil(20_000) { e.model.state.string("startup") == "ready" }

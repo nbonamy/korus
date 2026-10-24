@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.ui.graphics.Color
@@ -39,13 +40,18 @@ import androidx.compose.ui.unit.dp
     val requests = model.requests
     val first = requests.firstOrNull() ?: return
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { model.openRequest(first.key) }
-            .semantics { contentDescription = "Review request: ${first.title}" }.padding(horizontal = 20.dp,vertical = 12.dp),
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button) { model.openRequest(first.key) }
+            .semantics { contentDescription = "Review request: ${first.title}" }.padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(if (first.kind == "question") Icons.AutoMirrored.Outlined.HelpOutline else Icons.Outlined.PanTool,null,Modifier.size(22.dp))
             Text(first.title + if (requests.size > 1) " (${requests.size})" else "",Modifier.weight(1f),fontSize = 15.sp,fontWeight = FontWeight.SemiBold)
             Text("Review",fontSize = 15.sp)
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight,null,Modifier.size(16.dp))
+            if (first.kind == "question") {
+                IconButton(onClick = { model.command("dismissRequest", "key" to first.key) }, enabled = model.state.string("respondingRequest") != first.key) {
+                    Icon(Icons.Outlined.Close, "Dismiss question", Modifier.size(20.dp))
+                }
+            }
         }
     }
 }
@@ -55,7 +61,8 @@ import androidx.compose.ui.unit.dp
     val busy = model.requestBusy
     val enabled = model.canRespond
     BackHandler { if (!busy) model.dismissRequest() }
-    AppSheetFrame(if (busy) "" else pending.title, Modifier.imePadding(), leading = if (busy) null else ({ AppBarPill("Done", onClick = model::dismissRequest) }), scroll = !busy) {
+    AppSheetFrame(if (busy) "" else pending.title, Modifier.imePadding(), leading = if (busy) null else ({ AppBarPill("Done", onClick = model::dismissRequest) }),
+        trailing = if (!busy && pending.kind == "question") ({ AppBarPill("Dismiss", onClick = { model.command("dismissRequest", "key" to pending.key) }) }) else null, scroll = !busy) {
         if (busy) AppProgress("Sending your response", Icons.AutoMirrored.Outlined.Send, "Waiting for ${model.productName} to confirm the response.")
         else Column(Modifier.fillMaxWidth().padding(bottom = 24.dp).testTag("request-form")) {
             if (pending.kind == "question") {

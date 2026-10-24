@@ -608,7 +608,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     conversationPresentation = conversationPresentation.update(next)
                     if (changesOpen && (changesTarget != nextTarget || next.connection.isConnected && !next.obj("git").optBoolean("available"))) dismissChanges()
                     val reloadChanges = changesOpen && !state.connection.isConnected && next.connection.isConnected
-                    if (sidebar.select(next.string("laptopId", next.obj("composerTarget").string("hostId")), next.string("teamId"))) command("idleSort", "order" to sidebar.idleSort)
+                    if (sidebar.select(next.string("laptopId", next.obj("composerTarget").string("hostId")), if (next.optBoolean("allTeams")) "__all__" else next.string("teamId"))) command("idleSort", "order" to sidebar.idleSort)
                     creation?.let { flow ->
                         creation = when {
                             flow.hostId != next.string("laptopId", next.obj("composerTarget").string("hostId")) || flow.teamId != next.string("teamId") -> null

@@ -1,5 +1,8 @@
 <template>
   <SettingsPanelFrame class="settings-skills" :title="$t('surface.skills.title')" title-id="settings-skills-title">
+    <template #banner>
+      <SettingsIntro kind="skills" :title="$t('surface.skills.introTitle')" :description="$t('surface.skills.introDescription')" />
+    </template>
     <template #actions>
       <button class="app-button app-button--neutral" :disabled="busy || !state" :aria-busy="syncing || undefined" :aria-label="$t('surface.skills.syncLabel')" :title="$t('surface.skills.syncHint')" @click="confirmSync"><RefreshIcon v-if="!syncing" />{{ $t('surface.skills.sync') }}</button>
       <button class="app-button app-button--primary" :disabled="busy" @click="installDialog = true"><PlusIcon />{{ $t('surface.skills.installSkill') }}</button>
@@ -126,6 +129,7 @@ import type { AppMenuItem } from '../shared/menu/app-menu';
 import FormDialog from '../shared/dialog/FormDialog.vue';
 import FormField from '../shared/form/FormField.vue';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
+import SettingsIntro from './SettingsIntro.vue';
 import BackendIcon from './BackendIcon.vue';
 import AppDataList from './AppDataList.vue';
 import type { AppDataListRow } from './app-data-list';
