@@ -1,3 +1,4 @@
+import { isRateLimitPause } from '@workspace/core/auto-resume';
 import { isAgentReadState } from '@workspace/core/agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
@@ -74,6 +75,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   codeReview?: import('@workspace/core/code-review').CodeReviewSession;
   threadFlags?: import('@workspace/core/thread-flags').ThreadFlags;
   suggestedPrompt?: string;
+  rateLimitPause?: Agent['rateLimitPause'];
   goal?: ThreadGoal;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
@@ -150,6 +152,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.contextUsage ? { contextUsage: { ...agent.contextUsage } } : {}),
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
     ...(agent.threadFlags ? { threadFlags: structuredClone(agent.threadFlags) } : {}),
+    ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
@@ -403,6 +406,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(contextUsage ? { contextUsage } : {}),
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
+    ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)

@@ -396,6 +396,7 @@ export type Agent = {
   threadFlags?: import('./thread-flags').ThreadFlags;
   /** Optional next-prompt hint, never composer draft text. Cleared on a new prompt or conversation reset. */
   suggestedPrompt?: string;
+  rateLimitPause?: import('./auto-resume').RateLimitPause;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
   isRegistered?: boolean;
@@ -526,6 +527,7 @@ export type AppGeneralSettings = {
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;
+  autoResumeAfterLimit?: boolean;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;
@@ -866,6 +868,7 @@ export type AppApi = {
   switchCodeReviewToManual(agentId: string, sessionId: string): Promise<AppSnapshot>;
   discardCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   reviewCodeAgain(agentId: string, sessionId: string): Promise<AppSnapshot>;
+  setAutoResume(agentId: string, enabled: boolean): Promise<AppSnapshot>;
   respondToThreadFlag(agentId: string, response: import('./thread-flags').ThreadFlagResponse): Promise<AppSnapshot>;
   respondToPlanReview(agentId: string, response: import('./plan-review').PlanReviewResponse): Promise<AppSnapshot>;
   getSnapshot(): Promise<AppSnapshot>;

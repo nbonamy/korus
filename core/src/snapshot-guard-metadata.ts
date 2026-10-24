@@ -1,3 +1,4 @@
+import { isRateLimitPause } from './auto-resume';
 import { isAgentReadState } from './agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
@@ -133,6 +134,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'codeReview', isCodeReviewSession) &&
     optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
+    optional(value, 'rateLimitPause', isRateLimitPause) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
     optional(value, 'visualize', isVisualizeSession) &&
@@ -562,6 +564,7 @@ function isGeneralSettings(value: unknown): boolean {
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
       && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
+    optional(value, 'autoResumeAfterLimit', isBoolean) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
     optional(value, 'useInteractivePlans', isBoolean) &&

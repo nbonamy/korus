@@ -10,6 +10,13 @@ Implementation identifiers stay brand-neutral. Types, method names and event
 unions live in `core/src/`; this document records only what the code cannot say:
 ownership, invariants and the reasons behind them.
 
+Quota pauses are conversation-scoped agent metadata. The owning daemon persists
+known reset deadlines and the auto-resume preference, then submits one `continue`
+after the reset through normal prompt admission. Provider adapters supply reset
+metadata; the scheduler is provider-neutral. Manual prompts, replacement
+conversations and closed agents cancel pending continuation. Desktop clients show
+the same pending state above the composer; closing a client does not cancel it.
+
 ## Process Model
 
 ```mermaid

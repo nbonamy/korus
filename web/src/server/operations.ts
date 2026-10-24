@@ -31,6 +31,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   switchCodeReviewToManual: [backendMethods.agentCodeReviewManual, named('agentId', 'sessionId')],
   discardCodeReview: [backendMethods.agentCodeReviewDiscard, named('agentId', 'sessionId')],
   reviewCodeAgain: [backendMethods.agentCodeReviewAgain, named('agentId', 'sessionId')],
+  setAutoResume: [backendMethods.agentAutoResumeSet, named('agentId', 'enabled')],
   respondToThreadFlag: [backendMethods.agentThreadFlagRespond, named('agentId', 'response')],
   respondToPlanReview: [backendMethods.agentPlanReviewRespond, named('agentId', 'response')],
   listSshHosts: [backendMethods.connectionsSshHostsList],

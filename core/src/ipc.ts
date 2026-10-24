@@ -29,6 +29,7 @@ export const ipcChannels = {
   switchCodeReviewToManual: 'agent:code-review:manual',
   discardCodeReview: 'agent:code-review:discard',
   reviewCodeAgain: 'agent:code-review:again',
+  setAutoResume: 'agent:auto-resume:set',
   respondToThreadFlag: 'agent:thread-flag:respond',
   respondToPlanReview: 'agent:plan-review:respond',
   readEngineInstructions: 'settings:instructions:read',

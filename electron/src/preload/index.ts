@@ -22,6 +22,7 @@ const api: AppApi = {
   switchCodeReviewToManual: (agentId, sessionId) => ipc.invoke(ipcChannels.switchCodeReviewToManual, agentId, sessionId),
   discardCodeReview: (agentId, sessionId) => ipc.invoke(ipcChannels.discardCodeReview, agentId, sessionId),
   reviewCodeAgain: (agentId, sessionId) => ipc.invoke(ipcChannels.reviewCodeAgain, agentId, sessionId),
+  setAutoResume: (agentId, enabled) => ipc.invoke(ipcChannels.setAutoResume, agentId, enabled),
   respondToThreadFlag: (agentId, response) => ipc.invoke(ipcChannels.respondToThreadFlag, agentId, response),
   getSnapshot: () => ipc.invoke(ipcChannels.getSnapshot),
   getSnapshotState: () => ipc.invoke(ipcChannels.getSnapshotState),

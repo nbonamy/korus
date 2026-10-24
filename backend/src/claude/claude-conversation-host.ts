@@ -102,6 +102,8 @@ type ActiveClaudeTurn = {
   startResolved: boolean;
   error: Error | null;
   authenticationFailed?: boolean;
+  rateLimit?: import('@workspace/core/auto-resume').RateLimitDetails;
+  rateLimitMessage?: string;
 };
 
 type EventListener = (event: BackendEvent) => void;
@@ -809,7 +811,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (message.type === 'rate_limit_event') {
       const info = 'rate_limit_info' in message ? message.rate_limit_info : undefined;
       if (!info || typeof info !== 'object') return;
-      const { rateLimitType, utilization, resetsAt } = info as Record<string, unknown>;
+      const { rateLimitType, utilization, resetsAt, status } = info as Record<string, unknown>;
+      if (status === 'rejected' && typeof resetsAt === 'number' && Number.isFinite(resetsAt)) activeTurn.rateLimit = { resumeAt: resetsAt * 1000 };
       const slot = rateLimitType === 'five_hour' ? 'primary' : rateLimitType === 'seven_day' ? 'secondary' : null;
       // Model-specific and overage limits must not replace the overall weekly quota.
       if (!slot || typeof utilization !== 'number' || !Number.isFinite(utilization) || utilization < 0) return;
@@ -845,6 +848,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
 
     if (message.type === 'assistant') {
       if (typeof message.error === 'string' && message.error.trim()) {
+        if (message.error === 'rate_limit') activeTurn.rateLimitMessage = claudeMessageContentBlocks(message).flatMap(block => block.type === 'text' && typeof block.text === 'string' ? [block.text] : []).join('\n') || 'Usage limit reached';
         if (message.error === 'authentication_failed') this.markAuthenticationFailed(activeTurn);
         return;
       }
@@ -868,7 +872,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     if (message.type === 'result') {
       if (message.executionModel !== undefined) activeTurn.model = typeof message.executionModel === 'string' && message.executionModel.length <= 200 ? message.executionModel : null;
       if (validConsumption(message.executionConsumption)) activeTurn.consumption=message.executionConsumption;
-      const errorMessage = claudeResultErrorMessage(message);
+      const errorMessage = claudeResultErrorMessage(message) ?? activeTurn.rateLimitMessage;
       if (errorMessage) {
         this.failTurn(activeTurn, new Error(normalizeClaudeErrorMessage(activeTurn.authenticationFailed ? 'authentication_failed' : errorMessage)));
       } else {
@@ -1520,7 +1524,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       backendSessionId: activeTurn.sessionId ?? undefined,
       turnId: activeTurn.turnId,
       type: 'error',
-      payload: { message: error.message },
+      payload: { message: error.message, ...(activeTurn.rateLimit ? { rateLimit: activeTurn.rateLimit } : {}) },
     });
     this.completeTurn(activeTurn);
   }

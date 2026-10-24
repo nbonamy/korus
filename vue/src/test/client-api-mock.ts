@@ -43,6 +43,7 @@ export function createClientApiMock(
     switchCodeReviewToManual: unscripted('switchCodeReviewToManual'),
     discardCodeReview: unscripted('discardCodeReview'),
     reviewCodeAgain: unscripted('reviewCodeAgain'),
+    setAutoResume: unscripted('setAutoResume'),
     respondToThreadFlag: unscripted('respondToThreadFlag'),
     respondToPlanReview: unscripted('respondToPlanReview'),
     getSnapshot: unscripted('getSnapshot'),

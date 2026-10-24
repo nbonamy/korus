@@ -1,3 +1,5 @@
+import { companionSessionId } from '@workspace/core/companion-protocol';
+import { AutoResumeService } from './agents/auto-resume-service';
 import { randomUUID } from 'node:crypto';
 import type { UsageService } from './usage/usage-service';
 import type { UsageFilter } from '@workspace/core/usage';
@@ -222,6 +224,7 @@ export class AppBackendServer {
   private conversationsReconciliation?: Promise<void>;
   private readonly providerSetup?: import('./provider-setup').ProviderSetup;
   private readonly skills: SkillManager;
+  private readonly autoResume: AutoResumeService;
   private readonly providerConnections?: ProviderConnections;
 
   constructor(private readonly options: AppBackendServerOptions) {
@@ -316,8 +319,16 @@ export class AppBackendServer {
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
-      onPromptStarting: options.onPromptStarting,
+      onPromptStarting: (agentId, promptOptions) => { this.autoResume?.cancel(agentId); options.onPromptStarting?.(agentId, promptOptions); },
       onPromptSource: options.onPromptSource,
+    });
+    this.autoResume = new AutoResumeService({
+      snapshot: this.snapshot, isLocal: agent => !this.remoteTeams.connectionIdForAgent(agent),
+      connected: agent => !this.agentClosuresInFlight.has(agent.id) && !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
+      update: (agentId, rateLimitPause) => this.handleBackendEvent({ type: 'agent.updated', agentId, payload: { id: agentId, rateLimitPause } }),
+      persist: () => this.persistSnapshotOnly(),
+      resume: agent => this.agentPrompts.sendAndWaitForAcceptance(agent, 'continue', undefined, companionSessionId(agent)),
+      onError: error => warnMain('auto-resume', 'could not resume conversation', { message: String(error) }),
     });
     this.visualize = options.visualizeService ?? new VisualizeService({
       snapshot: this.snapshot,
@@ -505,6 +516,7 @@ export class AppBackendServer {
       });
     }
     this.unsubscribeDriverEvents = this.driverRpc?.onEvent((event) => this.handleBackendEvent(event));
+    this.autoResume.sync();
   }
 
   async submitMissionResult(agentId: string, input: MissionResultInput) {
@@ -1976,6 +1988,15 @@ export class AppBackendServer {
           return this.persistAndEmitSnapshot();
         });
       }
+      case backendMethods.agentAutoResumeSet: {
+        const params = requireRecord(message.params), agentId = requireString(params.agentId, 'agentId');
+        if (typeof params.enabled !== 'boolean') throw new Error('enabled must be a boolean');
+        const enabled = params.enabled;
+        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, enabled }, async () => {
+          this.autoResume.setEnabled(enabled);
+          return this.persistAndEmitSnapshot();
+        });
+      }
       case backendMethods.agentThreadFlagRespond: {
         const params = requireRecord(message.params);
         const agentId = requireString(params.agentId, 'agentId');
@@ -2125,6 +2146,7 @@ export class AppBackendServer {
       case backendMethods.agentInterrupt: {
         const agentId = requireAgentId(message.params);
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentInterrupt, { agentId }, async (agent) => {
+          this.autoResume.cancel(agent.id);
           if (await this.codeReviews?.interruptSimulatedInspection(agent)) return this.snapshot;
           await this.tasks?.blockParent(agentId);
           // The inspection can settle before the provider acknowledges interruption.
@@ -2937,6 +2959,7 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.autoResume.close();
     this.unsubscribeUsage?.();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
@@ -3202,6 +3225,7 @@ export class AppBackendServer {
   }
 
   private emitSnapshotUpdated(snapshot: AppSnapshot): void {
+    this.autoResume?.sync();
     const event: AppBackendEvent = {
       seq: this.nextEventSeq(),
       type: 'snapshot.updated',
@@ -3325,6 +3349,7 @@ export class AppBackendServer {
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
+    if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);
   }
 
@@ -3367,6 +3392,7 @@ export class AppBackendServer {
     this.agentRequests.record(fullEvent);
     this.emitBackendEvent(fullEvent);
     this.emitDerivedDomainEvents(fullEvent);
+    if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);
     if (
       event.agentId && (

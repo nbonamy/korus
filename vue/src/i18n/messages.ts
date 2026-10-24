@@ -240,6 +240,7 @@ export const messages = {
       changes: 'Code changes and diff references', tests: 'Test results and verification evidence',
       reviewSummary: 'Review findings and delivery decision', pullRequest: 'Pull request', complete: 'Complete mission', support: 'Stage conversation',
     },
+    autoResume: { title: 'Auto-resume', resumesAt: 'Resumes at {time}', resetsAt: 'Resets at {time}' },
     common: {
       runInBackground: 'Run in background',
       back: 'Back',

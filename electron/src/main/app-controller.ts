@@ -639,6 +639,9 @@ export class AppController {
     ipc.handle(ipcChannels.reviewCodeAgain, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewAgain, { agentId, sessionId }))
     ));
+    ipc.handle(ipcChannels.setAutoResume, async (_event, agentId: string, enabled: boolean) => this.adoptBackendSnapshot(
+      await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentAutoResumeSet, { agentId, enabled })
+    ));
     ipc.handle(ipcChannels.respondToThreadFlag, async (_event, agentId: string, response: import('@workspace/core/thread-flags').ThreadFlagResponse) => {
       return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentThreadFlagRespond, { agentId, response }));
     });

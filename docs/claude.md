@@ -144,6 +144,10 @@ null folder reference.
 
 ## Capabilities And Policy
 
+- Quota rejections retain their reset metadata even when the native result
+  envelope says success. Session-limit error text with an explicit timezone can
+  supply a reset deadline when structured metadata is absent. The daemon owns
+  automatic continuation policy.
 - **Scheduling:** sessions connected to Korus exclude Claude's native cron and
   wakeup tools through SDK `disallowedTools`. Recurring prompts use Korus's
   persisted automations and require an explicit user request ([mcp.md](mcp.md)).

@@ -429,6 +429,20 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     expect(events.filter(event => event.type === 'account.rateLimitsUpdated')).toHaveLength(3);
   });
 
+  it('retains a blocked session reset even when Claude reports no utilization or a success result envelope', async () => {
+    const { sdk, send, snapshot, events } = setup();
+    const pending = send('claude-a', 'Work');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'session-a' }); await pending;
+    const resetsAt = Math.floor(Date.now() / 1000) + 60;
+    sdk.emit({ type: 'rate_limit_event', session_id: 'session-a', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt } });
+    sdk.emit({ type: 'assistant', session_id: 'session-a', error: 'rate_limit', message: { content: [{ type: 'text', text: "You've hit your session limit" }] } });
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'session-a', is_error: false });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.rateLimitPause).toMatchObject({ resumeAt: resetsAt * 1000, enabled: true }));
+    expect(snapshot.agents[0]!.status.type).toBe('idle');
+    for (const event of events) expect(() => decodeAppBackendEvent(JSON.parse(JSON.stringify(event)))).not.toThrow();
+  });
+
   it('turns an SDK ExitPlanMode item into a durable review without UI semantics', async () => {
     const { sdk, driver, server, snapshot, events } = setup();
     const pending = driver.sendPrompt(agent(), 'plan it', { planMode: true });

@@ -83,6 +83,23 @@ describe('ConversationPane', () => {
     expect(previewAgentFile).toHaveBeenCalledWith(owner.id, filePath);
   });
 
+  it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
+    const setAutoResume = vi.fn().mockResolvedValue({});
+    setElectronTestClient({ setAutoResume });
+    const pause = { backend: 'claude' as const, conversationId: 'session', detectedAt: Date.now(), resumeAt: Date.now() + 60_000, enabled: true };
+    const current = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: current });
+    expect(wrapper.get('.codex-conversation-pane__composer-shelf [role="status"]').text()).toContain('Auto-resume');
+    expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('true');
+    expect(wrapper.get('[role="status"]').text()).toContain('Auto-resume');
+    await wrapper.get('[role="switch"][aria-label="Auto-resume"]').setValue(false); await flushPromises();
+    expect(setAutoResume).toHaveBeenCalledWith(agent.id, false);
+    await wrapper.setProps({ agent: { ...current, rateLimitPause: { ...pause, enabled: false } } });
+    expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('false');
+    await wrapper.setProps({ agent: { ...current, rateLimitPause: undefined } });
+    expect(wrapper.find('[aria-label="Auto-resume"]').exists()).toBe(false);
+  });
+
   it('keeps a pending image read bound to its original agent when the pane changes', async () => {
     let release!: () => void;
     installNativeImagePreview(() => new Promise(resolve => { release = () => resolve(null); }));

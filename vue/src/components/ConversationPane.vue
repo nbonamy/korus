@@ -89,7 +89,8 @@
           :disabled="disabled || backendSwitch.busy.value"
           @update:model-value="$event && selectBackend($event)"
         />
-        <div v-if="activeThreadFlags.length > 0" class="conversation-pane__thread-flags">
+        <div v-if="activeThreadFlags.length > 0 || agent?.rateLimitPause" class="conversation-pane__thread-flags">
+          <RateLimitResumeNotice v-if="agent?.rateLimitPause" :agent-id="agent.id" :pause="agent.rateLimitPause" />
           <ThreadFlagAffordance
             v-for="flag in activeThreadFlags"
             :id="flag"
@@ -165,6 +166,7 @@ import type {
 import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
+import RateLimitResumeNotice from './RateLimitResumeNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';

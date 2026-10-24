@@ -67,6 +67,7 @@ export function applyRuntimeEventToSnapshot(
       const threadFlags = event.payload.threadFlags;
       const suggestedPrompt = event.payload.suggestedPrompt;
       Object.assign(agent, event.payload);
+      if (event.payload.rateLimitPause === null) delete agent.rateLimitPause;
       if (statusText === null) {
         delete agent.statusText;
       }

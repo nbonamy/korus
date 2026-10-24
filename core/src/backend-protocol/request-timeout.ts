@@ -121,6 +121,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentPermissionModeUpdate]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentPromptSend]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.agentPlanReviewRespond]: QUICK_REQUEST_TIMEOUT_MS,
+  [backendMethods.agentAutoResumeSet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentThreadFlagRespond]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentPromptSteer]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentQueuedPromptDelete]: QUICK_REQUEST_TIMEOUT_MS,

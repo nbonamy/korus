@@ -35,6 +35,7 @@ const agentFieldPolicy = {
   codeReview: 'persisted',
   threadFlags: 'persisted',
   suggestedPrompt: 'persisted',
+  rateLimitPause: 'persisted',
   goal: 'persisted',
   visualize: 'persisted',
   isRegistered: 'runtime',
