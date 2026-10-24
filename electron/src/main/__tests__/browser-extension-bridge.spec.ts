@@ -293,6 +293,16 @@ process.stdin.on('data', chunk => { pending = Buffer.concat([pending, chunk]); w
     expect(first.reload).toHaveBeenCalledOnce();
     await request('tabs.remove', 12);
     expect(second.close).toHaveBeenCalledOnce();
+    // Array and malformed IDs never fall back to the active tab.
+    expect(await request('tabs.remove', [99])).toMatchObject({ ok: false });
+    expect(await request('tabs.remove', ['11'])).toMatchObject({ ok: false });
+    expect(await request('tabs.remove', [])).toMatchObject({ ok: false });
+    expect(await request('tabs.reload', '11')).toMatchObject({ ok: false });
+    expect(first.close).not.toHaveBeenCalled();
+    expect(first.reload).toHaveBeenCalledOnce();
+    expect(await request('tabs.remove', [12])).toMatchObject({ ok: true });
+    expect(second.close).toHaveBeenCalledTimes(2);
+    expect(first.close).not.toHaveBeenCalled();
     expect(await request('tabs.create', { url: 'https://example.test/setup' })).toMatchObject({
       ok: true,
       value: { id: 13 },

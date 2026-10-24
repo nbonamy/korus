@@ -479,15 +479,23 @@ export class BrowserExtensionBridge {
       return this.describeTab(contents.id, record);
     }
     if (operation.startsWith('tabs.')) {
-      const id = typeof args[0] === 'number' ? args[0] : this.activeTab,
+      if (operation === 'tabs.remove') {
+        // Chrome accepts one ID or an array; never substitute the active tab here.
+        const ids = Array.isArray(args[0]) ? args[0] : [args[0]];
+        const targets = ids.map((value) => (typeof value === 'number' ? this.tabs.get(value) : undefined));
+        if (!ids.length || targets.some((target) => !target)) throw new Error('Tab is unavailable.');
+        for (const target of targets) target!.contents.close();
+        return;
+      }
+      // The tab ID is optional for reload/update; any other first argument must be a properties object.
+      const omitted =
+        args[0] === undefined || args[0] === null || (typeof args[0] === 'object' && !Array.isArray(args[0]));
+      if (!omitted && typeof args[0] !== 'number') throw new Error('Tab is unavailable.');
+      const id = omitted ? this.activeTab : (args[0] as number),
         tab = id === undefined ? undefined : this.tabs.get(id);
       if (!tab) throw new Error('Tab is unavailable.');
       if (operation === 'tabs.reload') {
         tab.contents.reload();
-        return;
-      }
-      if (operation === 'tabs.remove') {
-        tab.contents.close();
         return;
       }
       if (operation === 'tabs.update') {
