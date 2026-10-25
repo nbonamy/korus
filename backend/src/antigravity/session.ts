@@ -106,6 +106,10 @@ export class AcpSession {
           at: Date.now(),
           model: null,
           tokens: null,
+          // Qualified ACP reports context occupancy and selected settings, not
+          // billable request identities/categories or the model/tier served.
+          requestCoverage: "partial",
+          requestCoverageReason: "acp-request-evidence-unavailable",
           ...(phase !== "started" && startedAt !== undefined
             ? { durationMs: Math.max(0, Date.now() - startedAt) }
             : {}),

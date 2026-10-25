@@ -210,6 +210,7 @@ export type RequestObservation = {
 };
 export type RequestCoverageReason =
   | "public-runtime-request-evidence-unavailable"
+  | "acp-request-evidence-unavailable"
   | "missing-sdk-request-evidence"
   | "incompatible-sdk-request-evidence";
 export function validRequestCoverageReason(
@@ -217,6 +218,7 @@ export function validRequestCoverageReason(
 ): value is RequestCoverageReason {
   return [
     "public-runtime-request-evidence-unavailable",
+    "acp-request-evidence-unavailable",
     "missing-sdk-request-evidence",
     "incompatible-sdk-request-evidence",
   ].includes(value as string);

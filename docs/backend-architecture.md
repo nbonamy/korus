@@ -89,6 +89,81 @@ with implementation in a separate accepted turn. [The plan](../plans/antigravity
 records transport evidence, model restrictions, attachment support and unsupported
 capabilities.
 
+### Request pricing evidence
+
+Antigravity executions retain turn status and timing with unknown model and token
+consumption. Their request coverage is partial with
+`acp-request-evidence-unavailable`; analytics includes each execution in the unknown
+request count and returns unavailable USD rather than zero. Context notifications,
+selected model settings, permission modes and cumulative session costs cannot
+establish individual API charges. No underlying provider is inferred from the
+Antigravity provider name or the catalog's display names.
+
+The qualified Google-hosted ACP 1.3.0 executable implements the v1-shaped wire
+contract while reporting protocol 2. Its bundled Python adapter is the evidence
+boundary; the public CLI, Python SDK and Gemini Interactions API are different
+interfaces. The [pinned public registry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json)
+identifies the distribution. [Fixture provenance](../backend/src/antigravity/__tests__/fixtures/usage-capability.json)
+records archive/executable hashes and source locations. These are source-derived
+wire fixtures with synthetic numbers and identities, not a live billing capture.
+
+| Required evidence | Public ACP surface | Pricing consequence |
+| --- | --- | --- |
+| Billable request identity and timestamp | Session ID and JSON-RPC prompt correlation; no identity or timestamp for each underlying model call | Request count remains unknown; a prompt can contain several calls/retries |
+| Actual model and underlying API provider | `models.currentModelId`, `availableModels` and model config options describe selection | No served-model assertion, exact API model mapping or provider attribution; Google, Anthropic and OpenAI routes remain unpriced |
+| Input/output/cache-read/cache-write counts and inclusion semantics | `server.py::_maybe_send_usage_update` emits only `used` and `size`; `_extract_tokens_used` collapses categories | Context occupancy never becomes measured consumption |
+| Cache-write lifetimes | No buckets in emitted updates or the optional schema-level `Usage` | No lifetime assumptions or fabricated zero writes |
+| Pricing context | `used` is derived from main-trajectory cumulative deltas, includes output/thinking and caches; `size` uses the selected model's context limit | Neither supplies per-request pricing input; subagent context is excluded and updates can coalesce |
+| Served tier/mode | Session mode config describes permissions; no served billing tier/mode in output | No standard-tier default or requested-as-served substitution |
+| Finality and completeness | `prompt` returns `PromptResponse(stop_reason=...)` without usage, including cancellation; schema supports optional turn totals but the adapter does not populate them | Completed, failed and interrupted turns retain unavailable coverage |
+
+The [ACP usage contract](https://agentclientprotocol.com/protocol/v1/prompt-turn#session-usage-updates)
+defines `used`/`size` as context utilization and optional `cost` as cumulative
+session cost. The shipped schema also defines optional cumulative token categories
+on `PromptResponse.usage`. Schema availability does not prove runtime emission or
+request boundaries. Regression fixtures exercise those optional fields separately
+as negative controls: neither turns into request-aware USD.
+
+To repeat the source check without authentication, use the qualified archive's
+`agy_acp_server.par` as the argument below. It reads only the shipped public adapter
+and schema, validates stored ZIP-entry checksums, and prints the relevant ranges;
+it does not execute the runtime or access a provider endpoint.
+
+```bash
+python3 - /path/to/agy_acp_server.par <<'PY'
+import hashlib, pathlib, struct, sys, zlib
+data = pathlib.Path(sys.argv[1]).read_bytes()
+print('executable sha256:', hashlib.sha256(data).hexdigest())
+root = 'google3/cloud/developer_experience/antigravity_extensions/acp_server/'
+ranges = {
+    root + 'server.py': [(1473, 1528), (5283, 5318), (5850, 5941)],
+    root + 'config_options.py': [(49, 103)],
+    'google3/third_party/py/acp/schema.py': [(1397, 1444), (1697, 1720), (3846, 3880)],
+}
+found, offset = set(), 0
+while (offset := data.find(b'PK\x03\x04', offset)) >= 0:
+    header = struct.unpack_from('<IHHHHHIIIHH', data, offset)
+    method, checksum, size, name_len, extra_len = header[3], header[6], header[7], header[9], header[10]
+    name = data[offset + 30:offset + 30 + name_len].decode('utf-8', errors='replace')
+    start = offset + 30 + name_len + extra_len
+    if name in ranges and method == 0:
+        source = data[start:start + size]
+        assert zlib.crc32(source) == checksum
+        print(name, hashlib.sha256(source).hexdigest())
+        lines = source.decode().splitlines()
+        for first, last in ranges[name]:
+            for n in range(first, last + 1): print(f'{n}: {lines[n - 1]}')
+        found.add(name)
+    offset += 4
+assert found == set(ranges), 'Required public sources missing; requalify the runtime.'
+PY
+```
+
+The adapter-to-SQLite-to-`usage/get` workflow is repeatable with
+`npm run test -w @workspace/backend -- antigravity/__tests__/session.spec.ts`.
+It covers mixed model selections, context changes, optional schema totals,
+duplicate/late events, cancellation, failure, history replay and ledger restart.
+
 ## Local desktop replacement
 
 Local macOS desktop replacement is owned by the
