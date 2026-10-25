@@ -72,4 +72,26 @@ class MissionsWorkflowTest {
             app.onNodeWithText("Continue to Review").assertDoesNotExist()
         }
     }
+
+    @Test fun aReviewListsItsFindingsAndFixesTheSelectedOnesAfterConfirmation() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            fun finding(id: String, state: String, selected: Boolean) = json("id" to id, "priority" to "p1", "title" to "Finding $id", "body" to "Why $id matters.", "repository" to "korus",
+                "file" to "auth/session.ts", "line" to 142, "selected" to selected, "state" to state)
+            val reviewed = JSONObject(mission.toString()).put("stage", "review").put("done", 2).put("revision", 4)
+                .put("review", json("summary" to "Two issues", "findings" to JSONArray().put(finding("a", "open", true)).put(finding("b", "fixed", false))))
+            mount(e, state().put("missions", JSONArray().put(reviewed)))
+            e.model.showMissions("m")
+            app.onNodeWithText("1 finding").assertDoesNotExist()
+            app.onNodeWithText("2 findings · 1 fixed").performClick()
+            app.onNodeWithText("Fix 1 selected").assertIsDisplayed()
+            app.onNodeWithContentDescription("Deselect Finding a").performClick()
+            app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "selectFinding" && it.string("findingId") == "a" && !it.optBoolean("selected") } == true }
+            app.onNodeWithText("Fix 1 selected").performClick()
+            app.onNodeWithText("The other open findings are skipped.").assertIsDisplayed()
+            app.onNodeWithText("Fix selected").performClick()
+            app.waitUntil(5_000) { e.commands().lastOrNull()?.string("type") == "fixFindings" }
+            app.onNodeWithText("Finding a").performClick()
+            app.onNodeWithText("Why a matters.").assertIsDisplayed()
+        }
+    }
 }

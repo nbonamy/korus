@@ -283,10 +283,13 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     /** The missions surface replaces the conversation in the main area, like a conversation does. */
     internal var missionsOpen by mutableStateOf(false)
     internal var missionDetail by mutableStateOf<String?>(null)
+    /** Inside a mission: null on its page, "" on its review, a finding's id on that finding. */
+    internal var missionReview by mutableStateOf<String?>(null)
     internal fun showMissions(id: String? = null) {
         dictation.cancel()
         drawerVisible = false
         missionDetail = id
+        missionReview = null
         missionsOpen = true
     }
     /** A ticket's worker opens like any conversation; the mission stays one step back. */

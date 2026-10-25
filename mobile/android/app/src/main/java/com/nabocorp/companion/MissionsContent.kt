@@ -117,25 +117,39 @@ internal fun elapsedText(millis: Long): String {
 @Composable internal fun MissionsScreen(model: CompanionModel, openDrawer: () -> Unit) {
     val detail = model.missionDetail?.let { id -> model.missions.firstOrNull { it.string("id") == id } }
     val active = model.missions.count { it.isActiveMission }
-    BackHandler { if (model.missionDetail != null) model.missionDetail = null else model.missionsOpen = false }
+    val back = {
+        when {
+            model.missionReview?.isNotEmpty() == true -> model.missionReview = ""
+            model.missionReview != null -> model.missionReview = null
+            model.missionDetail != null -> model.missionDetail = null
+            else -> model.missionsOpen = false
+        }
+    }
+    BackHandler { back() }
+    val reviewing = detail != null && model.missionReview != null
     Scaffold(topBar = {
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.background),
             title = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (detail != null) "Mission" else "Missions", Modifier.semantics { heading() }, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Text(if (reviewing) (if (model.missionReview!!.isEmpty()) "Review" else "Finding") else if (detail != null) "Mission" else "Missions", Modifier.semantics { heading() }, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (detail == null && active > 0) Text("$active active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
             navigationIcon = {
-                if (detail != null) IconButton(onClick = { model.missionDetail = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to missions") }
+                if (detail != null) IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (reviewing) "Back" else "Back to missions") }
                 else IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
             },
         )
-    }) { padding ->
+    }, bottomBar = { if (detail != null && model.missionReview == "") ReviewActions(model, detail) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (detail != null) MissionDetail(model, detail) else MissionList(model)
+            when {
+                detail != null && model.missionReview == "" -> ReviewList(model, detail)
+                detail != null && model.missionReview != null -> FindingDetail(model, detail, model.missionReview!!)
+                detail != null -> MissionDetail(model, detail)
+                else -> MissionList(model)
+            }
         }
     }
 }
@@ -245,6 +259,7 @@ internal fun elapsedText(millis: Long): String {
         }
     }
     NextStep(model, mission)
+    mission.optJSONObject("review")?.let { ReviewRow(it) { model.missionReview = "" } }
     mission.string("leadAgentId").takeIf { it.isNotBlank() }?.let { lead -> LeadRow(missionStage(mission)) { model.openTicket(lead) } }
     val tickets = mission.items("tickets")
     if (tickets.isNotEmpty()) {
@@ -273,6 +288,150 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
                 Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ship", fontWeight = FontWeight.SemiBold)
             }
             Text("Only available on desktop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun priorityColor(priority: String) = when (priority.lowercase()) { "p0", "p1" -> MaterialTheme.colorScheme.error; "p2" -> CompanionColors.worktree; else -> MaterialTheme.colorScheme.onSurfaceVariant }
+private val JSONObject.findings get() = items("findings")
+private fun JSONObject.count(state: String) = findings.count { it.string("state") == state }
+private val JSONObject.selectedOpen get() = findings.count { it.string("state") == "open" && it.optBoolean("selected") }
+/** Only once nothing is open or being fixed can the review run again. */
+private val JSONObject.canRerun get() = findings.isNotEmpty() && findings.all { it.string("state") in listOf("fixed", "skipped") }
+private val JSONObject.findingLocation: String? get() {
+    val file = string("file").takeIf { it.isNotBlank() } ?: return null
+    if (!has("line")) return file
+    val line = optInt("line"); val end = optInt("endLine")
+    return if (has("endLine") && end > line) "$file · lines $line–$end" else "$file · line $line"
+}
+
+/** A way into what the review found. */
+@Composable private fun ReviewRow(review: JSONObject, open: () -> Unit) {
+    val total = review.findings.size
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.clickable(onClick = open).padding(horizontal = 16.dp, vertical = 14.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Checklist, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Review", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(if (total == 0) "No findings" else "$total ${if (total == 1) "finding" else "findings"} · ${review.count("fixed")} fixed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun StateChip(state: String) {
+    val (label, tint) = when (state) {
+        "fixing" -> "Fixing" to MaterialTheme.colorScheme.primary
+        "fixed" -> "Fixed" to CompanionColors.addedLines
+        "skipped" -> "Skipped" to MaterialTheme.colorScheme.onSurfaceVariant
+        else -> "Open" to CompanionColors.worktree
+    }
+    Row(Modifier.background(tint.copy(alpha = 0.12f), CircleShape).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (state == "fixing") { CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp, color = tint); Spacer(Modifier.width(4.dp)) }
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = tint)
+    }
+}
+
+/** The review's findings: choose what to fix; fixing and reviewing again are in the bar below. */
+@Composable private fun ReviewList(model: CompanionModel, mission: JSONObject) {
+    val review = mission.optJSONObject("review") ?: return
+    val findings = review.findings
+    val fixed = review.count("fixed")
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                val tint = CompanionColors.addedLines
+                Canvas(Modifier.fillMaxSize().padding(3.5.dp)) {
+                    val line = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+                    drawArc(tint.copy(alpha = 0.15f), 0f, 360f, false, style = line)
+                    if (findings.isNotEmpty() && fixed > 0) drawArc(tint, -90f, 360f * fixed / findings.size, false, style = line)
+                }
+                Text("$fixed/${findings.size}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("$fixed of ${findings.size} fixed", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("${findings.size} ${if (findings.size == 1) "finding" else "findings"} · ${review.selectedOpen} selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                review.string("summary").takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            }
+        }
+    }
+    findings.groupBy { it.string("priority") }.toSortedMap().forEach { (priority, group) ->
+        Text("${priority.uppercase()} · ${group.size}", Modifier.padding(start = 4.dp).semantics { heading() }, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = priorityColor(priority))
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column {
+                group.forEachIndexed { index, finding ->
+                    FindingRow(model, mission.string("id"), finding)
+                    if (index < group.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun FindingRow(model: CompanionModel, missionId: String, finding: JSONObject) {
+    val open = finding.string("state") == "open"
+    val settled = finding.string("state") in listOf("fixed", "skipped")
+    val busy = model.state.string("missionAction") == "working"
+    Row(Modifier.fillMaxWidth().clickable { model.missionReview = finding.string("id") }.padding(end = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton({ model.command("selectFinding", "missionId" to missionId, "findingId" to finding.string("id"), "selected" to !finding.optBoolean("selected")) }, enabled = open && !busy, modifier = Modifier.size(48.dp)) {
+            Icon(if (finding.optBoolean("selected")) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, if (finding.optBoolean("selected")) "Deselect ${finding.string("title")}" else "Select ${finding.string("title")}",
+                tint = if (finding.optBoolean("selected")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = if (open) 1f else 0.35f))
+        }
+        Column(Modifier.weight(1f).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(finding.string("title"), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (settled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            Text(listOfNotNull(finding.findingLocation, finding.string("repository").takeIf { it.isNotBlank() }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        StateChip(finding.string("state"))
+    }
+}
+
+@Composable private fun ReviewActions(model: CompanionModel, mission: JSONObject) {
+    val review = mission.optJSONObject("review") ?: return
+    var confirming by remember { mutableStateOf<String?>(null) }
+    val working = model.state.string("missionAction") == "working"
+    val fixing = review.count("fixing")
+    val selected = review.selectedOpen
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 2.dp) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            if (fixing > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp))
+                Text("Fixing $fixing ${if (fixing == 1) "finding" else "findings"} — the agent is working on your laptop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button({ confirming = "fix" }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = selected > 0 && !working, shape = RoundedCornerShape(14.dp)) {
+                    Text(if (selected > 0) "Fix $selected selected" else "Fix selected", fontWeight = FontWeight.SemiBold)
+                }
+                TextButton({ confirming = "rerun" }, enabled = review.canRerun && !working) { Text("Re-run review") }
+            }
+        }
+    }
+    confirming?.let { kind ->
+        val fix = kind == "fix"
+        AlertDialog(onDismissRequest = { confirming = null }, title = { Text(if (fix) "Fix $selected ${if (selected == 1) "finding" else "findings"}?" else "Review again?") },
+            text = { Text(if (fix) "The other open findings are skipped." else "Every finding was fixed or skipped. The review starts right away.") },
+            confirmButton = { TextButton({ confirming = null; model.command(if (fix) "fixFindings" else "rerunReview", "missionId" to mission.string("id")) }) { Text(if (fix) "Fix selected" else "Re-run review") } },
+            dismissButton = { TextButton({ confirming = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable private fun FindingDetail(model: CompanionModel, mission: JSONObject, findingId: String) {
+    val finding = mission.optJSONObject("review")?.findings?.firstOrNull { it.string("id") == findingId }
+    if (finding == null) { Text("Finding unavailable", Modifier.fillMaxWidth().padding(48.dp), color = MaterialTheme.colorScheme.onSurfaceVariant); return }
+    val priority = finding.string("priority")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(priority.uppercase(), Modifier.background(priorityColor(priority), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        StateChip(finding.string("state"))
+    }
+    Text(finding.string("title"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    finding.findingLocation?.let { Text(it, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(12.dp)).padding(12.dp), style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    Text(finding.string("body"), style = MaterialTheme.typography.bodyMedium)
+    if (finding.string("state") == "open") {
+        val selected = finding.optBoolean("selected")
+        Button({ model.command("selectFinding", "missionId" to mission.string("id"), "findingId" to findingId, "selected" to !selected) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = model.state.string("missionAction") != "working", shape = RoundedCornerShape(14.dp)) {
+            Text(if (selected) "Remove from remediation" else "Select for remediation", fontWeight = FontWeight.SemiBold)
         }
     }
 }
