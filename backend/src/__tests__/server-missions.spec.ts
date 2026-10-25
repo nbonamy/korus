@@ -7,8 +7,78 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import { AgentGitService } from '../git/agent-git-service';
 import { applyMissionDebugFixture } from '../mission-debug-fixtures';
 import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
+import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 
 describe('mission backend boundary', () => {
+  it.each(['keep', 'delete', 'push', 'legacy missing'])('persists merged delivery and worktree cleanup before removing its builder (%s)', async cleanup => {
+    const deleteWorktree = cleanup !== 'keep';
+    const exec = promisify(execFile);
+    const root = await mkdtemp(join(tmpdir(), 'mission-delivery-'));
+    const repo = join(root, 'repo');
+    const worktree = join(root, 'worktree');
+    let server: AppBackendServer | undefined;
+    try {
+      await exec('git', ['init', '-b', 'main', repo]);
+      await exec('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+      await exec('git', ['config', 'user.name', 'Mission test'], { cwd: repo });
+      await writeFile(join(repo, 'README.md'), 'Initial');
+      await exec('git', ['add', '.'], { cwd: repo });
+      await exec('git', ['commit', '-m', 'initial'], { cwd: repo });
+      if (cleanup === 'push') {
+        await exec('git', ['init', '--bare', join(root, 'remote.git')]);
+        await exec('git', ['remote', 'add', 'origin', join(root, 'remote.git')], { cwd: repo });
+      }
+      await exec('git', ['worktree', 'add', '-b', 'mission/delivery', worktree], { cwd: repo });
+      await writeFile(join(worktree, 'delivered.txt'), 'Delivered');
+      await exec('git', ['add', '.'], { cwd: worktree });
+      await exec('git', ['commit', '-m', 'implement'], { cwd: worktree });
+      const snapshot = createInitialSnapshot();
+      const builder = { ...snapshot.agents[0]!, id: 'mission-builder', folder: worktree, backendSession: undefined };
+      snapshot.agents.push(builder); snapshot.teams[0]!.agentIds.push(builder.id);
+      const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+      mission.stage = 'ship';
+      mission.execution!.workspaces = [{ repositoryPath: repo, path: worktree, branch: 'mission/delivery' }];
+      mission.execution!.workspace = { path: worktree, branch: 'mission/delivery' };
+      mission.execution!.repoPath = repo;
+      mission.execution!.deliveries = [{ repositoryPath: repo, agentId: builder.id, status: 'pending' }];
+      mission.execution!.runs = [{ id: 'build', stage: 'implementation', memberId: snapshot.agents[0]!.id, workerId: builder.id, status: 'accepted', skills: [], feedback: '', startedAt: '' }];
+      let disk: unknown;
+      const saveSnapshot = async (value: AppSnapshot) => { disk = persistedStateFromSnapshot(value); };
+      await saveSnapshot(snapshot);
+      server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot,
+        workIntegrations: { githubConnected: async () => false } as never });
+      const merged = await server.handleMessage({ jsonrpc: '2.0', id: 'merge', method: 'agent/git/merge', params: {
+        agentId: builder.id, input: { strategy: 'merge', deleteWorktree, deleteBranch: deleteWorktree, ...(cleanup === 'push' ? { pushAfter: true } : {}), confirmed: true },
+      } });
+      expect(merged).not.toHaveProperty('error');
+      if (cleanup === 'push') {
+        expect(snapshot.missions![0]!.execution!.deliveries![0]!.status).toBe('pending');
+        expect(snapshot.agents.some(agent => agent.id === builder.id)).toBe(true);
+        await server.handleMessage({ jsonrpc: '2.0', id: 'push', method: 'agent/git/push', params: {
+          agentId: builder.id, input: { target: 'mergeTarget', closeAgentAfterPush: true, confirmed: true },
+        } });
+      }
+      expect((await exec('git', ['show', 'HEAD:delivered.txt'], { cwd: repo })).stdout).toBe('Delivered');
+      const restored = snapshotFromPersistedState(disk);
+      expect(restored.missions![0]!.execution!.deliveries).toStrictEqual([{ repositoryPath: repo, agentId: builder.id, status: 'merged' }]);
+      expect(restored.missions![0]!.status).toBe('completed');
+      expect(restored.agents.some(agent => agent.id === builder.id)).toBe(!deleteWorktree);
+      expect(missionCreatedWorkspaces(restored.missions![0])).toHaveLength(deleteWorktree ? 0 : 1);
+      if (cleanup === 'legacy missing') {
+        // Old releases retained worktree metadata after removing the directory.
+        restored.missions![0]!.execution!.workspaces = [{ repositoryPath: repo, path: worktree, branch: 'mission/delivery' }];
+        restored.missions![0]!.execution!.workspace = { path: worktree, branch: 'mission/delivery' };
+      }
+      await server.close();
+      server = new AppBackendServer({ version: 'test', snapshot: restored, saveSnapshot, deleteMissionHome: async () => {} });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'delete', method: 'mission/delete', params: {
+        input: { id: mission.id, revision: restored.missions![0]!.revision, deleteWorktrees: true, confirmed: true },
+      } });
+      expect(snapshotFromPersistedState(disk).missions).toStrictEqual([]);
+      await expect(access(worktree)).rejects.toThrow();
+    } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it.each([
     { preset: 'workflow', deleteWorktrees: true },
     { preset: 'workflow', deleteWorktrees: false },

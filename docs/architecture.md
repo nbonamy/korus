@@ -629,6 +629,9 @@ publishes only after saving.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.
+  The daemon records merges and removed worktrees before closing their agents;
+  requested post-merge pushes finish delivery only after the push succeeds.
+  Removed workspace metadata remains historical context, not a cleanup target.
 - Deleting a Mission interrupts workers, archives their conversations, and removes
   artifacts and skills. Worktrees are kept or deleted by the user's choice; an
   unsafe worktree keeps the Mission and surfaces the error. Deleting a team leaves

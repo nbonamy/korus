@@ -10,7 +10,7 @@
     <div class="mission-ship__grid">
       <article v-for="delivery in deliveries" :key="delivery.repositoryPath" class="mission-ship__card" :data-status="delivery.status">
         <header class="mission-ship__card-header">
-          <button class="mission-ship__repository" type="button" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
+          <button class="mission-ship__repository" type="button" :disabled="!agent(delivery.agentId)" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
             <GitForkIcon aria-hidden="true" />
             <span><strong>{{ repositoryName(delivery.repositoryPath) }}</strong><small>{{ workspaceBranch(delivery.repositoryPath) }}</small></span>
             <ArrowRightIcon aria-hidden="true" />
@@ -114,6 +114,8 @@ function statusLabel(delivery: MissionDelivery): string {
   return t('missions.shipPending');
 }
 async function recordDelivery(repositoryPath: string, result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }): Promise<void> {
+  // Merges are recorded by the backend before cleanup can unmount this control.
+  if (result.kind === 'merge') return;
   errors[repositoryPath] = '';
   try {
     if (!props.executeMission) throw new Error('Mission delivery is unavailable.');

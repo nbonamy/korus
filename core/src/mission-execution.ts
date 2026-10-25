@@ -35,7 +35,7 @@ export function missionCreatedWorkspaces(mission?: Mission | null): MissionWorks
   if (execution.workspace) {
     workspaces.push({ repositoryPath: execution.repoPath ?? execution.workspace.path, ...execution.workspace });
   }
-  return workspaces.filter((workspace, index) => workspaces.findIndex(candidate => candidate.path === workspace.path) === index);
+  return workspaces.filter((workspace, index) => !workspace.deleted && workspaces.findIndex(candidate => candidate.path === workspace.path) === index);
 }
 
 export function pendingMissionRun(mission: Mission): MissionRun | undefined {

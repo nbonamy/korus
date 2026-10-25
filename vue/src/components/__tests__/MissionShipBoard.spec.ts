@@ -50,12 +50,15 @@ describe('MissionShipBoard', () => {
     expect(wrapper.emitted('open-conversation')).toStrictEqual([[snapshot.agents[0]!.id]]);
     await cards[0]!.get('.complete-delivery').trigger('click');
     await flushPromises();
+    expect(executeMission).not.toHaveBeenCalled();
+    wrapper.getComponent({ name: 'GitWorkflowControl' }).vm.$emit('delivery-complete', { kind: 'pullRequest', number: 43, url: 'https://github.com/acme/repo/pull/43' });
+    await flushPromises();
     expect(executeMission).toHaveBeenCalledExactlyOnceWith({
       id: mission.id,
       revision: mission.revision,
       action: 'recordDelivery',
       repositoryPath: repositories[0],
-      result: { kind: 'merge' },
+      result: { kind: 'pullRequest', number: 43, url: 'https://github.com/acme/repo/pull/43' },
     });
   });
 

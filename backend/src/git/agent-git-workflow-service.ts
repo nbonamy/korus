@@ -1,6 +1,7 @@
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { closeAgentInSnapshot, updateAgentFolder } from '@workspace/core/agent-manager';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { realpath } from 'node:fs/promises';
 import type { BackendEvent } from '@workspace/core/backend-driver';
 import { agentGitBackendMethods, backendMethods, type AgentGitBackendMethod } from '@workspace/core/backend-protocol/methods';
 import { repositoryPeersForAgent, requireAgentFolder } from '@workspace/core/agent-folder';
@@ -52,6 +53,7 @@ export type AgentGitWorkflowServiceOptions = {
   delegatedWorkReports: DelegatedWorkReportPort;
   driverRequest: (agent: Agent, method: string, params: unknown) => Promise<unknown>;
   releaseConversation: (agent: Agent) => Promise<void>;
+  recordMerge?: (agentId: string, sourceFolder: string | null, worktreeDeleted: boolean, pushPending?: boolean) => Promise<void>;
   getSnapshot: () => AppSnapshot;
   getWorkIntegrations: () => AgentGitWorkIntegrationsPort;
   git: AgentGitService;
@@ -138,6 +140,7 @@ export class AgentGitWorkflowService {
         if (!workflow.remote) throw new Error('Add a Git remote before pushing.');
         await this.options.git.push(pushFolder, workflow.remote, workflow.branch, !workflow.upstream);
         const result = await this.workflow(agent, { refreshStatus: true });
+        if (input.target === 'mergeTarget') await this.options.recordMerge?.(agentId, null, false);
         if (input.closeAgentAfterPush === true) {
           closeAgentInSnapshot(this.options.getSnapshot(), agentId);
           await this.options.persistAndEmitSnapshot();
@@ -392,13 +395,18 @@ export class AgentGitWorkflowService {
       })
       : null;
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'delivery');
+    // Resolve ownership before Git removes the paths, including symlink aliases.
+    const root = deleteWorktree ? await realpath(worktreeRoot).catch(() => resolve(worktreeRoot)) : '';
+    const candidates = deleteWorktree ? this.options.getSnapshot().agents.filter(candidate => candidate.folder
+      && !this.options.getSnapshot().teams.some(team => team.id === candidate.teamId && team.remoteConnectionId)) : [];
+    const folders = await Promise.all(candidates.map(candidate => realpath(candidate.folder!).catch(() => resolve(candidate.folder!))));
+    const owners = candidates.filter((_candidate, index) => {
+      const path = relative(root, folders[index]!);
+      return !path || (path !== '..' && !path.startsWith('..' + sep) && !isAbsolute(path));
+    });
     const mergeResult = await this.options.git.merge(folder, strategy, input.deleteBranch === true, deleteWorktree, commitMessage);
     const targetFolder = mergeResult.targetFolder;
-    const owners = deleteWorktree ? this.options.getSnapshot().agents.filter(candidate => {
-      if (!candidate.folder || this.options.getSnapshot().teams.some(team => team.id === candidate.teamId && team.remoteConnectionId)) return false;
-      const path = relative(resolve(worktreeRoot), resolve(candidate.folder));
-      return !path || (path !== '..' && !path.startsWith('..' + sep) && !isAbsolute(path));
-    }) : [];
+    await this.options.recordMerge?.(agentId, folder, deleteWorktree, input.pushAfter === true);
     const outcome = {
       kind: 'merge' as const,
       ...(sourceWorkflow?.repositoryProvider ? { provider: sourceWorkflow.repositoryProvider } : {}),

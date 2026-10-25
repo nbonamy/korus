@@ -36,7 +36,7 @@ import { FileMissionArtifactStore, type MissionArtifactStorage } from './mission
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, rm } from 'node:fs/promises';
 import { createEntityId } from '@workspace/core/ids';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
 import { createAppRpcError, createAppRpcResult, appRpcErrorCodes, isAppRpcNotification, isAppRpcRequest, isAppSnapshotGetResult, type AppRpcMessage, type AppRpcResponse } from '@workspace/core/backend-protocol/rpc';
@@ -483,6 +483,7 @@ export class AppBackendServer {
       },
       getSnapshot: () => this.snapshot,
       getWorkIntegrations: () => this.requireWorkIntegrations(),
+      recordMerge: (agentId, sourceFolder, worktreeDeleted, pushPending) => this.missionExecution.recordMerge(agentId, sourceFolder, worktreeDeleted, pushPending),
       git: this.agentGitService,
       persistAndEmitSnapshot: () => this.persistAndEmitSnapshot(),
       refreshGitStatus: async (agentId) => { await this.agentWorkspaces.refreshGitStatus(agentId); },
@@ -614,12 +615,23 @@ export class AppBackendServer {
   private async deleteMission(input: DeleteMissionInput): Promise<void> {
     await this.missions.remove(input, async (deleted, workers) => {
       const workspacePaths = missionCreatedWorkspaces(deleted).map(workspace => workspace.path);
+      const missingWorktrees = new Set<string>();
       if (input.deleteWorktrees) {
         const workerIds = new Set(workers.map(worker => worker.id));
         for (const folder of workspacePaths) {
           const sharedAgent = this.snapshot.agents.find(agent => !workerIds.has(agent.id) && agent.folder === folder);
           if (sharedAgent) throw new Error(`The worktree is also used by ${sharedAgent.name}.`);
-          await this.agentGitService.validateLinkedWorktreeDeletion(folder, false, undefined, true);
+          try {
+            await this.agentGitService.validateLinkedWorktreeDeletion(folder, false, undefined, true);
+          } catch (error) {
+            if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error;
+            const exists = await access(folder).then(() => true, (failure: NodeJS.ErrnoException) => {
+              if (failure.code === 'ENOENT') return false;
+              throw failure;
+            });
+            if (exists) throw error;
+            missingWorktrees.add(folder);
+          }
         }
       }
       for (const worker of workers) {
@@ -633,7 +645,9 @@ export class AppBackendServer {
         }
       }
       if (input.deleteWorktrees) {
-        for (const folder of workspacePaths) await this.agentGitService.deleteLinkedWorktree(folder, false, undefined, true);
+        for (const folder of workspacePaths) {
+          if (!missingWorktrees.has(folder)) await this.agentGitService.deleteLinkedWorktree(folder, false, undefined, true);
+        }
       }
       await this.deleteMissionHome(deleted.id);
     });
