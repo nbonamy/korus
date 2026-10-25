@@ -1001,7 +1001,7 @@ export const surfaceMessages = {
     "usingCli": "Using {provider} CLI",
     "reconnectCli": "Reconnect {provider} CLI",
     "introTitle": "Connect your work tools",
-    "introDescription": "Bring GitHub and Linear work into your backlog and hand it to agents",
+    "introDescription": "Bring work from GitHub, GitLab and Linear into your backlog",
     "gitHub": "GitHub",
     "connect": "Connect",
     "connected": "Connected",

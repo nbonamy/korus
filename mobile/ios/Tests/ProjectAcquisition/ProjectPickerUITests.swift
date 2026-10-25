@@ -180,7 +180,14 @@ final class ProjectPickerUITests: XCTestCase {
             let row = app.buttons[repository]
             for _ in 0..<12 {
                 if row.exists && row.isHittable { break }
-                app.scrollViews.firstMatch.swipeUp()
+                let catalog = app.scrollViews.firstMatch
+                // Slow gestures avoid skipping a row; recover in either direction
+                // if it is above the current position after returning or scrolling.
+                if row.exists && row.frame.midY < catalog.frame.midY {
+                    catalog.swipeDown(velocity: .slow)
+                } else {
+                    catalog.swipeUp(velocity: .slow)
+                }
             }
             XCTAssertTrue(row.isHittable, "Repository must be reachable after scrolling")
             row.tap()

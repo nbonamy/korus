@@ -122,6 +122,7 @@ describe('SettingsIntegrationsPanel', () => {
     expect(title.element.compareDocumentPosition(banner.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(banner.get('svg').attributes('aria-hidden')).toBe('true');
     expect(banner.text()).toContain('Connect your work tools');
+    for (const provider of ['GitHub', 'GitLab', 'Linear']) expect(banner.text()).toContain(provider);
     expect(wrapper.find('svg.github-icon').exists()).toBe(true);
     expect(wrapper.find('img.github-icon').exists()).toBe(false);
     const linearLogo = wrapper.get('svg.linear-icon');
