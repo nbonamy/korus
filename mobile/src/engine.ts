@@ -7,7 +7,7 @@ import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/co
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionBackgroundGraceMs, companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
@@ -19,7 +19,12 @@ import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
+/** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
+export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
 export type EngineState = {
+  missions: EngineMission[];
+  /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
+  mission: { id: string; outcome: string; lead?: true } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
@@ -35,6 +40,7 @@ export type EngineState = {
   connection: string;
   /** A `mobile.errors.*` key the shell words itself. */
   error: string;
+  errorDetail: string;
   laptops: { id: string; name: string }[];
   pairing: 'idle' | 'working' | 'awaitingApproval';
   pairingError: string;
@@ -61,6 +67,8 @@ export type EngineState = {
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
   teamCreation: 'idle' | 'creating' | 'failed';
+  /** Moving a mission on, or accepting one of its tickets, is a request to the laptop that can be refused. */
+  missionAction: 'idle' | 'working' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
@@ -102,6 +110,7 @@ export type TranscriptContext = {
 
 export type EngineCommand =
   | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
+  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
@@ -252,11 +261,27 @@ export function createEngine(port: EnginePort) {
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
+    const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
+      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
+        // What a working agent says it is doing is the ticket's live line.
+        tickets: mission.tickets.map((ticket) => {
+          const activity = ticket.agentId && (ticket.state === 'running' || ticket.state === 'preparing')
+            ? state.workspace.value.missionAgents?.find((agent) => agent.id === ticket.agentId)?.statusText?.trim() : undefined;
+          return activity ? { ...ticket, activity } : ticket;
+        }) }));
+    const owner = agent ? state.missions.value.find((mission) => mission.leadAgentId === agent.id || mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
+    // A mission's own agents are named for what they do in it, not by the generated names of their conversations.
+    const ticketOf = owner && agent ? owner.tickets.find((ticket) => ticket.agentId === agent.id) : undefined;
+    const missionTitle = owner && agent
+      ? owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null }
+        : ticketOf ? { title: ticketOf.title, subtitle: null } : null
+      : null;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
+      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
@@ -267,11 +292,13 @@ export function createEngine(port: EnginePort) {
       pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       usage: state.usage.value,
-      startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
+      startup: startup.value, connection: state.status.value, error: state.error.value, errorDetail: state.errorDetail.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
-      header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
-        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
+      header: owner && agent && missionTitle ? { title: missionTitle.title, repository: missionTitle.subtitle, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null }
+        : active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
+        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null }
+        : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
@@ -289,7 +316,7 @@ export function createEngine(port: EnginePort) {
       ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, backends: backendChoices(), branches: state.branches.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
@@ -535,12 +562,21 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'dismissTeamCreation': return state.dismissTeamCreation();
+      case 'continueMission': return state.continueMission(command.missionId);
+      case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
+      case 'selectFinding': return state.selectFinding(command.missionId, command.findingId, command.selected);
+      case 'fixFindings': return state.fixFindings(command.missionId);
+      case 'rerunReview': return state.rerunReview(command.missionId);
+      case 'dismissMissionAction': return state.dismissMissionAction();
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
+        // An agent the laptop no longer shows is not a reason to land on some other conversation.
+        if (!companionAgents(state.workspace.value).some(agent => agent.id === command.id)) return;
         ++notificationEpoch; pendingNotification = null;
         ++restoreEpoch;
-        const owner = showingAllTeams.value ? state.workspace.value.agents.find(agent => agent.id === command.id) : undefined;
+        const owner = showingAllTeams.value || state.missions.value.some(mission => mission.leadAgentId === command.id || mission.tickets.some(ticket => ticket.agentId === command.id))
+          ? companionAgents(state.workspace.value).find(agent => agent.id === command.id) : undefined;
         const loading = owner?.teamId && owner.teamId !== state.teamId.value ? state.selectTeam(owner.teamId, owner.id) : state.selectAgent(command.id);
         await rememberSelection();
         return loading;

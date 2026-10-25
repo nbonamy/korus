@@ -199,9 +199,14 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         DrawerContent(model, close = { coroutine.launch { drawer.close() } })
                     }
                 }) {
+                  if (model.missionsOpen) MissionsScreen(model) { coroutine.launch { drawer.open() } }
+                  else {
                     Scaffold(
                         topBar = {
-                            ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                            Column {
+                                ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                                MissionContextBar(model)
+                            }
                         },
                         bottomBar = { if (state.string("agentId").isNotBlank()) Column {
                             RequestBanner(model)
@@ -211,6 +216,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     ) { padding ->
                         ConversationContent(model,Modifier.padding(padding).fillMaxSize())
                     }
+                  }
                 }
                 if (model.sheet in listOf("settings", "connections", "usage")) {
                     BackHandler { if (model.sheet in listOf("usage", "connections")) model.sheet = "settings" else model.dismissSheet() }
@@ -231,6 +237,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                 AlertDialog(onDismissRequest = { model.command("dismissSessionError") }, title = { Text("Session action failed") },
                     text = { Text("The laptop couldn’t complete the action. Check the connection and try again.") },
                     confirmButton = { TextButton(onClick = { model.command("dismissSessionError") }) { Text("OK") } })
+            }
+            if (state.string("missionAction") == "failed") {
+                AlertDialog(onDismissRequest = { model.command("dismissMissionAction") }, title = { Text("Couldn’t update the mission") },
+                    text = { Text("The mission may have changed on your laptop. It now shows how it stands.") },
+                    confirmButton = { TextButton(onClick = { model.command("dismissMissionAction") }) { Text("OK") } })
             }
             if (model.duplicateFailed) {
                 AlertDialog(onDismissRequest = { model.duplicateFailed = false }, title = { Text("Couldn’t duplicate the agent") },

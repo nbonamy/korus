@@ -27,6 +27,8 @@ describe('conversation images', () => {
     expect(conversationImageReference(frame, '/tmp/phone shot.png')).toStrictEqual('/tmp/phone shot.png');
     expect(conversationImageReference(frame, 'file:///tmp/second.png')).toStrictEqual('/tmp/second.png');
     expect(conversationImageReference(frame, 'relative.png')).toStrictEqual('relative.png');
+    // Markdown allows a destination with spaces only inside angle brackets, and the renderer passes them through.
+    expect(conversationImageReference(frame, '</tmp/phone shot.png>')).toStrictEqual('/tmp/phone shot.png');
     for (const reference of ['/private/secret.png', '/tmp/phone shot.png.backup', 'https://example.com/private.png', '/tmp/unknown.png']) {
       expect(() => conversationImageReference(frame, reference)).toThrow();
     }

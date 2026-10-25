@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -39,17 +40,22 @@ import androidx.compose.ui.unit.dp
             }
         },
         navigationIcon = {
-            HeaderButton(Icons.Outlined.Menu, "Open workspace", if (unread) "Unread activity" else "", unread, action = openWorkspace)
+            val mission = model.workerMission
+            if (mission == null) HeaderButton(Icons.Outlined.Menu, "Open workspace", if (unread) "Unread activity" else "", unread, action = openWorkspace)
+            else HeaderButton(Icons.AutoMirrored.Outlined.ArrowBack, "Back to mission", "", false) { model.showMissions(mission.string("id")) }
         },
         actions = {
-            Box {
+            // A mission drives its workers: the phone can look at their changes and nothing else.
+            val worker = model.workerMission != null
+            if (!worker || state.obj("git").optBoolean("available")) Box {
                 val description = listOfNotNull(if (dirty) "Uncommitted changes" else null, if (model.duplicatingAgent) "Duplicating agent" else if (preparing) "Preparing to close session" else null).joinToString(", ")
                 HeaderButton(Icons.Outlined.MoreHoriz, "Conversation actions", description, dirty, preparing) { model.sheet = "conversation" }
                 DropdownMenu(expanded = model.sheet == "conversation", onDismissRequest = model::dismissSheet) {
                     if (state.obj("git").optBoolean("available")) {
                         DropdownMenuItem(text = { Text("Changes") }, leadingIcon = { Icon(Icons.Outlined.Difference, null) }, enabled = model.canManageSession, onClick = model::openChanges)
-                        HorizontalDivider()
+                        if (!worker) HorizontalDivider()
                     }
+                    if (!worker) {
                     DropdownMenuItem(text = { Text("Rename Agent") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, enabled = model.canManageSession, onClick = model::openAgentRename)
                     DropdownMenuItem(text = { Text("Duplicate Agent") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, enabled = model.canManageSession && model.canStartCreation, onClick = model::duplicateAgent)
                     HorizontalDivider()
@@ -57,6 +63,7 @@ import androidx.compose.ui.unit.dp
                     DropdownMenuItem(text = { Text("Close Session") }, leadingIcon = { Icon(Icons.Outlined.Close, null) },
                         colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error, leadingIconColor = MaterialTheme.colorScheme.error),
                         enabled = model.canManageSession, onClick = model::closeSession)
+                    }
                 }
             }
         },

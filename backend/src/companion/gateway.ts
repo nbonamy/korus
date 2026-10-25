@@ -74,6 +74,8 @@ export type GatewayState = { push?: Record<string, CompanionPushRegistration>; g
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
   createTeam?(name: string): Promise<string>;
+  executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string }
+    | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
@@ -131,6 +133,8 @@ type AgentOperation<Input, Result> = {
   check?(agent: CompanionAgent, input: Input, workspace: CompanionWorkspace): undefined;
   act(port: GatewayPort, agent: CompanionAgent, input: Input, target: CompanionTarget): Promise<Result>;
   read?: { verify?(result: Result, current: CompanionAgent, target: CompanionTarget): unknown };
+  /** Changes what the agent is rather than what it does; a mission's workers belong to their mission, so the phone may not do these to one. */
+  structural?: true;
 };
 /** Curried so the parsed input type is fixed before the handlers are checked against it. */
 const agentOperation = <Input>(parse: AgentOperation<Input, unknown>['parse']) => <Result>(operation: Omit<AgentOperation<Input, Result>, 'parse'>) =>
@@ -302,6 +306,7 @@ const agentOperations = {
     act: async (port, agent, input) => ({ reviewerAgentId: await port.startReview(agent.id, input) ?? null }),
   }),
 } satisfies Record<string, AgentOperation<unknown, unknown>>;
+for (const method of ['agent.backend.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start'] as const) agentOperations[method].structural = true;
 export const companionAgentMethods = Object.keys(agentOperations);
 type Peer = { peerId: string; grant: CompanionGrant };
 type Operation = (peer: Peer, args: unknown) => Promise<unknown>;
@@ -416,6 +421,44 @@ export class CompanionGateway {
       this.requireGrant(peer);
       return { teamId: await this.port.createTeam(name) };
     },
+    // The only mission actions a phone has: move implementation on to review, accept a finished ticket, and work through a review's findings.
+    // Everything is checked against the mission as the laptop sees it now, so a stale tap changes nothing.
+    'mission.continue': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.next !== 'review') throw new Error('The mission is not ready for review.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'continueToReview' });
+      return {};
+    },
+    'mission.ticket.accept': async (peer, args) => {
+      const { missionId, revision, runId } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe(), runId: identity }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (!mission.tickets.some((ticket) => ticket.state === 'awaitingReview' && ticket.runId === runId)) throw new Error('That ticket is not waiting for review.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'accept', runId });
+      return {};
+    },
+    'mission.finding.select': async (peer, args) => {
+      const { missionId, revision, findingId, selected } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe(), findingId: identity, selected: z.boolean() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.stage !== 'review' || !mission.review?.findings.some((finding) => finding.id === findingId && finding.state === 'open')) throw new Error('That finding cannot be changed.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'selectReviewFinding', findingId, selected });
+      return {};
+    },
+    'mission.findings.fix': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.stage !== 'review' || !mission.review?.findings.some((finding) => finding.state === 'open' && finding.selected)) throw new Error('Select a finding to fix.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'fixSelectedReviewFindings' });
+      return {};
+    },
+    'mission.review.rerun': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      const findings = mission.review?.findings ?? [];
+      if (mission.stage !== 'review' || !findings.length || !findings.every((finding) => finding.state === 'fixed' || finding.state === 'skipped')) throw new Error('Finish fixing before reviewing again.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'rerunReview' });
+      return {};
+    },
     'project.local.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);
       if (!this.port.localRepositories) throw new Error('Repositories are unavailable.');
@@ -522,6 +565,14 @@ export class CompanionGateway {
     },
     'device.forget': async (peer, args) => { z.object({}).strict().parse(args); await this.revoke(peer.peerId); return {}; },
   };
+  private async mission(peer: Peer, missionId: string, revision: number) {
+    if (!this.port.executeMission) throw new Error('Mission actions are unavailable.');
+    this.requireGrant(peer);
+    const mission = (await this.port.workspace()).missionProgress?.find((candidate) => candidate.id === missionId);
+    if (!mission) throw new Error('Mission not found.');
+    if (mission.revision !== revision) throw new Error('The mission has changed.');
+    return mission;
+  }
   private claim(peerId: string, args: unknown) {
     const request = z.object({ code: z.string().length(8), name: z.string().trim().min(1).max(80) }).strict().parse(args);
     if (!this.pairingAttempts.take(peerId)) throw new Error('Too many pairing attempts.');
@@ -565,11 +616,11 @@ export class CompanionGateway {
   private async admit(peer: Peer, key: string, command: z.infer<typeof commandSchema>, fingerprint: string): Promise<SettledCommand> {
     const { pending, uploads } = await this.mutate(async () => {
       this.requireGrant(peer);
-      const agent = await this.validateTarget(command.target);
+      const agent = await this.validateTarget(command.target, true);
       if (command.options?.skills?.length) {
         const catalog = await this.port.skills(agent.id);
         if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
-        const current = await this.validateTarget(command.target);
+        const current = await this.validateTarget(command.target, true);
         if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
         this.requireGrant(peer);
       }
@@ -598,12 +649,13 @@ export class CompanionGateway {
   }
   private async runAgentOperation(peer: Peer, operation: AgentOperation<unknown, unknown>, args: unknown) {
     const { target, input } = operation.parse(args);
-    const { agent, workspace } = await this.resolveTarget(target);
+    const worker = !operation.structural;
+    const { agent, workspace } = await this.resolveTarget(target, worker);
     operation.check?.(agent, input, workspace);
     this.requireGrant(peer);
     const result = await operation.act(this.port, agent, input, target);
     if (!operation.read) return result;
-    const current = await this.validateTarget(target);
+    const current = await this.validateTarget(target, worker);
     this.requireGrant(peer);
     if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
     return operation.read.verify ? operation.read.verify(result, current, target) : result;
@@ -630,11 +682,14 @@ export class CompanionGateway {
   private requireGrant({ peerId, grant }: Peer) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
   }
-  private async validateTarget(target: CompanionTarget) { return (await this.resolveTarget(target)).agent; }
-  private async resolveTarget(target: CompanionTarget) {
+  private async validateTarget(target: CompanionTarget, worker = false) { return (await this.resolveTarget(target, worker)).agent; }
+  private async resolveTarget(target: CompanionTarget, worker = false) {
     const workspace = await this.port.workspace();
     const team = workspace.teams.find((team) => team.id === target.teamId);
-    const agent = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    const own = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    const mission = own ? undefined : workspace.missionAgents?.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    if (mission && !worker) throw new Error('Mission workers are read-only.');
+    const agent = own ?? mission;
     if (target.hostId !== this.hostId || !team || !agent
       || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return { agent, workspace };

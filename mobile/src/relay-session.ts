@@ -2,7 +2,7 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
-import { companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
@@ -45,7 +45,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const { host, network, caches, onClosed } = deps;
   const call = <Result>(method: string, args: unknown) => network.request<Result>(host, method, args);
   let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] };
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(reason?: string) => void>();
   const notifications = new Set<(notification: CompanionNotification) => void>();
   const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
 
@@ -65,7 +65,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     return workspace;
   };
   const target = (agentId: string) => {
-    const agent = workspace.agents.find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
+    const agent = companionAgents(workspace).find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
     if (!agent || !team) throw new Error('Agent is outside the paired scope.');
     return companionTarget(host.hostId, team, agent);
   };
@@ -73,7 +73,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const failed = (reason?: CompanionDisconnectReason) => {
     if (closed) return;
     if (reason === 'resume-timeout') network.retireRoutes(host);
-    close(); for (const listener of listeners) listener();
+    close(); for (const listener of listeners) listener(reason);
   };
   const cacheRequest: ConstructorParameters<typeof ConversationCache>[0] = (method, target, checkpoint) =>
     method === 'conversation.subscribe' && workspace.conversationSync
@@ -86,7 +86,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     if (update.type === 'workspace') {
       workspace = { ...update.workspace, repositoryIcons: update.workspace.repositoryIcons ?? icons.value };
       if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
-      cache.reconcile(workspace.agents.flatMap((agent) => {
+      cache.reconcile(companionAgents(workspace).flatMap((agent) => {
         const team = workspace.teams.find((team) => team.id === agent.teamId);
         return team ? [companionTarget(host.hostId, team, agent)] : [];
       }));
@@ -121,6 +121,11 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       }
     },
     getWorkspace: read,
+    continueMission: async (missionId, revision) => { await call('mission.continue', { missionId, revision }); },
+    acceptTicket: async (missionId, revision, runId) => { await call('mission.ticket.accept', { missionId, revision, runId }); },
+    selectFinding: async (missionId, revision, findingId, selected) => { await call('mission.finding.select', { missionId, revision, findingId, selected }); },
+    fixFindings: async (missionId, revision) => { await call('mission.findings.fix', { missionId, revision }); },
+    rerunReview: async (missionId, revision) => { await call('mission.review.rerun', { missionId, revision }); },
     createTeam: async name => (await call<{ teamId: string }>('team.create', { name })).teamId,
     gitDiff: (agentId, scope) => call('agent.git.diff', { target: target(agentId), scope }),
     readImage: (agentId, path) => call('conversation.image.read', { target: target(agentId), path }),
