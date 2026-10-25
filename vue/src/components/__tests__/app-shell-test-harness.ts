@@ -161,6 +161,7 @@ export function mountShell(overrides: Partial<{
   getAgentGitWorkflow: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   revertAgentGitChanges: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   configureWorkBacklog: (input: WorkBacklogConfigurationInput) => Promise<void>;
+  listWorkSources: (provider: import('@workspace/core/contracts').WorkProviderKind, location?: import('@workspace/core/contracts').AutomationLocation) => Promise<WorkSource[]>;
   loadWorkRepositories: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[] | void>;
   loadAssignedWorkItems: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkItem[] | void>;
   loadGlobalWorkItems: (provider: WorkProviderKind, location?: AutomationLocation, query?: import('@workspace/core/contracts').GlobalWorkItemQuery) => Promise<import('@workspace/core/contracts').WorkItemPage>;
@@ -277,6 +278,7 @@ export function mountShell(overrides: Partial<{
       revertAgentGitChanges: overrides.revertAgentGitChanges,
       previewAgentFile: overrides.previewAgentFile ?? vi.fn().mockRejectedValue(new Error('Unavailable')),
       configureWorkBacklog: overrides.configureWorkBacklog ?? vi.fn().mockResolvedValue(undefined),
+      listWorkSources: overrides.listWorkSources,
       loadWorkRepositories: overrides.loadWorkRepositories ?? vi.fn().mockResolvedValue(undefined),
       loadAssignedWorkItems: overrides.loadAssignedWorkItems ?? vi.fn().mockResolvedValue(undefined),
       loadGlobalWorkItems: overrides.loadGlobalWorkItems ?? vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 25, totalItems: 0 }),

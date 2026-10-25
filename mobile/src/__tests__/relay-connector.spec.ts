@@ -545,6 +545,12 @@ describe('native relay host adapter', () => {
     transport.response = method => method === 'project.github.branches' ? projectBranches : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
     expect(await session.githubBranches!('team', 'org/repo')).toStrictEqual(projectBranches);
     expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team', repositoryId: 'org/repo' });
+    transport.response = method => method === 'project.repositories.list' ? [{ id: 'repo:opaque', name: 'group/subgroup/repo' }] : projectBranches;
+    expect(await session.repositoryCatalog!('team', 'gitlab')).toStrictEqual([{ id: 'repo:opaque', name: 'group/subgroup/repo' }]);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.list', args: { teamId: 'team', provider: 'gitlab' } });
+    expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
+    transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
     const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', backend: 'claude' as const, branch: 'feature/mobile' };
     expect(await session.createProject!(projectInput)).toBe('project-agent');
     expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);

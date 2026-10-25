@@ -13,6 +13,7 @@ import type {
   SourceWorktree,
   WorkItem,
   WorkSource,
+  WorkProviderKind,
 } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemBranchName } from '@workspace/core/work-item-prompts';
 import { computed, ref } from 'vue';
@@ -33,7 +34,7 @@ export function useRepositorySession(options: {
   getSnapshot: () => AppSnapshot;
   getWorkRepositories: () => WorkSource[];
   listSourceBranches: (repoPath: string, remoteConnectionId?: string) => Promise<SourceBranch[]>;
-  loadWorkItems: (repositoryId: string, location?: AutomationLocation) => Promise<WorkItem[]>;
+  loadWorkItems: (repositoryId: string, location?: AutomationLocation, provider?: WorkProviderKind) => Promise<WorkItem[]>;
   loadWorkRepositories: (location?: AutomationLocation) => Promise<WorkSource[]>;
   notifyError: (message: string) => void;
   prefillWorkItemForAgent: (agentId: string, item: WorkItem) => void;
@@ -98,6 +99,12 @@ export function useRepositorySession(options: {
       if (requestId !== sourceRequestId) return;
       branches.value = loadedBranches;
       try {
+        if (nextSource.workSource) {
+          workSourceId.value = nextSource.workSource.id;
+          const loadedItems = await options.loadWorkItems(nextSource.workSource.id, location, nextSource.workSource.provider);
+          if (requestId === sourceRequestId) workItems.value = loadedItems;
+          return;
+        }
         const repositories = await options.loadWorkRepositories(location);
         if (requestId !== sourceRequestId) return;
         const matchingRepositories = (repositories.length > 0 ? repositories : options.getWorkRepositories())
@@ -159,6 +166,13 @@ export function useRepositorySession(options: {
     } finally {
       if (requestId === worktreeRequestId) worktreeBranchesLoading.value = false;
     }
+  }
+
+  async function newBranch(): Promise<void> {
+    const current = source.value;
+    if (!current) return;
+    close();
+    await openWorktree(current);
   }
 
   function closeWorktree(): void {
@@ -342,6 +356,7 @@ export function useRepositorySession(options: {
     listBranches,
     loading,
     open,
+    newBranch,
     openWorktree,
     source,
     startWork,

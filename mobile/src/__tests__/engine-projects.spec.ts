@@ -13,6 +13,30 @@ function fixture(list = vi.fn(async (_team: string) => repositories)) {
 }
 
 describe('mobile project acquisition', () => {
+  it('keeps GitLab catalogs and branches distinct, discards late GitHub results, and creates on the selected team', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let release!: (items: typeof repositories) => void;
+    const githubRepositories = vi.fn(() => new Promise<typeof repositories>(resolve => { release = resolve; }));
+    const repositoryCatalog = vi.fn(async () => [{ id: 'repo:opaque', name: 'org/subgroup/repo' }]);
+    const repositoryBranches = vi.fn(async () => [{ name: 'main', isDefault: true }]);
+    const createProject = vi.fn(async () => 'demo-reviewer');
+    connector.connect = async id => ({ ...await connect(id), githubRepositories, repositoryCatalog, repositoryBranches, createProject });
+    const engine = createEngine({ connector, post() {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      const old = engine.dispatch({ type: 'loadProjectRepositories', source: 'github' });
+      await engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      release(repositories); await old;
+      expect(engine.snapshot().projectRepositories.items).toStrictEqual([{ id: 'repo:opaque', name: 'org/subgroup/repo' }]);
+      expect(repositoryCatalog).toHaveBeenCalledExactlyOnceWith('demo-team', 'gitlab');
+      await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'repo:opaque' });
+      expect(repositoryBranches).toHaveBeenCalledExactlyOnceWith('demo-team', 'gitlab', 'repo:opaque');
+      expect(engine.snapshot().projectBranches.items).toStrictEqual([{ name: 'main', isDefault: true }]);
+      await engine.dispatch({ type: 'createProject', source: 'gitlab', value: 'repo:opaque', branch: 'main', backend: 'codex' });
+      expect(createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source: 'gitlab', value: 'repo:opaque', branch: 'main', backend: 'codex' });
+    } finally { engine.dispose(); }
+  });
+
   it('loads local repository catalogs and branches without asking GitHub, then opens the chosen branch', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const localRepositories = vi.fn(async () => [{ id: 'opaque-repo', name: 'Local repo' }]);

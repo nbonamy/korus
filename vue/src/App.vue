@@ -152,6 +152,7 @@
     :read-conversation-messages="readConversationMessages"
     :configure-work-backlog="configureWorkBacklog"
     :load-work-repositories="loadWorkRepositories"
+    :list-work-sources="(provider, location) => appApi!.listWorkSources(provider, location)"
     :load-work-items="loadWorkItems"
     :load-global-work-items="loadGlobalWorkItems"
     :load-assigned-work-items="loadAssignedWorkItems"

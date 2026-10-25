@@ -183,6 +183,8 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     localBranches: (teamId, repositoryId) => call('project.local.branches', { teamId, repositoryId }),
     async duplicateAgent(target, backend) { return (await call<{ agentId: string }>('agent.duplicate', { target, backend })).agentId; },
     async renameAgent(target, name) { await call('agent.rename', { target, name }); },
+    repositoryCatalog: (teamId, provider) => call('project.repositories.list', { teamId, provider }),
+    repositoryBranches: (teamId, provider, repositoryId) => call('project.repositories.branches', { teamId, provider, repositoryId }),
     githubRepositories: teamId => call('project.github.list', { teamId }),
     githubBranches: (teamId, repositoryId) => call('project.github.branches', { teamId, repositoryId }),
     async createProject(input, signal) { return created((await call<{ creationId: string }>('project.create', input)).creationId, signal); },

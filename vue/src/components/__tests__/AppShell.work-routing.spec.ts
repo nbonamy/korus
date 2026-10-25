@@ -373,6 +373,123 @@ describe('AppShell work routing', () => {
     });
   });
 
+  it.each([false, true])('acquires a nested GitLab project and opens an existing or new branch (new: %s)', async newBranch => {
+    const snapshot = createEmptySnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'github-user' }, { provider: 'gitlab', status: 'connected', accountLabel: 'gitlab-user' }];
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const project: WorkSource = { provider: 'gitlab', id: '42', fullName: 'group/subgroup/repo', name: 'repo', url: 'https://gitlab.com/group/subgroup/repo', isPrivate: true };
+    const loadWorkRepositories = vi.fn(async (_provider: import('@workspace/core/contracts').WorkProviderKind) => [project]);
+    const cloneSourceRepository = vi.fn(async () => ({ name: 'repo', path: '/src/repo', worktrees: [] }));
+    const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true, worktreePath: '/src/repo' }]);
+    const createAgent = vi.fn();
+    const loadWorkItems = vi.fn(async () => []);
+    const createSourceWorktree = vi.fn(async () => ({ name: 'feature/new', path: '/src/repo-new' }));
+    const wrapper = mountRealShell({ snapshot, loadWorkRepositories, cloneSourceRepository, listSourceBranches, createAgent, loadWorkItems, createSourceWorktree });
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'GitLab repository…')!.trigger('click');
+    await flushPromises();
+    const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+    expect(acquire.props('connection')).toStrictEqual(snapshot.workBacklog.connections[1]);
+    expect(loadWorkRepositories).toHaveBeenCalledWith('gitlab');
+    await acquire.get('input').setValue('subgroup');
+    await acquire.get('.repository-acquire-dialog__row').trigger('click');
+    await flushPromises();
+    expect(cloneSourceRepository).toHaveBeenCalledExactlyOnceWith({ url: project.url, reuseExisting: true });
+    expect(listSourceBranches).toHaveBeenCalledWith('/src/repo', undefined);
+    expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('repositoryName')).toBe('repo');
+    expect(loadWorkRepositories.mock.calls.every(([provider]) => provider === 'gitlab')).toBe(true);
+    expect(loadWorkItems).toHaveBeenCalledWith('gitlab', project.id, undefined, { kind: 'all', state: 'open' });
+    const session = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
+    if (newBranch) {
+      await session.findAll('button').find(button => button.text() === 'New branch…')!.trigger('click');
+      await flushPromises();
+      const worktree = wrapper.getComponent({ name: 'NewSourceWorktreeDialog' });
+      expect(worktree.props('visible')).toBe(true);
+      await worktree.get('input').setValue('feature/new');
+      vi.useFakeTimers();
+      await worktree.get('.app-button--primary').trigger('click');
+      await flushPromises();
+      expect(createSourceWorktree).toHaveBeenCalledWith(expect.objectContaining({ repoPath: '/src/repo', branchName: 'feature/new', baseBranch: 'main' }));
+      await vi.advanceTimersByTimeAsync(7000);
+      await flushPromises();
+    } else {
+      await session.get('.repository-session-source-dialog__result').trigger('click');
+      await flushPromises();
+    }
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: newBranch ? '/src/repo-new' : '/src/repo' }));
+    expect(snapshot.workBacklog.connections[0]).toStrictEqual({ provider: 'github', status: 'connected', accountLabel: 'github-user' });
+  });
+
+  it('recognizes an existing GitLab checkout when the local scan arrives after its catalog', async () => {
+    const snapshot = createInitialSnapshot(); snapshot.workBacklog.connections = [{ provider: 'gitlab', status: 'connected' }];
+    const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
+    const wrapper = mountRealShell({ snapshot, loadWorkRepositories: vi.fn(async () => [project]) });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'gitlab'); await flushPromises();
+    const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+    expect(acquire.get('.repository-acquire-dialog__row em').text()).toBe('Clone');
+    await wrapper.setProps({ sourceRepositories: [{ name: 'renamed', path: '/src/renamed', remoteIdentity: 'gitlab.com/group/subgroup/repo', worktrees: [] }] });
+    expect(acquire.get('.repository-acquire-dialog__row em').text()).toBe('Open');
+  });
+
+  it('keeps a GitLab clone attached to its team across unrelated workspace updates', async () => {
+    const snapshot = createInitialSnapshot(); snapshot.workBacklog.connections = [{ provider: 'gitlab', status: 'connected' }];
+    const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
+    let release!: (repository: SourceRepository) => void;
+    const cloneSourceRepository = vi.fn(() => new Promise<SourceRepository>(resolve => { release = resolve; }));
+    const listSourceBranches = vi.fn(async () => []);
+    const wrapper = mountRealShell({ snapshot, cloneSourceRepository, listSourceBranches, loadWorkRepositories: vi.fn(async () => [project]) });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'gitlab'); await flushPromises();
+    await wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).get('.repository-acquire-dialog__row').trigger('click');
+    await wrapper.setProps({ snapshot: structuredClone(snapshot) }); await flushPromises();
+    release({ name: 'repo', path: '/src/repo', worktrees: [] }); await flushPromises();
+    expect(cloneSourceRepository).toHaveBeenCalledTimes(1);
+    expect(listSourceBranches).toHaveBeenCalledWith('/src/repo', undefined);
+    expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('visible')).toBe(true);
+  });
+
+  it('finishes GitLab device authorization with selectable repository results', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'disconnected' }];
+    let release!: () => void;
+    const connectWorkProvider = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+    const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
+    const wrapper = mountRealShell({ snapshot, loadWorkRepositories: vi.fn(async () => [project]) });
+    await wrapper.setProps({ connectWorkProvider });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'gitlab'); await flushPromises();
+    const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+    await acquire.get('.repository-acquire-dialog__connect button').trigger('click');
+    const connecting = structuredClone(snapshot); connecting.workBacklog.connections[1]!.status = 'connecting';
+    await wrapper.setProps({ snapshot: connecting, workProviderAuthorizations: { gitlab: { provider: 'gitlab', verificationUri: 'https://gitlab.com/oauth/device', userCode: 'CODE', expiresAt: '2099-01-01T00:00:00.000Z' } } });
+    release(); await flushPromises();
+    const connected = structuredClone(connecting); connected.workBacklog.connections[1]!.status = 'connected';
+    await wrapper.setProps({ snapshot: connected }); await flushPromises();
+    expect(connectWorkProvider).toHaveBeenCalledExactlyOnceWith('gitlab');
+    expect(acquire.get('.repository-acquire-dialog__row').attributes('disabled')).toBeUndefined();
+  });
+
+  it('shows catalog and Git transport failures independently and ignores dismissed provider results', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    let release!: (items: WorkSource[]) => void;
+    const project: WorkSource = { provider: 'gitlab', id: '42', name: 'repo', fullName: 'group/subgroup/repo', url: 'https://gitlab.com/group/subgroup/repo' };
+    const listWorkSources = vi.fn().mockRejectedValueOnce(new Error('GitLab API unavailable')).mockImplementationOnce(() => new Promise(resolve => { release = resolve; })).mockResolvedValue([project]);
+    const cloneSourceRepository = vi.fn().mockRejectedValue(new Error('Git transport authentication failed'));
+    const wrapper = mountRealShell({ snapshot, listWorkSources, cloneSourceRepository });
+    const sidebar = wrapper.getComponent({ name: 'AgentSidebar' });
+    sidebar.vm.$emit('start-work', 'gitlab'); await flushPromises();
+    const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
+    expect(acquire.text()).toContain('GitLab API unavailable');
+    acquire.vm.$emit('close'); await flushPromises();
+    sidebar.vm.$emit('start-work', 'github'); await flushPromises();
+    acquire.vm.$emit('close'); await flushPromises();
+    sidebar.vm.$emit('start-work', 'gitlab'); await flushPromises();
+    release([{ ...project, provider: 'github', id: 'wrong', fullName: 'wrong/repo' }]); await flushPromises();
+    expect(acquire.findAll('.repository-acquire-dialog__row')).toHaveLength(1);
+    expect(acquire.text()).not.toContain('wrong/repo');
+    await acquire.get('.repository-acquire-dialog__row').trigger('click'); await flushPromises();
+    expect(acquire.text()).toContain('Git transport authentication failed');
+    expect(acquire.props('connection')).toStrictEqual({ provider: 'gitlab', status: 'connected' });
+  });
+
   it('clones a GitHub repository before opening its contextual session picker', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'nbonamy' }];
@@ -459,7 +576,7 @@ describe('AppShell work routing', () => {
     await flushPromises();
 
     expect(listSourceRepositories).toHaveBeenCalledWith('connection-devbox');
-    expect(loadWorkRepositories).toHaveBeenCalledWith('github');
+    expect(loadWorkRepositories).toHaveBeenCalledWith('github', { kind: 'remote', remoteConnectionId: 'connection-devbox' });
 
     wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).vm.$emit('select-repository', githubRepository);
     await flushPromises();

@@ -94,7 +94,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const projectBranchList = createRemoteList<CompanionProjectBranch, { repositoryId: string | null }>(remote, { repositoryId: null });
   const projectBranches = projectBranchList.state;
   const dismissProjectBranches = projectBranchList.reset;
-  const loadProjectBranches = (repositoryId: string, source: 'github' | 'local' = 'github') => projectBranchList.load({ repositoryId }, active => {
+  const loadProjectBranches = (repositoryId: string, source: 'github' | 'gitlab' | 'local' = 'github') => projectBranchList.load({ repositoryId }, active => {
+    if (source === 'gitlab') return teamId.value ? active.repositoryBranches?.(teamId.value, source, repositoryId) : undefined;
     const read = source === 'local' ? active.localBranches : active.githubBranches;
     return teamId.value ? read?.call(active, teamId.value, repositoryId) : undefined;
   });
@@ -102,7 +103,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const projectRepositories = projectRepositoryList.state;
   function dismissProjectRepositories() { projectRepositoryList.reset(); dismissProjectBranches(); }
   const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
-  const loadProjectRepositories = (source: 'github' | 'local' = 'github') => projectRepositoryList.load({}, active => {
+  const loadProjectRepositories = (source: 'github' | 'gitlab' | 'local' = 'github') => projectRepositoryList.load({}, active => {
+    if (source === 'gitlab') return teamId.value ? active.repositoryCatalog?.(teamId.value, source) : undefined;
     const read = source === 'local' ? active.localRepositories : active.githubRepositories;
     return teamId.value ? read?.call(active, teamId.value) : undefined;
   });

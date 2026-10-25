@@ -28,6 +28,19 @@ const repositories: WorkSource[] = [
 ];
 
 describe('RepositoryAcquireDialog', () => {
+  it('connects only GitLab and filters out foreign provider catalogs and authorization', async () => {
+    const wrapper = mount(RepositoryAcquireDialog, { props: { visible: true, mode: 'gitlab', connection: { provider: 'github', status: 'connected' }, authorization: { provider: 'github', verificationUri: 'https://github.com/login/device', userCode: 'FOREIGN', expiresAt: '2099-01-01T00:00:00.000Z' } } });
+    expect(wrapper.text()).toContain('Connect GitLab');
+    expect(wrapper.text()).not.toContain('FOREIGN');
+    await wrapper.get('.repository-acquire-dialog__connect button').trigger('click');
+    expect(wrapper.emitted('connect')).toStrictEqual([[]]);
+    await wrapper.setProps({ connection: { provider: 'gitlab', status: 'connected' }, repositories: [...repositories, { ...repositories[0]!, provider: 'gitlab', id: '42', fullName: 'group/subgroup/agent-workspace', url: 'https://gitlab.com/group/subgroup/agent-workspace' }], localRepositoryIdentities: ['github.com/group/subgroup/agent-workspace'] });
+    expect(wrapper.findAll('.repository-acquire-dialog__row')).toHaveLength(1);
+    expect(wrapper.get('input').attributes('placeholder')).toContain('GitLab');
+    expect(wrapper.findComponent({ name: 'GitLabIcon' }).exists()).toBe(true);
+    expect(wrapper.get('.repository-acquire-dialog__row em').text()).toBe('Clone');
+  });
+
   it('filters GitHub repositories and distinguishes local projects from clone targets', async () => {
     const wrapper = mount(RepositoryAcquireDialog, {
       props: {

@@ -86,6 +86,7 @@
       <p v-else-if="purpose === 'missionIssue' && backlog.sources.value.length === 0" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.noRepositories') }}</p>
       <p v-else-if="purpose === 'missionIssue' && !backlog.sourceId.value" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.chooseRepositoryToSeeIssues') }}</p>
       <template v-else-if="tab === 'branches' && purpose === 'session'">
+        <button class="app-button app-button--secondary" type="button" @click="emit('new-branch')">{{ t('repositories.sessionSource.newBranch') }}</button>
         <h3>{{ t('repositories.sessionSource.recentBranches') }}</h3>
         <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result" type="button" @click="emit('select-branch', branch)">
           <GitBranchIcon
@@ -175,6 +176,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  'new-branch': [];
   'custom-work-item': [selection: Omit<WorkItemAssignmentSelection, 'action'>];
   'select-branch': [branch: SourceBranch];
   'select-repository': [repositoryId: string];

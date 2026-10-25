@@ -428,6 +428,7 @@
       :sessions="repositorySessionAssignmentSessions"
       @close="closeRepositorySessionSource"
       @select-branch="openNewAgentForSourceBranch"
+      @new-branch="repositorySession.newBranch"
       @custom-work-item="customizeRepositorySessionWork"
       @start-work-item="startRepositorySessionWork"
     />
@@ -459,8 +460,8 @@
       v-model:backend="repositorySession.backend.value"
       :visible="repositoryAcquireVisible"
       :mode="repositoryAcquireMode"
-      :connection="githubConnection"
-      :authorization="workProviderAuthorization"
+      :connection="repositoryAcquisition.connection.value"
+      :authorization="repositoryAcquireMode !== 'url' ? workProviderAuthorizations?.[repositoryAcquireMode] ?? (workProviderAuthorization?.provider === repositoryAcquireMode ? workProviderAuthorization : null) : null"
       :repositories="repositoryAcquireRepositories"
       :local-repository-identities="repositoryAcquireSourceRepositories.flatMap((repository) => repository.remoteIdentity ? [repository.remoteIdentity] : [])"
       :loading="repositoryAcquireCatalogLoading"
@@ -843,6 +844,7 @@ const props = withDefaults(defineProps<{
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
   configureWorkBacklog?: (input: WorkBacklogConfigurationInput) => Promise<void>;
+  listWorkSources?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[]>;
   loadWorkRepositories?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[] | void>;
   loadWorkItems?: (provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery) => Promise<WorkItem[] | void>;
   loadGlobalWorkItems?: (provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery) => Promise<WorkItemPage>;
@@ -1491,8 +1493,8 @@ const repositorySession = useRepositorySession({
   getSnapshot: () => props.snapshot,
   getWorkRepositories: () => props.workRepositoriesByProvider.github ?? [],
   listSourceBranches: (repoPath, remoteConnectionId) => props.listSourceBranches(repoPath, remoteConnectionId),
-  loadWorkItems: async (repositoryId, location) => await props.loadWorkItems(
-    'github',
+  loadWorkItems: async (repositoryId, location, provider = 'github') => await props.loadWorkItems(
+    provider,
     repositoryId,
     location,
     { kind: 'all', state: 'open' },
@@ -1534,16 +1536,18 @@ const {
 const repositoryAcquisition = useRepositoryAcquisition({
   activeTeam: () => activeTeam.value,
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
-  catalog: () => props.workRepositoriesByProvider.github,
-  catalogError: () => props.workBacklogError,
-  catalogStatus: () => props.workBacklogStatus,
+  catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),
   cloneRepository: (input) => props.cloneSourceRepository(input),
-  connectGitHub: () => props.connectWorkProvider('github'),
+  connectProvider: provider => props.connectWorkProvider(provider),
   errorMessage: (error) => localizedErrorMessage(error, t),
-  githubConnection: () => githubConnection.value,
+  connection: provider => props.snapshot.workBacklog.connections.find(item => item.provider === provider) ?? { provider, status: 'disconnected' },
+  connectionError: provider => {
+    const connection = props.snapshot.workBacklog.connections.find(item => item.provider === provider);
+    return connection?.detail ? localizedText(connection.detail, t) : null;
+  },
   listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
-  loadGitHubRepositories: () => props.loadWorkRepositories('github'),
+  loadRepositories: (provider, location) => props.listWorkSources ? props.listWorkSources(provider, location) : location ? props.loadWorkRepositories(provider, location) : props.loadWorkRepositories(provider),
   openFolder: async (folder, teamId) => {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
@@ -1554,9 +1558,10 @@ const repositoryAcquisition = useRepositoryAcquisition({
       ...(teamId ? { teamId } : {}),
     });
   },
-  openGitHubAuthorization: () => props.openWorkProviderAuthorization('github'),
-  openRepository: (repository, teamId) => openRepositorySessionSource({
+  openAuthorization: provider => props.openWorkProviderAuthorization(provider),
+  openRepository: (repository, teamId, workSource) => openRepositorySessionSource({
     teamId,
+    workSource,
     repositoryName: repository.name,
     repositoryRoot: repository.path,
   }),
@@ -2778,7 +2783,7 @@ async function createQuickChat(): Promise<void> {
   }
 }
 
-async function handleStartWorkAction(action: 'new' | 'github' | 'local' | 'url'): Promise<void> {
+async function handleStartWorkAction(action: 'new' | 'github' | 'gitlab' | 'local' | 'url'): Promise<void> {
   if (action === 'new') {
     newProjectError.value = null;
     newProjectDialogVisible.value = true;
