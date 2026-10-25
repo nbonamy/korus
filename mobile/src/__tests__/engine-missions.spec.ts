@@ -7,7 +7,7 @@ import type { CompanionMission } from '@workspace/core/companion-protocol';
 const now = '2026-01-01T00:00:00Z';
 const worker = (id: string, teamId: string): Agent => ({ id, teamId, name: null, folder: null, backend: 'codex', status: { type: 'working' }, createdAt: now, updatedAt: now, conversationTitle: `Ticket ${id}` });
 const mission = (id: string, teamId: string, tickets: CompanionMission['tickets']): CompanionMission =>
-  ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', updatedAt: now, tickets });
+  ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', startedAt: now, updatedAt: now, tickets });
 
 /** A laptop with a second team, a mission in each, and the demo chat in the first. */
 function missionConnector() {
@@ -18,7 +18,7 @@ function missionConnector() {
       getWorkspace: async () => {
         const base = await session.getWorkspace();
         return { ...base, teams: [...base.teams, { id: 'other', name: 'Other', agentIds: [] }],
-          missionAgents: [worker('w-here', 'demo-team'), worker('w-there', 'other')],
+          missionAgents: [{ ...worker('w-here', 'demo-team'), statusText: 'editing gitlab-client.ts' }, worker('w-there', 'other')],
           missionProgress: [
             mission('m-here', 'demo-team', [{ number: 1, title: 'Schema', state: 'accepted' }, { number: 2, title: 'Endpoint', state: 'running', agentId: 'w-here' }, { number: 3, title: 'Docs', state: 'blocked' }]),
             mission('m-there', 'other', [{ number: 1, title: 'Elsewhere', state: 'running', agentId: 'w-there' }])],
@@ -38,7 +38,9 @@ describe('mobile missions', () => {
     const engine = createEngine({ connector: missionConnector(), post: () => {} });
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
-      expect(engine.snapshot().missions).toMatchObject([{ id: 'm-here', done: 1, tickets: [{ number: 1 }, { number: 2, agentId: 'w-here' }, { number: 3, state: 'blocked' }] }]);
+      expect(engine.snapshot().missions).toMatchObject([{ id: 'm-here', done: 1, tickets: [{ number: 1 }, { number: 2, agentId: 'w-here', activity: 'editing gitlab-client.ts' }, { number: 3, state: 'blocked' }] }]);
+      // Only a ticket being worked on carries a live line.
+      expect(engine.snapshot().missions[0]!.tickets.map((ticket) => 'activity' in ticket)).toStrictEqual([false, true, false]);
       expect(engine.snapshot().mission).toBeNull();
     } finally { engine.dispose(); }
   });

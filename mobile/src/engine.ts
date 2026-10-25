@@ -20,7 +20,7 @@ import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/co
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
 /** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
-export type EngineMission = CompanionMission & { done: number };
+export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
 export type EngineState = {
   missions: EngineMission[];
   /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
@@ -259,7 +259,13 @@ export function createEngine(port: EnginePort) {
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
     const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
-      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length }));
+      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
+        // What a working agent says it is doing is the ticket's live line.
+        tickets: mission.tickets.map((ticket) => {
+          const activity = ticket.agentId && (ticket.state === 'running' || ticket.state === 'preparing')
+            ? state.workspace.value.missionAgents?.find((agent) => agent.id === ticket.agentId)?.statusText?.trim() : undefined;
+          return activity ? { ...ticket, activity } : ticket;
+        }) }));
     const owner = agent ? state.missions.value.find((mission) => mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
