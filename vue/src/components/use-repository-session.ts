@@ -180,13 +180,6 @@ export function useRepositorySession(options: {
     }
   }
 
-  async function newBranch(): Promise<void> {
-    const current = source.value;
-    if (!current) return;
-    close();
-    await openWorktree(current);
-  }
-
   function closeWorktree(): void {
     worktreeRequestId += 1;
     worktreeSource.value = null;
@@ -368,7 +361,6 @@ export function useRepositorySession(options: {
     listBranches,
     loading,
     open,
-    newBranch,
     openWorktree,
     source,
     startWork,

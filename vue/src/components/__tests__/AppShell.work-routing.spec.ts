@@ -476,7 +476,7 @@ describe('AppShell work routing', () => {
     });
   });
 
-  it.each([false, true])('acquires a nested GitLab project and opens an existing or new branch (new: %s)', async newBranch => {
+  it('acquires a nested GitLab project and opens its branch', async () => {
     const snapshot = createEmptySnapshot();
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', accountLabel: 'github-user' }, { provider: 'gitlab', status: 'connected', accountLabel: 'gitlab-user' }];
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
@@ -486,8 +486,7 @@ describe('AppShell work routing', () => {
     const listSourceBranches = vi.fn(async () => [{ name: 'main', isDefault: true, worktreePath: '/src/repo' }]);
     const createAgent = vi.fn();
     const loadWorkItems = vi.fn(async () => []);
-    const createSourceWorktree = vi.fn(async () => ({ name: 'feature/new', path: '/src/repo-new' }));
-    const wrapper = mountRealShell({ snapshot, loadWorkRepositories, cloneSourceRepository, listSourceBranches, createAgent, loadWorkItems, createSourceWorktree });
+    const wrapper = mountRealShell({ snapshot, loadWorkRepositories, cloneSourceRepository, listSourceBranches, createAgent, loadWorkItems });
     await wrapper.findAll('[role="menuitem"]').find(item => item.text() === 'GitLab repository…')!.trigger('click');
     await flushPromises();
     const acquire = wrapper.getComponent({ name: 'RepositoryAcquireDialog' });
@@ -502,23 +501,10 @@ describe('AppShell work routing', () => {
     expect(loadWorkRepositories.mock.calls.every(([provider]) => provider === 'gitlab')).toBe(true);
     expect(loadWorkItems).toHaveBeenCalledWith('gitlab', project.id, undefined, { kind: 'all', state: 'open' });
     const session = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
-    if (newBranch) {
-      await session.findAll('button').find(button => button.text() === 'New branch…')!.trigger('click');
-      await flushPromises();
-      const worktree = wrapper.getComponent({ name: 'NewSourceWorktreeDialog' });
-      expect(worktree.props('visible')).toBe(true);
-      await worktree.get('input').setValue('feature/new');
-      vi.useFakeTimers();
-      await worktree.get('.app-button--primary').trigger('click');
-      await flushPromises();
-      expect(createSourceWorktree).toHaveBeenCalledWith(expect.objectContaining({ repoPath: '/src/repo', branchName: 'feature/new', baseBranch: 'main' }));
-      await vi.advanceTimersByTimeAsync(7000);
-      await flushPromises();
-    } else {
-      await session.get('.repository-session-source-dialog__result').trigger('click');
-      await flushPromises();
-    }
-    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: newBranch ? '/src/repo-new' : '/src/repo' }));
+    expect(session.findAll('button').some(button => button.text() === 'New branch…')).toBe(false);
+    await session.get('.repository-session-source-dialog__result').trigger('click');
+    await flushPromises();
+    expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ folder: '/src/repo' }));
     expect(snapshot.workBacklog.connections[0]).toStrictEqual({ provider: 'github', status: 'connected', accountLabel: 'github-user' });
   });
 

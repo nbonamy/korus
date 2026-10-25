@@ -273,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { workProviderDefinition } from '@workspace/core/work-providers';
+import { workProviderDefinition, workProviderForRepositoryId } from '@workspace/core/work-providers';
 import { workItemBranchName, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { computed, h, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -326,7 +326,8 @@ const backlog = useWorkSourceBacklog({
   location: () => props.location,
   query: { kind: 'all', state: 'all' },
   preferredSourceId: () => props.repositoryId,
-  preferredProvider: () => props.repositoryId.startsWith('gitlab.com/') ? 'gitlab' : undefined,
+  preferredProvider: () => workProviderForRepositoryId(props.repositoryId) === 'gitlab' ? 'gitlab' : undefined,
+  originProvider: () => workProviderForRepositoryId(props.repositoryId),
   restrictToRepository: () => true,
   enabled: () => props.visible,
 });

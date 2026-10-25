@@ -427,7 +427,6 @@
       :sessions="repositorySessionAssignmentSessions"
       @close="closeRepositorySessionSource"
       @select-branch="openNewAgentForSourceBranch"
-      @new-branch="repositorySession.newBranch"
       @custom-work-item="customizeRepositorySessionWork"
       @start-work-item="startRepositorySessionWork"
     />

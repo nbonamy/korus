@@ -10,13 +10,18 @@ export function useWorkSourceBacklog(options: {
   location: () => AutomationLocation | undefined;
   query: WorkItemQuery;
   preferredProvider?: () => WorkProviderKind | undefined;
+  /** The provider hosting the repository: other code hosts are not offered, only it and non-repository providers such as Linear. */
+  originProvider?: () => WorkProviderKind | undefined;
   preferredSourceId?: () => string | null;
   restrictToRepository?: () => boolean;
   acceptsSource?: (source: WorkSource) => boolean;
   enabled?: () => boolean;
 }) {
   const { location, preferredSourceId = () => null, restrictToRepository = () => false, acceptsSource = () => true, enabled = () => true } = options;
-  const { provider, providers } = useBacklogProviders(useBacklogConnections(location));
+  const { provider, providers } = useBacklogProviders(useBacklogConnections(location), 'github', candidate => {
+    const origin = options.originProvider?.();
+    return !origin || candidate === origin || !workProviderDefinition(candidate).repositoryBacked;
+  });
   const sources = ref<WorkSource[]>([]);
   const sourceId = ref<string | null>(null);
   const items = ref<WorkItem[]>([]);

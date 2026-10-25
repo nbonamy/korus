@@ -86,7 +86,6 @@
       <p v-else-if="purpose === 'missionIssue' && backlog.sources.value.length === 0" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.noRepositories') }}</p>
       <p v-else-if="purpose === 'missionIssue' && !backlog.sourceId.value" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.chooseRepositoryToSeeIssues') }}</p>
       <template v-else-if="tab === 'branches' && purpose === 'session'">
-        <button class="app-button app-button--secondary" type="button" @click="emit('new-branch')">{{ t('repositories.sessionSource.newBranch') }}</button>
         <h3>{{ t('repositories.sessionSource.recentBranches') }}</h3>
         <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result" type="button" @click="emit('select-branch', branch)">
           <GitBranchIcon
@@ -124,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { workProviderDefinition } from '@workspace/core/work-providers';
+import { workProviderDefinition, workProviderForRepositoryId } from '@workspace/core/work-providers';
 import { workItemBranchName, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -176,7 +175,6 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  'new-branch': [];
   'custom-work-item': [selection: Omit<WorkItemAssignmentSelection, 'action'>];
   'select-branch': [branch: SourceBranch];
   'select-repository': [repositoryId: string];
@@ -189,7 +187,8 @@ const backlog = useWorkSourceBacklog({
   location: () => props.location,
   query: { kind: 'issue', state: 'open' },
   preferredSourceId: () => props.selectedRepositoryId,
-  preferredProvider: () => props.selectedRepositoryId?.startsWith('gitlab.com/') ? 'gitlab' : undefined,
+  preferredProvider: () => workProviderForRepositoryId(props.selectedRepositoryId) === 'gitlab' ? 'gitlab' : undefined,
+  originProvider: () => props.purpose === 'session' ? workProviderForRepositoryId(props.selectedRepositoryId) : undefined,
   restrictToRepository: () => props.purpose === 'session',
   acceptsSource: source => props.sourceFilter?.(source) ?? true,
   enabled: () => props.visible,
