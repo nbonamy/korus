@@ -161,11 +161,14 @@ enum MissionTicketState: String {
 
 struct MissionTicketSummary: Decodable, Hashable, Identifiable {
     let number: Int; let title: String; let state: String; let agentId: String?
+    /// The unfinished tickets this one waits for, and what its agent says it is doing right now.
+    let after: [Int]?; let activity: String?
     var id: Int { number }
 }
 
 struct MissionSummary: Decodable, Hashable, Identifiable {
     let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
+    let startedAt: String?; let updatedAt: String?
 }
 
 /// The mission that owns the open worker conversation, if any.
@@ -191,5 +194,43 @@ extension MissionSummary {
         return "\(stageLabel) · \(done) of \(tickets.count) \(tickets.count == 1 ? "ticket" : "tickets")"
     }
 
-    var progress: Double { tickets.isEmpty ? 0 : Double(done) / Double(tickets.count) }
+    var progress: Double { tickets.isEmpty ? 0 : min(1, Double(done) / Double(tickets.count)) }
+}
+
+extension MissionSummary {
+    static let stages = [("requirements", "Requirements", "doc.text"), ("tickets", "Tickets", "checklist"), ("implementation", "Implementation", "hammer"),
+                         ("review", "Review", "eye"), ("ship", "Ship", "paperplane")]
+
+    /// Tickets waiting on a person: an agent's work to look at, or work that failed.
+    var attentionCount: Int { tickets.filter { [.awaitingReview, .failed].contains(MissionTicketState($0.state)) }.count }
+    /// Agents on a ticket at this moment.
+    var workingCount: Int { tickets.filter { [.running, .preparing].contains(MissionTicketState($0.state)) }.count }
+    var isReadyToShip: Bool { isActive && !tickets.isEmpty && done == tickets.count }
+    var stageIndex: Int { Self.stages.firstIndex { $0.0 == stage } ?? 0 }
+
+    /// "11 Update onboarding copy": the ticket an agent is on, the first one when several are.
+    var nowLine: String? {
+        tickets.first { [.running, .preparing].contains(MissionTicketState($0.state)) }.map { "\(String(format: "%02d", $0.number)) \($0.title)" }
+    }
+
+    /// How long the work has been going: until now while it runs, until its last change once it is over.
+    func elapsed(now: Date) -> TimeInterval? {
+        guard let start = startedAt.flatMap(Self.parse) else { return nil }
+        let end = isActive ? now : (updatedAt.flatMap(Self.parse) ?? now)
+        return max(0, end.timeIntervalSince(start))
+    }
+
+    /// "2h 14m", "14m", or "Under a minute".
+    static func elapsedText(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        if minutes < 1 { return "Under a minute" }
+        if minutes < 60 { return "\(minutes)m" }
+        if minutes < 24 * 60 { return "\(minutes / 60)h \(minutes % 60)m" }
+        return "\(minutes / (24 * 60))d \(minutes % (24 * 60) / 60)h"
+    }
+
+    private static func parse(_ value: String) -> Date? {
+        let precise = ISO8601DateFormatter(); precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return precise.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
 }

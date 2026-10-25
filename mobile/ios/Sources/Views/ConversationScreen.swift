@@ -50,6 +50,7 @@ struct ConversationScreen: View {
                     .accessibilityElement(children: .contain)
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) { MissionContextBar() }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if model.hasTranscript && model.showConnectionLost {
                     ConnectionLostNotice(reconnect: model.reconnect)

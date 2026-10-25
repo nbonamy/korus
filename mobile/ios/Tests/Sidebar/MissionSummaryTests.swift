@@ -23,4 +23,36 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(MissionTicketState("somethingNew"), .queued)
         XCTAssertEqual(MissionTicketState.awaitingReview.label, "Ready for review")
     }
+
+    private let working = #"{"id":"m","outcome":"Ship it","stage":"implementation","status":"active","done":2,"startedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T03:00:00Z","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"},{"number":3,"title":"Open workers","state":"running","agentId":"w","activity":"editing client.ts"},{"number":4,"title":"D","state":"awaitingReview","agentId":"x"},{"number":5,"title":"E","state":"failed"},{"number":6,"title":"F","state":"blocked","after":[3,4]}]}"#
+
+    func testCountsWhatNeedsAPersonAndWhatIsMoving() throws {
+        let mission = try mission(working)
+        XCTAssertEqual(mission.attentionCount, 2)
+        XCTAssertEqual(mission.workingCount, 1)
+        XCTAssertEqual(mission.nowLine, "03 Open workers")
+        XCTAssertEqual(mission.tickets[2].activity, "editing client.ts")
+        XCTAssertEqual(mission.tickets[5].after, [3, 4])
+        XCTAssertEqual(mission.stageIndex, 2)
+        XCTAssertFalse(mission.isReadyToShip)
+    }
+
+    func testIsReadyToShipOnlyWhenEveryTicketIsDoneAndTheMissionStillOpen() throws {
+        let done = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":2,"tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"}]}"#
+        XCTAssertTrue(try mission(done).isReadyToShip)
+        XCTAssertFalse(try mission(done.replacingOccurrences(of: "\"active\"", with: "\"completed\"")).isReadyToShip)
+        XCTAssertFalse(try mission(#"{"id":"m","outcome":"o","stage":"requirements","status":"active","done":0,"tickets":[]}"#).isReadyToShip)
+    }
+
+    func testElapsedRunsToNowWhileActiveAndStopsAtTheLastChangeOnceOver() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-01-01T02:14:00Z")!
+        XCTAssertEqual(try mission(working).elapsed(now: now), 2 * 3600 + 14 * 60)
+        let over = working.replacingOccurrences(of: "\"active\"", with: "\"completed\"")
+        XCTAssertEqual(try mission(over).elapsed(now: now), 3 * 3600)
+        XCTAssertNil(try mission(#"{"id":"m","outcome":"o","stage":"ship","status":"active","done":0,"tickets":[]}"#).elapsed(now: now))
+        XCTAssertEqual(MissionSummary.elapsedText(2 * 3600 + 14 * 60), "2h 14m")
+        XCTAssertEqual(MissionSummary.elapsedText(14 * 60 + 5), "14m")
+        XCTAssertEqual(MissionSummary.elapsedText(20), "Under a minute")
+        XCTAssertEqual(MissionSummary.elapsedText(26 * 3600), "1d 2h")
+    }
 }
