@@ -203,8 +203,9 @@ private struct NewTeamButton: View {
     @Environment(AppModel.self) private var model
     @State private var showingPrompt = false
     @State private var name = ""
-    /// The height of a team pill: a subheadline line with 8 points above and below.
-    @ScaledMetric(relativeTo: .subheadline) private var size = 36
+    /// The height of a team pill: a subheadline line, which scales with text size, plus 8 fixed points above and below.
+    @ScaledMetric(relativeTo: .subheadline) private var line = 20
+    private var size: CGFloat { line + 16 }
     private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
