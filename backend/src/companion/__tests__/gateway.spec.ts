@@ -345,6 +345,25 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
   });
 
+  it('lets the phone read a mission worker and answer what it asks, and nothing else', async () => {
+    const f = fixture();
+    const worker = { id: 'worker', name: 'Worker', teamId: 'team', folder: '/private', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '' };
+    const workerTarget = { ...target, agentId: 'worker' };
+    const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
+    f.port.workspace.mockResolvedValue({ ...workspace, missionAgents: [worker], agentRequests: { worker: [question] } });
+    await f.pair();
+    await expect(f.gateway.request('phone', 'skills.list', workerTarget)).resolves.toBeDefined();
+    const reply = { target: workerTarget, id: 'q', conversationId: 'conversation', outcome: { kind: 'answered', answers: { choice: { answers: ['Yes'] } } } };
+    await f.gateway.request('phone', 'agent.request.respond', reply);
+    expect(f.port.respondRequest).toHaveBeenCalledExactlyOnceWith({ agentId: 'worker', id: 'q', outcome: reply.outcome });
+    for (const [method, args] of [['agent.interrupt', workerTarget], ['agent.rename', { target: workerTarget, name: 'Mine' }],
+      ['prompt.submit', { target: workerTarget, text: 'Hi', clientCommandId: randomUUID() }]] as const) {
+      await expect(f.gateway.request('phone', method, args)).rejects.toThrow('read-only');
+    }
+    expect(f.port.interrupt).not.toHaveBeenCalled();
+    expect(f.port.submit).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['answers a request', 'agent.request.respond', 'respondRequest'],
     ['changes the engine', 'agent.backend.set', 'setBackend'],

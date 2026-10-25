@@ -52,6 +52,45 @@ describe('companion workspace projection', () => {
     expect(projectCompanionWorkspace(workspace).agentRequests).toStrictEqual({ keep: [request] });
   });
 
+  describe('missions', () => {
+    const ticket = (title: string, patch: Record<string, unknown> = {}) => ({ title, done: false, ...patch });
+    const run = (ticketIndex: number, status: string, workerId?: string) => ({ id: `run-${ticketIndex}-${status}`, stage: 'implementation', ticketIndex, status, ...(workerId ? { workerId } : {}) });
+    const mission = (id: string, patch: Record<string, unknown> = {}) => ({ id, teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', updatedAt: now,
+      artifacts: { tickets: [] }, execution: { runs: [] }, ...patch });
+    const source = (missions: unknown[], agents: Agent[] = []) => companionWorkspaceOf({ teams, agents, general: {} as AppSnapshot['general'], missions: missions as AppSnapshot['missions'] });
+
+    it('reports each ticket the way the desktop board does, with the worker of one that has run', () => {
+      const workspace = projectCompanionWorkspace(source([mission('m', {
+        artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0] }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
+        execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4')] },
+      })], [agent('w1', {}), agent('old', {}), agent('w4', {}), agent('chat', {})]));
+      expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', updatedAt: now, tickets: [
+        { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked' },
+        { number: 4, title: 'Free', state: 'queued' }, { number: 5, title: 'Retried', state: 'awaitingReview', agentId: 'w4' }] }]);
+    });
+    it('keeps ticket workers out of the agent list but lets the phone open them and answer their requests', () => {
+      const request = { id: 'ask', conversationId: 'thread', kind: 'approval' as const,
+        approval: { id: 'ask', conversationId: 'thread', itemId: 'command', kind: 'command' as const, title: 'Run command', command: 'git status', allowedScopes: ['once' as const] } };
+      const workspace = projectCompanionWorkspace(companionWorkspaceOf({ teams, general: {} as AppSnapshot['general'], agentRequests: { w1: [request], old: [request] },
+        agents: [agent('w1', { folder: '/Users/me/work' }), agent('old', {}), agent('chat', {})],
+        missions: [mission('m', { artifacts: { tickets: [ticket('Going')] }, execution: { runs: [run(0, 'failed', 'old'), run(0, 'running', 'w1')] } })] as unknown as AppSnapshot['missions'] }));
+      expect(workspace.agents.map(({ id }) => id)).toStrictEqual(['chat']);
+      expect(workspace.missionAgents.map(({ id }) => id)).toStrictEqual(['w1']);
+      expect(workspace.missionAgents[0]!.folder).not.toContain('/Users/me');
+      expect(workspace.agentRequests).toStrictEqual({ chat: [], w1: [request] });
+    });
+    it('shows completed missions after the active ones, and no more than the most recent twenty', () => {
+      const dated = (id: string, minutes: number, status: 'active' | 'completed') => mission(id, { status, updatedAt: new Date(Date.parse(now) + minutes * 60_000).toISOString() });
+      const many = [dated('done-new', 99, 'completed'), dated('active-old', 0, 'active'), ...Array.from({ length: 25 }, (_, index) => dated(`done-${index}`, index, 'completed'))];
+      const ids = projectCompanionWorkspace(source(many)).missionProgress.map(({ id }) => id);
+      expect(ids).toHaveLength(20);
+      expect(ids.slice(0, 2)).toStrictEqual(['active-old', 'done-new']);
+    });
+    it('omits missions of teams the phone cannot see', () => {
+      expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
+    });
+  });
+
   const agents = [
     git('sdk', '/Users/me/src/codex-app-sdk-sdk', 'sdk', {}, true),
     git('builder', '/Users/me/src/codex-app-sdk-builder', 'app-builder', {}, true),

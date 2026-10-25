@@ -131,6 +131,8 @@ type AgentOperation<Input, Result> = {
   check?(agent: CompanionAgent, input: Input, workspace: CompanionWorkspace): undefined;
   act(port: GatewayPort, agent: CompanionAgent, input: Input, target: CompanionTarget): Promise<Result>;
   read?: { verify?(result: Result, current: CompanionAgent, target: CompanionTarget): unknown };
+  /** Mission workers are driven by their mission: the phone may read them, and answer what they ask, nothing else. */
+  workerAllowed?: true;
 };
 /** Curried so the parsed input type is fixed before the handlers are checked against it. */
 const agentOperation = <Input>(parse: AgentOperation<Input, unknown>['parse']) => <Result>(operation: Omit<AgentOperation<Input, Result>, 'parse'>) =>
@@ -189,6 +191,7 @@ const agentOperations = {
     read: {},
   }),
   'conversation.read': agentOperation(withTarget(z.object({ revision: z.number().int().nonnegative().safe() }).strict()))({
+    workerAllowed: true,
     act: async (port, agent, { revision }) => {
       if (!port.markRead) throw new Error('Read acknowledgments unavailable.');
       await port.markRead(agent.id, revision); return {};
@@ -232,6 +235,7 @@ const agentOperations = {
     read: {},
   }),
   'agent.request.respond': agentOperation(withTarget(z.object({ id: identity, conversationId: z.string().min(1).max(500), outcome: requestOutcomeSchema }).strict()))({
+    workerAllowed: true,
     check: (agent, reply, workspace) => {
       if (!workspace.agentRequests?.[agent.id]?.some((request) => request.id === reply.id && request.conversationId === reply.conversationId)) throw new Error('Request is no longer pending.');
     },
@@ -598,12 +602,13 @@ export class CompanionGateway {
   }
   private async runAgentOperation(peer: Peer, operation: AgentOperation<unknown, unknown>, args: unknown) {
     const { target, input } = operation.parse(args);
-    const { agent, workspace } = await this.resolveTarget(target);
+    const worker = Boolean(operation.read || operation.workerAllowed);
+    const { agent, workspace } = await this.resolveTarget(target, worker);
     operation.check?.(agent, input, workspace);
     this.requireGrant(peer);
     const result = await operation.act(this.port, agent, input, target);
     if (!operation.read) return result;
-    const current = await this.validateTarget(target);
+    const current = await this.validateTarget(target, worker);
     this.requireGrant(peer);
     if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
     return operation.read.verify ? operation.read.verify(result, current, target) : result;
@@ -630,11 +635,14 @@ export class CompanionGateway {
   private requireGrant({ peerId, grant }: Peer) {
     if (this.state.grants.find((current) => current.peerId === peerId) !== grant) throw new Error('Device is not authorized.');
   }
-  private async validateTarget(target: CompanionTarget) { return (await this.resolveTarget(target)).agent; }
-  private async resolveTarget(target: CompanionTarget) {
+  private async validateTarget(target: CompanionTarget, worker = false) { return (await this.resolveTarget(target, worker)).agent; }
+  private async resolveTarget(target: CompanionTarget, worker = false) {
     const workspace = await this.port.workspace();
     const team = workspace.teams.find((team) => team.id === target.teamId);
-    const agent = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    const own = workspace.agents.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    const mission = own ? undefined : workspace.missionAgents?.find((agent) => agent.id === target.agentId && agent.teamId === target.teamId);
+    if (mission && !worker) throw new Error('Mission workers are read-only.');
+    const agent = own ?? mission;
     if (target.hostId !== this.hostId || !team || !agent
       || target.locationId !== (team.remoteConnectionId ?? 'local') || target.sessionId !== companionSessionId(agent)) throw new Error('Target is stale.');
     return { agent, workspace };

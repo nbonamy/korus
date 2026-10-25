@@ -35,8 +35,16 @@ export const isConversationReset = (frame: ProviderConversationFrame): frame is 
   frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
+/** A ticket's progress as the desktop's implementation board shows it. */
+export type CompanionMissionTicketState = 'blocked' | 'queued' | 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
+/** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
+export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string };
+/** What the phone knows of a mission: where it stands and its tickets, never its documents or workspaces. */
+export type CompanionMission = { id: string; teamId: string; outcome: string; stage: import('./mission-types').MissionStage; status: 'active' | 'completed'; updatedAt: string; tickets: CompanionMissionTicket[] };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
+export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+  /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
+  missionProgress?: CompanionMission[]; missionAgents?: Agent[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
 export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
@@ -69,6 +77,8 @@ export type CompanionControlResult = { status: CompanionStatus; invitation?: Com
 export type CompanionRequest = { v: 1; id: string; method: string; args: unknown };
 export type CompanionResponse = { v: 1; id: string; result?: unknown; error?: string };
 
+/** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
+export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
 export function companionSessionId(agent: Agent): string | null {
   const session = agent.backendSession;
   if (!session) return null;
