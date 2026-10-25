@@ -1,17 +1,21 @@
 package com.nabocorp.companion
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
@@ -45,54 +49,74 @@ internal val JSONObject.missionSummary: String get() {
     return if (total == 0) stage else "$stage · ${optInt("done")} of $total ${if (total == 1) "ticket" else "tickets"}"
 }
 
-@Composable internal fun MissionsContent(model: CompanionModel) {
+/** The missions, in the main area where a conversation would be: the list, or one mission with its tickets. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun MissionsScreen(model: CompanionModel, openDrawer: () -> Unit) {
     val detail = model.missionDetail?.let { id -> model.missions.firstOrNull { it.string("id") == id } }
-    if (detail != null) MissionDetail(model, detail) else MissionList(model)
+    val active = model.missions.count { it.isActiveMission }
+    BackHandler { if (model.missionDetail != null) model.missionDetail = null else model.missionsOpen = false }
+    Scaffold(topBar = {
+        CenterAlignedTopAppBar(
+            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.background),
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (detail != null) "Mission" else "Missions", Modifier.semantics { heading() }, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (detail == null && active > 0) Text("$active active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            navigationIcon = {
+                if (detail != null) IconButton(onClick = { model.missionDetail = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to missions") }
+                else IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Open workspace") }
+            },
+        )
+    }) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            if (detail != null) MissionDetail(model, detail) else MissionList(model)
+        }
+    }
+}
+
+@Composable private fun SectionLabel(text: String) {
+    Text(text.uppercase(), Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp).semantics { heading() },
+        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable private fun MissionList(model: CompanionModel) {
     val (active, completed) = model.missions.partition { it.isActiveMission }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        active.forEach { MissionRow(it) { model.missionDetail = it.string("id") } }
-        if (completed.isNotEmpty()) {
-            Text("Completed", Modifier.padding(start = 4.dp, top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            completed.forEach { MissionRow(it) { model.missionDetail = it.string("id") } }
-        }
-    }
+    if (model.missions.isEmpty()) Text("No missions", Modifier.fillMaxWidth().padding(48.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (active.isNotEmpty()) { SectionLabel("Active"); active.forEach { MissionRow(it) { model.missionDetail = it.string("id") } } }
+    if (completed.isNotEmpty()) { SectionLabel("Completed"); completed.forEach { MissionRow(it) { model.missionDetail = it.string("id") } } }
+}
+
+@Composable private fun MissionProgressBar(mission: JSONObject) {
+    if (mission.items("tickets").isNotEmpty()) LinearProgressIndicator(progress = { mission.missionProgress }, Modifier.fillMaxWidth().height(3.dp),
+        color = if (mission.isActiveMission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, drawStopIndicator = {})
 }
 
 @Composable private fun MissionRow(mission: JSONObject, open: () -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.clickable(onClick = open).padding(16.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(mission.string("outcome"), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(mission.missionSummary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (mission.items("tickets").isNotEmpty()) LinearProgressIndicator(progress = { mission.missionProgress }, Modifier.fillMaxWidth(),
-                    color = if (mission.isActiveMission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
-            }
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    val tone = if (mission.isActiveMission) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().clickable(onClick = open).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = tone, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(mission.missionSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            MissionProgressBar(mission)
         }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable private fun MissionDetail(model: CompanionModel, mission: JSONObject) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(mission.string("outcome"), style = MaterialTheme.typography.titleMedium)
-                Text(mission.missionSummary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (mission.items("tickets").isNotEmpty()) LinearProgressIndicator(progress = { mission.missionProgress }, Modifier.fillMaxWidth(),
-                    color = if (mission.isActiveMission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
-            }
-        }
-        val tickets = mission.items("tickets")
-        if (tickets.isNotEmpty()) {
-            Text("Tickets", Modifier.padding(start = 4.dp, top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Column { tickets.forEach { TicketRow(model, it) } }
-            }
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(mission.missionSummary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        MissionProgressBar(mission)
     }
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    val tickets = mission.items("tickets")
+    if (tickets.isNotEmpty()) { SectionLabel("Tickets"); tickets.forEach { TicketRow(model, it) } }
 }
 
 @Composable private fun TicketRow(model: CompanionModel, ticket: JSONObject) {
@@ -106,12 +130,12 @@ internal val JSONObject.missionSummary: String get() {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Row(Modifier.fillMaxWidth().then(if (agentId.isNotBlank()) Modifier.clickable { model.openTicket(agentId) } else Modifier)
-        .padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
-        Icon(state.icon, null, Modifier.size(24.dp), tint = tint)
+        .padding(horizontal = 16.dp, vertical = 10.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+        Icon(state.icon, null, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text("%02d %s".format(ticket.optInt("number"), ticket.string("title")), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(state.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("%02d %s".format(ticket.optInt("number"), ticket.string("title")), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(state.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (agentId.isNotBlank()) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

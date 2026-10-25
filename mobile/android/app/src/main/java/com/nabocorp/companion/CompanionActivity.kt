@@ -199,6 +199,8 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         DrawerContent(model, close = { coroutine.launch { drawer.close() } })
                     }
                 }) {
+                  if (model.missionsOpen) MissionsScreen(model) { coroutine.launch { drawer.open() } }
+                  else {
                     Scaffold(
                         topBar = {
                             ConversationHeader(model) { coroutine.launch { drawer.open() } }
@@ -212,13 +214,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     ) { padding ->
                         ConversationContent(model,Modifier.padding(padding).fillMaxSize())
                     }
+                  }
                 }
-                if (model.sheet in listOf("settings", "connections", "usage", "missions")) {
-                    BackHandler {
-                        if (model.sheet in listOf("usage", "connections")) model.sheet = "settings"
-                        else if (model.sheet == "missions" && model.missionDetail != null) model.missionDetail = null
-                        else model.dismissSheet()
-                    }
+                if (model.sheet in listOf("settings", "connections", "usage")) {
+                    BackHandler { if (model.sheet in listOf("usage", "connections")) model.sheet = "settings" else model.dismissSheet() }
                     Surface(Modifier.fillMaxSize(), color = CompanionColors.sheetBackground) { SheetContent(model, enableNotifications, setAppLockEnabled) }
                 } else if (model.sheet != null && model.sheet != "conversation") {
                     ModalBottomSheet(onDismissRequest = model::dismissSheet, containerColor = CompanionColors.sheetBackground, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = {
@@ -467,9 +466,6 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
         "settings" -> AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
         "connections" -> AppSheetFrame("Connections", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings") { model.sheet = "settings" } },
             trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { ConnectionsContent(model) }
-        "missions" -> AppSheetFrame(if (model.missionDetail == null) "Missions" else "Mission",
-            leading = if (model.missionDetail == null) null else ({ AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to missions") { model.missionDetail = null } }),
-            trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { MissionsContent(model) }
         "usage" -> AppSheetFrame("Usage", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Settings") { model.sheet = "settings" } },
             trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.connection.isConnected && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
             UsageContent(state.obj("usage"), state.connection, { model.command("loadUsage") }, { model.command("reconnect") })

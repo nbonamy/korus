@@ -280,12 +280,14 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     /** The laptop's missions, and the one whose ticket worker is open: that worker is read-only except for what it asks. */
     internal val missions get() = state.items("missions")
     internal val workerMission: JSONObject? get() = state.optJSONObject("mission")
+    /** The missions surface replaces the conversation in the main area, like a conversation does. */
+    internal var missionsOpen by mutableStateOf(false)
     internal var missionDetail by mutableStateOf<String?>(null)
     internal fun showMissions(id: String? = null) {
         dictation.cancel()
         drawerVisible = false
         missionDetail = id
-        sheet = "missions"
+        missionsOpen = true
     }
     /** A ticket's worker opens like any conversation; the mission stays one step back. */
     internal fun openTicket(agentId: String) {
@@ -293,6 +295,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         selectAgent(agentId)
     }
     fun selectAgent(id: String) {
+        missionsOpen = false
         if (id == state.string("agentId")) { drawerVisible = false; command("selectAgent","id" to id); acknowledge(); return }
         dictation.cancel()
         dismissChanges()
@@ -611,6 +614,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
                     else if (pairingWasBusy || next.string("pairingError").isNotBlank()) { pairingPending = false; pairingWasBusy = false }
                     val oldId = state.string("agentId"); val nextId = next.string("agentId")
                     val nextTarget = next.optJSONObject("composerTarget")?.let(ConversationTarget::parse)
+                    if (oldId != nextId) missionsOpen = false
                     if (agentRename?.target != nextTarget) agentRename = null
                     duplicateTarget?.let { source ->
                         if (source != nextTarget || state.string("chatCreation") == "creating" && next.string("chatCreation") == "idle") duplicateTarget = null

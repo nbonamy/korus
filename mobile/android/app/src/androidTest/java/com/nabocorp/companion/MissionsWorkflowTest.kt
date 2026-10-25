@@ -38,7 +38,7 @@ class MissionsWorkflowTest {
             app.onNodeWithText("Follow missions on the phone").performClick()
             app.onNodeWithText("02 Open workers").performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "selectAgent" && it.string("id") == "worker" } == true }
-            app.onNodeWithText("Tickets").assertDoesNotExist()
+            app.onNodeWithText("TICKETS").assertDoesNotExist()
         }
     }
 
@@ -48,7 +48,7 @@ class MissionsWorkflowTest {
             app.onNodeWithContentDescription("Conversation actions").assertDoesNotExist()
             app.onNodeWithContentDescription("Open workspace").assertDoesNotExist()
             app.onNodeWithContentDescription("Back to mission").performClick()
-            app.onNodeWithText("Tickets").assertIsDisplayed()
+            app.onNodeWithText("TICKETS").assertIsDisplayed()
             app.onNodeWithText("02 Open workers").assertIsDisplayed()
         }
     }
