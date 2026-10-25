@@ -29,7 +29,6 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.25), value: model.notifications.current?.id)
-        .sheet(isPresented: $model.showingMissions) { MissionsView() }
         .alert("Notifications", isPresented: Binding(get: { model.notificationError != nil || model.push.error != nil }, set: { if !$0 { model.notificationError = nil; model.push.error = nil } })) {
             Button("OK") { model.notificationError = nil; model.push.error = nil }
         } message: { Text(model.notificationError ?? model.push.error ?? "") }
@@ -46,7 +45,10 @@ struct RootView: View {
                     .offset(x: reveal - drawerWidth)
                     .accessibilityHidden(!model.drawerOpen)
 
-                ConversationScreen()
+                ZStack {
+                    ConversationScreen()
+                    if model.missionsOpen { MissionsScreen() }
+                }
                     .mask {
                         // Navigation chrome extends beyond the safe-area layout bounds.
                         RoundedRectangle(cornerRadius: reveal > 1 ? 32 : 0, style: .continuous)

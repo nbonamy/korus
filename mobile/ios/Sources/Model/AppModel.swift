@@ -58,7 +58,8 @@ final class AppModel {
     /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
     var missions: [MissionSummary] = []
     var workerMission: MissionReference?
-    var showingMissions = false
+    /// The missions surface replaces the conversation in the main area, like a conversation does.
+    var missionsOpen = false
     var missionPath: [String] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
@@ -72,7 +73,7 @@ final class AppModel {
     private(set) var sidebarOrganization: SidebarOrganization = .activity
     private(set) var sidebarIdleSort: SidebarIdleSort = .activity
     @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
-    var activeAgentID: String?
+    var activeAgentID: String? { didSet { if activeAgentID != oldValue { missionsOpen = false } } }
     var header: ConversationHeader?
     var models: [ModelChoice] = []
     var selectedModelID: String?
@@ -368,17 +369,18 @@ final class AppModel {
         dictation.cancel()
         drawerOpen = false
         missionPath = id.map { [$0] } ?? []
-        showingMissions = true
+        missionsOpen = true
     }
 
     /// A ticket's worker opens like any conversation; the mission stays one step back.
     func open(ticket agentId: String) {
-        showingMissions = false
+        missionsOpen = false
         select(agent: agentId)
     }
 
     func select(agent id: String) {
         drawerOpen = false
+        missionsOpen = false
         guard id != activeAgentID else { return }
         dictation.cancel()
         conversationLoading.select()
