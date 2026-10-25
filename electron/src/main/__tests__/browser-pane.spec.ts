@@ -60,6 +60,7 @@ const electronMocks = vi.hoisted(() => {
     });
     setWindowOpenHandler = vi.fn();
     reload = vi.fn();
+    openDevTools = vi.fn();
     navigationHistory = { clear: vi.fn(), canGoBack: vi.fn(() => false), canGoForward: vi.fn(() => false), goBack: vi.fn(), goForward: vi.fn() };
     stop = vi.fn();
     isLoading = vi.fn(() => false);
@@ -434,11 +435,15 @@ describe('browser pane helpers', () => {
     await expect(pane.execute('agent-one', 'secondary', 'console', {})).resolves.toStrictEqual({ messages: [] });
   });
 
-  it('zooms the owning guest and copies its selected viewport area to the clipboard', async () => {
+  it('targets controls and detached developer tools at the owning guest and copies screenshots', async () => {
     const browserWindow = { webContents: {}, isDestroyed: vi.fn(() => false) };
     const guest = electronMocks.createGuest(browserWindow, 25);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(browserWindow as never, 'agent-one', 'primary', 'https://example.com', '/tmp/project', 25);
+    pane.openDevTools('agent-one', 'primary');
+    expect(guest.openDevTools).toHaveBeenCalledExactlyOnceWith({ mode: 'detach' });
+    expect(() => pane.openDevTools('agent-two', 'primary')).toThrow('Browser is not open');
+    expect(() => pane.openDevTools('agent-one', 'other-tab')).toThrow('Browser is not open');
     guest.getZoomFactor.mockReturnValue(1.25);
     expect(pane.getZoom('agent-one', 'primary')).toBe(125);
     expect(() => pane.getZoom('agent-two', 'primary')).toThrow('Browser is not open');

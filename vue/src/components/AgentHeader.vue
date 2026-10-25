@@ -108,6 +108,19 @@
         <ListIcon aria-hidden="true" />
       </button>
       <button
+        v-if="workspaceOpen && workspaceToggleAvailable !== false"
+        class="agent-header__workspace"
+        type="button"
+        :aria-label="$t(workspaceExpanded ? 'surface.agentHeader.restoreWorkspaceWidth' : 'surface.agentHeader.expandWorkspace')"
+        :title="$t(workspaceExpanded ? 'surface.agentHeader.restoreWorkspaceWidth' : 'surface.agentHeader.expandWorkspace')"
+        :aria-pressed="Boolean(workspaceExpanded)"
+        :disabled="workspaceToggleDisabled ?? !agent"
+        @click="emit('toggle-workspace-expanded')"
+      >
+        <ArrowsDiagonalMinimize2Icon v-if="workspaceExpanded" aria-hidden="true" />
+        <ArrowsDiagonalIcon v-else aria-hidden="true" />
+      </button>
+      <button
         v-if="workspaceToggleAvailable !== false"
         class="agent-header__workspace"
         data-global-workspace-toggle
@@ -135,7 +148,7 @@ import { localizedText } from '../i18n/errors';
 import { computed, ref } from 'vue';
 import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, BackendRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { ListIcon } from '../shared/icons/app-icons';
+import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
 import { IconLayoutSidebarRight } from '@tabler/icons-vue';
@@ -154,6 +167,7 @@ const props = withDefaults(defineProps<{
   lastTurnGitDiff?: TurnGitDiff | null;
   backendRuntime: BackendRuntimeStatus;
   workspaceOpen?: boolean;
+  workspaceExpanded?: boolean;
   workspaceToggleAvailable?: boolean;
   workspaceToggleDisabled?: boolean;
   isLoading: boolean;
@@ -182,6 +196,7 @@ const emit = defineEmits<{
   'expand-sidebar': [];
   'select-agent': [agentId: string];
   'toggle-workspace': [];
+  'toggle-workspace-expanded': [];
   'toggle-execution-plan': [];
   'open-git-log': [];
   'open-git-diff': [target: AgentGitDiffTarget];

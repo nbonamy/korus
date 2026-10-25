@@ -731,6 +731,8 @@ sandboxed `<webview>` with one persistent browser partition shared by all agents
 Electron main validates the guest and owns navigation and annotation policy. The renderer never
 receives the guest's `WebContents`, cookies or page-scripting access, and
 annotations arrive as structured metadata the renderer batches into one prompt.
+Browser guest developer tools are independent of the main application renderer's
+release-mode DevTools restriction.
 Open browser tabs retain their browser identity and latest URL in the per-client
 workspace store. Restoring a tab navigates through the normal host browser API;
 page contents, navigation history and live guest handles remain ephemeral.

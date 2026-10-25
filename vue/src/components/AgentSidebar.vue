@@ -1046,6 +1046,11 @@ function onResizePointerEnd(event: PointerEvent): void {
   padding-inline: var(--space-4);
 }
 
+.agent-sidebar__start-work--activity > :deep(.app-menu-button) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .agent-sidebar__start-work--activity > button,
 .agent-sidebar__start-work--activity :deep(.start-work-menu__trigger) {
   flex: 1 1 0;

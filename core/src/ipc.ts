@@ -198,6 +198,7 @@ export const ipcChannels = {
   browserGoBack: 'browser:go-back',
   browserGoForward: 'browser:go-forward',
   browserReload: 'browser:reload',
+  browserOpenDevTools: 'browser:open-devtools',
   browserClearBrowsingData: 'browser:data:clear',
   browserGetZoom: 'browser:zoom:get',
   browserSetZoom: 'browser:zoom:set',

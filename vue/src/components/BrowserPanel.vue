@@ -107,7 +107,7 @@ import { PRIMARY_BROWSER_ID, type BrowserAnnotation, type BrowserBounds, type Br
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { browserDevicePresets, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
 import { appClientPlatform, appApi } from '../platform-api';
-import { ArrowUpRightIcon, PuzzleIcon } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, CodeIcon, PuzzleIcon } from '../shared/icons/app-icons';
 import AnnotationSendButton from './AnnotationSendButton.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -200,6 +200,7 @@ const menuItems = computed<AppMenuItem[]>(() => [
   ...(!props.visualization ? [{ id: 'screenshot-divider', type: 'separator' } satisfies AppMenuItem] : []),
   { id: 'screenshot', type: 'action', label: translate('surface.browserPanel.screenshot'), icon: IconCamera, disabled: !browserReadyForControls.value || screenshotPending.value },
   { id: 'screenshot-area', type: 'action', label: translate('surface.browserPanel.screenshotArea'), icon: IconCrop, disabled: !browserReadyForControls.value || screenshotPending.value },
+  { id: 'devtools', type: 'action', label: translate('surface.browserPanel.openDevTools'), icon: CodeIcon, disabled: !browserReadyForControls.value },
   ...(!props.visualization ? [
     { id: 'data-divider', type: 'separator' } satisfies AppMenuItem,
     { id: 'clear-data', type: 'action', label: translate('surface.browserPanel.clearBrowsingData'), icon: IconTrash, disabled: clearingData.value } satisfies AppMenuItem,
@@ -432,7 +433,10 @@ async function syncZoom(): Promise<void> {
 
 async function selectMenuAction(itemId: string): Promise<void> {
   menuOpen.value = false;
-  if (itemId === 'device-toolbar') {
+  if (itemId === 'devtools') {
+    try { await requireBrowserApi().browserOpenDevTools(props.agentId, props.browserId); }
+    catch (reason) { error.value = messageFor(reason); }
+  } else if (itemId === 'device-toolbar') {
     deviceToolbarVisible.value = !deviceToolbarVisible.value;
     await nextTick();
     updateResponsiveDimensions();

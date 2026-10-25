@@ -130,6 +130,7 @@ export function secureBrowserGuestAttachment(
   delete params.preload;
   delete params.allowpopups;
   delete webPreferences.preload;
+  webPreferences.devTools = true;
   webPreferences.sandbox = true;
   webPreferences.nodeIntegration = false;
   webPreferences.nodeIntegrationInSubFrames = false;

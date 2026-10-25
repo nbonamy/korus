@@ -1046,6 +1046,7 @@ export type AppApi = {
   browserNavigate(agentId: string, browserId: string, url: string): Promise<BrowserState>;
   browserGoBack(agentId: string, browserId: string): Promise<BrowserState>;
   browserGoForward(agentId: string, browserId: string): Promise<BrowserState>;
+  browserOpenDevTools(agentId: string, browserId: string): Promise<void>;
   browserReload(agentId: string, browserId: string): Promise<BrowserState>;
   browserClearBrowsingData(): Promise<void>;
   browserGetZoom(agentId: string, browserId: string): Promise<number>;

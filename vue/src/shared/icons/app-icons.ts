@@ -14,6 +14,8 @@ export {
   IconArrowRight as ArrowRightIcon,
   IconArrowUpRight as ArrowUpRightIcon,
   IconArrowsMinimize as ArrowsMinimizeIcon,
+  IconArrowsDiagonal as ArrowsDiagonalIcon,
+  IconArrowsDiagonalMinimize2 as ArrowsDiagonalMinimize2Icon,
   IconArrowsHorizontal as ArrowsHorizontalIcon,
   IconArrowsVertical as ArrowsVerticalIcon,
   IconArrowsSort as ArrowsSortIcon,

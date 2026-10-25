@@ -241,6 +241,10 @@ export class BrowserPane {
     return this.waitForNavigation(pane);
   }
 
+  openDevTools(agentId: string, browserId: string): void {
+    this.requirePane(agentId, browserId).webContents.openDevTools({ mode: 'detach' });
+  }
+
   getZoom(agentId: string, browserId: string): number {
     return Math.round(this.requirePane(agentId, browserId).webContents.getZoomFactor() * 100);
   }

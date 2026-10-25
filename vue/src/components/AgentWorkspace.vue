@@ -1,11 +1,11 @@
 <template>
   <AgentHeader
-    v-if="!splitHeaders && !isAgentEmpty && currentAgent"
+    v-if="(!splitHeaders || rightWorkspaceExpanded) && !isAgentEmpty && currentAgent"
     v-bind="headerBindingsFor(emptySplitPane ? null : currentAgent.id, true, true)"
   />
   <div ref="workspaceBody" class="app-shell__body workspace-body" @dragstart.capture="linkDrag.start">
     <AgentEmptyState v-if="isAgentEmpty" @start-work="handleStartWorkAction" />
-    <div v-else class="app-shell__conversations" :class="{ 'app-shell__conversations--split': splitHeaders }">
+    <div v-else v-show="!rightWorkspaceExpanded" class="app-shell__conversations" :class="{ 'app-shell__conversations--split': splitHeaders }">
     <div v-if="$slots['layout-control']" class="app-shell__layout-control">
       <slot name="layout-control" />
     </div>
@@ -44,7 +44,7 @@
       :key="agent.id"
       v-show="!emptySplitPane && isRightWorkspaceVisible(agent.id)"
       class="app-shell__right-workspace"
-      :style="{ flexBasis: `${workspaceWidthFor(agent.id)}px` }"
+      :style="{ flexBasis: rightWorkspaceExpanded ? '100%' : `${workspaceWidthFor(agent.id)}px` }"
       :active-tab="rightWorkspaceFor(agent.id).activeTab"
       :agent="agent"
       :agents="snapshot.agents"
@@ -115,7 +115,7 @@
       @drop="linkDrag.drop"
     />
     <div
-      v-if="!emptySplitPane && rightWorkspaceVisible"
+      v-if="!emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded"
       class="app-shell__right-workspace-resizer"
       :aria-label="$t('surface.appShell.resizeRightWorkspace')"
       @pointerdown="startRightWorkspaceResize"
@@ -342,6 +342,10 @@ const {
 
 const workspaceBody = ref<HTMLElement | null>(null);
 const workspaceBodyWidth = ref<number | null>(null);
+const rightWorkspaceExpanded = computed(() => Boolean(
+  !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent
+  && props.rightWorkspaceFor(props.currentAgent.id).expanded,
+));
 watch(workspaceBody, (body, _previous, onCleanup) => {
   workspaceBodyWidth.value = null;
   if (!body) return;
@@ -469,6 +473,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     lastTurnGitDiff: diff?.agentId === agentId && diff.diff ? diff : null,
     backendRuntime: focused ? props.currentBackendRuntime : props.snapshot.backendRuntimes.find(runtime => runtime.backend === backend) ?? { backend, status: 'notConfigured' as const },
     workspaceOpen: props.rightWorkspaceVisible && !props.emptySplitPane,
+    workspaceExpanded: rightWorkspaceExpanded.value,
     workspaceToggleAvailable: topRight,
     workspaceToggleDisabled: !props.currentAgent || Boolean(props.emptySplitPane),
     isLoading: props.isLoading,
@@ -494,6 +499,13 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     onExpandSidebar: () => emit('expand-sidebar'),
     onToggleExecutionPlan: toggleExecutionPlan,
     onToggleWorkspace: props.toggleRightWorkspace,
+    onToggleWorkspaceExpanded: () => {
+      const id = props.currentAgent?.id;
+      if (id) {
+        const workspace = rightWorkspaceFor(id);
+        workspace.expanded = !workspace.expanded;
+      }
+    },
     onOpenGitLog: () => agentId && openRightWorkspaceTab('gitLog', agentId),
     onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
