@@ -16,6 +16,7 @@ import type {
   BackendSkillSummary,
   ClientRequest, ClaudeConversationEvent,
   ClaudeConversationSnapshot,
+  ClaudeConversationTurn,
   ConversationResumeTarget,
   ConversationSummary,
   RendererMessage,
@@ -566,6 +567,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       history.backendSession.kind === 'claude' ? history.backendSession.sessionId : null,
       history.messages,
       history.taskPlan,
+      history.turns,
     );
     for (const event of history.subagentEvents ?? []) this.emit(event);
 
@@ -628,6 +630,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       resolvedBackendSession.kind === 'claude' ? resolvedBackendSession.sessionId : ref.sessionId,
       history?.messages ?? [],
       history?.taskPlan,
+      history?.turns,
     );
     if (resolvedBackendSession.kind === 'claude') {
       this.turnBoundariesByAgentId.delete(agent.id);
@@ -1687,6 +1690,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     sessionId: string | null,
     messages: RendererMessage[],
     taskPlan = new ClaudeTaskPlan(),
+    turns: ClaudeConversationTurn[] = [],
   ): void {
     this.taskPlansByAgentId.set(agent.id, taskPlan);
     const window = new ClaudeHistoryWindow(sessionId, messages);
@@ -1696,8 +1700,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       agentId: agent.id,
       sessionId,
       activeTurnId: null,
-      turnIds: [],
-      turns: [],
+      turnIds: turns.map(turn => turn.id),
+      turns,
       messages: page.messages,
       answeredClientRequestIds: [],
       busy: false,

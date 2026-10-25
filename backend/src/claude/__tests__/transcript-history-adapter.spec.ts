@@ -305,6 +305,10 @@ describe('loadClaudeTranscriptHistory', () => {
     await expect(loadClaudeTranscriptHistory(agent, { projectsRoot })).resolves.toStrictEqual({
       turnBoundaries: { 'claude-prompt-1': 'assistant-1' },
       nativeMessageTurnIds: { 'user-1': 'claude-prompt-1', 'assistant-1': 'claude-prompt-1' },
+      turns: [{
+        id: 'claude-prompt-1', status: 'completed', error: null, willRetry: false,
+        startedAt: null, completedAt: null, durationMs: null,
+      }],
       backendSession: {
         kind: 'claude',
         sessionId: 'session-1',
