@@ -67,6 +67,8 @@ export type EngineState = {
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
   teamCreation: 'idle' | 'creating' | 'failed';
+  /** Moving a mission on, or accepting one of its tickets, is a request to the laptop that can be refused. */
+  missionAction: 'idle' | 'working' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
@@ -108,6 +110,7 @@ export type TranscriptContext = {
 
 export type EngineCommand =
   | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
+  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
@@ -306,7 +309,7 @@ export function createEngine(port: EnginePort) {
       ] },
       skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, backends: backendChoices(), branches: state.branches.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
@@ -552,6 +555,9 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'dismissTeamCreation': return state.dismissTeamCreation();
+      case 'continueMission': return state.continueMission(command.missionId);
+      case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
+      case 'dismissMissionAction': return state.dismissMissionAction();
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {

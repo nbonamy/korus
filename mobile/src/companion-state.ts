@@ -12,7 +12,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionAgents, companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -56,6 +56,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
 
   const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
   const teamCreation = ref<'idle' | 'creating' | 'failed'>('idle');
+  const missionAction = ref<'idle' | 'working' | 'failed'>('idle');
   const laptopId = ref('');
   const teamId = ref('');
   const agentId = ref('');
@@ -295,7 +296,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
 
   function closeSession() {
     composer.forgetAllPermissions();
-    actions.reset(); chatCreation.value = 'idle'; teamCreation.value = 'idle';
+    actions.reset(); chatCreation.value = 'idle'; teamCreation.value = 'idle'; missionAction.value = 'idle';
     receipts.clear();
     clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -599,6 +600,28 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       return null;
     }
   }
+  /** A person's move on a mission, made on the laptop and then read back so the screen shows what really happened. */
+  async function actOnMission(act: (active: CompanionSession, mission: CompanionMission) => Promise<void> | undefined, missionId: string) {
+    const active = session; const mission = workspace.value.missionProgress?.find((candidate) => candidate.id === missionId);
+    if (!active || !mission || status.value !== 'connected' || missionAction.value === 'working') return;
+    missionAction.value = 'working';
+    try {
+      const done = act(active, mission);
+      if (!done) throw new Error('Mission actions unavailable.');
+      await done;
+      await refreshWorkspace(active);
+      if (session === active) missionAction.value = 'idle';
+    } catch {
+      // A refused action usually means the mission moved on: show the laptop's current state either way.
+      if (session === active) { missionAction.value = 'failed'; void refreshWorkspace(active).catch(() => {}); }
+    }
+  }
+  const continueMission = (missionId: string) => actOnMission((active, mission) => active.continueMission?.(mission.id, mission.revision), missionId);
+  const acceptTicket = (missionId: string, number: number) => actOnMission((active, mission) => {
+    const runId = mission.tickets.find((ticket) => ticket.number === number && ticket.state === 'awaitingReview')?.runId;
+    return runId ? active.acceptTicket?.(mission.id, mission.revision, runId) : undefined;
+  }, missionId);
+  const dismissMissionAction = () => { if (missionAction.value !== 'working') missionAction.value = 'idle'; };
   const dismissTeamCreation = () => { if (teamCreation.value !== 'creating') teamCreation.value = 'idle'; };
 
   /** Starts a chat and opens it once the laptop has it ready. */
@@ -674,7 +697,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, dismissMissionAction,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
