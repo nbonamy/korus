@@ -92,6 +92,43 @@ it("prices Codex execution counters with cached reads, normal missing tiers and 
   } finally { await ledger.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
+it("prices legacy Claude totals with separate cache reads and default writes while preserving request and routing attribution", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "claude-cost-"));
+  const file = path.join(dir, "usage.sqlite");
+  let ledger = new UsageLedger(file, () => at + 60000);
+  const tokens = { input: 300000, output: 1000, cacheRead: 200000, cacheWrite: 50000 };
+  const execution: ExecutionObservation = { ...parent, model: "claude-sonnet-4-6", tokens };
+  try {
+    await start(ledger, { ...execution, turnId: "normal" });
+    await start(ledger, { ...execution, turnId: "fast", model: "claude-opus-5-5", serviceTier: "fast" });
+    // 50k ordinary input, 200k cache hits, 50k five-minute writes, 1k output.
+    expect(ledger.query().cost).toStrictEqual({ usd: 1.4325, coverage: "complete", requests: 0,
+      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [] });
+    expect(ledger.query({ group: "model", model: "claude-sonnet-4-6" }).rows[0]?.cost?.usd).toBe(0.4125);
+    const byApi = ledger.query({ apiProvider: "anthropic", group: "apiProvider" });
+    expect(byApi.rows.map(row => [row.label, row.cost?.usd])).toStrictEqual([["anthropic", 1.4325]]);
+    expect(byApi.daily?.[0]?.cost?.usd).toBe(1.4325);
+    expect(ledger.query({ apiProvider: "openai" }).cost?.usd).toBeNull();
+    await ledger.observe({ ...execution, turnId: "normal", phase: "usage", tokens: { ...tokens, output: 2000 } }, attribution);
+    await ledger.close();
+    ledger = new UsageLedger(file, () => at + 60000);
+    await ledger.load();
+    expect(ledger.query().cost?.usd).toBe(1.4475);
+    // Request evidence takes precedence, including an unknown provider from proxy/cloud routing.
+    await ledger.observeRequest(request({ turnId: "fast", apiProvider: null }));
+    await ledger.observe({ ...execution, turnId: "fast", phase: "usage", requestCoverage: "complete" }, attribution);
+    await start(ledger, { ...execution, turnId: "unresolved-route", requestCoverage: "partial" });
+    await start(ledger, { ...execution, turnId: "zero", tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
+    await start(ledger, { ...execution, turnId: "missing-tokens", tokens: undefined });
+    expect(ledger.query().cost).toMatchObject({ usd: 0.4275, coverage: "partial", requests: 1,
+      pricedRequests: 0, unpricedRequests: 1, pricedExecutions: 2, unknownRequestExecutions: 2 });
+    await ledger.observeRequest(request({ turnId: "fast", revision: 1 }));
+    expect(ledger.query().cost).toMatchObject({ usd: 0.46305, requests: 1, pricedRequests: 1, pricedExecutions: 2 });
+    await ledger.clear();
+    expect(ledger.query().cost).toMatchObject({ usd: null, requests: 0 });
+  } finally { await ledger.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
 // Failure modes: cache double counting/lifetime loss; turn-total double charging;
 // wrong context inclusivity/category discount; stale replay; lost evidence at restart;
 // grouping costs by parent model/day; legacy migration/cleanup losing token history.

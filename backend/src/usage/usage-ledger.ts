@@ -19,7 +19,7 @@ import { loadPricingHistory } from "../pricing/catalog";
 import type { PricingHistory } from "../pricing/schema";
 import {
   priceRequest,
-  priceCodexExecution,
+  priceExecution,
   type RequestPrice,
 } from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
@@ -377,15 +377,22 @@ export class UsageLedger {
         )
         .all(...args)) {
         const record = this.decode(row);
-        const codexEstimate =
-          record.provider === "codex" &&
+        // Legacy Claude rows predate request capture. Modern rows must retain
+        // their request/provider evidence, including unresolved proxy routing.
+        const executionEstimate =
+          (record.provider === "codex" ||
+            (record.provider === "claude" &&
+              record.tokens !== null &&
+              record.requestCoverage == null)) &&
           !observedExecutions.has(
             JSON.stringify([record.provider, record.sessionId, record.turnId]),
           );
-        if (
-          filter.apiProvider &&
-          !(codexEstimate && filter.apiProvider === "openai")
-        )
+        const estimatedProvider = executionEstimate
+          ? record.provider === "claude"
+            ? "anthropic"
+            : "openai"
+          : null;
+        if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
         const label = filter.group
           ? String(
@@ -402,14 +409,14 @@ export class UsageLedger {
           this.aggregate(groups, record, label);
           dailyGroups.set(day, groups);
         }
-        if (codexEstimate) {
+        if (executionEstimate) {
           this.aggregateCost(
             rows,
             daily,
             dailyGroups,
             record.startedAt,
-            filter.group === "apiProvider" ? "openai" : label,
-            priceCodexExecution(record, this.prices),
+            filter.group === "apiProvider" ? estimatedProvider! : label,
+            priceExecution(record, this.prices),
             cost,
             undefined,
             true,

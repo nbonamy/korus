@@ -2,7 +2,7 @@ import type { UsageCost, UsageSummary } from "@workspace/core/usage";
 import type { AgentBackend } from "@workspace/core/contracts";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
-export type UsageMeasure = "turns" | "total" | "input" | "output" | "cost";
+export type UsageMeasure = "turns" | "total" | "input" | "output" | "ratio" | "cost";
 export type UsageGrouping = "provider" | "model";
 export type UsageSeries = {
   key: string;
@@ -38,7 +38,15 @@ export const measureFormat = (
   value: number | null | undefined,
   measure: UsageMeasure,
   compact = true,
-) => (measure === "cost" ? usdFormat(value) : chartFormat(value, compact));
+) => {
+  if (measure === "cost") return usdFormat(value);
+  if (measure === "ratio")
+    return value == null ? translate("analytics.notAvailable") : chartFormat(value) + "%";
+  return chartFormat(value, compact);
+};
+/** Input's percentage of measured total tokens; an empty denominator is unknown. */
+export const inputRatio = (tokens: { input: number; total?: number | null } | null | undefined) =>
+  tokens?.total != null && tokens.total > 0 ? (100 * tokens.input) / tokens.total : null;
 export const chartValue = (
   row: {
     started: number;
@@ -49,6 +57,8 @@ export const chartValue = (
 ) =>
   measure === "cost"
     ? (row.cost?.usd ?? null)
+    : measure === "ratio"
+      ? inputRatio(row.tokens)
     : measure === "turns"
       ? row.started
       : (row.tokens?.[measure] ?? null);
@@ -191,11 +201,12 @@ export const sumValues = (values: (number | null | undefined)[]) =>
     ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
 const measureKeys: Record<UsageMeasure, string> = {
-  cost: "estimatedCost",
+  cost: "cost",
   turns: "turns",
   total: "totalTokens",
   input: "inputTokens",
   output: "outputTokens",
+  ratio: "inputRatio",
 };
 export const measureLabel = (measure: UsageMeasure) =>
   translate("analytics." + measureKeys[measure]);

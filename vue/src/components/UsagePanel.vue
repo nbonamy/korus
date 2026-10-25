@@ -65,12 +65,12 @@
             :previous="projections.previous"
           />
           <UsageShare
-            :series="series"
-            :measure="measure"
+            :series="shareSeries"
+            :measure="shareMeasure"
             :subtitle="
               measure === 'cost'
                 ? $t('analytics.costShareNote')
-                : measureLabel(measure)
+                : measureLabel(shareMeasure)
             "
           />
         </div>
@@ -83,7 +83,6 @@
         <UsageBreakdown
           :series="series"
           :grouping="grouping"
-          :measure="measure"
         />
       </template>
       <UsagePerformance
@@ -122,6 +121,8 @@ const {
   dateLabel,
   daily,
   series,
+  shareSeries,
+  shareMeasure,
   activityDays,
   load,
   setRange,

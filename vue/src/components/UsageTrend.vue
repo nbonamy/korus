@@ -22,7 +22,7 @@
         @pointermove="track"
         @pointerleave="active = null"
       >
-        <defs v-if="!isSpeed">
+        <defs v-if="!isRate">
           <linearGradient
             v-for="layer in layers"
             :id="gradientId(layer.series.key)"
@@ -46,14 +46,14 @@
           <line :x1="left" :y1="tick.y" :x2="width - right" :y2="tick.y" />
           <text :x="left - 10" :y="tick.y + 4" text-anchor="end">
             {{
-              measure === "cost"
-                ? usdFormat(tick.value)
+              measure === "cost" || measure === "ratio"
+                ? metricFormat(tick.value)
                 : chartFormat(tick.value, true)
             }}
           </text>
         </g>
         <g class="layers">
-          <template v-if="!isSpeed">
+          <template v-if="!isRate">
             <path
               v-for="layer in layers"
               :key="layer.series.key"
@@ -83,14 +83,14 @@
           <template v-for="point in points" :key="point.day">
             <circle
               v-if="
-                measure === 'cost'
+                measure === 'cost' || measure === 'ratio'
                   ? layer.vals[point.index] != null
                   : layer.vals[point.index]
               "
               class="marker"
               :class="{
                 visible:
-                  isSpeed || measure === 'cost' || active === point.index,
+                  isRate || measure === 'cost' || active === point.index,
               }"
               :cx="point.x"
               :cy="yOf(layer.upper[point.index]!)"
@@ -127,7 +127,7 @@
         </text>
       </svg>
       <div
-        v-if="hovered"
+        v-if="hovered && (!['cost', 'ratio'].includes(measure) || hovered.segments.length)"
         class="chart-tooltip"
         :style="tooltipStyle"
         aria-hidden="true"
@@ -147,7 +147,7 @@
           {{ $t("analytics.notAvailable") }}
         </p>
         <div
-          v-if="!isSpeed && hovered.segments.length > 1"
+          v-if="!isRate && hovered.segments.length > 1"
           class="tooltip-total"
         >
           <span>{{ $t("analytics.total") }}</span>
@@ -169,7 +169,7 @@ import { translate } from "../i18n";
 import {
   chartValue,
   chartFormat,
-  usdFormat,
+  measureFormat,
   niceScale,
   smoothPath,
   tokensPerSecond,
@@ -185,6 +185,7 @@ const props = defineProps<{
   subtitle?: string;
 }>();
 const isSpeed = computed(() => props.measure === "speed");
+const isRate = computed(() => isSpeed.value || props.measure === "ratio");
 const title = computed(() =>
   translate(isSpeed.value ? "analytics.speedTrend" : "analytics.trend"),
 );
@@ -195,16 +196,19 @@ const valueOf = (group: DailyGroup) =>
   props.measure === "speed"
     ? tokensPerSecond(group.speed)
     : chartValue(group, props.measure);
-const metricFormat = (value: number | null) =>
-  isSpeed.value
-    ? `${chartFormat(value, true)} ${translate("analytics.tokensPerSecond")}`
-    : props.measure === "cost"
-      ? usdFormat(value)
-      : chartFormat(value, true);
+const metricFormat = (value: number | null) => {
+  if (props.measure === "speed")
+    return `${chartFormat(value, true)} ${translate("analytics.tokensPerSecond")}`;
+  if (props.measure === "ratio" && value !== null)
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: Math.max(1, Math.ceil(-Math.log10(scale.value.step)) + 1),
+    }).format(value) + "%";
+  return measureFormat(value, props.measure, true);
+};
 const uid = useId();
 const gradientId = (key: string) =>
   `${uid}-${props.series.findIndex((item) => item.key === key)}`;
-const left = computed(() => (props.measure === "cost" ? 88 : 44)),
+const left = computed(() => props.measure === "cost" ? 88 : props.measure === "ratio" ? 72 : 44),
   right = 8,
   top = 16,
   height = 300,
@@ -248,8 +252,8 @@ const values = computed(() => {
     const segments = props.series.flatMap((series) => {
       const group = row?.groups?.find((group) => group.label === series.key);
       const value = group ? valueOf(group) : null;
-      if (props.measure !== "cost" && (value == null || value === 0)) return [];
-      top = isSpeed.value ? Math.max(top, value ?? 0) : top + (value ?? 0);
+      if (value == null || (!['cost', 'ratio'].includes(props.measure) && value === 0)) return [];
+      top = isRate.value ? Math.max(top, value) : top + value;
       return [{ ...series, value, top }];
     });
     rows.push({
@@ -261,25 +265,38 @@ const values = computed(() => {
   }
   return rows;
 });
-const scale = computed(() =>
-  niceScale(
+const scale = computed(() => {
+  if (props.measure === "ratio") {
+    const ratios = values.value.flatMap(row => row.segments.map(segment => segment.value));
+    if (!ratios.length) return { min: 0, max: 100, step: 25 };
+    const low = Math.min(...ratios), high = Math.max(...ratios);
+    const padding = Math.max((high - low) * 0.1, 0.05);
+    const lower = Math.max(0, low - padding), upper = Math.min(100, high + padding);
+    const step = niceScale(upper - lower, 4, true).step;
+    return {
+      min: Math.max(0, Math.floor(lower / step) * step),
+      max: Math.min(100, Math.ceil(upper / step) * step),
+      step,
+    };
+  }
+  return { min: 0, ...niceScale(
     Math.max(
       props.measure === "cost" ? 0 : 1,
       ...values.value.map((row) => row.total ?? 0),
     ) || 1,
     4,
     props.measure === "cost",
-  ),
-);
-const maximum = computed(() => scale.value.max);
+  ) };
+});
 const yOf = (value: number) =>
-  baseline - (value * (baseline - top)) / maximum.value;
-const ticks = computed(() =>
-  [0, 1, 2, 3, 4].map((step) => ({
-    value: step * scale.value.step,
-    y: yOf(step * scale.value.step),
-  })),
-);
+  baseline - ((value - scale.value.min) * (baseline - top)) / (scale.value.max - scale.value.min);
+const ticks = computed(() => {
+  const { min, max, step } = scale.value;
+  return Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => {
+    const value = min + index * step;
+    return { value, y: yOf(value) };
+  });
+});
 const xOf = (index: number) => {
   const span = width.value - left.value - right,
     count = values.value.length;
@@ -312,11 +329,11 @@ const layers = computed(() => {
     const vals = values.value.map(
       (row) =>
         row.segments.find((segment) => segment.key === series.key)?.value ??
-        (props.measure === "cost" ? null : 0),
+        (["cost", "ratio"].includes(props.measure) ? null : 0),
     );
     if (
       !vals.some(
-        (value) => value !== null && (props.measure === "cost" || value > 0),
+        (value) => value !== null && (["cost", "ratio"].includes(props.measure) || value > 0),
       )
     )
       return [];
@@ -360,12 +377,12 @@ const layers = computed(() => {
         },
       ];
     }
-    if (isSpeed.value) {
+    if (isRate.value) {
       // Missing timing is a gap, not a zero-rate observation.
       const runs: { x: number; y: number }[][] = [];
       vals.forEach((value, index) => {
-        if (!value) return;
-        if (index === 0 || !vals[index - 1]) runs.push([]);
+        if (value === null || (isSpeed.value && value === 0)) return;
+        if (index === 0 || vals[index - 1] === null || (isSpeed.value && !vals[index - 1])) runs.push([]);
         runs.at(-1)!.push({ x: xOf(index), y: yOf(value) });
       });
       return [

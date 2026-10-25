@@ -319,38 +319,46 @@ export function priceRequest(
   return { usd: Number(usd.toPrecision(15)), snapshot: snapshot.date };
 }
 
-/** Price a measured Codex execution without fabricating billable request identities. */
-export function priceCodexExecution(
+/** Price retained execution counters without fabricating billable request identities. */
+export function priceExecution(
   record: UsageRecord,
   history: PricingHistory,
 ): RequestPrice {
   const t = record.tokens;
   if (!t) return { reason: "missing-token-usage" };
+  const claude = record.provider === "claude";
   const tier =
     !record.serviceTier || ["normal", "default"].includes(record.serviceTier)
       ? "standard"
       : record.serviceTier === "fast"
-        ? "priority"
+        ? claude
+          ? "standard"
+          : "priority"
         : record.serviceTier;
   return priceRequest(
     {
       at: record.startedAt,
       status: "final",
-      apiProvider: "openai",
+      apiProvider: claude ? "anthropic" : "openai",
       model: record.model,
       modality: "text",
-      cacheMode: "implicit",
+      cacheMode: claude ? "explicit" : "implicit",
       tokens: {
         input: t.input,
         output: t.output,
         cacheRead: t.cacheRead,
-        cacheWrite: t.cacheWrite ? { default: t.cacheWrite } : {},
+        cacheWrite:
+          claude && t.cacheWrite === null
+            ? null
+            : t.cacheWrite
+              ? { [claude ? "5m" : "default"]: t.cacheWrite }
+              : {},
         reasoning: t.reasoning ?? null,
         inputIncludesCacheRead: true,
         inputIncludesCacheWrite: true,
         outputIncludesReasoning: true,
       },
-      pricingContext: { context: null, region: null },
+      pricingContext: { context: null, region: claude ? "global" : null },
       requestedServiceTier: record.serviceTier ?? null,
       reportedServiceTier: tier,
       reportedMode: record.serviceTier === "fast" ? "fast" : null,

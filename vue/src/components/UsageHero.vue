@@ -30,9 +30,17 @@
           <div class="hero-controls">
             <div id="usage-measure">
               <UsageToggle
-                :model-value="measure"
+                :model-value="isTokenMeasure ? 'total' : measure"
                 :options="measureOptions"
                 :label="$t('analytics.measure')"
+                @update:model-value="emit('update:measure', $event)"
+              />
+            </div>
+            <div v-if="isTokenMeasure" id="usage-token-measure" class="token-controls">
+              <UsageToggle
+                :model-value="measure"
+                :options="tokenOptions"
+                :label="$t('analytics.tokenMeasure')"
                 @update:model-value="emit('update:measure', $event)"
               />
             </div>
@@ -55,6 +63,7 @@ import {
   measureLabel,
   measureFormat,
   sumValues,
+  inputRatio,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
@@ -73,22 +82,36 @@ const emit = defineEmits<{
   "update:measure": [measure: UsageMeasure];
 }>();
 const measureOptions = computed(() => [
-  { value: "cost" as const, label: translate("analytics.estimatedCost") },
   { value: "turns" as const, label: translate("analytics.turns") },
   { value: "total" as const, label: translate("analytics.measureTotal") },
+  { value: "cost" as const, label: translate("analytics.cost") },
+]);
+const isTokenMeasure = computed(() =>
+  ["total", "input", "output", "ratio"].includes(props.measure),
+);
+const tokenOptions = computed(() => [
+  { value: "total" as const, label: translate("analytics.total") },
   { value: "input" as const, label: translate("analytics.measureInput") },
   { value: "output" as const, label: translate("analytics.measureOutput") },
+  { value: "ratio" as const, label: translate("analytics.ratio") },
 ]);
-const totalOf = (summary: UsageSummary | null | undefined) =>
-  props.measure === "cost"
+const totalOf = (summary: UsageSummary | null | undefined) => {
+  if (props.measure === "ratio") {
+    const tokens = summary?.rows.flatMap(row => row.tokens?.total && row.tokens.total > 0 ? [row.tokens] : []) ?? [];
+    return inputRatio({ input: tokens.reduce((n, row) => n + row.input, 0),
+      total: tokens.reduce((n, row) => n + row.total!, 0) });
+  }
+  return props.measure === "cost"
     ? (summary?.cost?.usd ?? null)
     : sumValues(
         chartSeries(summary ?? undefined, props.measure, "provider").map(
           (item) => item.value,
         ),
       );
+};
 const total = computed(() => totalOf(props.current));
 const delta = computed(() => {
+  if (props.measure === "ratio") return null;
   if (
     props.measure === "cost" &&
     (props.current.cost?.coverage !== "complete" ||
@@ -176,9 +199,18 @@ const delta = computed(() => {
 }
 .hero-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: var(--space-4);
+}
+.token-controls :deep(.el-segmented) {
+  --el-segmented-padding: var(--space-1);
+  min-height: 24px;
+  font-size: var(--font-size-11);
+}
+.token-controls :deep(.el-segmented__item) {
+  padding: 0 var(--space-6);
 }
 @media (max-width: 720px) {
   .hero-header {

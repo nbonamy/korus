@@ -131,7 +131,7 @@ import {
 } from "./usage-chart";
 const props = defineProps<{
   series: UsageSeries[];
-  measure: UsageMeasure;
+  measure: Exclude<UsageMeasure, "ratio">;
   subtitle?: string;
 }>();
 const uid = useId();

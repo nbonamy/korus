@@ -245,13 +245,41 @@ it("opens on total tokens by provider and regroups every chart from one toolbar 
     expect(wrapper.get(`[aria-label="${label}"]`).text()).toContain("sonnet");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("100%");
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("N/A");
+  expect(wrapper.get('#usage-measure').findAll('label').map(option => option.text())).toStrictEqual([
+    'Turns', 'Tokens', 'Cost',
+  ]);
+  expect(wrapper.get('#usage-token-measure').findAll('label').map(option => option.text())).toStrictEqual([
+    'Total', 'Input', 'Output', 'Ratio',
+  ]);
+  await choose(wrapper, '#usage-token-measure', 'Input');
+  expect(wrapper.get('.hero-number strong').text()).toBe('200');
+  expect(wrapper.get('[aria-label="Usage share"] p').text()).toBe('Input tokens');
+  expect(wrapper.get('#usage-measure').findAll('label')
+    .filter(option => option.get<HTMLInputElement>('input[type="radio"]').element.checked)
+    .map(option => option.text())).toStrictEqual(['Tokens']);
+  await choose(wrapper, '#usage-token-measure', 'Output');
+  expect(wrapper.get('.hero-number strong').text()).toBe('100');
+  expect(wrapper.get('[aria-label="Usage share"] p').text()).toBe('Output tokens');
+  await choose(wrapper, '#usage-measure', 'Cost');
+  expect(wrapper.find('#usage-token-measure').exists()).toBe(false);
+  await choose(wrapper, '#usage-measure', 'Tokens');
+  expect(wrapper.get('.hero-number strong').text()).toBe('300');
+  expect(wrapper.get('#usage-token-measure').findAll('label')
+    .filter(option => option.get<HTMLInputElement>('input[type="radio"]').element.checked)
+    .map(option => option.text())).toStrictEqual(['Total']);
   expect(wrapper.get('#usage-grouping [role="radiogroup"]').attributes("aria-label")).toBe("Group by");
   await choose(wrapper, "#usage-grouping", "Provider");
   for (const label of ["Usage share", "Activity over time", "Usage breakdown"])
     expect(wrapper.get(`[aria-label="${label}"]`).text()).toContain("Claude Code");
   await choose(wrapper, "#usage-grouping", "Model");
   await choose(wrapper, "#usage-measure", "Turns");
+  expect(wrapper.find('#usage-token-measure').exists()).toBe(false);
   expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("75%");
+  expect(wrapper.get('[aria-label="Usage breakdown"]').findAll("tbody tr").map(row =>
+    row.findAll("td").map(cell => cell.text()))).toStrictEqual([
+    ["sonnet", "1", "300", "Unavailable", "100%"],
+    ["Unknown model", "3", "N/A", "Unavailable", "N/A"],
+  ]);
   expect(
     wrapper
       .get('[aria-label="Activity over time"]')
@@ -610,6 +638,66 @@ it("keeps the activity grid outside the provider and date filters", async () => 
 
 // These client-boundary scenarios protect currency precision, request attribution,
 // unknown coverage and comparison honesty through the real Analytics tree.
+it("shows weighted input ratios as percentages without stacking model ratios or dividing by zero", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const row = (label: string, input: number | null, total: number | null) => ({
+    ...costRow(label, null),
+    tokens: input === null || total === null ? null : {
+      input, output: total - input, total, cacheRead: 0, cacheWrite: 0,
+    },
+  });
+  setElectronTestClient({ getUsage: vi.fn(async filter => {
+    const rows = filter?.group === "provider"
+      ? [row("claude", 9980, 10000), ...(filter.provider === "claude" ? [] : [row("codex", 50, 200)])]
+      : [row("model-a", 9980, 10000), ...(filter?.provider === "claude" ? [] : [
+          row("model-b", 50, 100), row("model-zero", 0, 100), row("model-empty", 0, 0), row("Unknown", null, null),
+        ])];
+    return { recordedSince: 1, retainedSince: 1, rows, daily: [{
+      day: today, started: rows.length, measuredTurns: rows.length,
+      tokens: null, groups: rows,
+    }] };
+  }) });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await choose(wrapper, "#usage-token-measure", "Ratio");
+    expect(wrapper.get(".hero-number strong").text()).toBe("98.3%");
+    expect(wrapper.get(".hero-label").text()).toBe("Input ratio");
+    expect(wrapper.find(".hero-delta").exists()).toBe(false);
+    expect(wrapper.get("#usage-measure").findAll("label")
+      .filter(option => option.get<HTMLInputElement>('input[type="radio"]').element.checked)
+      .map(option => option.text())).toStrictEqual(["Tokens"]);
+    const chart = wrapper.get('svg[aria-label="Activity over time"]');
+    expect(chart.findAll("path.layer")).toHaveLength(0);
+    expect(chart.findAll(".gridline text").map(tick => tick.text())).toStrictEqual(["0%", "25%", "50%", "75%", "100%"]);
+    const a = chart.get(`[aria-label="${today} · model-a: 99.8%"]`);
+    const b = chart.get(`[aria-label="${today} · model-b: 50%"]`);
+    const zero = chart.get(`[aria-label="${today} · model-zero: 0%"]`);
+    expect(Number(a.attributes("cy"))).toBeLessThan(Number(b.attributes("cy")));
+    expect(Number(b.attributes("cy"))).toBeLessThan(Number(zero.attributes("cy")));
+    await b.trigger("focus");
+    expect(wrapper.get(".chart-tooltip").findAll("li").map(item => item.text())).toStrictEqual([
+      "model-zero0%", "model-b50%", "model-a99.8%",
+    ]);
+    expect(wrapper.find(".tooltip-total").exists()).toBe(false);
+    expect(wrapper.get('[aria-label="Usage share"] .ring-total').text()).toBe("10.2K");
+    expect(wrapper.get('[aria-label="Usage share"] p').text()).toBe("Total tokens");
+    expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain("98%");
+    await choose(wrapper, "#usage-grouping", "Provider");
+    expect(wrapper.get(".hero-number strong").text()).toBe("98.3%");
+    expect(wrapper.find(`[aria-label="${today} · Codex: 25%"]`).exists()).toBe(true);
+    await chooseProvider(wrapper, "claude");
+    await flushPromises();
+    expect(wrapper.get(".hero-number strong").text()).toBe("99.8%");
+    const ticks = wrapper.get('svg[aria-label="Activity over time"]').findAll(".gridline text").map(tick => tick.text());
+    expect(parseFloat(ticks[0]!)).toBeGreaterThan(99);
+    expect(parseFloat(ticks.at(-1)!)).toBeLessThanOrEqual(100);
+    expect(new Set(ticks).size).toBe(ticks.length);
+    await choose(wrapper, "#usage-measure", "Cost");
+    expect(wrapper.find("#usage-token-measure").exists()).toBe(false);
+  } finally { wrapper.unmount(); }
+});
+
 const costFixture = (usd: number | null, partial = false) => ({
   usd,
   coverage:
@@ -650,7 +738,7 @@ it('shows Codex execution costs without unavailable request metadata or pricing 
   const wrapper = mount(UsagePanel);
   try {
     await flushPromises();
-    await choose(wrapper, '#usage-measure', 'Estimated cost');
+    await choose(wrapper, '#usage-measure', 'Cost');
     expect(wrapper.get('.hero-number strong').text()).toBe('$0.25');
     expect(wrapper.text()).not.toContain('turn priced');
     expect(wrapper.text()).not.toContain('0 of 0 observed requests');
@@ -702,19 +790,20 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
   const wrapper = mount(UsagePanel);
   try {
     await flushPromises();
-    await choose(wrapper, "#usage-measure", "Estimated cost");
+    await choose(wrapper, "#usage-measure", "Cost");
     expect(wrapper.get(".hero-number strong").text()).toBe("$0.00");
     const hero = wrapper.get('.usage-hero');
     expect(hero.text()).not.toContain('API-equivalent');
     expect(hero.text()).not.toContain('Current period');
     expect(hero.text()).not.toContain('Previous period');
     const table = wrapper.get('[aria-label="Usage breakdown"]');
-    expect(table.text()).toContain("Estimated cost");
-    expect(table.text()).toContain("Observed requests");
-    expect(table.findAll("tbody tr")[0]!.findAll("td")[1]!.text()).toBe("1");
-    expect(table.findAll("tbody tr").map((row) => row.text())).toEqual([
-      expect.stringContaining("$0.00"),
-      expect.stringContaining("$0.00"),
+    expect(table.findAll("th").map(cell => cell.text())).toStrictEqual([
+      "Model", "Turns", "Tokens", "Cost", "Usage share (tokens)",
+    ]);
+    const tableRows = () => table.findAll("tbody tr").map(row => row.findAll("td").map(cell => cell.text()));
+    expect(tableRows()).toStrictEqual([
+      ["actual-model-a", "0", "10", "$0.00", "50%"],
+      ["actual-model-b", "0", "10", "$0.00", "50%"],
     ]);
     expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("66.7%");
     const marker = wrapper.get(
@@ -736,8 +825,15 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
     expect(getUsage).toHaveBeenCalledWith(
       expect.objectContaining({ provider: "claude", group: "model" }),
     );
-    await choose(wrapper, "#usage-measure", "Total");
+    await choose(wrapper, "#usage-measure", "Tokens");
     expect(wrapper.get(".hero-number strong").text()).toBe("20");
+    expect(table.findAll("th").map(cell => cell.text())).toStrictEqual([
+      "Provider", "Turns", "Tokens", "Cost", "Usage share (tokens)",
+    ]);
+    expect(tableRows()).toStrictEqual([
+      ["Claude Code", "1", "10", "$0.00", "50%"],
+      ["Codex", "1", "10", "$0.00", "50%"],
+    ]);
     expect(wrapper.find(".cost-coverage").exists()).toBe(false);
     await wrapper.get("#usage-tab-performance").trigger("click");
     expect(wrapper.find('[aria-label="Output Speed"]').exists()).toBe(true);
@@ -792,8 +888,10 @@ it.each([
     const wrapper = mount(UsagePanel);
     try {
       await flushPromises();
-      await choose(wrapper, "#usage-measure", "Estimated cost");
+      await choose(wrapper, "#usage-measure", "Cost");
       expect(wrapper.get(".hero-number strong").text()).toBe(expected);
+      const table = wrapper.get('[aria-label="Usage breakdown"]');
+      expect(table.findAll("tbody td")[3]!.text()).toBe(expected);
       expect(wrapper.find(".hero-delta").exists()).toBe(false);
       expect(wrapper.get('.usage-hero').text()).not.toContain('Current period');
       expect(wrapper.get('.usage-hero').text()).not.toContain('Previous period');
@@ -846,7 +944,7 @@ it.each([
     const wrapper = mount(UsagePanel);
     try {
       await flushPromises();
-      await choose(wrapper, "#usage-measure", "Estimated cost");
+      await choose(wrapper, "#usage-measure", "Cost");
       expect(wrapper.find(".hero-delta").exists()).toBe(delta !== null);
       if (delta) expect(wrapper.get(".hero-delta").text()).toContain(delta);
       expect(wrapper.get('.usage-hero').text()).not.toContain('Previous period');
@@ -856,10 +954,10 @@ it.each([
   },
 );
 
-it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable genuine zero", async () => {
+it("hides unavailable cost tooltip rows and empty days while retaining measured zeroes and chart gaps", async () => {
   const day = (offset: number) =>
     new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
-  const rows = [costRow("claude", 0.04)];
+  const rows = [costRow("claude", 0.04), costRow("codex", 0), costRow("unknown-model", null)];
   const daily = [2, 1, 0].map((offset) => {
     const cost = costFixture(offset === 1 ? null : offset === 0 ? 0 : 0.04);
     return {
@@ -868,7 +966,7 @@ it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable g
       measuredTurns: 1,
       tokens: null,
       cost,
-      groups: [{ ...rows[0]!, cost }],
+      groups: [{ ...rows[0]!, cost }, ...(offset === 1 ? [] : [rows[1]!]), rows[2]!],
     };
   });
   setElectronTestClient({
@@ -883,7 +981,7 @@ it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable g
   const wrapper = mount(UsagePanel);
   try {
     await flushPromises();
-    await choose(wrapper, "#usage-measure", "Estimated cost");
+    await choose(wrapper, "#usage-measure", "Cost");
     const chart = wrapper.get('svg[aria-label="Activity over time"]');
     expect(
       chart
@@ -894,8 +992,16 @@ it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable g
       .get(`[aria-label="${day(0)} · claude: $0.00"]`)
       .trigger("focus");
     expect(wrapper.get(".chart-tooltip").text()).toContain("$0.00");
+    expect(wrapper.get(".chart-tooltip").findAll("li")).toHaveLength(2);
+    expect(wrapper.get(".chart-tooltip").text()).not.toContain("unknown-model");
+    expect(wrapper.get(".chart-tooltip").text()).not.toContain("Unavailable");
     const first = chart.get(`[aria-label="${day(2)} · claude: $0.04"]`);
     const last = chart.get(`[aria-label="${day(0)} · claude: $0.00"]`);
+    await first.trigger("focus");
+    expect(wrapper.get(".chart-tooltip").findAll("li").map(row => row.text())).toStrictEqual([
+      "codex$0.00", "claude$0.04",
+    ]);
+    expect(wrapper.get(".tooltip-total").text()).toContain("$0.04");
     chart.element.dispatchEvent(
       new MouseEvent("pointermove", {
         clientX:
@@ -903,9 +1009,7 @@ it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable g
       }),
     );
     await wrapper.vm.$nextTick();
-    expect(wrapper.get(".chart-tooltip").text()).toContain("Unavailable");
-    expect(wrapper.get('.chart-tooltip').text()).not.toContain('unknown request counts');
-    expect(wrapper.get('.chart-tooltip').text()).not.toContain('Cache usage');
+    expect(wrapper.find(".chart-tooltip").exists()).toBe(false);
   } finally {
     wrapper.unmount();
   }

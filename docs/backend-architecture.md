@@ -767,9 +767,13 @@ in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated
 from ordinary output before applying rates. Missing usage, inclusion semantics,
 cache rates/lifetimes, context, region, tier or model evidence leaves a request
-unpriced with a reason. Codex executions without request observations are priced
-from their retained model and measured token counters, with cached reads priced
-separately, normal pricing for missing tiers, and no long-context premium. Real
+unpriced with a reason. Codex executions and legacy Claude executions without
+request observations are priced from their retained model and measured token
+counters, with cached reads priced separately, normal pricing for missing tiers,
+and no long-context premium. Legacy Claude cache creation uses the default
+five-minute write rate; its normalized input includes both cache categories.
+Claude rows carrying request-coverage evidence require request attribution, so
+unresolved cloud/proxy routing cannot select a direct Anthropic estimate. Real
 request observations supersede an execution estimate. Non-token charges remain
 outside the estimate.
 
