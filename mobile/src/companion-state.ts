@@ -103,11 +103,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const projectRepositories = projectRepositoryList.state;
   function dismissProjectRepositories() { projectRepositoryList.reset(); dismissProjectBranches(); }
   const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
-  const loadProjectRepositories = (source: 'github' | 'gitlab' | 'local' = 'github') => projectRepositoryList.load({}, active => {
-    if (source === 'gitlab') return teamId.value ? active.repositoryCatalog?.(teamId.value, source) : undefined;
-    const read = source === 'local' ? active.localRepositories : active.githubRepositories;
-    return teamId.value ? read?.call(active, teamId.value) : undefined;
-  });
+  const loadProjectRepositories = (source: 'github' | 'gitlab' | 'local' = 'github') => {
+    dismissProjectBranches();
+    return projectRepositoryList.load({}, active => {
+      if (source === 'gitlab') return teamId.value ? active.repositoryCatalog?.(teamId.value, source) : undefined;
+      const read = source === 'local' ? active.localRepositories : active.githubRepositories;
+      return teamId.value ? read?.call(active, teamId.value) : undefined;
+    });
+  };
 
   // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
   const agents = computed(() => {

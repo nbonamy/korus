@@ -37,6 +37,69 @@ describe('mobile project acquisition', () => {
     } finally { engine.dispose(); }
   });
 
+  it('invalidates loaded and pending branches when switching provider catalogs', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let release!: (items: { name: string; isDefault: boolean }[]) => void;
+    const branches = [{ name: 'main', isDefault: true }];
+    const githubBranches = vi.fn(async () => branches);
+    connector.connect = async id => ({ ...await connect(id), githubBranches,
+      repositoryCatalog: async () => [{ id: 'gitlab:opaque', name: 'group/subgroup/project' }] });
+    const engine = createEngine({ connector, post() {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'loadProjectBranches', source: 'github', repositoryId: 'org/repo' });
+      await engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      expect(engine.snapshot().projectBranches).toStrictEqual({ repositoryId: null, status: 'idle', items: [] });
+      githubBranches.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      const pending = engine.dispatch({ type: 'loadProjectBranches', source: 'github', repositoryId: 'org/repo' });
+      await engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      release(branches); await pending;
+      expect(engine.snapshot().projectBranches).toStrictEqual({ repositoryId: null, status: 'idle', items: [] });
+      expect(engine.snapshot().projectRepositories.items).toStrictEqual([{ id: 'gitlab:opaque', name: 'group/subgroup/project' }]);
+    } finally { engine.dispose(); }
+  });
+
+  it('drops GitLab reads on host switching and recovers access and clone failures on the owning host', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    connector.laptops = [...connector.laptops, { id: 'second-host', name: 'Second host' }];
+    let release!: (items: typeof repositories) => void;
+    const oldCatalog = vi.fn(() => new Promise<typeof repositories>(resolve => { release = resolve; }));
+    const catalog = vi.fn(async () => [{ id: 'second:opaque', name: 'group/nested/repo' }])
+      .mockRejectedValueOnce(new Error('private access expired: sensitive upstream detail'));
+    const branches = vi.fn(async () => [{ name: 'develop', isDefault: true }])
+      .mockRejectedValueOnce(new Error('stale repository selection'));
+    const createProject = vi.fn(async (_input: CompanionProjectInput) => 'demo-reviewer')
+      .mockRejectedValueOnce(new Error('Git credential failure: sensitive upstream detail'));
+    connector.connect = async id => ({ ...await connect('demo-laptop'),
+      repositoryCatalog: id === 'second-host' ? catalog : oldCatalog, repositoryBranches: branches, createProject });
+    const engine = createEngine({ connector, post() {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      const pending = engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      await engine.dispatch({ type: 'connect', laptopId: 'second-host' });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      release(repositories); await pending;
+      expect(engine.snapshot().projectRepositories).toStrictEqual({ status: 'idle', items: [] });
+      await engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      expect(engine.snapshot().projectRepositories).toStrictEqual({ status: 'failed', items: [] });
+      await engine.dispatch({ type: 'loadProjectRepositories', source: 'gitlab' });
+      expect(engine.snapshot().projectRepositories.items).toStrictEqual([{ id: 'second:opaque', name: 'group/nested/repo' }]);
+      await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'second:opaque' });
+      expect(engine.snapshot().projectBranches.status).toBe('failed');
+      await engine.dispatch({ type: 'loadProjectBranches', source: 'gitlab', repositoryId: 'second:opaque' });
+      const input = { source: 'gitlab' as const, value: 'second:opaque', backend: 'codex' as const,
+        worktree: { branchName: 'feature/mobile', baseBranch: 'develop' } };
+      await engine.dispatch({ type: 'createProject', ...input });
+      expect(engine.snapshot().chatCreation).toBe('failed');
+      expect(engine.snapshot().projectBranches.items).toStrictEqual([{ name: 'develop', isDefault: true }]);
+      expect(JSON.stringify(engine.snapshot())).not.toContain('sensitive upstream detail');
+      await engine.dispatch({ type: 'createProject', ...input });
+      expect(createProject.mock.calls).toStrictEqual([[{ ...input, teamId: 'demo-team' }], [{ ...input, teamId: 'demo-team' }]]);
+      expect(engine.snapshot()).toMatchObject({ laptopId: 'second-host', agentId: 'demo-reviewer', chatCreation: 'idle' });
+    } finally { engine.dispose(); }
+  });
+
   it('loads local repository catalogs and branches without asking GitHub, then opens the chosen branch', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const localRepositories = vi.fn(async () => [{ id: 'opaque-repo', name: 'Local repo' }]);
