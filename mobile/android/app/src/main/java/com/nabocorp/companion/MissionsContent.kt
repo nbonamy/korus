@@ -321,13 +321,13 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
     }
 }
 
-/** Under a mission agent's header: which part of the mission this is, so the conversation never loses its context. */
+/** Under a ticket worker's header: which ticket this is. The mission's lead is a conversation like any other and gets none. */
 @Composable internal fun MissionContextBar(model: CompanionModel) {
     val reference = model.workerMission ?: return
+    if (reference.optBoolean("lead")) return
     val mission = model.missions.firstOrNull { it.string("id") == reference.string("id") } ?: return
-    val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == model.state.string("agentId") }
-    val text = ticket?.let { "Mission · ticket ${it.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(it.string("state")).label}" }
-        ?: if (reference.optBoolean("lead")) "Mission · lead · ${missionStage(mission)}" else return
-    Text(text, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
+    val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == model.state.string("agentId") } ?: return
+    Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}",
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

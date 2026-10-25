@@ -354,21 +354,19 @@ private struct TicketRow: View {
     }
 }
 
-/// Under a worker's header: which ticket this is, so the conversation never loses its context.
+/// Under a ticket worker's header: which ticket this is. The mission's lead is a conversation like any other and gets none.
 struct MissionContextBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if let reference = model.workerMission, let mission = model.missions.first(where: { $0.id == reference.id }) {
-            let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID })
-            if reference.lead == true || ticket != nil {
-                Text(ticket.map { "Mission · ticket \($0.number) of \(mission.tickets.count) · \(MissionTicketState($0.state).label)" } ?? "Mission · lead · \(mission.stageLabel)")
-                    .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(.bar)
-                    .accessibilityElement(children: .combine)
-            }
+        if let reference = model.workerMission, reference.lead != true, let mission = model.missions.first(where: { $0.id == reference.id }),
+           let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }) {
+            Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .background(.bar)
+                .accessibilityElement(children: .combine)
         }
     }
 }
