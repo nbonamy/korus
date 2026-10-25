@@ -74,6 +74,7 @@ export function priceRequest(
   history: PricingHistory,
 ): RequestPrice {
   const fail = (reason: UsageCostReason): RequestPrice => ({ reason });
+  if (request.unavailableReason) return fail(request.unavailableReason);
   if (request.status !== "final") return fail("provisional-usage");
   const snapshot = [...history]
     .reverse()
@@ -87,7 +88,11 @@ export function priceRequest(
   if (!model.cost) return fail("unpriced-model");
   if (request.modality !== "text") return fail("unsupported-token-modality");
   const t = request.tokens;
-  if (t.input === null || t.output === null || t.reasoning === null)
+  if (
+    t.input === null ||
+    t.output === null ||
+    (t.reasoning === null && t.outputIncludesReasoning !== true)
+  )
     return fail("missing-token-usage");
   if (t.cacheRead === null || t.cacheWrite === null)
     return fail("missing-cache-usage");
@@ -102,13 +107,34 @@ export function priceRequest(
     t.input -
     (t.inputIncludesCacheRead ? t.cacheRead : 0) -
     (t.inputIncludesCacheWrite ? writes : 0);
-  const output = t.output - (t.outputIncludesReasoning ? t.reasoning : 0);
+  // An unknown subset needs no allocation when all inclusive output has the same rate.
+  // Retain null in the observation; require the split if rates/adjustments differ.
+  const reasoning = t.reasoning ?? 0;
+  const output = t.output - (t.outputIncludesReasoning ? reasoning : 0);
   if (input < 0 || output < 0) return fail("inconsistent-token-usage");
-  let mode = request.reportedMode
-    ? model.modes?.[request.reportedMode]
-    : undefined;
-  if (request.reportedMode && !mode) return fail("unsupported-mode");
+  // Anthropic reports capacity tier and inference speed separately. The source
+  // catalog calls fast speed a pricing service_tier; preserve both reported values.
+  const anthropicSpeed =
+    request.apiProvider === "anthropic" &&
+    ["standard", "fast"].includes(request.reportedMode ?? "");
+  if (anthropicSpeed && request.reportedServiceTier !== "standard")
+    return fail(
+      request.reportedServiceTier
+        ? "unsupported-service-tier"
+        : "missing-service-tier",
+    );
+  const pricingMode =
+    anthropicSpeed && request.reportedMode === "standard"
+      ? null
+      : request.reportedMode;
+  let mode = pricingMode ? model.modes?.[pricingMode] : undefined;
+  if (pricingMode && !mode) return fail("unsupported-mode");
   const tier =
+    (anthropicSpeed
+      ? request.reportedMode === "fast"
+        ? "fast"
+        : "standard"
+      : null) ??
     request.reportedServiceTier ??
     mode?.service_tier ??
     request.defaultServiceTier?.tier ??
@@ -145,12 +171,11 @@ export function priceRequest(
     date: new Date(request.at).toISOString().slice(0, 10),
   };
   const text = object(cost.text) ? cost.text : {};
+  let reasoningCategory = false;
   const totals: { count: number; path: string[]; rate: unknown }[] = [];
   for (const direction of ["input", "output"] as const) {
     const count =
-      direction === "input"
-        ? input + t.cacheRead + writes
-        : output + t.reasoning;
+      direction === "input" ? input + t.cacheRead + writes : output + reasoning;
     if (count === 0) continue;
     const base = text[direction];
     if (!object(base) || base.unit !== "token")
@@ -165,13 +190,21 @@ export function priceRequest(
       if (applies) prices = merge(prices, override);
     }
     if (direction === "output") {
+      reasoningCategory = prices.reasoning !== undefined;
+      if (
+        t.reasoning === null &&
+        t.output > 0 &&
+        prices.reasoning !== undefined &&
+        prices.reasoning !== prices.price
+      )
+        return fail("missing-token-usage");
       totals.push({
         count: output,
         path: ["text", "output", "price"],
         rate: prices.price,
       });
       totals.push({
-        count: t.reasoning,
+        count: reasoning,
         path: [
           "text",
           "output",
@@ -219,11 +252,18 @@ export function priceRequest(
   }
   const multipliers: unknown[] = [];
   for (const multiplier of (cost.multipliers ?? []) as ObjectValue[]) {
+    // Unknown reasoning may still be affected even though it has no allocated count.
+    const affectsUnknownReasoning =
+      reasoningCategory &&
+      t.reasoning === null &&
+      t.output > 0 &&
+      factorAt(multiplier.factor, ["text", "output", "reasoning"]) !== 1;
     // A rule on a different modality cannot affect these token categories.
     if (
       !totals.some(
         (t) => t.count > 0 && factorAt(multiplier.factor, t.path) !== 1,
-      )
+      ) &&
+      !affectsUnknownReasoning
     )
       continue;
     const applies = matches(multiplier.when as ObjectValue, evidence);
@@ -234,7 +274,17 @@ export function priceRequest(
           ? "missing-service-tier"
           : "missing-pricing-context",
       );
-    if (applies) multipliers.push(multiplier.factor);
+    if (applies) {
+      if (
+        reasoningCategory &&
+        t.reasoning === null &&
+        t.output > 0 &&
+        factorAt(multiplier.factor, ["text", "output", "reasoning"]) !==
+          factorAt(multiplier.factor, ["text", "output", "price"])
+      )
+        return fail("missing-token-usage");
+      multipliers.push(multiplier.factor);
+    }
   }
   let usd = 0;
   for (const item of totals) {

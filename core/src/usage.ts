@@ -173,6 +173,14 @@ export type RequestObservation = {
   sessionId: string;
   turnId: string;
   requestId: string;
+  /** Optional provider correlation; never a second charge identity. */
+  upstreamRequestId?: string | null;
+  parentToolUseId?: string | null;
+  unavailableReason?:
+    | "missing-billing-mode"
+    | "missing-token-usage"
+    | "missing-service-tier"
+    | "unsupported-request-iterations";
   at: number;
   revision: number;
   status: "provisional" | "final";
@@ -215,6 +223,8 @@ export function validRequestCoverageReason(
 }
 export type UsageCostReason =
   | RequestCoverageReason
+  | "missing-billing-mode"
+  | "unsupported-request-iterations"
   | "unknown-request-coverage"
   | "provisional-usage"
   | "before-pricing-history"
@@ -267,6 +277,9 @@ export function validRequestObservation(
       "sessionId",
       "turnId",
       "requestId",
+      "upstreamRequestId",
+      "parentToolUseId",
+      "unavailableReason",
       "at",
       "revision",
       "status",
@@ -289,6 +302,16 @@ export function validRequestObservation(
   return (
     ["codex", "claude", "antigravity"].includes(v.provider as string) &&
     [v.agentId, v.sessionId, v.turnId, v.requestId].every(text) &&
+    [v.upstreamRequestId, v.parentToolUseId].every(
+      (x) => x === undefined || nullableText(x),
+    ) &&
+    (v.unavailableReason === undefined ||
+      [
+        "missing-billing-mode",
+        "missing-token-usage",
+        "missing-service-tier",
+        "unsupported-request-iterations",
+      ].includes(v.unavailableReason as string)) &&
     Number.isSafeInteger(v.at) &&
     (v.at as number) >= 0 &&
     (v.at as number) <= 8640000000000000 &&

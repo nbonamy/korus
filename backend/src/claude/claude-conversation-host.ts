@@ -1,4 +1,4 @@
-import { validConsumption, type Consumption, type ExecutionObservation } from '@workspace/core/usage';
+import { validConsumption, type Consumption, type ExecutionObservation, type RequestObservation } from '@workspace/core/usage';
 import path from 'node:path';
 import { isAppMcpServerName, product } from '@workspace/core/product';
 import { randomUUID } from 'node:crypto';
@@ -78,6 +78,7 @@ type StreamedClaudeTool = {
 
 type ActiveClaudeTurn = {
   observedAt?:number;
+  requestCoverage?: "complete" | "partial";
   consumption?:Consumption;
   agentId: string;
   cwd: string;
@@ -136,6 +137,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   readonly backend = 'claude' as const;
 
   private readonly listeners = new Set<EventListener>();
+  private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
   private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
   private accountLimits: AccountRateLimits = {
     limitId: 'claude', limitName: null, primary: null, secondary: null,
@@ -378,6 +380,18 @@ export class ClaudeConversationHost implements AgentBackendDriver {
         },
         (requestId) => {
           if (activeTurn) this.cancelPermissionRequest(activeTurn, requestId);
+        },
+        (usage) => {
+          if (!activeTurn?.sessionId || !activeTurn.observedAt) return;
+          if (usage === null) {
+            const wasComplete = activeTurn.requestCoverage === 'complete';
+            activeTurn.requestCoverage = 'partial';
+            if (wasComplete) this.emitUsage(activeTurn, 'usage');
+            return;
+          }
+          const observation: RequestObservation = { ...usage, provider: 'claude', agentId: activeTurn.agentId,
+            sessionId: activeTurn.sessionId, turnId: activeTurn.turnId };
+          for (const listener of this.requestUsageListeners) { try { listener(observation); } catch { /* Numeric evidence must not change execution. */ } }
         },
       );
       activeTurn = {
@@ -768,6 +782,8 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     return this.driverOptions.homeDir ? path.join(this.driverOptions.homeDir, '.claude', 'projects') : undefined;
   }
 
+  onRequestUsage(listener: (observation: RequestObservation) => void): () => void { this.requestUsageListeners.add(listener); return () => this.requestUsageListeners.delete(listener); }
+
   onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener); return ()=>this.usageListeners.delete(listener); }
 
   onEvent(listener: EventListener): () => void {
@@ -873,6 +889,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
     }
 
     if (message.type === 'result') {
+      activeTurn.requestCoverage = message.executionRequestCoverage === 'complete' ? 'complete' : 'partial';
       if (message.executionModel !== undefined) activeTurn.model = typeof message.executionModel === 'string' && message.executionModel.length <= 200 ? message.executionModel : null;
       if (validConsumption(message.executionConsumption)) activeTurn.consumption=message.executionConsumption;
       const errorMessage = claudeResultErrorMessage(message) ?? activeTurn.rateLimitMessage;
@@ -1547,7 +1564,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
   private emitUsage(turn:ActiveClaudeTurn,phase:ExecutionObservation['phase']):void {
     if (!turn.observedAt || !turn.sessionId) return;
     const at=Date.now();
-    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,serviceTier:turn.serviceTier ?? 'normal',...(phase!=='started'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
+    const observation:ExecutionObservation={agentId:turn.agentId,sessionId:turn.sessionId,turnId:turn.turnId,provider:'claude',requestCoverage:turn.requestCoverage ?? 'partial',phase,at,model:turn.model,reasoningEffort:turn.reasoningEffort ?? null,serviceTier:turn.serviceTier ?? 'normal',...(phase!=='started' && phase!=='usage'?{durationMs:at-turn.observedAt,...(turn.consumption?{tokens:turn.consumption}:{})}:{})};
     for (const listener of this.usageListeners) { try { listener(observation); } catch { /* Observation must not change provider execution. */ } }
   }
   private completeTurn(activeTurn: ActiveClaudeTurn): void {

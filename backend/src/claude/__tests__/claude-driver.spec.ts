@@ -76,7 +76,7 @@ describe('ClaudeBackendDriver', () => {
     const observed = clearing.then(settled, (error) => { settled(error); });
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
-    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/goal clear' }), expect.any(Function), expect.any(Function), expect.any(Function));
+    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/goal clear' }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'result', subtype: 'success', session_id: 'session', is_error: isError, ...(isError ? { result: 'quota exhausted' } : {}) });
     transport.resolveDone();
     await observed;
@@ -95,7 +95,7 @@ describe('ClaudeBackendDriver', () => {
     const events: BackendEvent[] = [];
     driver.onEvent((event) => events.push(event));
     const setting = driver.setGoal(agent, 'Ship it');
-    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/goal Ship it' }), expect.any(Function), expect.any(Function), expect.any(Function));
+    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ prompt: '/goal Ship it' }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'system', subtype: 'init', session_id: 'goal-session' });
     await expect(setting).resolves.toMatchObject({ goal: { objective: 'Ship it', status: 'active' } });
     transport.emit({ type: 'assistant', message: { content: 'Goal complete!' } });
@@ -161,7 +161,7 @@ describe('ClaudeBackendDriver', () => {
     const started = driver.sendPrompt(quickChat, 'hello claude');
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       cwd: homedir(), prompt: 'hello claude',
-    }), expect.any(Function), expect.any(Function), expect.any(Function));
+    }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'system', subtype: 'init', session_id: 'quick-chat-session' });
     await expect(started).resolves.toEqual(expect.objectContaining({
       backendSession: expect.objectContaining({ kind: 'claude', sessionId: 'quick-chat-session' }),
@@ -214,7 +214,7 @@ describe('ClaudeBackendDriver', () => {
       model: 'claude-sonnet-4-5',
       permissionMode: 'acceptEdits',
       appendSystemPrompt: expect.stringContaining(`Your ${product.name} agent ID is agent-claude.`),
-    }), expect.any(Function), expect.any(Function), expect.any(Function));
+    }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
 
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-session-1' });
     await expect(sendResult).resolves.toStrictEqual({
@@ -369,7 +369,7 @@ describe('ClaudeBackendDriver', () => {
     expect(compactResult).not.toBeNull();
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       prompt: '/compact keep the decisions',
-    }), expect.any(Function), expect.any(Function), expect.any(Function));
+    }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     expect(driver.tryHandlePromptCommand(agent, '/review')).toBeNull();
 
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-context-session' });
@@ -473,7 +473,7 @@ describe('ClaudeBackendDriver', () => {
     expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({
       model: 'haiku',
       effort: 'low',
-    }), expect.any(Function), expect.any(Function), expect.any(Function));
+    }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
 
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-session-defaults' });
     await expect(sendResult).resolves.toStrictEqual({
@@ -553,7 +553,7 @@ describe('ClaudeBackendDriver', () => {
     driver.onEvent((event) => events.push(unwrapClaudeConversationEvent(event)));
 
     const started = driver.sendPrompt(agent, 'hello', { reasoningEffort: 'high' });
-    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: 'high' }), expect.any(Function), expect.any(Function), expect.any(Function));
+    expect(transport.startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: 'high' }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     transport.emit({ type: 'system', subtype: 'init', session_id: 'claude-session-catalog' });
     await started;
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({
@@ -741,7 +741,7 @@ describe('ClaudeBackendDriver', () => {
       ],
       model: 'opus',
       effort: 'xhigh',
-    }), expect.any(Function), expect.any(Function), expect.any(Function));
+    }), expect.any(Function), expect.any(Function), expect.any(Function), expect.any(Function));
     expect(transport.startTurn.mock.calls[0]?.[0].sessionId).toBeUndefined();
     transport.emit({ type: 'assistant', session_id: 'review-session-1', message: { content: [{ type: 'text', text: 'The finding is reachable.' }] } });
     transport.resolveDone();
@@ -1169,6 +1169,7 @@ describe('ClaudeBackendDriver', () => {
 
     expect(transport.startTurn).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: 'review this', attachments }),
+      expect.any(Function),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
