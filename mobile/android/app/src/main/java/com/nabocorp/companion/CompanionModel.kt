@@ -277,6 +277,21 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (dictation.active) dictation.finish()
         else if (canDictate) dictation.start(draft, capture, authorize) { composerDrafts.text = it }
     }
+    /** The laptop's missions, and the one whose ticket worker is open: that worker is read-only except for what it asks. */
+    internal val missions get() = state.items("missions")
+    internal val workerMission: JSONObject? get() = state.optJSONObject("mission")
+    internal var missionDetail by mutableStateOf<String?>(null)
+    internal fun showMissions(id: String? = null) {
+        dictation.cancel()
+        drawerVisible = false
+        missionDetail = id
+        sheet = "missions"
+    }
+    /** A ticket's worker opens like any conversation; the mission stays one step back. */
+    internal fun openTicket(agentId: String) {
+        missionDetail = null
+        selectAgent(agentId)
+    }
     fun selectAgent(id: String) {
         if (id == state.string("agentId")) { drawerVisible = false; command("selectAgent","id" to id); acknowledge(); return }
         dictation.cancel()
