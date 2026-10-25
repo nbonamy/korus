@@ -58,6 +58,15 @@ describe('mobile missions', () => {
       expect(engine.snapshot().mission).toStrictEqual({ id: 'm-here', outcome: 'Outcome of m-here', lead: true });
     } finally { engine.dispose(); }
   });
+  it('stays where it is when asked to open an agent the laptop does not show', async () => {
+    const engine = createEngine({ connector: missionConnector(), post: () => {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectAgent', id: 'w-here' });
+      await engine.dispatch({ type: 'selectAgent', id: 'not-on-this-laptop' });
+      expect(engine.snapshot().agentId).toBe('w-here');
+    } finally { engine.dispose(); }
+  });
   it('switches to the mission\'s team when its worker belongs to another one', async () => {
     const engine = createEngine({ connector: missionConnector(), post: () => {} });
     try {

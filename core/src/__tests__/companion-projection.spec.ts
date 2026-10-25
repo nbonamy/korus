@@ -111,6 +111,13 @@ describe('companion workspace projection', () => {
       expect(next({ stage: 'ship', artifacts: artifacts() })).toBe('ship');
       expect(next({ stage: 'ship', status: 'completed', artifacts: artifacts() })).toBeUndefined();
     });
+    it('lets the phone open a lead that is itself a mission worker, without listing it among the agents', () => {
+      const workspace = projectCompanionWorkspace(source([mission('m', { stage: 'review', stageAgentIds: { review: 'lead' }, execution: { runs: [{ id: 'run', stage: 'review', status: 'running', workerId: 'lead', startedAt: now }] } })],
+        [agent('lead', {}), agent('chat', {})]));
+      expect(workspace.missionProgress[0]!.leadAgentId).toBe('lead');
+      expect(workspace.agents.map(({ id }) => id)).toStrictEqual(['chat']);
+      expect(workspace.missionAgents.map(({ id }) => id)).toStrictEqual(['lead']);
+    });
     it('omits missions of teams the phone cannot see', () => {
       expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
     });

@@ -102,6 +102,7 @@ function missionStart(mission: Mission): string {
 
 /** Active missions first, then the most recent: the phone shows what is moving and what just finished. */
 function companionMissionsOf(source: { missions?: Mission[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
+  // Ticket workers and the leads that are mission workers themselves: neither is in the agent list, both must be openable.
   const workerIds = new Set<string>();
   const ranked = [...(source.missions ?? [])].filter((mission) => mission.artifacts?.tickets)
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
@@ -114,6 +115,7 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
       const after = state === 'blocked' ? (ticket.dependsOn ?? []).filter((blocker) => !mission.artifacts.tickets[blocker]?.done).map((blocker) => blocker + 1) : [];
       return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}), ...(runId ? { runId } : {}) };
     }) }));
+  for (const mission of missions) if (mission.leadAgentId) workerIds.add(mission.leadAgentId);
   return { missions, workerIds };
 }
 

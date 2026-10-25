@@ -561,9 +561,11 @@ export function createEngine(port: EnginePort) {
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
+        // An agent the laptop no longer shows is not a reason to land on some other conversation.
+        if (!companionAgents(state.workspace.value).some(agent => agent.id === command.id)) return;
         ++notificationEpoch; pendingNotification = null;
         ++restoreEpoch;
-        const owner = showingAllTeams.value || state.missions.value.some(mission => mission.tickets.some(ticket => ticket.agentId === command.id))
+        const owner = showingAllTeams.value || state.missions.value.some(mission => mission.leadAgentId === command.id || mission.tickets.some(ticket => ticket.agentId === command.id))
           ? companionAgents(state.workspace.value).find(agent => agent.id === command.id) : undefined;
         const loading = owner?.teamId && owner.teamId !== state.teamId.value ? state.selectTeam(owner.teamId, owner.id) : state.selectAgent(command.id);
         await rememberSelection();
