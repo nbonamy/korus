@@ -168,6 +168,38 @@ struct MissionTicketSummary: Decodable, Hashable, Identifiable {
     var id: Int { number }
 }
 
+struct ReviewFindingSummary: Decodable, Hashable, Identifiable {
+    let id: String; let priority: String; let title: String; let body: String; let repository: String
+    let file: String?; let line: Int?; let endLine: Int?
+    let selected: Bool; let state: String
+
+    var isOpen: Bool { state == "open" }
+    var priorityLabel: String { priority.uppercased() }
+
+    /// "auth/session.ts · line 142", or the span when the finding covers several lines.
+    var location: String? {
+        guard let file else { return nil }
+        guard let line else { return file }
+        if let end = endLine, end > line { return "\(file) · lines \(line)–\(end)" }
+        return "\(file) · line \(line)"
+    }
+}
+
+struct MissionReviewSummary: Decodable, Hashable {
+    let summary: String; let findings: [ReviewFindingSummary]
+
+    var fixedCount: Int { findings.filter { $0.state == "fixed" }.count }
+    var selectedCount: Int { findings.filter { $0.isOpen && $0.selected }.count }
+    var fixingCount: Int { findings.filter { $0.state == "fixing" }.count }
+    /// Only once nothing is open or being fixed can the review run again.
+    var canRerun: Bool { !findings.isEmpty && findings.allSatisfy { $0.state == "fixed" || $0.state == "skipped" } }
+    var progress: Double { findings.isEmpty ? 0 : Double(fixedCount) / Double(findings.count) }
+    /// Findings by priority, most urgent first.
+    var groups: [(priority: String, findings: [ReviewFindingSummary])] {
+        Dictionary(grouping: findings, by: \.priority).sorted { $0.key < $1.key }.map { (priority: $0.key.uppercased(), findings: $0.value) }
+    }
+}
+
 struct MissionSummary: Decodable, Hashable, Identifiable {
     let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
     let startedAt: String?; let updatedAt: String?
@@ -175,6 +207,8 @@ struct MissionSummary: Decodable, Hashable, Identifiable {
     let leadAgentId: String?
     /// What a person can do next: move on to review, or ship, which only the desktop does.
     let next: String?
+    /// What the review found, once there is a review.
+    let review: MissionReviewSummary?
 }
 
 /// The mission that owns the open worker conversation, if any.

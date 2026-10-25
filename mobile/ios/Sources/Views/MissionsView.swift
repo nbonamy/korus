@@ -43,7 +43,16 @@ struct MissionsScreen: View {
                 }
             }
             .toolbarTitleDisplayMode(.inline)
-            .navigationDestination(for: String.self) { MissionDetailScreen(missionID: $0) }
+            .navigationDestination(for: String.self) { route in
+                if route.hasPrefix("review:") {
+                    ReviewScreen(missionID: String(route.dropFirst("review:".count)))
+                } else if route.hasPrefix("finding:") {
+                    let parts = route.dropFirst("finding:".count).split(separator: ":", maxSplits: 1).map(String.init)
+                    if parts.count == 2 { FindingScreen(missionID: parts[0], findingID: parts[1]) }
+                } else {
+                    MissionDetailScreen(missionID: route)
+                }
+            }
         }
         .background(Color(.systemBackground).ignoresSafeArea())
     }
@@ -173,6 +182,7 @@ private struct MissionDetailScreen: View {
                     StageTracker(current: mission.stageIndex, finished: !mission.isActive)
                     Summary(mission: mission)
                     NextStep(mission: mission)
+                    if let review = mission.review { ReviewRow(missionID: mission.id, review: review) }
                     if let lead = mission.leadAgentId { LeadRow(stage: mission.stageLabel, agentId: lead) }
                     if !mission.tickets.isEmpty { Timeline(mission: mission) }
                 }
@@ -299,6 +309,232 @@ private struct LeadRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private extension MissionReviewSummary {
+    var headline: String {
+        findings.isEmpty ? "No findings" : "\(findings.count) \(findings.count == 1 ? "finding" : "findings") · \(fixedCount) fixed"
+    }
+}
+
+private func priorityTint(_ priority: String) -> Color {
+    switch priority.lowercased() {
+    case "p0", "p1": .red
+    case "p2": .orange
+    default: .secondary
+    }
+}
+
+/// A way into what the review found.
+private struct ReviewRow: View {
+    let missionID: String
+    let review: MissionReviewSummary
+
+    var body: some View {
+        NavigationLink(value: "review:\(missionID)") {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist").font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review").font(.subheadline.weight(.medium))
+                    Text(review.headline).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: Review
+
+/// The review's findings: choose what to fix, fix it, and review again once nothing is open.
+private struct ReviewScreen: View {
+    @Environment(AppModel.self) private var model
+    let missionID: String
+    @State private var confirming: Confirmation?
+    private enum Confirmation: Identifiable { case fix, rerun; var id: Self { self } }
+
+    var body: some View {
+        if let mission = model.missions.first(where: { $0.id == missionID }), let review = mission.review {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ReviewSummaryCard(review: review)
+                    ForEach(review.groups, id: \.priority) { group in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text(group.priority).font(.caption.weight(.bold)).foregroundStyle(priorityTint(group.priority))
+                                Text("· \(group.findings.count)").font(.caption.weight(.semibold)).foregroundStyle(priorityTint(group.priority))
+                            }
+                            .padding(.leading, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(group.findings.enumerated()), id: \.element.id) { index, finding in
+                                    FindingRow(missionID: missionID, finding: finding)
+                                    if index < group.findings.count - 1 { Divider().padding(.leading, 52) }
+                                }
+                            }
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { actions(review) }
+            .navigationTitle("Review")
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            ContentUnavailableView("Review unavailable", systemImage: "checklist")
+        }
+    }
+
+    @ViewBuilder private func actions(_ review: MissionReviewSummary) -> some View {
+        let working = model.missionAction == "working"
+        VStack(spacing: 8) {
+            if review.fixingCount > 0 {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Fixing \(review.fixingCount) \(review.fixingCount == 1 ? "finding" : "findings") — the agent is working on your laptop").font(.footnote).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    Button { confirming = .fix } label: {
+                        Text(review.selectedCount > 0 ? "Fix \(review.selectedCount) selected" : "Fix selected").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 14))
+                    .disabled(review.selectedCount == 0 || working)
+                    Button("Re-run review") { confirming = .rerun }
+                        .font(.subheadline.weight(.medium)).disabled(!review.canRerun || working)
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(.bar)
+        .confirmationDialog(confirming == .fix ? "Fix \(review.selectedCount) \(review.selectedCount == 1 ? "finding" : "findings")?" : "Review again?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), titleVisibility: .visible) {
+            if confirming == .fix { Button("Fix selected") { model.command("fixFindings", ["missionId": missionID]) } }
+            else { Button("Re-run review") { model.command("rerunReview", ["missionId": missionID]) } }
+        } message: {
+            Text(confirming == .fix ? "The other open findings are skipped." : "Every finding was fixed or skipped. The review starts right away.")
+        }
+    }
+}
+
+private struct ReviewSummaryCard: View {
+    let review: MissionReviewSummary
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().stroke(Color.green.opacity(0.15), lineWidth: 7)
+                Circle().trim(from: 0, to: review.progress).stroke(Color.green, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
+                Text("\(review.fixedCount)/\(review.findings.count)").font(.system(size: 14, weight: .semibold, design: .rounded)).minimumScaleFactor(0.7)
+            }
+            .frame(width: 56, height: 56)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(review.fixedCount) of \(review.findings.count) fixed").font(.subheadline.weight(.semibold))
+                Text("\(review.findings.count) \(review.findings.count == 1 ? "finding" : "findings") · \(review.selectedCount) selected").font(.caption).foregroundStyle(.secondary)
+                if !review.summary.isEmpty { Text(review.summary).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct StateChip: View {
+    let state: String
+
+    private var label: String { state == "fixing" ? "Fixing" : state == "fixed" ? "Fixed" : state == "skipped" ? "Skipped" : "Open" }
+    private var tint: Color { state == "fixed" ? .green : state == "fixing" ? .accentColor : state == "skipped" ? .secondary : .orange }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if state == "fixing" { ProgressView().controlSize(.mini) }
+            Text(label)
+        }
+        .font(.caption2.weight(.semibold)).foregroundStyle(tint)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct FindingRow: View {
+    @Environment(AppModel.self) private var model
+    let missionID: String
+    let finding: ReviewFindingSummary
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button { model.command("selectFinding", ["missionId": missionID, "findingId": finding.id, "selected": !finding.selected]) } label: {
+                Image(systemName: finding.selected ? "checkmark.circle.fill" : "circle").font(.title3)
+                    .foregroundStyle(finding.selected ? Color.accentColor : Color.secondary.opacity(0.5)).frame(width: 40, height: 44)
+            }
+            .buttonStyle(.plain).disabled(!finding.isOpen || model.missionAction == "working")
+            .opacity(finding.isOpen ? 1 : 0.35)
+            .accessibilityLabel(finding.selected ? "Deselect \(finding.title)" : "Select \(finding.title)")
+            NavigationLink(value: "finding:\(missionID):\(finding.id)") {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(finding.title).font(.subheadline).lineLimit(2).multilineTextAlignment(.leading)
+                        Text([finding.location, finding.repository].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    StateChip(state: finding.state)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.trailing, 12).padding(.vertical, 6)
+        .foregroundStyle(finding.state == "fixed" || finding.state == "skipped" ? .secondary : .primary)
+    }
+}
+
+private struct FindingScreen: View {
+    @Environment(AppModel.self) private var model
+    let missionID: String
+    let findingID: String
+
+    var body: some View {
+        if let finding = model.missions.first(where: { $0.id == missionID })?.review?.findings.first(where: { $0.id == findingID }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 8) {
+                        Text(finding.priorityLabel).font(.caption.weight(.bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 3).background(priorityTint(finding.priority), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        StateChip(state: finding.state)
+                    }
+                    Text(finding.title).font(.title3.weight(.semibold))
+                    if let location = finding.location {
+                        Label(location, systemImage: "doc.text").font(.system(.footnote, design: .monospaced)).foregroundStyle(.secondary)
+                            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    Text(finding.body).font(.subheadline).textSelection(.enabled)
+                }
+                .padding(16)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if finding.isOpen {
+                    Button { model.command("selectFinding", ["missionId": missionID, "findingId": finding.id, "selected": !finding.selected]) } label: {
+                        Text(finding.selected ? "Remove from remediation" : "Select for remediation").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 14)).disabled(model.missionAction == "working")
+                    .padding(.horizontal, 16).padding(.vertical, 12).background(.bar)
+                }
+            }
+            .navigationTitle("\(finding.priorityLabel) finding")
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            ContentUnavailableView("Finding unavailable", systemImage: "checklist")
+        }
     }
 }
 

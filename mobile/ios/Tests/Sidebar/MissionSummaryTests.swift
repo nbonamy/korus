@@ -75,4 +75,21 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertFalse(mission.canContinueToReview)
         XCTAssertFalse(try self.mission(#"{"id":"m","outcome":"o","stage":"requirements","status":"active","done":0,"tickets":[]}"#).allTicketsDone)
     }
+
+    func testReadsAReviewAndSaysWhereAndWhatIsLeftToDo() throws {
+        let json = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":1,"tickets":[],"review":{"summary":"Three issues","findings":[{"id":"a","priority":"p1","title":"A","body":"b","repository":"korus","file":"auth/session.ts","line":142,"endLine":150,"selected":true,"state":"open"},{"id":"b","priority":"p3","title":"B","body":"b","repository":"korus","file":"x.ts","line":7,"selected":false,"state":"fixed"},{"id":"c","priority":"p1","title":"C","body":"b","repository":"korus","selected":true,"state":"fixing"},{"id":"d","priority":"p2","title":"D","body":"b","repository":"korus","selected":false,"state":"skipped"}]}}"#
+        let review = try XCTUnwrap(try mission(json).review)
+        XCTAssertEqual(review.findings[0].location, "auth/session.ts · lines 142–150")
+        XCTAssertEqual(review.findings[1].location, "x.ts · line 7")
+        XCTAssertNil(review.findings[2].location)
+        XCTAssertEqual(review.fixedCount, 1)
+        XCTAssertEqual(review.selectedCount, 1, "A finding already being fixed is not selectable")
+        XCTAssertEqual(review.fixingCount, 1)
+        XCTAssertFalse(review.canRerun)
+        XCTAssertEqual(review.groups.map(\.priority), ["P1", "P2", "P3"])
+        XCTAssertEqual(review.groups[0].findings.map(\.id), ["a", "c"])
+        XCTAssertEqual(review.progress, 0.25)
+        let settled = json.replacingOccurrences(of: "\"state\":\"open\"", with: "\"state\":\"fixed\"").replacingOccurrences(of: "\"state\":\"fixing\"", with: "\"state\":\"skipped\"")
+        XCTAssertTrue(try XCTUnwrap(try mission(settled).review).canRerun)
+    }
 }
