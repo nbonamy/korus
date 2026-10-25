@@ -78,6 +78,7 @@
     :assigned-work-items-by-provider="assignedWorkItemsByProvider"
     :work-backlog-status="workBacklogStatus"
     :work-backlog-error="workBacklogError"
+    :work-backlog-state-for="workBacklogStateFor"
     :daemon-status="daemonStatus"
     :daemon-status-error="daemonStatusError"
     :codex-resource-sharing-migration-required="codexResourceSharingStatus.migrationRequired"
@@ -322,6 +323,7 @@ const {
   assignedWorkItemsByProvider,
   workBacklogStatus,
   workBacklogError,
+  workBacklogStateFor,
   daemonStatus,
   daemonStatusError,
   codexResourceSharingStatus,

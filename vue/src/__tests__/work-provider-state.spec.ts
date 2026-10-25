@@ -8,6 +8,27 @@ import { createWorkProviderState } from '../work-provider-state';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); configureAppClient(); });
 
 describe('work provider authorization state', () => {
+  it('keeps catalog failures and recovery local to the provider while other catalogs remain usable', async () => {
+    let snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    const { api } = createClientApiMock(snapshot);
+    api.listWorkSources.mockImplementation(async provider => {
+      if (provider === 'gitlab') throw new Error('GitLab rate limit reached. Retry later.');
+      return [{ provider, id: 'org/repo', name: 'repo', fullName: 'org/repo', url: 'https://github.com/org/repo' }];
+    });
+    api.configureWorkBacklog.mockResolvedValue(snapshot);
+    api.listWorkItems.mockResolvedValue([]);
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: value => { snapshot = value; } });
+    await state.loadConnected();
+    expect(state.catalogState('github')).toStrictEqual({ status: 'loaded', error: null });
+    expect(state.catalogState('gitlab')).toStrictEqual({ status: 'error', error: 'GitLab rate limit reached. Retry later.' });
+    expect(state.repositoriesByProvider.value.github).toHaveLength(1);
+    api.listWorkSources.mockResolvedValue([]);
+    await state.loadRepositories('gitlab');
+    expect(state.catalogState('gitlab')).toStrictEqual({ status: 'loaded', error: null });
+    expect(state.catalogState('github')).toStrictEqual({ status: 'loaded', error: null });
+  });
   it('retains GitHub catalogs, work and polling when GitLab disconnects', async () => {
     vi.useFakeTimers();
     let snapshot = createInitialSnapshot();

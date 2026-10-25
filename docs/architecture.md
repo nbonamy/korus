@@ -720,6 +720,12 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 - Assignments are provider-neutral records keyed by provider and item ID. Agents
   update status through `update-work-item`; the record survives deletion of its
   agent, and Korus status never changes the tracker's own workflow state.
+- GitLab backlog identity includes the host, full project namespace and native
+  item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
+  API pages; global reads return opaque continuations bound to account and filters.
+  The all-work feed walks accessible projects because GitLab.com restricts global
+  issue reads with `scope=all`. Assigned-to-me reads use the global API. Direct and
+  `glab` connections share this normalization and perform no native workflow writes.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped

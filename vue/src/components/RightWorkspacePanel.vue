@@ -221,7 +221,7 @@
       :location="backlogLocation"
       :assignments="workAssignments"
       :branch="gitStatus?.branch"
-      :repository-id="githubRepository ?? ''"
+      :repository-id="backlogRepositoryId"
       :clear-assignment-action="clearRepositoryWorkAssignment"
       :close-agent-action="closeRepositoryWorkAgent"
       :show-agent-action="showRepositoryWorkAgent"
@@ -387,6 +387,7 @@ async function saveCanvas(agentId: string, input: SaveCanvasInput) {
   return appApi.saveVisualizationCanvas(agentId, input);
 }
 import { translate } from '../i18n';
+import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
@@ -506,6 +507,12 @@ const props = withDefaults(defineProps<{
   deleteVisualization: async () => { throw new Error('Visualize is not available.'); },
   interactivePlansEnabled: true,
   readVisualizationAsset: async () => { throw new Error('Visualize is not available.'); },
+});
+
+const backlogRepositoryId = computed(() => {
+  const origin = props.agent.workspace?.kind === 'git' ? props.agent.workspace.originUrl : undefined;
+  const identity = origin ? canonicalGitRemoteIdentity(origin) : undefined;
+  return identity?.startsWith('gitlab.com/') ? identity : props.githubRepository ?? '';
 });
 
 const planReviewResponder = computed(() => {

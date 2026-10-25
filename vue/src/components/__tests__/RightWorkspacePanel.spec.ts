@@ -336,6 +336,14 @@ describe('RightWorkspacePanel', () => {
     expect(bodyAll('.app-menu__item').map((item) => item.text())).not.toContain('Backlog');
   });
 
+  it('routes a GitLab workspace backlog using its full origin namespace', async () => {
+    const wrapper = mountPanel(['backlog'], 'backlog');
+    const agent = wrapper.props('agent');
+    await wrapper.setProps({ startRepositoryWork: vi.fn(), agent: { ...agent, workspace: { kind: 'git', folder: '/code', repositoryName: 'repo', repositoryRoot: '/code', branch: 'main', primaryWorktreeRoot: '/code', isLinkedWorktree: false, originUrl: 'git@gitlab.com:group/sub/repo.git', updatedAt: '' } } });
+    expect(wrapper.getComponent({ name: 'RepositoryBacklogPanel' }).props('repositoryId')).toBe('gitlab.com/group/sub/repo');
+    wrapper.unmount();
+  });
+
   it('omits the embedded Browser when the host does not provide it', async () => {
     const wrapper = mountPanel([], null, {}, null, {}, undefined, false);
 

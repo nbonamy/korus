@@ -22,6 +22,8 @@ type WorkProviderStateOptions = {
   getSnapshot: () => AppSnapshot;
 };
 
+type CatalogState = { status: 'notLoaded' | 'loading' | 'loaded' | 'error'; error: string | null };
+
 const authorizationPollMs = 5_000;
 
 /** Owns provider authorization, polling, repository catalogs, and backlog state. */
@@ -33,6 +35,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   const assignedItemsByProvider = ref<Partial<Record<WorkProviderKind, WorkItem[]>>>({});
   const status = ref<'notLoaded' | 'loading' | 'loaded' | 'error'>('notLoaded');
   const error = ref<string | null>(null);
+  const catalogStates = ref<Partial<Record<WorkProviderKind, CatalogState>>>({});
   const authorizationPollTimers = new Map<WorkProviderKind, ReturnType<typeof globalThis.setTimeout>>();
   const authorizationRevisions = new Map<WorkProviderKind, number>();
   const catalogRevisions = new Map<WorkProviderKind, number>();
@@ -113,6 +116,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: [] };
     status.value = 'notLoaded';
     error.value = null;
+    setCatalogState(provider, 'notLoaded');
   }
 
   async function loadRepositories(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkSource[]> {
@@ -122,10 +126,12 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     if (!appApi?.listWorkSources || connection(provider)?.status !== 'connected') {
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
       status.value = 'notLoaded';
+      setCatalogState(provider, 'notLoaded');
       return [];
     }
 
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     const revision = (catalogRevisions.get(provider) ?? 0) + 1;
     catalogRevisions.set(provider, revision);
@@ -134,6 +140,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (catalogRevisions.get(provider) !== revision) return [];
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: repositories };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       const configuredId = options.getSnapshot().workBacklog.providerConfigurations[provider]?.sourceId ?? null;
       const selectedId = configuredId ?? repositories[0]?.id ?? null;
       if (selectedId && !configuredId) {
@@ -149,6 +156,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       return [];
     }
   }
@@ -177,17 +185,20 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     const revision = (itemRevisions.get(key) ?? 0) + 1;
     itemRevisions.set(key, revision);
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     try {
       const items = await appApi.listWorkItems(provider, repositoryId);
       if (itemRevisions.get(key) !== revision) return undefined;
       itemsByRepository.value = { ...itemsByRepository.value, [workItemsKey(provider, repositoryId)]: items };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       return items;
     } catch (cause) {
       if (itemRevisions.get(key) !== revision) return undefined;
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       return undefined;
     }
   }
@@ -206,15 +217,18 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   async function loadAssignedItems(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkItem[]> {
     if (!appApi?.listAssignedWorkItems) return [];
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     try {
       const items = await appApi.listAssignedWorkItems(provider, location);
       assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: items };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       return items;
     } catch (cause) {
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       throw cause;
     }
   }
@@ -291,8 +305,17 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     else if (authorization.value?.provider === provider) authorization.value = Object.values(next)[0] ?? null;
   }
 
+  function catalogState(provider: WorkProviderKind): CatalogState {
+    return catalogStates.value[provider] ?? { status: 'notLoaded', error: null };
+  }
+
+  function setCatalogState(provider: WorkProviderKind, status: CatalogState['status'], error: string | null = null): void {
+    catalogStates.value = { ...catalogStates.value, [provider]: { status, error } };
+  }
+
   return {
     assignedItemsByProvider,
+    catalogState,
     authorization,
     authorizations,
     error,

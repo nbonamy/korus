@@ -768,6 +768,7 @@ const props = withDefaults(defineProps<{
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
   workBacklogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   workBacklogError?: string | null;
+  workBacklogStateFor?: (provider: WorkProviderKind) => { status: 'notLoaded' | 'loading' | 'loaded' | 'error'; error: string | null };
   daemonStatus?: DaemonStatus | null;
   daemonStatusError?: string | null;
   codexResourceSharingMigrationRequired?: boolean;
@@ -1899,7 +1900,7 @@ const cockpitBacklogState = useCockpitBacklog({
   confirmLoadAll: async () => {
     try {
       await ElMessageBox.confirm(
-        translate('surface.appShell.thisLoadsYourGlobalGitHubBacklogOnePageAtATimeLargeBackl'),
+        translate('backlogSource.loadGlobalConfirmation'),
         translate('surface.appShell.loadTheGlobalBacklog'),
         {
           confirmButtonText: translate('dynamic.misc.loadEverything'),
@@ -1913,8 +1914,8 @@ const cockpitBacklogState = useCockpitBacklog({
     }
   },
   getSnapshot: () => props.snapshot,
-  getWorkBacklogError: () => props.workBacklogError,
-  getWorkBacklogStatus: () => props.workBacklogStatus,
+  getWorkBacklogError: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).error : props.workBacklogError,
+  getWorkBacklogStatus: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).status : props.workBacklogStatus,
   getWorkItemsByRepository: () => props.workItemsByRepository,
   getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],
   loadGlobalWorkItems: (query, provider) => props.loadGlobalWorkItems(provider, undefined, query),

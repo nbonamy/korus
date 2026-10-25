@@ -26,7 +26,7 @@ export function workItemAssignmentPrompt(item: WorkItem, options: WorkItemPrompt
     'If you need help or cannot proceed, call `update-work-item` with status `blocked` and a concise note explaining what you need. Use status `inProgress` when work resumes.',
     '',
     `Backlog source: ${item.sourceName}`,
-    `${item.kind === 'pullRequest' ? 'Pull request' : 'Issue'}: ${workItemDisplayIdentifier(item)} ${item.title}`,
+    `${item.kind === 'pullRequest' ? (item.provider === 'gitlab' ? 'Merge request' : 'Pull request') : 'Issue'}: ${workItemDisplayIdentifier(item)} ${item.title}`,
     `URL: ${item.url}`,
     item.labels.length > 0 ? `Labels: ${item.labels.map((label) => label.name).join(', ')}` : null,
     item.authorName ? `Author: ${item.authorName}` : null,
@@ -38,7 +38,7 @@ export function workItemAssignmentPrompt(item: WorkItem, options: WorkItemPrompt
 }
 
 function workItemVisibleRequest(item: WorkItem, action?: WorkItemAssignmentAction): string {
-  const kind = item.kind === 'pullRequest' ? 'pull request' : 'issue';
+  const kind = item.kind === 'pullRequest' ? (item.provider === 'gitlab' ? 'merge request' : 'pull request') : 'issue';
   const subject = `${workProviderLabel(item.provider)} ${kind} ${workItemDisplayIdentifier(item)} — ${item.title}`;
   if (action === 'investigate') return `Investigate ${subject}`;
   if (action === 'fix') return `Fix ${subject}`;
@@ -48,7 +48,7 @@ function workItemVisibleRequest(item: WorkItem, action?: WorkItemAssignmentActio
 }
 
 export function workItemComposerPrompt(item: WorkItem): string {
-  const kind = item.kind === 'pullRequest' ? 'pull request' : 'issue';
+  const kind = item.kind === 'pullRequest' ? (item.provider === 'gitlab' ? 'merge request' : 'pull request') : 'issue';
   return `Regarding ${workProviderLabel(item.provider)} ${kind} ${workItemDisplayIdentifier(item)} — ${item.title}:\n\n`
     + `Work item ID: ${workItemAssignmentKey(item)}\nBacklog source: ${item.sourceName}\nURL: ${item.url}\n\n${truncateWorkItemBody(item.body?.trim() ?? '')}\n\n`;
 }
@@ -71,6 +71,7 @@ export function workProviderLabel(provider: WorkItem['provider']): string {
 
 function workItemActionInstruction(item: WorkItem, action?: WorkItemAssignmentAction): string {
   const provider = workProviderLabel(item.provider);
+  const request = item.provider === 'gitlab' ? 'merge request' : 'pull request';
   if (action === 'investigate') {
     return `Investigate this ${provider} issue and report the root cause, impact, and recommended fix. Do not modify files or implement the fix.`;
   }
@@ -78,13 +79,13 @@ function workItemActionInstruction(item: WorkItem, action?: WorkItemAssignmentAc
     return `Fix this ${provider} issue. Reproduce the problem, implement the fix, verify it, and summarize the outcome.`;
   }
   if (action === 'addressFeedback') {
-    return `Address actionable review feedback on this ${provider} pull request. Inspect the current review comments, update the branch, verify the changes, and summarize what you addressed.`;
+    return `Address actionable review feedback on this ${provider} ${request}. Inspect the current review comments, update the branch, verify the changes, and summarize what you addressed.`;
   }
   if (action === 'review') {
-    return `Review this ${provider} pull request for correctness, regressions, missing tests, and maintainability. Report concrete findings and do not modify files.`;
+    return `Review this ${provider} ${request} for correctness, regressions, missing tests, and maintainability. Report concrete findings and do not modify files.`;
   }
   return item.kind === 'pullRequest'
-    ? `Please review this ${provider} pull request and drive the requested work to completion.`
+    ? `Please review this ${provider} ${request} and drive the requested work to completion.`
     : `Please take this ${provider} issue and drive it to completion.`;
 }
 

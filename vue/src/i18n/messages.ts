@@ -3,6 +3,7 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    gitlabBacklog: { mergeRequests: 'Merge requests', searchMergeRequests: 'Search merge requests…', recentMergeRequests: 'Recent merge requests', noMergeRequests: 'No merge requests found.', mr: 'MR', missingBranch: 'GitLab did not return the merge request branch. Refresh and try again.' },
     gitlabIntegration: {
       description: 'Repositories, issues and merge requests',
       setup: `Register a ${product.name} public OAuth application on GitLab.com with the api scope, then set APP_GITLAB_CLIENT_ID on the owning host and restart it.`,
@@ -132,7 +133,8 @@ export const messages = {
       waiting: 'Waiting for {provider} authorization',
     },
     automationSources: { connect: 'Connect {provider} in Settings before saving an automation.', noSources: 'No accessible backlog sources.', codeRepositoryFor: 'Code repository for {source}', refresh: 'Refresh' },
-    backlogSource: { provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}', viewInProvider: 'View in {provider}' },
+    backlogSource: {
+      loadGlobalConfirmation: 'Load work across accessible sources, one page at a time? Large backlogs may take longer to browse.', provider: 'Backlog provider', teamProject: 'Team / project', repository: 'Repository', codeRepository: 'Code repository', chooseCodeRepository: 'Choose a code repository', sources: 'Sources', retry: 'Retry', filterSources: 'Filter sources', openSource: 'Open {repository}', selectItem: 'Select {identifier}', assignedItem: 'Assigned {identifier}', viewAgent: 'View agent for {identifier}', viewItem: 'View {identifier}', startItem: 'Start work on {identifier}', viewProvider: 'View {identifier} in {provider}', viewInProvider: 'View in {provider}' },
     linearIntegration: {
       name: 'Linear', connectLabel: 'Connect Linear', disconnectLabel: 'Disconnect Linear',
       cancelLabel: 'Cancel Linear authorization',

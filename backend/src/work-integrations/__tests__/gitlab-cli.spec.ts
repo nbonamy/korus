@@ -39,6 +39,7 @@ process.stdin.on('end', () => {
   const status = endpoint === 'user' ? 200 : state.status || 200;
   const second = endpoint.includes('page=2');
   const value = endpoint === 'user' ? { username: state.login }
+    : (endpoint.includes('/issues?') || endpoint.includes('/merge_requests?')) ? [{ id: second ? 2 : 1, iid: second ? 8 : 7, title: 'Work', state: 'opened', description: 'CLI body', labels: ['bug'], assignees: [{ username: state.login }], source_branch: 'topic', created_at: '2026-01-01', updated_at: '2026-02-01', web_url: 'https://gitlab.com/group/subgroup/repo/-/' + (endpoint.includes('/issues?') ? 'issues/' : 'merge_requests/') + (second ? 8 : 7) }]
     : endpoint.includes('/branches') ? [{ name: second ? 'main' : 'topic', default: second }]
     : endpoint.startsWith('projects?') ? [{ path: 'repo', path_with_namespace: (second ? 'other/nested' : 'group/subgroup') + '/repo', web_url: 'https://gitlab.com/' + (second ? 'other/nested' : 'group/subgroup') + '/repo', visibility: 'private' }]
     : status === 204 ? null : { accepted: JSON.parse(input || '{}') };
@@ -205,4 +206,17 @@ it('restores the CLI fallback after a restart interrupts direct authorization', 
   expect(restored.workBacklog.connections.find((c: { provider: string }) => c.provider === 'gitlab')).toMatchObject({ source: 'cli', status: 'connected', accountLabel: 'alice' });
   expect(await restarted.listSources('gitlab')).toHaveLength(2);
   restarted.close();
+});
+
+it('uses the shared normalization for paginated GitLab CLI issue and MR reads', async () => {
+  const { manager } = fixture();
+  await manager.hydrateConnections();
+  try {
+    const items = await manager.listItems('gitlab', 'gitlab.com/group/subgroup/repo', { state: 'all' });
+    expect(items.map(item => [item.identifier, item.kind, item.body, item.assignedToViewer])).toStrictEqual([
+      ['#7', 'issue', 'CLI body', true], ['#8', 'issue', 'CLI body', true],
+      ['!7', 'pullRequest', 'CLI body', true], ['!8', 'pullRequest', 'CLI body', true],
+    ]);
+    expect((await calls()).filter(call => call.args[1] !== 'user').every(call => call.args.includes('gitlab.com') && call.args.includes('GET'))).toBe(true);
+  } finally { manager.close(); }
 });

@@ -1,4 +1,4 @@
-import type { SourceBranch, WorkItem, WorkItemPage, WorkSource } from '@workspace/core/contracts';
+import type { GlobalWorkItemQuery, SourceBranch, WorkItem, WorkItemKind, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitLabOAuthClientId } from '../runtime-config';
 import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
@@ -99,9 +99,70 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     }).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
   }
 
-  // Backlog operations are a separate capability implemented by the work-item adapter.
-  async listItems(): Promise<WorkItem[]> { throw new Error('GitLab work-item browsing is unavailable.'); }
-  async listGlobalItems(): Promise<WorkItemPage> { throw new Error('GitLab work-item browsing is unavailable.'); }
+  async listItems(credential: WorkProviderCredential, repositoryId: string, query: WorkItemQuery = {}): Promise<WorkItem[]> {
+    const path = projectPath(repositoryId);
+    const items: WorkItem[] = [];
+    for (const kind of itemKinds(query)) {
+      const url = itemUrl(`/projects/${encodeURIComponent(path)}`, kind, query, 100, 1);
+      const values = await this.pages(credential, url);
+      items.push(...values.map(value => gitlabItem(value, kind, credential.accountLabel, repositoryId))
+        .filter(item => matchesState(item, query)));
+    }
+    return items;
+  }
+
+  async listGlobalItems(credential: WorkProviderCredential, query: GlobalWorkItemQuery = {}): Promise<WorkItemPage> {
+    const size = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
+    if (!Number.isFinite(size)) throw new Error('Invalid GitLab work item page size.');
+    const kinds = itemKinds(query);
+    const signature = JSON.stringify([query.assignment ?? 'all', query.kind ?? 'all', query.state ?? 'open', size, credential.accountLabel]);
+    let cursor: { signature: string; source: string; kind: WorkItemKind; page: number };
+    // GitLab.com restricts /issues?scope=all. Enumerate accessible projects for
+    // the all-work feed instead; assigned-to-me uses the bounded global API.
+    if (query.cursor) {
+      try { if (JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'))?.signature !== signature) throw new Error(); }
+      catch { throw new Error('Invalid GitLab work item cursor. Refresh the feed.'); }
+    }
+    const sources = query.assignment === 'viewer' ? [''] : (await this.listSources(credential)).map(source => source.id);
+    if (query.cursor) {
+      try { cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')); }
+      catch { throw new Error('Invalid GitLab work item cursor. Refresh the feed.'); }
+      if (!cursor || cursor.signature !== signature || !sources.includes(cursor.source) || !kinds.includes(cursor.kind)
+        || !Number.isSafeInteger(cursor.page) || cursor.page < 1) throw new Error('Invalid GitLab work item cursor. Refresh the feed.');
+    } else {
+      if (!sources.length) return { items: [] };
+      cursor = { signature, source: sources[0]!, kind: kinds[0]!, page: 1 };
+    }
+    for (let scanned = 0; scanned < 10_000; scanned++) {
+      const prefix = cursor.source ? `/projects/${encodeURIComponent(projectPath(cursor.source))}` : '';
+      const url = itemUrl(prefix, cursor.kind, query, size, cursor.page);
+      const page = await this.page(credential, url, size);
+      const items = page.values.map(value => gitlabItem(value, cursor.kind, credential.accountLabel, cursor.source || undefined))
+        .filter(item => matchesState(item, query));
+      let next = page.next ? { ...cursor, page: Number(new URL(page.next).searchParams.get('page')) } : undefined;
+      if (!next) {
+        const kindIndex = kinds.indexOf(cursor.kind), sourceIndex = sources.indexOf(cursor.source);
+        if (kindIndex + 1 < kinds.length) next = { ...cursor, kind: kinds[kindIndex + 1]!, page: 1 };
+        else if (sourceIndex + 1 < sources.length) next = { ...cursor, source: sources[sourceIndex + 1]!, kind: kinds[0]!, page: 1 };
+      }
+      if (items.length || !next) return { items, ...(next ? { nextCursor: Buffer.from(JSON.stringify(next)).toString('base64url') } : {}) };
+      cursor = next;
+    }
+    throw new Error('GitLab pagination could not complete. Narrow the backlog and retry.');
+  }
+
+  async listAssignedItems(credential: WorkProviderCredential): Promise<WorkItem[]> {
+    const items: WorkItem[] = [], visited = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await this.listGlobalItems(credential, { assignment: 'viewer', pageSize: 100, ...(cursor ? { cursor } : {}) });
+      items.push(...page.items);
+      cursor = page.nextCursor;
+      if (cursor && (visited.has(cursor) || visited.size >= 10_000)) throw new Error('GitLab pagination could not complete. Retry.');
+      if (cursor) visited.add(cursor);
+    } while (cursor);
+    return items;
+  }
 
   private clientId(): string { return (typeof this.clientIdProvider === 'function' ? this.clientIdProvider() : this.clientIdProvider)?.trim() ?? ''; }
 
@@ -118,11 +179,11 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
 
   protected async apiResponse(credential: WorkProviderCredential, url: string, init: RequestInit = {}): Promise<Response> {
     const token = requireWorkProviderToken(credential);
-    return fetch(url, {
+    try { return await fetch(url, {
       ...init,
       headers: { ...Object.fromEntries(new Headers(init.headers)), Accept: 'application/json', Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}` },
       signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000), redirect: 'error',
-    });
+    }); } catch { throw new Error('GitLab is unavailable. Check the connection and try again.'); }
   }
 
   protected async api(credential: WorkProviderCredential, url: string, init: RequestInit = {}): Promise<Response> {
@@ -143,31 +204,43 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     while (next) {
       if (visited.has(next) || visited.size >= 10_000) throw new Error('GitLab pagination could not complete. Narrow the catalog and retry.');
       visited.add(next);
-      const current: URL = new URL(next);
-      const response = await this.api(credential, next);
-      const values: unknown = await response.json();
-      if (!Array.isArray(values)) throw new Error('GitLab returned an invalid catalog response.');
-      result.push(...values);
-      const link = response.headers.get('link');
-      const linkedNext = link?.split(',').find(part => /rel="?next"?/.test(part))?.match(/<([^>]+)>/)?.[1];
-      if (linkedNext) {
-        const target: URL = new URL(linkedNext, current);
-        if (target.origin !== ORIGIN || target.pathname !== current.pathname || target.username || target.password || target.hash) throw new Error('Invalid GitLab pagination link.');
-        next = target.href;
-      } else if (response.headers.has('x-next-page')) {
-        const page = response.headers.get('x-next-page')!;
-        if (!page) next = null;
-        else {
-          if (!/^\d+$/.test(page) || Number(page) <= Number(current.searchParams.get('page') ?? 1)) throw new Error('Invalid GitLab pagination page.');
-          current.searchParams.set('page', page); next = current.href;
-        }
-      } else if (values.length === 100) {
-        // Some GitLab deployments omit pagination headers: fetch until a short page.
-        current.searchParams.set('page', String(Number(current.searchParams.get('page') ?? 1) + 1)); next = current.href;
-      } else next = null;
+      const page = await this.page(credential, next, 100);
+      result.push(...page.values);
+      next = page.next;
     }
     return result;
   }
+
+  private async page(credential: WorkProviderCredential, url: string, size: number): Promise<{ values: unknown[]; next: string | null }> {
+    const current = new URL(url);
+    const response = await this.api(credential, url);
+    let values: unknown;
+    try { values = await response.json(); } catch { throw new Error('GitLab returned an invalid catalog response.'); }
+    if (!Array.isArray(values)) throw new Error('GitLab returned an invalid catalog response.');
+    const linkedNext = response.headers.get('link')?.split(',').find(part => /rel="?next"?/.test(part))?.match(/<([^>]+)>/)?.[1];
+    let next: string | null = null;
+    if (linkedNext) {
+      const target = new URL(linkedNext, current);
+      if (target.origin !== ORIGIN || target.pathname !== current.pathname || target.username || target.password || target.hash) throw new Error('Invalid GitLab pagination link.');
+      // Preserve our query, taking only the page from the link. GitLab adds
+      // default parameters to links; they must not replace our original scope.
+      const page = target.searchParams.get('page');
+      target.searchParams.delete('page');
+      const expected = new URL(current); expected.searchParams.delete('page');
+      if ([...target.searchParams].some(([key, value]) => expected.searchParams.has(key) && expected.searchParams.get(key) !== value) || !page || !/^\d+$/.test(page) || Number(page) <= Number(current.searchParams.get('page') ?? 1)) throw new Error('Invalid GitLab pagination page.');
+      current.searchParams.set('page', page); next = current.href;
+    } else if (response.headers.has('x-next-page')) {
+      const page = response.headers.get('x-next-page')!;
+      if (page) {
+        if (!/^\d+$/.test(page) || Number(page) <= Number(current.searchParams.get('page') ?? 1)) throw new Error('Invalid GitLab pagination page.');
+        current.searchParams.set('page', page); next = current.href;
+      }
+    } else if (values.length === size) {
+      current.searchParams.set('page', String(Number(current.searchParams.get('page') ?? 1) + 1)); next = current.href;
+    }
+    return { values, next };
+  }
+
 }
 
 function record(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
@@ -182,4 +255,49 @@ function tokenResponse(value: unknown): Omit<WorkProviderToken, 'provider' | 'co
     ...(nonempty(value.refresh_token) ? { refreshToken: value.refresh_token } : {}),
     ...(typeof value.scope === 'string' ? { scope: value.scope } : {}),
   };
+}
+
+function projectPath(id: string): string {
+  if (!id.startsWith('gitlab.com/') || !validProjectPath(id.slice(11))) throw new Error('Invalid GitLab repository identity.');
+  return id.slice(11);
+}
+function itemKinds(query: WorkItemQuery): WorkItemKind[] {
+  return query.kind && query.kind !== 'all' ? [query.kind] : ['issue', 'pullRequest'];
+}
+function itemUrl(prefix: string, kind: WorkItemKind, query: GlobalWorkItemQuery, size: number, page: number): string {
+  const url = new URL(`${API}${prefix}/${kind === 'issue' ? 'issues' : 'merge_requests'}`);
+  url.search = new URLSearchParams({ scope: query.assignment === 'viewer' ? 'assigned_to_me' : 'all',
+    state: query.state === 'closed' && kind === 'pullRequest' ? 'all' : query.state === 'open' || !query.state ? 'opened' : query.state,
+    order_by: 'updated_at', sort: 'desc', per_page: String(size), page: String(page) }).toString();
+  return url.href;
+}
+function matchesState(item: WorkItem, query: WorkItemQuery): boolean {
+  return query.state === 'all' || item.state === (query.state ?? 'open');
+}
+function gitlabItem(value: unknown, kind: WorkItemKind, viewer?: string, expectedSource?: string): WorkItem {
+  if (!record(value) || !Number.isSafeInteger(value.iid) || Number(value.iid) <= 0 || !nonempty(value.web_url)
+    || !nonempty(value.title) || !nonempty(value.created_at) || !nonempty(value.updated_at)
+    || !['opened', 'closed', 'merged', 'locked'].includes(String(value.state)) || !Array.isArray(value.labels) || !Array.isArray(value.assignees)) throw new Error('GitLab returned an invalid work item. Refresh the backlog.');
+  const url = new URL(value.web_url);
+  const suffix = `/-/${kind === 'issue' ? 'issues' : 'merge_requests'}/${value.iid}`;
+  const path = url.pathname.slice(1, -suffix.length);
+  if (url.origin !== ORIGIN || !url.pathname.endsWith(suffix) || url.search || url.hash || url.username || url.password || !validProjectPath(path)
+    || expectedSource && expectedSource !== `gitlab.com/${path}`) throw new Error('GitLab returned an invalid work item identity.');
+  const assignees = value.assignees.map(assignee => {
+    if (!record(assignee) || !nonempty(assignee.username)) throw new Error('GitLab returned an invalid assignee.');
+    return assignee.username;
+  });
+  const identifier = `${kind === 'issue' ? '#' : '!'}${value.iid}`;
+  return { provider: 'gitlab', id: `gitlab.com/${path}${identifier}`, kind,
+    sourceId: `gitlab.com/${path}`, sourceName: path, number: Number(value.iid), identifier,
+    nativeState: String(value.state), state: value.state === 'opened' || value.state === 'locked' ? 'open' : 'closed',
+    assignedToViewer: Boolean(viewer && assignees.includes(viewer)), title: value.title, url: value.web_url,
+    ...(typeof value.description === 'string' ? { body: value.description } : {}),
+    ...(record(value.author) && nonempty(value.author.username) ? { authorName: value.author.username } : {}),
+    ...(kind === 'pullRequest' && nonempty(value.source_branch) ? { branchName: value.source_branch } : {}), assignees,
+    labels: value.labels.map(label => {
+      if (typeof label === 'string') return { name: label };
+      if (record(label) && nonempty(label.name)) return { name: label.name, ...(nonempty(label.color) ? { color: label.color } : {}) };
+      throw new Error('GitLab returned an invalid label.');
+    }), createdAt: value.created_at, updatedAt: value.updated_at };
 }

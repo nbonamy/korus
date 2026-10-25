@@ -6,6 +6,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import { AppStateStore } from '../../persistence/store';
 import { AppMcpService } from '../service';
+import { workItemComposerPrompt } from '@workspace/core/work-item-prompts';
+import { AutomationRunner } from '../../automations/runner';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -35,6 +37,25 @@ async function harness(failSave = false) {
 }
 
 const input = { requestId: 'daily-check', name: 'Daily check', prompt: 'Check my tasks', schedule: { intervalMinutes: 60 }, enabled: false };
+
+it('restores and dispatches scheduled GitLab backlog context independently of GitHub and Linear', async () => {
+  const { call, store } = await harness();
+  const prompts: string[] = [];
+  for (const provider of ['github', 'gitlab', 'linear'] as const) {
+    const prompt = workItemComposerPrompt({ provider, id: `${provider}:item`, sourceId: `${provider}:source`, sourceName: 'Backlog scope', kind: provider === 'gitlab' ? 'pullRequest' : 'issue', identifier: provider === 'gitlab' ? '!7' : '#7', title: 'Inspect work', url: `https://${provider}.com/item`, body: 'Review only', state: 'open', labels: [], createdAt: '', updatedAt: '' });
+    prompts.push(prompt.trim());
+    expect((await call({ ...input, requestId: provider, name: provider, prompt, enabled: true, target: { kind: 'current' } })).isError).toBe(false);
+  }
+  const restored = await store.load();
+  expect(restored.automations.map(automation => automation.prompt)).toStrictEqual(prompts);
+  const sendPrompt = vi.fn().mockResolvedValue({ backend: 'codex', threadId: 'scheduled' });
+  const runner = new AutomationRunner({ getSnapshot: () => restored, saveSnapshot: async () => {}, notifySnapshotUpdated: vi.fn(), sendPrompt });
+  await runner.runAutomation(restored.automations[1]!.id);
+  expect(sendPrompt).toHaveBeenCalledWith('agent-dina', expect.stringContaining('GitLab merge request !7'));
+  expect(restored.workBacklog.assignments).toStrictEqual({});
+  expect(restored.automations[0]!.executionLog).toStrictEqual([]);
+  expect(restored.automations[2]!.executionLog).toStrictEqual([]);
+});
 
 it('creates durable UI-visible automations from a Quick Chat and makes retried creation idempotent', async () => {
   const { call, snapshot, store, onEvent } = await harness();
