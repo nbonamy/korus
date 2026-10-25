@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { product } from '@workspace/core/product';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKAssistantMessage, SDKPartialAssistantMessage, SDKTaskStartedMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Agent } from '@workspace/core/contracts';
 import { createClaudeConversationReplica, type ClaudeConversationReplica } from '@workspace/core/claude-conversation-replica';
 import { decodeAppBackendEvent, type AppBackendEvent } from '@workspace/core/backend-protocol/events';
@@ -17,6 +18,10 @@ import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
 import { TurnClock } from '../../usage/turn-clock';
+import { loadPricingHistory } from '../../pricing/catalog';
+import type { RequestObservation } from '@workspace/core/usage';
+import type { AgentBackendDriver } from '@workspace/core/backend-driver';
+import { DatabaseSync } from 'node:sqlite';
 
 vi.mock('@workspace/core/runtime-discovery', () => ({
   resolveRuntimeLaunch: (command: string, env: NodeJS.ProcessEnv | undefined) => ({ command, env: { ...process.env, ...env } }),
@@ -27,12 +32,40 @@ function agent(id = 'claude-a'): Agent {
   return { id, name: id, folder: '/tmp/project', teamId: 'team-test', backend: 'claude', status: { type: 'idle' }, createdAt: '', updatedAt: '' };
 }
 
+// SDK assistant output is a message-start placeholder; only the stream delta
+// below supplies the measured output. Multiple blocks share one message ID.
+function requestFixture(id: string, input = 10, read = 199990, write5 = 0, write1 = 0, output = 100,
+  model = 'claude-sonnet-4-5', parent: string | null = null, speed: 'standard' | 'fast' = 'standard', region = 'global') {
+  const usage: SDKAssistantMessage['message']['usage'] = {
+    input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: write5 + write1,
+    cache_creation: { ephemeral_5m_input_tokens: write5, ephemeral_1h_input_tokens: write1 },
+    output_tokens: 1, service_tier: 'standard', speed, inference_geo: region,
+    output_tokens_details: null, server_tool_use: null, iterations: null, fallback_credit: null,
+  };
+  const message: SDKAssistantMessage['message'] = {
+    id, type: 'message', role: 'assistant', model, usage, content: [],
+    container: null, context_management: null, diagnostics: null, stop_details: null, stop_reason: null, stop_sequence: null,
+  };
+  const envelope = { session_id: 'requests', parent_tool_use_id: parent, uuid: randomUUID() };
+  const assistant = { ...envelope, type: 'assistant', request_id: `req-${id}`, message } satisfies SDKAssistantMessage;
+  const start = { ...envelope, type: 'stream_event', event: { type: 'message_start', message } } satisfies SDKPartialAssistantMessage;
+  const delta = { ...envelope, type: 'stream_event', event: {
+    type: 'message_delta', context_management: null,
+    delta: { stop_reason: 'end_turn' as SDKAssistantMessage['message']['stop_reason'], stop_sequence: null, stop_details: null, container: null },
+    usage: { input_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
+      output_tokens: output, output_tokens_details: { thinking_tokens: Math.min(20, output) } as SDKAssistantMessage['message']['usage']['output_tokens_details'],
+      iterations: null, server_tool_use: null, fallback_credit: null },
+  } } satisfies SDKPartialAssistantMessage;
+  const stop = { ...envelope, type: 'stream_event', event: { type: 'message_stop' } } satisfies SDKPartialAssistantMessage;
+  return { assistant, start, delta, stop };
+}
+
 describe(`Claude Agent SDK → ${product.name} backend`, () => {
   const servers: AppBackendServer[] = [];
   const homes: string[] = [];
-  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string) {
+  function setup(withConnections = false, usage?: UsageService, models: Array<Record<string, unknown>> = [], homeDir?: string, env?: NodeJS.ProcessEnv) {
     const sdk = createQueryHarness(models);
-    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery }), undefined, { homeDir });
+    const driver = new ClaudeBackendDriver(new ClaudeAgentSdkTransport({ createQuery: sdk.createQuery, env }), undefined, { homeDir });
     const snapshot = createTestSnapshot();
     snapshot.general.claudeCodeEnabled = true;
     snapshot.agents = [agent(), agent('claude-b')];
@@ -48,6 +81,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
     await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
+    vi.unstubAllEnvs();
   });
 
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
@@ -287,6 +321,236 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       turns: 1, outputTokens: 40, generationMs: toolFirst ? 3000 : 4000,
       ttftMs: toolFirst ? 2000 : 1000, ttftTurns: 1,
     });
+  });
+
+  // Owner-boundary regressions: cache semantics/lifetimes, stream replacement,
+  // output placeholders, reroutes, tier/context composition, and durable costs.
+  it('prices streamed Claude requests by actual model, context and cache lifetime without charging result totals', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'claude-request-ledger-')); homes.push(folder);
+    const file = path.join(folder, 'usage.sqlite');
+    const prices = structuredClone(loadPricingHistory());
+    prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!.text!.input!.overrides = [
+      { when: { context: { gt: 200000 } }, price: 6 },
+    ];
+    const ledger = new UsageLedger(file, Date.now, prices); await ledger.load();
+    const usage = new UsageService(ledger, () => undefined);
+    const { sdk, driver, server, snapshot } = setup(false, usage);
+    const requests: RequestObservation[] = [];
+    (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'CANARY private input', { model: 'selected-alias' });
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests', model: 'selected-alias' }); await sending;
+    const fixtures = [requestFixture('boundary'), requestFixture('above', 11),
+      requestFixture('fast', 100, 8000, 50, 100, 200, 'claude-opus-5-5', null, 'fast', 'us')];
+    for (const f of fixtures) { sdk.emit(f.start); sdk.emit(f.assistant); sdk.emit(f.delta); sdk.emit(f.delta); sdk.emit(f.stop); sdk.emit(f.assistant);
+      const stale = structuredClone(f.delta); stale.event.usage.output_tokens = 1; stale.event.usage.output_tokens_details = { thinking_tokens: 0 }; sdk.emit(stale); }
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'requests', is_error: false,
+      usage: { input_tokens: 121, cache_read_input_tokens: 407980, cache_creation_input_tokens: 150, output_tokens: 400 } });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle')); await usage.drain();
+    const cost = { usd: 0.1386, coverage: 'complete', requests: 3, pricedRequests: 3, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] };
+    expect(ledger.query().cost).toStrictEqual(cost);
+    expect(ledger.query().rows[0]!.tokens).toStrictEqual({ input: 408251, output: 400, cacheRead: 407980, cacheWrite: 150, reasoning: null, total: 408651 });
+    expect(ledger.query({ group: 'model' }).rows.map(r => [r.label, r.cost?.usd]).sort()).toStrictEqual([
+      ['claude-opus-5-5', 0.01551], ['claude-sonnet-4-5', 0.12309], ['selected-alias', null],
+    ]);
+    const final = requests.filter(r => r.requestId === 'fast').at(-1)!;
+    expect(final).toMatchObject({ model: 'claude-opus-5-5', upstreamRequestId: 'req-fast', parentToolUseId: null,
+      status: 'final', reportedServiceTier: 'standard', reportedMode: 'fast', requestedServiceTier: null,
+      pricingContext: { context: 8250, region: 'us' }, tokens: { input: 100, cacheRead: 8000, cacheWrite: { '5m': 50, '1h': 100 },
+        output: 200, reasoning: 20, inputIncludesCacheRead: false, inputIncludesCacheWrite: false, outputIncludesReasoning: true } });
+    expect(new Set(requests.filter(r => r.requestId === 'fast').map(r => r.at)).size).toBe(1);
+    const db = new DatabaseSync(file); const persisted = db.prepare('SELECT observation FROM requests ORDER BY request_id').all().map(r => JSON.parse(String(r.observation))); db.close();
+    expect(persisted).toStrictEqual(['above','boundary','fast'].map(id => requests.filter(r => r.requestId === id).at(-1)));
+    expect(JSON.stringify(persisted)).not.toContain('CANARY');
+    const response = await server.handleMessage({ jsonrpc: '2.0', id: 'cost', method: 'usage/get', params: {} });
+    expect(response).toMatchObject({ result: { cost } });
+    const summary = ledger.query(); await usage.close();
+    const reopened = new UsageLedger(file, Date.now, prices); await reopened.load();
+    expect(reopened.query()).toStrictEqual(summary); await reopened.close();
+  });
+
+  it('retains missing SDK evidence instead of pricing placeholders, cache guesses or unreported billing conditions', async () => {
+    const ledger = new UsageLedger(':memory:'); await ledger.load();
+    const usage = new UsageService(ledger, () => undefined);
+    const { sdk, driver, snapshot } = setup(false, usage);
+    const requests: RequestObservation[] = []; (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1)); sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' }); await sending;
+    sdk.emit(requestFixture('placeholder').assistant);
+    const missingCache = requestFixture('missing-cache'); missingCache.start.event.message.usage.cache_creation = null;
+    missingCache.start.event.message.usage.cache_creation_input_tokens = 5;
+    const missingMode = requestFixture('missing-speed', 0, 0, 0, 0, 0, 'claude-opus-5-5'); missingMode.start.event.message.usage.speed = null;
+    const missingTier = requestFixture('missing-tier'); missingTier.start.event.message.usage.service_tier = null;
+    for (const f of [missingCache, missingMode, missingTier]) { sdk.emit(f.start); sdk.emit(f.delta); sdk.emit(f.stop); }
+    sdk.emit({ type: 'assistant', session_id: 'requests', message: { usage: { input_tokens: 999, output_tokens: 999 } } });
+    sdk.emit({ type: 'result', subtype: 'error_during_execution', session_id: 'requests', is_error: true,
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+    await vi.waitFor(async () => { await usage.drain(); expect(ledger.query().rows[0]?.failed).toBe(1); });
+    expect(ledger.query().cost).toStrictEqual({ usd: null, coverage: 'unavailable', requests: 4, pricedRequests: 0, unpricedRequests: 4,
+      unknownRequestExecutions: 1, reasons: [ { reason: 'missing-billing-mode', count: 1 }, { reason: 'missing-cache-usage', count: 1 },
+        { reason: 'missing-service-tier', count: 1 }, { reason: 'missing-token-usage', count: 1 }, { reason: 'unknown-request-coverage', count: 1 } ] });
+    expect(requests.filter(r => r.requestId === 'placeholder').at(-1)?.tokens.output).toBeNull();
+    expect(requests.filter(r => r.requestId === 'missing-cache').at(-1)?.tokens.cacheWrite).toBeNull();
+    await usage.close();
+  });
+
+  it.each([
+    ['unknown reasoning split', null],
+    ['unknown reasoning category discount', null],
+    ['unknown differently priced reasoning', 'missing-token-usage'],
+    ['unknown adjusted reasoning', 'missing-token-usage'],
+    ['measured zero', null],
+    ['contradictory zero cache', 'missing-cache-usage'],
+    ['zero cache without lifetime object', null],
+    ['inconsistent lifetimes', 'missing-cache-usage'],
+    ['unknown model', 'unknown-model'],
+    ['missing region', 'missing-pricing-context'],
+    ['multiple server iterations', 'unsupported-request-iterations'],
+    ['rerouted server iteration', 'unsupported-request-iterations'],
+    ['single matching server iteration', null],
+    ['unsupported batch tier', 'unsupported-service-tier'],
+    ['unsupported priority tier', 'unsupported-service-tier'],
+    ['third-party route', 'unknown-provider'],
+  ] as const)('keeps %s evidence precise through SDK transport and analytics', async (scenario, reason) => {
+    const prices = structuredClone(loadPricingHistory());
+    const cost = prices[0]!.anthropic.find(m => m.id === 'claude-sonnet-4-5')!.cost!;
+    if (scenario === 'unknown reasoning category discount') cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { price: 0.5 } } } }];
+    if (scenario === 'unknown differently priced reasoning') cost.text!.output!.reasoning = 30;
+    if (scenario === 'unknown adjusted reasoning') { cost.text!.output!.reasoning = 15; cost.multipliers = [{ when: { region: { equals: 'global' } }, factor: { text: { output: { reasoning: 2 } } } }]; }
+    const ledger = new UsageLedger(':memory:', Date.now, prices); await ledger.load(); const usage = new UsageService(ledger, () => undefined);
+    const { sdk, driver, snapshot } = setup(false, usage, [], undefined, scenario === 'third-party route' ? { ANTHROPIC_BASE_URL: 'https://proxy.invalid' } : undefined);
+    const requests: RequestObservation[] = []; (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work'); await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' }); await sending;
+    const f = requestFixture('evidence', scenario === 'measured zero' ? 0 : 10, 0, 0, 0, scenario === 'measured zero' ? 0 : 20);
+    if (scenario.startsWith('unknown reasoning') || scenario === 'unknown differently priced reasoning' || scenario === 'unknown adjusted reasoning') f.delta.event.usage.output_tokens_details = null;
+    if (scenario === 'contradictory zero cache') f.start.event.message.usage.cache_creation!.ephemeral_1h_input_tokens = 100;
+    if (scenario === 'zero cache without lifetime object') f.start.event.message.usage.cache_creation = null;
+    if (scenario === 'inconsistent lifetimes') f.start.event.message.usage.cache_creation_input_tokens = 100;
+    if (scenario === 'unknown model') f.start.event.message.model = 'unknown-exact-id';
+    if (scenario === 'missing region') { f.start.event.message.model = 'claude-sonnet-4-6'; f.start.event.message.usage.inference_geo = null; }
+    if (scenario === 'unsupported priority tier') f.start.event.message.usage.service_tier = 'priority';
+    if (scenario === 'unsupported batch tier') f.start.event.message.usage.service_tier = 'batch';
+    if (scenario === 'multiple server iterations') f.start.event.message.usage.iterations = [
+      { type: 'message', model: 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
+      { type: 'message', model: 'claude-sonnet-4-5', input_tokens: 500000, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
+    ];
+    if (scenario === 'rerouted server iteration' || scenario === 'single matching server iteration') f.start.event.message.usage.iterations = [
+      { type: 'message', model: scenario === 'rerouted server iteration' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cache_creation: null },
+    ];
+    // A duplicate/reordered replay of the stream must not reset measured output.
+    for (const m of [f.start, f.delta, f.stop, f.start, f.assistant, f.stop]) sdk.emit(m);
+    await vi.waitFor(() => expect(requests.at(-1)?.status).toBe('final')); await usage.drain();
+    expect(ledger.query().cost).toStrictEqual({ usd: reason ? null : scenario === 'measured zero' ? 0 : scenario === 'unknown reasoning category discount' ? 0.00018 : 0.00033, coverage: reason ? 'unavailable' : 'partial',
+      requests: 1, pricedRequests: reason ? 0 : 1, unpricedRequests: reason ? 1 : 0, unknownRequestExecutions: 1,
+      reasons: [...(reason ? [{ reason, count: 1 }] : []), { reason: 'unknown-request-coverage', count: 1 }].sort((a,b) => a.reason.localeCompare(b.reason)) });
+    if (scenario === 'unknown reasoning split') expect(requests.at(-1)?.tokens.reasoning).toBeNull();
+    await usage.close();
+  });
+
+  it.each([
+    ['project proxy', 'project', { ANTHROPIC_BASE_URL: 'https://proxy.invalid' }, null],
+    ['user proxy', 'user', { ANTHROPIC_BASE_URL: 'https://proxy.invalid' }, null],
+    ['local Bedrock', 'local', { CLAUDE_CODE_USE_BEDROCK: '1' }, null],
+    ['local Vertex', 'local', { CLAUDE_CODE_USE_VERTEX: '1' }, null],
+    ['local Foundry', 'local', { CLAUDE_CODE_USE_FOUNDRY: '1' }, null],
+    ['direct Anthropic', 'project', { ANTHROPIC_BASE_URL: 'https://api.anthropic.com/' }, 'anthropic'],
+  ] as const)('prices %s from SDK settings without assuming a direct provider', async (_name, source, env, provider) => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'claude-pricing-settings-'));
+    homes.push(home);
+    const config = path.join(home, 'config');
+    const cwd = path.join(home, 'project');
+    await mkdir(config, { recursive: true });
+    await mkdir(path.join(cwd, '.claude'), { recursive: true });
+    vi.stubEnv('CLAUDE_CONFIG_DIR', config);
+    const settings = source === 'user' ? path.join(config, 'settings.json')
+      : path.join(cwd, '.claude', source === 'local' ? 'settings.local.json' : 'settings.json');
+    await writeFile(settings, JSON.stringify({ env }));
+    const ledger = new UsageLedger(':memory:');
+    await ledger.load();
+    const usage = new UsageService(ledger, () => undefined);
+    try {
+      const { sdk, driver, snapshot } = setup(false, usage, [], undefined, {
+        ANTHROPIC_BASE_URL: undefined, CLAUDE_CODE_USE_BEDROCK: undefined,
+        CLAUDE_CODE_USE_VERTEX: undefined, CLAUDE_CODE_USE_FOUNDRY: undefined,
+      });
+      snapshot.agents[0]!.folder = cwd;
+      const requests: RequestObservation[] = [];
+      driver.onRequestUsage(e => requests.push(e));
+      const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work');
+      await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+      sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' });
+      await sending;
+      const fixture = requestFixture('settings-route', 10, 1000, 50, 100, 100);
+      for (const event of [fixture.start, fixture.delta, fixture.stop]) sdk.emit(event);
+      sdk.emit({ type: 'result', subtype: 'success', session_id: 'requests', is_error: false,
+        usage: { input_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 150, output_tokens: 100 } });
+      await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+      await usage.drain();
+      expect(requests.at(-1)?.apiProvider).toBe(provider);
+      expect(ledger.query().cost).toStrictEqual({
+        usd: provider ? 0.0026175 : null, coverage: provider ? 'complete' : 'unavailable',
+        requests: 1, pricedRequests: provider ? 1 : 0, unpricedRequests: provider ? 0 : 1,
+        unknownRequestExecutions: 0, reasons: provider ? [] : [{ reason: 'unknown-provider', count: 1 }],
+      });
+    } finally { await usage.close(); }
+  });
+
+  it('retains measured streamed usage when interrupted without promoting incomplete output to a final count', async () => {
+    const ledger = new UsageLedger(':memory:'); await ledger.load(); const usage = new UsageService(ledger, () => undefined);
+    const { sdk, driver, snapshot } = setup(false, usage);
+    const requests: RequestObservation[] = []; (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work'); await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' }); await sending;
+    const measured = requestFixture('measured', 10, 1000, 0, 0, 20);
+    for (const m of [measured.start, measured.delta, measured.stop]) sdk.emit(m);
+    const incomplete = requestFixture('incomplete', 10, 1000, 0, 0, 5); incomplete.delta.event.delta.stop_reason = null;
+    sdk.emit(incomplete.start); sdk.emit(incomplete.delta); sdk.emit(incomplete.assistant);
+    await vi.waitFor(() => expect(requests.at(-1)?.upstreamRequestId).toBe('req-incomplete'));
+    expect(requests.at(-1)?.tokens.output).toBe(5);
+    await driver.interrupt(snapshot.agents[0]!); await usage.drain();
+    expect(ledger.query().cost).toStrictEqual({ usd: 0.00063, coverage: 'partial', requests: 2, pricedRequests: 1, unpricedRequests: 1,
+      unknownRequestExecutions: 1, reasons: [{ reason: 'provisional-usage', count: 1 }, { reason: 'unknown-request-coverage', count: 1 }] });
+    expect(ledger.query().rows[0]).toMatchObject({ started: 1, interrupted: 1, tokens: null });
+    await usage.close();
+  });
+
+  it('counts measured retries and late subagent requests once under their original parent across a later turn', async () => {
+    const ledger = new UsageLedger(':memory:'); await ledger.load(); const usage = new UsageService(ledger, () => undefined);
+    const { sdk, driver, snapshot } = setup(false, usage);
+    const requests: RequestObservation[] = []; (driver as AgentBackendDriver).onRequestUsage?.(e => requests.push(e));
+    const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work'); await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' }); await sending;
+    const root = requestFixture('root', 10, 1000, 0, 0, 20);
+    root.assistant.message.content = [{ type: 'tool_use', id: 'child-tool', name: 'Agent', input: { description: 'Child' }, caller: { type: 'direct' } }];
+    for (const m of [root.start, root.assistant, root.delta, root.stop]) sdk.emit(m);
+    const retry = requestFixture('retry', 10, 1000, 0, 0, 20);
+    for (const m of [retry.start, retry.delta, retry.stop]) sdk.emit(m);
+    sdk.emit({ type: 'result', subtype: 'success', session_id: 'requests', is_error: false,
+      usage: { input_tokens: 20, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0, output_tokens: 40 } });
+    await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+    const firstTurn = requests[0]?.turnId;
+    const second = driver.sendPrompt(snapshot.agents[0]!, 'Continue'); await vi.waitFor(() => expect(sdk.inputs).toHaveLength(2));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' }); await second;
+    const child = requestFixture('child', 10, 1000, 0, 0, 20, 'claude-haiku-4-5', 'child-tool');
+    for (const m of [child.start, child.delta, child.stop, child.assistant, child.assistant, root.assistant]) sdk.emit(m);
+    const last = requestFixture('last', 10, 1000, 0, 0, 20); for (const m of [last.start, last.delta, last.stop]) sdk.emit(m);
+    sdk.emit({ type: 'result', subtype: 'error_during_execution', session_id: 'requests', is_error: true,
+      usage: { input_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0, output_tokens: 20 } });
+    await vi.waitFor(async () => { await usage.drain(); expect(ledger.query().rows[0]?.failed).toBe(1); });
+    expect(ledger.query().cost).toStrictEqual({ usd: 0.0021, coverage: 'partial', requests: 4, pricedRequests: 4, unpricedRequests: 0,
+      unknownRequestExecutions: 1, reasons: [{ reason: 'unknown-request-coverage', count: 1 }] });
+    expect(requests.filter(r => r.requestId === 'child').at(-1)).toMatchObject({ turnId: firstTurn, parentToolUseId: 'child-tool' });
+    expect(ledger.query().rows[0]).toMatchObject({ started: 2, completed: 1, failed: 1, tokens: { input: 3030, output: 60, cacheRead: 3000, cacheWrite: 0 } });
+    // An uncorrelated late child cannot be assigned to the latest user execution.
+    const orphan = requestFixture('unknown-parent', 10, 1000, 0, 0, 20, 'claude-sonnet-4-5', 'unobserved-tool');
+    for (const m of [orphan.start, orphan.delta, orphan.stop]) sdk.emit(m);
+    await vi.waitFor(async () => { await usage.drain(); expect(ledger.query().cost?.unknownRequestExecutions).toBe(2); });
+    expect(ledger.query().cost?.usd).toBe(0.0021);
+    expect(ledger.query().cost?.requests).toBe(4);
+    expect(requests.some(r => r.requestId === 'unknown-parent')).toBe(false);
+
+    await usage.close();
   });
 
   it('observes actual SDK executions once, ignoring chunks and steering, with per-turn main-loop consumption', async()=>{

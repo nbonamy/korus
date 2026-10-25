@@ -29,3 +29,61 @@ it("accepts bounded timing and rejects empty spans, a first output after the end
   ])
     expect(validExecutionTiming(value)).toBe(false);
 });
+
+it("validates request measurements without accepting content, unsafe counts or ambiguous update identities", async () => {
+  const { validRequestObservation } = await import("../usage");
+  const value = {
+    provider: "codex",
+    agentId: "a",
+    sessionId: "s",
+    turnId: "t",
+    requestId: "r",
+    at: 1,
+    revision: 0,
+    status: "final",
+    apiProvider: "openai",
+    model: "gpt-6-sol",
+    modality: "text",
+    cacheMode: "implicit",
+    requestedServiceTier: "priority",
+    reportedServiceTier: null,
+    reportedMode: null,
+    pricingContext: { context: null, region: null },
+    tokens: {
+      input: 0,
+      output: 0,
+      cacheRead: null,
+      cacheWrite: null,
+      reasoning: null,
+      inputIncludesCacheRead: null,
+      inputIncludesCacheWrite: null,
+      outputIncludesReasoning: null,
+    },
+  };
+  expect(validRequestObservation(value)).toBe(true);
+  expect(
+    validRequestObservation({
+      ...value,
+      defaultServiceTier: {
+        tier: "standard",
+        source: "https://provider.example/tier-default",
+      },
+    }),
+  ).toBe(true);
+  for (const patch of [
+    { prompt: "content" },
+    { provider: "unknown" },
+    { requestId: "" },
+    { revision: -1 },
+    { revision: 1.5 },
+    { at: NaN },
+    { status: "complete" },
+    { apiProvider: "codex" },
+    { pricingContext: { prompt: "content" } },
+    { tokens: { ...value.tokens, input: -1 } },
+    { tokens: { ...value.tokens, cacheWrite: { "5m": Infinity } } },
+    { tokens: { ...value.tokens, inputIncludesCacheRead: "yes" } },
+    { tokens: { ...value.tokens, content: "private" } },
+  ])
+    expect(validRequestObservation({ ...value, ...patch })).toBe(false);
+});

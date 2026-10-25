@@ -78,6 +78,8 @@ export type ClaudeTurnTransport = {
     onMessage: (message: ClaudeSdkMessage) => void,
     onPermissionRequest?: (request: ClaudePermissionRequest) => void,
     onPermissionCancelled?: (requestId: string) => void,
+    /** null reports an incomplete request set without fabricating an identity. */
+    onRequestUsage?: (usage: import('./request-usage').ClaudeRequestUsage | null) => void,
   ): ClaudeTurnHandle;
   respondToPermissionRequest?(requestId: string, response: ClaudePermissionResponse, ownerId?: string): Promise<void>;
   discoverModels?(params: ClaudeModelDiscoveryParams): Promise<ClaudeAvailableModel[] | null>;

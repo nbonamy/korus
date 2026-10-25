@@ -89,6 +89,81 @@ with implementation in a separate accepted turn. [The plan](../plans/antigravity
 records transport evidence, model restrictions, attachment support and unsupported
 capabilities.
 
+### Request pricing evidence
+
+Antigravity executions retain turn status and timing with unknown model and token
+consumption. Their request coverage is partial with
+`acp-request-evidence-unavailable`; analytics includes each execution in the unknown
+request count and returns unavailable USD rather than zero. Context notifications,
+selected model settings, permission modes and cumulative session costs cannot
+establish individual API charges. No underlying provider is inferred from the
+Antigravity provider name or the catalog's display names.
+
+The qualified Google-hosted ACP 1.3.0 executable implements the v1-shaped wire
+contract while reporting protocol 2. Its bundled Python adapter is the evidence
+boundary; the public CLI, Python SDK and Gemini Interactions API are different
+interfaces. The [pinned public registry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json)
+identifies the distribution. [Fixture provenance](../backend/src/antigravity/__tests__/fixtures/usage-capability.json)
+records archive/executable hashes and source locations. These are source-derived
+wire fixtures with synthetic numbers and identities, not a live billing capture.
+
+| Required evidence | Public ACP surface | Pricing consequence |
+| --- | --- | --- |
+| Billable request identity and timestamp | Session ID and JSON-RPC prompt correlation; no identity or timestamp for each underlying model call | Request count remains unknown; a prompt can contain several calls/retries |
+| Actual model and underlying API provider | `models.currentModelId`, `availableModels` and model config options describe selection | No served-model assertion, exact API model mapping or provider attribution; Google, Anthropic and OpenAI routes remain unpriced |
+| Input/output/cache-read/cache-write counts and inclusion semantics | `server.py::_maybe_send_usage_update` emits only `used` and `size`; `_extract_tokens_used` collapses categories | Context occupancy never becomes measured consumption |
+| Cache-write lifetimes | No buckets in emitted updates or the optional schema-level `Usage` | No lifetime assumptions or fabricated zero writes |
+| Pricing context | `used` is derived from main-trajectory cumulative deltas, includes output/thinking and caches; `size` uses the selected model's context limit | Neither supplies per-request pricing input; subagent context is excluded and updates can coalesce |
+| Served tier/mode | Session mode config describes permissions; no served billing tier/mode in output | No standard-tier default or requested-as-served substitution |
+| Finality and completeness | `prompt` returns `PromptResponse(stop_reason=...)` without usage, including cancellation; schema supports optional turn totals but the adapter does not populate them | Completed, failed and interrupted turns retain unavailable coverage |
+
+The [ACP usage contract](https://agentclientprotocol.com/protocol/v1/prompt-turn#session-usage-updates)
+defines `used`/`size` as context utilization and optional `cost` as cumulative
+session cost. The shipped schema also defines optional cumulative token categories
+on `PromptResponse.usage`. Schema availability does not prove runtime emission or
+request boundaries. Regression fixtures exercise those optional fields separately
+as negative controls: neither turns into request-aware USD.
+
+To repeat the source check without authentication, use the qualified archive's
+`agy_acp_server.par` as the argument below. It reads only the shipped public adapter
+and schema, validates stored ZIP-entry checksums, and prints the relevant ranges;
+it does not execute the runtime or access a provider endpoint.
+
+```bash
+python3 - /path/to/agy_acp_server.par <<'PY'
+import hashlib, pathlib, struct, sys, zlib
+data = pathlib.Path(sys.argv[1]).read_bytes()
+print('executable sha256:', hashlib.sha256(data).hexdigest())
+root = 'google3/cloud/developer_experience/antigravity_extensions/acp_server/'
+ranges = {
+    root + 'server.py': [(1473, 1528), (5283, 5318), (5850, 5941)],
+    root + 'config_options.py': [(49, 103)],
+    'google3/third_party/py/acp/schema.py': [(1397, 1444), (1697, 1720), (3846, 3880)],
+}
+found, offset = set(), 0
+while (offset := data.find(b'PK\x03\x04', offset)) >= 0:
+    header = struct.unpack_from('<IHHHHHIIIHH', data, offset)
+    method, checksum, size, name_len, extra_len = header[3], header[6], header[7], header[9], header[10]
+    name = data[offset + 30:offset + 30 + name_len].decode('utf-8', errors='replace')
+    start = offset + 30 + name_len + extra_len
+    if name in ranges and method == 0:
+        source = data[start:start + size]
+        assert zlib.crc32(source) == checksum
+        print(name, hashlib.sha256(source).hexdigest())
+        lines = source.decode().splitlines()
+        for first, last in ranges[name]:
+            for n in range(first, last + 1): print(f'{n}: {lines[n - 1]}')
+        found.add(name)
+    offset += 4
+assert found == set(ranges), 'Required public sources missing; requalify the runtime.'
+PY
+```
+
+The adapter-to-SQLite-to-`usage/get` workflow is repeatable with
+`npm run test -w @workspace/backend -- antigravity/__tests__/session.spec.ts`.
+It covers mixed model selections, context changes, optional schema totals,
+duplicate/late events, cancellation, failure, history replay and ledger restart.
+
 ## Local desktop replacement
 
 Local macOS desktop replacement is owned by the
@@ -641,6 +716,36 @@ manage MCP tools: treat it as a privileged control plane.
 
 ## Local usage statistics
 
+### Historical API prices
+
+`npm run pricing:update` collects Models.dev provider pricing from the public
+GitHub API and raw source files at one immutable revision. The collector verifies
+Git blob hashes, requires all three providers, validates pricing rules and the
+existing history, and atomically appends a full snapshot only when pricing
+content changes. Revision, comments and source links do not trigger snapshots.
+The initial snapshot is effective October 1, 2026 UTC; subsequent timestamps
+record when a change was observed, rather than asserting its actual start date.
+
+`backend/src/pricing/history.json` retains exact provider/model identities,
+context predicates, service tiers, mode mappings, category-specific multipliers,
+cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
+zero rates remain zero. Models without source prices are marked unpriced. The
+schema retains explicit billing units: token and character prices are USD per
+million, other prices are per unit, cache storage is per million tokens per hour,
+and web search is per thousand calls. Non-token charges must not enter token-cost
+estimates.
+
+Matching source overrides merge fields in order, including nested cache fields;
+all matching multipliers then apply only to the categories they name. Mode
+configuration maps names to request fields but does not establish a request's
+actually served tier. Each snapshot retains its source revision, and each model
+retains its source path, blob hash and documentation links for coverage diagnosis.
+The catalog is statically embedded in the standalone daemon bundle, which is also
+copied into desktop resources. Builds and runtime catalog reads require no pricing
+network calls.
+
+### Execution measurements
+
 The owning daemon records live provider executions in a bounded SQLite ledger.
 History hydration, inherited forks and context occupancy never become consumed
 tokens. Provider conversations remain the sole owners of prompts, responses and
@@ -649,9 +754,50 @@ outcomes and local grouping metadata. Configured reasoning effort and service ti
 are captured at turn start and retained through completion and late usage corrections.
 Unsupported measurements remain unknown. Codex consumption can be replaced or
 invalidated after completion.
-Claude consumption covers the main agent loop; auxiliary calls are excluded.
+Claude execution consumption covers the main agent loop; independently observed billable requests retain their own identities.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
+
+Request measurements have a separate identity scoped by backend provider, session,
+turn and request. Providers emit them through the optional `onRequestUsage` seam;
+the usage service serializes execution and request observations together. The
+parent execution must exist first. Numeric samples retain actual API provider/model,
+request time, token inclusion semantics, cache-write lifetime buckets, context and
+region evidence, requested/reported tiers, served mode and finality. Corrections
+increase a persistent revision; stale revisions, changed request timestamps and
+final-to-provisional updates cannot replace newer evidence. Requests and their
+parent grouping metadata survive restart without storing conversation content.
+
+The backend prices each final request using the latest snapshot effective at its
+request timestamp. Exact model IDs are required; requested tiers do not establish
+served tiers. A documented default requires explicit producer evidence. Context
+predicates use their authored strict/inclusive operators, matching overrides merge
+in order, and matching multipliers affect only their named categories. Included
+cache reads/writes are subtracted from input and included reasoning is separated
+from ordinary output before applying rates. Missing usage, inclusion semantics,
+cache rates/lifetimes, context, region, tier or model evidence leaves a request
+unpriced with a reason. Codex executions and legacy Claude executions without
+request observations are priced from their retained model and measured token
+counters, with cached reads priced separately, normal pricing for missing tiers,
+and no long-context premium. Legacy Claude cache creation uses the default
+five-minute write rate; its normalized input includes both cache categories.
+Claude rows carrying request-coverage evidence require request attribution, so
+unresolved cloud/proxy routing cannot select a direct Anthropic estimate. Real
+request observations supersede an execution estimate. Non-token charges remain
+outside the estimate.
+
+Cost and coverage accompany summary, daily and grouped results. USD sums only
+priced usage; a known zero differs from an unavailable total. Observed request
+counts do not claim to count unknown legacy requests. Producers must explicitly
+attest a complete execution request set; otherwise coverage retains an execution
+with an unknown additional request count, even when some requests were captured.
+Execution token/timing fields keep their execution-start date and model attribution.
+Cost uses request dates/models, so a cost contribution may create a group/day with
+zero execution starts. Backend-provider filters retain their existing meaning;
+API-provider grouping/filtering uses the underlying billing provider separately.
+Unknown legacy coverage keeps its retained execution attribution. Clearing,
+execution deletion and retention also delete request evidence. The standalone and
+desktop resource bundles calculate these costs from embedded prices offline.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens

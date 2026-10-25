@@ -1,4 +1,4 @@
-import type { ExecutionObservation } from '@workspace/core/usage';
+import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
@@ -118,10 +118,34 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
-  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
-  private readonly unsubscribeUsage = new Map<AgentBackend,()=>void>();
-  private bindUsage(backend:AgentBackend,driver:AgentBackendDriver):void { this.unsubscribeUsage.get(backend)?.(); if(driver.onUsage) this.unsubscribeUsage.set(backend,driver.onUsage(o=>{for(const listener of this.usageListeners) {try{listener(o);}catch{/* Observer isolation. */}}})); }
-  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener);return ()=>this.usageListeners.delete(listener); }
+  private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
+  private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
+  private readonly usageListeners = new Set<(observation: ExecutionObservation) => void>();
+  private readonly unsubscribeUsage = new Map<AgentBackend, () => void>();
+  private bindUsage(backend: AgentBackend, driver: AgentBackendDriver): void {
+    this.unsubscribeRequestUsage.get(backend)?.();
+    this.unsubscribeRequestUsage.delete(backend);
+    if (driver.onRequestUsage) this.unsubscribeRequestUsage.set(backend, driver.onRequestUsage(observation => {
+      for (const listener of this.requestUsageListeners) {
+        try { listener(observation); } catch { /* Observer isolation. */ }
+      }
+    }));
+    this.unsubscribeUsage.get(backend)?.();
+    this.unsubscribeUsage.delete(backend);
+    if (driver.onUsage) this.unsubscribeUsage.set(backend, driver.onUsage(observation => {
+      for (const listener of this.usageListeners) {
+        try { listener(observation); } catch { /* Observer isolation. */ }
+      }
+    }));
+  }
+  onRequestUsage(listener: (observation: RequestObservation) => void): () => void {
+    this.requestUsageListeners.add(listener);
+    return () => this.requestUsageListeners.delete(listener);
+  }
+  onUsage(listener: (observation: ExecutionObservation) => void): () => void {
+    this.usageListeners.add(listener);
+    return () => this.usageListeners.delete(listener);
+  }
   private readonly inFlight = new Map<AgentBackend, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly unsubscribeDriverEvents = new Map<AgentBackend, () => void>();
@@ -648,6 +672,7 @@ export class BackendDriverRpc {
 
   async close(): Promise<void> {
     for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
+    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
     }

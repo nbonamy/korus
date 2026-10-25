@@ -10,7 +10,8 @@
           )
         }}
       </h3>
-      <el-tooltip :content="$t('analytics.shareNote')"
+      <el-tooltip
+        :content="$t('analytics.shareNote')"
         ><span
           class="breakdown-info"
           tabindex="0"
@@ -24,18 +25,21 @@
         <tr>
           <th>{{ $t("analytics." + grouping) }}</th>
           <th class="num">{{ $t("analytics.turns") }}</th>
-          <th>{{ $t("analytics.share") }}</th>
           <th class="num">{{ $t("analytics.measuredTokens") }}</th>
+          <th class="num">{{ $t("analytics.cost") }}</th>
+          <th>{{ $t("analytics.tokenShare") }}</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in series" :key="row.key">
+        <tr v-for="row in rows" :key="row.key">
           <td>
             <i class="breakdown-dot" :style="{ background: row.color }" />{{
               row.label
             }}
           </td>
           <td class="num">{{ chartFormat(row.turns, true) }}</td>
+          <td class="num">{{ chartFormat(row.tokens, true) }}</td>
+          <td class="num">{{ usdFormat(row.cost?.usd) }}</td>
           <td>
             <span class="breakdown-share"
               ><UsageBar :value="share(row)" :color="row.color" /><b>{{
@@ -45,7 +49,6 @@
               }}</b></span
             >
           </td>
-          <td class="num">{{ chartFormat(row.tokens, true) }}</td>
         </tr>
       </tbody>
     </table>
@@ -57,18 +60,25 @@ import UsageBar from "./UsageBar.vue";
 import UsageCard from "./UsageCard.vue";
 import {
   chartFormat,
+  usdFormat,
   type UsageGrouping,
   type UsageSeries,
 } from "./usage-chart";
-const props = defineProps<{ series: UsageSeries[]; grouping: UsageGrouping }>();
+const props = defineProps<{
+  series: UsageSeries[];
+  grouping: UsageGrouping;
+}>();
+const rows = computed(() => [...props.series].sort((a, b) =>
+  (b.tokens ?? -1) - (a.tokens ?? -1) || a.label.localeCompare(b.label),
+));
 const measuredTotal = computed(() =>
-  props.series.reduce((n, row) => n + (row.value ?? 0), 0),
+  props.series.reduce((n, row) => n + (row.tokens ?? 0), 0),
 );
 /** A row's percentage of the measured total, null where it was not measured. */
 const share = (row: UsageSeries) =>
-  row.value === null || !measuredTotal.value
+  row.tokens === null || !measuredTotal.value
     ? null
-    : (100 * row.value) / measuredTotal.value;
+    : (100 * row.tokens) / measuredTotal.value;
 </script>
 <style scoped>
 .usage-card {

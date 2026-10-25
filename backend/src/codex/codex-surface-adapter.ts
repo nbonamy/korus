@@ -1,5 +1,6 @@
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { codexExecutionConsumption } from './execution-usage';
+import { codexRequestCoverage } from './request-usage';
 import { bankedResetsFromSurface } from './banked-resets';
 import { randomUUID } from 'node:crypto';
 import { isBankedResetResult, isUseBankedResetInput, type BankedResetResult, type UseBankedResetInput } from '@workspace/core/contracts/banked-resets';
@@ -1270,7 +1271,8 @@ export class CodexSurfaceAgentAdapter {
     if (isRendererConversationEvent(event)) this.publishConversationEvent(session, event);
     this.historyHydratedAtByAgentId.set(session.agent.id, Date.now());
     const consumption=codexExecutionConsumption(event);
-    if ((event as {type:string}).type==='conversation.executionUsageChanged' && consumption) {
+    const requestCoverage = codexRequestCoverage(event);
+    if (event.type === 'conversation.executionUsageChanged' && (consumption || requestCoverage)) {
       const turnId=(event as unknown as {turnId?:string}).turnId;
       if (typeof turnId === 'string') {
         this.emitUsage({
@@ -1280,7 +1282,9 @@ export class CodexSurfaceAgentAdapter {
           provider: 'codex',
           phase: 'usage',
           at: Date.parse(event.occurredAt),
+          model: null,
           ...consumption,
+          ...requestCoverage,
         });
       }
     }
@@ -1325,6 +1329,9 @@ export class CodexSurfaceAgentAdapter {
                   : settings.selectedServiceTier ?? null,
             }
           : {}),
+        ...(event.type === 'turn.started'
+          ? { requestCoverage: 'partial' as const, requestCoverageReason: 'missing-sdk-request-evidence' as const }
+          : requestCoverage),
         ...(consumption ? { tokens: consumption.tokens } : {}),
         ...(event.type === 'turn.completed' && event.payload.durationMs !== null
           ? { durationMs: event.payload.durationMs }

@@ -167,6 +167,17 @@ threads, routed by `threadId` and `agentId`.
   attempts retain their idempotency key, including renderer reloads. Account
   changes invalidate selections and pending operations. Quota notifications do
   not trigger banked-reset reads; confirmed outcomes trigger a fresh account read.
+- **Cost estimates:** analytics prices the retained execution model and token counters
+  using historical OpenAI rates. Cached reads receive their own rate and reasoning
+  already included in output is not charged again. Missing tiers use normal pricing;
+  aggregate estimates do not apply long-context premiums. Updates replace the same
+  execution estimate, including after replay and restart. Request observations, when
+  present, supersede the execution estimate instead of being charged twice.
+  The SDK's optional `executionUsage.requestUsage` projection describes independent
+  request telemetry; its absence or unavailable result does not prevent an aggregate
+  estimate. Execution estimates have a separate count and never invent request IDs.
+  Missing model, token counts or model rates still leave cost unavailable. Korus
+  does not parse raw notifications or conversation logs for pricing.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.
