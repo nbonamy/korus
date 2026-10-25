@@ -57,7 +57,7 @@ export class RelayClient {
 
   private async sendAdmission(): Promise<boolean> {
     if (!this.link.connected) return false;
-    let ok = false;
+    let ok = false; let failure: unknown;
     try {
       const stream = await this.link.dialRelay(companionAdmissionProtocol, dialTimeoutMs);
       try {
@@ -68,9 +68,10 @@ export class RelayClient {
       } finally { stream.abort(new Error('Admission finished.')); }
     } catch (error) {
       // Endpoint grants remain authoritative during relay outages; the streak tells a dead link from a bad attempt.
+      failure = error;
       warnMain('companion', 'relay admission failed', { error: describeError(error) });
     }
-    this.link.noteAdmission(ok);
+    this.link.noteAdmission(ok, failure);
     return ok;
   }
 }

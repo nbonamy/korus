@@ -55,7 +55,10 @@ export class RelayLink {
         denyInboundRelayedConnection: (relay) => relay.toString() !== options.relayPeerId },
     });
     await options.register(this.node);
-    this.node.addEventListener('connection:close', () => {
+    this.node.addEventListener('connection:close', (event) => {
+      const connection = event.detail;
+      // How long the link lived says whether the relay, the path or this process ended it.
+      if (connection.remotePeer.toString() === options.relayPeerId) warnMain('companion', 'relay connection ended', { aliveMs: Date.now() - connection.timeline.open });
       if (!this.relayUp()) { this.connected = false; if (!this.reserving) this.schedule(); }
     });
     await this.reserve();
@@ -79,11 +82,16 @@ export class RelayLink {
     for (const connection of this.node?.getConnections() ?? []) if (connection.remotePeer.toString() === peerId) void connection.close();
   }
 
-  /** Feeds the relay's answer to an admission; a silent relay (no close event, e.g. a NAT drop) is reconnected. */
-  noteAdmission(ok: boolean) {
-    if (!this.silence.record(ok) || !this.node) return;
-    warnMain('companion', 'relay link silent; reconnecting', { failures: silentRelayLimit });
-    for (const connection of this.node.getConnections()) if (connection.remotePeer.toString() === this.relayPeerId) connection.abort(new Error('Relay admission failed repeatedly.'));
+  /**
+   * Feeds the relay's answer to an admission. A connection that reports itself closed is dead for certain and
+   * is replaced at once; otherwise a silent relay (no close event, e.g. a NAT drop) is reconnected after a streak.
+   */
+  noteAdmission(ok: boolean, error?: unknown) {
+    const closed = !ok && error instanceof Error && error.name === 'ConnectionClosedError';
+    const silent = this.silence.record(ok);
+    if (!this.node || !(closed || silent)) return;
+    warnMain('companion', closed ? 'relay connection closed; reconnecting' : 'relay link silent; reconnecting', closed ? {} : { failures: silentRelayLimit });
+    for (const connection of this.node.getConnections()) if (connection.remotePeer.toString() === this.relayPeerId) connection.abort(new Error('Relay link lost.'));
   }
 
   private relayUp() { return this.node?.getConnections().some((connection) => connection.remotePeer.toString() === this.relayPeerId) ?? false; }
