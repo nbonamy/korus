@@ -32,6 +32,7 @@ export {
   IconChevronDown as ChevronDown,
   IconChevronRight as ChevronRightIcon,
   IconCircleX as CircleXIcon,
+  IconSquareX as SquareXIcon,
   IconCode as CodeIcon,
   IconLayoutDashboard as DashboardIcon,
   IconCopy as CopyIcon,

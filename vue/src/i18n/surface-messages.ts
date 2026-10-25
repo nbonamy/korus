@@ -809,6 +809,7 @@ export const surfaceMessages = {
     "copyPathFailed": "Could not copy the path.",
     "closeTab": "Close tab",
     "closeOtherTabs": "Close other tabs",
+    "closeAllTabs": "Close all tabs",
     "openRightWorkspaceTab": "Open right workspace tab",
     "newTab": "New tab",
     "openAWorkspaceTab": "Open a workspace tab",

@@ -392,7 +392,7 @@ describe('RightWorkspacePanel', () => {
 
       const menu = document.body.querySelector('[aria-label="Tab actions"]');
       expect([...menu!.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())).toStrictEqual([
-        'Copy path', 'Copy relative path', 'Close tab', 'Close other tabs',
+        'Copy path', 'Copy relative path', 'Close tab', 'Close other tabs', 'Close all tabs',
       ]);
       expect(menu?.querySelectorAll('[role="separator"]')).toHaveLength(1);
       expect(wrapper.emitted('selectTab')).toBeUndefined();
@@ -434,7 +434,7 @@ describe('RightWorkspacePanel', () => {
       await wrapper.findAll('.right-workspace-panel__tab')[1]?.trigger('contextmenu');
       const outsideMenu = document.body.querySelector('[aria-label="Tab actions"]');
       expect([...outsideMenu!.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())).toStrictEqual([
-        'Copy path', 'Close tab', 'Close other tabs',
+        'Copy path', 'Close tab', 'Close other tabs', 'Close all tabs',
       ]);
       (outsideMenu?.querySelector('[role="menuitem"]') as HTMLElement).click();
       await flushPromises();
@@ -449,7 +449,7 @@ describe('RightWorkspacePanel', () => {
       await wrapper.findAll('.right-workspace-panel__tab')[0]?.trigger('contextmenu');
       const browserMenu = document.body.querySelector('[aria-label="Tab actions"]');
       expect([...browserMenu!.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())).toStrictEqual([
-        'Copy URL', 'Open in external browser', 'Close tab', 'Close other tabs',
+        'Copy URL', 'Open in external browser', 'Close tab', 'Close other tabs', 'Close all tabs',
       ]);
       expect(browserMenu?.querySelectorAll('[role="separator"]')).toHaveLength(1);
       expect([...browserMenu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].slice(0, 2).map((item) => item.disabled)).toStrictEqual([true, true]);
@@ -472,7 +472,7 @@ describe('RightWorkspacePanel', () => {
 
       const menu = document.body.querySelector('[aria-label="Tab actions"]');
       expect([...menu!.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())).toStrictEqual([
-        'Copy URL', 'Open in external browser', 'Close tab', 'Close other tabs',
+        'Copy URL', 'Open in external browser', 'Close tab', 'Close other tabs', 'Close all tabs',
       ]);
       expect(menu?.querySelectorAll('[role="separator"]')).toHaveLength(1);
       (menu?.querySelector('[role="menuitem"]') as HTMLElement).click();
@@ -526,6 +526,22 @@ describe('RightWorkspacePanel', () => {
 
     expect(wrapper.emitted('selectTab')).toStrictEqual([['browser']]);
     expect(wrapper.emitted('closeTab')).toStrictEqual([['review'], ['files']]);
+    expect(document.body.querySelector('[aria-label="Tab actions"]')).toBeNull();
+  });
+
+  it('closes every tab from Close all tabs', async () => {
+    const wrapper = mountPanel(['review', 'browser', 'files'], 'review');
+    await wrapper.findAll('.right-workspace-panel__tab')[1]?.trigger('contextmenu');
+
+    const menu = document.body.querySelector('[aria-label="Tab actions"]');
+    const closeAll = [...menu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.trim() === 'Close all tabs');
+    expect(closeAll?.disabled).toBe(false);
+    closeAll?.click();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('closeTab')).toStrictEqual([['review'], ['browser'], ['files']]);
+    expect(wrapper.emitted('selectTab')).toBeUndefined();
     expect(document.body.querySelector('[aria-label="Tab actions"]')).toBeNull();
   });
 

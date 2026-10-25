@@ -393,7 +393,7 @@ import { ElMessage } from 'element-plus';
 import { IconDeviceMobile, IconChecklist, IconChevronLeft, IconChevronRight, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconLego, IconSitemap, IconWorld } from '@tabler/icons-vue';
 import type { Agent, AgentGitStatus, AgentSubagentTree, AppSnapshot, OpenInApplication, OpenInApplicationCatalog, RendererMessage, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import type { CodexConversationLink, CodexConversationVisualization } from '@codex-app-sdk/vue';
-import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, X } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, ClockHour8Icon, BacklogIcon, CircleXIcon, CodeIcon, CopyIcon, DownloadIcon, FileDiffIcon, FileTextIcon, FoldersIcon, PhotoIcon, PlusIcon, SquareXIcon, X } from '../shared/icons/app-icons';
 import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
@@ -760,6 +760,7 @@ function menuItemsForTab(tab: RightWorkspaceTab): AppMenuItem[] {
       icon: CircleXIcon,
       disabled: props.tabs.length <= 1,
     },
+    { id: 'close-all-tabs', type: 'action', label: translate('surface.rightWorkspacePanel.closeAllTabs'), icon: SquareXIcon },
   ];
 }
 
@@ -790,6 +791,10 @@ async function selectTabContextMenuItem(itemId: string): Promise<void> {
     for (const otherTab of props.tabs) {
       if (otherTab !== tab) emit('closeTab', otherTab);
     }
+    return;
+  }
+  if (itemId === 'close-all-tabs') {
+    for (const openTab of props.tabs) emit('closeTab', openTab);
     return;
   }
   if ((tab === 'browser' || isRightWorkspaceBrowserTab(tab)) && itemId === 'open-external') {
