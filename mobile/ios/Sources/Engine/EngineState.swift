@@ -9,6 +9,7 @@ struct EngineState: Decodable {
     let queuedPromptFailed: Bool?
     struct Laptop: Decodable, Hashable { let id: String; let name: String }
     let missions: [MissionSummary]?
+    let missionAction: String?
     let mission: MissionReference?
     struct Session: Decodable {
         struct Status: Decodable { let type: AgentStatus }

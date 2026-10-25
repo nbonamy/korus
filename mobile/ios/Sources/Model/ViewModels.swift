@@ -163,6 +163,8 @@ struct MissionTicketSummary: Decodable, Hashable, Identifiable {
     let number: Int; let title: String; let state: String; let agentId: String?
     /// The unfinished tickets this one waits for, and what its agent says it is doing right now.
     let after: [Int]?; let activity: String?
+    /// The run waiting for a person's acceptance.
+    let runId: String?
     var id: Int { number }
 }
 
@@ -171,6 +173,8 @@ struct MissionSummary: Decodable, Hashable, Identifiable {
     let startedAt: String?; let updatedAt: String?
     /// The ordinary agent leading the mission through its current stage.
     let leadAgentId: String?
+    /// What a person can do next: move on to review, or ship, which only the desktop does.
+    let next: String?
 }
 
 /// The mission that owns the open worker conversation, if any.
@@ -209,6 +213,10 @@ extension MissionSummary {
     var workingCount: Int { tickets.filter { [.running, .preparing].contains(MissionTicketState($0.state)) }.count }
     /// Ready once the mission has reached its ship stage: finished tickets still owe a review.
     var isReadyToShip: Bool { isActive && stage == "ship" }
+    /// Every ticket is accepted, whatever stage the mission is in.
+    var allTicketsDone: Bool { !tickets.isEmpty && done >= tickets.count }
+    var canContinueToReview: Bool { isActive && next == "review" }
+    var shipsOnDesktop: Bool { isActive && next == "ship" }
     var stageIndex: Int { Self.stages.firstIndex { $0.0 == stage } ?? 0 }
 
     /// "11 Update onboarding copy": the ticket an agent is on, the first one when several are.

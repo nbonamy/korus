@@ -58,6 +58,8 @@ final class AppModel {
     /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
     var missions: [MissionSummary] = []
     var workerMission: MissionReference?
+    /// "idle", "working" or "failed": a move on a mission is a request the laptop can refuse.
+    var missionAction = "idle"
     /// The missions surface replaces the conversation in the main area, like a conversation does.
     var missionsOpen = false
     var missionPath: [String] = []
@@ -268,6 +270,7 @@ final class AppModel {
         set(\.connection, state.connection)
         set(\.missions, state.missions ?? [])
         set(\.workerMission, state.mission)
+        set(\.missionAction, state.missionAction ?? "idle")
         set(\.connectionDetail, state.errorDetail ?? "")
         set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)

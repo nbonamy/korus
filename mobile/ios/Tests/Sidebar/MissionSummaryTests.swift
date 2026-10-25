@@ -24,7 +24,7 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(MissionTicketState.awaitingReview.label, "Ready for review")
     }
 
-    private let working = #"{"id":"m","outcome":"Ship it","stage":"implementation","status":"active","done":2,"leadAgentId":"lead","startedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T03:00:00Z","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"},{"number":3,"title":"Open workers","state":"running","agentId":"w","activity":"editing client.ts"},{"number":4,"title":"D","state":"awaitingReview","agentId":"x"},{"number":5,"title":"E","state":"failed"},{"number":6,"title":"F","state":"blocked","after":[3,4]}]}"#
+    private let working = #"{"id":"m","outcome":"Ship it","stage":"implementation","status":"active","done":2,"leadAgentId":"lead","next":"review","startedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T03:00:00Z","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"},{"number":3,"title":"Open workers","state":"running","agentId":"w","activity":"editing client.ts"},{"number":4,"title":"D","state":"awaitingReview","agentId":"x","runId":"run-4"},{"number":5,"title":"E","state":"failed"},{"number":6,"title":"F","state":"blocked","after":[3,4]}]}"#
 
     func testCountsWhatNeedsAPersonAndWhatIsMoving() throws {
         let mission = try mission(working)
@@ -35,6 +35,10 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(mission.tickets[5].after, [3, 4])
         XCTAssertEqual(mission.stageIndex, 2)
         XCTAssertEqual(mission.leadAgentId, "lead")
+        XCTAssertEqual(mission.tickets[3].runId, "run-4")
+        XCTAssertTrue(mission.canContinueToReview)
+        XCTAssertFalse(mission.shipsOnDesktop)
+        XCTAssertFalse(mission.allTicketsDone)
         XCTAssertFalse(mission.isReadyToShip)
     }
 
@@ -60,5 +64,15 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(MissionSummary.elapsedText(14 * 60 + 5), "14m")
         XCTAssertEqual(MissionSummary.elapsedText(20), "Under a minute")
         XCTAssertEqual(MissionSummary.elapsedText(26 * 3600), "1d 2h")
+    }
+
+    func testCompletePerTicketsAndTheShipStepAreSeparateFromTheStage() throws {
+        let all = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":2,"next":"ship","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"}]}"#
+        let mission = try mission(all)
+        XCTAssertTrue(mission.allTicketsDone)
+        XCTAssertFalse(mission.isReadyToShip)
+        XCTAssertTrue(mission.shipsOnDesktop)
+        XCTAssertFalse(mission.canContinueToReview)
+        XCTAssertFalse(try self.mission(#"{"id":"m","outcome":"o","stage":"requirements","status":"active","done":0,"tickets":[]}"#).allTicketsDone)
     }
 }

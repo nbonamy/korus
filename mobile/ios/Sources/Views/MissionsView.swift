@@ -59,7 +59,7 @@ private struct MissionGauge: View {
 
     private var tint: Color {
         if !mission.isActive { return .secondary }
-        return mission.isReadyToShip ? .green : .accentColor
+        return mission.allTicketsDone ? .green : .accentColor
     }
 
     var body: some View {
@@ -70,7 +70,7 @@ private struct MissionGauge: View {
                 .rotationEffect(.degrees(-90))
             if mission.tickets.isEmpty {
                 Image(systemName: "ellipsis").font(.system(size: size * 0.3, weight: .semibold)).foregroundStyle(.secondary)
-            } else if mission.isReadyToShip {
+            } else if mission.allTicketsDone {
                 Image(systemName: "checkmark").font(.system(size: size * 0.34, weight: .bold)).foregroundStyle(tint)
             } else {
                 Text("\(mission.done)/\(mission.tickets.count)").font(.system(size: size * 0.27, weight: .semibold, design: .rounded)).foregroundStyle(.primary).minimumScaleFactor(0.7)
@@ -172,6 +172,7 @@ private struct MissionDetailScreen: View {
                 VStack(alignment: .leading, spacing: 20) {
                     StageTracker(current: mission.stageIndex, finished: !mission.isActive)
                     Summary(mission: mission)
+                    NextStep(mission: mission)
                     if let lead = mission.leadAgentId { LeadRow(stage: mission.stageLabel, agentId: lead) }
                     if !mission.tickets.isEmpty { Timeline(mission: mission) }
                 }
@@ -239,6 +240,39 @@ private struct Summary: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+/// The one move a phone can make on a mission: on to review. Shipping stays on the desktop, and says so.
+private struct NextStep: View {
+    @Environment(AppModel.self) private var model
+    let mission: MissionSummary
+    @State private var confirming = false
+
+    var body: some View {
+        if mission.canContinueToReview {
+            Button { confirming = true } label: {
+                HStack {
+                    if model.missionAction == "working" { ProgressView().tint(.white) }
+                    Text("Continue to Review").font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16))
+            .disabled(model.missionAction == "working")
+            .confirmationDialog("Move this mission to review?", isPresented: $confirming, titleVisibility: .visible) {
+                Button("Continue to Review") { model.command("continueMission", ["missionId": mission.id]) }
+            } message: { Text("Implementation is complete. The review starts right away.") }
+        } else if mission.shipsOnDesktop {
+            VStack(spacing: 6) {
+                Button {} label: {
+                    Label("Ship", systemImage: "lock").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 14)
+                }
+                .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 16)).disabled(true)
+                Text("Only available on desktop").font(.caption).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 
@@ -354,19 +388,31 @@ private struct TicketRow: View {
     }
 }
 
-/// Under a ticket worker's header: which ticket this is. The mission's lead is a conversation like any other and gets none.
+/// Under a ticket worker's header: which ticket this is, and a way to accept it once its work is ready for review.
+/// The mission's lead is a conversation like any other and gets none.
 struct MissionContextBar: View {
     @Environment(AppModel.self) private var model
+    @State private var confirming = false
 
     var body: some View {
         if let reference = model.workerMission, reference.lead != true, let mission = model.missions.first(where: { $0.id == reference.id }),
            let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }) {
-            Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
-                .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(.bar)
-                .accessibilityElement(children: .combine)
+            HStack(spacing: 12) {
+                Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
+                    .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                if ticket.runId != nil, MissionTicketState(ticket.state) == .awaitingReview {
+                    Button("Accept") { confirming = true }
+                        .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small)
+                        .disabled(model.missionAction == "working")
+                        .confirmationDialog("Accept this ticket?", isPresented: $confirming, titleVisibility: .visible) {
+                            Button("Accept") { model.command("acceptTicket", ["missionId": mission.id, "number": ticket.number]) }
+                        } message: { Text("It counts as done for the mission.") }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(.bar)
+            .accessibilityElement(children: .contain)
         }
     }
 }
