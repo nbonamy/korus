@@ -12,13 +12,17 @@
           <div>
             <strong>{{ workProviderDefinition(connection.provider).label }}</strong>
             <span>{{ description(connection) }}</span>
-            <span v-if="connection.detail && ['error', 'notConfigured'].includes(connection.status)" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
+            <span v-if="connection.detail && (['error', 'notConfigured'].includes(connection.status) || connection.source === 'cli' && connection.status === 'connected')" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
           </div>
         </div>
         <div class="settings-integrations-panel__actions">
-          <template v-if="connection.provider === 'github' && connection.source === 'cli' && connection.status === 'connected'">
-            <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingGitHubCli') }}</StatusPill>
+          <template v-if="connection.source === 'cli' && connection.status === 'connected'">
+            <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingCli', { provider: workProviderDefinition(connection.provider).label }) }}</StatusPill>
             <el-button size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
+          </template>
+          <template v-else-if="connection.source === 'cli' && connection.status !== 'connecting'">
+            <el-button size="small" type="primary" :aria-label="$t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label })" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.reconnectCli', { provider: workProviderDefinition(connection.provider).label }) }}</el-button>
+            <el-button size="small" :aria-label="actionLabel('connect', connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
           <template v-else-if="connection.status === 'connected'">
             <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>

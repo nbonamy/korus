@@ -684,7 +684,16 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   `APP_GITHUB_CLIENT_ID`, then a packaged default). Refresh-token rotation
   invalidates the old pair, so concurrent requests share one refresh. Opening the
   browser is a separate user action so the code is visible first.
-- GitLab.com uses public-client OAuth device authorization with the `api` scope.
+- GitLab.com detects authenticated `glab` on the owning host and executes API
+  requests through `glab api --hostname gitlab.com`. It does not extract CLI tokens.
+  Direct credentials take precedence; canceled or failed direct authorization and
+  direct disconnect preserve CLI access. CLI accounts are checked before each API
+  page or write; an account change requires explicit reconnection in Settings.
+  Discovery uses bounded, noninteractive subprocesses and exposes safe errors rather
+  than subprocess diagnostics. The CLI transport and direct driver share project,
+  branch, pagination and error normalization. CLI access grants neither hosted MCP
+  nor Git transport authentication.
+  The direct connection uses public-client OAuth device authorization with the `api` scope.
   The owning daemon resolves the public application ID from saved provider settings,
   `APP_GITLAB_CLIENT_ID`, then the packaged build default. No client secret is used.
   Register an application owned by Korus at

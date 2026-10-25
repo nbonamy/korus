@@ -36,6 +36,7 @@ import { FileWorkIntegrationTokenStore } from './work-integrations/file-token-st
 import { GitLabWorkProviderDriver } from './work-integrations/gitlab-driver';
 import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
 import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
+import { GitLabCliWorkProviderDriver } from './work-integrations/gitlab-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
 import { warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
@@ -107,6 +108,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       new GitLabWorkProviderDriver(() => runtimeGitLabOAuthClientId(snapshot.workBacklog.providerSettings.gitlab)),
     ],
     githubCli: new GitHubCliWorkProviderDriver(),
+    gitlabCli: new GitLabCliWorkProviderDriver(),
     getSnapshot: () => snapshot,
     saveSnapshot: () => saveBackendSnapshot(snapshot),
     tokenStore: new FileWorkIntegrationTokenStore(backendProviderTokensFilePath()),

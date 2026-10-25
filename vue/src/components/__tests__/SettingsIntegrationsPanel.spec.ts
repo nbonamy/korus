@@ -4,6 +4,26 @@ import { describe, expect, it, vi } from 'vitest';
 import SettingsIntegrationsPanel from '../SettingsIntegrationsPanel.vue';
 
 describe('SettingsIntegrationsPanel', () => {
+  it('shows independent CLI accounts and offers direct GitLab login without logging out glab', async () => {
+    const wrapper = mountPanel({ connections: [
+      { provider: 'github', source: 'cli', status: 'connected', accountLabel: 'gh-user' },
+      { provider: 'gitlab', source: 'cli', status: 'connected', accountLabel: 'gl-user' },
+    ] });
+    const row = wrapper.findAll('article').find(row => row.text().includes('GitLab'))!;
+    expect(row.text()).toContain('Using GitLab CLI');
+    expect(row.text()).toContain('gl-user');
+    expect(row.find('[aria-label="Disconnect GitLab"]').exists()).toBe(false);
+    await row.get('[aria-label="Connect GitLab"]').trigger('click');
+    expect(wrapper.emitted('connect')).toStrictEqual([['gitlab']]);
+    expect(wrapper.find('[aria-label="Connect GitHub"]').exists()).toBe(true);
+    await wrapper.setProps({ connections: [{ provider: 'gitlab', source: 'cli', status: 'connecting', accountLabel: 'gl-user' }] });
+    expect(wrapper.find('[aria-label="Cancel GitLab authorization"]').exists()).toBe(true);
+    await wrapper.setProps({ connections: [{ provider: 'gitlab', source: 'cli', status: 'error', accountLabel: 'gl-user', detail: 'GitLab CLI authentication changed' }] });
+    expect(wrapper.text()).toContain('authentication changed');
+    await wrapper.get('[aria-label="Reconnect GitLab CLI"]').trigger('click');
+    expect(wrapper.emitted('disconnect')).toStrictEqual([['gitlab']]);
+    wrapper.unmount();
+  });
   // Settings owns provider-specific actions: simultaneous codes/accounts/errors must
   // stay in their own rows while the other provider remains usable.
   it('keeps GitLab device authorization, account, errors and actions separate from GitHub', async () => {

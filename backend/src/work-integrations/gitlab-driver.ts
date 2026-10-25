@@ -116,12 +116,17 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     return response.json();
   }
 
-  private async api(credential: WorkProviderCredential, url: string): Promise<Response> {
+  protected async apiResponse(credential: WorkProviderCredential, url: string, init: RequestInit = {}): Promise<Response> {
     const token = requireWorkProviderToken(credential);
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json', Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}` },
-      signal: AbortSignal.timeout(20_000), redirect: 'error',
+    return fetch(url, {
+      ...init,
+      headers: { ...Object.fromEntries(new Headers(init.headers)), Accept: 'application/json', Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}` },
+      signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000), redirect: 'error',
     });
+  }
+
+  protected async api(credential: WorkProviderCredential, url: string, init: RequestInit = {}): Promise<Response> {
+    const response = await this.apiResponse(credential, url, init);
     if (!response.ok) {
       if (response.status === 401) throw new Error('GitLab authorization expired. Reconnect GitLab in Settings.');
       if (response.status === 403) throw new Error('GitLab denied access. Check project membership and the application api scope.');
