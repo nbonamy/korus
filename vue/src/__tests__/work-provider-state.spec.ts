@@ -4,10 +4,38 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import { createClientApiMock } from '../test/client-api-mock';
 import { configureAppClient } from '../platform-api';
 import { createWorkProviderState } from '../work-provider-state';
+import { clearConfetti, useConfetti } from '../shared/confetti/use-confetti';
 
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); configureAppClient(); });
+afterEach(() => { clearConfetti(); vi.useRealTimers(); vi.restoreAllMocks(); configureAppClient(); });
 
 describe('work provider authorization state', () => {
+  it('passes explicit MCP authorization to the existing app-owned credential path', async () => {
+    const snapshot = createInitialSnapshot();
+    const { api } = createClientApiMock(snapshot);
+    api.connectWorkProvider.mockResolvedValue({ snapshot });
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: () => {} });
+    await state.connect('gitlab', { hostedMcp: true });
+    expect(api.connectWorkProvider).toHaveBeenCalledWith('gitlab', { hostedMcp: true });
+  });
+
+  it('reports a denied MCP upgrade while retaining API access without celebrating a successful connection', async () => {
+    clearConfetti();
+    let snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'gitlab', status: 'connected', source: 'api', hostedMcp: { status: 'authorizationRequired' } }];
+    const { api } = createClientApiMock(snapshot);
+    api.connectWorkProvider.mockResolvedValue({ snapshot: { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [{ provider: 'gitlab', status: 'connecting' }] } }, authorization: { provider: 'gitlab', userCode: 'PUBLIC', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: '2099-01-01' } });
+    api.pollWorkProviderAuthorization.mockResolvedValue({ ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [{ provider: 'gitlab', status: 'connected', source: 'api', detail: 'GitLab MCP authorization was denied.', hostedMcp: { status: 'authorizationRequired' } }] } });
+    api.listWorkSources.mockResolvedValue([]);
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: value => { snapshot = value; } });
+    await state.connect('gitlab', { hostedMcp: true });
+    await state.completeConnection('gitlab');
+    expect(state.authorizationErrors.value.gitlab).toBe('GitLab MCP authorization was denied.');
+    expect(snapshot.workBacklog.connections[0]?.status).toBe('connected');
+    expect(useConfetti().bursts.value).toHaveLength(0);
+  });
+
   it('keeps catalog failures and recovery local to the provider while other catalogs remain usable', async () => {
     let snapshot = createInitialSnapshot();
     snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];

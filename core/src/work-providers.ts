@@ -29,6 +29,7 @@ export const workProviders = {
     configurationDetail: { key: 'gitlabIntegration.setup' },
     repositoryBacked: true, pullRequests: true, initialView: 'assignedToMe',
     branchPrefix: 'gl', automationBranchPrefix: 'gitlab',
+    hostedMcp: { url: 'https://gitlab.com/api/v4/mcp' },
   },
   linear: {
     label: 'Linear', sourceLabel: { key: 'backlogSource.teamProject' },

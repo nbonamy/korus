@@ -12,11 +12,13 @@
           <div>
             <strong>{{ workProviderDefinition(connection.provider).label }}</strong>
             <span>{{ description(connection) }}</span>
-            <span v-if="connection.detail && (['error', 'notConfigured'].includes(connection.status) || connection.source === 'cli' && connection.status === 'connected')" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
+            <span v-if="connection.provider === 'gitlab' && connection.hostedMcp">{{ $t(`gitlabMcp.${connection.hostedMcp.status}`) }}</span>
+            <span v-if="connection.detail && ['error', 'notConfigured', 'connected'].includes(connection.status)" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
           </div>
         </div>
         <div class="settings-integrations-panel__actions">
           <template v-if="connection.source === 'cli' && connection.status === 'connected'">
+            <el-button v-if="connection.provider === 'gitlab'" size="small" :aria-label="$t('gitlabMcp.authorize')" :loading="busyProviders.includes(connection.provider)" @click="emit('connect-mcp', connection.provider)">{{ $t('gitlabMcp.authorize') }}</el-button>
             <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingCli', { provider: workProviderDefinition(connection.provider).label }) }}</StatusPill>
             <el-button size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
@@ -25,6 +27,7 @@
             <el-button size="small" :aria-label="actionLabel('connect', connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
           <template v-else-if="connection.status === 'connected'">
+            <el-button v-if="connection.provider === 'gitlab' && connection.hostedMcp && connection.hostedMcp.status !== 'available'" size="small" :aria-label="mcpActionLabel(connection)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect-mcp', connection.provider)">{{ mcpActionLabel(connection) }}</el-button>
             <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>
             <el-button size="small" :aria-label="actionLabel('disconnect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
           </template>
@@ -62,12 +65,16 @@ const props = withDefaults(defineProps<{
 }>(), { authorization: null, authorizations: () => ({}), busyProviders: () => [], error: null });
 const emit = defineEmits<{
   connect: [provider: WorkProviderKind];
+  'connect-mcp': [provider: WorkProviderKind];
   disconnect: [provider: WorkProviderKind];
   'open-authorization': [provider: WorkProviderKind];
 }>();
 const integrations = computed(() => workProviderKinds.map(provider => props.connections.find(connection => connection.provider === provider) ?? { provider, status: 'notConfigured' } as WorkIntegrationConnection));
 const pendingAuthorization = (provider: WorkProviderKind) => props.authorizations[provider]
   ?? (props.authorization?.provider === provider ? props.authorization : null);
+function mcpActionLabel(connection: WorkIntegrationConnection): string {
+  return translate(connection.hostedMcp?.status === 'restricted' || connection.hostedMcp?.status === 'unavailable' ? 'gitlabMcp.retry' : 'gitlabMcp.authorize');
+}
 function description(connection: WorkIntegrationConnection): string {
   if (connection.status === 'connected') return connection.accountLabel
     ? translate('linearIntegration.signedInAs', { account: connection.accountLabel })
@@ -86,6 +93,7 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
   min-height: 64px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--space-12);
   padding: var(--space-10) var(--space-12);
@@ -93,6 +101,7 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
 
 .settings-integrations-panel__identity {
   min-width: 0;
+  flex: 1 1 240px;
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -117,6 +126,7 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
 }
 
 .settings-integrations-panel__icon {
+  flex-shrink: 0;
   width: var(--space-16);
   height: var(--space-16);
   display: flex;
@@ -130,6 +140,8 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
 
 .settings-integrations-panel__actions {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center;
   gap: var(--space-8);
 }
@@ -143,5 +155,14 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
   color: var(--color-text-muted);
   font-size: var(--font-size-13);
   line-height: var(--line-height-18);
+}
+@media (max-width: 768px) {
+  .settings-integrations-panel__integration {
+    align-items: flex-start;
+  }
+
+  .settings-integrations-panel__identity {
+    flex-basis: 100%;
+  }
 }
 </style>

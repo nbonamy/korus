@@ -5,6 +5,8 @@ export type HostedMcpServerId = WorkProviderKind;
 
 export type HostedMcpCredentialProvider = {
   isHostedMcpConnected(provider: WorkProviderKind): boolean;
+  hostedMcpAuthorizationHeader?(provider: WorkProviderKind, options?: { forceRefresh?: boolean }): Promise<string>;
+  reportHostedMcpFailure?(provider: WorkProviderKind, status: number, authorization: string): Promise<void>;
   authorizationHeader(
     provider: WorkProviderKind,
     options?: { forceRefresh?: boolean },
@@ -83,21 +85,28 @@ export class HostedMcpGateway {
     input: { method: string; headers: Headers; body?: Uint8Array },
     forceRefresh: boolean,
   ): Promise<Response> {
+    if (!this.credentials.isHostedMcpConnected(definition.provider)) throw new Error('Hosted MCP is unavailable. Check integration permissions in Settings.');
     const headers = new Headers();
     for (const name of forwardedRequestHeaders) {
       const value = input.headers.get(name);
       if (value) headers.set(name, value);
     }
-    headers.set('authorization', await this.credentials.authorizationHeader(
+    const authorize = this.credentials.hostedMcpAuthorizationHeader?.bind(this.credentials) ?? this.credentials.authorizationHeader.bind(this.credentials);
+    const authorization = await authorize(
       definition.provider,
       forceRefresh ? { forceRefresh: true } : undefined,
-    ));
+    );
+    headers.set('authorization', authorization);
+    if (!this.credentials.isHostedMcpConnected(definition.provider)) throw new Error('Hosted MCP is unavailable. Check integration permissions in Settings.');
 
-    return this.fetch(definition.url, {
+    const response = await this.fetch(definition.url, {
       method: input.method,
       headers,
       ...(input.body ? { body: input.body } : {}),
+      redirect: 'error',
     });
+    if (response.status === 403) await this.credentials.reportHostedMcpFailure?.(definition.provider, response.status, authorization);
+    return response;
   }
 }
 

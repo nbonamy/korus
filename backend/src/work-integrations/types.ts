@@ -44,8 +44,9 @@ export type WorkProviderDeviceTokenResult =
 export interface WorkProviderDriver {
   provider: WorkProviderKind;
   configured(): boolean;
+  checkHostedMcp?(token: WorkProviderToken): Promise<'available' | 'restricted' | 'unavailable'>;
   cancelAuthorization?(): void;
-  startAuthorization(): Promise<WorkProviderDeviceAuthorization>;
+  startAuthorization(options?: { hostedMcp?: boolean }): Promise<WorkProviderDeviceAuthorization>;
   pollAuthorization(deviceCode: string): Promise<WorkProviderDeviceTokenResult>;
   refreshToken?(token: WorkProviderToken): Promise<WorkProviderToken>;
   currentAccountLabel(token: WorkProviderCredential): Promise<string>;

@@ -1,5 +1,8 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { AgentGitPullRequest, GlobalWorkItemQuery, SourceBranch, WorkItem, WorkItemKind, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
+import { product } from '@workspace/core/product';
 import { runtimeGitLabOAuthClientId } from '../runtime-config';
 import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
 
@@ -22,15 +25,15 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     this.authorization = undefined;
   }
 
-  async startAuthorization(): Promise<WorkProviderDeviceAuthorization> {
+  async startAuthorization(options: { hostedMcp?: boolean } = {}): Promise<WorkProviderDeviceAuthorization> {
     if (!this.configured()) throw new Error('Configure the GitLab OAuth application with APP_GITLAB_CLIENT_ID on the owning host.');
     this.cancelAuthorization();
     const controller = new AbortController();
     this.authorization = controller;
-    const value = await this.oauth('/oauth/authorize_device', { scope: SCOPE }, controller.signal);
+    const value = await this.oauth('/oauth/authorize_device', { scope: options.hostedMcp ? `${SCOPE} mcp` : SCOPE }, controller.signal);
     if (!record(value) || !nonempty(value.device_code) || !nonempty(value.user_code)
       || value.verification_uri !== `${ORIGIN}/oauth/device` || !positive(value.expires_in)) {
-      throw new Error('GitLab could not start device authorization. Check the application ID and its api scope.');
+      throw new Error(`GitLab could not start device authorization. Check the application ID and its ${options.hostedMcp ? 'api and mcp scopes' : 'api scope'}.`);
     }
     this.intervalSeconds = positive(value.interval) ? value.interval : 5;
     return {
@@ -62,6 +65,26 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     const next = tokenResponse(value);
     if (!next.refreshToken) throw new Error('GitLab needs to be reconnected.');
     return { ...token, ...next };
+  }
+
+  async checkHostedMcp(token: WorkProviderToken): Promise<'available' | 'restricted' | 'unavailable'> {
+    let forbidden = false;
+    const client = new Client({ name: product.mcpServerName, version: '1' });
+    const transport = new StreamableHTTPClientTransport(new URL(`${API}/mcp`), {
+      requestInit: { headers: { Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}` } },
+      fetch: async (url, init) => {
+        const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+        if (response.status === 403) forbidden = true;
+        return response;
+      },
+    });
+    try {
+      await client.connect(transport, { timeout: 10_000 });
+      await client.listTools({}, { timeout: 10_000 });
+      return 'available';
+    } catch {
+      return forbidden ? 'restricted' : 'unavailable';
+    } finally { await client.close().catch(() => {}); }
   }
 
   async currentAccountLabel(credential: WorkProviderCredential): Promise<string> {

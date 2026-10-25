@@ -12,6 +12,12 @@ it('routes document saves and layout changes through client-scoped operations', 
   expect(request).toHaveBeenLastCalledWith(backendMethods.clientWorkspaceApply, { agentId: 'agent', change: { close: [input.tabId] } });
 });
 
+it('forwards explicit hosted MCP authorization separately from the provider identity', async () => {
+  const request = vi.fn().mockResolvedValue({ snapshot: {} });
+  await invokeAppWebOperation({ request }, 'connectWorkProvider', ['gitlab', { hostedMcp: true }]);
+  expect(request).toHaveBeenLastCalledWith(backendMethods.workProviderConnect, { provider: 'gitlab', options: { hostedMcp: true } });
+});
+
 describe(`${product.name} web operations`, () => {
   it('opts into request discovery while retaining local-only background Git reads', async () => {
     const request = vi.fn(async () => ({}));

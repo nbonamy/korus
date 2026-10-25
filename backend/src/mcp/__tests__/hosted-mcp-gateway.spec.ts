@@ -12,6 +12,7 @@ describe('HostedMcpGateway', () => {
 
     expect(gateway.enabledServerUrls('http://127.0.0.1:4321/mcp')).toStrictEqual({
       github: 'http://127.0.0.1:4321/mcp/providers/github',
+      gitlab: 'http://127.0.0.1:4321/mcp/providers/gitlab',
       linear: 'http://127.0.0.1:4321/mcp/providers/linear',
     });
     expect(gateway.hasServer('github')).toBe(true);
@@ -73,7 +74,7 @@ describe('HostedMcpGateway', () => {
     expect(headers.get('host')).toBeNull();
   });
 
-  it.each(['github', 'linear'] as const)('force-refreshes %s once when the hosted server rejects a token', async (provider) => {
+  it.each(['github', 'gitlab', 'linear'] as const)('force-refreshes %s once when the hosted server rejects a token', async (provider) => {
     const fetchUpstream = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
       .mockResolvedValueOnce(new Response('ok', { status: 200 }));
