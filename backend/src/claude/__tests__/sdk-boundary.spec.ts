@@ -50,6 +50,76 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
   });
 
+  it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
+    homes.push(home);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const project = path.join(home, '.claude', 'projects', '-tmp-project');
+    await mkdir(project, { recursive: true });
+    const startedAt = '2026-10-24T12:00:00.000Z';
+    const completedAt = '2026-10-24T12:04:38.000Z';
+    const history = [
+      { type: 'user', uuid: 'prompt', timestamp: startedAt, message: { content: 'Inspect the project' } },
+      { type: 'assistant', uuid: 'work', timestamp: '2026-10-24T12:00:01.000Z', message: { content: 'Looking now.' } },
+      { type: 'assistant', uuid: 'answer', timestamp: completedAt, message: { content: 'Finished.' } },
+      { type: 'assistant', uuid: 'sidechain', isSidechain: true, timestamp: '2026-10-24T13:00:00.000Z', message: { content: 'Child work' } },
+    ];
+    await writeFile(path.join(project, `${sessionId}.jsonl`), history.map(row => JSON.stringify(row)).join('\n'));
+    const { sdk, driver, snapshot, events, send } = setup(false, undefined, [], home);
+    const owner = snapshot.agents[0]!;
+    owner.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    const read = () => {
+      let replica: ClaudeConversationReplica | undefined;
+      for (const raw of events) {
+        const frame = decodeAppBackendEvent(JSON.parse(JSON.stringify(raw)));
+        if (frame.agentId !== owner.id) continue;
+        if (frame.type === 'claude.conversationSnapshotChanged') replica = createClaudeConversationReplica(frame.payload.snapshot);
+        if (frame.type === 'claude.conversationEventReceived') replica?.apply(frame.payload.event);
+      }
+      return replica!.getSnapshot();
+    };
+    await driver.loadConversation(owner);
+    expect(read().turns).toStrictEqual([{
+      id: 'claude-prompt', status: 'completed', error: null, willRetry: false,
+      startedAt, completedAt, durationMs: 278_000,
+    }]);
+    expect(read().turnIds).toStrictEqual(['claude-prompt']);
+
+    const pending = send(owner.id, 'Continue');
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    await pending;
+    const live = read();
+    expect(live.turns.at(-1)).toMatchObject({ status: 'inProgress', completedAt: null, durationMs: null });
+    await driver.loadConversation(owner);
+    expect(read()).toStrictEqual(live);
+  });
+
+  it.each([
+    ['missing start', undefined, '2026-10-24T12:04:38.000Z'],
+    ['invalid start', 'invalid', '2026-10-24T12:04:38.000Z'],
+    ['non-string start', 0, '2026-10-24T12:04:38.000Z'],
+    ['missing end', '2026-10-24T12:00:00.000Z', undefined],
+    ['invalid end', '2026-10-24T12:00:00.000Z', 'invalid'],
+    ['non-string end', '2026-10-24T12:00:00.000Z', 2027],
+    ['negative duration', '2026-10-24T12:04:38.000Z', '2026-10-24T12:00:00.000Z'],
+  ])('leaves restored timing unavailable for %s', async (_label, startedAt, completedAt) => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
+    homes.push(home);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const project = path.join(home, '.claude', 'projects', '-tmp-project');
+    await mkdir(project, { recursive: true });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), [
+      { type: 'user', uuid: 'prompt', timestamp: startedAt, message: { content: 'Work' } },
+      { type: 'assistant', uuid: 'answer', timestamp: completedAt, message: { content: 'Done' } },
+    ].map(row => JSON.stringify(row)).join('\n'));
+    const { driver, snapshot, events } = setup(false, undefined, [], home);
+    snapshot.agents[0]!.backendSession = { kind: 'claude', sessionId, transport: 'stdio' };
+    await driver.loadConversation(snapshot.agents[0]!);
+    const restored = [...events].reverse().find(frame => frame.type === 'claude.conversationSnapshotChanged');
+    expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.turns[0]?.durationMs).toBeNull();
+  });
+
   it.each(['tasks', 'todos'])('projects confirmed native %s into execution plans across completion and history reload', async format => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-tasks-'));
     homes.push(home);

@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs';
 import { access, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { Agent, BackendSession, ConversationSummary, RendererMessage, RendererMessagePart, RendererToolPart, ThreadGoal } from '@workspace/core/contracts';
+import type { Agent, BackendSession, ClaudeConversationTurn, ConversationSummary, RendererMessage, RendererMessagePart, RendererToolPart, ThreadGoal } from '@workspace/core/contracts';
 import { claudeWorkingDirectory } from './working-directory';
 import { claudeConfigDirectory } from './config-directory';
 import { claudeToolPart, completedClaudeToolPart } from './claude-tool-part-adapter';
@@ -14,6 +14,7 @@ import { ClaudeTaskPlan } from './claude-task-plan';
 export type ClaudeTranscriptHistory = {
   backendSession: BackendSession;
   messages: RendererMessage[];
+  turns?: ClaudeConversationTurn[];
   turnBoundaries?: Record<string, string>;
   nativeMessageTurnIds?: Record<string, string>;
   goal?: ThreadGoal | null;
@@ -84,13 +85,15 @@ export async function loadClaudeTranscriptHistory(
   const goal = claudeTranscriptGoal(content, agent.backendSession.sessionId);
   const subagentEvents = claudeSubagentHistoryEvents(content, agent.id, agent.backendSession.sessionId);
   const taskPlan = new ClaudeTaskPlan();
+  const turns: ClaudeConversationTurn[] = [];
   return {
     backendSession: {
       ...session,
       transcriptSessionId: sessionId,
       ...settings,
     },
-    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds, false, taskPlan),
+    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds, false, taskPlan, turns),
+    turns,
     ...(taskPlan.plan ? { taskPlan } : {}),
     turnBoundaries,
     nativeMessageTurnIds,
@@ -226,10 +229,11 @@ export async function listClaudeTranscriptSummaries(
   return summaries;
 }
 
-export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false, taskPlan?: ClaudeTaskPlan): RendererMessage[] {
+export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false, taskPlan?: ClaudeTaskPlan, turns?: ClaudeConversationTurn[]): RendererMessage[] {
   const messages: RendererMessage[] = [];
   let currentTurnId: string | null = null;
   let currentTurnCreatedAt: string | null = null;
+  let currentTurn: ClaudeConversationTurn | null = null;
   let assistantCreatedAt: string | null = null;
   let assistantSegmentIndex = 0;
   const assistantParts: RendererMessagePart[] = [];
@@ -296,6 +300,12 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
       taskPlan?.startTurn(currentTurnId);
       if (nativeMessageTurnIds && entry.uuid) nativeMessageTurnIds[entry.uuid] = currentTurnId;
       currentTurnCreatedAt = timestampToIso(entry.timestamp);
+      currentTurn = {
+        id: currentTurnId, status: 'completed', error: null, willRetry: false,
+        startedAt: typeof entry.timestamp === 'string' && Number.isFinite(Date.parse(entry.timestamp)) ? currentTurnCreatedAt : null,
+        completedAt: null, durationMs: null,
+      };
+      turns?.push(currentTurn);
       assistantSegmentIndex = 0;
       messages.push({
         id: `user-${sessionId}-${entry.uuid ?? messages.length}`,
@@ -320,6 +330,12 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
         currentTurnCreatedAt = timestampToIso(entry.timestamp);
       }
       assistantCreatedAt ??= timestampToIso(entry.timestamp);
+      if (currentTurn) {
+        currentTurn.completedAt = typeof entry.timestamp === 'string' && Number.isFinite(Date.parse(entry.timestamp)) ? timestampToIso(entry.timestamp) : null;
+        const durationMs = currentTurn.startedAt && currentTurn.completedAt
+          ? Date.parse(currentTurn.completedAt) - Date.parse(currentTurn.startedAt) : NaN;
+        currentTurn.durationMs = Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null;
+      }
       for (const block of claudeMessageContentBlocks(entry)) {
         if (block.type === 'tool_use' && typeof block.id === 'string') pendingTools.add(block.id);
       }
