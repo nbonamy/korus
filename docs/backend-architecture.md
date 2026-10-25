@@ -167,6 +167,11 @@ Account usage is an on-demand read of the paired laptop's enabled, connected quo
 providers through the same backend operation as the desktop menu. Only quota windows
 cross the companion seam; billing and credit details stay on the laptop. Reads recheck
 the device grant before returning, and do not depend on the selected conversation.
+Missions cross as read-only progress: stage, status and each ticket's state, derived the
+way the desktop's implementation board derives it, for active missions and the most
+recent twenty. The workers implementing tickets stay out of the agent list but are
+listed separately, so a phone can open one from its mission. A worker accepts only reads
+and answers to the questions or approvals it raises; every other operation is refused.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
