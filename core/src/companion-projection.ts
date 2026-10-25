@@ -75,6 +75,12 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
   return { state: (ticket.dependsOn ?? []).every((blocker) => tickets[blocker]?.done) ? 'queued' : 'blocked' };
 }
 
+/** When the work began: the first implementation run, else when the mission was created. */
+function missionStart(mission: Mission): string {
+  const runs = (mission.execution?.runs ?? []).filter((run) => run.stage === 'implementation' && run.startedAt).map((run) => run.startedAt).sort();
+  return runs[0] ?? mission.createdAt;
+}
+
 /** Active missions first, then the most recent: the phone shows what is moving and what just finished. */
 function companionMissionsOf(source: { missions?: Mission[] }): { missions: CompanionMission[]; workerIds: Set<string> } {
   const workerIds = new Set<string>();
@@ -82,11 +88,12 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, updatedAt: mission.updatedAt,
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt,
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);
-      return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(workerId ? { agentId: workerId } : {}) };
+      const after = state === 'blocked' ? (ticket.dependsOn ?? []).filter((blocker) => !mission.artifacts.tickets[blocker]?.done).map((blocker) => blocker + 1) : [];
+      return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}) };
     }) }));
   return { missions, workerIds };
 }
