@@ -210,7 +210,7 @@ describe('AgentGitWorkflowService', () => {
     expect(applyEvent).not.toHaveBeenCalled();
   });
 
-  it('archives the provider session before closing an agent after a merged-branch push', async () => {
+  it.each([false, true])('closes an agent after a merged-branch push despite provider archive failure=%s', async providerFailure => {
     const snapshot = createInitialSnapshot();
     const agent: Agent = {
       id: 'agent-1', name: 'Agent', folder: '/repo', backend: 'codex',
@@ -220,6 +220,7 @@ describe('AgentGitWorkflowService', () => {
     snapshot.agents = [agent];
     snapshot.teams[0]!.agentIds = [agent.id];
     const archiveConversation = vi.fn().mockResolvedValue(undefined);
+    if (providerFailure) archiveConversation.mockRejectedValue(Error('Provider unavailable'));
     const persistAndEmitSnapshot = vi.fn().mockResolvedValue(snapshot);
     const push = vi.fn().mockResolvedValue(undefined);
     const workflow = vi.fn().mockResolvedValue({
@@ -291,6 +292,65 @@ describe('AgentGitWorkflowService', () => {
     expect(archiveConversation).toHaveBeenCalledWith(agent);
     expect(snapshot.agents.some((candidate) => candidate.id === agent.id)).toBe(false);
     expect(persistAndEmitSnapshot).toHaveBeenCalledOnce();
+  });
+
+  // Deleted-worktree owners must not survive provider cleanup failures; unrelated
+  // local/remote workspaces and failed Git removals must retain their agents.
+  it.each([false, true])('closes every local deleted-worktree owner before provider cleanup (provider failure=%s)', async providerFailure => {
+    const snapshot = createInitialSnapshot();
+    const base = snapshot.agents[0]!;
+    const root = '/repo-feature';
+    const source: Agent = { ...base, id: 'merger', folder: `${root}/src`,
+      workspace: { kind: 'git', folder: `${root}/src`, repositoryRoot: root, primaryWorktreeRoot: '/repo',
+        repositoryName: 'repo', branch: 'feature', isLinkedWorktree: true, updatedAt: '' } };
+    const peer = { ...source, id: 'peer', folder: root };
+    const child = { ...source, id: 'child', folder: `${root}/packages/core` };
+    const other = { ...source, id: 'other', folder: '/repo-feature-other' };
+    const main = { ...source, id: 'main', folder: '/repo' };
+    const remote = { ...peer, id: 'remote', teamId: 'remote-team' };
+    snapshot.agents = [source, peer, child, other, main, remote];
+    snapshot.teams[0]!.agentIds = snapshot.agents.filter(a => a !== remote).map(a => a.id);
+    snapshot.teams.push({ id: 'remote-team', name: 'Remote', agentIds: [remote.id], remoteConnectionId: 'ssh' });
+    let finish!: () => void;
+    const cleanup = new Promise<void>(resolve => { finish = resolve; });
+    const releaseConversation = vi.fn(async (_agent: Agent) => { await cleanup; if (providerFailure) throw Error('Provider unavailable'); });
+    const archiveConversation = vi.fn(async (_agent: Agent) => { if (providerFailure) throw Error('Provider unavailable'); });
+    const saved: typeof snapshot[] = [];
+    const merge = vi.fn().mockResolvedValue({ targetFolder: '/repo' });
+    const service = new AgentGitWorkflowService({
+      applyEvent: vi.fn(), archiveConversation, releaseConversation,
+      delegatedWorkReports: {} as DelegatedWorkReportPort, driverRequest: vi.fn(), getSnapshot: () => snapshot,
+      getWorkIntegrations: () => ({ githubConnected: async () => false }) as never,
+      git: { merge, workflow: async (folder: string) => ({ repository: 'owner/repo', folder: folder === '/repo' ? folder : root,
+        isLinkedWorktree: folder !== '/repo', branch: folder === '/repo' ? 'main' : 'feature', files: [] }) } as unknown as AgentGitService,
+      persistAndEmitSnapshot: vi.fn(async () => { saved.push(structuredClone(snapshot)); return snapshot; }),
+      refreshGitStatus: vi.fn(), refreshWorkspaceIdentity: vi.fn(), sendPrompt: vi.fn(),
+    });
+    try {
+      const merged = service.execute({ method: backendMethods.agentGitMerge, agentId: source.id,
+        params: { input: { strategy: 'merge', deleteBranch: true, deleteWorktree: true, confirmed: true } } }, source);
+      void merged.catch(() => undefined);
+      await vi.waitFor(() => expect(releaseConversation).toHaveBeenCalled());
+      expect(snapshot.agents.map(a => a.id)).toStrictEqual(['other', 'main', 'remote']);
+      expect(saved.at(-1)!.agents.map(a => a.id)).toStrictEqual(['other', 'main', 'remote']);
+      finish();
+      await expect(merged).resolves.toMatchObject({ branch: 'main' });
+      expect(releaseConversation.mock.calls.map(([a]) => a.id).sort()).toStrictEqual(['child', 'merger', 'peer']);
+      expect(archiveConversation.mock.calls.map(([a]) => a.id).sort()).toStrictEqual(['child', 'merger', 'peer']);
+    } finally { finish(); }
+  });
+
+  it.each(['failed', 'retained'])('keeps worktree agents when Git removal is %s', async outcome => {
+    const test = mergeReportFixture();
+    const before = structuredClone(test.snapshot.agents);
+    if (outcome === 'failed') test.merge.mockRejectedValue(Error('Worktree removal failed'));
+    const pending = test.service.execute({ method: backendMethods.agentGitMerge, agentId: test.source.id,
+      params: { input: { strategy: 'merge', deleteBranch: false, deleteWorktree: outcome === 'failed', confirmed: true } } }, test.source);
+    try {
+      if (outcome === 'failed') await expect(pending).rejects.toThrow('Worktree removal failed');
+      else await pending;
+      expect(test.snapshot.agents).toStrictEqual(before);
+    } finally { test.reports.close(); }
   });
 
   it.each(['base', 'pull'] as const)('hands %s merge conflicts to the affected agent with branch context', async (source) => {

@@ -518,6 +518,10 @@ clears or changes it, Korus never re-detects.
   honoring client ordering. Auxiliary agent data remains available until cleanup
   succeeds; failure restores the agent and team membership for retry without
   replacing navigation or roster changes made during cleanup.
+- Merge cleanup closes local agents rooted in the removed worktree, including
+  subfolder agents. Roster removal is saved before provider release/archive work;
+  provider failures cannot retain deleted-worktree owners. Merge-and-push retains
+  its initiator for the pending push and closes it after a successful push.
 - Merge branch cleanup removes the local branch and its same-named origin branch
   after integration succeeds. Origin cleanup uses its push destination and an
   inspected-head lease; default branches and remote commits outside the merged
