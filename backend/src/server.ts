@@ -205,6 +205,7 @@ export class AppBackendServer {
   private readonly remoteTeams: RemoteTeamService;
   private readonly documents: DocumentWorkspaceService;
   private unsubscribeUsage?:()=>void;
+  private unsubscribeRequestUsage?: () => void;
   private readonly clientPreferences: ClientPreferencesService;
   private readonly agentPrompts: AgentPromptManager;
   private readonly planReviews: AgentPlanReviewService;
@@ -280,6 +281,7 @@ export class AppBackendServer {
     });
     this.driverRpc = options.driverRpc;
     this.unsubscribeUsage = options.driverRpc?.onUsage?.(event=>options.usage?.observe(event));
+    this.unsubscribeRequestUsage = options.driverRpc?.onRequestUsage?.(event => options.usage?.observeRequest(event));
     this.onEvent = options.onEvent;
     this.onBackendEventApplied = options.onBackendEventApplied;
     this.saveSnapshot = options.saveSnapshot;
@@ -2975,6 +2977,7 @@ export class AppBackendServer {
   async close(): Promise<void> {
     this.autoResume.close();
     this.unsubscribeUsage?.();
+    this.unsubscribeRequestUsage?.();
     await this.options.providerUpdates?.close();
     this.providerConnections?.close();
     this.agentWorkspaces.close();

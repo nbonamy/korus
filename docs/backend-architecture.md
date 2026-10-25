@@ -670,9 +670,43 @@ outcomes and local grouping metadata. Configured reasoning effort and service ti
 are captured at turn start and retained through completion and late usage corrections.
 Unsupported measurements remain unknown. Codex consumption can be replaced or
 invalidated after completion.
-Claude consumption covers the main agent loop; auxiliary calls are excluded.
+Claude execution consumption covers the main agent loop; independently observed billable requests retain their own identities.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
+
+Request measurements have a separate identity scoped by backend provider, session,
+turn and request. Providers emit them through the optional `onRequestUsage` seam;
+the usage service serializes execution and request observations together. The
+parent execution must exist first. Numeric samples retain actual API provider/model,
+request time, token inclusion semantics, cache-write lifetime buckets, context and
+region evidence, requested/reported tiers, served mode and finality. Corrections
+increase a persistent revision; stale revisions, changed request timestamps and
+final-to-provisional updates cannot replace newer evidence. Requests and their
+parent grouping metadata survive restart without storing conversation content.
+
+The backend prices each final request using the latest snapshot effective at its
+request timestamp. Exact model IDs are required; requested tiers do not establish
+served tiers. A documented default requires explicit producer evidence. Context
+predicates use their authored strict/inclusive operators, matching overrides merge
+in order, and matching multipliers affect only their named categories. Included
+cache reads/writes are subtracted from input and included reasoning is separated
+from ordinary output before applying rates. Missing usage, inclusion semantics,
+cache rates/lifetimes, context, region, tier or model evidence leaves a request
+unpriced with a reason. There are no fallback estimates. Non-token charges remain
+outside the estimate.
+
+Cost and coverage accompany summary, daily and grouped results. USD sums only
+priced requests; a known zero differs from an unavailable total. Observed request
+counts do not claim to count unknown legacy requests. Producers must explicitly
+attest a complete execution request set; otherwise coverage retains an execution
+with an unknown additional request count, even when some requests were captured.
+Execution token/timing fields keep their execution-start date and model attribution.
+Cost uses request dates/models, so a cost contribution may create a group/day with
+zero execution starts. Backend-provider filters retain their existing meaning;
+API-provider grouping/filtering uses the underlying billing provider separately.
+Unknown legacy coverage keeps its retained execution attribution. Clearing,
+execution deletion and retention also delete request evidence. The standalone and
+desktop resource bundles calculate these costs from embedded prices offline.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens
