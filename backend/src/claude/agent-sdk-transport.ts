@@ -11,6 +11,7 @@ import {
   deleteSession as deleteClaudeSession,
   forkSession as forkClaudeSession,
   query,
+  resolveSettings,
   type CanUseTool,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -72,7 +73,7 @@ type ActiveTransportTurn = {
 };
 
 type ClaudeSdkSession = {
-  requestUsage: ClaudeRequestUsageObserver;
+  requestUsage: Promise<ClaudeRequestUsageObserver>;
   lastRequestOwner: ClaudeRequestUsageOwner;
   sessionId: string;
   requestOwnerId: string;
@@ -370,11 +371,8 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     );
     const queryOptions = claudeQueryOptions(params, sessionId, resumeSessionId, canUseTool, this.options);
     const queryRuntime = this.createQuery({ prompt: input, options: queryOptions });
-    const env = queryOptions.env ?? {};
-    const direct = !['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'].some(key => env[key] && env[key] !== '0')
-      && (!env.ANTHROPIC_BASE_URL || env.ANTHROPIC_BASE_URL.replace(/\/$/, '') === 'https://api.anthropic.com');
     session = {
-      requestUsage: new ClaudeRequestUsageObserver(direct ? 'anthropic' : null),
+      requestUsage: this.requestPricingProvider(queryOptions).then(provider => new ClaudeRequestUsageObserver(provider)),
       lastRequestOwner: activeTurn.requestUsage,
       sessionId,
       requestOwnerId: params.ownerId ?? sessionId,
@@ -426,8 +424,28 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     session.input.push(await claudeUserMessage(params.prompt, params.attachments));
   }
 
+  private async requestPricingProvider(options: ClaudeQueryOptions): Promise<'anthropic' | null> {
+    try {
+      const settings = await resolveSettings({
+        cwd: options.cwd, settingSources: options.settingSources, managedSettings: options.managedSettings,
+      });
+      // The SDK resolver does not execute policy helpers, so their routing is unknown.
+      if (settings.effective.policyHelper) return null;
+      // Either layer can affect the child environment. Conflicting routing stays
+      // unknown rather than guessing which precedence a particular host applies.
+      const direct = [options.env ?? {}, settings.effective.env ?? {}].every(env =>
+        !['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'].some(key => env[key] && env[key] !== '0')
+        && (!env.ANTHROPIC_BASE_URL || env.ANTHROPIC_BASE_URL.replace(/\/+$/, '') === 'https://api.anthropic.com'));
+      return direct ? 'anthropic' : null;
+    } catch {
+      // Pricing attribution cannot prevent a conversation from running.
+      return null;
+    }
+  }
+
   private async consumeSession(session: ClaudeSdkSession): Promise<void> {
     try {
+      const requestUsage = await session.requestUsage;
       for await (const sdkMessage of session.query) {
         const message = sdkMessage as ClaudeSdkMessage;
         this.rekeySessionFromMessage(session, message);
@@ -447,7 +465,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
           } else activeTurn.consumption=null;
           message.executionConsumption=activeTurn.consumption;
           message.executionModel=activeTurn.model.snapshot();
-          message.executionRequestCoverage=session.requestUsage.finish(activeTurn.requestUsage, message.usage);
+          message.executionRequestCoverage=requestUsage.finish(activeTurn.requestUsage, message.usage);
         }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;
@@ -455,7 +473,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
         // Start/persist the execution before emitting request samples. Numeric capture
         // is independent of transcript routing, including sidechain messages.
         activeTurn?.onMessage(message);
-        session.requestUsage.observe(sdkMessage, activeTurn?.requestUsage ?? session.lastRequestOwner);
+        requestUsage.observe(sdkMessage, activeTurn?.requestUsage ?? session.lastRequestOwner);
         if (!activeTurn && (typeof (message as Record<string, unknown>).parent_tool_use_id === 'string'
           || message.type === 'system' && ['task_started', 'task_progress', 'task_notification'].includes(String(message.subtype)))) {
           session.onSubagentMessage(message);

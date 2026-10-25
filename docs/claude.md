@@ -238,7 +238,11 @@ analytics calculates historical costs. Conversation history is not a pricing sou
   inference mode, and region. The pricing catalog's fast tier corresponds to
   reported fast speed, separately from capacity tier. Missing speed/tier is
   explicit. Priority commitments and batch tier have no supported catalog rules
-  and remain unpriced. Explicit cloud/proxy routing cannot use first-party prices.
+  and remain unpriced. Pricing attribution checks both the launch environment and
+  the SDK-resolved user, project, local, and managed settings before consuming
+  usage. Cloud/proxy routing or conflicting routing in either layer stays
+  unpriced. Settings-resolution failures and unresolved policy helpers also
+  leave the provider unknown without preventing the conversation from running.
 - Multiple server-side `iterations`, a different iteration model, or a different
   iteration kind retain an unsupported pricing reason. They need a richer pricing
   projection; no turn-wide context or cheaper rate is substituted.

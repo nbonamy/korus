@@ -81,6 +81,7 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
     await Promise.all(homes.splice(0).map(home => rm(home, { recursive: true, force: true })));
+    vi.unstubAllEnvs();
   });
 
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
@@ -445,6 +446,54 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
       reasons: [...(reason ? [{ reason, count: 1 }] : []), { reason: 'unknown-request-coverage', count: 1 }].sort((a,b) => a.reason.localeCompare(b.reason)) });
     if (scenario === 'unknown reasoning split') expect(requests.at(-1)?.tokens.reasoning).toBeNull();
     await usage.close();
+  });
+
+  it.each([
+    ['project proxy', 'project', { ANTHROPIC_BASE_URL: 'https://proxy.invalid' }, null],
+    ['user proxy', 'user', { ANTHROPIC_BASE_URL: 'https://proxy.invalid' }, null],
+    ['local Bedrock', 'local', { CLAUDE_CODE_USE_BEDROCK: '1' }, null],
+    ['local Vertex', 'local', { CLAUDE_CODE_USE_VERTEX: '1' }, null],
+    ['local Foundry', 'local', { CLAUDE_CODE_USE_FOUNDRY: '1' }, null],
+    ['direct Anthropic', 'project', { ANTHROPIC_BASE_URL: 'https://api.anthropic.com/' }, 'anthropic'],
+  ] as const)('prices %s from SDK settings without assuming a direct provider', async (_name, source, env, provider) => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'claude-pricing-settings-'));
+    homes.push(home);
+    const config = path.join(home, 'config');
+    const cwd = path.join(home, 'project');
+    await mkdir(config, { recursive: true });
+    await mkdir(path.join(cwd, '.claude'), { recursive: true });
+    vi.stubEnv('CLAUDE_CONFIG_DIR', config);
+    const settings = source === 'user' ? path.join(config, 'settings.json')
+      : path.join(cwd, '.claude', source === 'local' ? 'settings.local.json' : 'settings.json');
+    await writeFile(settings, JSON.stringify({ env }));
+    const ledger = new UsageLedger(':memory:');
+    await ledger.load();
+    const usage = new UsageService(ledger, () => undefined);
+    try {
+      const { sdk, driver, snapshot } = setup(false, usage, [], undefined, {
+        ANTHROPIC_BASE_URL: undefined, CLAUDE_CODE_USE_BEDROCK: undefined,
+        CLAUDE_CODE_USE_VERTEX: undefined, CLAUDE_CODE_USE_FOUNDRY: undefined,
+      });
+      snapshot.agents[0]!.folder = cwd;
+      const requests: RequestObservation[] = [];
+      driver.onRequestUsage(e => requests.push(e));
+      const sending = driver.sendPrompt(snapshot.agents[0]!, 'Work');
+      await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+      sdk.emit({ type: 'system', subtype: 'init', session_id: 'requests' });
+      await sending;
+      const fixture = requestFixture('settings-route', 10, 1000, 50, 100, 100);
+      for (const event of [fixture.start, fixture.delta, fixture.stop]) sdk.emit(event);
+      sdk.emit({ type: 'result', subtype: 'success', session_id: 'requests', is_error: false,
+        usage: { input_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 150, output_tokens: 100 } });
+      await vi.waitFor(() => expect(snapshot.agents[0]!.status.type).toBe('idle'));
+      await usage.drain();
+      expect(requests.at(-1)?.apiProvider).toBe(provider);
+      expect(ledger.query().cost).toStrictEqual({
+        usd: provider ? 0.0026175 : null, coverage: provider ? 'complete' : 'unavailable',
+        requests: 1, pricedRequests: provider ? 1 : 0, unpricedRequests: provider ? 0 : 1,
+        unknownRequestExecutions: 0, reasons: provider ? [] : [{ reason: 'unknown-provider', count: 1 }],
+      });
+    } finally { await usage.close(); }
   });
 
   it('retains measured streamed usage when interrupted without promoting incomplete output to a final count', async () => {
