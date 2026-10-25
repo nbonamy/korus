@@ -86,6 +86,7 @@
       <p v-else-if="purpose === 'missionIssue' && backlog.sources.value.length === 0" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.noRepositories') }}</p>
       <p v-else-if="purpose === 'missionIssue' && !backlog.sourceId.value" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.chooseRepositoryToSeeIssues') }}</p>
       <template v-else-if="tab === 'branches' && purpose === 'session'">
+        <button class="app-button app-button--secondary" type="button" @click="emit('new-branch')">{{ t('repositories.sessionSource.newBranch') }}</button>
         <h3>{{ t('repositories.sessionSource.recentBranches') }}</h3>
         <button v-for="branch in filteredBranches" :key="branch.name" class="repository-session-source-dialog__result" type="button" @click="emit('select-branch', branch)">
           <GitBranchIcon
@@ -106,7 +107,7 @@
         <p v-if="filteredBranches.length === 0" class="repository-session-source-dialog__state">{{ t('repositories.sessionSource.noBranches') }}</p>
       </template>
       <template v-else>
-        <h3>{{ tab === 'pullRequests' ? t('repositories.sessionSource.recentPullRequests') : t('repositories.sessionSource.recentIssues') }}</h3>
+        <h3>{{ tab === 'pullRequests' ? t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.recentMergeRequests' : 'repositories.sessionSource.recentPullRequests') : t('repositories.sessionSource.recentIssues') }}</h3>
         <button v-for="item in filteredWorkItems" :key="item.id" class="repository-session-source-dialog__result" type="button" @click="selectWorkItem(item)">
           <GitPullRequestIcon v-if="item.kind === 'pullRequest'" class="repository-session-source-dialog__result-icon" aria-hidden="true" />
           <IssueIcon v-else class="repository-session-source-dialog__result-icon" aria-hidden="true" />
@@ -116,7 +117,7 @@
           </span>
           <ArrowRightIcon class="repository-session-source-dialog__arrow" aria-hidden="true" />
         </button>
-        <p v-if="filteredWorkItems.length === 0" class="repository-session-source-dialog__state">{{ tab === 'pullRequests' ? t('repositories.sessionSource.noPullRequests') : t('repositories.sessionSource.noIssues') }}</p>
+        <p v-if="filteredWorkItems.length === 0" class="repository-session-source-dialog__state">{{ tab === 'pullRequests' ? t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.noMergeRequests' : 'repositories.sessionSource.noPullRequests') : t('repositories.sessionSource.noIssues') }}</p>
       </template>
     </section>
   </el-dialog>
@@ -175,6 +176,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  'new-branch': [];
   'custom-work-item': [selection: Omit<WorkItemAssignmentSelection, 'action'>];
   'select-branch': [branch: SourceBranch];
   'select-repository': [repositoryId: string];
@@ -187,6 +189,7 @@ const backlog = useWorkSourceBacklog({
   location: () => props.location,
   query: { kind: 'issue', state: 'open' },
   preferredSourceId: () => props.selectedRepositoryId,
+  preferredProvider: () => props.selectedRepositoryId?.startsWith('gitlab.com/') ? 'gitlab' : undefined,
   restrictToRepository: () => props.purpose === 'session',
   acceptsSource: source => props.sourceFilter?.(source) ?? true,
   enabled: () => props.visible,
@@ -210,7 +213,7 @@ watch([backlog.provider, () => backlog.providers.value.length > 0], () => {
 const tab = ref<SourceTab>(props.purpose === 'missionIssue' ? 'issues' : 'branches');
 const tabs = computed<ReadonlyArray<{ id: SourceTab; label: string }>>(() => [
   { id: 'branches', label: t('repositories.sessionSource.branches') },
-  { id: 'pullRequests', label: t('repositories.sessionSource.pullRequests') },
+  { id: 'pullRequests', label: t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'repositories.sessionSource.pullRequests') },
   { id: 'issues', label: t('repositories.sessionSource.issues') },
 ]);
 const searchPlaceholder = computed(() => tab.value === 'branches'

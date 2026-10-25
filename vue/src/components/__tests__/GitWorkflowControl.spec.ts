@@ -22,6 +22,75 @@ function mountControl(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('GitWorkflowControl', () => {
+  it('offers editable GitLab MR creation through the Git menu and command search', async () => {
+    const gitlab = { ...workflow, repository: 'gitlab.com/group/sub/repo', repositoryProvider: 'gitlab', codeHostConnected: true, githubConnected: false, remoteUrl: 'git@gitlab.com:group/sub/repo.git' };
+    const createPullRequest = vi.fn(async () => ({ ...gitlab, existingPullRequest: { number: 7, title: 'Edited', url: 'https://gitlab.com/group/sub/repo/-/merge_requests/7', draft: true, state: 'open', headSha: 'head' } }));
+    const generateMessage = vi.fn(async () => ({ kind: 'pullRequest', title: 'Generated', body: 'Description' }));
+    const wrapper = mountControl({ getWorkflow: async () => gitlab, createPullRequest, generateMessage });
+    try {
+      await flushPromises();
+      const actions = (wrapper.vm as unknown as { getCommandActions(): CommandPaletteAction[] }).getCommandActions();
+      expect(actions.some(action => action.label.endsWith('Create MR'))).toBe(true);
+      await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      await bodyAll('[role="menuitem"]').find(item => item.text() === 'Create MR')!.trigger('click');
+      expect(wrapper.get('[role="dialog"]').text()).toContain('Create merge request');
+      expect(wrapper.find('[aria-label="Generate merge request draft with Codex"]').exists()).toBe(true);
+      expect(wrapper.text()).toContain('Uncommitted changes will not be included in this merge request.');
+      await wrapper.get('.git-workflow-control__pull-request-form button').trigger('click');
+      await flushPromises();
+      await wrapper.get('.git-workflow-control__pull-request-form input').setValue('Edited');
+      await submitButton(wrapper, 'Create MR').trigger('click');
+      await flushPromises();
+      expect(createPullRequest).toHaveBeenCalledExactlyOnceWith(agent.id, { title: 'Edited', body: 'Description', confirmed: true });
+      expect(wrapper.text()).toContain('Merge request created');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('opens the existing GitLab MR instead of another creation form after a fresh lookup', async () => {
+    const url = 'https://gitlab.com/group/sub/repo/-/merge_requests/7';
+    const openExternal = vi.spyOn(window, 'open').mockReturnValue(null);
+    const getWorkflow = vi.fn(async (_id: string, options?: { includePullRequest?: boolean }) => ({ ...workflow, repositoryProvider: 'gitlab', codeHostConnected: true,
+      ...(options?.includePullRequest ? { existingPullRequest: { number: 7, title: 'Work', url, draft: true, state: 'open', headSha: 'head' } } : {}) }));
+    const createPullRequest = vi.fn(); const wrapper = mountControl({ getWorkflow, createPullRequest });
+    try {
+      await flushPromises(); await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      await bodyAll('[role="menuitem"]').find(item => item.text() === 'Create MR')!.trigger('click'); await flushPromises();
+      expect(getWorkflow).toHaveBeenLastCalledWith(agent.id, { includePullRequest: true });
+      expect(wrapper.text()).toContain('!7');
+      expect(wrapper.find('.git-workflow-control__pull-request-form').exists()).toBe(false);
+      await wrapper.get('.git-workflow-control__existing-request button').trigger('click');
+      expect(openExternal).toHaveBeenCalledWith(url, '_blank', 'noopener,noreferrer'); expect(createPullRequest).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+
+  it('keeps failed GitLab lookup recoverable without submitting a create request', async () => {
+    let failed = true;
+    const getWorkflow = vi.fn(async (_id: string, options?: { includePullRequest?: boolean }) => ({ ...workflow, repositoryProvider: 'gitlab', codeHostConnected: true,
+      ...(options?.includePullRequest && failed ? { codeHostError: 'GitLab rate limit reached.' } : {}) }));
+    const createPullRequest = vi.fn(); const wrapper = mountControl({ getWorkflow, createPullRequest });
+    try {
+      await flushPromises(); await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      await bodyAll('[role="menuitem"]').find(item => item.text() === 'Create MR')!.trigger('click'); await flushPromises();
+      expect(wrapper.text()).toContain('GitLab rate limit'); expect(wrapper.find('.git-workflow-control__pull-request-form').exists()).toBe(false);
+      failed = false; await submitButton(wrapper, 'Retry').trigger('click'); await flushPromises();
+      expect(wrapper.find('.git-workflow-control__pull-request-form').exists()).toBe(true);
+      expect(createPullRequest).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
+  it('discards request lookup from the previously selected agent', async () => {
+    let finish!: (value: AgentGitWorkflow) => void;
+    const getWorkflow = vi.fn(async (_id: string, options?: { includePullRequest?: boolean }) => options?.includePullRequest ? new Promise<AgentGitWorkflow>(resolve => { finish = resolve; }) : workflow);
+    const wrapper = mountControl({ getWorkflow });
+    try {
+      await flushPromises(); await wrapper.get('.git-workflow-control__trigger').trigger('click');
+      await bodyAll('[role="menuitem"]').find(item => item.text() === 'Create PR')!.trigger('click'); await flushPromises();
+      await wrapper.setProps({ agent: { ...agent, id: 'other', folder: '/different' } }); await flushPromises();
+      finish({ ...workflow, repositoryProvider: 'gitlab', repository: 'gitlab.com/old/repo' }); await flushPromises();
+      const actions = (wrapper.vm as unknown as { getCommandActions(): CommandPaletteAction[] }).getCommandActions();
+      expect(actions.some(action => action.aliases === 'merge request gitlab')).toBe(false);
+      expect(actions.find(action => action.id === 'git:log')?.disabledReason).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
   it('lets a merge without an originator report to a selected repository peer only after opting in', async () => {
     const mergeBranch = vi.fn(async () => workflow);
     const recipients = [{ id: 'recipient', name: 'Main' }];
@@ -1150,47 +1219,47 @@ describe('GitWorkflowControl', () => {
     expect((wrapper.get('.git-workflow-control__pull-request-form textarea').element as HTMLTextAreaElement).value).toContain('ephemeral generation');
   });
 
-  it('explains that pull request generation requires committed branch changes', async () => {
+  it.each(['github', 'gitlab'])('explains that %s generation requires committed branch changes', async provider => {
     const descriptor = encodeAppErrorDescriptor({
       kind: 'appError',
-      code: 'git.pullRequestChangesRequired',
+      code: provider === 'gitlab' ? 'git.mergeRequestChangesRequired' : 'git.pullRequestChangesRequired',
     }, 'This branch has no committed changes to include.');
     const generateMessage = vi.fn().mockRejectedValue(new Error(
       `Error invoking remote method 'agent:git-workflow:message:generate': Error: ${descriptor}`,
     ));
-    const wrapper = mountControl({ generateMessage });
+    const wrapper = mountControl({ generateMessage, getWorkflow: async () => ({ ...workflow, repositoryProvider: provider }) });
     await flushPromises();
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await bodyAll('[role="menuitem"]').find((item) => item.text().includes('Create PR'))?.trigger('click');
-    await wrapper.get('[aria-label="Generate pull request draft with Codex"]').trigger('click');
+    await bodyAll('[role="menuitem"]').find((item) => item.text().includes(provider === 'gitlab' ? 'Create MR' : 'Create PR'))?.trigger('click');
+    await wrapper.get(`[aria-label="Generate ${provider === 'gitlab' ? 'merge' : 'pull'} request draft with Codex"]`).trigger('click');
     await flushPromises();
 
     expect(wrapper.get('.git-workflow-control__generation-error').text()).toBe(
-      'This branch has no committed changes. Commit your work before creating a pull request.',
+      `This branch has no committed changes. Commit your work before creating a ${provider === 'gitlab' ? 'merge request' : 'pull request'}.`,
     );
     expect(wrapper.text()).not.toContain('Error invoking remote method');
   });
 
-  it('blocks pull request creation with the same commit-first guidance', async () => {
+  it.each(['github', 'gitlab'])('blocks %s creation with commit-first guidance', async provider => {
     const descriptor = encodeAppErrorDescriptor({
       kind: 'appError',
-      code: 'git.pullRequestChangesRequired',
+      code: provider === 'gitlab' ? 'git.mergeRequestChangesRequired' : 'git.pullRequestChangesRequired',
     }, 'This branch has no committed changes to include.');
     const createPullRequest = vi.fn().mockRejectedValue(new Error(
       `Error invoking remote method 'agent:git-workflow:pull-request:create': Error: ${descriptor}`,
     ));
-    const wrapper = mountControl({ createPullRequest });
+    const wrapper = mountControl({ createPullRequest, getWorkflow: async () => ({ ...workflow, repositoryProvider: provider }) });
     await flushPromises();
     expect(wrapper.get('.git-workflow-control__primary').attributes('disabled')).toBeUndefined();
     await wrapper.get('.git-workflow-control__trigger').trigger('click');
-    await bodyAll('[role="menuitem"]').find((item) => item.text().includes('Create PR'))?.trigger('click');
+    await bodyAll('[role="menuitem"]').find((item) => item.text().includes(provider === 'gitlab' ? 'Create MR' : 'Create PR'))?.trigger('click');
     await wrapper.get('.git-workflow-control__pull-request-form input').setValue('Fix issue 7');
-    await submitButton(wrapper, 'Create PR').trigger('click');
+    await submitButton(wrapper, provider === 'gitlab' ? 'Create MR' : 'Create PR').trigger('click');
     await flushPromises();
 
     expect(wrapper.text()).toContain(
-      'This branch has no committed changes. Commit your work before creating a pull request.',
+      `This branch has no committed changes. Commit your work before creating a ${provider === 'gitlab' ? 'merge request' : 'pull request'}.`,
     );
     expect(wrapper.text()).not.toContain('Error invoking remote method');
   });

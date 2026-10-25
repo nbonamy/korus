@@ -139,7 +139,7 @@ import org.json.JSONObject
             Box(Modifier.weight(1f)) {
                 Button(onClick = { newMenu = true }, enabled = model.canStartCreation, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("New Agent", fontWeight = FontWeight.SemiBold) }
                 DropdownMenu(expanded = newMenu, onDismissRequest = { newMenu = false }) {
-                    listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("Existing Project", CreationKind.LOCAL, Icons.Outlined.Folder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
+                    listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("Existing Project", CreationKind.LOCAL, Icons.Outlined.Folder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From GitLab", CreationKind.GITLAB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
                         if (index == 1) HorizontalDivider()
                         DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { newMenu = false; model.openCreation(kind); close() })
                     }

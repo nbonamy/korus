@@ -463,7 +463,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
     private fun projectCatalogCommand(type: String, flow: CreationFlow, repositoryId: String? = null) {
         val fields = mutableListOf<Pair<String, Any?>>()
         if (repositoryId != null) fields += "repositoryId" to repositoryId
-        if (flow.kind == CreationKind.LOCAL) fields += "source" to "local"
+        if (flow.projectSource != "github") fields += "source" to flow.projectSource
         command(type, *fields.toTypedArray())
     }
     internal fun openCreation(kind: CreationKind, repositoryId: String? = null, repositoryName: String = "") {
@@ -472,7 +472,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         creation = CreationFlow(state.string("laptopId", state.obj("composerTarget").string("hostId")), state.string("teamId"), kind, repositoryId, repositoryName)
         dictation.cancel(); sheet = null; reviewOpen = false; drawerVisible = false; acknowledge()
         when (kind) {
-            CreationKind.GITHUB, CreationKind.LOCAL -> projectCatalogCommand("loadProjectRepositories", creation!!)
+            CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL -> projectCatalogCommand("loadProjectRepositories", creation!!)
             CreationKind.EXISTING -> command("loadBranches", "repositoryId" to repositoryId)
             CreationKind.QUICK, CreationKind.DEFAULT -> submitCreation()
             else -> Unit
@@ -518,7 +518,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         creation = null
         if (state.string("chatCreation") == "failed") command("dismissNewChat")
         when (flow.kind) {
-            CreationKind.GITHUB, CreationKind.LOCAL -> command("dismissProjectRepositories")
+            CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL -> command("dismissProjectRepositories")
             CreationKind.EXISTING -> command("dismissBranches")
             else -> Unit
         }
@@ -529,7 +529,7 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         if (flow.submitted || !state.connection.isConnected) return
         when (flow.kind) {
             CreationKind.EXISTING -> command("loadBranches", "repositoryId" to flow.repositoryId)
-            CreationKind.GITHUB, CreationKind.LOCAL -> if (flow.repositoryId == null) projectCatalogCommand("loadProjectRepositories", flow) else projectCatalogCommand("loadProjectBranches", flow, flow.repositoryId)
+            CreationKind.GITHUB, CreationKind.GITLAB, CreationKind.LOCAL -> if (flow.repositoryId == null) projectCatalogCommand("loadProjectRepositories", flow) else projectCatalogCommand("loadProjectBranches", flow, flow.repositoryId)
             else -> Unit
         }
     }

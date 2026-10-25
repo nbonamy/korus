@@ -452,7 +452,7 @@ const emit = defineEmits<{
   'resume-session': [agentId: string];
   'restart-agent': [agentId: string];
   'select-agent': [agentId: string];
-  'start-work': [action: 'new' | 'github' | 'local' | 'url'];
+  'start-work': [action: 'new' | 'github' | 'gitlab' | 'local' | 'url'];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
@@ -721,7 +721,9 @@ function pullRequestAttentionLabel(session: WorkspaceSidebarSession): string {
   const pullRequest = session.pullRequest;
   if (!pullRequest) return '';
   return t(
-    pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup',
+    pullRequest.provider === 'gitlab'
+      ? (pullRequest.state === 'closed' ? 'sidebar.mergeRequestClosedCleanup' : 'sidebar.mergeRequestMergedCleanup')
+      : (pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup'),
     { number: pullRequest.number },
   );
 }

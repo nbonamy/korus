@@ -1,3 +1,4 @@
+export { default as GitLabIcon } from './GitLabIcon.vue';
 export { default as GitHubIcon } from './GitHubIcon.vue';
 export { default as LinearIcon } from './LinearIcon.vue';
 export { default as BacklogIcon } from './BacklogIcon.vue';

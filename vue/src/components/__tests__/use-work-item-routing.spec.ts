@@ -5,6 +5,40 @@ import { describe, expect, it, vi } from 'vitest';
 import { useWorkItemRouting } from '../use-work-item-routing';
 
 describe('useWorkItemRouting', () => {
+  it('starts GitHub cockpit work only in the checkout with its full host and namespace identity', async () => {
+    const repositories: SourceRepository[] = [
+      { name: 'agent-workspace', path: '/workspace/gitlab', remoteIdentity: 'gitlab.com/group/agent-workspace', worktrees: [] },
+      { name: 'agent-workspace', path: '/workspace/other-owner', remoteIdentity: 'github.com/other/agent-workspace', worktrees: [] },
+      { name: 'agent-workspace', path: '/workspace/unidentified', worktrees: [] },
+    ];
+    const harness = createHarness({ sourceRepositories: repositories });
+    await expect(harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId })).rejects.toThrow(/not available/);
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    expect(harness.assign).not.toHaveBeenCalled();
+
+    repositories.push({ name: 'renamed-checkout', path: '/workspace/correct-github', remoteIdentity: 'github.com/nbonamy/agent-workspace', worktrees: [] });
+    await harness.routing.startMany({ action: 'fix', items: [harness.item], teamId: harness.teamId });
+    expect(harness.createWorktree).toHaveBeenCalledExactlyOnceWith({ repoPath: '/workspace/correct-github', branchName: 'fix/gh-12' });
+    expect(harness.assign).toHaveBeenCalledExactlyOnceWith({ agentId: harness.createdAgent.id, item: harness.item, prompt: expect.stringContaining('Fix this GitHub issue') });
+  });
+  it('starts GitLab batches in an explicit execution repository and never guesses a checkout by basename', async () => {
+    const selected = item({ provider: 'gitlab', sourceId: 'gitlab.com/group/sub/agent-workspace', sourceName: 'group/sub/agent-workspace', id: 'gitlab.com/group/sub/agent-workspace#12', identifier: '#12' });
+    const harness = createHarness({ item: selected, remoteConnectionId: 'gitlab-host' });
+    await expect(harness.routing.createIsolatedAgent(selected, harness.teamId)).rejects.toThrow(/not available/);
+    await expect(harness.routing.createIsolatedAgent({ ...selected, sourceId: 'gitlab.com' }, harness.teamId)).rejects.toThrow(/not available/);
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    const repository = { name: 'different-code', path: '/workspace/execution', worktrees: [] };
+    await harness.routing.startMany({ action: 'fix', items: [selected], teamId: harness.teamId, repository });
+    expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: repository.path, branchName: 'fix/gl-12', remoteConnectionId: 'gitlab-host' });
+    expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: selected, prompt: expect.stringContaining('Work item ID: gitlab:gitlab.com/group/sub/agent-workspace#12') });
+  });
+  it('checks out a GitLab MR using its qualified repository identity', async () => {
+    const selected = item({ provider: 'gitlab', kind: 'pullRequest', sourceId: 'gitlab.com/group/repo', identifier: '!12', id: 'gitlab.com/group/repo!12', branchName: 'topic' });
+    const harness = createHarness({ item: selected });
+    await harness.routing.startRepositoryWork(harness.agent.id, { item: selected, action: 'review', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'topic' } });
+    expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, pullRequestNumber: 12, requestRepository: selected.sourceId, confirmed: true });
+  });
   it('honors an explicit model when launching from a repository backlog', async () => {
     const harness = createHarness();
     await harness.routing.startRepositoryWork(harness.agent.id, {
@@ -188,6 +222,7 @@ function createHarness(input: {
   item?: WorkItem;
   loadItemsResult?: WorkItem[];
   remoteConnectionId?: string;
+  sourceRepositories?: SourceRepository[];
 } = {}) {
   const snapshot = createInitialSnapshot();
   const team = snapshot.teams[0]!;
@@ -211,9 +246,10 @@ function createHarness(input: {
     id: 'agent-created',
     folder: '/workspace/agent-workspace-feature',
   };
-  const sourceRepositories: SourceRepository[] = [{
+  const sourceRepositories: SourceRepository[] = input.sourceRepositories ?? [{
     name: 'agent-workspace',
     path: '/workspace/agent-workspace',
+    remoteIdentity: 'github.com/nbonamy/agent-workspace',
     worktrees: [],
   }];
   const assign = vi.fn(async () => undefined);

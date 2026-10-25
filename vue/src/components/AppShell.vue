@@ -35,21 +35,20 @@
       :authentication-cancelling="authenticationCancelling"
       :authentication-error="debugMissingEngines ? null : authenticationError"
       :authentication-loading="!debugMissingEngines && authenticationLoading"
-      :github-onboarding-visible="!debugMissingEngines && githubOnboardingVisible"
+      :repositories-onboarding-visible="!debugMissingEngines && repositoriesOnboardingVisible"
       :initial-authentication-loading="!debugMissingEngines && initialAuthenticationLoading"
       :onboarding-complete-visible="!debugMissingEngines && onboardingCompleteVisible"
-      :repository-acquire-busy="repositoryAcquireBusy"
-      :repository-acquire-error="repositoryAcquireError"
       :show-login-landing="showLoginLanding"
       :snapshot="snapshot"
-      :work-backlog-error="workBacklogError"
-      :work-provider-authorization="workProviderAuthorization"
+      :work-provider-authorizations="workProviderAuthorizations ?? (workProviderAuthorization ? { [workProviderAuthorization.provider]: workProviderAuthorization } : {})"
+      :work-provider-authorization-errors="workProviderAuthorizationErrors"
+      :connect-repository-provider="connectWorkProvider"
+      :disconnect-repository-provider="disconnectWorkProvider"
+      :open-repository-authorization="openWorkProviderAuthorization"
       @cancel="cancelChatGptLogin"
-      @complete="completeGitHubOnboardingStep"
-      @connect-github="connectGitHub"
+      @complete="firstRunOnboarding.completeRepositories"
       @finish="finishFirstRunOnboarding"
       @login="startChatGptLogin"
-      @open-github-authorization="openGitHubAuthorization"
     />
     <div
       class="app-shell__nav"
@@ -428,6 +427,7 @@
       :sessions="repositorySessionAssignmentSessions"
       @close="closeRepositorySessionSource"
       @select-branch="openNewAgentForSourceBranch"
+      @new-branch="repositorySession.newBranch"
       @custom-work-item="customizeRepositorySessionWork"
       @start-work-item="startRepositorySessionWork"
     />
@@ -459,8 +459,8 @@
       v-model:backend="repositorySession.backend.value"
       :visible="repositoryAcquireVisible"
       :mode="repositoryAcquireMode"
-      :connection="githubConnection"
-      :authorization="workProviderAuthorization"
+      :connection="repositoryAcquisition.connection.value"
+      :authorization="repositoryAcquireMode !== 'url' ? workProviderAuthorizations?.[repositoryAcquireMode] ?? (workProviderAuthorization?.provider === repositoryAcquireMode ? workProviderAuthorization : null) : null"
       :repositories="repositoryAcquireRepositories"
       :local-repository-identities="repositoryAcquireSourceRepositories.flatMap((repository) => repository.remoteIdentity ? [repository.remoteIdentity] : [])"
       :loading="repositoryAcquireCatalogLoading"
@@ -762,11 +762,13 @@ const props = withDefaults(defineProps<{
   fileActivity?: AgentFileActivity | null;
   workProviderAuthorization?: WorkProviderAuthorization | null;
   workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
+  workProviderAuthorizationErrors?: Partial<Record<WorkProviderKind, string>>;
   workRepositoriesByProvider?: Partial<Record<WorkProviderKind, WorkSource[]>>;
   workItemsByRepository?: Record<string, WorkItem[]>;
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
   workBacklogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   workBacklogError?: string | null;
+  workBacklogStateFor?: (provider: WorkProviderKind) => { status: 'notLoaded' | 'loading' | 'loaded' | 'error'; error: string | null };
   daemonStatus?: DaemonStatus | null;
   daemonStatusError?: string | null;
   codexResourceSharingMigrationRequired?: boolean;
@@ -784,7 +786,7 @@ const props = withDefaults(defineProps<{
   createSourceWorktree?: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   previewAgentFile?: (agentId: string, filePath: string) => Promise<AgentFilePreviewResult>;
   getAgentGitDiff?: (agentId: string, target?: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
-  getAgentGitWorkflow?: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
+  getAgentGitWorkflow?: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   generateAgentGitMessage?: (agentId: string, input: import('@workspace/core/contracts').AgentGitMessageGenerationInput) => Promise<import('@workspace/core/contracts').AgentGitMessageGenerationResult>;
   stageAgentGitFiles?: (agentId: string, input: import('@workspace/core/contracts').AgentGitStageInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   commitAgentGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitCommitInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
@@ -838,11 +840,12 @@ const props = withDefaults(defineProps<{
   resumeAgentConversation?: (agentId: string, target: ConversationResumeTarget) => Promise<void>;
   handoffAgentAction?: (agentId: string, input: AgentHandoffInput) => Promise<void>;
   readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
-  connectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
+  connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
   configureWorkBacklog?: (input: WorkBacklogConfigurationInput) => Promise<void>;
+  listWorkSources?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[]>;
   loadWorkRepositories?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[] | void>;
   loadWorkItems?: (provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery) => Promise<WorkItem[] | void>;
   loadGlobalWorkItems?: (provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery) => Promise<WorkItemPage>;
@@ -1318,17 +1321,10 @@ const editingAgentId = ref<string | null>(null);
 const agentDialogTeamId = ref<string | null>(null);
 const agentDialogSourceRepositoryName = ref<string | null>(null);
 const agentDialogSourceBranchName = ref('');
-const githubConnection = computed<WorkIntegrationConnection>(() => (
-  props.snapshot.workBacklog.connections.find((connection) => connection.provider === 'github') ?? {
-    provider: 'github',
-    status: 'disconnected',
-  }
-));
 const firstRunOnboarding = useFirstRunOnboarding({
   getApi: () => appApi,
   getConnections: () => props.snapshot.providerConnections ?? [],
   hasExistingWorkspace: () => props.snapshot.agents.length > 0 || props.snapshot.general.providerOnboardingComplete === true,
-  isGitHubConnected: () => githubConnection.value.status === 'connected' && githubConnection.value.source !== 'cli',
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
@@ -1341,7 +1337,7 @@ const {
   authenticationLoading,
   completeVisible: onboardingCompleteVisible,
   gated: realOnboardingGate,
-  githubVisible: githubOnboardingVisible,
+  repositoriesVisible: repositoriesOnboardingVisible,
   initialAuthenticationLoading,
   showLogin: realLoginLanding,
   cancelChatGptLogin,
@@ -1488,16 +1484,18 @@ const repositorySession = useRepositorySession({
   createAgent: (input) => props.createAgent(input),
   createIsolatedWorkItemAgent,
   createSourceWorktree: (input) => props.createSourceWorktree(input),
+  getAgentGitRemote: async (agentId) => (await props.getAgentGitWorkflow(agentId, { includePullRequest: false })).remoteUrl,
   getSnapshot: () => props.snapshot,
-  getWorkRepositories: () => props.workRepositoriesByProvider.github ?? [],
+  getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],
+  listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
   listSourceBranches: (repoPath, remoteConnectionId) => props.listSourceBranches(repoPath, remoteConnectionId),
-  loadWorkItems: async (repositoryId, location) => await props.loadWorkItems(
-    'github',
+  loadWorkItems: async (repositoryId, location, provider = 'github') => await props.loadWorkItems(
+    provider,
     repositoryId,
     location,
     { kind: 'all', state: 'open' },
   ) ?? [],
-  loadWorkRepositories: async (location) => await props.loadWorkRepositories('github', location) ?? [],
+  loadWorkRepositories: async (location, provider = 'github') => await props.loadWorkRepositories(provider, location),
   notifyError: (message) => ElMessage.error(message),
   prefillWorkItemForAgent,
   startWorkItemInExistingSession,
@@ -1534,16 +1532,18 @@ const {
 const repositoryAcquisition = useRepositoryAcquisition({
   activeTeam: () => activeTeam.value,
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
-  catalog: () => props.workRepositoriesByProvider.github,
-  catalogError: () => props.workBacklogError,
-  catalogStatus: () => props.workBacklogStatus,
+  catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),
   cloneRepository: (input) => props.cloneSourceRepository(input),
-  connectGitHub: () => props.connectWorkProvider('github'),
+  connectProvider: provider => props.connectWorkProvider(provider),
   errorMessage: (error) => localizedErrorMessage(error, t),
-  githubConnection: () => githubConnection.value,
+  connection: provider => props.snapshot.workBacklog.connections.find(item => item.provider === provider) ?? { provider, status: 'disconnected' },
+  connectionError: provider => {
+    const connection = props.snapshot.workBacklog.connections.find(item => item.provider === provider);
+    return connection?.detail ? localizedText(connection.detail, t) : null;
+  },
   listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
-  loadGitHubRepositories: () => props.loadWorkRepositories('github'),
+  loadRepositories: (provider, location) => props.listWorkSources ? props.listWorkSources(provider, location) : location ? props.loadWorkRepositories(provider, location) : props.loadWorkRepositories(provider),
   openFolder: async (folder, teamId) => {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
@@ -1554,9 +1554,10 @@ const repositoryAcquisition = useRepositoryAcquisition({
       ...(teamId ? { teamId } : {}),
     });
   },
-  openGitHubAuthorization: () => props.openWorkProviderAuthorization('github'),
-  openRepository: (repository, teamId) => openRepositorySessionSource({
+  openAuthorization: provider => props.openWorkProviderAuthorization(provider),
+  openRepository: (repository, teamId, workSource) => openRepositorySessionSource({
     teamId,
+    workSource,
     repositoryName: repository.name,
     repositoryRoot: repository.path,
   }),
@@ -1894,7 +1895,7 @@ const cockpitBacklogState = useCockpitBacklog({
   confirmLoadAll: async () => {
     try {
       await ElMessageBox.confirm(
-        translate('surface.appShell.thisLoadsYourGlobalGitHubBacklogOnePageAtATimeLargeBackl'),
+        translate('backlogSource.loadGlobalConfirmation'),
         translate('surface.appShell.loadTheGlobalBacklog'),
         {
           confirmButtonText: translate('dynamic.misc.loadEverything'),
@@ -1908,8 +1909,8 @@ const cockpitBacklogState = useCockpitBacklog({
     }
   },
   getSnapshot: () => props.snapshot,
-  getWorkBacklogError: () => props.workBacklogError,
-  getWorkBacklogStatus: () => props.workBacklogStatus,
+  getWorkBacklogError: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).error : props.workBacklogError,
+  getWorkBacklogStatus: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).status : props.workBacklogStatus,
   getWorkItemsByRepository: () => props.workItemsByRepository,
   getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],
   loadGlobalWorkItems: (query, provider) => props.loadGlobalWorkItems(provider, undefined, query),
@@ -2778,7 +2779,7 @@ async function createQuickChat(): Promise<void> {
   }
 }
 
-async function handleStartWorkAction(action: 'new' | 'github' | 'local' | 'url'): Promise<void> {
+async function handleStartWorkAction(action: 'new' | 'github' | 'gitlab' | 'local' | 'url'): Promise<void> {
   if (action === 'new') {
     newProjectError.value = null;
     newProjectDialogVisible.value = true;
@@ -2814,18 +2815,6 @@ async function createNewProject(name: string, backend: Agent['backend']): Promis
     newProjectBusy.value = false;
   }
 }
-
-function completeGitHubOnboardingStep(): void {
-  repositoryAcquireBusy.value = false;
-  repositoryAcquireError.value = null;
-  firstRunOnboarding.completeGitHub();
-}
-
-watch(() => [githubConnection.value.status, githubConnection.value.source] as const, ([status, source]) => {
-  if (githubOnboardingVisible.value && status === 'connected' && source !== 'cli') {
-    completeGitHubOnboardingStep();
-  }
-});
 
 function openNewTeam(): void {
   teamDialogMode.value = 'create';
@@ -3290,8 +3279,9 @@ async function restartApp(): Promise<void> {
   await props.restartApp();
 }
 
-async function connectWorkProvider(provider: WorkProviderKind): Promise<void> {
-  await props.connectWorkProvider(provider);
+async function connectWorkProvider(provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions): Promise<void> {
+  if (options) await props.connectWorkProvider(provider, options);
+  else await props.connectWorkProvider(provider);
 }
 
 async function pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<void> {
@@ -3348,7 +3338,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.github-onboarding):not(.onboarding-complete) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
   visibility: hidden;
 }
 

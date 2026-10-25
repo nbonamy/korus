@@ -338,18 +338,40 @@ Invariants the tool schemas cannot enforce:
 
 ## Hosted MCP Gateway
 
-Provider-hosted servers (GitHub, Linear) are reached through a transparent reverse
+Provider-hosted servers (GitHub, GitLab, Linear) are reached through a transparent reverse
 proxy at `/mcp/providers/<provider>?agentId=…`, backed by a small catalog of public
 transport facts (server ID, upstream URL, owning work integration). Connecting an
-integration enables its entry; sessions see local servers named `github` /
-`linear` with the upstream tool names and schemas.
+integration enables its eligible entry; sessions see local servers named `github`,
+`gitlab`, and `linear` with the upstream tool names and schemas.
 
 - `WorkIntegrationManager` is the credential authority. The gateway asks it for an
   authorization header on every upstream request, replaces any caller
   `Authorization`, and on upstream `401` rotates the credential and retries
   **once**. A refresh failure marks only that provider as needing reconnection.
-- GitHub CLI connections supply app-owned GitHub operations through `gh`, not
-  bearer credentials. They do not enable the hosted GitHub MCP gateway.
+- CLI connections supply app-owned operations through `gh` or `glab`, without
+  bearer credentials. They do not enable hosted MCP or permit token extraction.
+- GitLab MCP requires a direct OAuth token with the `mcp` scope. Settings offers
+  explicit authorization with `api mcp`; ordinary repository authorization requests
+  only `api`. Register both scopes on the Korus public OAuth application. The daemon
+  verifies MCP initialize and tool discovery before publishing its local URL, and
+  rechecks eligibility on hydration or Settings retry. GitLab.com additionally
+  requires a top-level group that allows MCP client access under Settings → General
+  → Permissions and group features. Group and project permissions still apply to
+  individual tools. See [GitLab's MCP prerequisites](https://docs.gitlab.com/user/model_context_protocol/mcp_server/).
+  GitLab caches group eligibility and invalidates it asynchronously after group
+  settings change. A group-denied result can persist after access is enabled.
+  Retry the MCP check in Settings after propagation; another OAuth grant does not
+  clear GitLab's server-side eligibility cache. See the
+  [GitLab eligibility cache](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/models/concerns/ai/user_authorizable.rb).
+- GitLab MCP eligibility is public metadata separate from API connection state.
+  Missing scope, group denial, or an unavailable MCP endpoint does not disconnect
+  native repository/backlog/MR access or another provider. A cached gateway URL
+  checks eligibility again; HTTP permission denial disables only GitLab MCP.
+  Permission upgrades retain native credentials and coordinate with their refresh.
+  Denial, cancellation, expiry, and a different OAuth account preserve the original
+  connection. Cancellation during credential storage restores the original token
+  through the serialized token-store boundary. Only the daemon holds grant tokens;
+  snapshots and harness configuration contain capability state and local URLs.
 - Never configure a provider's remote URL or bearer token directly in Codex, Claude
   or user-global MCP settings: that exposes a rotating secret to the harness and
   prevents safe refresh. Tokens never appear in session config, URLs, tool I/O,

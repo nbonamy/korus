@@ -8,6 +8,28 @@ import { appApi, configureAppClient } from '../../platform-api';
 import { backlogConnectionsKey } from '../backlog-providers';
 
 describe('RepositoryBacklogPanel', () => {
+  it('browses GitLab MR details and assigns the native ! reference', async () => {
+    const { api } = createClientApiMock();
+    configureAppClient({ platform: 'desktop', api });
+    const source = { provider: 'gitlab' as const, id: 'gitlab.com/group/sub/repo', name: 'repo', fullName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo' };
+    const mr = workItem({ provider: 'gitlab', id: `${source.id}!12`, sourceId: source.id, sourceName: source.fullName, kind: 'pullRequest', identifier: '!12', branchName: 'topic', body: 'Review this patch', url: `${source.url}/-/merge_requests/12` });
+    api.listWorkSources.mockResolvedValue([source]);
+    api.listWorkItems.mockResolvedValue([mr]);
+    const startWorkAction = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(RepositoryBacklogPanel, { props: { agent, agents: [agent], assignments: {}, visible: true, repositoryId: source.id, startWorkAction }, global: { stubs: { teleport: true }, provide: { [backlogConnectionsKey as symbol]: () => [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }] } } });
+    await flushPromises();
+    const tab = wrapper.findAll('[role="radio"]').find(button => button.text() === 'Merge requests')!;
+    expect(tab).toBeTruthy();
+    await tab.trigger('click');
+    expect(wrapper.text()).toContain('!12');
+    expect(wrapper.get('.repository-backlog__item-actions').attributes('aria-label')).toContain('!12');
+    expect(wrapper.get('.repository-backlog__item-title').attributes('href')).toBe(mr.url);
+    await wrapper.get('.repository-backlog__item-actions').trigger('click');
+    expect(wrapper.get('.work-item-detail').text()).toContain('Review this patch');
+    await wrapper.get('.work-item-assignment-picker .app-button--primary').trigger('click');
+    expect(startWorkAction).toHaveBeenCalledWith(expect.objectContaining({ item: mr, action: 'review' }));
+    wrapper.unmount(); configureAppClient();
+  });
   it('shows native Linear details, filters by the viewer and resets details when the source changes', async () => {
     const { api } = createClientApiMock();
     configureAppClient({ platform: 'desktop', api });

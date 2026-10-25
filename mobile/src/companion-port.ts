@@ -39,6 +39,8 @@ type CompanionOperations = {
   rerunReview?(missionId: string, revision: number): Promise<void>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
+  repositoryCatalog?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider): Promise<CompanionGitHubRepository[]>;
+  repositoryBranches?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
   localRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;

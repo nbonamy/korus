@@ -3,6 +3,7 @@ import type { AgentGitPullRequest, AppSnapshot } from '@workspace/core/contracts
 type PullRequestReader = {
   getPullRequest(repository: string, number: number): Promise<AgentGitPullRequest | null>;
   githubConnected(): Promise<boolean>;
+  repositoryConnected?(repository: string): Promise<boolean>;
 };
 
 export type PullRequestMonitorOptions = {
@@ -19,14 +20,18 @@ export class PullRequestMonitor {
   constructor(private readonly options: PullRequestMonitorOptions) {}
 
   async check(): Promise<void> {
-    if (!await this.options.pullRequests.githubConnected()) return;
-
     let changed = false;
-    const trackedAgents = this.options.getSnapshot().agents.filter((agent) => agent.pullRequest?.state === 'open');
+    const trackedAgents = this.options.getSnapshot().agents.filter((agent) => agent.pullRequest && agent.pullRequest.state !== 'merged');
     for (const agent of trackedAgents) {
       const tracked = agent.pullRequest!;
       try {
+        const connected = this.options.pullRequests.repositoryConnected
+          ? await this.options.pullRequests.repositoryConnected(tracked.repository)
+          : tracked.provider === 'github' && await this.options.pullRequests.githubConnected();
+        if (!connected) continue;
         const current = await this.options.pullRequests.getPullRequest(tracked.repository, tracked.number);
+        // The agent may have been removed or retargeted while the provider was read.
+        if (!this.options.getSnapshot().agents.includes(agent) || agent.pullRequest !== tracked) continue;
         if (!current || samePullRequest(tracked, current)) continue;
         agent.pullRequest = {
           ...tracked,

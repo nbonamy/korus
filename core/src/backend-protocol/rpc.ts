@@ -160,7 +160,7 @@ export type AppBackendRequestMap = {
     result: import('../branch-current-work').BranchWorkResult;
   };
   [backendMethods.agentGitWorkflowGet]: {
-    params: { agentId: string };
+    params: { agentId: string; includePullRequest?: boolean };
     result: AgentGitWorkflow;
   };
   [backendMethods.agentClosePreview]: {

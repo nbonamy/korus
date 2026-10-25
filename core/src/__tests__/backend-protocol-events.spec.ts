@@ -496,6 +496,11 @@ function createFixtures(): EventFixtures {
 }
 
 describe(`${product.name} backend event decoder`, () => {
+  it.each(['github', 'gitlab'] as const)('decodes %s merged tracking updates without losing provider identity', provider => {
+    const tracking = { provider, repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo', branch: 'feature', number: 7, title: 'Work', url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7', draft: false, headSha: 'head', state: 'merged', mergedAt: occurredAt, createdAt: occurredAt, updatedAt: occurredAt };
+    const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1', pullRequest: tracking } };
+    expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+  });
   it('accepts one representative for every typed event key without cloning it', () => {
     const fixtures = createFixtures();
 

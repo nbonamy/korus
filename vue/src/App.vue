@@ -73,11 +73,13 @@
     :file-activity="fileActivity"
     :work-provider-authorization="workProviderAuthorization"
     :work-provider-authorizations="workProviderAuthorizations"
+    :work-provider-authorization-errors="workProviderAuthorizationErrors"
     :work-repositories-by-provider="workRepositoriesByProvider"
     :work-items-by-repository="workItemsByRepository"
     :assigned-work-items-by-provider="assignedWorkItemsByProvider"
     :work-backlog-status="workBacklogStatus"
     :work-backlog-error="workBacklogError"
+    :work-backlog-state-for="workBacklogStateFor"
     :daemon-status="daemonStatus"
     :daemon-status-error="daemonStatusError"
     :codex-resource-sharing-migration-required="codexResourceSharingStatus.migrationRequired"
@@ -152,6 +154,7 @@
     :read-conversation-messages="readConversationMessages"
     :configure-work-backlog="configureWorkBacklog"
     :load-work-repositories="loadWorkRepositories"
+    :list-work-sources="(provider, location) => appApi!.listWorkSources(provider, location)"
     :load-work-items="loadWorkItems"
     :load-global-work-items="loadGlobalWorkItems"
     :load-assigned-work-items="loadAssignedWorkItems"
@@ -316,11 +319,13 @@ const {
   fileActivity,
   workProviderAuthorization,
   workProviderAuthorizations,
+  workProviderAuthorizationErrors,
   workRepositoriesByProvider,
   workItemsByRepository,
   assignedWorkItemsByProvider,
   workBacklogStatus,
   workBacklogError,
+  workBacklogStateFor,
   daemonStatus,
   daemonStatusError,
   codexResourceSharingStatus,

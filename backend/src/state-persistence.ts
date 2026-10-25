@@ -450,7 +450,7 @@ function sanitizeVisualizeSession(value: unknown, repositoryVisualizations?: Vis
 function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefined {
   if (
     !isRecord(value) ||
-    value.provider !== 'github' ||
+    (value.provider !== 'github' && value.provider !== 'gitlab') ||
     typeof value.repository !== 'string' ||
     typeof value.branch !== 'string' ||
     !Number.isInteger(value.number) ||
@@ -465,7 +465,7 @@ function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefi
     return undefined;
   }
   return {
-    provider: 'github',
+    provider: value.provider,
     repository: value.repository,
     branch: value.branch,
     number: value.number as number,
@@ -953,6 +953,8 @@ function sanitizeWorkIntegrationConnection(value: unknown): WorkIntegrationConne
     provider: value.provider,
     status: value.status,
     ...(value.source === 'api' || value.source === 'cli' || value.source === 'none' ? { source: value.source } : {}),
+    ...(isRecord(value.hostedMcp) && ['directRequired', 'authorizationRequired', 'available', 'restricted', 'unavailable'].includes(String(value.hostedMcp.status))
+      ? { hostedMcp: { status: value.hostedMcp.status as NonNullable<WorkIntegrationConnection['hostedMcp']>['status'] } } : {}),
     ...(typeof value.accountLabel === 'string' ? { accountLabel: value.accountLabel } : {}),
     ...(appText(value.detail) ? { detail: appText(value.detail)! } : {}),
     ...(typeof value.connectedAt === 'string' ? { connectedAt: value.connectedAt } : {}),

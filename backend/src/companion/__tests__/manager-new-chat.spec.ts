@@ -36,15 +36,18 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
   const calls: { method: string; params: unknown }[] = [];
   const closePreview = { isLinkedWorktree: true, branch: 'feature/new', upstream: 'origin/feature/new', hasChanges: false };
   const repositories: SourceRepository[] = [];
+  const unavailableProviders = new Set<string>();
+  const failures = new Map<string, Error>();
   let chatCount = 0; let quickCount = 0;
   const backend = { async request<Result>(method: string, params?: unknown): Promise<Result> {
     calls.push({ method, params });
+    if (failures.has(method)) throw failures.get(method);
     if (method === backendMethods.snapshotGet) return { snapshot } as Result;
     if (method === backendMethods.agentClosePreview) return closePreview as Result;
     if (method === backendMethods.workProviderBranchesList) { await beforeProjectReadReturns(method); return branches.map(({ name, isDefault }) => ({ name, isDefault })) as Result; }
     if (method === backendMethods.sourceBranchesList) return branches as Result;
     if (method === backendMethods.sourceWorktreeCreate) return { name: 'feature', path: '/code/repo-feature' } as Result;
-    if (method === backendMethods.workProviderSourcesList) { await beforeProjectReadReturns(method); return [{ id: 'org/repo', fullName: 'org/repo', name: 'repo', provider: 'github', url: 'https://github.com/org/repo', privateMetadata: 'hidden' }] as Result; }
+    if (method === backendMethods.workProviderSourcesList) { await beforeProjectReadReturns(method); const provider = (params as { provider: string }).provider; if (unavailableProviders.has(provider)) return [] as Result; return [{ id: 'org/repo', fullName: provider === 'gitlab' ? 'org/subgroup/repo' : 'org/repo', name: 'repo', provider, url: `https://${provider}.com/org/${provider === 'gitlab' ? 'subgroup/' : ''}repo`, privateMetadata: 'hidden' }] as Result; }
     if (method === backendMethods.sourceRepositoriesList) { await beforeProjectReadReturns(method); return repositories as Result; }
     if (method === backendMethods.sourceRepositoryClone) return { name: 'repo', path: '/code/repo', worktrees: [] } as Result;
     if (method === backendMethods.agentCreate || method === backendMethods.projectCreate) {
@@ -99,10 +102,93 @@ async function fixture(beforeCreationReturns: (id: string) => Promise<void> = as
       return result;
     });
   }
-  return { calls, create, quickChat, gateway, snapshot, branches, repositories, closePreview };
+  return { calls, create, quickChat, gateway, snapshot, branches, repositories, closePreview, unavailableProviders, failures };
 }
 
 describe('mobile chat creation', () => {
+  it.each([false, true])('acquires opaque GitLab selections on the owning host (new branch: %s)', async newBranch => {
+    const f = await fixture();
+    f.snapshot.teams[0]!.remoteConnectionId = 'ssh-host';
+    f.snapshot.remoteConnections.connections.push({ id: 'ssh-host', kind: 'ssh', name: 'Host', host: 'host', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
+    const choices = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string; name: string }[];
+    expect(choices).toStrictEqual([{ id: expect.stringMatching(/^repo:[a-f0-9]{64}$/), name: 'org/subgroup/repo' }]);
+    const repositoryId = choices[0]!.id;
+    expect(await f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId })).toStrictEqual(f.branches.map(({ name, isDefault }) => ({ name, isDefault })));
+    f.repositories.push({ name: 'different-local-name', path: '/code/repo', remoteIdentity: 'gitlab.com/org/subgroup/repo', worktrees: [] });
+    const choice = newBranch ? { worktree: { branchName: 'feature/new', baseBranch: 'main' } } : { branch: 'feature/checked-out' };
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'claude', source: 'gitlab', value: repositoryId, ...choice }) as { creationId: string };
+    await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toStrictEqual({ state: 'success', agentId: 'new-chat' }));
+    expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
+    expect(f.calls.find(call => call.method === backendMethods.agentCreate)?.params).toMatchObject({ input: { folder: newBranch ? '/code/repo-feature' : '/code/repo-existing', teamId: 'team-test', backend: 'claude' } });
+    expect(f.calls.filter(call => call.method === backendMethods.workProviderBranchesList).every(call => JSON.stringify(call.params).includes('"provider":"gitlab"') && JSON.stringify(call.params).includes('"remoteConnectionId":"ssh-host"'))).toBe(true);
+    if (newBranch) expect(f.calls.find(call => call.method === backendMethods.sourceWorktreeCreate)?.params).toMatchObject({ input: { baseBranch: 'main', requireNewBranch: true, fetchRemoteBranch: true, remoteConnectionId: 'ssh-host' } });
+  });
+
+  it('rejects GitLab IDs from another host, provider, daemon or removed catalog before writes', async () => {
+    const f = await fixture();
+    const list = () => f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as Promise<{ id: string }[]>;
+    const id = (await list())[0]!.id;
+    await expect(f.gateway.request('stranger', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'linear' })).rejects.toThrow();
+    await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'github', repositoryId: id })).rejects.toThrow();
+    f.snapshot.teams[0]!.remoteConnectionId = 'other-host';
+    f.snapshot.remoteConnections.connections.push({ id: 'other-host', kind: 'ssh', name: 'Other', host: 'other', status: 'ready', providerConnections: f.snapshot.providerConnections, createdAt: '', updatedAt: '' });
+    await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
+    const stale = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id }) as { creationId: string };
+    await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', stale)).toMatchObject({ state: 'error' }));
+    delete f.snapshot.teams[0]!.remoteConnectionId;
+    f.unavailableProviders.add('gitlab');
+    await expect(f.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
+    const other = await fixture();
+    await expect(other.gateway.request('phone', 'project.repositories.branches', { teamId: 'team-test', provider: 'gitlab', repositoryId: id })).rejects.toThrow();
+    expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone || call.method === backendMethods.agentCreate)).toBe(false);
+  });
+
+  it.each(['revoke', 'location'] as const)('withholds a GitLab catalog if access changes during the read: %s', async change => {
+    let release!: () => void;
+    const barrier = new Promise<void>(resolve => { release = resolve; });
+    let reached!: () => void;
+    const reading = new Promise<void>(resolve => { reached = resolve; });
+    const f = await fixture(undefined, async method => { if (method === backendMethods.workProviderSourcesList) { reached(); await barrier; } });
+    const pending = f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' });
+    await reading;
+    if (change === 'location') f.snapshot.teams[0]!.remoteConnectionId = 'other';
+    else await f.gateway.revoke('phone');
+    release();
+    await expect(pending).rejects.toThrow();
+    expect(f.calls.some(call => call.method === backendMethods.sourceRepositoryClone)).toBe(false);
+  });
+
+  it.each([
+    [backendMethods.workProviderSourcesList, 'Could not load GitLab repositories on the selected host. Check its GitLab connection and repository access, then refresh.'],
+    [backendMethods.workProviderBranchesList, 'Could not load GitLab branches on the selected host. Check its GitLab connection and repository access, then refresh.'],
+    [backendMethods.sourceRepositoriesList, 'Could not list existing repositories on the selected host. Check its source folder, then retry.'],
+    [backendMethods.sourceRepositoryClone, 'Could not clone the repository on the selected host. Check its Git credentials and repository access, then retry.'],
+    [backendMethods.sourceWorktreeCreate, 'Could not prepare the branch on the selected host. Check its Git credentials and repository access, then retry.'],
+    [backendMethods.agentCreate, 'Could not start work on the selected host. Check its available engines, then retry.'],
+  ])('keeps host paths and credentials out of GitLab creation receipts: %s', async (failedMethod, message) => {
+    const f = await fixture();
+    const [{ id }] = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string }[];
+    f.failures.set(failedMethod, new Error('git clone /private/checkout https://secret-token@gitlab.com failed'));
+    if (failedMethod === backendMethods.workProviderSourcesList) await expect(f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' })).rejects.toThrow(message);
+    const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id!, branch: 'feature/available' }) as { creationId: string };
+    await vi.waitFor(async () => {
+      const result = await f.gateway.request('phone', 'agent.create.status', { creationId });
+      expect(result).toStrictEqual({ state: 'error', error: message });
+    });
+    if (failedMethod !== backendMethods.agentCreate) expect(f.calls.some(call => call.method === backendMethods.agentCreate)).toBe(false);
+  });
+
+  it('clones GitLab with host Git credentials and refuses invalid catalog branches before cloning', async () => {
+    const f = await fixture();
+    const [{ id }] = await f.gateway.request('phone', 'project.repositories.list', { teamId: 'team-test', provider: 'gitlab' }) as { id: string }[];
+    for (const branch of ['removed', 'main']) {
+      const { creationId } = await f.gateway.request('phone', 'project.create', { teamId: 'team-test', backend: 'codex', source: 'gitlab', value: id!, branch }) as { creationId: string };
+      await vi.waitFor(async () => expect(await f.gateway.request('phone', 'agent.create.status', { creationId })).toMatchObject({ state: branch === 'main' ? 'success' : 'error' }));
+    }
+    expect(f.calls.filter(call => call.method === backendMethods.sourceRepositoryClone)).toStrictEqual([{ method: backendMethods.sourceRepositoryClone, params: { input: { url: 'https://gitlab.com/org/subgroup/repo' }, _clientId: 'companion-write' } }]);
+  });
+
   it('lists only repository roots with opaque IDs and opens a chosen local branch without cloning', async () => {
     const f = await fixture();
     f.repositories.push({ name: 'repo', path: '/code/repo', worktrees: [{ name: 'main', path: '/code/repo' }, { name: 'feature/checked-out', path: '/code/repo-existing' }] });

@@ -111,6 +111,7 @@
           :update-settings="updateSettings"
           @complete="pollWorkProviderAuthorization"
           @connect="provider => runIntegrationAction(provider, connectWorkProvider)"
+          @connect-mcp="provider => runIntegrationAction(provider, value => connectWorkProvider(value, { hostedMcp: true }))"
           @disconnect="provider => runIntegrationAction(provider, disconnectWorkProvider)"
           @open-authorization="openWorkProviderAuthorization"
         />
@@ -233,7 +234,7 @@ const props = withDefaults(defineProps<{
   listPairedDevices?: (environmentId: string) => Promise<PairedDevice[]>;
   revokePairedDevice?: (environmentId: string, clientId: string) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
-  connectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
+  connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   setDaemonEnabled?: (enabled: boolean) => Promise<void>;

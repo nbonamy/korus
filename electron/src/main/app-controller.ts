@@ -1,3 +1,4 @@
+import type { WorkProviderConnectOptions } from '@workspace/core/contracts';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
 import { NativeMobileAdapter } from './mobile/adapter';
@@ -245,8 +246,8 @@ export class AppController {
     ipc.handle(ipcChannels.listPairedDevices, (_event, environmentId: string) => this.listPairedDevices(environmentId));
     ipc.handle(ipcChannels.revokePairedDevice, (_event, environmentId: string, clientId: string) => this.revokePairedDevice(environmentId, clientId));
 
-    ipc.handle(ipcChannels.connectWorkProvider, async (_event, provider: WorkProviderKind) => {
-      return this.connectWorkProvider(provider);
+    ipc.handle(ipcChannels.connectWorkProvider, async (_event, provider: WorkProviderKind, options?: WorkProviderConnectOptions) => {
+      return this.connectWorkProvider(provider, options);
     });
 
 
@@ -849,8 +850,8 @@ export class AppController {
     }
   }
 
-  private async connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
-    const result = await this.requireBackendClient().request<WorkProviderConnectResult>(backendMethods.workProviderConnect, { provider });
+  private async connectWorkProvider(provider: WorkProviderKind, options?: WorkProviderConnectOptions): Promise<WorkProviderConnectResult> {
+    const result = await this.requireBackendClient().request<WorkProviderConnectResult>(backendMethods.workProviderConnect, { provider, ...(options ? { options } : {}) });
     await this.adoptBackendSnapshot(result.snapshot);
     return result;
   }

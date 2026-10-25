@@ -1,5 +1,8 @@
 package com.nabocorp.companion
 
+import android.graphics.Bitmap
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
@@ -46,8 +49,129 @@ class ProjectWorkflowTest {
     }
     private fun assertCommand(engine: NativeEngineFixture, expected: JSONObject) {
         // A native click can finish before the asynchronous WebView command is delivered.
-        app.waitUntil(5_000) { tree(engine.commands().lastOrNull()) == tree(expected) }
-        assertEquals(tree(expected), tree(engine.commands().last()))
+        try { app.waitUntil(5_000) { tree(engine.commands().lastOrNull()) == tree(expected) } }
+        finally { assertEquals(tree(expected), tree(engine.commands().lastOrNull())) }
+    }
+
+    private fun screenshot(name: String) {
+        app.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val file = File(instrumentation.targetContext.getExternalFilesDir(null), "$name.png")
+        val image = instrumentation.uiAutomation.takeScreenshot()
+        file.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        image.recycle()
+    }
+    private fun gitlabCatalog(id: String = "gitlab:opaque") = json("status" to "loaded", "items" to JSONArray()
+        .put(json("id" to id, "name" to "group/subgroup/repository"))
+        .put(json("id" to "gitlab:other", "name" to "other/repository")))
+    private fun gitlabBranches(id: String = "gitlab:opaque", status: String = "loaded") = json("repositoryId" to id, "status" to status,
+        "items" to if (status == "loaded") JSONArray().put(json("name" to "develop", "isDefault" to true))
+            .put(json("name" to "feature/android", "isDefault" to false)) else JSONArray())
+
+    @Test fun gitlabAccessRetryNestedCatalogDefaultBranchAndProviderSwitchKeepOpaqueIdentity() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
+            assertCommand(engine, json("type" to "loadProjectRepositories", "source" to "gitlab"))
+            app.onNodeWithText("GitLab Repository").assertIsDisplayed()
+            app.onNodeWithText("Loading repositories…").assertIsDisplayed()
+            engine.state(state().put("projectRepositories", json("status" to "failed", "items" to JSONArray())))
+            app.onNodeWithText("GitLab connection", substring = true).assertIsDisplayed()
+            screenshot("gitlab-access-retry")
+            app.onNodeWithText("Retry").performClick()
+            assertCommand(engine, json("type" to "loadProjectRepositories", "source" to "gitlab"))
+            engine.state(state().put("projectRepositories", gitlabCatalog()))
+            screenshot("gitlab-nested-catalog")
+            app.onNodeWithTag("repository-search").performTextInput("subgroup")
+            app.onNodeWithText("other/repository").assertDoesNotExist()
+            app.onNodeWithText("group/subgroup/repository").performClick()
+            assertCommand(engine, json("type" to "loadProjectBranches", "source" to "gitlab", "repositoryId" to "gitlab:opaque"))
+            engine.state(state().put("projectBranches", gitlabBranches("wrong-provider-id")))
+            app.onNodeWithText("Loading branches…").assertIsDisplayed()
+            app.onNodeWithText("develop").assertDoesNotExist()
+            engine.state(state().put("projectBranches", gitlabBranches()))
+            app.onNodeWithText("Default").assertIsDisplayed()
+            screenshot("gitlab-default-branch")
+            app.onNodeWithTag("branch-search").performTextInput("feature")
+            app.onNodeWithContentDescription("Cancel creation").performClick()
+            assertCommand(engine, json("type" to "dismissProjectRepositories"))
+            engine.state(state()); newAgent("From GitHub")
+            assertCommand(engine, json("type" to "loadProjectRepositories"))
+            engine.state(state().put("projectRepositories", json("status" to "loaded", "items" to JSONArray().put(json("id" to "github:opaque", "name" to "github/repository")))))
+            app.onNodeWithText("github/repository").assertIsDisplayed()
+            app.onNodeWithText("group/subgroup/repository").assertDoesNotExist()
+            app.onNodeWithContentDescription("Cancel creation").performClick()
+            engine.state(state()); newAgent("From GitLab")
+            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectRepositories", gitlabCatalog()))
+            app.onNodeWithText("other/repository").assertIsDisplayed()
+            app.onNodeWithText("group/subgroup/repository").performClick()
+            engine.state(state().put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
+            app.onNodeWithText("develop").assertIsDisplayed().performClick()
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "backend" to "codex", "branch" to "develop"))
+            engine.state(state(creation = "creating")); engine.state(state())
+            app.onNodeWithTag("composer").assertIsDisplayed()
+        }
+    }
+
+    @Test fun gitlabWorktreeUsesDefaultBaseAndRetainsFormForExplicitCloneRetry() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state().put("backends", JSONArray(listOf("codex")))); mount(engine); newAgent("From GitLab")
+            engine.state(state().put("projectRepositories", gitlabCatalog()))
+            app.onNodeWithText("group/subgroup/repository").performClick()
+            engine.state(state().put("projectBranches", gitlabBranches(status = "failed")))
+            app.onNodeWithText("Retry").performClick()
+            assertCommand(engine, json("type" to "loadProjectBranches", "source" to "gitlab", "repositoryId" to "gitlab:opaque"))
+            engine.state(state().put("projectBranches", gitlabBranches()))
+            app.onNodeWithText("New Branch").performClick()
+            app.onNodeWithText("develop").assertIsDisplayed()
+            app.onNodeWithText("Create Branch").assertIsNotEnabled()
+            app.onNodeWithTag("branch-name").performTextInput("feature/android-new")
+            app.runOnIdle { engine.model.chooseCreationBackend("codex") }
+            app.onNodeWithText("Create Branch").performClick()
+            val expected = json("type" to "createProject", "source" to "gitlab", "value" to "gitlab:opaque", "backend" to "codex",
+                "worktree" to json("branchName" to "feature/android-new", "baseBranch" to "develop"))
+            assertCommand(engine, expected)
+            engine.state(state(creation = "creating").put("projectBranches", gitlabBranches()))
+            app.onNodeWithContentDescription("Cancel creation").assertDoesNotExist()
+            engine.state(state(creation = "failed").put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches()))
+            app.onNodeWithTag("branch-name").assertTextContains("feature/android-new")
+            app.onNodeWithText("develop").assertIsDisplayed()
+            app.onNodeWithText("Couldn’t create this branch.", substring = true).assertIsDisplayed()
+            screenshot("gitlab-worktree-retry")
+            assertEquals(1, engine.commands().count { it.string("type") == "createProject" })
+            app.onNodeWithText("Create Branch").performClick()
+            assertCommand(engine, expected)
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "createProject" } == 2 }
+            engine.state(state(creation = "creating")); engine.state(state())
+            app.onNodeWithTag("composer").assertIsDisplayed()
+        }
+    }
+
+    @Test fun gitlabHostSwitchDiscardsSelectionAndNewHostEmptyCatalogCanRecover() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state()); mount(engine); newAgent("From GitLab")
+            engine.state(state().put("projectRepositories", gitlabCatalog()))
+            app.onNodeWithText("group/subgroup/repository").performClick()
+            // Same team identifier on another owning host must still close the form.
+            engine.state(state(host = "remote-host"))
+            app.onNodeWithTag("branch-search").assertDoesNotExist()
+            app.onNodeWithTag("composer").assertIsDisplayed()
+            newAgent("From GitLab")
+            engine.state(state(host = "remote-host").put("projectRepositories", json("status" to "loaded", "items" to JSONArray())))
+            app.onNodeWithText("No repositories available.").assertIsDisplayed()
+            screenshot("gitlab-empty-remote-host")
+            app.onNodeWithContentDescription("Cancel creation").performClick()
+            newAgent("From GitLab")
+            engine.state(state(host = "remote-host").put("projectRepositories", gitlabCatalog("remote:opaque")))
+            app.onNodeWithText("group/subgroup/repository").performClick()
+            assertCommand(engine, json("type" to "loadProjectBranches", "source" to "gitlab", "repositoryId" to "remote:opaque"))
+            engine.state(state(host = "remote-host").put("backends", JSONArray(listOf("codex"))).put("projectBranches", gitlabBranches("remote:opaque")))
+            app.onNodeWithText("feature/android").performClick()
+            assertCommand(engine, json("type" to "createProject", "source" to "gitlab", "value" to "remote:opaque", "backend" to "codex", "branch" to "feature/android"))
+            assertTrue(engine.commands().filter { it.string("type") == "createProject" }.all { it.string("value") == "remote:opaque" })
+        }
     }
 
     @Test fun existingProjectUsesHostCatalogAndTheSameBranchPickerAsGitHub() {

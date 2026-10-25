@@ -114,8 +114,8 @@ export type EngineCommand =
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
-  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'local' } | { type: 'dismissProjectBranches' }
-  | { type: 'loadProjectRepositories'; source?: 'github' | 'local' } | { type: 'dismissProjectRepositories' }
+  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectBranches' }
+  | { type: 'loadProjectRepositories'; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectRepositories' }
   | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
   | { type: 'renameAgent'; target: CompanionTarget; name: string }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)

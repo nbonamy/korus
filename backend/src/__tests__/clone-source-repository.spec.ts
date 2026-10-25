@@ -1,10 +1,33 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { acquireRepository } from '../projects/repository-acquisition';
 import { cloneSourceRepository, repositoryNameFromUrl } from '../clone-source-repository';
 
 describe('cloneSourceRepository', () => {
+  it('reuses the complete GitLab identity across SSH/HTTPS and rejects same-name host or subgroup collisions', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'gitlab-acquisition-'));
+    const run = promisify(execFile); const destination = path.join(root, 'repo');
+    try {
+      await run('git', ['init', destination]);
+      await run('git', ['remote', 'add', 'origin', 'git@gitlab.com:group/subgroup/repo.git'], { cwd: destination });
+      const existing = await cloneSourceRepository(root, 'https://gitlab.com/group/subgroup/repo');
+      expect(existing.path).toBe(destination);
+      expect(existing.remoteIdentity).toBe('gitlab.com/group/subgroup/repo');
+      await expect(acquireRepository('https://gitlab.com/group/subgroup/repo', true, {
+        repositories: async () => [{ ...existing, path: path.join(root, 'renamed') }],
+        clone: async () => { throw new Error('must reuse'); },
+      })).resolves.toMatchObject({ path: path.join(root, 'renamed') });
+      for (const url of ['https://github.com/group/subgroup/repo', 'https://gitlab.com/group/other/repo']) {
+        await expect(cloneSourceRepository(root, url)).rejects.toMatchObject({ descriptor: { code: 'clone.alreadyExists' } });
+      }
+      expect((await run('git', ['remote', 'get-url', 'origin'], { cwd: destination })).stdout.trim()).toBe('git@gitlab.com:group/subgroup/repo.git');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it('derives repository names from HTTPS and SSH URLs', () => {
     expect(repositoryNameFromUrl('https://github.com/nbonamy/agent-workspace.git')).toBe('agent-workspace');
     expect(repositoryNameFromUrl('git@github.com:nbonamy/agent-workspace.git')).toBe('agent-workspace');

@@ -221,8 +221,8 @@ const props = defineProps<{
     agentId: string,
     input: AgentGitMessageGenerationInput,
   ) => Promise<AgentGitMessageGenerationResult>;
-  getAgentGitWorkflow: (agentId: string) => Promise<AgentGitWorkflow>;
-  handleStartWorkAction: (action: 'new' | 'github' | 'local' | 'url') => void;
+  getAgentGitWorkflow: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<AgentGitWorkflow>;
+  handleStartWorkAction: (action: 'new' | 'github' | 'gitlab' | 'local' | 'url') => void;
   isAgentEmpty: boolean;
   isConversationLoading: boolean;
   historyLoadFailed: boolean;

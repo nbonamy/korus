@@ -26,15 +26,17 @@ import { AutomationRunner } from './automations/runner';
 import { RuntimeScheduler } from './scheduling/runtime-scheduler';
 import { AppMcpService } from './mcp/service';
 import { HostedMcpGateway } from './mcp/hosted-mcp-gateway';
-import { runtimeGitHubOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
+import { runtimeGitHubOAuthClientId, runtimeGitLabOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
 import { loadRequirements } from './requirements';
 import { LinearWorkProviderDriver } from './work-integrations/linear-driver';
 import { AppBackendServer } from './server';
 import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, backupProviderSetup, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from './state';
 import { saveCodeReviewReport } from './review/review-report';
 import { FileWorkIntegrationTokenStore } from './work-integrations/file-token-store';
+import { GitLabWorkProviderDriver } from './work-integrations/gitlab-driver';
 import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
 import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
+import { GitLabCliWorkProviderDriver } from './work-integrations/gitlab-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
 import { warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
@@ -103,8 +105,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     drivers: [
       new GitHubWorkProviderDriver(() => runtimeGitHubOAuthClientId(snapshot.workBacklog.providerSettings.github)),
       new LinearWorkProviderDriver(() => runtimeLinearOAuthSettings(snapshot.workBacklog.providerSettings.linear)),
+      new GitLabWorkProviderDriver(() => runtimeGitLabOAuthClientId(snapshot.workBacklog.providerSettings.gitlab)),
     ],
     githubCli: new GitHubCliWorkProviderDriver(),
+    gitlabCli: new GitLabCliWorkProviderDriver(),
     getSnapshot: () => snapshot,
     saveSnapshot: () => saveBackendSnapshot(snapshot),
     tokenStore: new FileWorkIntegrationTokenStore(backendProviderTokensFilePath()),

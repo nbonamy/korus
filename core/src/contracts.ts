@@ -283,6 +283,8 @@ export type {
   WorkBacklogProviderConfigurations,
   WorkBacklogState,
   WorkIntegrationConnection,
+  WorkProviderConnectOptions,
+  HostedWorkMcpState,
   WorkIntegrationStatus,
   WorkItem,
   WorkItemKind,
@@ -888,7 +890,7 @@ export type AppApi = {
   checkDevicePairing(session: DevicePairingSession): Promise<boolean>;
   listPairedDevices(environmentId: string): Promise<PairedDevice[]>;
   revokePairedDevice(environmentId: string, clientId: string): Promise<void>;
-  connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult>;
+  connectWorkProvider(provider: WorkProviderKind, options?: import('./contracts/work').WorkProviderConnectOptions): Promise<WorkProviderConnectResult>;
   pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<AppSnapshot>;
   disconnectWorkProvider(provider: WorkProviderKind): Promise<AppSnapshot>;
   listWorkSources(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkSource[]>;
@@ -914,7 +916,7 @@ export type AppApi = {
   getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;
   getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
   getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
-  getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
+  getAgentGitWorkflow(agentId: string, options?: { includePullRequest?: boolean }): Promise<AgentGitWorkflow>;
   getAgentClosePreview(agentId: string): Promise<import('./agent-close').AgentClosePreview>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;

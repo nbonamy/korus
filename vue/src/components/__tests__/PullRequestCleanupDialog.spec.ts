@@ -28,9 +28,11 @@ const agent: Agent = {
 };
 
 describe('PullRequestCleanupDialog', () => {
-  it('explains the cleanup and emits the chosen action', async () => {
+  it.each(['github', 'gitlab'] as const)('explains %s cleanup and emits the chosen action', async provider => {
+    const requestAgent = { ...agent, pullRequest: { ...agent.pullRequest!, provider } };
+    const reference = provider === 'gitlab' ? 'MR !7' : 'PR #7';
     const wrapper = mount(PullRequestCleanupDialog, {
-      props: { agent, visible: true },
+      props: { agent: requestAgent, visible: true },
       global: {
         stubs: {
           ElDialog: {
@@ -41,7 +43,7 @@ describe('PullRequestCleanupDialog', () => {
       },
     });
 
-    expect(wrapper.text()).toContain('PR #7 was merged');
+    expect(wrapper.text()).toContain(`${reference} was merged`);
     expect(wrapper.text()).toContain('close this agent and remove its worktree and local branch');
 
     await wrapper.get('.app-button--tertiary').trigger('click');
@@ -49,9 +51,9 @@ describe('PullRequestCleanupDialog', () => {
     expect(wrapper.emitted('close')).toStrictEqual([[]]);
     expect(wrapper.emitted('confirm')).toStrictEqual([[]]);
 
-    await wrapper.setProps({ agent: { ...agent, pullRequest: { ...agent.pullRequest!, state: 'closed', mergedAt: undefined } } });
-    expect(wrapper.text()).toContain('PR #7 was closed');
-    expect(wrapper.text()).toContain('This PR was not merged');
+    await wrapper.setProps({ agent: { ...requestAgent, pullRequest: { ...requestAgent.pullRequest!, state: 'closed', mergedAt: undefined } } });
+    expect(wrapper.text()).toContain(`${reference} was closed`);
+    expect(wrapper.text()).toContain(provider === 'gitlab' ? 'This MR was not merged' : 'This PR was not merged');
     expect(wrapper.text()).toContain('remote branch will be kept');
   });
 });

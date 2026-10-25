@@ -509,10 +509,17 @@ clears or changes it, Korus never re-detects.
   unsupported or refused forks start a fresh handoff with persisted
   context metadata. Korus never replays a transcript to imitate a fork.
   Independent code reviewers always start fresh.
-- Korus-created pull requests are tracked on their agent; a runtime scheduler
-  polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
-  cleanup is accepted only for an idle agent whose unshared, clean linked worktree
-  still points at the recorded PR head (a closed PR keeps its remote branch).
+- Korus-created GitHub pull requests and GitLab merge requests are tracked on
+  their agent with provider, repository, branch and head identity. The runtime
+  scheduler reads each request through its owning connection; authentication or
+  read failures leave other requests eligible for updates. Closed requests remain
+  eligible for reopening; merged requests are terminal. Late reads cannot replace
+  retargeted or removed agent tracking.
+  A merged or closed request raises an explicit cleanup alert. Cleanup requires an
+  idle agent whose unshared, clean linked worktree still matches the recorded
+  provider, repository, branch and head. Closed requests keep their remote branch;
+  merged-request remote deletion verifies its push destination and uses a
+  recorded-head lease to retain newer work.
 - Agent worktree deletion publishes roster removal before filesystem cleanup.
   Selection prefers another agent from the same repository within the team,
   honoring client ordering. Auxiliary agent data remains available until cleanup
@@ -665,7 +672,7 @@ target and reviewer agents) plus an opaque reviewer session reference.
 
 ## Work Providers And Backlog
 
-Backlog providers (GitHub, Linear) are app-owned integrations, not agent-backend
+Work providers (GitHub, GitLab, Linear) are app-owned integrations, not agent-backend
 features. The boundary has three parts: the shared `WorkSource`/`WorkItem`
 contracts in `core/src/contracts/work.ts`, the registry in
 `core/src/work-providers.ts` (labels, capabilities, branch conventions, hosted MCP
@@ -673,6 +680,17 @@ endpoints), and backend `WorkProviderDriver` adapters owning auth, native API ca
 and normalization. A new source needs a registry entry, an adapter and runtime
 wiring, never branches in assignment, Mission, Settings or automation code.
 
+- First-run onboarding keeps GitHub and GitLab independent in one repository
+  connection step. Advancing is explicit; completing one authorization leaves
+  the other provider available. The client persists only the unfinished stage
+  across relaunch and migrates the legacy `github` stage to `repositories`.
+  Device authorization instructions are recovered from the backend's existing
+  pending grant through idempotent repository-provider connect calls; concurrent
+  starts share one operation. No credential or device grant is stored by the
+  renderer. A restarted daemon without the pending grant exposes reconnection.
+  Continuing cancels pending authorizations before leaving the step, preserving
+  authenticated CLI fallback. Completed users without an unfinished stage keep
+  their existing workspace.
 - Tokens never enter snapshots; they live behind the backend token-store port.
   Only connection metadata is persisted. The local file store is owner-readable
   because encryption beside its own key adds no boundary; a keychain can replace
@@ -688,6 +706,47 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   `APP_GITHUB_CLIENT_ID`, then a packaged default). Refresh-token rotation
   invalidates the old pair, so concurrent requests share one refresh. Opening the
   browser is a separate user action so the code is visible first.
+- GitLab.com detects authenticated `glab` on the owning host and executes API
+  requests through `glab api --hostname gitlab.com`. It does not extract CLI tokens.
+  Direct credentials take precedence; canceled or failed direct authorization and
+  direct disconnect preserve CLI access. CLI accounts are checked before each API
+  page or write; an account change requires explicit reconnection in Settings.
+  Discovery uses bounded, noninteractive subprocesses and exposes safe errors rather
+  than subprocess diagnostics. The CLI transport and direct driver share project,
+  branch, pagination and error normalization. CLI access grants neither hosted MCP
+  nor Git transport authentication.
+  The direct connection uses public-client OAuth device authorization with the `api` scope.
+  The owning daemon resolves the public application ID from saved provider settings,
+  `APP_GITLAB_CLIENT_ID`, then the packaged build default. No client secret is used.
+  Register an application owned by Korus at
+  <https://gitlab.com/-/user_settings/applications>, disable **Confidential**, and
+  enable **api**, and **mcp** when offering agent MCP tools. Use `https://gitlab.com/oauth/device` for the required redirect
+  URI field; the device flow does not use a local callback. Supply its Application
+  ID through `APP_GITLAB_CLIENT_ID` when starting or building the daemon, and restart
+  the owning host. A missing ID produces an actionable Settings state. Registration
+  and an authorized account/catalog smoke test are owner setup steps; no shared
+  application ID is supplied by the repository.
+  Project discovery includes role-based access inherited through groups and shared
+  projects, follows all API pages, and fails incomplete discovery explicitly.
+  GitLab source IDs are `gitlab.com/<full namespace>/<project path>`; subgroup paths
+  remain intact. These IDs are opaque to clients and are distinct from GitHub IDs.
+  GitLab MCP permission is requested explicitly through Settings using `api mcp`;
+  it shares the daemon credential store and refresh boundary. The daemon checks
+  initialize/tool discovery, scope and provider generation before enabling the
+  hosted gateway. MCP status is independent of native API connectivity; missing
+  group access or MCP authorization leaves native workflows usable. Canceled,
+  denied and wrong-account permission upgrades retain the existing credentials.
+  API authorization does not configure Git transport credentials.
+- Git delivery selects the tracked upstream remote, then `origin`, then the first
+  remote. That remote owns provider routing, connectivity and request identity;
+  connecting another provider never changes it. GitLab request identities retain
+  `gitlab.com` and the full namespace. Background workflow reads stay local;
+  request dialogs explicitly opt into provider lookup and fail closed on lookup
+  errors. Creation rechecks the local branch, HEAD and remote after handoff.
+  GitLab uses draft merge requests targeting the project's default branch and
+  `refs/merge-requests/<iid>/head` for checkout. Qualified checkout requests verify
+  the selected project and fetched head before switching or creating a worktree.
+  API requests and Git transport keep separate authentication boundaries.
 - Linear uses authorization-code PKCE with single-use state and a fixed loopback
   callback bound only during authorization, so the browser must run on the
   computer hosting `daemon`. Scopes are `read,write`; no client secret exists.
@@ -699,6 +758,12 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 - Assignments are provider-neutral records keyed by provider and item ID. Agents
   update status through `update-work-item`; the record survives deletion of its
   agent, and Korus status never changes the tracker's own workflow state.
+- GitLab backlog identity includes the host, full project namespace and native
+  item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
+  API pages; global reads return opaque continuations bound to account and filters.
+  The all-work feed walks accessible projects because GitLab.com restricts global
+  issue reads with `scope=all`. Assigned-to-me reads use the global API. Direct and
+  `glab` connections share this normalization and perform no native workflow writes.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped

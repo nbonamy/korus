@@ -36,39 +36,38 @@
   </FormDialog>
   <el-dialog
     v-else
-    class="app-dialog repository-acquire-dialog"
-    :class="{ 'app-dialog--compact': mode === 'github' }"
+    class="app-dialog app-dialog--compact repository-acquire-dialog"
     :model-value="visible"
     :teleported="false"
-    :width="githubConnected ? '680px' : '560px'"
+    :width="providerConnected ? '680px' : '560px'"
     destroy-on-close
     @update:model-value="onVisibilityChanged"
   >
-    <template v-if="mode === 'github' && githubConnected" #header>
+    <template v-if="providerConnected" #header>
       <div class="repository-acquire-dialog__search">
         <SearchIcon aria-hidden="true" />
         <input
           ref="input"
           v-model="query"
-          :placeholder="t('repositories.acquire.findGithub')"
-          :aria-label="t('repositories.acquire.findGithub')"
+          :placeholder="t('repositories.acquire.findProvider', { provider: providerLabel })"
+          :aria-label="t('repositories.acquire.findProvider', { provider: providerLabel })"
           autocomplete="off"
           spellcheck="false"
         >
       </div>
     </template>
     <template v-else #header>
-      <span class="repository-acquire-dialog__accessible-title">{{ t('repositories.githubOnboarding.title') }}</span>
+      <span class="repository-acquire-dialog__accessible-title">{{ t('repositories.providerOnboarding.title', { provider: providerLabel }) }}</span>
     </template>
 
     <section
       class="repository-acquire-dialog__body"
       :class="{
-        'repository-acquire-dialog__body--state': githubConnected && githubStateOnly,
-        'repository-acquire-dialog__scroll-region': mode === 'github' && githubConnected,
+        'repository-acquire-dialog__body--state': providerConnected && providerStateOnly,
+        'repository-acquire-dialog__scroll-region': providerConnected,
       }"
     >
-      <template v-if="githubConnected">
+      <template v-if="providerConnected">
         <p v-if="loading" class="repository-acquire-dialog__state">{{ t('repositories.acquire.loading') }}</p>
         <p v-else-if="error" class="repository-acquire-dialog__state repository-acquire-dialog__state--error">{{ error }}</p>
         <template v-else>
@@ -76,11 +75,12 @@
           <button
             v-for="repository in filteredRepositories"
             :key="repository.id"
+            :disabled="busy"
             type="button"
             class="repository-acquire-dialog__row"
             @click="emit('select-repository', repository)"
           >
-            <GitHubIcon aria-hidden="true" />
+            <component :is="providerIcon" aria-hidden="true" />
             <span>
               <span class="repository-acquire-dialog__name">{{ repository.fullName }}</span>
               <small>{{ repositoryKindLabel(repository) }}</small>
@@ -93,17 +93,17 @@
       <section
         v-else
         class="repository-acquire-dialog__onboarding"
-        :class="{ 'repository-acquire-dialog__onboarding--initial': !authorization }"
+        :class="{ 'repository-acquire-dialog__onboarding--initial': !providerAuthorization }"
       >
         <div class="repository-acquire-dialog__onboarding-heading">
-          <GitHubIcon class="repository-acquire-dialog__github-mark" aria-hidden="true" />
-          <h2>{{ t(authorization ? 'repositories.githubOnboarding.authorizeTitle' : 'repositories.githubOnboarding.title') }}</h2>
-          <p>{{ t(authorization ? 'repositories.githubOnboarding.authorizeDetail' : 'repositories.githubOnboarding.detail') }}</p>
+          <component :is="providerIcon" class="repository-acquire-dialog__provider-mark" aria-hidden="true" />
+          <h2>{{ t(providerAuthorization ? 'repositories.providerOnboarding.authorizeTitle' : 'repositories.providerOnboarding.title', { provider: providerLabel }) }}</h2>
+          <p>{{ t(providerAuthorization ? 'repositories.providerOnboarding.authorizeDetail' : 'repositories.providerOnboarding.detail', { provider: providerLabel }) }}</p>
         </div>
 
         <WorkAuthorizationSteps
-          v-if="authorization"
-          :authorization="authorization"
+          v-if="providerAuthorization"
+          :authorization="providerAuthorization"
           @open="emit('open-authorization')"
         />
         <div v-else class="repository-acquire-dialog__connect">
@@ -112,10 +112,10 @@
             type="button"
             :disabled="busy"
             @click="emit('connect')"
-          >{{ busy ? t('repositories.githubOnboarding.connecting') : t('repositories.githubOnboarding.connect') }}</button>
+          >{{ busy ? t('repositories.providerOnboarding.connecting') : t('repositories.providerOnboarding.connect', { provider: providerLabel }) }}</button>
           <p>
             <ShieldCheckIcon aria-hidden="true" />
-            <span>{{ t('repositories.githubOnboarding.deviceFlow') }}</span>
+            <span>{{ t('repositories.providerOnboarding.deviceFlow', { provider: providerLabel }) }}</span>
           </p>
         </div>
 
@@ -132,7 +132,7 @@ import { useI18n } from 'vue-i18n';
 import { IconSearch as SearchIcon } from '@tabler/icons-vue';
 import type { WorkIntegrationConnection, WorkProviderAuthorization, WorkSource } from '@workspace/core/contracts';
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
-import { GitHubIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
+import { GitHubIcon, GitLabIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
 import WorkAuthorizationSteps from './WorkAuthorizationSteps.vue';
 import BackendSelector from './BackendSelector.vue';
 import { useBackendChoices, useNewAgentBackend } from './backend-selection';
@@ -149,7 +149,7 @@ const props = withDefaults(defineProps<{
   error?: string | null;
   loading?: boolean;
   localRepositoryIdentities?: string[];
-  mode: 'github' | 'url';
+  mode: 'github' | 'gitlab' | 'url';
   repositories?: WorkSource[];
   visible: boolean;
 }>(), {
@@ -177,12 +177,15 @@ const urlInput = ref<HTMLInputElement | null>(null);
 const query = ref('');
 const url = ref('');
 const localRepositoryIdentities = computed(() => new Set(props.localRepositoryIdentities));
-const githubConnected = computed(() => props.connection?.provider === 'github' && props.connection.status === 'connected');
+const providerLabel = computed(() => props.mode === 'gitlab' ? 'GitLab' : 'GitHub');
+const providerIcon = computed(() => props.mode === 'gitlab' ? GitLabIcon : GitHubIcon);
+const providerAuthorization = computed(() => props.authorization?.provider === props.mode ? props.authorization : null);
+const providerConnected = computed(() => props.connection?.provider === props.mode && props.connection.status === 'connected');
 const normalizedQuery = computed(() => query.value.trim().toLocaleLowerCase());
-const filteredRepositories = computed(() => props.repositories.filter((repository) => (
+const filteredRepositories = computed(() => props.repositories.filter((repository) => repository.provider === props.mode && (
   `${repository.fullName} ${repository.name}`.toLocaleLowerCase().includes(normalizedQuery.value)
 )));
-const githubStateOnly = computed(() => props.loading || Boolean(props.error) || filteredRepositories.value.length === 0);
+const providerStateOnly = computed(() => props.loading || Boolean(props.error) || filteredRepositories.value.length === 0);
 const canSubmitUrl = computed(() => /^(?:https?:\/\/|ssh:\/\/|git@|[^\s]+@[^\s]+:)[^\s]+/iu.test(url.value.trim()));
 
 watch(() => [props.visible, props.mode] as const, async ([visible, mode]) => {
@@ -211,7 +214,7 @@ function repositoryKindLabel(repository: WorkSource): string {
   if (isRepositoryLocal(repository)) return t('repositories.acquire.onMachine');
   return repository.isPrivate
     ? t('repositories.acquire.privateRepository')
-    : t('repositories.acquire.githubRepository');
+    : t('repositories.acquire.providerRepository', { provider: providerLabel.value });
 }
 </script>
 
@@ -283,7 +286,7 @@ function repositoryKindLabel(repository: WorkSource): string {
   text-align: center;
 }
 
-.repository-acquire-dialog__github-mark {
+.repository-acquire-dialog__provider-mark {
   width: 44px;
   height: 44px;
   margin-bottom: var(--space-2);

@@ -23,6 +23,14 @@ export const workProviders = {
     branchPrefix: 'gh', automationBranchPrefix: 'github',
     hostedMcp: { url: 'https://api.githubcopilot.com/mcp/', plugin: 'github@openai-curated-remote' },
   },
+  gitlab: {
+    label: 'GitLab', sourceLabel: { key: 'backlogSource.repository' },
+    description: { key: 'gitlabIntegration.description' },
+    configurationDetail: { key: 'gitlabIntegration.setup' },
+    repositoryBacked: true, pullRequests: true, initialView: 'assignedToMe',
+    branchPrefix: 'gl', automationBranchPrefix: 'gitlab',
+    hostedMcp: { url: 'https://gitlab.com/api/v4/mcp' },
+  },
   linear: {
     label: 'Linear', sourceLabel: { key: 'backlogSource.teamProject' },
     description: { key: 'linearIntegration.setup' },

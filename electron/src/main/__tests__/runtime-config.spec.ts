@@ -67,6 +67,7 @@ describe('runtime config', () => {
         APP_BACKEND_COMMAND: 'daemon',
         APP_GITHUB_CLIENT_ID: ' github-client-id ',
         APP_LINEAR_CLIENT_ID: ' linear-client-id ',
+        APP_GITLAB_CLIENT_ID: ' gitlab-client-id ',
       },
     })).toStrictEqual({
       command: 'daemon',
@@ -76,6 +77,7 @@ describe('runtime config', () => {
         APP_HOME: path.join(homedir(), `${product.homeDirectory}`),
         APP_GITHUB_CLIENT_ID: 'github-client-id',
         APP_LINEAR_CLIENT_ID: 'linear-client-id',
+        APP_GITLAB_CLIENT_ID: 'gitlab-client-id',
         HOME: homedir(),
       },
     });

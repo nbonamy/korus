@@ -196,7 +196,7 @@ function expectPlanStep(value: unknown, path: string): void {
 
 function expectPullRequest(value: unknown, path: string): void {
   expectRecord(value, path);
-  expectLiteral(value.provider, ['github'], `${path}.provider`);
+  expectLiteral(value.provider, ['github', 'gitlab'], `${path}.provider`);
   [
     'repository',
     'branch',

@@ -6,7 +6,7 @@ import type { AgentGitWorkflow, OpenInApplicationCatalog } from '@workspace/core
 import MissionShipBoard from '../MissionShipBoard.vue';
 
 describe('MissionShipBoard', () => {
-  it('shows one repository card per persisted delivery and records actual PR or merge outcomes', async () => {
+  it.each(['github', 'gitlab'] as const)('shows persisted %s request delivery with a native reference', async provider => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Team billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     const repositories = snapshot.agents.slice(0, 2).map(agent => agent.folder!);
@@ -14,7 +14,7 @@ describe('MissionShipBoard', () => {
     mission.execution!.workspaces = repositories.map(repositoryPath => ({ repositoryPath, path: `${repositoryPath}-mission`, branch: 'mission/team-billing' }));
     mission.execution!.deliveries = [
       { repositoryPath: repositories[0]!, agentId: snapshot.agents[0]!.id, status: 'pending' },
-      { repositoryPath: repositories[1]!, agentId: snapshot.agents[1]!.id, status: 'pullRequestCreated', pullRequest: { number: 42, url: 'https://github.com/acme/repo/pull/42' } },
+      { repositoryPath: repositories[1]!, agentId: snapshot.agents[1]!.id, status: 'pullRequestCreated', pullRequest: { number: 42, url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/42' : 'https://github.com/acme/repo/pull/42' } },
     ];
     const executeMission = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(MissionShipBoard, {
@@ -33,8 +33,9 @@ describe('MissionShipBoard', () => {
     const cards = wrapper.findAll('.mission-ship__card');
     expect(cards).toHaveLength(2);
     expect(cards[0]!.text()).toContain('Ready to ship');
-    expect(cards[1]!.text()).toContain('Pull request created');
-    expect(cards[1]!.get('a').attributes('href')).toBe('https://github.com/acme/repo/pull/42');
+    expect(cards[1]!.text()).toContain(provider === 'gitlab' ? 'Merge request created' : 'Pull request created');
+    expect(cards[1]!.get('a').attributes('href')).toBe(mission.execution!.deliveries![1]!.pullRequest!.url);
+    expect(cards[1]!.get('a').text()).toContain(provider === 'gitlab' ? 'MR !42' : 'PR #42');
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('1');
     expect(getComputedStyle(wrapper.get('.mission-ship').element).display).toBe('flex');
     expect(getComputedStyle(wrapper.get('.mission-ship__grid').element).gridTemplateColumns).toBe('minmax(0, 1fr)');

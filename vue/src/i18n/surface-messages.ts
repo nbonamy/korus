@@ -493,9 +493,6 @@ export const surfaceMessages = {
     "connectingToApp": `Connecting ${product.name}`,
     "app": `${product.name}`
   },
-  "githubOnboardingLanding": {
-    "connectGitHub": "Connect GitHub"
-  },
   "onboardingCompleteLanding": {
     "appIsReady": `${product.name} is ready`
   },
@@ -1004,9 +1001,10 @@ export const surfaceMessages = {
   },
   "settingsIntegrationsPanel": {
     "integrations": "Integrations",
-    "usingGitHubCli": "Using GitHub CLI",
+    "usingCli": "Using {provider} CLI",
+    "reconnectCli": "Reconnect {provider} CLI",
     "introTitle": "Connect your work tools",
-    "introDescription": "Bring GitHub and Linear work into your backlog and hand it to agents",
+    "introDescription": "Bring work from GitHub, GitLab and Linear into your backlog",
     "gitHub": "GitHub",
     "connect": "Connect",
     "connected": "Connected",

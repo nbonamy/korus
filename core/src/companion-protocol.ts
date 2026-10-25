@@ -68,9 +68,13 @@ export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: 
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
 export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
-export type CompanionGitHubRepository = { id: string; name: string };
+export type CompanionRepositoryProvider = 'github' | 'gitlab';
+/** Opaque selection bound to the owning daemon, host location and provider catalog. */
+export type CompanionRepository = { id: string; name: string };
+/** Legacy GitHub listing shape retained for existing native clients. */
+export type CompanionGitHubRepository = CompanionRepository;
 /** Image bytes resolved by the conversation's host, never a host-local file URL. */
 export type CompanionImage = { dataUrl: string };
 export type CompanionChatCreation = { state: 'running' } | { state: 'success'; agentId: string } | { state: 'error'; error: string };

@@ -30,7 +30,7 @@
         @click="selectAction('create-pr')"
       >
         <GitForkIcon aria-hidden="true" />
-        <span>{{ $t('surface.gitWorkflowControl.createPR') }}</span>
+        <span>{{ requestText('createPR') }}</span>
       </button>
     </template>
     <template v-else>
@@ -42,7 +42,7 @@
         :title="$t('surface.gitWorkflowControl.runGitAction')"
         @click="runFirstEnabled"
       >
-        <GitHubIcon aria-hidden="true" />
+        <component :is="isGitLab ? GitLabIcon : GitHubIcon" aria-hidden="true" />
       </button>
       <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.gitWorkflowControl.gitActions')" :items="menuItems" @select="selectAction">
         <template #trigger="{ attrs }">
@@ -216,9 +216,9 @@
     :close-on-press-escape="!pullRequestOperationRunning"
     destroy-on-close
   >
-    <template #header><div class="app-form-dialog__header git-workflow-control__dialog-header"><h2 class="app-dialog__title">{{ $t('surface.gitWorkflowControl.createPullRequest') }}</h2><span class="git-workflow-control__branch">{{ workflow?.repository }} · {{ workflow?.branch }}</span></div></template>
+    <template #header><div class="app-form-dialog__header git-workflow-control__dialog-header"><h2 class="app-dialog__title">{{ requestText('createPullRequest') }}</h2><span class="git-workflow-control__branch">{{ workflow?.repository }} · {{ workflow?.branch }}</span></div></template>
     <div
-      v-if="pullRequestOperation.status === 'editing'"
+      v-if="pullRequestOperation.status === 'editing' && !workflow?.existingPullRequest"
       class="git-workflow-control__dialog-form git-workflow-control__pull-request-form"
     >
       <div class="git-workflow-control__message-editor git-workflow-control__message-editor--pull-request">
@@ -230,7 +230,7 @@
           type="button"
           :disabled="busy"
           :aria-busy="generatingKind === 'pullRequest'"
-          :aria-label="$t('surface.gitWorkflowControl.generatePullRequestDraftWithCodex')"
+          :aria-label="requestText('generatePullRequestDraftWithCodex')"
           :title="$t('surface.gitWorkflowControl.generateWithCodex')"
           @click="generatePullRequestMessage"
         >
@@ -241,12 +241,16 @@
       <p v-if="generationError && generationErrorKind === 'pullRequest'" class="git-workflow-control__generation-error">{{ generationError }}</p>
       <p v-if="workflow?.files.length" class="git-workflow-control__uncommitted-warning">
         <AlertTriangleIcon aria-hidden="true" />
-        <span>{{ $t('surface.gitWorkflowControl.uncommittedChangesWillNotBeIncludedInThisPullRequest') }}</span>
+        <span>{{ requestText('uncommittedChangesWillNotBeIncludedInThisPullRequest') }}</span>
       </p>
       <label v-if="reportBackAgentName" class="git-workflow-control__check git-workflow-control__report-back">
         <el-switch v-model="reportBack" size="small" />
         <span>{{ $t('surface.gitWorkflowControl.reportBackTo', { name: reportBackAgentName }) }}</span>
       </label>
+    </div>
+    <div v-else-if="pullRequestOperation.status === 'editing' && workflow?.existingPullRequest" class="git-workflow-control__dialog-form git-workflow-control__existing-request">
+      {{ isGitLab ? '!' : '#' }}{{ workflow.existingPullRequest.number }} · {{ workflow.existingPullRequest.title }}
+      <button type="button" class="app-button app-button--primary" @click="appPlatformActions.openExternal?.(workflow.existingPullRequest.url)">{{ isGitLab ? $t('gitlabWorkflow.openRequest') : $t('gitlabWorkflow.openPullRequest') }}</button>
     </div>
     <GitOperationFeedback
       v-else
@@ -257,10 +261,13 @@
       <template #icon><GitForkIcon /></template>
     </GitOperationFeedback>
     <template #footer>
+      <div v-if="pullRequestOperation.status === 'editing' && workflow?.existingPullRequest" class="app-dialog__footer">
+        <button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.close') }}</button>
+      </div>
       <div
-        v-if="pullRequestOperation.status === 'editing'"
+        v-else-if="pullRequestOperation.status === 'editing' && !workflow?.existingPullRequest"
         class="app-dialog__footer"
-      ><button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !pullRequestTitle.trim()" @click="createPullRequest">{{ $t('surface.gitWorkflowControl.createPR') }}</button></div>
+      ><button class="app-button app-button--tertiary" type="button" @click="pullRequestDialogOpen = false">{{ $t('surface.gitWorkflowControl.cancel') }}</button><button class="app-button app-button--primary" type="button" :disabled="busy || !pullRequestTitle.trim()" @click="createPullRequest">{{ requestText('createPR') }}</button></div>
       <div
         v-else-if="pullRequestOperation.status === 'creating'"
         class="app-dialog__footer"
@@ -397,8 +404,8 @@ import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { Agent, AgentGitCommitInput, AgentGitMergeInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitOperationProgress, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStatus, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow, MainToRendererEvent } from '@workspace/core/contracts';
-import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
-import { appApi } from '../platform-api';
+import { AlertTriangleIcon, ClockHour8Icon, ArrowBackUpIcon, ArrowRightIcon, ArrowsMinimizeIcon, ChevronDown, CloudUploadIcon, GitCommitIcon, GitForkIcon, GitHubIcon, GitLabIcon, GitMergeIcon, RefreshIcon, SparklesIcon } from '../shared/icons/app-icons';
+import { appApi, appPlatformActions } from '../platform-api';
 import { localizedErrorMessage } from '../i18n/errors';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import FormDialog from '../shared/dialog/FormDialog.vue';
@@ -413,7 +420,7 @@ const props = withDefaults(defineProps<{
   agent: Agent;
   presentation?: 'menu' | 'delivery';
   gitStatus?: AgentGitStatus | null;
-  getWorkflow?: (agentId: string) => Promise<AgentGitWorkflow>;
+  getWorkflow?: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<AgentGitWorkflow>;
   generateMessage?: (agentId: string, input: AgentGitMessageGenerationInput) => Promise<AgentGitMessageGenerationResult>;
   commitChanges?: (agentId: string, input: AgentGitCommitInput) => Promise<AgentGitWorkflow>;
   revertChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<AgentGitWorkflow>;
@@ -433,6 +440,8 @@ const emit = defineEmits<{
   'delivery-complete': [result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }];
 }>();
 const workflow = ref<AgentGitWorkflow | null>(null);
+const isGitLab = computed(() => workflow.value?.repositoryProvider === 'gitlab');
+const requestText = (key: string) => translate(isGitLab.value ? `gitlabWorkflow.${key}` : `surface.gitWorkflowControl.${key}`);
 const workflowError = ref<string | null>(null);
 const menuOpen = ref(false);
 const busy = ref(false);
@@ -445,6 +454,7 @@ const revertIncludeUntracked = ref(false);
 const revertError = ref<string | null>(null);
 const pushDialogOpen = ref(false);
 const pullRequestDialogOpen = ref(false);
+let requestLookupPending = false;
 const mergeDialogOpen = ref(false);
 const updateDialogOpen = ref(false);
 const updateSource = ref<'base' | 'upstream'>('base');
@@ -551,11 +561,11 @@ const pullRequestFeedbackStatus = computed<'running' | 'success' | 'error'>(() =
 const pullRequestOperationTitle = computed(() => pullRequestOperation.value.status === 'creating'
   ? gitOperationProgress.value?.operation === 'pullRequest' && gitOperationProgress.value.phase === 'handoff'
     ? translate('surface.gitWorkflowControl.buildingHandoffReport')
-    : translate('surface.gitWorkflowControl.creatingPullRequest')
+    : requestText('creatingPullRequest')
   : pullRequestOperation.value.status === 'success'
-    ? translate('surface.gitWorkflowControl.pullRequestCreated')
+    ? requestText('pullRequestCreated')
     : pullRequestOperation.value.status === 'error'
-      ? translate('surface.gitWorkflowControl.pullRequestFailed')
+      ? requestText('pullRequestFailed')
       : '');
 const pullRequestOperationDetail = computed(() => pullRequestOperation.value.status === 'error'
   ? pullRequestOperation.value.message
@@ -662,7 +672,7 @@ const menuItems = computed<AppMenuItem[]>(() => [
   ...(updateEnabled.value ? [{ id: 'update-from-base', type: 'action' as const, label: translate('surface.gitWorkflowControl.updateFromBranch', { branch: baseBranch.value }), icon: RefreshIcon }] : []),
   { id: 'separator-integration', type: 'separator' },
   { id: 'merge', type: 'action', label: translate('surface.gitWorkflowControl.merge'), icon: GitMergeIcon, disabled: !mergeEnabled.value || mergeUnavailable.value },
-  { id: 'create-pr', type: 'action', label: translate('surface.gitWorkflowControl.createPR'), icon: GitForkIcon, disabled: !prEnabled.value },
+  { id: 'create-pr', type: 'action', label: requestText('createPR'), icon: GitForkIcon, disabled: !prEnabled.value },
   { id: 'separator-cleanup', type: 'separator' },
   { id: 'prune', type: 'action', label: translate('gitPrune.menu'), icon: Trash2Icon, disabled: !workflow.value || !appApi },
 ]);
@@ -740,6 +750,7 @@ onBeforeUnmount(() => {
   clearDebugOperationTimers();
 });
 watch([() => props.agent.id, () => props.agent.folder], () => {
+  if (requestLookupPending) { requestLookupPending = false; busy.value = false; pullRequestDialogOpen.value = false; }
   revertDialogOpen.value = false;
   pruneDialogOpen.value = false;
   branchWorkDialogOpen.value = false;
@@ -831,6 +842,20 @@ async function selectAction(action: string): Promise<void> {
     pullRequestTitle.value = '';
     pullRequestBody.value = '';
     pullRequestDialogOpen.value = true;
+    if (props.getWorkflow) {
+      busy.value = true;
+      const agentId = props.agent.id;
+      requestLookupPending = true;
+      const requestId = ++workflowLoadRequestId;
+      try {
+        const current = await props.getWorkflow(agentId, { includePullRequest: true });
+        if (props.agent.id !== agentId || requestId !== workflowLoadRequestId) return;
+        workflow.value = current;
+        if (current.codeHostError || current.githubError) throw new Error(current.codeHostError ?? current.githubError);
+      } catch (error) {
+        if (props.agent.id === agentId && requestId === workflowLoadRequestId) pullRequestOperation.value = { status: 'error', message: localizedErrorMessage(error, translate) };
+      } finally { if (props.agent.id === agentId && requestId === workflowLoadRequestId) { requestLookupPending = false; busy.value = false; } }
+    }
   }
   else if (action === 'merge' && mergeEnabled.value && !mergeUnavailable.value) {
     busy.value = true;
@@ -965,7 +990,8 @@ async function push(): Promise<void> {
   }
 }
 async function createPullRequest(): Promise<void> {
-  if (!props.createPullRequest) return;
+  if (!props.createPullRequest || busy.value) return;
+  if (!pullRequestTitle.value.trim()) { await selectAction('create-pr'); return; }
   clearDebugOperationTimers();
   clearPullRequestSuccessTimer();
   const agentId = props.agent.id;
@@ -991,7 +1017,7 @@ async function createPullRequest(): Promise<void> {
     });
     pullRequestOperation.value = { status: 'success' };
     if (pullRequestBackgrounded.value) {
-      ElMessage.success(translate('surface.gitWorkflowControl.pullRequestCreated'));
+      ElMessage.success(requestText('pullRequestCreated'));
       resetPullRequestOperation();
     } else {
       pullRequestSuccessTimer = setTimeout(() => {
@@ -1003,7 +1029,7 @@ async function createPullRequest(): Promise<void> {
     workflowError.value = message;
     pullRequestOperation.value = { status: 'error', message };
     if (pullRequestBackgrounded.value) {
-      ElMessage.error(`${translate('surface.gitWorkflowControl.pullRequestFailed')}: ${message}`);
+      ElMessage.error(`${requestText('pullRequestFailed')}: ${message}`);
       resetPullRequestOperation();
     }
   } finally {
@@ -1295,7 +1321,7 @@ async function showDebugOperationProgress(operation: 'pullRequest' | 'merge'): P
     if (operation === 'pullRequest') {
       pullRequestOperation.value = { status: 'success' };
       if (pullRequestBackgrounded.value) {
-        ElMessage.success(translate('surface.gitWorkflowControl.pullRequestCreated'));
+        ElMessage.success(requestText('pullRequestCreated'));
         resetPullRequestOperation();
       } else {
         pullRequestSuccessTimer = setTimeout(() => {
@@ -1328,7 +1354,7 @@ function getCommandActions(): import('./command-palette-actions').CommandPalette
     id: `git:${item.id}`,
     icon: item.icon,
     label: translate('commands.gitAction', { action: item.label }),
-    aliases: item.id === 'create-pr' ? 'pull request github' : item.id === 'revert' ? 'discard changes' : item.id,
+    aliases: item.id === 'create-pr' ? (isGitLab.value ? 'merge request gitlab' : 'pull request github') : item.id === 'revert' ? 'discard changes' : item.id,
     disabledReason: busy.value ? translate('commands.gitBusy') : item.disabled || !supported[item.id] || (workflowError.value && item.id !== 'log') ? translate('commands.gitUnavailable') : undefined,
     run: () => {
       const current = menuItems.value.find(candidate => candidate.id === item.id);

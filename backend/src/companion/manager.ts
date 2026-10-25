@@ -187,6 +187,8 @@ export class CompanionManager {
       readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'companion-read' })),
       localRepositories: remote => projects.localList(remote),
       localBranches: (repositoryId, remote) => projects.localBranches(repositoryId, remote),
+      repositoryCatalog: (provider, remote) => projects.catalog(provider, remote),
+      repositoryBranches: (id, provider, remote) => projects.catalogBranches(id, provider, remote),
       githubRepositories: remote => projects.list(remote),
       githubBranches: (repositoryId, remote) => projects.branches(repositoryId, remote),
       createProject: (input, remote, authorize) => projects.create(input, remote, authorize),

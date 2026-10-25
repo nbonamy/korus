@@ -20,7 +20,7 @@ import { opaquePath, projectCompanionWorkspace } from '@workspace/core/companion
 import { ChatCreations } from './chat-creations';
 import { WindowBudget } from './source-budget';
 import { CommandLedger, type SettledCommand, type StoredCommand } from './command-ledger';
-import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
+import type { CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch, CompanionRepositoryProvider, CompanionRepository } from '@workspace/core/companion-protocol';
 import type { CompanionUpload } from './uploads';
 import { generatePairingCode, normalizePairingCode, pairingLifetimeMs } from '@workspace/core/companion-pairing';
 import { conversationImageReference } from './images';
@@ -52,9 +52,11 @@ const reviewSchema = z.object({ target: targetSchema, input: z.object({ scope: z
 /** A branch name git accepts and no option or path trick can hide in. */
 const branchName = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((name) => !name.includes('..') && !name.includes('//') && !/[./]$/.test(name) && !name.endsWith('.lock'));
 const repositorySchema = z.object({ teamId: identity, repositoryId: identity }).strict();
+const catalogSchema = z.object({ teamId: identity, provider: z.enum(['github', 'gitlab']) }).strict();
+const catalogBranchesSchema = catalogSchema.extend({ repositoryId: z.string().regex(/^repo:[a-f0-9]{64}$/) }).strict();
 const newChatSchema = z.object({ teamId: identity, repositoryId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), existingBranch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName }).strict().optional() }).strict().refine((input) => !(input.existingBranch && input.worktree), 'Choose an existing branch or a new worktree.');
-const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'local', 'github', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
-  if ((input.branch || input.worktree) && !['github', 'local'].includes(input.source)) return false;
+const projectSchema = z.object({ teamId: identity, backend: z.enum(['codex', 'claude', 'antigravity']), source: z.enum(['new', 'local', 'github', 'gitlab', 'url']), value: z.string().trim().min(1).max(2000), branch: z.string().min(1).max(1024).optional(), worktree: z.object({ branchName, baseBranch: z.string().min(1).max(1024) }).strict().optional() }).strict().refine(input => {
+  if ((input.branch || input.worktree) && !['github', 'gitlab', 'local'].includes(input.source)) return false;
   if (input.branch && input.worktree) return false;
   if (input.source === 'new') return input.value !== '.' && input.value !== '..' && !/[/\\\x00-\x1f]/u.test(input.value);
   if (input.source === 'local') return /^\/[a-f0-9]{16}\/[^/]+$/u.test(input.value);
@@ -78,6 +80,8 @@ export type GatewayPort = {
     | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
+  repositoryCatalog?(provider: CompanionRepositoryProvider, remoteConnectionId?: string): Promise<CompanionRepository[]>;
+  repositoryBranches?(repositoryId: string, provider: CompanionRepositoryProvider, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
   githubRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
   localRepositories?(remoteConnectionId?: string): Promise<CompanionGitHubRepository[]>;
@@ -468,6 +472,16 @@ export class CompanionGateway {
       const { teamId, repositoryId } = repositorySchema.parse(args);
       if (!this.port.localBranches) throw new Error('Branches are unavailable.');
       return this.projectRead(peer, teamId, remote => this.port.localBranches!(repositoryId, remote));
+    },
+    'project.repositories.list': async (peer, args) => {
+      const { teamId, provider } = catalogSchema.parse(args);
+      if (!this.port.repositoryCatalog) throw new Error('Repository catalogs are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.repositoryCatalog!(provider, remote));
+    },
+    'project.repositories.branches': async (peer, args) => {
+      const { teamId, provider, repositoryId } = catalogBranchesSchema.parse(args);
+      if (!this.port.repositoryBranches) throw new Error('Repository branches are unavailable.');
+      return this.projectRead(peer, teamId, remote => this.port.repositoryBranches!(repositoryId, provider, remote));
     },
     'project.github.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);

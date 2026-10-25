@@ -1,17 +1,17 @@
 import SwiftUI
 
 enum NewProjectSource: String, Identifiable, CaseIterable {
-    case new, existing = "local", github, url
-    var usesRepositoryPicker: Bool { self == .github || self == .existing }
+    case new, existing = "local", github, gitlab, url
+    var usesRepositoryPicker: Bool { self == .github || self == .gitlab || self == .existing }
     var id: String { rawValue }
     var title: String {
-        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "GitHub Repository"; case .url: "Repository URL" }
+        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "GitHub Repository"; case .gitlab: "GitLab Repository"; case .url: "Repository URL" }
     }
     var menuTitle: String {
-        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "From GitHub"; case .url: "From URL" }
+        switch self { case .new: "New Project"; case .existing: "Existing Project"; case .github: "From GitHub"; case .gitlab: "From GitLab"; case .url: "From URL" }
     }
     var symbol: String {
-        switch self { case .new: "folder.badge.plus"; case .existing: "folder"; case .github: "chevron.left.forwardslash.chevron.right"; case .url: "link" }
+        switch self { case .new: "folder.badge.plus"; case .existing: "folder"; case .github, .gitlab: "chevron.left.forwardslash.chevron.right"; case .url: "link" }
     }
 }
 
@@ -118,7 +118,15 @@ struct NewProjectSheet: View {
         .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(busy ? .hidden : .visible)
         .interactiveDismissDisabled(busy)
-        .task {
+        .task(id: source) {
+            value = ""
+            query = ""
+            branchQuery = ""
+            repository = nil
+            selectedBranch = nil
+            creatingBranch = false
+            branchName = ""
+            baseBranch = ""
             if source.usesRepositoryPicker { model.command("loadProjectRepositories", ["source": source.rawValue]) }
             else { focused = true }
         }
@@ -126,6 +134,7 @@ struct NewProjectSheet: View {
             if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id, "source": source.rawValue]) }
         }
         .onChange(of: busy) { _, busy in if busy { focused = false } }
+        .onChange(of: model.laptopID) { _, _ in model.closeProjectSheet() }
         .onChange(of: model.connection) { _, connection in
             if connection == .connected && source.usesRepositoryPicker {
                 if let repository { model.command("loadProjectBranches", ["repositoryId": repository.id, "source": source.rawValue]) }
@@ -241,7 +250,7 @@ struct NewProjectSheet: View {
                     .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
         default:
-            Text(source == .existing ? "Couldn’t load repositories. Check the source folder in \(model.productName) on your computer." : "Couldn’t load repositories. Check the GitHub connection in \(model.productName) on your computer.")
+            Text(source == .existing ? "Couldn’t load repositories. Check the source folder in \(model.productName) on your computer." : "Couldn’t load repositories. Check the \(source == .gitlab ? "GitLab" : "GitHub") connection in \(model.productName) on your computer.")
                 .foregroundStyle(.secondary).padding(16)
             Button("Retry") { model.command("loadProjectRepositories", ["source": source.rawValue]) }.padding(16)
         }

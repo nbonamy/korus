@@ -98,11 +98,13 @@ const {
   assignedItemsByProvider: assignedWorkItemsByProvider,
   authorization: workProviderAuthorization,
   authorizations: workProviderAuthorizations,
+  authorizationErrors: workProviderAuthorizationErrors,
   completeConnection: pollWorkProviderAuthorization,
   configure: configureWorkBacklog,
   connect: connectWorkProvider,
   disconnect: disconnectWorkProvider,
   error: workBacklogError,
+  catalogState: workBacklogStateFor,
   itemsByRepository: workItemsByRepository,
   loadAssignedItems: loadAssignedWorkItems,
   loadConnected: loadConnectedWorkBacklogs,
@@ -894,9 +896,9 @@ export function useAppState() {
     return appApi.getAgentGitDiff(agentId, target ? { ...target } : undefined);
   }
 
-  async function getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow> {
+  async function getAgentGitWorkflow(agentId: string, options?: { includePullRequest?: boolean }): Promise<AgentGitWorkflow> {
     if (!appApi?.getAgentGitWorkflow) throw new Error(translate('surface.app-state.gitWorkflowIsNotAvailable'));
-    return appApi.getAgentGitWorkflow(agentId);
+    return options ? appApi.getAgentGitWorkflow(agentId, options) : appApi.getAgentGitWorkflow(agentId);
   }
 
   async function generateAgentGitMessage(agentId: string, input: AgentGitMessageGenerationInput): Promise<AgentGitMessageGenerationResult> {
@@ -1703,11 +1705,13 @@ export function useAppState() {
     fileActivity,
     workProviderAuthorization,
     workProviderAuthorizations,
+    workProviderAuthorizationErrors,
     workRepositoriesByProvider,
     workItemsByRepository,
     assignedWorkItemsByProvider,
     workBacklogStatus,
     workBacklogError,
+    workBacklogStateFor,
     sourceRepositories,
     openInApplications,
     sourceRepositoryStatus,

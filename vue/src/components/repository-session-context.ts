@@ -3,6 +3,7 @@ import type { AppSnapshot, AutomationLocation } from '@workspace/core/contracts'
 export type RepositorySessionSource = {
   agentId?: string;
   teamId?: string;
+  workSource?: import('@workspace/core/contracts').WorkSource;
   repositoryName: string;
   repositoryRoot: string;
 };

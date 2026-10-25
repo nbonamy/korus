@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { AppError } from '@workspace/core/app-error';
 import type { SourceRepository } from '@workspace/core/contracts';
 import { resolveSourceFolderPath, scanSourceRepositories } from './source-repositories';
@@ -34,7 +35,7 @@ export async function cloneSourceRepository(
   if (await pathExists(destinationPath)) {
     const existingRemote = (await runner.run('git', ['remote', 'get-url', 'origin'], { cwd: destinationPath })
       .catch(() => ({ stdout: '' }))).stdout?.trim();
-    if (!existingRemote || normalizeGitUrl(existingRemote) !== normalizeGitUrl(url)) {
+    if (!existingRemote || (canonicalGitRemoteIdentity(existingRemote) ?? normalizeGitUrl(existingRemote)) !== (canonicalGitRemoteIdentity(url) ?? normalizeGitUrl(url))) {
       throw new AppError('clone.alreadyExists', `${repositoryName} already exists in the source folder.`, { repository: repositoryName });
     }
   } else {

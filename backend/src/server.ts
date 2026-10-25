@@ -1436,15 +1436,16 @@ export class AppBackendServer {
             const finishedPullRequest = input?.pullRequestCleanup === true
               ? existingAgent.pullRequest
               : undefined;
+            const requestName = finishedPullRequest?.provider === 'gitlab' ? 'merge request' : 'pull request';
             if (input?.pullRequestCleanup === true) {
               if (!finishedPullRequest || (finishedPullRequest.state !== 'merged' && finishedPullRequest.state !== 'closed')) {
-                throw new Error('This agent does not have a finished pull request ready for cleanup.');
+                throw new Error(`This agent does not have a finished ${requestName} ready for cleanup.`);
               }
               if (existingAgent.status.type === 'working' || existingAgent.status.type === 'awaitingInput') {
-                throw new Error('Wait for the agent to finish before cleaning up its pull request.');
+                throw new Error(`Wait for the agent to finish before cleaning up its ${requestName}.`);
               }
               if (finishedPullRequest.state === 'closed' && input.deleteRemoteBranch === true) {
-                throw new Error('Keep the remote branch when cleaning up a pull request that was closed without merging.');
+                throw new Error(`Keep the remote branch when cleaning up a ${requestName} that was closed without merging.`);
               }
             }
             if (input?.deleteWorktree) {
@@ -1456,6 +1457,7 @@ export class AppBackendServer {
                 input.deleteRemoteBranch === true,
                 finishedPullRequest?.headSha,
                 input.discardChanges === true,
+                ...(finishedPullRequest ? [finishedPullRequest] : []),
               );
             }
             if (existingAgent.backendSession) {
@@ -1488,6 +1490,7 @@ export class AppBackendServer {
                   input.deleteRemoteBranch === true,
                   finishedPullRequest?.headSha,
                   input.discardChanges === true,
+                  ...(finishedPullRequest ? [finishedPullRequest] : []),
                 );
               } catch (error) {
                 restoreRoster();
@@ -2769,8 +2772,12 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
         }
       }
-      case backendMethods.workProviderConnect:
-        return createAppRpcResult(message.id, await this.requireWorkIntegrations().connect(requireWorkProvider(message.params)));
+      case backendMethods.workProviderConnect: {
+        const params = requireRecord(message.params);
+        const options = params.options === undefined ? undefined : requireRecord(params.options);
+        if (options?.hostedMcp !== undefined && typeof options.hostedMcp !== 'boolean') throw new Error('hostedMcp must be a boolean.');
+        return createAppRpcResult(message.id, await this.requireWorkIntegrations().connect(requireWorkProvider(params), ...(options ? [options] : [])));
+      }
       case backendMethods.workProviderAuthorizationPoll:
         return createAppRpcResult(message.id, await this.requireWorkIntegrations().pollAuthorization(requireWorkProvider(message.params)));
       case backendMethods.workProviderConnectionsReload: {

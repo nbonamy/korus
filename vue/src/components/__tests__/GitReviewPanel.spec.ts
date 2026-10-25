@@ -22,6 +22,14 @@ const scopedDiffs = [
 
 describe('GitReviewPanel', () => {
   afterEach(() => vi.restoreAllMocks());
+  it('shows the selected remote provider in Git review', () => {
+    const wrapper = mount(GitReviewPanel, { props: { agent: { id: 'a', folder: '/repo' } as never,
+      gitStatus: { folder: '/repo', repositoryProvider: 'gitlab' } as never,
+      panel: { kind: 'gitDiff', title: 'Review', diff, state: 'idle', error: null } } });
+    expect(wrapper.find('svg.tabler-icon-brand-gitlab').exists()).toBe(true);
+    expect(wrapper.find('svg.tabler-icon-brand-github').exists()).toBe(false);
+    wrapper.unmount();
+  });
   it('shows repository context, totals, and every file diff', async () => {
     const wrapper = mount(GitReviewPanel, {
       props: {

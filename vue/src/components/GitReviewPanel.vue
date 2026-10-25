@@ -3,7 +3,7 @@
     <header class="git-review-panel__toolbar">
       <div class="git-review-panel__summary">
         <div class="git-review-panel__repository">
-          <GitHubIcon aria-hidden="true" />
+          <component :is="gitStatus?.repositoryProvider === 'gitlab' ? GitLabIcon : GitHubIcon" aria-hidden="true" />
           <strong>{{ repositoryName }}</strong>
         </div>
         <div class="git-review-panel__branch">
@@ -55,7 +55,7 @@
 import { translate } from '../i18n';
 import { computed, ref } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
-import { DotsVerticalIcon, FileDiffIcon, FileTextIcon, GitCommitIcon, GitHubIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, FileDiffIcon, FileTextIcon, GitCommitIcon, GitHubIcon, GitLabIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';

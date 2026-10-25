@@ -7,7 +7,7 @@ import { DelegatedWorkReportService } from '../../agents/delegated-work-report-s
 import type { AgentGitService } from '../agent-git-service';
 import { AgentGitWorkflowService, parseAgentGitRequest } from '../agent-git-workflow-service';
 
-function mergeReportFixture() {
+function mergeReportFixture(provider: 'github' | 'gitlab' = 'github') {
   const snapshot = createInitialSnapshot();
   const source: Agent = { ...snapshot.agents[0]!, id: 'source', folder: '/repo-feature', status: { type: 'idle' },
     workspace: { kind: 'git', folder: '/repo-feature', repositoryName: 'repo', repositoryRoot: '/repo-feature',
@@ -27,7 +27,7 @@ function mergeReportFixture() {
   const service = new AgentGitWorkflowService({ applyEvent: vi.fn(), archiveConversation: vi.fn(), delegatedWorkReports: reports,
     driverRequest: vi.fn(), releaseConversation: vi.fn(), getSnapshot: () => snapshot,
     getWorkIntegrations: () => ({ githubConnected: async () => false }) as never,
-    git: { merge, workflow: async () => ({ repository: 'owner/repo', branch: 'feature', files: [] }) } as unknown as AgentGitService,
+    git: { merge, workflow: async () => ({ repository: provider === 'gitlab' ? 'gitlab.com/group/repo' : 'owner/repo', repositoryProvider: provider, branch: 'feature', files: [] }) } as unknown as AgentGitService,
     persistAndEmitSnapshot: vi.fn().mockResolvedValue(snapshot), refreshGitStatus: vi.fn(), refreshWorkspaceIdentity, sendPrompt: vi.fn(),
   });
   const request = (recipient: string) => ({ method: backendMethods.agentGitMerge, agentId: source.id,
@@ -36,11 +36,26 @@ function mergeReportFixture() {
 }
 
 describe('AgentGitWorkflowService', () => {
-  it('captures a handoff before merge cleanup and sends it to an explicitly selected repository peer', async () => {
-    const test = mergeReportFixture();
+  it('rejects a branch or head change during report preparation before pushing or creating a request', async () => {
+    const snapshot = createInitialSnapshot(), agent = snapshot.agents[0]!; agent.folder = '/repo';
+    let head = 'first';
+    const workflow = vi.fn(async () => ({ repository: 'gitlab.com/group/repo', repositoryProvider: 'gitlab', folder: '/repo', branch: 'feature', detached: false, remote: 'origin', remoteUrl: 'git@gitlab.com:group/repo.git', headSha: head, ahead: 1 }));
+    const push = vi.fn(), createPullRequest = vi.fn();
+    const service = new AgentGitWorkflowService({ applyEvent: vi.fn(), archiveConversation: vi.fn(), driverRequest: vi.fn(), releaseConversation: vi.fn(), getSnapshot: () => snapshot,
+      delegatedWorkReports: { prepare: async () => { head = 'second'; return null; } } as unknown as DelegatedWorkReportPort,
+      getWorkIntegrations: () => ({ githubConnected: async () => false, repositoryConnected: async () => true, findPullRequest: async () => null, createPullRequest }),
+      git: { workflow, assertPullRequestChanges: async () => {}, push } as unknown as AgentGitService,
+      persistAndEmitSnapshot: vi.fn(), refreshGitStatus: vi.fn(), refreshWorkspaceIdentity: vi.fn(), sendPrompt: vi.fn() });
+    await expect(service.execute({ method: backendMethods.agentGitPullRequestCreate, agentId: agent.id, params: { input: { confirmed: true, title: 'Work', body: '', reportBack: true } } }, agent)).rejects.toThrow(/changed/i);
+    expect(push).not.toHaveBeenCalled(); expect(createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it.each(['github', 'gitlab'] as const)('captures native %s handoff before merge cleanup and reports to the selected repository peer', async provider => {
+    const test = mergeReportFixture(provider);
     try {
       const merging = test.service.execute(test.request('recipient'), test.source);
       await vi.waitFor(() => expect(test.sendPrompt).toHaveBeenCalledOnce());
+      expect(test.sendPrompt.mock.calls[0]?.[1]).toContain(provider === 'gitlab' ? 'without a merge request' : 'without a pull request');
       expect(test.merge).not.toHaveBeenCalled();
       test.reports.handleEvent({
         type: 'codex.conversationEventReceived', agentId: test.source.id, backend: 'codex',
@@ -70,7 +85,7 @@ describe('AgentGitWorkflowService', () => {
     } finally { test.reports.close(); }
   });
 
-  it('guards prune consent and supplies fresh local agent ownership, without treating PR badges as merge proof', async () => {
+  it.each(['github', 'gitlab'] as const)('guards %s prune consent and ownership without treating request badges as merge proof', async provider => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;
     agent.folder = '/repo';
@@ -87,8 +102,8 @@ describe('AgentGitWorkflowService', () => {
     const service = new AgentGitWorkflowService({
       applyEvent: vi.fn(), archiveConversation: vi.fn(), delegatedWorkReports: {} as DelegatedWorkReportPort,
       driverRequest: vi.fn(), releaseConversation: vi.fn(), getSnapshot: () => snapshot,
-      getWorkIntegrations: () => ({ githubConnected: async () => true, findPullRequest: async () => pr }) as never,
-      git: { pruning: { inventory, prune }, workflow: async () => ({ repository: 'owner/repo', remote: 'origin' }) } as unknown as AgentGitService,
+      getWorkIntegrations: () => ({ githubConnected: async () => provider === 'github', repositoryConnected: async () => true, findPullRequest: async () => pr }) as never,
+      git: { pruning: { inventory, prune }, workflow: async () => ({ repository: provider === 'gitlab' ? 'gitlab.com/group/repo' : 'owner/repo', remote: 'origin' }) } as unknown as AgentGitService,
       persistAndEmitSnapshot: vi.fn(), refreshGitStatus: vi.fn(), refreshWorkspaceIdentity: vi.fn(), sendPrompt: vi.fn(),
     });
     const result = await service.execute({ method: backendMethods.agentGitPruneGet, agentId: agent.id, params: {} }, agent);

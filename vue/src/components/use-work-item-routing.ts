@@ -129,14 +129,14 @@ export function useWorkItemRouting(options: {
     if (input.target === 'duplicate') {
       const pullRequestBranch = item.kind === 'pullRequest' ? item.branchName?.trim() : undefined;
       if (item.kind === 'pullRequest' && !pullRequestBranch) {
-        throw new Error(translate('surface.appShell.gitHubDidNotReturnThePullRequestBranch'));
+        throw new Error(translate(item.provider === 'gitlab' ? 'gitlabBacklog.missingBranch' : 'surface.appShell.gitHubDidNotReturnThePullRequestBranch'));
       }
       const checkoutBranch = pullRequestBranch ?? (input.workspace.kind === 'worktree' ? input.workspace.branchName : undefined);
       if (checkoutBranch) {
         await options.actions.createBranch(targetAgent.id, {
           name: checkoutBranch,
           createWorktree: true,
-          ...(item.kind === 'pullRequest' ? { pullRequestNumber: item.number } : {}),
+          ...(item.kind === 'pullRequest' && (item.provider === 'github' || item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/')) ? { pullRequestNumber: item.number, ...(item.provider === 'gitlab' ? { requestRepository: item.sourceId } : {}) } : {}),
           confirmed: true,
         });
       }
@@ -256,9 +256,10 @@ export function useWorkItemRouting(options: {
 
     const item = await resolvePullRequestBranch(listedItem);
     ensureCurrent(creationOptions.isCurrent);
-    const repositoryName = workItemRepositoryName(item);
+    const repositoryIdentity = item.provider === 'github' ? `github.com/${item.sourceId}`
+      : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
     const repository = creationOptions.repository ?? (workProviderDefinition(item.provider).repositoryBacked
-      ? options.model.sourceRepositories().find((candidate) => candidate.name === repositoryName) : undefined);
+      ? options.model.sourceRepositories().find((candidate) => repositoryIdentity && candidate.remoteIdentity === repositoryIdentity) : undefined);
     if (!repository) throw new Error(`${item.sourceName} is not available in the source folder.`);
     if (!await confirmAssignedOverride(item, 'a new agent')) throw new Error(translate('surface.appShell.assignmentCancelled'));
     ensureCurrent(creationOptions.isCurrent);
@@ -318,7 +319,7 @@ export function useWorkItemRouting(options: {
       state: 'all',
     });
     const resolved = refreshedItems?.find((candidate) => candidate.id === item.id) ?? item;
-    if (!resolved.branchName?.trim()) throw new Error(translate('surface.appShell.gitHubDidNotReturnThePullRequestBranch'));
+    if (!resolved.branchName?.trim()) throw new Error(translate(item.provider === 'gitlab' ? 'gitlabBacklog.missingBranch' : 'surface.appShell.gitHubDidNotReturnThePullRequestBranch'));
     return resolved;
   }
 

@@ -33,3 +33,9 @@ export function runtimeGitHubOAuthClientId(
     ?? ''
   ).trim();
 }
+
+const PACKAGED_GITLAB_CLIENT_ID = typeof __APP_GITLAB_CLIENT_ID__ === 'string' ? __APP_GITLAB_CLIENT_ID__ : '';
+
+export function runtimeGitLabOAuthClientId(settings?: WorkProviderSettings): string {
+  return settings?.oauthClientId?.trim() || process.env.APP_GITLAB_CLIENT_ID?.trim() || PACKAGED_GITLAB_CLIENT_ID.trim();
+}

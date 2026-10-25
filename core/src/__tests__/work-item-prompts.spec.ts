@@ -4,6 +4,14 @@ import { product } from '../product';
 import { workItemAssignmentPrompt, workItemBranchName, workItemComposerPrompt, workProviderLabel } from '../work-item-prompts';
 
 describe('work item prompts', () => {
+  it('uses GitLab merge request references and instructions in assignment and composer context', () => {
+    const item = workItem({ provider: 'gitlab', kind: 'pullRequest', id: 'gitlab.com/group/sub/repo!42', identifier: '!42', sourceId: 'gitlab.com/group/sub/repo', sourceName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo/-/merge_requests/42' });
+    expect(workItemAssignmentPrompt(item, { action: 'review' })).toContain('Review GitLab merge request !42');
+    expect(workItemAssignmentPrompt(item)).toContain('Merge request: !42');
+    expect(workItemAssignmentPrompt(item, { action: 'addressFeedback' })).toContain('this GitLab merge request');
+    expect(workItemComposerPrompt(item)).toContain('Regarding GitLab merge request !42');
+    expect(workItemAssignmentPrompt(item)).toContain('Work item ID: gitlab:gitlab.com/group/sub/repo!42');
+  });
   it('keeps Linear identity, source and body in assigned and editable prompts', () => {
     const item = workItem({ provider: 'linear', id: 'linear:uuid', identifier: 'ENG-42', sourceId: 'linear:team', sourceName: 'Engineering', url: 'https://linear.app/acme/issue/ENG-42', body: 'Steps to reproduce' });
     const prompt = workItemAssignmentPrompt(item, { action: 'fix' });

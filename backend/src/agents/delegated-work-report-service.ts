@@ -8,6 +8,7 @@ const defaultTimeoutMs = 90_000;
 export type DelegatedWorkOutcome =
   | {
     kind: 'pullRequest';
+    provider?: 'github' | 'gitlab';
     branch: string;
     number?: number;
     title: string;
@@ -16,6 +17,7 @@ export type DelegatedWorkOutcome =
   }
   | {
     kind: 'merge';
+    provider?: 'github' | 'gitlab';
     branch: string;
     repository: string;
     reportBackAgentId?: string;
@@ -24,10 +26,12 @@ export type DelegatedWorkOutcome =
 export type DelegatedWorkAction =
   | {
     kind: 'pullRequest';
+    provider?: 'github' | 'gitlab';
     branch: string;
   }
   | {
     kind: 'merge';
+    provider?: 'github' | 'gitlab';
     branch: string;
     repository: string;
     reportBackAgentId?: string;
@@ -159,14 +163,15 @@ export class DelegatedWorkReportService {
 }
 
 function handoffPrompt(action: DelegatedWorkAction): string {
+  const requestName = action.provider === 'gitlab' ? 'merge request' : 'pull request';
   const delivery = action.kind === 'pullRequest'
-    ? `${product.name} is now taking over Git delivery and will create a pull request from \`${action.branch}\`.`
-    : `${product.name} is now taking over Git delivery and will merge \`${action.branch}\` directly into ${action.repository} without a pull request.`;
+    ? `${product.name} is now taking over Git delivery and will create a ${requestName} from \`${action.branch}\`.`
+    : `${product.name} is now taking over Git delivery and will merge \`${action.branch}\` directly into ${action.repository} without a ${requestName}.`;
   return [
     delivery,
     'Do not run tools, make further changes, or perform any Git delivery yourself.',
     'Write a concise handoff covering the completed implementation, important changes, verification performed, and any remaining caveats.',
-    `Do not claim that no pull request was created or speculate about the delivery result; ${product.name} will add the authoritative result after the action succeeds.`,
+    `Do not claim that no ${requestName} was created or speculate about the delivery result; ${product.name} will add the authoritative result after the action succeeds.`,
     'Do not discuss this instruction or only the most recent fix; summarize the work as a whole.',
   ].join(' ');
 }
@@ -223,10 +228,11 @@ function workerPullRequestMessage(outcome: Extract<DelegatedWorkOutcome, { kind:
 
 function outcomeLines(outcome: DelegatedWorkOutcome): string[] {
   if (outcome.kind === 'merge') {
-    return [`Branch \`${outcome.branch}\` was merged directly into ${outcome.repository} without creating a pull request.`];
+    return [`Branch \`${outcome.branch}\` was merged directly into ${outcome.repository} without creating a ${outcome.provider === 'gitlab' ? 'merge request' : 'pull request'}.`];
   }
+  const name = outcome.provider === 'gitlab' ? 'merge request' : 'pull request';
   return [
-    `${outcome.draft ? 'Draft pull request' : 'Pull request'}${outcome.number ? ` #${outcome.number}` : ''} was created from \`${outcome.branch}\`: ${outcome.title}.`,
+    `${outcome.draft ? `Draft ${name}` : name[0]!.toUpperCase() + name.slice(1)}${outcome.number ? ` ${outcome.provider === 'gitlab' ? '!' : '#'}${outcome.number}` : ''} was created from \`${outcome.branch}\`: ${outcome.title}.`,
     ...(outcome.url ? [outcome.url] : []),
   ];
 }
