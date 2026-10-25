@@ -175,7 +175,7 @@ to its questions and approvals, interrupts, model and permission choices), but t
 close, duplicate or re-engine it; the laptop refuses those. Five mission actions exist
 and no others: continuing a completed implementation to review, accepting a ticket's run that awaits
 acceptance, and, during review, selecting an open finding, fixing the selected ones and reviewing again.
-A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Both carry the mission revision the phone saw and are checked against the mission as it stands.
+A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
