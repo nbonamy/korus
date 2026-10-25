@@ -34,8 +34,10 @@ class MissionsWorkflowTest {
             mount(e, state())
             app.onNodeWithContentDescription("Open workspace").performClick()
             app.onNodeWithContentDescription("Missions, 1 active").performClick()
-            app.onNodeWithText("Implementation · 1 of 2 tickets").assertIsDisplayed()
+            // The card says what an agent is on right now.
+            app.onNodeWithText("02 Open workers").assertIsDisplayed()
             app.onNodeWithText("Follow missions on the phone").performClick()
+            app.onNodeWithText("1 of 2 tickets").assertIsDisplayed()
             app.onNodeWithText("02 Open workers").performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "selectAgent" && it.string("id") == "worker" } == true }
             app.onNodeWithText("TICKETS").assertDoesNotExist()

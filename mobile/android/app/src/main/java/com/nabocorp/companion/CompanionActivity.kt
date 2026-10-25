@@ -203,7 +203,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                   else {
                     Scaffold(
                         topBar = {
-                            ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                            Column {
+                                ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                                MissionContextBar(model)
+                            }
                         },
                         bottomBar = { if (state.string("agentId").isNotBlank()) Column {
                             RequestBanner(model)
