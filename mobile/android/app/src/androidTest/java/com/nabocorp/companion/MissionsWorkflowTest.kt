@@ -50,7 +50,8 @@ class MissionsWorkflowTest {
             mount(e, state(agentId = "worker", worker = true))
             app.onNodeWithContentDescription("Conversation actions").assertDoesNotExist()
             app.onNodeWithContentDescription("Open workspace").assertDoesNotExist()
-            app.onNodeWithText("Mission · ticket 2 of 2 · In progress").assertIsDisplayed()
+            // A conversation carries no mission progress.
+            app.onNodeWithText("Mission · ticket 2 of 2 · In progress").assertDoesNotExist()
             app.onNodeWithContentDescription("Back to mission").performClick()
             app.onNodeWithText("TICKETS").assertIsDisplayed()
             app.onNodeWithText("02 Open workers").assertIsDisplayed()

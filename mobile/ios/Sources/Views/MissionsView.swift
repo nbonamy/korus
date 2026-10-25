@@ -388,27 +388,25 @@ private struct TicketRow: View {
     }
 }
 
-/// Under a ticket worker's header: which ticket this is, and a way to accept it once its work is ready for review.
-/// The mission's lead is a conversation like any other and gets none.
+/// Under a ticket worker's header, only when its work waits for a person: say so and offer to accept it.
+/// Otherwise nothing: a conversation shows no mission progress.
 struct MissionContextBar: View {
     @Environment(AppModel.self) private var model
     @State private var confirming = false
 
     var body: some View {
         if let reference = model.workerMission, reference.lead != true, let mission = model.missions.first(where: { $0.id == reference.id }),
-           let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }) {
+           let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }),
+           ticket.runId != nil, MissionTicketState(ticket.state) == .awaitingReview {
             HStack(spacing: 12) {
-                Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
-                    .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                Text("Ready for your review").font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 0)
-                if ticket.runId != nil, MissionTicketState(ticket.state) == .awaitingReview {
-                    Button("Accept") { confirming = true }
-                        .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small)
-                        .disabled(model.missionAction == "working")
-                        .confirmationDialog("Accept this ticket?", isPresented: $confirming, titleVisibility: .visible) {
-                            Button("Accept") { model.command("acceptTicket", ["missionId": mission.id, "number": ticket.number]) }
-                        } message: { Text("It counts as done for the mission.") }
-                }
+                Button("Accept") { confirming = true }
+                    .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small)
+                    .disabled(model.missionAction == "working")
+                    .confirmationDialog("Accept this ticket?", isPresented: $confirming, titleVisibility: .visible) {
+                        Button("Accept") { model.command("acceptTicket", ["missionId": mission.id, "number": ticket.number]) }
+                    } message: { Text("It counts as done for the mission.") }
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(.bar)

@@ -348,19 +348,18 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
     }
 }
 
-/** Under a ticket worker's header: which ticket this is, and a way to accept it once its work is ready for review.
- * The mission's lead is a conversation like any other and gets none. */
+/** Under a ticket worker's header, only when its work waits for a person: say so and offer to accept it.
+ * Otherwise nothing: a conversation shows no mission progress. */
 @Composable internal fun MissionContextBar(model: CompanionModel) {
     val reference = model.workerMission ?: return
     if (reference.optBoolean("lead")) return
     val mission = model.missions.firstOrNull { it.string("id") == reference.string("id") } ?: return
     val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == model.state.string("agentId") } ?: return
-    val ready = TicketState.of(ticket.string("state")) == TicketState.AwaitingReview && ticket.string("runId").isNotBlank()
+    if (TicketState.of(ticket.string("state")) != TicketState.AwaitingReview || ticket.string("runId").isBlank()) return
     var confirming by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(start = 16.dp, end = 8.dp, top = if (ready) 2.dp else 8.dp, bottom = if (ready) 2.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}", Modifier.weight(1f),
-            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (ready) TextButton({ confirming = true }, enabled = model.state.string("missionAction") != "working") { Text("Accept", fontWeight = FontWeight.SemiBold) }
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Ready for your review", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        TextButton({ confirming = true }, enabled = model.state.string("missionAction") != "working") { Text("Accept", fontWeight = FontWeight.SemiBold) }
     }
     if (confirming) AlertDialog(onDismissRequest = { confirming = false }, title = { Text("Accept this ticket?") }, text = { Text("It counts as done for the mission.") },
         confirmButton = { TextButton({ confirming = false; model.command("acceptTicket", "missionId" to mission.string("id"), "number" to ticket.optInt("number")) }) { Text("Accept") } },

@@ -273,8 +273,8 @@ export function createEngine(port: EnginePort) {
     // A mission's own agents are named for what they do in it, not by the generated names of their conversations.
     const ticketOf = owner && agent ? owner.tickets.find((ticket) => ticket.agentId === agent.id) : undefined;
     const missionTitle = owner && agent
-      ? owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: owner.stage.charAt(0).toUpperCase() + owner.stage.slice(1) }
-        : ticketOf ? { title: `${String(ticketOf.number).padStart(2, '0')} ${ticketOf.title}`, subtitle: null } : null
+      ? owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null }
+        : ticketOf ? { title: ticketOf.title, subtitle: null } : null
       : null;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
