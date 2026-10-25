@@ -12,7 +12,7 @@
           <div class="hero-figure">
             <span class="hero-label">{{ measureLabel(measure) }}</span>
             <div class="hero-number">
-              <strong>{{ chartFormat(total, true) }}</strong>
+              <strong>{{ measureFormat(total, measure) }}</strong>
               <span
                 v-if="delta"
                 class="hero-delta"
@@ -40,12 +40,25 @@
         </header>
       </template>
     </UsageTrend>
+    <div v-if="measure === 'cost'" class="hero-cost-notes">
+      <p>{{ $t("analytics.costExplanation") }}</p>
+      <UsageCostCoverage
+        :cost="current.cost"
+        :label="$t('analytics.costCurrent')"
+      />
+      <UsageCostCoverage
+        :cost="previous?.cost"
+        :label="$t('analytics.costPrevious')"
+        show-value
+      />
+    </div>
   </UsageCard>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";
+import UsageCostCoverage from "./UsageCostCoverage.vue";
 import UsageCard from "./UsageCard.vue";
 import UsageToggle from "./UsageToggle.vue";
 import UsageTrend from "./UsageTrend.vue";
@@ -53,6 +66,7 @@ import {
   chartFormat,
   chartSeries,
   measureLabel,
+  measureFormat,
   sumValues,
   type UsageMeasure,
   type UsageSeries,
@@ -72,19 +86,28 @@ const emit = defineEmits<{
   "update:measure": [measure: UsageMeasure];
 }>();
 const measureOptions = computed(() => [
+  { value: "cost" as const, label: translate("analytics.estimatedCost") },
   { value: "turns" as const, label: translate("analytics.turns") },
   { value: "total" as const, label: translate("analytics.measureTotal") },
   { value: "input" as const, label: translate("analytics.measureInput") },
   { value: "output" as const, label: translate("analytics.measureOutput") },
 ]);
 const totalOf = (summary: UsageSummary | null | undefined) =>
-  sumValues(
-    chartSeries(summary ?? undefined, props.measure, "provider").map(
-      (item) => item.value,
-    ),
-  );
+  props.measure === "cost"
+    ? (summary?.cost?.usd ?? null)
+    : sumValues(
+        chartSeries(summary ?? undefined, props.measure, "provider").map(
+          (item) => item.value,
+        ),
+      );
 const total = computed(() => totalOf(props.current));
 const delta = computed(() => {
+  if (
+    props.measure === "cost" &&
+    (props.current.cost?.coverage !== "complete" ||
+      props.previous?.cost?.coverage !== "complete")
+  )
+    return null;
   const before = totalOf(props.previous);
   if (total.value === null || !before) return null;
   const change = ((total.value - before) / before) * 100;
@@ -115,6 +138,16 @@ const delta = computed(() => {
       transparent 70%
     ),
     var(--color-surface-lowest);
+}
+.hero-cost-notes {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+.hero-cost-notes p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
 }
 .hero-header {
   display: flex;

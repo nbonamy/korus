@@ -607,3 +607,287 @@ it("keeps the activity grid outside the provider and date filters", async () => 
   expect(activityCalls.every(([filter]) => !("provider" in filter))).toBe(true);
   wrapper.unmount();
 });
+
+// These client-boundary scenarios protect currency precision, request attribution,
+// unknown coverage and comparison honesty through the real Analytics tree.
+const costFixture = (usd: number | null, partial = false) => ({
+  usd,
+  coverage:
+    usd === null
+      ? ("unavailable" as const)
+      : partial
+        ? ("partial" as const)
+        : ("complete" as const),
+  requests: usd === null || partial ? 2 : 1,
+  pricedRequests: usd === null ? 0 : 1,
+  unpricedRequests: usd === null ? 2 : partial ? 1 : 0,
+  unknownRequestExecutions: usd === null || partial ? 1 : 0,
+  reasons:
+    usd === null || partial
+      ? [
+          { reason: "missing-cache-usage" as const, count: usd === null ? 2 : 1 },
+          { reason: "acp-request-evidence-unavailable" as const, count: 1 },
+        ]
+      : [],
+});
+const costRow = (label: string, usd: number | null, partial = false) => ({
+  label,
+  started: 1,
+  completed: 1,
+  failed: 0,
+  interrupted: 0,
+  inProgress: 0,
+  measuredTurns: 1,
+  tokens: { input: 8, output: 2, total: 10, cacheRead: 0, cacheWrite: 0 },
+  cost: costFixture(usd, partial),
+});
+
+it("uses request-attributed USD across model/provider filters, daily charts and shares, then returns to tokens and performance", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const getUsage = vi.fn(async (filter) => {
+    const labels =
+      filter.group === "model"
+        ? ["actual-model-a", "actual-model-b"]
+        : ["claude", "codex"];
+    const rows = labels.map((label, i) => ({
+      ...costRow(label, i ? 0.000002 : 0.000004),
+      started: filter.group === "model" ? 0 : 1,
+      completed: filter.group === "model" ? 0 : 1,
+    }));
+    return {
+      recordedSince: 1,
+      retainedSince: 1,
+      cost: { ...costFixture(0.000006), requests: 2, pricedRequests: 2 },
+      rows,
+      daily: [
+        {
+          day: yesterday,
+          started: 1,
+          measuredTurns: 1,
+          tokens: null,
+          cost: costFixture(0.000004),
+          groups: [rows[0]!],
+        },
+        {
+          day: today,
+          started: 0,
+          measuredTurns: 0,
+          tokens: null,
+          cost: costFixture(0.000002),
+          groups: [{ ...rows[1]!, started: 0, tokens: null }],
+        },
+      ],
+    };
+  });
+  setElectronTestClient({ getUsage });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await choose(wrapper, "#usage-measure", "Estimated cost");
+    expect(wrapper.get(".hero-number strong").text()).toBe("$0.000006");
+    expect(wrapper.text()).toContain("API-equivalent");
+    const table = wrapper.get('[aria-label="Usage breakdown"]');
+    expect(table.text()).toContain("Estimated cost");
+    expect(table.text()).toContain("Observed requests");
+    expect(table.findAll("tbody tr")[0]!.findAll("td")[1]!.text()).toBe("1");
+    expect(table.findAll("tbody tr").map((row) => row.text())).toEqual([
+      expect.stringContaining("$0.000004"),
+      expect.stringContaining("$0.000002"),
+    ]);
+    expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("66.7%");
+    const marker = wrapper.get(
+      `[aria-label="${today} · actual-model-b: $0.000002"]`,
+    );
+    await marker.trigger("focus");
+    expect(wrapper.get(".chart-tooltip").text()).toContain("$0.000002");
+    // Sub-cent values must occupy a meaningful part of the chart, not hug zero.
+    expect(Number(marker.attributes("cy"))).toBeLessThan(240);
+    await choose(wrapper, "#usage-grouping", "Provider");
+    expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
+      "Codex",
+    );
+    expect(wrapper.get('[aria-label="Usage breakdown"]').text()).not.toContain(
+      "actual-model-b",
+    );
+    await chooseProvider(wrapper, "claude");
+    await flushPromises();
+    expect(getUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "claude", group: "model" }),
+    );
+    await choose(wrapper, "#usage-measure", "Total");
+    expect(wrapper.get(".hero-number strong").text()).toBe("20");
+    expect(wrapper.find(".cost-coverage").exists()).toBe(false);
+    await wrapper.get("#usage-tab-performance").trigger("click");
+    expect(wrapper.find('[aria-label="Output Speed"]').exists()).toBe(true);
+    await wrapper.get("#usage-tab-usage").trigger("click");
+    expect(wrapper.get(".hero-number strong").text()).toBe("20");
+  } finally {
+    wrapper.unmount();
+  }
+});
+
+it.each([
+  { name: "zero", usd: 0, partial: false, expected: "$0.00" },
+  { name: "tiny", usd: 0.00000000012, partial: false, expected: "$1.2e-10" },
+  { name: "partial", usd: 0.04, partial: true, expected: "$0.04" },
+  { name: "unavailable", usd: null, partial: false, expected: "Unavailable" },
+  {
+    name: "older backend",
+    usd: undefined,
+    partial: false,
+    expected: "Unavailable",
+  },
+])(
+  "distinguishes $name costs and retains current/previous coverage independently",
+  async ({ usd, partial, expected }) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setElectronTestClient({
+      getUsage: vi.fn(async (filter) => {
+        const cost = usd === undefined ? undefined : costFixture(usd, partial);
+        const row = { ...costRow("claude", 1), cost };
+        const previous = filter.to !== today;
+        return {
+          recordedSince: 1,
+          retainedSince: 1,
+          rows: [row],
+          cost: previous ? costFixture(null) : cost,
+          daily: [
+            {
+              day: today,
+              started: 1,
+              measuredTurns: 1,
+              tokens: null,
+              cost,
+              groups: [row],
+            },
+          ],
+        };
+      }),
+    });
+    const wrapper = mount(UsagePanel);
+    try {
+      await flushPromises();
+      await choose(wrapper, "#usage-measure", "Estimated cost");
+      expect(wrapper.get(".hero-number strong").text()).toBe(expected);
+      expect(wrapper.find(".hero-delta").exists()).toBe(false);
+      const coverage = wrapper.findAll(".cost-coverage");
+      expect(coverage.length).toBeGreaterThanOrEqual(2);
+      expect(coverage[1]!.text()).toContain("Unavailable");
+      if (partial || usd === null) {
+        expect(coverage[0]!.text()).toContain(
+          partial ? "Partial" : "Unavailable",
+        );
+        expect(coverage[0]!.text()).toContain(`${partial ? 1 : 0} of 2`);
+        expect(coverage[0]!.text()).toContain("unknown request counts");
+        expect(coverage[0]!.text()).toContain("Cache usage");
+        expect(coverage[0]!.text()).toContain("Runtime request evidence");
+        expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
+          partial ? "Partial" : "Unavailable",
+        );
+      }
+      if (usd === null || usd === undefined) {
+        expect(wrapper.get('[aria-label="Usage share"]').text()).not.toContain(
+          "$0",
+        );
+        expect(
+          wrapper.find('svg[aria-label="Activity over time"]').exists(),
+        ).toBe(false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  },
+);
+
+it.each([
+  { current: costFixture(0.06), previous: costFixture(0.04), delta: "50%" },
+  { current: costFixture(0), previous: costFixture(0.04), delta: "100%" },
+  {
+    current: costFixture(0.06, true),
+    previous: costFixture(0.04),
+    delta: null,
+  },
+  {
+    current: costFixture(0.06),
+    previous: costFixture(0.04, true),
+    delta: null,
+  },
+  { current: costFixture(0.06), previous: costFixture(0), delta: null },
+])(
+  "compares only complete, nonzero-baseline cost periods ($delta)",
+  async ({ current, previous, delta }) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setElectronTestClient({
+      getUsage: vi.fn(async (filter) => ({
+        recordedSince: 1,
+        retainedSince: 1,
+        rows: [costRow("claude", current.usd)],
+        cost: filter.to === today ? current : previous,
+      })),
+    });
+    const wrapper = mount(UsagePanel);
+    try {
+      await flushPromises();
+      await choose(wrapper, "#usage-measure", "Estimated cost");
+      expect(wrapper.find(".hero-delta").exists()).toBe(delta !== null);
+      if (delta) expect(wrapper.get(".hero-delta").text()).toContain(delta);
+      expect(wrapper.text()).toContain("Previous period");
+    } finally {
+      wrapper.unmount();
+    }
+  },
+);
+
+it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable genuine zero", async () => {
+  const day = (offset: number) =>
+    new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+  const rows = [costRow("claude", 0.04)];
+  const daily = [2, 1, 0].map((offset) => {
+    const cost = costFixture(offset === 1 ? null : offset === 0 ? 0 : 0.04);
+    return {
+      day: day(offset),
+      started: 1,
+      measuredTurns: 1,
+      tokens: null,
+      cost,
+      groups: [{ ...rows[0]!, cost }],
+    };
+  });
+  setElectronTestClient({
+    getUsage: vi.fn(async () => ({
+      recordedSince: 1,
+      retainedSince: 1,
+      rows,
+      daily,
+      cost: costFixture(0.04, true),
+    })),
+  });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await choose(wrapper, "#usage-measure", "Estimated cost");
+    const chart = wrapper.get('svg[aria-label="Activity over time"]');
+    expect(
+      chart
+        .findAll("path.edge")
+        .every((p) => !p.attributes("d")?.includes("C")),
+    ).toBe(true);
+    await chart
+      .get(`[aria-label="${day(0)} · claude: $0.00"]`)
+      .trigger("focus");
+    expect(wrapper.get(".chart-tooltip").text()).toContain("$0.00");
+    const first = chart.get(`[aria-label="${day(2)} · claude: $0.04"]`);
+    const last = chart.get(`[aria-label="${day(0)} · claude: $0.00"]`);
+    chart.element.dispatchEvent(
+      new MouseEvent("pointermove", {
+        clientX:
+          (Number(first.attributes("cx")) + Number(last.attributes("cx"))) / 2,
+      }),
+    );
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".chart-tooltip").text()).toContain("Unavailable");
+  } finally {
+    wrapper.unmount();
+  }
+});

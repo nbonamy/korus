@@ -1,8 +1,8 @@
-import type { UsageSummary } from "@workspace/core/usage";
+import type { UsageCost, UsageSummary } from "@workspace/core/usage";
 import type { AgentBackend } from "@workspace/core/contracts";
 import { backendDisplayName } from "@workspace/core/backend-driver";
 import { translate } from "../i18n";
-export type UsageMeasure = "turns" | "total" | "input" | "output";
+export type UsageMeasure = "turns" | "total" | "input" | "output" | "cost";
 export type UsageGrouping = "provider" | "model";
 export type UsageSeries = {
   key: string;
@@ -11,6 +11,7 @@ export type UsageSeries = {
   value: number | null;
   turns: number;
   tokens: number | null;
+  cost?: UsageCost;
 };
 export const chartFormat = (
   value: number | null | undefined,
@@ -22,10 +23,37 @@ export const chartFormat = (
         maximumFractionDigits: 1,
         ...(compact ? { notation: "compact" as const } : {}),
       }).format(value);
-export const chartValue = (
-  row: { started: number; tokens: UsageSummary["rows"][number]["tokens"] },
+/** USD stays explicit; tiny nonzero charges never round to a free-looking zero. */
+export function usdFormat(value: number | null | undefined): string {
+  if (value == null) return translate("analytics.costUnavailable");
+  if (value > 0 && value < 0.000001)
+    return "$" + value.toExponential(2).replace(/0+e/, "e").replace(/\.e/, "e");
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: value > 0 && value < 0.01 ? 6 : 4,
+  }).format(value);
+}
+export const measureFormat = (
+  value: number | null | undefined,
   measure: UsageMeasure,
-) => (measure === "turns" ? row.started : (row.tokens?.[measure] ?? null));
+  compact = true,
+) => (measure === "cost" ? usdFormat(value) : chartFormat(value, compact));
+export const chartValue = (
+  row: {
+    started: number;
+    tokens: UsageSummary["rows"][number]["tokens"];
+    cost?: UsageCost;
+  },
+  measure: UsageMeasure,
+) =>
+  measure === "cost"
+    ? (row.cost?.usd ?? null)
+    : measure === "turns"
+      ? row.started
+      : (row.tokens?.[measure] ?? null);
 const slot = (n: number) => `var(--chart-${n})`;
 const providerSlots: Record<string, number> = {
   codex: 1,
@@ -65,11 +93,12 @@ export function providerColorForModel(label: string): string {
 export function niceScale(
   maximum: number,
   ticks = 4,
+  fractional = false,
 ): { max: number; step: number } {
-  const raw = Math.max(maximum, 1) / ticks;
+  const raw = Math.max(maximum, fractional ? Number.MIN_VALUE : 1) / ticks;
   const magnitude = 10 ** Math.floor(Math.log10(raw));
   const unit = [1, 2, 2.5, 5, 10].find((n) => raw <= n * magnitude) ?? 10;
-  const step = Math.max(1, unit * magnitude);
+  const step = fractional ? unit * magnitude : Math.max(1, unit * magnitude);
   return { max: step * ticks, step };
 }
 export function chartSeries(
@@ -92,6 +121,7 @@ export function chartSeries(
         value: chartValue(row, measure),
         turns: row.started,
         tokens: row.tokens?.total ?? null,
+        ...(row.cost ? { cost: row.cost } : {}),
       };
     })
     .sort(
@@ -163,6 +193,7 @@ export const sumValues = (values: (number | null | undefined)[]) =>
     ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
 const measureKeys: Record<UsageMeasure, string> = {
+  cost: "estimatedCost",
   turns: "turns",
   total: "totalTokens",
   input: "inputTokens",

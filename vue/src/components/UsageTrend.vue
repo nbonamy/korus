@@ -45,7 +45,11 @@
         <g v-for="tick in ticks" :key="tick.value" class="gridline">
           <line :x1="left" :y1="tick.y" :x2="width - right" :y2="tick.y" />
           <text :x="left - 10" :y="tick.y + 4" text-anchor="end">
-            {{ chartFormat(tick.value, true) }}
+            {{
+              measure === "cost"
+                ? usdFormat(tick.value)
+                : chartFormat(tick.value, true)
+            }}
           </text>
         </g>
         <g class="layers">
@@ -78,9 +82,16 @@
         <template v-for="layer in layers" :key="'dots-' + layer.series.key">
           <template v-for="point in points" :key="point.day">
             <circle
-              v-if="layer.vals[point.index]"
+              v-if="
+                measure === 'cost'
+                  ? layer.vals[point.index] != null
+                  : layer.vals[point.index]
+              "
               class="marker"
-              :class="{ visible: isSpeed || active === point.index }"
+              :class="{
+                visible:
+                  isSpeed || measure === 'cost' || active === point.index,
+              }"
               :cx="point.x"
               :cy="yOf(layer.upper[point.index]!)"
               r="4.5"
@@ -140,8 +151,9 @@
           class="tooltip-total"
         >
           <span>{{ $t("analytics.total") }}</span>
-          <b>{{ chartFormat(hovered.total, true) }}</b>
+          <b>{{ metricFormat(hovered.total) }}</b>
         </div>
+        <UsageCostCoverage v-if="measure === 'cost'" :cost="hovered.cost" />
       </div>
     </div>
     <div v-if="series.length > 1" class="chart-legend">
@@ -152,12 +164,14 @@
   </section>
 </template>
 <script setup lang="ts">
+import UsageCostCoverage from "./UsageCostCoverage.vue";
 import { computed, ref, useId, watch } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";
 import {
   chartValue,
   chartFormat,
+  usdFormat,
   niceScale,
   smoothPath,
   tokensPerSecond,
@@ -183,14 +197,16 @@ const valueOf = (group: DailyGroup) =>
   props.measure === "speed"
     ? tokensPerSecond(group.speed)
     : chartValue(group, props.measure);
-const metricFormat = (value: number) =>
+const metricFormat = (value: number | null) =>
   isSpeed.value
     ? `${chartFormat(value, true)} ${translate("analytics.tokensPerSecond")}`
-    : chartFormat(value, true);
+    : props.measure === "cost"
+      ? usdFormat(value)
+      : chartFormat(value, true);
 const uid = useId();
 const gradientId = (key: string) =>
   `${uid}-${props.series.findIndex((item) => item.key === key)}`;
-const left = 44,
+const left = computed(() => (props.measure === "cost" ? 88 : 44)),
   right = 8,
   top = 16,
   height = 300,
@@ -234,16 +250,28 @@ const values = computed(() => {
     const segments = props.series.flatMap((series) => {
       const group = row?.groups?.find((group) => group.label === series.key);
       const value = group ? valueOf(group) : null;
-      if (value == null || value === 0) return [];
-      top = isSpeed.value ? Math.max(top, value) : top + value;
+      if (props.measure !== "cost" && (value == null || value === 0)) return [];
+      top = isSpeed.value ? Math.max(top, value ?? 0) : top + (value ?? 0);
       return [{ ...series, value, top }];
     });
-    rows.push({ day, segments, total: top });
+    rows.push({
+      day,
+      segments,
+      total: props.measure === "cost" ? (row?.cost?.usd ?? null) : top,
+      cost: row?.cost,
+    });
   }
   return rows;
 });
 const scale = computed(() =>
-  niceScale(Math.max(1, ...values.value.map((row) => row.total))),
+  niceScale(
+    Math.max(
+      props.measure === "cost" ? 0 : 1,
+      ...values.value.map((row) => row.total ?? 0),
+    ) || 1,
+    4,
+    props.measure === "cost",
+  ),
 );
 const maximum = computed(() => scale.value.max);
 const yOf = (value: number) =>
@@ -255,9 +283,11 @@ const ticks = computed(() =>
   })),
 );
 const xOf = (index: number) => {
-  const span = width.value - left - right,
+  const span = width.value - left.value - right,
     count = values.value.length;
-  return count < 2 ? left + span / 2 : left + (index * span) / (count - 1);
+  return count < 2
+    ? left.value + span / 2
+    : left.value + (index * span) / (count - 1);
 };
 const points = computed(() =>
   values.value.map((row, index) => ({
@@ -283,9 +313,55 @@ const layers = computed(() => {
   return props.series.flatMap((series) => {
     const vals = values.value.map(
       (row) =>
-        row.segments.find((segment) => segment.key === series.key)?.value ?? 0,
+        row.segments.find((segment) => segment.key === series.key)?.value ??
+        (props.measure === "cost" ? null : 0),
     );
-    if (!vals.some((value) => value > 0)) return [];
+    if (
+      !vals.some(
+        (value) => value !== null && (props.measure === "cost" || value > 0),
+      )
+    )
+      return [];
+    if (props.measure === "cost") {
+      const lower = [...base];
+      vals.forEach((value, index) => (base[index]! += value ?? 0));
+      const upper = [...base];
+      const runs: number[][] = [];
+      vals.forEach((value, index) => {
+        if (value === null) return;
+        if (index === 0 || vals[index - 1] === null) runs.push([]);
+        runs.at(-1)!.push(index);
+      });
+      const runPoints = (run: number[], ys: number[]) =>
+        run.length === 1
+          ? [
+              { x: xOf(run[0]!) - 4, y: yOf(ys[run[0]!]!) },
+              { x: xOf(run[0]!) + 4, y: yOf(ys[run[0]!]!) },
+            ]
+          : run.map((index) => ({ x: xOf(index), y: yOf(ys[index]!) }));
+      return [
+        {
+          series,
+          vals,
+          upper,
+          edge: runs
+            .map((run) =>
+              smoothPath(
+                run.map((index) => ({ x: xOf(index), y: yOf(upper[index]!) })),
+              ),
+            )
+            .join(""),
+          area: runs
+            .map(
+              (run) =>
+                smoothPath(runPoints(run, upper)) +
+                smoothPath(runPoints(run, lower).reverse(), false) +
+                "Z",
+            )
+            .join(""),
+        },
+      ];
+    }
     if (isSpeed.value) {
       // Missing timing is a gap, not a zero-rate observation.
       const runs: { x: number; y: number }[][] = [];
@@ -305,7 +381,7 @@ const layers = computed(() => {
       ];
     }
     const lower = [...base];
-    vals.forEach((value, index) => (base[index]! += value));
+    vals.forEach((value, index) => (base[index]! += value ?? 0));
     const upper = [...base];
     const upperPoints = spread(upper.map(yOf)),
       lowerPoints = spread(lower.map(yOf));
@@ -334,9 +410,9 @@ const tooltipStyle = computed(() => {
 function track(event: PointerEvent) {
   const box = (event.currentTarget as SVGElement).getBoundingClientRect();
   const count = values.value.length;
-  const span = width.value - left - right;
+  const span = width.value - left.value - right;
   const index = Math.round(
-    ((event.clientX - box.left - left) / span) * (count - 1),
+    ((event.clientX - box.left - left.value) / span) * (count - 1),
   );
   active.value =
     count === 1

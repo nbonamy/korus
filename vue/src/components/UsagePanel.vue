@@ -67,7 +67,11 @@
           <UsageShare
             :series="series"
             :measure="measure"
-            :subtitle="measureLabel(measure)"
+            :subtitle="
+              measure === 'cost'
+                ? $t('analytics.costShareNote')
+                : measureLabel(measure)
+            "
           />
         </div>
         <UsageStatTiles
@@ -76,7 +80,11 @@
           :to="filter.to"
           :period-days="periodDays"
         />
-        <UsageBreakdown :series="series" :grouping="grouping" />
+        <UsageBreakdown
+          :series="series"
+          :grouping="grouping"
+          :measure="measure"
+        />
       </template>
       <UsagePerformance
         v-else
