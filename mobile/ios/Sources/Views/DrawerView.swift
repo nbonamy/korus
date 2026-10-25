@@ -3,6 +3,7 @@ import SwiftUI
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
+    @ScaledMetric(relativeTo: .subheadline) private var teamPillHeight: CGFloat = 36
     private static let mark = Bundle.main.url(forResource: "icon", withExtension: "png")
         .flatMap { UIImage(contentsOfFile: $0.path) }
 
@@ -150,7 +151,7 @@ struct DrawerView: View {
                             }
                             .accessibilityLabel(team.name + (team.isUnread == true ? ", unread activity" : ""))
                         }
-                        NewTeamButton()
+                        NewTeamButton(size: teamPillHeight)
                     }
                     .padding(.leading, 4).padding(.trailing, 20)
                     // Keep the glass inside the viewport vertically while clipping scrolled pills beside the fixed logo.
@@ -170,7 +171,8 @@ struct DrawerView: View {
     private func teamPill<Label: View>(selected: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
         Button(action: action, label: label)
             .font(.subheadline.weight(.medium))
-            .padding(.horizontal, 14).padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .frame(height: teamPillHeight)
             .foregroundStyle(selected ? Color.white : Color.primary)
             .glassEffect(selected ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
             .accessibilityAddTraits(selected ? .isSelected : [])
@@ -203,9 +205,7 @@ private struct NewTeamButton: View {
     @Environment(AppModel.self) private var model
     @State private var showingPrompt = false
     @State private var name = ""
-    /// The height of a team pill: a subheadline line, which scales with text size, plus 8 fixed points above and below.
-    @ScaledMetric(relativeTo: .subheadline) private var line = 20
-    private var size: CGFloat { line + 16 }
+    let size: CGFloat
     private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
