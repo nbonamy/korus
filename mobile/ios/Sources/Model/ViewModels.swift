@@ -169,10 +169,12 @@ struct MissionTicketSummary: Decodable, Hashable, Identifiable {
 struct MissionSummary: Decodable, Hashable, Identifiable {
     let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
     let startedAt: String?; let updatedAt: String?
+    /// The ordinary agent leading the mission through its current stage.
+    let leadAgentId: String?
 }
 
 /// The mission that owns the open worker conversation, if any.
-struct MissionReference: Decodable, Equatable { let id: String; let outcome: String }
+struct MissionReference: Decodable, Equatable { let id: String; let outcome: String; let lead: Bool? }
 
 extension MissionSummary {
     var isActive: Bool { status == "active" }

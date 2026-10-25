@@ -172,6 +172,7 @@ private struct MissionDetailScreen: View {
                 VStack(alignment: .leading, spacing: 20) {
                     StageTracker(current: mission.stageIndex, finished: !mission.isActive)
                     Summary(mission: mission)
+                    if let lead = mission.leadAgentId { LeadRow(stage: mission.stageLabel, agentId: lead) }
                     if !mission.tickets.isEmpty { Timeline(mission: mission) }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -241,6 +242,32 @@ private struct Summary: View {
     }
 }
 
+/// The agent leading the mission is one tap away, for a question or a change of direction.
+private struct LeadRow: View {
+    @Environment(AppModel.self) private var model
+    let stage: String
+    let agentId: String
+
+    var body: some View {
+        Button { model.open(missionAgent: agentId) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "bubble.left.and.text.bubble.right").font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Talk to the mission lead").font(.subheadline.weight(.medium))
+                    Text(stage).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct Chip: View {
     let symbol: String
     let text: String
@@ -288,7 +315,7 @@ private struct TicketRow: View {
 
     var body: some View {
         if let agentId = ticket.agentId {
-            Button { model.open(ticket: agentId) } label: { row(chevron: true) }.buttonStyle(.plain)
+            Button { model.open(missionAgent: agentId) } label: { row(chevron: true) }.buttonStyle(.plain)
         } else {
             row(chevron: false)
         }
@@ -332,14 +359,16 @@ struct MissionContextBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if let reference = model.workerMission, let mission = model.missions.first(where: { $0.id == reference.id }),
-           let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }) {
-            Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
-                .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-                .background(.bar)
-                .accessibilityElement(children: .combine)
+        if let reference = model.workerMission, let mission = model.missions.first(where: { $0.id == reference.id }) {
+            let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID })
+            if reference.lead == true || ticket != nil {
+                Text(ticket.map { "Mission · ticket \($0.number) of \(mission.tickets.count) · \(MissionTicketState($0.state).label)" } ?? "Mission · lead · \(mission.stageLabel)")
+                    .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(.bar)
+                    .accessibilityElement(children: .combine)
+            }
         }
     }
 }

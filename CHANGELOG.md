@@ -7,8 +7,8 @@ All notable Korus changes are recorded here.
 ### New features
 
 - Follow missions from the mobile apps: see each mission's stage and ticket
-  progress, open the agent working on a ticket and talk to it, then return to the
-  mission.
+  progress, open the agent working on a ticket or the one leading the mission and talk
+  to it, then return to the mission.
 
 ## [0.41.1] - 2026-10-24
 

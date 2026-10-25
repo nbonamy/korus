@@ -24,7 +24,7 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(MissionTicketState.awaitingReview.label, "Ready for review")
     }
 
-    private let working = #"{"id":"m","outcome":"Ship it","stage":"implementation","status":"active","done":2,"startedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T03:00:00Z","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"},{"number":3,"title":"Open workers","state":"running","agentId":"w","activity":"editing client.ts"},{"number":4,"title":"D","state":"awaitingReview","agentId":"x"},{"number":5,"title":"E","state":"failed"},{"number":6,"title":"F","state":"blocked","after":[3,4]}]}"#
+    private let working = #"{"id":"m","outcome":"Ship it","stage":"implementation","status":"active","done":2,"leadAgentId":"lead","startedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T03:00:00Z","tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"},{"number":3,"title":"Open workers","state":"running","agentId":"w","activity":"editing client.ts"},{"number":4,"title":"D","state":"awaitingReview","agentId":"x"},{"number":5,"title":"E","state":"failed"},{"number":6,"title":"F","state":"blocked","after":[3,4]}]}"#
 
     func testCountsWhatNeedsAPersonAndWhatIsMoving() throws {
         let mission = try mission(working)
@@ -34,6 +34,7 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertEqual(mission.tickets[2].activity, "editing client.ts")
         XCTAssertEqual(mission.tickets[5].after, [3, 4])
         XCTAssertEqual(mission.stageIndex, 2)
+        XCTAssertEqual(mission.leadAgentId, "lead")
         XCTAssertFalse(mission.isReadyToShip)
     }
 

@@ -239,10 +239,28 @@ internal fun elapsedText(millis: Long): String {
             }
         }
     }
+    mission.string("leadAgentId").takeIf { it.isNotBlank() }?.let { lead -> LeadRow(missionStage(mission)) { model.openTicket(lead) } }
     val tickets = mission.items("tickets")
     if (tickets.isNotEmpty()) {
         SectionLabel("Tickets")
         Column { tickets.forEachIndexed { index, ticket -> TicketRow(model, ticket, first = index == 0, last = index == tickets.lastIndex) } }
+    }
+}
+
+private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first == mission.string("stage") }?.second?.first ?: mission.string("stage").replaceFirstChar(Char::uppercase)
+
+/** The agent leading the mission is one tap away, for a question or a change of direction. */
+@Composable private fun LeadRow(stage: String, open: () -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.clickable(onClick = open).padding(horizontal = 16.dp, vertical = 14.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Forum, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Talk to the mission lead", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(stage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -302,13 +320,13 @@ internal fun elapsedText(millis: Long): String {
     }
 }
 
-/** Under a worker's header: which ticket this is, so the conversation never loses its context. */
+/** Under a mission agent's header: which part of the mission this is, so the conversation never loses its context. */
 @Composable internal fun MissionContextBar(model: CompanionModel) {
     val reference = model.workerMission ?: return
     val mission = model.missions.firstOrNull { it.string("id") == reference.string("id") } ?: return
-    val agentId = model.state.string("agentId")
-    val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == agentId } ?: return
-    Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}",
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
+    val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == model.state.string("agentId") }
+    val text = ticket?.let { "Mission · ticket ${it.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(it.string("state")).label}" }
+        ?: if (reference.optBoolean("lead")) "Mission · lead · ${missionStage(mission)}" else return
+    Text(text, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

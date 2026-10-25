@@ -372,8 +372,8 @@ final class AppModel {
         missionsOpen = true
     }
 
-    /// A ticket's worker opens like any conversation; the mission stays one step back.
-    func open(ticket agentId: String) {
+    /// A mission's agent, a ticket's worker or its lead, opens like any conversation; the mission stays one step back.
+    func open(missionAgent agentId: String) {
         missionsOpen = false
         select(agent: agentId)
     }
