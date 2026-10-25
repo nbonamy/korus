@@ -1,6 +1,8 @@
 export type AppErrorCode =
   | 'clone.alreadyExists'
+  | 'clone.authenticationFailed'
   | 'clone.discoveryFailed'
+  | 'clone.failed'
   | 'clone.invalidName'
   | 'clone.sourceFolderMissing'
   | 'clone.urlRequired'
@@ -19,7 +21,9 @@ export type AppErrorCode =
 
 export const appErrorCodes: readonly AppErrorCode[] = [
   'clone.alreadyExists',
+  'clone.authenticationFailed',
   'clone.discoveryFailed',
+  'clone.failed',
   'clone.invalidName',
   'clone.sourceFolderMissing',
   'clone.urlRequired',
