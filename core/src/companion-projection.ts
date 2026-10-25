@@ -75,6 +75,14 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
   return { state: (ticket.dependsOn ?? []).every((blocker) => tickets[blocker]?.done) ? 'queued' : 'blocked' };
 }
 
+const missionStages = ['requirements', 'tickets', 'implementation', 'review', 'ship'] as const;
+/** The lead is the agent of the current stage, or of the latest earlier stage that has one. */
+function missionLead(mission: Mission): string | undefined {
+  const agents = mission.stageAgentIds ?? {};
+  for (let index = missionStages.indexOf(mission.stage); index >= 0; index--) { const id = agents[missionStages[index]!]; if (id) return id; }
+  return undefined;
+}
+
 /** When the work began: the first implementation run, else when the mission was created. */
 function missionStart(mission: Mission): string {
   const runs = (mission.execution?.runs ?? []).filter((run) => run.stage === 'implementation' && run.startedAt).map((run) => run.startedAt).sort();
@@ -88,7 +96,7 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt,
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLead(mission) ? { leadAgentId: missionLead(mission)! } : {}),
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);

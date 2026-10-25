@@ -41,7 +41,9 @@ export type CompanionMissionTicketState = 'blocked' | 'queued' | 'preparing' | '
 /** `after` lists the numbers of the unfinished tickets this one waits for. */
 export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[] };
 /** What the phone knows of a mission: where it stands and its tickets, never its documents or workspaces. */
-export type CompanionMission = { id: string; teamId: string; outcome: string; stage: import('./mission-types').MissionStage; status: 'active' | 'completed'; startedAt: string; updatedAt: string; tickets: CompanionMissionTicket[] };
+export type CompanionMission = { id: string; teamId: string; outcome: string; stage: import('./mission-types').MissionStage; status: 'active' | 'completed'; startedAt: string; updatedAt: string; tickets: CompanionMissionTicket[];
+  /** The conversation that leads the mission through its current stage; an ordinary agent of the team. */
+  leadAgentId?: string };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
 export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */

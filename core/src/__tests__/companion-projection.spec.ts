@@ -93,6 +93,12 @@ describe('companion workspace projection', () => {
       expect(started!.startedAt).toBe('2026-01-01T01:00:00Z');
       expect(idle!.startedAt).toBe('2025-12-31T00:00:00Z');
     });
+    it('names the agent leading the mission: the current stage\'s, else the latest earlier one', () => {
+      const lead = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.leadAgentId;
+      expect(lead({ stage: 'implementation', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('impl');
+      expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix' } })).toBe('tix');
+      expect(lead({ stage: 'requirements', stageAgentIds: {} })).toBeUndefined();
+    });
     it('omits missions of teams the phone cannot see', () => {
       expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
     });

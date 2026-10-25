@@ -24,7 +24,7 @@ export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; 
 export type EngineState = {
   missions: EngineMission[];
   /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
-  mission: { id: string; outcome: string } | null;
+  mission: { id: string; outcome: string; lead?: true } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
@@ -266,13 +266,13 @@ export function createEngine(port: EnginePort) {
             ? state.workspace.value.missionAgents?.find((agent) => agent.id === ticket.agentId)?.statusText?.trim() : undefined;
           return activity ? { ...ticket, activity } : ticket;
         }) }));
-    const owner = agent ? state.missions.value.find((mission) => mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
+    const owner = agent ? state.missions.value.find((mission) => mission.leadAgentId === agent.id || mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
-      missions, mission: owner ? { id: owner.id, outcome: owner.outcome } : null,
+      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
