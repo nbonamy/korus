@@ -2,6 +2,7 @@ export type AgentGitStatus = {
   folder: string;
   repository?: string;
   githubRepository?: string;
+  repositoryProvider?: 'github' | 'gitlab';
   branch?: string;
   upstream?: string;
   ahead: number;
@@ -76,7 +77,7 @@ export type AgentGitPullRequest = {
 };
 
 export type AgentPullRequestTracking = AgentGitPullRequest & {
-  provider: 'github';
+  provider: 'github' | 'gitlab';
   repository: string;
   branch: string;
   createdAt: string;
@@ -84,6 +85,7 @@ export type AgentPullRequestTracking = AgentGitPullRequest & {
 };
 
 export type AgentGitWorkflow = {
+  headSha?: string;
   repository: string;
   folder: string;
   isLinkedWorktree: boolean;
@@ -107,6 +109,9 @@ export type AgentGitWorkflow = {
   stagedFiles: string[];
   unstagedFiles: string[];
   existingPullRequest?: AgentGitPullRequest;
+  repositoryProvider?: 'github' | 'gitlab';
+  codeHostConnected?: boolean;
+  codeHostError?: string;
   githubConnected: boolean;
   githubError?: string;
   warning?: {
@@ -125,7 +130,7 @@ export type AgentGitCommitInput = { message: string; confirmed: boolean; include
 
 export type AgentGitPushInput = { confirmed: boolean; target?: 'current' | 'mergeTarget'; closeAgentAfterPush?: boolean };
 
-export type AgentGitBranchInput = { name: string; createWorktree?: boolean; pullRequestNumber?: number; confirmed: boolean };
+export type AgentGitBranchInput = { name: string; createWorktree?: boolean; pullRequestNumber?: number; requestRepository?: string; confirmed: boolean };
 
 export type AgentCloseInput = { deleteWorktree: boolean; deleteRemoteBranch?: boolean; discardChanges?: boolean; pullRequestCleanup?: boolean; confirmed: boolean };
 

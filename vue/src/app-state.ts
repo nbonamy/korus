@@ -895,9 +895,9 @@ export function useAppState() {
     return appApi.getAgentGitDiff(agentId, target ? { ...target } : undefined);
   }
 
-  async function getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow> {
+  async function getAgentGitWorkflow(agentId: string, options?: { includePullRequest?: boolean }): Promise<AgentGitWorkflow> {
     if (!appApi?.getAgentGitWorkflow) throw new Error(translate('surface.app-state.gitWorkflowIsNotAvailable'));
-    return appApi.getAgentGitWorkflow(agentId);
+    return options ? appApi.getAgentGitWorkflow(agentId, options) : appApi.getAgentGitWorkflow(agentId);
   }
 
   async function generateAgentGitMessage(agentId: string, input: AgentGitMessageGenerationInput): Promise<AgentGitMessageGenerationResult> {

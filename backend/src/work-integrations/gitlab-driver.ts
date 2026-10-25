@@ -1,4 +1,4 @@
-import type { GlobalWorkItemQuery, SourceBranch, WorkItem, WorkItemKind, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
+import type { AgentGitPullRequest, GlobalWorkItemQuery, SourceBranch, WorkItem, WorkItemKind, WorkItemPage, WorkItemQuery, WorkSource } from '@workspace/core/contracts';
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { runtimeGitLabOAuthClientId } from '../runtime-config';
 import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
@@ -164,6 +164,48 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     return items;
   }
 
+  async findPullRequest(credential: WorkProviderCredential, repositoryId: string, branch: string): Promise<AgentGitPullRequest | null> {
+    const path = projectPath(repositoryId);
+    const url = new URL(`${API}/projects/${encodeURIComponent(path)}/merge_requests`);
+    url.search = new URLSearchParams({ state: 'opened', scope: 'all', source_branch: branch, per_page: '100', page: '1' }).toString();
+    const values = await this.pages(credential, url.href);
+    for (const value of values) {
+      const request = gitlabRequest(value, path);
+      if (!record(value) || value.source_branch !== branch) throw new Error('GitLab returned an unexpected merge request branch.');
+      // A fork can use the same branch name. It is not this checkout's branch.
+      if (value.source_project_id === value.target_project_id) return request;
+    }
+    return null;
+  }
+
+  async getPullRequest(credential: WorkProviderCredential, repositoryId: string, number: number): Promise<AgentGitPullRequest | null> {
+    const path = projectPath(repositoryId);
+    if (!Number.isSafeInteger(number) || number <= 0) throw new Error('Invalid GitLab merge request number.');
+    const response = await this.api(credential, `${API}/projects/${encodeURIComponent(path)}/merge_requests/${number}`);
+    const result = gitlabRequest(await this.requestJson(response), path);
+    if (result.number !== number) throw new Error('GitLab returned an unexpected merge request.');
+    return result;
+  }
+
+  async createPullRequest(credential: WorkProviderCredential, repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest> {
+    const path = projectPath(repositoryId);
+    const endpoint = `${API}/projects/${encodeURIComponent(path)}`;
+    const project = await this.requestJson(await this.api(credential, endpoint));
+    if (!record(project) || !nonempty(project.default_branch)) throw new Error('GitLab project has no default branch.');
+    const title = input.title.trim();
+    if (!title || !input.branch.trim() || input.branch === project.default_branch) throw new Error('Choose a feature branch and title for the merge request.');
+    const response = await this.api(credential, `${endpoint}/merge_requests`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_branch: input.branch, target_branch: project.default_branch,
+        title: /^(draft|wip):/i.test(title) ? title : `Draft: ${title}`, description: input.body }),
+    });
+    return gitlabRequest(await this.requestJson(response), path);
+  }
+
+  private async requestJson(response: Response): Promise<unknown> {
+    try { return await response.json(); } catch { throw new Error('GitLab returned an invalid merge request response.'); }
+  }
+
   private clientId(): string { return (typeof this.clientIdProvider === 'function' ? this.clientIdProvider() : this.clientIdProvider)?.trim() ?? ''; }
 
   private async oauth(endpoint: string, parameters: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
@@ -300,4 +342,14 @@ function gitlabItem(value: unknown, kind: WorkItemKind, viewer?: string, expecte
       if (record(label) && nonempty(label.name)) return { name: label.name, ...(nonempty(label.color) ? { color: label.color } : {}) };
       throw new Error('GitLab returned an invalid label.');
     }), createdAt: value.created_at, updatedAt: value.updated_at };
+}
+
+function gitlabRequest(value: unknown, path: string): AgentGitPullRequest {
+  if (!record(value) || !Number.isSafeInteger(value.iid) || Number(value.iid) <= 0 || !nonempty(value.title)
+    || value.web_url !== `${ORIGIN}/${path}/-/merge_requests/${value.iid}` || !nonempty(value.sha)
+    || !['opened', 'closed', 'merged'].includes(String(value.state)) || typeof value.draft !== 'boolean'
+    || !positive(value.source_project_id) || !positive(value.target_project_id)) throw new Error('GitLab returned an invalid merge request response.');
+  return { number: Number(value.iid), title: value.title, url: String(value.web_url), draft: value.draft,
+    headSha: value.sha, state: value.state === 'opened' ? 'open' : value.state as 'merged' | 'closed',
+    ...(nonempty(value.merged_at) ? { mergedAt: value.merged_at } : {}) };
 }

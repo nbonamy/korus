@@ -131,24 +131,33 @@ export class WorkIntegrationManager {
   }
 
   async findPullRequest(repositoryId: string, branch: string): Promise<AgentGitPullRequest | null> {
-    const token = await this.connectedCredential('github');
-    const driver = this.driver('github', token);
-    if (!driver.findPullRequest) return null;
+    const provider = repositoryId.startsWith('gitlab.com/') ? 'gitlab' : 'github';
+    const token = await this.connectedCredential(provider);
+    const driver = this.driver(provider, token);
+    if (!driver.findPullRequest) throw new Error('Request lookup is unavailable.');
     return driver.findPullRequest(token, repositoryId, branch);
   }
 
   async getPullRequest(repositoryId: string, number: number): Promise<AgentGitPullRequest | null> {
-    const token = await this.connectedCredential('github');
-    const driver = this.driver('github', token);
-    if (!driver.getPullRequest) return null;
+    const provider = repositoryId.startsWith('gitlab.com/') ? 'gitlab' : 'github';
+    const token = await this.connectedCredential(provider);
+    const driver = this.driver(provider, token);
+    if (!driver.getPullRequest) throw new Error('Request lookup is unavailable.');
     return driver.getPullRequest(token, repositoryId, number);
   }
 
   async createPullRequest(repositoryId: string, input: { branch: string; title: string; body: string }): Promise<AgentGitPullRequest> {
-    const token = await this.connectedCredential('github');
-    const driver = this.driver('github', token);
-    if (!driver.createPullRequest) throw new Error('GitHub pull request creation is unavailable.');
+    const provider = repositoryId.startsWith('gitlab.com/') ? 'gitlab' : 'github';
+    const token = await this.connectedCredential(provider);
+    const driver = this.driver(provider, token);
+    if (!driver.createPullRequest) throw new Error(`${providerLabel(provider)} request creation is unavailable.`);
     return driver.createPullRequest(token, repositoryId, input);
+  }
+
+  async repositoryConnected(repositoryId: string): Promise<boolean> {
+    const provider = repositoryId.startsWith('gitlab.com/') ? 'gitlab' : 'github';
+    if (this.connection(provider)?.source === 'none') return false;
+    return this.connection(provider)?.source === 'cli' && this.isConnected(provider) || Boolean(await this.options.tokenStore.get(provider));
   }
 
   async githubConnected(): Promise<boolean> {

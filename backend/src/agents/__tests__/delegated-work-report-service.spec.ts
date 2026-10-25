@@ -5,6 +5,16 @@ import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/c
 import { DelegatedWorkReportService } from '../delegated-work-report-service';
 
 describe('DelegatedWorkReportService', () => {
+  it('reports GitLab delivery with native merge request wording and reference', () => {
+    const snapshot = createEmptySnapshot(), parent = agent('parent', 'main'), worker = { ...agent('worker', 'feature'), delegatedByAgentId: 'parent' };
+    snapshot.agents = [parent, worker];
+    const sendMessage = vi.fn();
+    const service = new DelegatedWorkReportService({ getSnapshot: () => snapshot, readConversationMessages: vi.fn(), sendPrompt: vi.fn(), sendMessage });
+    service.deliver(worker, { kind: 'pullRequest', provider: 'gitlab', branch: 'feature', number: 7, title: 'Work', draft: true, url: 'https://gitlab.com/group/repo/-/merge_requests/7' }, 'Tested');
+    expect(sendMessage.mock.calls[0]?.[2]).toContain('Draft merge request !7');
+    service.close();
+  });
+
   it('delivers merge details as context with only the branch milestone outside it', () => {
     const snapshot = createEmptySnapshot();
     const parent = agent('agent-main', 'main');

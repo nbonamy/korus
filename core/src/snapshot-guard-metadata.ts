@@ -169,7 +169,7 @@ function isAppText(value: unknown): boolean {
 
 function isAgentPullRequestTracking(value: unknown): boolean {
   return isRecord(value) &&
-    value.provider === 'github' &&
+    (value.provider === 'github' || value.provider === 'gitlab') &&
     typeof value.repository === 'string' &&
     typeof value.branch === 'string' &&
     typeof value.createdAt === 'string' &&

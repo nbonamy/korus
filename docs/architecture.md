@@ -709,6 +709,16 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   GitLab source IDs are `gitlab.com/<full namespace>/<project path>`; subgroup paths
   remain intact. These IDs are opaque to clients and are distinct from GitHub IDs.
   API authorization does not configure Git transport credentials or hosted MCP access.
+- Git delivery selects the tracked upstream remote, then `origin`, then the first
+  remote. That remote owns provider routing, connectivity and request identity;
+  connecting another provider never changes it. GitLab request identities retain
+  `gitlab.com` and the full namespace. Background workflow reads stay local;
+  request dialogs explicitly opt into provider lookup and fail closed on lookup
+  errors. Creation rechecks the local branch, HEAD and remote after handoff.
+  GitLab uses draft merge requests targeting the project's default branch and
+  `refs/merge-requests/<iid>/head` for checkout. Qualified checkout requests verify
+  the selected project and fetched head before switching or creating a worktree.
+  API requests and Git transport keep separate authentication boundaries.
 - Linear uses authorization-code PKCE with single-use state and a fixed loopback
   callback bound only during authorization, so the browser must run on the
   computer hosting `daemon`. Scopes are `read,write`; no client secret exists.

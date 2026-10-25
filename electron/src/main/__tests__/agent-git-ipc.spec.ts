@@ -29,6 +29,15 @@ describe('agent Git IPC', () => {
     });
   });
 
+  it('opts into request discovery only for the selected agent', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = { handle: (name: string, handler: (...args: unknown[]) => unknown) => handlers.set(name, handler) } as never;
+    const request = vi.fn(async () => ({ repository: 'gitlab.com/group/repo' }));
+    registerAgentGitIpcHandlers(ipc, () => ({ request }) as never);
+    await handlers.get(ipcChannels.getAgentGitWorkflow)!({}, 'agent', { includePullRequest: true });
+    expect(request).toHaveBeenCalledExactlyOnceWith(backendMethods.agentGitWorkflowGet, { agentId: 'agent', includePullRequest: true });
+  });
+
   it.each([
     [ipcChannels.getAgentGitLog, backendMethods.agentGitLogGet, [{ search: 'fix', cursor: { head: 'head', offset: 50, search: 'fix' } }], { branch: 'main', commits: [] }],
     [ipcChannels.getAgentGitLogCommit, backendMethods.agentGitLogCommitGet, [{ head: 'head', sha: 'sha' }], { message: 'full', files: [] }],

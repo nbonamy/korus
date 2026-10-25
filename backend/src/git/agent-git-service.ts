@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { normalizeGitSettings, type GitSettings } from '@workspace/core/git-preferences';
 import type { AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
 import { AppError } from '@workspace/core/app-error';
-import { matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
+import { canonicalGitRemoteIdentity, matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import type { AgentGitStatus } from '@workspace/core/contracts';
 import { listSourceBranches, type GitWorktreeCreateInput } from '../git-worktrees';
 import { AgentGitHistoryService } from './agent-git-history-service';
@@ -103,10 +103,15 @@ export class AgentGitService {
       const isDirty = changed.changedFiles > 0 || diff.addedLines > 0 || diff.removedLines > 0;
       const commonDirectory = commonDirectoryResult.stdout.trim();
       const repository = commonDirectory ? fileName(dirname(resolve(folder, commonDirectory))) : undefined;
-      const githubRepository = githubRepositoryFromRemotes(remotesResult.stdout);
+      const entries = remotesResult.stdout.split(/\r?\n/).map(line => line.match(/^(\S+)\s+(\S+)\s+\(fetch\)$/)).filter(Boolean);
+      const selected = entries.find(entry => entry![1] === branch.upstream?.split('/')[0])
+        ?? entries.find(entry => entry![1] === 'origin') ?? entries[0];
+      const remoteIdentity = selected ? canonicalGitRemoteIdentity(selected[2]!) : undefined;
+      const repositoryProvider = remoteIdentity?.startsWith('gitlab.com/') ? 'gitlab' : remoteIdentity?.startsWith('github.com/') ? 'github' : undefined;
+      const githubRepository = repositoryProvider === 'github' ? remoteIdentity!.slice(11) : undefined;
       const diffCatalog = await this.diffCatalog(folder, {
         branch: branch.branch,
-        remote: branch.upstream?.split('/')[0] ?? remoteNameFromRemotes(remotesResult.stdout),
+        remote: selected?.[1],
         staged: parseNumstatSummary(stagedNumstat.stdout),
         unstaged: combineSummaries(parseNumstatSummary(unstagedNumstat.stdout), untrackedDiff),
         untracked: { ...untrackedDiff, changedFiles: untrackedFilesResult.stdout.split('\0').filter(Boolean).length },
@@ -117,6 +122,7 @@ export class AgentGitService {
         folder,
         ...(repository ? { repository } : {}),
         ...(githubRepository ? { githubRepository } : {}),
+        ...(repositoryProvider ? { repositoryProvider } : {}),
         ...branch,
         ...diff,
         changedFiles: changed.changedFiles,
@@ -310,8 +316,9 @@ export class AgentGitService {
     diff: string;
   }> {
     const workflow = await this.workflow(folder);
-    if (!workflow.branch || workflow.detached) throw new Error('Create or check out a branch before generating a pull request.');
-    if (isIntegrationBranch(workflow.branch)) throw new Error('Create a feature branch before generating a pull request.');
+    const requestName = workflow.repositoryProvider === 'gitlab' ? 'merge request' : 'pull request';
+    if (!workflow.branch || workflow.detached) throw new Error(`Create or check out a branch before generating a ${requestName}.`);
+    if (isIntegrationBranch(workflow.branch)) throw new Error(`Create a feature branch before generating a ${requestName}.`);
     const baseRef = await this.resolveBaseRef(folder, workflow.branch, workflow.remote);
     const [commits, stat, diff] = await Promise.all([
       this.runGit(folder, ['log', '--format=%h %s%n%b', `${baseRef}..HEAD`]),
@@ -320,8 +327,8 @@ export class AgentGitService {
     ]);
     if (!diff.stdout.trim()) {
       throw new AppError(
-        'git.pullRequestChangesRequired',
-        'This branch has no committed changes to include. Commit your work before creating a pull request.',
+        workflow.repositoryProvider === 'gitlab' ? 'git.mergeRequestChangesRequired' : 'git.pullRequestChangesRequired',
+        `This branch has no committed changes to include. Commit your work before creating a ${requestName}.`,
       );
     }
     return {
@@ -333,7 +340,7 @@ export class AgentGitService {
   }
 
   async workflow(folder: string): Promise<Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>> {
-    const [root, branch, upstream, remote, status, branchStatusResult, stagedNumstat, unstagedNumstat, worktreeList] = await Promise.all([
+    const [root, branch, upstream, remote, status, branchStatusResult, stagedNumstat, unstagedNumstat, worktreeList, head] = await Promise.all([
       this.runGit(folder, ['rev-parse', '--show-toplevel']),
       this.runGit(folder, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => ({ stdout: '' })),
@@ -343,13 +350,14 @@ export class AgentGitService {
       this.runGit(folder, ['diff', '--cached', '--numstat', '--']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['diff', '--numstat', '--']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['worktree', 'list', '--porcelain']).catch(() => ({ stdout: '' })),
+      this.runGit(folder, ['rev-parse', '--verify', 'HEAD']).catch(() => ({ stdout: '' })),
     ]);
     const remotes = remote.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
     const trackedRemote = upstream.stdout.trim().split('/')[0];
     const remoteName = (trackedRemote && remotes.includes(trackedRemote) ? trackedRemote : undefined)
       ?? (remotes.includes('origin') ? 'origin' : remotes[0]);
     const remoteUrl = remoteName
-      ? (await this.runGit(folder, ['remote', 'get-url', remoteName])).stdout.trim()
+      ? sanitizeGitRemoteUrl((await this.runGit(folder, ['remote', 'get-url', remoteName])).stdout)
       : undefined;
     const files = parsePorcelainFiles(status.stdout);
     const branchStatus = parseBranchStatus(branchStatusResult.stdout);
@@ -369,9 +377,13 @@ export class AgentGitService {
         ? this.runGit(baseWorktree.path, ['status', '--porcelain=v1', '-z']).then((result) => Boolean(result.stdout))
         : undefined,
     ]);
-    const repository = githubRepositoryFromRemote(remoteUrl) ?? fileName(repositoryFolder);
+    const identity = remoteUrl ? canonicalGitRemoteIdentity(remoteUrl) : undefined;
+    const repositoryProvider = identity?.startsWith('gitlab.com/') ? 'gitlab' : identity?.startsWith('github.com/') ? 'github' : undefined;
+    const repository = repositoryProvider === 'gitlab' ? identity! : repositoryProvider === 'github' ? identity!.slice(11) : fileName(repositoryFolder);
     return {
       repository,
+      ...(head.stdout.trim() ? { headSha: head.stdout.trim() } : {}),
+      ...(repositoryProvider ? { repositoryProvider } : {}),
       folder: repositoryFolder,
       isLinkedWorktree: currentWorktreeIndex > 0,
       ...(baseWorktree?.branch ? { baseBranch: baseWorktree.branch } : {}),
@@ -426,7 +438,7 @@ export class AgentGitService {
       : ['push', remote, branch]);
   }
 
-  async createBranch(folder: string, name: string, createWorktree = false, pullRequestNumber?: number): Promise<string> {
+  async createBranch(folder: string, name: string, createWorktree = false, pullRequestNumber?: number, expectedHeadSha?: string): Promise<string> {
     const normalized = name.trim();
     if (!normalized) throw new Error('Enter a branch name.');
     if (normalized.startsWith('-')) throw new Error('Enter a valid branch name.');
@@ -437,20 +449,25 @@ export class AgentGitService {
     }
     let startPoint: string | undefined;
     if (pullRequestNumber !== undefined) {
-      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) throw new Error('Enter a valid pull request number.');
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) throw new Error('Enter a valid request number.');
       const workflow = await this.workflow(folder);
-      if (!workflow.remote) throw new Error('Add a GitHub remote before checking out a pull request.');
-      await this.runGit(folder, ['fetch', workflow.remote, `pull/${pullRequestNumber}/head`]);
-      startPoint = 'FETCH_HEAD';
+      if (!workflow.remote || !workflow.repositoryProvider) throw new Error('Choose a GitHub or GitLab.com remote before checking out a request.');
+      const ref = workflow.repositoryProvider === 'gitlab' ? `refs/merge-requests/${pullRequestNumber}/head` : `pull/${pullRequestNumber}/head`;
+      await this.runGit(folder, ['fetch', workflow.remote, ref]);
+      const fetchedHead = (await this.runGit(folder, ['rev-parse', 'FETCH_HEAD'])).stdout.trim();
+      if (!/^[a-f0-9]{40,64}$/i.test(fetchedHead) || expectedHeadSha && fetchedHead !== expectedHeadSha) throw new Error('The request head changed. Refresh the request and retry checkout.');
+      startPoint = fetchedHead;
     }
     if (createWorktree) {
       if (!this.createWorktree) throw new Error('Worktree creation is not configured.');
-      return (await this.createWorktree({
+      const worktree = await this.createWorktree({
         repoPath: folder,
         branchName: normalized,
         reuseExisting: true,
         ...(startPoint ? { startPoint } : {}),
-      })).path;
+      });
+      if (startPoint) await this.runGit(worktree.path, ['merge', '--ff-only', startPoint]);
+      return worktree.path;
     }
     const branchExists = await this.localBranchExists(folder, normalized);
     if (branchExists) {
@@ -748,28 +765,6 @@ export function parsePorcelainFiles(output: string): AgentGitFile[] {
     files.push({ path, indexStatus, worktreeStatus });
   }
   return files;
-}
-
-function githubRepositoryFromRemote(remoteUrl?: string): string | null {
-  if (!remoteUrl) return null;
-  const match = remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/i);
-  return match?.[1] ?? null;
-}
-
-function githubRepositoryFromRemotes(output: string): string | null {
-  for (const line of output.split(/\r?\n/u)) {
-    const remoteUrl = line.trim().split(/\s+/u)[1];
-    const repository = githubRepositoryFromRemote(remoteUrl);
-    if (repository) return repository;
-  }
-  return null;
-}
-
-function remoteNameFromRemotes(output: string): string | undefined {
-  return output
-    .split(/\r?\n/u)
-    .map((line) => line.trim().split(/\s+/u)[0])
-    .find(Boolean);
 }
 
 function fileName(value: string): string {

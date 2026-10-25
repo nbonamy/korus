@@ -136,7 +136,7 @@ export function useWorkItemRouting(options: {
         await options.actions.createBranch(targetAgent.id, {
           name: checkoutBranch,
           createWorktree: true,
-          ...(item.kind === 'pullRequest' && item.provider === 'github' ? { pullRequestNumber: item.number } : {}),
+          ...(item.kind === 'pullRequest' && (item.provider === 'github' || item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/')) ? { pullRequestNumber: item.number, ...(item.provider === 'gitlab' ? { requestRepository: item.sourceId } : {}) } : {}),
           confirmed: true,
         });
       }

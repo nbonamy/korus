@@ -16,12 +16,11 @@ describe('useWorkItemRouting', () => {
     expect(harness.createWorktree).toHaveBeenCalledWith({ repoPath: repository.path, branchName: 'fix/gl-12', remoteConnectionId: 'gitlab-host' });
     expect(harness.assign).toHaveBeenCalledWith({ agentId: harness.createdAgent.id, item: selected, prompt: expect.stringContaining('Work item ID: gitlab:gitlab.com/group/sub/agent-workspace#12') });
   });
-  it('hands a GitLab MR to a duplicate without a GitHub pull ref', async () => {
-    const selected = item({ provider: 'gitlab', kind: 'pullRequest', identifier: '!12', id: 'gitlab.com/group/repo!12', branchName: 'topic' });
+  it('checks out a GitLab MR using its qualified repository identity', async () => {
+    const selected = item({ provider: 'gitlab', kind: 'pullRequest', sourceId: 'gitlab.com/group/repo', identifier: '!12', id: 'gitlab.com/group/repo!12', branchName: 'topic' });
     const harness = createHarness({ item: selected });
     await harness.routing.startRepositoryWork(harness.agent.id, { item: selected, action: 'review', target: 'duplicate', workspace: { kind: 'worktree', branchName: 'topic' } });
-    expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, confirmed: true });
-    expect(harness.assign).toHaveBeenCalledWith(expect.objectContaining({ item: selected, prompt: expect.stringContaining('GitLab merge request !12') }));
+    expect(harness.createBranch).toHaveBeenCalledWith(harness.createdAgent.id, { name: 'topic', createWorktree: true, pullRequestNumber: 12, requestRepository: selected.sourceId, confirmed: true });
   });
   it('honors an explicit model when launching from a repository backlog', async () => {
     const harness = createHarness();

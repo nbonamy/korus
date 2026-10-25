@@ -10,6 +10,7 @@ export type AppErrorCode =
   | 'createRepository.nameRequired'
   | 'createRepository.sourceFolderMissing'
   | 'git.pullRequestChangesRequired'
+  | 'git.mergeRequestChangesRequired'
   | 'engineSetup.confirmationRequired'
   | 'engineSetup.rosterChanged'
   | 'engineSetup.agentsBusy'
@@ -28,6 +29,7 @@ export const appErrorCodes: readonly AppErrorCode[] = [
   'createRepository.nameRequired',
   'createRepository.sourceFolderMissing',
   'git.pullRequestChangesRequired',
+  'git.mergeRequestChangesRequired',
   'engineSetup.confirmationRequired',
   'engineSetup.rosterChanged',
   'engineSetup.agentsBusy',

@@ -133,6 +133,7 @@ export function isAgentGitStatus(value: unknown): boolean {
     typeof value.folder === 'string' &&
     optional(value, 'repository', isString) &&
     optional(value, 'githubRepository', isString) &&
+    optional(value, 'repositoryProvider', candidate => includes(['github', 'gitlab'], candidate)) &&
     optional(value, 'branch', isString) &&
     optional(value, 'upstream', isString) &&
     typeof value.ahead === 'number' &&

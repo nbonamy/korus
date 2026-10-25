@@ -70,7 +70,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   getAgentGitDiff: [backendMethods.agentGitDiffGet, namedOptional('agentId', 'target')],
   previewBranchCurrentWork: [backendMethods.agentGitBranchWorkPreview, named('agentId')],
   branchCurrentWork: [backendMethods.agentGitBranchWork, named('agentId', 'input')],
-  getAgentGitWorkflow: [backendMethods.agentGitWorkflowGet, named('agentId')],
+  getAgentGitWorkflow: [backendMethods.agentGitWorkflowGet, args => ({ agentId: args[0], ...(args[1] && typeof args[1] === 'object' && 'includePullRequest' in args[1] ? { includePullRequest: args[1].includePullRequest } : {}) })],
   getAgentClosePreview: [backendMethods.agentClosePreview, named('agentId')],
   listAgentTasks: [backendMethods.agentTasksList, named('agentId')],
   cancelAgentTask: [backendMethods.agentTaskCancel, named('agentId', 'taskId')],
