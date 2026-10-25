@@ -207,7 +207,8 @@ extension MissionSummary {
     var attentionCount: Int { tickets.filter { [.awaitingReview, .failed].contains(MissionTicketState($0.state)) }.count }
     /// Agents on a ticket at this moment.
     var workingCount: Int { tickets.filter { [.running, .preparing].contains(MissionTicketState($0.state)) }.count }
-    var isReadyToShip: Bool { isActive && !tickets.isEmpty && done == tickets.count }
+    /// Ready once the mission has reached its ship stage: finished tickets still owe a review.
+    var isReadyToShip: Bool { isActive && stage == "ship" }
     var stageIndex: Int { Self.stages.firstIndex { $0.0 == stage } ?? 0 }
 
     /// "11 Update onboarding copy": the ticket an agent is on, the first one when several are.

@@ -69,7 +69,8 @@ internal val JSONObject.missionSummary: String get() {
 
 internal val JSONObject.attentionCount get() = items("tickets").count { TicketState.of(it.string("state")) in listOf(TicketState.AwaitingReview, TicketState.Failed) }
 internal val JSONObject.workingCount get() = items("tickets").count { TicketState.of(it.string("state")) in listOf(TicketState.Running, TicketState.Preparing) }
-internal val JSONObject.isReadyToShip get() = isActiveMission && items("tickets").let { it.isNotEmpty() && optInt("done") >= it.size }
+/** Ready once the mission has reached its ship stage: finished tickets still owe a review. */
+internal val JSONObject.isReadyToShip get() = isActiveMission && string("stage") == "ship"
 
 private val stages = listOf("requirements" to ("Requirements" to Icons.Outlined.Description), "tickets" to ("Tickets" to Icons.Outlined.Checklist),
     "implementation" to ("Implementation" to Icons.Outlined.Construction), "review" to ("Review" to Icons.Outlined.Visibility), "ship" to ("Ship" to Icons.AutoMirrored.Outlined.Send))

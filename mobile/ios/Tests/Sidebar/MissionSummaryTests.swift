@@ -38,11 +38,16 @@ final class MissionSummaryTests: XCTestCase {
         XCTAssertFalse(mission.isReadyToShip)
     }
 
-    func testIsReadyToShipOnlyWhenEveryTicketIsDoneAndTheMissionStillOpen() throws {
-        let done = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":2,"tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"}]}"#
-        XCTAssertTrue(try mission(done).isReadyToShip)
-        XCTAssertFalse(try mission(done.replacingOccurrences(of: "\"active\"", with: "\"completed\"")).isReadyToShip)
-        XCTAssertFalse(try mission(#"{"id":"m","outcome":"o","stage":"requirements","status":"active","done":0,"tickets":[]}"#).isReadyToShip)
+    func testIsReadyToShipOnlyOnceTheMissionReachesItsShipStage() throws {
+        let tickets = #""done":2,"tickets":[{"number":1,"title":"A","state":"accepted"},{"number":2,"title":"B","state":"accepted"}]"#
+        func mission(stage: String, status: String = "active") throws -> MissionSummary {
+            try self.mission(#"{"id":"m","outcome":"o","stage":"\#(stage)","status":"\#(status)",\#(tickets)}"#)
+        }
+        // Every ticket done is not enough: the review still has to happen.
+        XCTAssertFalse(try mission(stage: "implementation").isReadyToShip)
+        XCTAssertFalse(try mission(stage: "review").isReadyToShip)
+        XCTAssertTrue(try mission(stage: "ship").isReadyToShip)
+        XCTAssertFalse(try mission(stage: "ship", status: "completed").isReadyToShip)
     }
 
     func testElapsedRunsToNowWhileActiveAndStopsAtTheLastChangeOnceOver() throws {
