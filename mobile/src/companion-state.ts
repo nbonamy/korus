@@ -621,6 +621,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const runId = mission.tickets.find((ticket) => ticket.number === number && ticket.state === 'awaitingReview')?.runId;
     return runId ? active.acceptTicket?.(mission.id, mission.revision, runId) : undefined;
   }, missionId);
+  const selectFinding = (missionId: string, findingId: string, selected: boolean) => actOnMission((active, mission) => active.selectFinding?.(mission.id, mission.revision, findingId, selected), missionId);
+  const fixFindings = (missionId: string) => actOnMission((active, mission) => active.fixFindings?.(mission.id, mission.revision), missionId);
+  const rerunReview = (missionId: string) => actOnMission((active, mission) => active.rerunReview?.(mission.id, mission.revision), missionId);
   const dismissMissionAction = () => { if (missionAction.value !== 'working') missionAction.value = 'idle'; };
   const dismissTeamCreation = () => { if (teamCreation.value !== 'creating') teamCreation.value = 'idle'; };
 
@@ -697,7 +700,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, dismissMissionAction,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {

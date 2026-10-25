@@ -10,7 +10,7 @@ const mission = (id: string, teamId: string, tickets: CompanionMission['tickets'
   ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', revision: 7, startedAt: now, updatedAt: now, tickets, ...(leadAgentId ? { leadAgentId } : {}) });
 
 /** A laptop with a second team, a mission in each, and the demo chat in the first. */
-function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket'> = {}) {
+function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket' | 'selectFinding' | 'fixFindings' | 'rerunReview'> = {}) {
   const connector = createDemoConnector(); const connect = connector.connect;
   connector.connect = async id => {
     const session = await connect(id);
@@ -104,6 +104,19 @@ describe('mobile missions', () => {
       expect(engine.snapshot().missionAction).toBe('failed');
       await engine.dispatch({ type: 'dismissMissionAction' });
       expect(engine.snapshot().missionAction).toBe('idle');
+    } finally { engine.dispose(); }
+  });
+  it('chooses findings, fixes them and reviews again against the revision it saw', async () => {
+    const selectFinding = vi.fn(async () => {}); const fixFindings = vi.fn(async () => {}); const rerunReview = vi.fn(async () => {});
+    const engine = createEngine({ connector: missionConnector({ selectFinding, fixFindings, rerunReview }), post: () => {} });
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      await engine.dispatch({ type: 'selectFinding', missionId: 'm-here', findingId: 'f1', selected: true });
+      await engine.dispatch({ type: 'fixFindings', missionId: 'm-here' });
+      await engine.dispatch({ type: 'rerunReview', missionId: 'm-here' });
+      expect(selectFinding).toHaveBeenCalledExactlyOnceWith('m-here', 7, 'f1', true);
+      expect(fixFindings).toHaveBeenCalledExactlyOnceWith('m-here', 7);
+      expect(rerunReview).toHaveBeenCalledExactlyOnceWith('m-here', 7);
     } finally { engine.dispose(); }
   });
 });

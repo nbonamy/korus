@@ -110,7 +110,7 @@ export type TranscriptContext = {
 
 export type EngineCommand =
   | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
-  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'dismissMissionAction' }
+  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
@@ -564,6 +564,9 @@ export function createEngine(port: EnginePort) {
       case 'dismissTeamCreation': return state.dismissTeamCreation();
       case 'continueMission': return state.continueMission(command.missionId);
       case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
+      case 'selectFinding': return state.selectFinding(command.missionId, command.findingId, command.selected);
+      case 'fixFindings': return state.fixFindings(command.missionId);
+      case 'rerunReview': return state.rerunReview(command.missionId);
       case 'dismissMissionAction': return state.dismissMissionAction();
       case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
       case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();

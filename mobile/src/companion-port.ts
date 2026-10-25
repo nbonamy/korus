@@ -33,6 +33,10 @@ type CompanionOperations = {
   /** Move a finished mission on to review, or accept a ticket waiting for it; `revision` is the mission as the phone saw it. */
   continueMission?(missionId: string, revision: number): Promise<void>;
   acceptTicket?(missionId: string, revision: number, runId: string): Promise<void>;
+  /** A review's findings: choose what to fix, fix it, and review again once nothing is open. */
+  selectFinding?(missionId: string, revision: number, findingId: string, selected: boolean): Promise<void>;
+  fixFindings?(missionId: string, revision: number): Promise<void>;
+  rerunReview?(missionId: string, revision: number): Promise<void>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
