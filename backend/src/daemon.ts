@@ -12,6 +12,7 @@ import backendPackage from '../package.json';
 import { runCompanionRelay } from './companion/relay-cli';
 
 export const DAEMON_VERSION = backendPackage.version;
+export { loadPricingHistory } from './pricing/catalog';
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   process.title = product.daemonName;

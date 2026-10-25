@@ -632,6 +632,36 @@ manage MCP tools: treat it as a privileged control plane.
 
 ## Local usage statistics
 
+### Historical API prices
+
+`npm run pricing:update` collects Models.dev provider pricing from the public
+GitHub API and raw source files at one immutable revision. The collector verifies
+Git blob hashes, requires all three providers, validates pricing rules and the
+existing history, and atomically appends a full snapshot only when pricing
+content changes. Revision, comments and source links do not trigger snapshots.
+The initial snapshot is effective October 1, 2026 UTC; subsequent timestamps
+record when a change was observed, rather than asserting its actual start date.
+
+`backend/src/pricing/history.json` retains exact provider/model identities,
+context predicates, service tiers, mode mappings, category-specific multipliers,
+cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
+zero rates remain zero. Models without source prices are marked unpriced. The
+schema retains explicit billing units: token and character prices are USD per
+million, other prices are per unit, cache storage is per million tokens per hour,
+and web search is per thousand calls. Non-token charges must not enter token-cost
+estimates.
+
+Matching source overrides merge fields in order, including nested cache fields;
+all matching multipliers then apply only to the categories they name. Mode
+configuration maps names to request fields but does not establish a request's
+actually served tier. Each snapshot retains its source revision, and each model
+retains its source path, blob hash and documentation links for coverage diagnosis.
+The catalog is statically embedded in the standalone daemon bundle, which is also
+copied into desktop resources. Builds and runtime catalog reads require no pricing
+network calls.
+
+### Execution measurements
+
 The owning daemon records live provider executions in a bounded SQLite ledger.
 History hydration, inherited forks and context occupancy never become consumed
 tokens. Provider conversations remain the sole owners of prompts, responses and
