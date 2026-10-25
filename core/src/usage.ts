@@ -13,6 +13,8 @@ export type ExecutionObservation = {
   tokens?: Consumption | null;
   /** Producer attestation that every billable request in this execution is represented. */
   requestCoverage?: "complete" | "partial" | null;
+  /** Why the producer cannot establish a complete request set. */
+  requestCoverageReason?: RequestCoverageReason | null;
   durationMs?: number;
   /** Measured by the backend, never by a driver. */
   timing?: ExecutionTiming | null;
@@ -198,7 +200,21 @@ export type RequestObservation = {
   defaultServiceTier?: { tier: string; source: string };
   reportedMode: string | null;
 };
+export type RequestCoverageReason =
+  | "public-runtime-request-evidence-unavailable"
+  | "missing-sdk-request-evidence"
+  | "incompatible-sdk-request-evidence";
+export function validRequestCoverageReason(
+  value: unknown,
+): value is RequestCoverageReason {
+  return [
+    "public-runtime-request-evidence-unavailable",
+    "missing-sdk-request-evidence",
+    "incompatible-sdk-request-evidence",
+  ].includes(value as string);
+}
 export type UsageCostReason =
+  | RequestCoverageReason
   | "unknown-request-coverage"
   | "provisional-usage"
   | "before-pricing-history"

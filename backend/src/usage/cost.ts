@@ -1,4 +1,8 @@
-import type { UsageCost, UsageCostReason } from "@workspace/core/usage";
+import type {
+  UsageCost,
+  UsageCostReason,
+  RequestCoverageReason,
+} from "@workspace/core/usage";
 import type { RequestPrice } from "../pricing/evaluate";
 export function emptyCost(): UsageCost {
   return {
@@ -11,11 +15,15 @@ export function emptyCost(): UsageCost {
     reasons: [],
   };
 }
-export function addCost(cost: UsageCost, price: RequestPrice | null): void {
+export function addCost(
+  cost: UsageCost,
+  price: RequestPrice | null,
+  unknownReason?: RequestCoverageReason,
+): void {
   let reason: UsageCostReason | undefined;
   if (price === null) {
     cost.unknownRequestExecutions++;
-    reason = "unknown-request-coverage";
+    reason = unknownReason ?? "unknown-request-coverage";
   } else {
     cost.requests++;
     if ("usd" in price) {

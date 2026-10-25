@@ -5,6 +5,8 @@ import { isUtcDay, utcDay } from "@workspace/core/usage";
 import {
   validConsumption,
   validRequestObservation,
+  validRequestCoverageReason,
+  type RequestCoverageReason,
   type RequestObservation,
   validExecutionTiming,
   type ExecutionObservation,
@@ -44,6 +46,10 @@ export class UsageLedger {
       const columns = this.db.prepare("PRAGMA table_info(executions)").all();
       if (!columns.some((c) => c.name === "request_coverage"))
         this.db.exec("ALTER TABLE executions ADD COLUMN request_coverage TEXT");
+      if (!columns.some((c) => c.name === "request_coverage_reason"))
+        this.db.exec(
+          "ALTER TABLE executions ADD COLUMN request_coverage_reason TEXT",
+        );
       this.db.exec(
         "CREATE TABLE IF NOT EXISTS requests(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,request_id TEXT NOT NULL,at INTEGER NOT NULL,revision INTEGER NOT NULL,status TEXT NOT NULL,observation TEXT NOT NULL,PRIMARY KEY(provider,session_id,turn_id,request_id)); CREATE INDEX IF NOT EXISTS requests_at ON requests(at); CREATE TRIGGER IF NOT EXISTS execution_requests_delete AFTER DELETE ON executions BEGIN DELETE FROM requests WHERE provider=OLD.provider AND session_id=OLD.session_id AND turn_id=OLD.turn_id; END;",
       );
@@ -93,6 +99,8 @@ export class UsageLedger {
       ) &&
       (value.requestCoverage == null ||
         ["complete", "partial"].includes(value.requestCoverage)) &&
+      (value.requestCoverageReason == null ||
+        validRequestCoverageReason(value.requestCoverageReason)) &&
       Number.isFinite(value.at) &&
       value.at >= this.now() - retention &&
       value.at <= this.now() + 60000 &&
@@ -108,7 +116,7 @@ export class UsageLedger {
     const reference = (v: unknown) =>
       typeof v === "string" && v.length <= 4096 ? v : null;
     this.db!.prepare(
-      "INSERT INTO executions(provider,session_id,turn_id,agent_id,model,reasoning_effort,service_tier,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing,request_coverage) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,session_id,turn_id) DO UPDATE SET agent_id=excluded.agent_id,model=excluded.model,reasoning_effort=excluded.reasoning_effort,service_tier=excluded.service_tier,team_id=excluded.team_id,repository=excluded.repository,phase=excluded.phase,started_at=excluded.started_at,updated_at=excluded.updated_at,duration_ms=excluded.duration_ms,tokens=excluded.tokens,timing=excluded.timing,request_coverage=excluded.request_coverage",
+      "INSERT INTO executions(provider,session_id,turn_id,agent_id,model,reasoning_effort,service_tier,team_id,repository,phase,started_at,updated_at,duration_ms,tokens,timing,request_coverage,request_coverage_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,session_id,turn_id) DO UPDATE SET agent_id=excluded.agent_id,model=excluded.model,reasoning_effort=excluded.reasoning_effort,service_tier=excluded.service_tier,team_id=excluded.team_id,repository=excluded.repository,phase=excluded.phase,started_at=excluded.started_at,updated_at=excluded.updated_at,duration_ms=excluded.duration_ms,tokens=excluded.tokens,timing=excluded.timing,request_coverage=excluded.request_coverage,request_coverage_reason=excluded.request_coverage_reason",
     ).run(
       record.provider,
       record.sessionId,
@@ -126,6 +134,7 @@ export class UsageLedger {
       record.tokens ? JSON.stringify(record.tokens) : null,
       record.timing ? JSON.stringify(record.timing) : null,
       record.requestCoverage ?? null,
+      record.requestCoverageReason ?? null,
     );
   }
   private decode(row: Record<string, unknown>): UsageRecord {
@@ -141,6 +150,11 @@ export class UsageLedger {
       repository: row.repository,
       phase: row.phase,
       requestCoverage: row.request_coverage ?? null,
+      requestCoverageReason: validRequestCoverageReason(
+        row.request_coverage_reason,
+      )
+        ? row.request_coverage_reason
+        : null,
       startedAt: row.started_at,
       at: row.updated_at,
       ...(row.duration_ms !== null ? { durationMs: row.duration_ms } : {}),
@@ -195,6 +209,9 @@ export class UsageLedger {
       ...(event.phase !== "usage" ? { phase: event.phase, at: event.at } : {}),
       ...(event.requestCoverage !== undefined
         ? { requestCoverage: event.requestCoverage }
+        : {}),
+      ...(event.requestCoverageReason !== undefined
+        ? { requestCoverageReason: event.requestCoverageReason }
         : {}),
       ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
       ...(event.timing !== undefined ? { timing: event.timing } : {}),
@@ -369,6 +386,7 @@ export class UsageLedger {
               label,
               null,
               cost,
+              record.requestCoverageReason ?? undefined,
             );
         }
       const requestRows = db
@@ -462,6 +480,7 @@ export class UsageLedger {
     label: string,
     price: RequestPrice | null,
     total: NonNullable<UsageSummary["cost"]>,
+    unknownReason?: RequestCoverageReason,
   ): void {
     const day = utcDay(at);
     const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
@@ -471,8 +490,8 @@ export class UsageLedger {
       this.bucket(daily, day),
       this.bucket(groups, label),
     ])
-      addCost(bucket.cost!, price);
-    addCost(total, price);
+      addCost(bucket.cost!, price, unknownReason);
+    addCost(total, price, unknownReason);
   }
   private aggregate(
     rows: Map<string, Bucket>,
