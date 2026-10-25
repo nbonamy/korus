@@ -93,6 +93,18 @@ it.each(['denied', 'cancelled', 'expired', 'account-switch'] as const)('retains 
   expect(await tokenStore.get('github')).toMatchObject({ accessToken: 'github-secret' });
 });
 
+it('requests the MCP scope up front on a first GitLab connection and ends with a usable MCP grant', async () => {
+  const { manager, upstream, tokenStore, snapshot } = await setup();
+  await manager.disconnect('gitlab');
+  const result = await manager.connect('gitlab', { hostedMcp: true });
+  expect(result.authorization).toHaveProperty('userCode', 'CODE');
+  expect(new URLSearchParams(upstream.mock.calls.find(([url]) => String(url).endsWith('/authorize_device'))![1]!.body as string).get('scope')).toBe('api mcp');
+  await manager.pollAuthorization('gitlab');
+  expect(await tokenStore.get('gitlab')).toMatchObject({ scope: 'api mcp' });
+  expect(manager.isHostedMcpConnected('gitlab')).toBe(true);
+  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')).toMatchObject({ status: 'connected', source: 'api', hostedMcp: { status: 'available' } });
+});
+
 it('isolates group restriction and failed eligibility checks from API connectivity', async () => {
   const { manager, upstream, snapshot, options } = await setup('api mcp');
   expect(manager.isHostedMcpConnected('gitlab')).toBe(true);

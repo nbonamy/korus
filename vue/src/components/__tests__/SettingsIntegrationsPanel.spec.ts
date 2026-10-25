@@ -71,8 +71,12 @@ describe('SettingsIntegrationsPanel', () => {
     expect(wrapper.text()).toContain('top-level group');
     expect(wrapper.find('[aria-label="Retry GitLab MCP"]').exists()).toBe(true);
     await wrapper.setProps({ connections: [{ provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'cli-user', hostedMcp: { status: 'directRequired' } }] });
-    expect(wrapper.text()).toContain('Connect directly');
-    expect(wrapper.find('[aria-label="Authorize GitLab MCP"]').exists()).toBe(true);
+    const cliRow = wrapper.findAll('article').find(row => row.text().includes('GitLab'))!;
+    expect(cliRow.get('.settings-integrations-panel__identity').text()).toBe('GitLabSigned in as cli-user');
+    expect(cliRow.get('.settings-integrations-panel__actions').text()).toBe('Using GitLab CLIConnect');
+    expect(cliRow.find('[aria-label="Authorize GitLab MCP"]').exists()).toBe(false);
+    await cliRow.get('[aria-label="Connect GitLab"]').trigger('click');
+    expect(wrapper.emitted('connect')).toStrictEqual([['gitlab']]);
     wrapper.unmount();
   });
 

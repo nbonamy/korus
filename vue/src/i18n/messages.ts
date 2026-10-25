@@ -4,8 +4,13 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     repositoryOnboarding: {
-      title: 'Connect your repositories', connect: 'Connect {provider}', skip: 'Skip for now',
-      cancel: 'Cancel {provider} authorization', usingCli: 'Using {provider} CLI',
+      title: 'Connect your code.', titleDetail: `Bring your work into ${product.name}.`,
+      connect: 'Connect {provider}', skip: 'Skip for now', usingCli: 'Using {provider} CLI',
+      connectedHint: `{provider} is connected. ${product.name} can now browse your repositories and pick up your work items.`,
+      connectHint: `Sign in to {provider} to bring your repositories into ${product.name}.`,
+      settingsHint: 'You can change connections anytime in Settings.',
+      cancel: 'Cancel {provider} authorization',
+      cliDetected: `${product.name} detected an authenticated {provider} CLI. Connect ${product.name} directly for faster {provider} access.`,
       retry: 'Retry', retryAuthorization: 'Retry {provider} authorization',
     },
     gitlabWorkflow: { generatePullRequestDraftWithCodex: 'Generate merge request draft with Codex', uncommittedChangesWillNotBeIncludedInThisPullRequest: 'Uncommitted changes will not be included in this merge request.', createPR: 'Create MR', createPullRequest: 'Create merge request', creatingPullRequest: 'Creating merge request', pullRequestCreated: 'Merge request created', pullRequestFailed: 'Merge request failed', openRequest: 'Open merge request', openPullRequest: 'Open pull request' },

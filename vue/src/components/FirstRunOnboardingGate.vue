@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
+import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderConnectOptions, WorkProviderKind } from '@workspace/core/contracts';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import ProviderSetupDialog from './ProviderSetupDialog.vue';
 import { toRefs } from 'vue';
@@ -93,7 +93,7 @@ const props = defineProps<{
   repositoriesOnboardingVisible: boolean;
   initialAuthenticationLoading: boolean;
   onboardingCompleteVisible: boolean;
-  connectRepositoryProvider: (provider: WorkProviderKind) => Promise<void>;
+  connectRepositoryProvider: (provider: WorkProviderKind, options?: WorkProviderConnectOptions) => Promise<void>;
   disconnectRepositoryProvider: (provider: WorkProviderKind) => Promise<void>;
   openRepositoryAuthorization: (provider: WorkProviderKind) => Promise<void>;
   showLoginLanding: boolean;

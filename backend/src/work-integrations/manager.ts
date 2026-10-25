@@ -239,7 +239,10 @@ export class WorkIntegrationManager {
     if (options.hostedMcp && provider !== 'gitlab') throw new Error('Hosted MCP authorization upgrades are supported for GitLab only.');
     const driver = this.driver(provider);
     const previous = this.connection(provider);
-    if (options.hostedMcp && previous?.status === 'connected' && previous.source !== 'cli') {
+    // Only an existing direct grant is upgraded in place. A first connection (or one replacing a CLI
+    // identity) simply requests the MCP scope up front, with the ordinary connect lifecycle.
+    const upgrading = options.hostedMcp === true && previous?.status === 'connected' && previous.source !== 'cli';
+    if (upgrading) {
       const generation = this.generation(provider);
       const token = await this.connectedToken(provider);
       if (token.scope?.split(/\s+/).includes('mcp')) {
@@ -255,14 +258,14 @@ export class WorkIntegrationManager {
     // A failed direct connect must not cost the user working CLI access.
     const fail = (connection: Pick<WorkIntegrationConnection, 'status' | 'detail'>) => this.setAuthorizationFailure(provider, { provider, ...directConnectionSource(provider), ...connection });
     // Permission upgrades leave native refresh coordination and its generation intact.
-    const generation = options.hostedMcp ? this.generation(provider) : this.invalidate(provider);
-    const upgrade: { tokenBeforeWrite?: WorkProviderToken | null } | undefined = options.hostedMcp ? {} : undefined;
+    const generation = upgrading ? this.generation(provider) : this.invalidate(provider);
+    const upgrade: { tokenBeforeWrite?: WorkProviderToken | null } | undefined = upgrading ? {} : undefined;
     const active = () => this.generation(provider) === generation && (!upgrade || this.mcpUpgrades.get(provider) === upgrade);
-    const fallback = options.hostedMcp && previous?.status === 'connected' ? previous : cliFallback;
+    const fallback = upgrading ? previous : cliFallback;
     if (fallback) this.authorizationFallbacks.set(provider, fallback);
     if (upgrade) this.mcpUpgrades.set(provider, upgrade);
     this.setConnection({ provider, ...directConnectionSource(provider), status: 'connecting' });
-    if (!options.hostedMcp) await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
+    if (!upgrading) await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
     if (!active()) return { snapshot: this.snapshot() };
     if (!await this.options.tokenStore.canStoreTokens()) {
       fail({ status: 'error', detail: { key: 'workProvider.tokenStorageUnavailable' } });

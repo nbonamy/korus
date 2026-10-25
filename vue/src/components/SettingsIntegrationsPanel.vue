@@ -12,13 +12,12 @@
           <div>
             <strong>{{ workProviderDefinition(connection.provider).label }}</strong>
             <span>{{ description(connection) }}</span>
-            <span v-if="connection.provider === 'gitlab' && connection.hostedMcp">{{ $t(`gitlabMcp.${connection.hostedMcp.status}`) }}</span>
+            <span v-if="connection.provider === 'gitlab' && connection.source === 'api' && connection.hostedMcp">{{ $t(`gitlabMcp.${connection.hostedMcp.status}`) }}</span>
             <span v-if="connection.detail && ['error', 'notConfigured', 'connected'].includes(connection.status)" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
           </div>
         </div>
         <div class="settings-integrations-panel__actions">
           <template v-if="connection.source === 'cli' && connection.status === 'connected'">
-            <el-button v-if="connection.provider === 'gitlab'" size="small" :aria-label="$t('gitlabMcp.authorize')" :loading="busyProviders.includes(connection.provider)" @click="emit('connect-mcp', connection.provider)">{{ $t('gitlabMcp.authorize') }}</el-button>
             <StatusPill tone="warning">{{ $t('surface.settingsIntegrationsPanel.usingCli', { provider: workProviderDefinition(connection.provider).label }) }}</StatusPill>
             <el-button size="small" type="primary" :aria-label="actionLabel('connect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>

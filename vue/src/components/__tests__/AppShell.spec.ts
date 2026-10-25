@@ -197,34 +197,34 @@ describe('AppShell authentication and conversation', () => {
     expect(completed.find('.codex-login').exists()).toBe(false);
   });
 
-  it('keeps concurrent device authorization, errors and CLI fallback independent in the shell', async () => {
+  it('narrows to the provider being authorized, hides Continue, and restores the list on cancel', async () => {
     setFirstRunOnboardingStage('repositories');
     const snapshot = createInitialSnapshot();
-    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected', source: 'cli', accountLabel: 'gh-alice' }, { provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'glab-bob' }];
+    const both = [{ provider: 'github', status: 'connected', source: 'cli', accountLabel: 'gh-alice' }, { provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'glab-bob' }] as const;
+    snapshot.workBacklog.connections = [...both];
     setElectronTestClient({});
     const wrapper = mountShell({ snapshot });
     const connect = vi.fn().mockResolvedValue(undefined);
     const disconnect = vi.fn().mockResolvedValue(undefined);
-    const open = vi.fn().mockResolvedValue(undefined);
-    await wrapper.setProps({ connectWorkProvider: connect, disconnectWorkProvider: disconnect, openWorkProviderAuthorization: open });
+    await wrapper.setProps({ connectWorkProvider: connect, disconnectWorkProvider: disconnect, openWorkProviderAuthorization: vi.fn() });
     await flushPromises();
-    expect(wrapper.get('[aria-label="GitHub"]').text()).toContain('gh-alice');
-    expect(wrapper.get('[aria-label="GitLab"]').text()).toContain('glab-bob');
-    await wrapper.get('[aria-label="Connect GitHub"]').trigger('click');
-    await flushPromises();
-    const authorization = (provider: 'github' | 'gitlab') => ({ provider, userCode: provider + '-CODE', verificationUri: `https://${provider}.com/oauth/device`, expiresAt: '2099-01-01' });
-    await wrapper.setProps({ snapshot: { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [{ provider: 'github', status: 'connecting' }, { provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'glab-bob' }] } }, workProviderAuthorizations: { github: authorization('github') } });
-    expect(wrapper.get('[aria-label="GitHub"]').text()).toContain('github-CODE');
+    expect(wrapper.get('[aria-label="GitHub"]').text()).toContain('Using GitHub CLI');
+    expect(wrapper.get('[aria-label="GitLab"]').text()).toContain('Using GitLab CLI');
     await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
     await flushPromises();
-    expect(connect.mock.calls).toStrictEqual([['github'], ['gitlab']]);
-    await wrapper.setProps({ snapshot: { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [{ provider: 'github', status: 'connecting' }, { provider: 'gitlab', status: 'error', source: 'cli', accountLabel: 'glab-bob', detail: 'GitLab authorization expired.' }] } } });
-    expect(wrapper.get('[aria-label="GitLab"] [role="alert"]').text()).toContain('expired');
-    expect(wrapper.get('[aria-label="GitLab"]').text()).not.toContain('Using GitLab CLI');
-    expect(wrapper.get('[aria-label="GitHub"]').text()).toContain('github-CODE');
-    await wrapper.get('[aria-label="Cancel GitHub authorization"]').trigger('click');
+    expect(connect.mock.calls).toStrictEqual([['gitlab', { hostedMcp: true }]]);
+    const authorization = { provider: 'gitlab' as const, userCode: 'gitlab-CODE', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: '2099-01-01' };
+    const connecting = { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [both[0], { provider: 'gitlab', status: 'connecting' }] } };
+    await wrapper.setProps({ snapshot: connecting as typeof snapshot, workProviderAuthorizations: { gitlab: authorization } });
+    expect(wrapper.text()).toContain('gitlab-CODE');
+    expect(wrapper.find('[aria-label="GitHub"]').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding__continue').exists()).toBe(false);
+    await wrapper.get('[aria-label="Cancel GitLab authorization"]').trigger('click');
     await flushPromises();
-    expect(disconnect.mock.calls).toStrictEqual([['github']]);
+    expect(disconnect.mock.calls).toStrictEqual([['gitlab']]);
+    await wrapper.setProps({ snapshot: { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [both[0], { provider: 'gitlab', status: 'disconnected' }] } }, workProviderAuthorizations: {} });
+    expect(wrapper.find('[aria-label="GitHub"]').exists()).toBe(true);
+    expect(wrapper.find('.repositories-onboarding__continue').exists()).toBe(true);
     expect(wrapper.find('.onboarding-complete').exists()).toBe(false);
   });
 
@@ -703,7 +703,7 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.get('.codex-login__continue').trigger('click');
     await flushPromises();
     expect(wrapper.find('.codex-login').exists()).toBe(false);
-    expect(wrapper.get('.repositories-onboarding').text()).toContain('Connect your repositories');
+    expect(wrapper.get('.repositories-onboarding').text()).toContain('Connect your code.');
     expect(wrapper.get('.app-shell').classes()).toContain('app-shell--auth-gated');
     expect(setMenuBarVisible).toHaveBeenLastCalledWith(false);
 
