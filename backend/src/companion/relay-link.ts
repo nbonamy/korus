@@ -120,7 +120,8 @@ export class RelayLink {
       const ping = open[0]!.muxer?.ping;
       // A muxer that cannot be pinged is judged by admissions alone.
       if (!ping) return;
-      try { await ping.call(open[0]!.muxer, { signal: AbortSignal.timeout(probeTimeoutMs) }); this.unanswered.record(true); }
+      // The muxer never sees the deadline: yamux forgets a ping its caller abandons, and the late pong then kills the connection.
+      try { await Promise.race([ping.call(open[0]!.muxer), timeout(probeTimeoutMs)]); this.unanswered.record(true); }
       catch { if (this.unanswered.record(false)) this.drop('relay link unresponsive', { probeMs: probeTimeoutMs }); }
     } finally { this.probing = false; }
   }

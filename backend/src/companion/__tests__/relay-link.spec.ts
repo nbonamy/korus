@@ -18,7 +18,7 @@ function linkWith(connections: { status?: string; muxer?: { status?: string; pin
 
 describe('relay link health', () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it('rebuilds the link at once when an admission finds the relay connection closed', async () => {
     const { link, internals, reserve } = linkWith([{}]);
@@ -58,6 +58,29 @@ describe('relay link health', () => {
     await internals.check(node);
     await vi.advanceTimersByTimeAsync(10);
     expect(reserve).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a link whose relay answers a probe late, since yamux kills the connection on the pong of an abandoned ping', async () => {
+    // Yamux semantics: a ping made while one is pending shares it; the pending ping's own caller forgets it when its
+    // signal aborts; a pong nobody waits for any more closes the muxer.
+    type Ping = { promise: Promise<void>; resolve(): void; reject(error: Error): void };
+    const muxer = { status: 'open', pending: undefined as undefined | Ping,
+      ping(options?: { signal?: AbortSignal }) {
+        if (muxer.pending) return muxer.pending.promise;
+        const ping = {} as Ping; ping.promise = new Promise<void>((resolve, reject) => { ping.resolve = resolve; ping.reject = reject; }); muxer.pending = ping;
+        setTimeout(() => { if (muxer.pending === ping) { muxer.pending = undefined; ping.resolve(); } else muxer.status = 'closed'; }, 3_000);
+        options?.signal?.addEventListener('abort', () => { if (muxer.pending === ping) muxer.pending = undefined; ping.reject(new Error('aborted')); });
+        return ping.promise;
+      } };
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => { const controller = new AbortController(); setTimeout(() => controller.abort(new Error('timeout')), ms); return controller.signal; });
+    const { internals, node, reserve } = linkWith([{ muxer }]);
+    // Probes run every 2 s and give up after 2 s, so the second one starts while the first ping still waits for its pong.
+    const first = internals.check(node);
+    await vi.advanceTimersByTimeAsync(2_000); await first;
+    const second = internals.check(node);
+    await vi.advanceTimersByTimeAsync(2_000); await second;
+    expect(muxer.status).toBe('open');
+    expect(reserve).not.toHaveBeenCalled();
   });
 
   it('does not rebuild a link that is already being rebuilt', async () => {
