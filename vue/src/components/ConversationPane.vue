@@ -187,6 +187,7 @@ import {
   presentRendererCollaborationMessage,
   type CollaborationMessagePresentation,
 } from '../shared/collaboration-message';
+import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useBackendSwitch();
@@ -478,7 +479,7 @@ function transformConversationMessage(
   if (message.id && result.presentation) {
     collaborationMessagePresentations.set(message.id, result.presentation);
   }
-  const transformed = result.message as CodexChatMessage | SurfaceMessage;
+  const transformed = withInferredWorkPhases(result.message as CodexChatMessage | SurfaceMessage);
   transformedMessageCache.set(message, transformed);
   return transformed;
 }
