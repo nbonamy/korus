@@ -203,6 +203,8 @@ private struct NewTeamButton: View {
     @Environment(AppModel.self) private var model
     @State private var showingPrompt = false
     @State private var name = ""
+    /// The height of a team pill: a subheadline line with 8 points above and below.
+    @ScaledMetric(relativeTo: .subheadline) private var size = 36
     private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
@@ -214,8 +216,10 @@ private struct NewTeamButton: View {
                 if model.teamCreation == .creating { ProgressView().controlSize(.small) }
                 else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: size, height: size)
             .glassEffect(.regular.interactive(), in: .circle)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(model.connection != .connected || model.teamCreation == .creating)
