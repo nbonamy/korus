@@ -55,6 +55,11 @@ final class AppModel {
     /// Why the laptop could not be reached, shown under the lost-connection message.
     var connectionDetail = ""
     var laptops: [EngineState.Laptop] = []
+    /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
+    var missions: [MissionSummary] = []
+    var workerMission: MissionReference?
+    var showingMissions = false
+    var missionPath: [String] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
     var teams: [Team] = []
@@ -260,6 +265,8 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        set(\.missions, state.missions ?? [])
+        set(\.workerMission, state.mission)
         set(\.connectionDetail, state.errorDetail ?? "")
         set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
@@ -356,6 +363,19 @@ final class AppModel {
     }
 
     // MARK: Actions
+
+    func showMissions(_ id: String? = nil) {
+        dictation.cancel()
+        drawerOpen = false
+        missionPath = id.map { [$0] } ?? []
+        showingMissions = true
+    }
+
+    /// A ticket's worker opens like any conversation; the mission stays one step back.
+    func open(ticket agentId: String) {
+        showingMissions = false
+        select(agent: agentId)
+    }
 
     func select(agent id: String) {
         drawerOpen = false

@@ -87,46 +87,52 @@ struct ConversationScreen: View {
                         }
                         .background(.regularMaterial)
                     }
-                    ComposerView()
+                    // A mission's worker is driven by its mission; what it asks still arrives above.
+                    if model.workerMission == nil { ComposerView() }
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        model.drawerOpen.toggle()
+                        if let mission = model.workerMission { model.showMissions(mission.id) } else { model.drawerOpen.toggle() }
                     } label: {
-                        Image(systemName: "line.3.horizontal")
+                        Image(systemName: model.workerMission == nil ? "line.3.horizontal" : "chevron.left")
                     }
                     .buttonBorderShape(.circle)
                     .toolbarDot(model.teams.hasUnreadActivity)
-                    .accessibilityLabel("Agents")
-                    .accessibilityValue(model.teams.hasUnreadActivity ? "Unread activity" : "")
+                    .accessibilityLabel(model.workerMission == nil ? "Agents" : "Back to mission")
+                    .accessibilityValue(model.workerMission == nil && model.teams.hasUnreadActivity ? "Unread activity" : "")
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        if model.git.available {
-                            Button("Changes", systemImage: "doc.text.magnifyingglass") { model.openChanges() }
-                                .disabled(!model.canManageSession)
-                            Divider()
+                    // A mission drives its workers: the phone can look at their changes and nothing else.
+                    if model.workerMission == nil || model.git.available {
+                        Menu {
+                            if model.git.available {
+                                Button("Changes", systemImage: "doc.text.magnifyingglass") { model.openChanges() }
+                                    .disabled(!model.canManageSession)
+                            }
+                            if model.workerMission == nil {
+                                if model.git.available { Divider() }
+                                Button("Rename Agent", systemImage: "pencil") { model.openAgentRename() }
+                                    .disabled(!model.canManageSession)
+                                Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
+                                    .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
+                                Divider()
+                                Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
+                                    .disabled(!model.canManageSession || model.isWorking)
+                                Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
+                                    .disabled(!model.canManageSession)
+                            }
+                        } label: {
+                            if model.sessionAction == "previewClose" || model.duplicatingAgent { ProgressView() }
+                            else { Image(systemName: "ellipsis") }
                         }
-                        Button("Rename Agent", systemImage: "pencil") { model.openAgentRename() }
-                            .disabled(!model.canManageSession)
-                        Button("Duplicate Agent", systemImage: "plus.square.on.square") { model.duplicateAgent() }
-                            .disabled(!model.canManageSession || !model.canStartChat || model.chatCreation == .creating)
-                        Divider()
-                        Button("Restart Session", systemImage: "arrow.clockwise") { model.restartSession() }
-                            .disabled(!model.canManageSession || model.isWorking)
-                        Button("Close Session", systemImage: "xmark", role: .destructive) { model.closeSession() }
-                            .disabled(!model.canManageSession)
-                    } label: {
-                        if model.sessionAction == "previewClose" || model.duplicatingAgent { ProgressView() }
-                        else { Image(systemName: "ellipsis") }
+                        .buttonBorderShape(.circle)
+                        .toolbarDot(model.git.uncommitted?.state == "dirty")
+                        .accessibilityLabel("Session actions")
+                        .accessibilityValue(model.duplicatingAgent ? "Duplicating agent" : model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
                     }
-                    .buttonBorderShape(.circle)
-                    .toolbarDot(model.git.uncommitted?.state == "dirty")
-                    .accessibilityLabel("Session actions")
-                    .accessibilityValue(model.duplicatingAgent ? "Duplicating agent" : model.git.uncommitted?.state == "dirty" ? "Uncommitted changes" : "")
                 }
             }
             .toolbarTitleDisplayMode(.inline)

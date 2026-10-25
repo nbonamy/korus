@@ -29,6 +29,7 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.25), value: model.notifications.current?.id)
+        .sheet(isPresented: $model.showingMissions) { MissionsView() }
         .alert("Notifications", isPresented: Binding(get: { model.notificationError != nil || model.push.error != nil }, set: { if !$0 { model.notificationError = nil; model.push.error = nil } })) {
             Button("OK") { model.notificationError = nil; model.push.error = nil }
         } message: { Text(model.notificationError ?? model.push.error ?? "") }

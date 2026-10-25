@@ -126,3 +126,70 @@ struct RepositoryBranches: Decodable, Equatable {
         return query.isEmpty ? items : items.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 }
+
+/// How a mission ticket reads on the phone: one label and symbol per state of the desktop's implementation board.
+enum MissionTicketState: String {
+    case blocked, queued, preparing, running, awaitingReview, accepted, cancelled, failed
+
+    init(_ value: String) { self = MissionTicketState(rawValue: value) ?? .queued }
+
+    var label: String {
+        switch self {
+        case .blocked: "Blocked"
+        case .queued: "Queued"
+        case .preparing: "Preparing"
+        case .running: "In progress"
+        case .awaitingReview: "Ready for review"
+        case .accepted: "Done"
+        case .cancelled: "Cancelled"
+        case .failed: "Failed"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .blocked: "lock"
+        case .queued: "circle"
+        case .preparing, .running: "circle.dotted"
+        case .awaitingReview: "eye.circle"
+        case .accepted: "checkmark.circle.fill"
+        case .cancelled: "slash.circle"
+        case .failed: "exclamationmark.circle.fill"
+        }
+    }
+}
+
+struct MissionTicketSummary: Decodable, Hashable, Identifiable {
+    let number: Int; let title: String; let state: String; let agentId: String?
+    var id: Int { number }
+}
+
+struct MissionSummary: Decodable, Hashable, Identifiable {
+    let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
+}
+
+/// The mission that owns the open worker conversation, if any.
+struct MissionReference: Decodable, Equatable { let id: String; let outcome: String }
+
+extension MissionSummary {
+    var isActive: Bool { status == "active" }
+
+    var stageLabel: String {
+        switch stage {
+        case "requirements": "Requirements"
+        case "tickets": "Tickets"
+        case "implementation": "Implementation"
+        case "review": "Review"
+        case "ship": "Ship"
+        default: stage.capitalized
+        }
+    }
+
+    /// "Implementation · 3 of 7 tickets"; a mission still shaping its tickets says only where it is.
+    var summary: String {
+        guard !tickets.isEmpty else { return stageLabel }
+        return "\(stageLabel) · \(done) of \(tickets.count) \(tickets.count == 1 ? "ticket" : "tickets")"
+    }
+
+    var progress: Double { tickets.isEmpty ? 0 : Double(done) / Double(tickets.count) }
+}

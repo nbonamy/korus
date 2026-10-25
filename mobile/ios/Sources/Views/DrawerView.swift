@@ -10,6 +10,7 @@ struct DrawerView: View {
         VStack(spacing: 0) {
             teams
             organization
+            missionsEntry
             if model.sidebarOrganization == .activity {
                 ActivityDrawerList(groups: model.activityGroups)
                     .id("\(model.laptopID):\(model.sidebarScopeID)")
@@ -33,6 +34,26 @@ struct DrawerView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check the connection and try again.")
+        }
+    }
+
+    @ViewBuilder private var missionsEntry: some View {
+        if !model.missions.isEmpty {
+            let active = model.missions.filter(\.isActive).count
+            Button { model.showMissions() } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "target").foregroundStyle(.secondary)
+                    Text("Missions")
+                    Spacer()
+                    if active > 0 { Text("\(active) active").font(.subheadline).foregroundStyle(.secondary) }
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .font(.body)
+                .padding(.horizontal, 24).frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(active > 0 ? "Missions, \(active) active" : "Missions")
         }
     }
 
