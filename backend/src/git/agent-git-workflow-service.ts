@@ -199,7 +199,7 @@ export class AgentGitWorkflowService {
     const inventory = await this.options.git.pruning.inventory(requireAgentFolder(agent), this.pruneOwners());
     const workflow = await this.options.git.workflow(requireAgentFolder(agent));
     const integrations = this.options.getWorkIntegrations();
-    if (workflow.repository.includes('/') && await integrations.githubConnected()) {
+    if (workflow.repository.includes('/') && await (integrations.repositoryConnected?.(workflow.repository) ?? integrations.githubConnected())) {
       // PR badges are context, never proof that a ref's current head is merged.
       await Promise.all(inventory.groups.map(async group => {
         const remote = group.remotes.find(target => target.name === `${workflow.remote}/${group.branch}`);
@@ -381,6 +381,7 @@ export class AgentGitWorkflowService {
     const handoff = input.reportBack === true
       ? await this.options.delegatedWorkReports.prepare(agent, {
         kind: 'merge',
+        ...(sourceWorkflow?.repositoryProvider ? { provider: sourceWorkflow.repositoryProvider } : {}),
         branch: sourceWorkflow?.branch ?? 'branch',
         repository: sourceWorkflow?.repository ?? 'the base branch',
         ...(reportBackAgentId ? { reportBackAgentId } : {}),
@@ -391,6 +392,7 @@ export class AgentGitWorkflowService {
     const targetFolder = mergeResult.targetFolder;
     const outcome = {
       kind: 'merge' as const,
+      ...(sourceWorkflow?.repositoryProvider ? { provider: sourceWorkflow.repositoryProvider } : {}),
       branch: sourceWorkflow?.branch ?? 'branch',
       repository: sourceWorkflow?.repository ?? 'the base branch',
       ...(reportBackAgentId ? { reportBackAgentId } : {}),

@@ -450,7 +450,7 @@ function sanitizeVisualizeSession(value: unknown, repositoryVisualizations?: Vis
 function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefined {
   if (
     !isRecord(value) ||
-    value.provider !== 'github' ||
+    (value.provider !== 'github' && value.provider !== 'gitlab') ||
     typeof value.repository !== 'string' ||
     typeof value.branch !== 'string' ||
     !Number.isInteger(value.number) ||
@@ -465,7 +465,7 @@ function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefi
     return undefined;
   }
   return {
-    provider: 'github',
+    provider: value.provider,
     repository: value.repository,
     branch: value.branch,
     number: value.number as number,

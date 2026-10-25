@@ -721,7 +721,9 @@ function pullRequestAttentionLabel(session: WorkspaceSidebarSession): string {
   const pullRequest = session.pullRequest;
   if (!pullRequest) return '';
   return t(
-    pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup',
+    pullRequest.provider === 'gitlab'
+      ? (pullRequest.state === 'closed' ? 'sidebar.mergeRequestClosedCleanup' : 'sidebar.mergeRequestMergedCleanup')
+      : (pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup'),
     { number: pullRequest.number },
   );
 }

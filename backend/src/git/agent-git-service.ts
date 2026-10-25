@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { normalizeGitSettings, type GitSettings } from '@workspace/core/git-preferences';
-import type { AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
+import type { AgentPullRequestTracking, AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
 import { AppError } from '@workspace/core/app-error';
 import { canonicalGitRemoteIdentity, matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import type { AgentGitStatus } from '@workspace/core/contracts';
@@ -480,32 +480,39 @@ export class AgentGitService {
     return folder;
   }
 
-  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false): Promise<void> {
-    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges);
+  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
+    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
 
     if (deleteRemoteBranch) {
-      await this.runGit(target.path, ['push', current.remote!, '--delete', current.upstream!.slice(current.remote!.length + 1)]);
+      const branch = current.upstream!.slice(current.remote!.length + 1);
+      // A tracked request grants cleanup of its recorded head, never newer remote work.
+      await this.runGit(target.path, expectedHeadSha
+        ? ['push', `--force-with-lease=refs/heads/${branch}:${expectedHeadSha}`, current.remote!, `:refs/heads/${branch}`]
+        : ['push', current.remote!, '--delete', branch]);
     }
     await this.runGit(target.path, ['worktree', 'remove', ...(discardChanges ? ['--force'] : []), current.folder]);
     await this.runGit(target.path, ['branch', '-D', current.branch!]);
   }
 
-  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false): Promise<void> {
-    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges);
+  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
+    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
   }
 
-  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false): Promise<{
+  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<{
     current: Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>;
     target: { path: string; branch?: string };
   }> {
     const current = await this.workflow(folder);
     if (!current.isLinkedWorktree) throw new Error('The current folder is not a linked worktree.');
     if (!current.branch || current.detached) throw new Error('The linked worktree does not have a local branch to delete.');
+    if (expectedIdentity && (current.branch !== expectedIdentity.branch || current.repository !== expectedIdentity.repository || current.repositoryProvider !== expectedIdentity.provider)) {
+      throw new Error('The worktree repository or branch no longer matches the tracked request. Keep it and review its current work.');
+    }
     if (current.files.length > 0 && !discardChanges) throw new Error('Commit or discard the worktree changes before deleting it.');
     if (expectedHeadSha) {
       const headSha = (await this.runGit(folder, ['rev-parse', 'HEAD'])).stdout.trim();
       if (headSha !== expectedHeadSha) {
-        throw new Error('This branch contains commits that are not part of the tracked pull request.');
+        throw new Error('This branch contains commits that are not part of the tracked request.');
       }
     }
 
@@ -517,6 +524,13 @@ export class AgentGitService {
       const upstream = matchingBranchUpstream(current.branch, current.upstream, current.baseBranch ?? target.branch);
       if (!current.remote || !upstream?.startsWith(`${current.remote}/`)) {
         throw new Error('The branch does not have a remote branch to delete.');
+      }
+      if (expectedIdentity) {
+        const pushUrl = (await this.runGit(target.path, ['remote', 'get-url', '--push', current.remote])).stdout.trim();
+        const expectedRepository = expectedIdentity.provider === 'github' ? `github.com/${expectedIdentity.repository}` : expectedIdentity.repository;
+        if (canonicalGitRemoteIdentity(pushUrl) !== expectedRepository) {
+          throw new Error('The push repository no longer matches the tracked request. Keep the remote branch and review its push destination.');
+        }
       }
     }
     return { current, target };

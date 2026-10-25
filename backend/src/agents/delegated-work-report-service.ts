@@ -17,6 +17,7 @@ export type DelegatedWorkOutcome =
   }
   | {
     kind: 'merge';
+    provider?: 'github' | 'gitlab';
     branch: string;
     repository: string;
     reportBackAgentId?: string;
@@ -30,6 +31,7 @@ export type DelegatedWorkAction =
   }
   | {
     kind: 'merge';
+    provider?: 'github' | 'gitlab';
     branch: string;
     repository: string;
     reportBackAgentId?: string;
@@ -161,10 +163,10 @@ export class DelegatedWorkReportService {
 }
 
 function handoffPrompt(action: DelegatedWorkAction): string {
-  const requestName = action.kind === 'pullRequest' && action.provider === 'gitlab' ? 'merge request' : 'pull request';
+  const requestName = action.provider === 'gitlab' ? 'merge request' : 'pull request';
   const delivery = action.kind === 'pullRequest'
     ? `${product.name} is now taking over Git delivery and will create a ${requestName} from \`${action.branch}\`.`
-    : `${product.name} is now taking over Git delivery and will merge \`${action.branch}\` directly into ${action.repository} without a pull request.`;
+    : `${product.name} is now taking over Git delivery and will merge \`${action.branch}\` directly into ${action.repository} without a ${requestName}.`;
   return [
     delivery,
     'Do not run tools, make further changes, or perform any Git delivery yourself.',
@@ -226,7 +228,7 @@ function workerPullRequestMessage(outcome: Extract<DelegatedWorkOutcome, { kind:
 
 function outcomeLines(outcome: DelegatedWorkOutcome): string[] {
   if (outcome.kind === 'merge') {
-    return [`Branch \`${outcome.branch}\` was merged directly into ${outcome.repository} without creating a pull request.`];
+    return [`Branch \`${outcome.branch}\` was merged directly into ${outcome.repository} without creating a ${outcome.provider === 'gitlab' ? 'merge request' : 'pull request'}.`];
   }
   const name = outcome.provider === 'gitlab' ? 'merge request' : 'pull request';
   return [

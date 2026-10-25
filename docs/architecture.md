@@ -509,10 +509,17 @@ clears or changes it, Korus never re-detects.
   unsupported or refused forks start a fresh handoff with persisted
   context metadata. Korus never replays a transcript to imitate a fork.
   Independent code reviewers always start fresh.
-- Korus-created pull requests are tracked on their agent; a runtime scheduler
-  polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
-  cleanup is accepted only for an idle agent whose unshared, clean linked worktree
-  still points at the recorded PR head (a closed PR keeps its remote branch).
+- Korus-created GitHub pull requests and GitLab merge requests are tracked on
+  their agent with provider, repository, branch and head identity. The runtime
+  scheduler reads each request through its owning connection; authentication or
+  read failures leave other requests eligible for updates. Closed requests remain
+  eligible for reopening; merged requests are terminal. Late reads cannot replace
+  retargeted or removed agent tracking.
+  A merged or closed request raises an explicit cleanup alert. Cleanup requires an
+  idle agent whose unshared, clean linked worktree still matches the recorded
+  provider, repository, branch and head. Closed requests keep their remote branch;
+  merged-request remote deletion verifies its push destination and uses a
+  recorded-head lease to retain newer work.
 - Agent worktree deletion publishes roster removal before filesystem cleanup.
   Selection prefers another agent from the same repository within the team,
   honoring client ordering. Auxiliary agent data remains available until cleanup

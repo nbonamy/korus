@@ -505,7 +505,7 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
-  it('cleans up a closed pull request after verifying its recorded head', async () => {
+  it.each(['github', 'gitlab'] as const)('cleans up a closed %s request after verifying its recorded identity and head', async provider => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -516,12 +516,12 @@ describe('AppBackendServer', () => {
       backend: 'codex',
       status: { type: 'idle' },
       pullRequest: {
-        provider: 'github',
-        repository: 'owner/repo',
+        provider,
+        repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo',
         branch: 'feature',
         number: 7,
         title: 'Feature',
-        url: 'https://github.com/owner/repo/pull/7',
+        url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7',
         draft: false,
         headSha: 'merged-head',
         state: 'closed',
@@ -531,6 +531,7 @@ describe('AppBackendServer', () => {
       createdAt: '2026-09-03T10:00:00.000Z',
       updatedAt: '2026-09-03T10:00:00.000Z',
     }];
+    const tracking = snapshot.agents[0]!.pullRequest;
     const validateLinkedWorktreeDeletion = vi.fn();
     const deleteLinkedWorktree = vi.fn();
     const server = new AppBackendServer({
@@ -559,8 +560,8 @@ describe('AppBackendServer', () => {
       },
     })).resolves.toMatchObject({ result: { agents: [] } });
 
-    expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false);
-    expect(deleteLinkedWorktree).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false);
+    expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false, tracking);
+    expect(deleteLinkedWorktree).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false, tracking);
     await server.close();
   });
 

@@ -4,6 +4,43 @@ import type { Agent, AgentGitPullRequest } from '@workspace/core/contracts';
 import { PullRequestMonitor } from '../pull-request-monitor';
 
 describe('PullRequestMonitor', () => {
+  // Provider auth/read failures, late identity changes, and closed/reopened requests
+  // must not corrupt durable tracking or block another provider's update.
+  it.each(['github', 'gitlab'] as const)('keeps monitoring when %s is unavailable', async unavailable => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents = [trackedAgent('github'), trackedAgent('gitlab')];
+    snapshot.agents[1]!.pullRequest = { ...snapshot.agents[1]!.pullRequest!, provider: 'gitlab', repository: 'gitlab.com/group/sub/repo', url: 'https://gitlab.com/group/sub/repo/-/merge_requests/7' };
+    const onError = vi.fn(), saveSnapshot = vi.fn();
+    const pullRequests = {
+      githubConnected: vi.fn().mockResolvedValue(false),
+      repositoryConnected: vi.fn(async repository => {
+        if ((repository.startsWith('gitlab.com/') ? 'gitlab' : 'github') === unavailable) throw new Error('auth unavailable');
+        return true;
+      }),
+      getPullRequest: vi.fn(async repository => pullRequest({ url: snapshot.agents.find(agent => agent.pullRequest?.repository === repository)!.pullRequest!.url, state: 'merged', mergedAt: '2026-09-03T12:00:00.000Z' })),
+    };
+    const monitor = new PullRequestMonitor({ getSnapshot: () => snapshot, pullRequests, onError, saveSnapshot, notifySnapshotUpdated: vi.fn() });
+    await monitor.check();
+    expect(snapshot.agents.find(agent => agent.id !== unavailable)!.pullRequest?.state).toBe('merged');
+    expect(snapshot.agents.find(agent => agent.id === unavailable)!.pullRequest?.state).toBe('open');
+    expect(onError).toHaveBeenCalledWith(unavailable, expect.any(Error));
+    expect(saveSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a late response for replaced tracking', async () => {
+    const snapshot = createInitialSnapshot(); snapshot.agents = [trackedAgent('one')];
+    let finish!: (value: AgentGitPullRequest) => void;
+    const saveSnapshot = vi.fn();
+    const getPullRequest = vi.fn(() => new Promise<AgentGitPullRequest>(resolve => { finish = resolve; }));
+    const monitor = new PullRequestMonitor({ getSnapshot: () => snapshot, pullRequests: { githubConnected: async () => true, getPullRequest }, saveSnapshot, notifySnapshotUpdated: vi.fn() });
+    const pending = monitor.check();
+    await vi.waitFor(() => expect(getPullRequest).toHaveBeenCalledOnce());
+    snapshot.agents[0]!.pullRequest = { ...snapshot.agents[0]!.pullRequest!, number: 8 };
+    finish(pullRequest({ state: 'merged' })); await pending;
+    expect(snapshot.agents[0]!.pullRequest).toMatchObject({ number: 8, state: 'open' });
+    expect(saveSnapshot).not.toHaveBeenCalled();
+  });
+
   it('persists one snapshot update when a tracked pull request is merged', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.agents = [trackedAgent('agent-one'), trackedAgent('agent-two')];

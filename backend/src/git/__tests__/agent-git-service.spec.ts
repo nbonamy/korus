@@ -632,7 +632,7 @@ describe('agent git service parsers', () => {
     });
 
     await expect(service.validateLinkedWorktreeDeletion('/repo-feature', false, 'merged-head')).rejects.toThrow(
-      'This branch contains commits that are not part of the tracked pull request.',
+      'This branch contains commits that are not part of the tracked request.',
     );
     expect(runGit).toHaveBeenCalledWith('/repo-feature', ['rev-parse', 'HEAD']);
     expect(runGit.mock.calls.some(([, args]) => args[0] === 'worktree')).toBe(false);
