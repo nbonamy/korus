@@ -55,7 +55,7 @@ describe('companion workspace projection', () => {
   describe('missions', () => {
     const ticket = (title: string, patch: Record<string, unknown> = {}) => ({ title, done: false, ...patch });
     const run = (ticketIndex: number, status: string, workerId?: string, startedAt = '2026-01-01T00:30:00Z') => ({ id: `run-${ticketIndex}-${status}`, stage: 'implementation', ticketIndex, status, startedAt, ...(workerId ? { workerId } : {}) });
-    const mission = (id: string, patch: Record<string, unknown> = {}) => ({ id, teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', createdAt: '2025-12-31T00:00:00Z', updatedAt: now,
+    const mission = (id: string, patch: Record<string, unknown> = {}) => ({ id, teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, createdAt: '2025-12-31T00:00:00Z', updatedAt: now,
       artifacts: { tickets: [] }, execution: { runs: [] }, ...patch });
     const source = (missions: unknown[], agents: Agent[] = []) => companionWorkspaceOf({ teams, agents, general: {} as AppSnapshot['general'], missions: missions as AppSnapshot['missions'] });
 
@@ -64,9 +64,9 @@ describe('companion workspace projection', () => {
         artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0] }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
         execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4')] },
       })], [agent('w1', {}), agent('old', {}), agent('w4', {}), agent('chat', {})]));
-      expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', startedAt: '2026-01-01T00:30:00Z', updatedAt: now, tickets: [
+      expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, startedAt: '2026-01-01T00:30:00Z', updatedAt: now, tickets: [
         { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked', after: [2] },
-        { number: 4, title: 'Free', state: 'queued' }, { number: 5, title: 'Retried', state: 'awaitingReview', agentId: 'w4' }] }]);
+        { number: 4, title: 'Free', state: 'queued' }, { number: 5, title: 'Retried', state: 'awaitingReview', agentId: 'w4', runId: 'run-4-awaitingReview' }] }]);
     });
     it('keeps ticket workers out of the agent list but lets the phone open them and answer their requests', () => {
       const request = { id: 'ask', conversationId: 'thread', kind: 'approval' as const,
@@ -98,6 +98,18 @@ describe('companion workspace projection', () => {
       expect(lead({ stage: 'implementation', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('impl');
       expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix' } })).toBe('tix');
       expect(lead({ stage: 'requirements', stageAgentIds: {} })).toBeUndefined();
+    });
+    it('says what a person can do next: review once implementation is complete, ship once the review is', () => {
+      const artifacts = (patch: Record<string, unknown> = {}) => ({ tickets: [ticket('A', { done: true })], requirements: { problem: 'p', acceptance: 'a' }, implementation: { changes: 'c', tests: 't' }, review: { summary: '', pullRequestUrl: '' }, ...patch });
+      const next = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.next;
+      expect(next({ stage: 'implementation', artifacts: artifacts() })).toBe('review');
+      // Tickets done but the implementation record missing, or a ticket still open, is not ready.
+      expect(next({ stage: 'implementation', artifacts: artifacts({ implementation: { changes: '', tests: '' } }) })).toBeUndefined();
+      expect(next({ stage: 'implementation', artifacts: artifacts({ tickets: [ticket('A')] }) })).toBeUndefined();
+      expect(next({ stage: 'review', artifacts: artifacts() })).toBeUndefined();
+      expect(next({ stage: 'review', artifacts: artifacts({ review: { summary: 'Looks good', pullRequestUrl: '' } }) })).toBe('ship');
+      expect(next({ stage: 'ship', artifacts: artifacts() })).toBe('ship');
+      expect(next({ stage: 'ship', status: 'completed', artifacts: artifacts() })).toBeUndefined();
     });
     it('omits missions of teams the phone cannot see', () => {
       expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
