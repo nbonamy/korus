@@ -31,15 +31,15 @@
     @cancel="cancelChatGptLogin"
     @login="startChatGptLogin"
   />
-  <GitHubOnboardingLanding
-    v-else-if="githubOnboardingVisible"
-    :authorization="workProviderAuthorization"
-    :cli-detected="snapshot.workBacklog.connections.some(connection => connection.provider === 'github' && connection.source === 'cli' && connection.status === 'connected')"
-    :busy="repositoryAcquireBusy"
-    :error="repositoryAcquireError ?? workBacklogError"
-    @connect="connectGitHub"
-    @open-authorization="openGitHubAuthorization"
-    @skip="completeGitHubOnboardingStep"
+  <RepositoryOnboardingLanding
+    v-else-if="repositoriesOnboardingVisible"
+    :connections="snapshot.workBacklog.connections"
+    :authorizations="workProviderAuthorizations"
+    :authorization-errors="workProviderAuthorizationErrors"
+    :connect="connectRepositoryProvider"
+    :disconnect="disconnectRepositoryProvider"
+    :open-authorization="openRepositoryAuthorization"
+    @continue="emit('complete')"
   />
   <OnboardingCompleteLanding
     v-else-if="onboardingCompleteVisible"
@@ -59,12 +59,12 @@
 </template>
 
 <script setup lang="ts">
-import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization } from '@workspace/core/contracts';
+import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import ProviderSetupDialog from './ProviderSetupDialog.vue';
 import { toRefs } from 'vue';
 import CodexLoginLanding from './CodexLoginLanding.vue';
-import GitHubOnboardingLanding from './GitHubOnboardingLanding.vue';
+import RepositoryOnboardingLanding from './RepositoryOnboardingLanding.vue';
 import OnboardingCompleteLanding from './OnboardingCompleteLanding.vue';
 import LocalClaudeAuthenticationDialog from './LocalClaudeAuthenticationDialog.vue';
 
@@ -90,15 +90,16 @@ const props = defineProps<{
   authenticationCancelling: boolean;
   authenticationError: string | null;
   authenticationLoading: boolean;
-  githubOnboardingVisible: boolean;
+  repositoriesOnboardingVisible: boolean;
   initialAuthenticationLoading: boolean;
   onboardingCompleteVisible: boolean;
-  repositoryAcquireBusy: boolean;
-  repositoryAcquireError: string | null;
+  connectRepositoryProvider: (provider: WorkProviderKind) => Promise<void>;
+  disconnectRepositoryProvider: (provider: WorkProviderKind) => Promise<void>;
+  openRepositoryAuthorization: (provider: WorkProviderKind) => Promise<void>;
   showLoginLanding: boolean;
   snapshot: AppSnapshot;
-  workBacklogError: string | null;
-  workProviderAuthorization: WorkProviderAuthorization | null;
+  workProviderAuthorizations: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
+  workProviderAuthorizationErrors?: Partial<Record<WorkProviderKind, string>>;
 }>();
 
 const emit = defineEmits<{
@@ -109,7 +110,6 @@ const emit = defineEmits<{
   'save-setup': [choice: ProviderSetupChange];
   cancel: [];
   complete: [];
-  'connect-github': [];
   'connect-claude': [];
   'connect-antigravity': [];
   'cancel-antigravity': [];
@@ -118,7 +118,6 @@ const emit = defineEmits<{
   continue: [];
   finish: [];
   login: [];
-  'open-github-authorization': [];
 }>();
 
 const {
@@ -126,35 +125,20 @@ const {
   authenticationCancelling,
   authenticationError,
   authenticationLoading,
-  githubOnboardingVisible,
+  repositoriesOnboardingVisible,
   initialAuthenticationLoading,
   onboardingCompleteVisible,
-  repositoryAcquireBusy,
-  repositoryAcquireError,
   showLoginLanding,
   snapshot,
-  workBacklogError,
-  workProviderAuthorization,
+  workProviderAuthorizations,
 } = toRefs(props);
 
 function cancelChatGptLogin(): void {
   emit('cancel');
 }
 
-function completeGitHubOnboardingStep(): void {
-  emit('complete');
-}
-
-function connectGitHub(): void {
-  emit('connect-github');
-}
-
 function finishFirstRunOnboarding(): void {
   emit('finish');
-}
-
-function openGitHubAuthorization(): void {
-  emit('open-github-authorization');
 }
 
 function startChatGptLogin(): void {

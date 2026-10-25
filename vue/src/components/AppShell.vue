@@ -35,21 +35,20 @@
       :authentication-cancelling="authenticationCancelling"
       :authentication-error="debugMissingEngines ? null : authenticationError"
       :authentication-loading="!debugMissingEngines && authenticationLoading"
-      :github-onboarding-visible="!debugMissingEngines && githubOnboardingVisible"
+      :repositories-onboarding-visible="!debugMissingEngines && repositoriesOnboardingVisible"
       :initial-authentication-loading="!debugMissingEngines && initialAuthenticationLoading"
       :onboarding-complete-visible="!debugMissingEngines && onboardingCompleteVisible"
-      :repository-acquire-busy="repositoryAcquireBusy"
-      :repository-acquire-error="repositoryAcquireError"
       :show-login-landing="showLoginLanding"
       :snapshot="snapshot"
-      :work-backlog-error="workBacklogError"
-      :work-provider-authorization="workProviderAuthorization"
+      :work-provider-authorizations="workProviderAuthorizations ?? (workProviderAuthorization ? { [workProviderAuthorization.provider]: workProviderAuthorization } : {})"
+      :work-provider-authorization-errors="workProviderAuthorizationErrors"
+      :connect-repository-provider="connectWorkProvider"
+      :disconnect-repository-provider="disconnectWorkProvider"
+      :open-repository-authorization="openWorkProviderAuthorization"
       @cancel="cancelChatGptLogin"
-      @complete="completeGitHubOnboardingStep"
-      @connect-github="connectGitHub"
+      @complete="firstRunOnboarding.completeRepositories"
       @finish="finishFirstRunOnboarding"
       @login="startChatGptLogin"
-      @open-github-authorization="openGitHubAuthorization"
     />
     <div
       class="app-shell__nav"
@@ -763,6 +762,7 @@ const props = withDefaults(defineProps<{
   fileActivity?: AgentFileActivity | null;
   workProviderAuthorization?: WorkProviderAuthorization | null;
   workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
+  workProviderAuthorizationErrors?: Partial<Record<WorkProviderKind, string>>;
   workRepositoriesByProvider?: Partial<Record<WorkProviderKind, WorkSource[]>>;
   workItemsByRepository?: Record<string, WorkItem[]>;
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
@@ -1321,17 +1321,10 @@ const editingAgentId = ref<string | null>(null);
 const agentDialogTeamId = ref<string | null>(null);
 const agentDialogSourceRepositoryName = ref<string | null>(null);
 const agentDialogSourceBranchName = ref('');
-const githubConnection = computed<WorkIntegrationConnection>(() => (
-  props.snapshot.workBacklog.connections.find((connection) => connection.provider === 'github') ?? {
-    provider: 'github',
-    status: 'disconnected',
-  }
-));
 const firstRunOnboarding = useFirstRunOnboarding({
   getApi: () => appApi,
   getConnections: () => props.snapshot.providerConnections ?? [],
   hasExistingWorkspace: () => props.snapshot.agents.length > 0 || props.snapshot.general.providerOnboardingComplete === true,
-  isGitHubConnected: () => githubConnection.value.status === 'connected' && githubConnection.value.source !== 'cli',
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
@@ -1344,7 +1337,7 @@ const {
   authenticationLoading,
   completeVisible: onboardingCompleteVisible,
   gated: realOnboardingGate,
-  githubVisible: githubOnboardingVisible,
+  repositoriesVisible: repositoriesOnboardingVisible,
   initialAuthenticationLoading,
   showLogin: realLoginLanding,
   cancelChatGptLogin,
@@ -2821,18 +2814,6 @@ async function createNewProject(name: string, backend: Agent['backend']): Promis
   }
 }
 
-function completeGitHubOnboardingStep(): void {
-  repositoryAcquireBusy.value = false;
-  repositoryAcquireError.value = null;
-  firstRunOnboarding.completeGitHub();
-}
-
-watch(() => [githubConnection.value.status, githubConnection.value.source] as const, ([status, source]) => {
-  if (githubOnboardingVisible.value && status === 'connected' && source !== 'cli') {
-    completeGitHubOnboardingStep();
-  }
-});
-
 function openNewTeam(): void {
   teamDialogMode.value = 'create';
   editingTeamId.value = null;
@@ -3354,7 +3335,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.github-onboarding):not(.onboarding-complete) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
   visibility: hidden;
 }
 

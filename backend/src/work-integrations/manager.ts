@@ -22,6 +22,7 @@ export class WorkIntegrationManager {
   private readonly tokenRefreshes = new Map<WorkProviderKind, Promise<WorkProviderToken>>();
   private readonly generations = new Map<WorkProviderKind, number>();
   private readonly tokenWrites = new Map<WorkProviderKind, Promise<void>>();
+  private readonly connects = new Map<WorkProviderKind, Promise<WorkProviderConnectResult>>();
   private readonly polls = new Map<WorkProviderKind, Promise<AppSnapshot>>();
   private readonly authorizationFallbacks = new Map<WorkProviderKind, WorkIntegrationConnection>();
   private readonly disconnects = new Map<WorkProviderKind, number>();
@@ -113,7 +114,9 @@ export class WorkIntegrationManager {
         changed = this.setConnection({
           ...connection,
           status: connection.status === 'notConfigured' || (connection.status === 'connecting' && !this.pendingAuthorizations.has(provider)) ? 'disconnected' : connection.status,
-          detail: connection.status === 'notConfigured' ? undefined : connection.detail,
+          detail: provider !== 'linear' && connection.status === 'connecting' && !this.pendingAuthorizations.has(provider)
+            ? { key: 'workProvider.authorizationExpired', params: { provider: providerLabel(provider) } }
+            : connection.status === 'notConfigured' ? undefined : connection.detail,
         }) || changed;
         continue;
       }
@@ -185,6 +188,23 @@ export class WorkIntegrationManager {
   }
 
   async connect(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
+    if (provider === 'linear') return this.startConnection(provider);
+    const existing = this.connects.get(provider);
+    if (existing) return existing;
+    const operation = this.startConnection(provider).finally(() => {
+      if (this.connects.get(provider) === operation) this.connects.delete(provider);
+    });
+    this.connects.set(provider, operation);
+    return operation;
+  }
+
+  private async startConnection(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
+    // A refreshed renderer retrieves public instructions for the same grant.
+    // Device codes and credentials remain owned by this manager.
+    if (provider !== 'linear' && this.pendingAuthorizations.has(provider)) {
+      const pending = await this.activePendingAuthorization(provider);
+      return { snapshot: this.snapshot(), ...(pending ? { authorization: publicAuthorization(pending) } : {}) };
+    }
     const driver = this.driver(provider);
     const previous = this.connection(provider);
     const cliFallback = this.cliDriver(provider) && previous?.source === 'cli' && previous.status === 'connected' ? previous : null;
@@ -520,6 +540,7 @@ export class WorkIntegrationManager {
   }
 
   private invalidate(provider: WorkProviderKind): number {
+    this.connects.delete(provider);
     const generation = this.generation(provider) + 1;
     this.generations.set(provider, generation);
     this.pendingAuthorizations.delete(provider);

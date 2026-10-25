@@ -490,9 +490,6 @@ export const surfaceMessages = {
     "connectingToApp": `Connecting ${product.name}`,
     "app": `${product.name}`
   },
-  "githubOnboardingLanding": {
-    "connectGitHub": "Connect GitHub"
-  },
   "onboardingCompleteLanding": {
     "appIsReady": `${product.name} is ready`
   },

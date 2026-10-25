@@ -73,6 +73,7 @@
     :file-activity="fileActivity"
     :work-provider-authorization="workProviderAuthorization"
     :work-provider-authorizations="workProviderAuthorizations"
+    :work-provider-authorization-errors="workProviderAuthorizationErrors"
     :work-repositories-by-provider="workRepositoriesByProvider"
     :work-items-by-repository="workItemsByRepository"
     :assigned-work-items-by-provider="assignedWorkItemsByProvider"
@@ -318,6 +319,7 @@ const {
   fileActivity,
   workProviderAuthorization,
   workProviderAuthorizations,
+  workProviderAuthorizationErrors,
   workRepositoriesByProvider,
   workItemsByRepository,
   assignedWorkItemsByProvider,

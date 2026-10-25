@@ -29,6 +29,7 @@ const authorizationPollMs = 5_000;
 /** Owns provider authorization, polling, repository catalogs, and backlog state. */
 export function createWorkProviderState(options: WorkProviderStateOptions) {
   const authorization = ref<WorkProviderAuthorization | null>(null);
+  const authorizationErrors = ref<Partial<Record<WorkProviderKind, string>>>({});
   const authorizations = ref<Partial<Record<WorkProviderKind, WorkProviderAuthorization>>>({});
   const repositoriesByProvider = ref<Partial<Record<WorkProviderKind, WorkSource[]>>>({});
   const itemsByRepository = ref<Record<string, WorkItem[]>>({});
@@ -47,6 +48,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     authorizationRevisions.set(provider, revision);
     status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
       const result = await appApi.connectWorkProvider(provider);
       if (revision !== authorizationRevisions.get(provider)) return;
@@ -60,6 +62,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (current?.status === 'notConfigured' || current?.status === 'error' || cliFallbackFailed) {
         status.value = 'error';
         error.value = localizedText(current?.detail, translate);
+        setAuthorizationError(provider, error.value);
         return;
       }
       if (result.authorization?.flow === 'browser') {
@@ -71,6 +74,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (revision !== authorizationRevisions.get(provider)) return;
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       throw cause;
     }
   }
@@ -78,6 +82,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   async function openAuthorization(provider: WorkProviderKind): Promise<void> {
     status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
       const pending = authorizations.value[provider];
       if (pending?.provider === provider && appPlatformActions.openExternal) {
@@ -90,6 +95,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     } catch (cause) {
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       throw cause;
     }
   }
@@ -111,6 +117,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     if (revision !== authorizationRevisions.get(provider)) return;
     options.adoptSnapshot(snapshot);
     setAuthorization(provider, null);
+    setAuthorizationError(provider, null);
     repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
     itemsByRepository.value = Object.fromEntries(Object.entries(itemsByRepository.value).filter(([key]) => !key.startsWith(`${provider}:`)));
     assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: [] };
@@ -245,6 +252,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     const revision = authorizationRevisions.get(provider);
     if (pollOptions.userInitiated) status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
       const snapshot = await appApi.pollWorkProviderAuthorization(provider);
       if (revision !== authorizationRevisions.get(provider)) return;
@@ -266,11 +274,13 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       setAuthorization(provider, null);
       status.value = current?.status === 'error' ? 'error' : 'loaded';
       error.value = current?.status === 'error' ? localizedText(current.detail, translate) : null;
+      setAuthorizationError(provider, error.value);
     } catch (cause) {
       if (revision !== authorizationRevisions.get(provider)) return;
       clearAuthorizationPoll(provider);
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       if (pollOptions.userInitiated) throw cause;
     }
   }
@@ -296,6 +306,11 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     return options.getSnapshot().workBacklog.connections.find((candidate) => candidate.provider === provider) ?? null;
   }
 
+  function setAuthorizationError(provider: WorkProviderKind, message: string | null): void {
+    if (message) authorizationErrors.value[provider] = message;
+    else delete authorizationErrors.value[provider];
+  }
+
   function setAuthorization(provider: WorkProviderKind, pending: WorkProviderAuthorization | null): void {
     const next = { ...authorizations.value };
     if (pending) next[provider] = pending;
@@ -318,6 +333,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     catalogState,
     authorization,
     authorizations,
+    authorizationErrors,
     error,
     itemsByRepository,
     repositoriesByProvider,

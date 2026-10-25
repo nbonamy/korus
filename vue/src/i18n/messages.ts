@@ -3,6 +3,11 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    repositoryOnboarding: {
+      title: 'Connect your repositories', connect: 'Connect {provider}', skip: 'Skip for now',
+      cancel: 'Cancel {provider} authorization', usingCli: 'Using {provider} CLI',
+      retry: 'Retry', retryAuthorization: 'Retry {provider} authorization',
+    },
     gitlabWorkflow: { generatePullRequestDraftWithCodex: 'Generate merge request draft with Codex', uncommittedChangesWillNotBeIncludedInThisPullRequest: 'Uncommitted changes will not be included in this merge request.', createPR: 'Create MR', createPullRequest: 'Create merge request', creatingPullRequest: 'Creating merge request', pullRequestCreated: 'Merge request created', pullRequestFailed: 'Merge request failed', openRequest: 'Open merge request', openPullRequest: 'Open pull request' },
     gitlabBacklog: { mergeRequests: 'Merge requests', searchMergeRequests: 'Search merge requests…', recentMergeRequests: 'Recent merge requests', noMergeRequests: 'No merge requests found.', mr: 'MR', missingBranch: 'GitLab did not return the merge request branch. Refresh and try again.' },
     gitlabIntegration: {
@@ -857,15 +862,6 @@ export const messages = {
       claudeLoginInstructions: 'Run either command in Terminal, finish signing in, then check the connection. Claude Code manages your credentials.',
       waiting: 'Waiting for sign in…',
       cancel: 'Cancel sign-in',
-      githubTitle: 'Connect GitHub.',
-      githubTitleDetailFirst: 'Bring your work',
-      githubTitleDetailSecond: `into ${product.name}.`,
-      githubAuthorizationTitle: `Authorize ${product.name}`,
-      githubConnect: 'Connect GitHub',
-      githubCliDetected: `${product.name} detected an authenticated GitHub CLI. Connect ${product.name} directly for faster GitHub access.`,
-      githubConnecting: 'Connecting…',
-      githubSkip: 'Skip for now',
-      githubUseCli: 'Use GitHub CLI',
       completeTitle: "You're all set.",
       completeDetail: `${product.name} is ready.`,
       completeAction: `Start using ${product.name}`,

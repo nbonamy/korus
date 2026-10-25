@@ -29,6 +29,43 @@ describe('work provider authorization state', () => {
     expect(state.catalogState('gitlab')).toStrictEqual({ status: 'loaded', error: null });
     expect(state.catalogState('github')).toStrictEqual({ status: 'loaded', error: null });
   });
+  it('isolates background authorization transport failures and recovers without losing another connection', async () => {
+    vi.useFakeTimers();
+    let snapshot = createInitialSnapshot();
+    const { api } = createClientApiMock(snapshot);
+    api.connectWorkProvider.mockImplementation(async provider => {
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = [...next.workBacklog.connections.filter(c => c.provider !== provider), { provider, status: 'connecting' }];
+      return { snapshot: next, authorization: { provider, userCode: provider, verificationUri: `https://${provider}.com/oauth/device`, expiresAt: '2099-01-01' } };
+    });
+    let gitlabOffline = true;
+    api.pollWorkProviderAuthorization.mockImplementation(async provider => {
+      if (provider === 'gitlab' && gitlabOffline) throw new Error('GitLab is temporarily unreachable');
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = next.workBacklog.connections.map(c => c.provider === provider ? { provider, status: 'connected', accountLabel: provider } : c);
+      return next;
+    });
+    api.listWorkSources.mockResolvedValue([]);
+    api.disconnectWorkProvider.mockImplementation(async provider => {
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = next.workBacklog.connections.filter(c => c.provider !== provider);
+      return next;
+    });
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: value => { snapshot = value; } });
+    await state.connect('github'); await state.connect('gitlab');
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(state.authorizationErrors.value).toStrictEqual({ gitlab: 'GitLab is temporarily unreachable' });
+    expect(state.authorizations.value.gitlab?.userCode).toBe('gitlab');
+    expect(snapshot.workBacklog.connections.find(c => c.provider === 'github')?.status).toBe('connected');
+    gitlabOffline = false;
+    await state.connect('gitlab'); // recover the same backend grant and resume polling
+    expect(state.authorizationErrors.value).toStrictEqual({});
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(snapshot.workBacklog.connections.filter(c => c.status === 'connected')).toHaveLength(2);
+    await state.disconnect('gitlab'); await state.disconnect('github');
+  });
+
   it('retains GitHub catalogs, work and polling when GitLab disconnects', async () => {
     vi.useFakeTimers();
     let snapshot = createInitialSnapshot();

@@ -676,6 +676,17 @@ endpoints), and backend `WorkProviderDriver` adapters owning auth, native API ca
 and normalization. A new source needs a registry entry, an adapter and runtime
 wiring, never branches in assignment, Mission, Settings or automation code.
 
+- First-run onboarding keeps GitHub and GitLab independent in one repository
+  connection step. Advancing is explicit; completing one authorization leaves
+  the other provider available. The client persists only the unfinished stage
+  across relaunch and migrates the legacy `github` stage to `repositories`.
+  Device authorization instructions are recovered from the backend's existing
+  pending grant through idempotent repository-provider connect calls; concurrent
+  starts share one operation. No credential or device grant is stored by the
+  renderer. A restarted daemon without the pending grant exposes reconnection.
+  Continuing cancels pending authorizations before leaving the step, preserving
+  authenticated CLI fallback. Completed users without an unfinished stage keep
+  their existing workspace.
 - Tokens never enter snapshots; they live behind the backend token-store port.
   Only connection metadata is persisted. The local file store is owner-readable
   because encryption beside its own key adds no boundary; a keychain can replace

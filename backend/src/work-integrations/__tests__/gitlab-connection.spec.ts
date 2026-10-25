@@ -84,6 +84,37 @@ it('connects through the protocol, paginates private subgroup projects/branches 
   } finally { await server.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+it('resumes pending device authorization through the server without replacing its grant', async () => {
+  const { manager, snapshot, upstream, tokenStore } = await setup();
+  const server = new AppBackendServer({ version: 'test', snapshot, workIntegrations: manager });
+  const rpc = async () => {
+    const response = await server.handleMessage({ jsonrpc: '2.0', id: 'resume', method: 'workProvider/connect', params: { provider: 'gitlab' } }) as { result: { authorization: unknown } };
+    return response.result;
+  };
+  const [first, concurrent] = await Promise.all([rpc(), rpc()]);
+  expect(concurrent.authorization).toStrictEqual(first.authorization);
+  const restored = await rpc();
+  expect(restored.authorization).toStrictEqual(first.authorization);
+  expect(upstream.mock.calls.filter(([url]) => String(url).endsWith('/oauth/authorize_device'))).toHaveLength(1);
+  await manager.pollAuthorization('gitlab');
+  expect(await tokenStore.get('gitlab')).toMatchObject({ accountLabel: 'gitlab-user' });
+  expect(await manager.authorizationHeader('github')).toBe('Bearer github-secret');
+});
+
+it('restores an interrupted daemon login as reconnectable without replaying its device code', async () => {
+  const { manager, snapshot, options, upstream } = await setup();
+  await manager.connect('gitlab');
+  const restarted = new WorkIntegrationManager(options);
+  await restarted.hydrateConnections();
+  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')).toMatchObject({
+    status: 'disconnected', detail: { key: 'workProvider.authorizationExpired', params: { provider: 'GitLab' } },
+  });
+  expect(upstream.mock.calls.filter(([url]) => String(url).endsWith('/oauth/authorize_device'))).toHaveLength(1);
+  await restarted.connect('gitlab');
+  expect(upstream.mock.calls.filter(([url]) => String(url).endsWith('/oauth/authorize_device'))).toHaveLength(2);
+  expect(restarted.isConnected('github')).toBe(true);
+});
+
 it('reports actionable missing app configuration without affecting GitHub', async () => {
   const { manager, snapshot, upstream } = await setup('');
   const result = await manager.connect('gitlab');

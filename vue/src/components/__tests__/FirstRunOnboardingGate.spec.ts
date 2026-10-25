@@ -16,15 +16,15 @@ function mountGate(overrides: Partial<InstanceType<typeof FirstRunOnboardingGate
       authenticationCancelling: false,
       authenticationError: null,
       authenticationLoading: false,
-      githubOnboardingVisible: false,
+      repositoriesOnboardingVisible: false,
       initialAuthenticationLoading: false,
       onboardingCompleteVisible: false,
-      repositoryAcquireBusy: false,
-      repositoryAcquireError: null,
+      connectRepositoryProvider: async () => {},
+      disconnectRepositoryProvider: async () => {},
+      openRepositoryAuthorization: async () => {},
       showLoginLanding: false,
       snapshot: createInitialSnapshot(),
-      workBacklogError: null,
-      workProviderAuthorization: null,
+      workProviderAuthorizations: {},
       ...overrides,
     },
     global: { stubs: { LocalClaudeAuthenticationDialog: false, FormDialog: false, FormField: false, teleport: true } },
@@ -47,7 +47,7 @@ describe('FirstRunOnboardingGate', () => {
 
   it('gives ChatGPT sign-in precedence and forwards its actions', () => {
     const wrapper = mountGate({
-      githubOnboardingVisible: true,
+      repositoriesOnboardingVisible: true,
       showLoginLanding: true,
     });
     const landing = wrapper.getComponent({ name: 'CodexLoginLanding' });
@@ -55,22 +55,20 @@ describe('FirstRunOnboardingGate', () => {
     landing.vm.$emit('login');
     landing.vm.$emit('cancel');
 
-    expect(wrapper.findComponent({ name: 'GitHubOnboardingLanding' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'RepositoryOnboardingLanding' }).exists()).toBe(false);
     expect(wrapper.emitted('login')).toStrictEqual([[]]);
     expect(wrapper.emitted('cancel')).toStrictEqual([[]]);
   });
 
-  it('routes the optional GitHub step and completion state', async () => {
-    const wrapper = mountGate({ githubOnboardingVisible: true });
-    const github = wrapper.getComponent({ name: 'GitHubOnboardingLanding' });
+  it('routes the optional repository step and completion state', async () => {
+    const wrapper = mountGate({ repositoriesOnboardingVisible: true });
+    const github = wrapper.getComponent({ name: 'RepositoryOnboardingLanding' });
 
-    github.vm.$emit('connect');
-    github.vm.$emit('skip');
-    expect(wrapper.emitted('connect-github')).toStrictEqual([[]]);
+    github.vm.$emit('continue');
     expect(wrapper.emitted('complete')).toStrictEqual([[]]);
 
     await wrapper.setProps({
-      githubOnboardingVisible: false,
+      repositoriesOnboardingVisible: false,
       onboardingCompleteVisible: true,
     });
     wrapper.getComponent({ name: 'OnboardingCompleteLanding' }).vm.$emit('complete');
