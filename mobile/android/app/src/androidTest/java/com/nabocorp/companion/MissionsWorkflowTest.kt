@@ -56,4 +56,19 @@ class MissionsWorkflowTest {
             app.onNodeWithText("02 Open workers").assertIsDisplayed()
         }
     }
+
+    @Test fun aFinishedMissionContinuesToReviewAfterConfirmationAndShipIsDesktopOnly() {
+        NativeEngineFixture(app.activityRule.scenario).use { e ->
+            val done = JSONObject(mission.toString()).put("done", 2).put("next", "review").put("revision", 4)
+            mount(e, state().put("missions", JSONArray().put(done)))
+            e.model.showMissions("m")
+            app.onNodeWithText("Continue to Review").performClick()
+            app.onNodeWithText("Move this mission to review?").assertIsDisplayed()
+            app.onAllNodesWithText("Continue to Review").onLast().performClick()
+            app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "continueMission" && it.string("missionId") == "m" } == true }
+            e.state(state().put("missions", JSONArray().put(JSONObject(done.toString()).put("stage", "review").put("next", "ship"))))
+            app.onNodeWithText("Only available on desktop").assertIsDisplayed()
+            app.onNodeWithText("Continue to Review").assertDoesNotExist()
+        }
+    }
 }

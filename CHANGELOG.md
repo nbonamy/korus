@@ -8,7 +8,8 @@ All notable Korus changes are recorded here.
 
 - Follow missions from the mobile apps: see each mission's stage and ticket
   progress, open the agent working on a ticket or the one leading the mission and talk
-  to it, then return to the mission.
+  to it, then return to the mission. Accept a finished ticket and move a completed
+  implementation on to review from the phone; shipping stays on the desktop.
 
 ## [0.41.1] - 2026-10-24
 

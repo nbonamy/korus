@@ -71,6 +71,10 @@ internal val JSONObject.attentionCount get() = items("tickets").count { TicketSt
 internal val JSONObject.workingCount get() = items("tickets").count { TicketState.of(it.string("state")) in listOf(TicketState.Running, TicketState.Preparing) }
 /** Ready once the mission has reached its ship stage: finished tickets still owe a review. */
 internal val JSONObject.isReadyToShip get() = isActiveMission && string("stage") == "ship"
+/** Every ticket is accepted, whatever stage the mission is in. */
+internal val JSONObject.allTicketsDone get() = items("tickets").let { it.isNotEmpty() && optInt("done") >= it.size }
+internal val JSONObject.canContinueToReview get() = isActiveMission && string("next") == "review"
+internal val JSONObject.shipsOnDesktop get() = isActiveMission && string("next") == "ship"
 
 private val stages = listOf("requirements" to ("Requirements" to Icons.Outlined.Description), "tickets" to ("Tickets" to Icons.Outlined.Checklist),
     "implementation" to ("Implementation" to Icons.Outlined.Construction), "review" to ("Review" to Icons.Outlined.Visibility), "ship" to ("Ship" to Icons.AutoMirrored.Outlined.Send))
@@ -139,7 +143,7 @@ internal fun elapsedText(millis: Long): String {
 /** How far a mission has come: a ring that fills with accepted tickets, the count in its center, a check once everything is done. */
 @Composable private fun MissionGauge(mission: JSONObject, size: Dp = 64.dp, stroke: Dp = 7.dp) {
     val tickets = mission.items("tickets")
-    val tint = when { !mission.isActiveMission -> MaterialTheme.colorScheme.outline; mission.isReadyToShip -> CompanionColors.addedLines; else -> MaterialTheme.colorScheme.primary }
+    val tint = when { !mission.isActiveMission -> MaterialTheme.colorScheme.outline; mission.allTicketsDone -> CompanionColors.addedLines; else -> MaterialTheme.colorScheme.primary }
     val progress by animateFloatAsState(mission.missionProgress.coerceIn(0f, 1f), label = "mission progress")
     Box(Modifier.size(size).semantics(mergeDescendants = true) { contentDescription = "${mission.optInt("done")} of ${tickets.size} tickets done" }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().padding(stroke / 2)) {
@@ -149,7 +153,7 @@ internal fun elapsedText(millis: Long): String {
         }
         when {
             tickets.isEmpty() -> Icon(Icons.Outlined.MoreHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            mission.isReadyToShip -> Icon(Icons.Outlined.Check, null, Modifier.size(size * 0.38f), tint = tint)
+            mission.allTicketsDone -> Icon(Icons.Outlined.Check, null, Modifier.size(size * 0.38f), tint = tint)
             else -> Text("${mission.optInt("done")}/${tickets.size}", fontSize = (size.value * 0.27f).sp, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -240,6 +244,7 @@ internal fun elapsedText(millis: Long): String {
             }
         }
     }
+    NextStep(model, mission)
     mission.string("leadAgentId").takeIf { it.isNotBlank() }?.let { lead -> LeadRow(missionStage(mission)) { model.openTicket(lead) } }
     val tickets = mission.items("tickets")
     if (tickets.isNotEmpty()) {
@@ -249,6 +254,28 @@ internal fun elapsedText(millis: Long): String {
 }
 
 private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first == mission.string("stage") }?.second?.first ?: mission.string("stage").replaceFirstChar(Char::uppercase)
+
+/** The one move a phone can make on a mission: on to review. Shipping stays on the desktop, and says so. */
+@Composable private fun NextStep(model: CompanionModel, mission: JSONObject) {
+    var confirming by remember { mutableStateOf(false) }
+    val working = model.state.string("missionAction") == "working"
+    if (mission.canContinueToReview) {
+        Button({ confirming = true }, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = !working, shape = RoundedCornerShape(16.dp)) {
+            if (working) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(10.dp)) }
+            Text("Continue to Review", fontWeight = FontWeight.SemiBold)
+        }
+        if (confirming) AlertDialog(onDismissRequest = { confirming = false }, title = { Text("Move this mission to review?") }, text = { Text("Implementation is complete. The review starts right away.") },
+            confirmButton = { TextButton({ confirming = false; model.command("continueMission", "missionId" to mission.string("id")) }) { Text("Continue to Review") } },
+            dismissButton = { TextButton({ confirming = false }) { Text("Cancel") } })
+    } else if (mission.shipsOnDesktop) {
+        Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton({}, Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = false, shape = RoundedCornerShape(16.dp)) {
+                Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ship", fontWeight = FontWeight.SemiBold)
+            }
+            Text("Only available on desktop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 /** The agent leading the mission is one tap away, for a question or a change of direction. */
 @Composable private fun LeadRow(stage: String, open: () -> Unit) {
@@ -321,13 +348,21 @@ private fun missionStage(mission: JSONObject) = stages.firstOrNull { it.first ==
     }
 }
 
-/** Under a ticket worker's header: which ticket this is. The mission's lead is a conversation like any other and gets none. */
+/** Under a ticket worker's header: which ticket this is, and a way to accept it once its work is ready for review.
+ * The mission's lead is a conversation like any other and gets none. */
 @Composable internal fun MissionContextBar(model: CompanionModel) {
     val reference = model.workerMission ?: return
     if (reference.optBoolean("lead")) return
     val mission = model.missions.firstOrNull { it.string("id") == reference.string("id") } ?: return
     val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == model.state.string("agentId") } ?: return
-    Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}",
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
-        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val ready = TicketState.of(ticket.string("state")) == TicketState.AwaitingReview && ticket.string("runId").isNotBlank()
+    var confirming by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(start = 16.dp, end = 8.dp, top = if (ready) 2.dp else 8.dp, bottom = if (ready) 2.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}", Modifier.weight(1f),
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (ready) TextButton({ confirming = true }, enabled = model.state.string("missionAction") != "working") { Text("Accept", fontWeight = FontWeight.SemiBold) }
+    }
+    if (confirming) AlertDialog(onDismissRequest = { confirming = false }, title = { Text("Accept this ticket?") }, text = { Text("It counts as done for the mission.") },
+        confirmButton = { TextButton({ confirming = false; model.command("acceptTicket", "missionId" to mission.string("id"), "number" to ticket.optInt("number")) }) { Text("Accept") } },
+        dismissButton = { TextButton({ confirming = false }) { Text("Cancel") } })
 }
