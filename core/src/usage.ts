@@ -244,14 +244,16 @@ export type UsageCostReason =
   | "unsupported-mode"
   | "missing-cache-rate"
   | "missing-token-rate";
-/** Only sufficiently evidenced requests contribute USD. requests counts observed identities;
- * unknownRequestExecutions explicitly represents unknown additional request counts.
+/** requests counts observed request identities; pricedExecutions counts aggregate Codex estimates.
+ * unknownRequestExecutions represents executions without sufficient data for a cost.
  */
 export type UsageCost = {
   usd: number | null;
   coverage: "complete" | "partial" | "unavailable";
   requests: number;
   pricedRequests: number;
+  /** Executions priced from aggregate token counters, independently of request identities. */
+  pricedExecutions?: number;
   unpricedRequests: number;
   unknownRequestExecutions: number;
   reasons: { reason: UsageCostReason; count: number }[];

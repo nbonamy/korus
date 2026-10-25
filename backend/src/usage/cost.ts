@@ -1,8 +1,4 @@
-import type {
-  UsageCost,
-  UsageCostReason,
-  RequestCoverageReason,
-} from "@workspace/core/usage";
+import type { UsageCost, UsageCostReason } from "@workspace/core/usage";
 import type { RequestPrice } from "../pricing/evaluate";
 export function emptyCost(): UsageCost {
   return {
@@ -18,12 +14,19 @@ export function emptyCost(): UsageCost {
 export function addCost(
   cost: UsageCost,
   price: RequestPrice | null,
-  unknownReason?: RequestCoverageReason,
+  unknownReason?: UsageCostReason,
+  execution = false,
 ): void {
   let reason: UsageCostReason | undefined;
-  if (price === null) {
+  if (execution && price && "usd" in price) {
+    cost.pricedExecutions = (cost.pricedExecutions ?? 0) + 1;
+    cost.usd = Number(((cost.usd ?? 0) + price.usd).toPrecision(15));
+  } else if (price === null || execution) {
     cost.unknownRequestExecutions++;
-    reason = unknownReason ?? "unknown-request-coverage";
+    reason =
+      price && "reason" in price
+        ? price.reason
+        : (unknownReason ?? "unknown-request-coverage");
   } else {
     cost.requests++;
     if ("usd" in price) {
@@ -41,7 +44,7 @@ export function addCost(
     cost.reasons.sort((a, b) => a.reason.localeCompare(b.reason));
   }
   cost.coverage =
-    cost.pricedRequests === 0
+    cost.pricedRequests + (cost.pricedExecutions ?? 0) === 0
       ? "unavailable"
       : cost.unpricedRequests || cost.unknownRequestExecutions
         ? "partial"

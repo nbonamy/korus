@@ -155,7 +155,7 @@ it("treats the SDK non-retrying error as terminal without counting retriable err
 // Protect the SDK-owned request boundary: execution counters must never become
 // invented billable requests, even across terminal events, replay and restart.
 it.each(["completed", "interrupted", "failed"] as const)(
-  "retains precise request capability gaps and cache-heavy execution totals after %s and replay",
+  "prices cache-heavy Codex execution totals after %s and replay without inventing request counts",
   async (status) => {
     const folder = await mkdtemp(path.join(tmpdir(), "codex-request-usage-"));
     const file = path.join(folder, "usage.sqlite");
@@ -236,7 +236,7 @@ it.each(["completed", "interrupted", "failed"] as const)(
         type: "turn.modelRerouted",
         payload: {
           fromModel: "gpt-6-sol",
-          toModel: "gpt-6.1",
+          toModel: "gpt-6-luna",
           reason: "highRiskCyberActivity",
         },
       });
@@ -264,15 +264,14 @@ it.each(["completed", "interrupted", "failed"] as const)(
       const result = await query();
       const summary = (result as { result: UsageSummary }).result;
       expect(summary.cost).toStrictEqual({
-        usd: null,
-        coverage: "unavailable",
+        usd: 0.00156,
+        coverage: "complete",
         requests: 0,
         pricedRequests: 0,
         unpricedRequests: 0,
-        unknownRequestExecutions: 1,
-        reasons: [
-          { reason: "public-runtime-request-evidence-unavailable", count: 1 },
-        ],
+        pricedExecutions: 1,
+        unknownRequestExecutions: 0,
+        reasons: [],
       });
       expect(summary.rows[0]).toMatchObject({
         started: 1,
@@ -371,16 +370,14 @@ it("distinguishes older SDK support from incompatible request contracts without 
     }
     await usage.drain();
     expect(ledger.query().cost).toStrictEqual({
-      usd: null,
-      coverage: "unavailable",
+      usd: 0,
+      coverage: "complete",
       requests: 0,
       pricedRequests: 0,
       unpricedRequests: 0,
-      unknownRequestExecutions: 3,
-      reasons: [
-        { reason: "incompatible-sdk-request-evidence", count: 2 },
-        { reason: "missing-sdk-request-evidence", count: 1 },
-      ],
+      pricedExecutions: 3,
+      unknownRequestExecutions: 0,
+      reasons: [],
     });
     expect(ledger.query().rows[0]).toMatchObject({
       started: 3,

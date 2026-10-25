@@ -8,8 +8,9 @@ export const messages = {
     analytics: {
       estimatedCost: 'Estimated cost', costRequests: 'Observed requests', costUnavailable: 'Unavailable', costComplete: 'Complete', costPartial: 'Partial',
       costExplanation: 'API-equivalent token estimate in USD using historical context, tier and cache pricing. Your bill may differ.',
-      costShareNote: 'Shares include priced requests only.', costShareUnit: 'USD · priced',
+      costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
       costCoverage: '{priced} of {requests} observed requests priced',
+      costPricedTurn: '{count} turn priced', costPricedTurns: '{count} turns priced',
       costUnknownRequests: '{count} executions with unknown request counts',
       costNoEvidence: 'Request pricing evidence is unavailable.',
       costPrevious: 'Previous period', costCurrent: 'Current period',

@@ -36,7 +36,7 @@
       <thead>
         <tr>
           <th>{{ $t("analytics." + grouping) }}</th>
-          <th class="num">
+          <th v-if="showCounts" class="num">
             {{
               $t(
                 measure === "cost"
@@ -64,7 +64,7 @@
               row.label
             }}
           </td>
-          <td class="num">
+          <td v-if="showCounts" class="num">
             {{
               chartFormat(
                 measure === "cost" ? row.cost?.requests : row.turns,
@@ -113,6 +113,11 @@ const props = defineProps<{
 }>();
 const measuredTotal = computed(() =>
   props.series.reduce((n, row) => n + (row.value ?? 0), 0),
+);
+const showCounts = computed(
+  () =>
+    props.measure !== "cost" ||
+    !props.series.some((row) => row.cost?.pricedExecutions),
 );
 /** A row's percentage of the measured total, null where it was not measured. */
 const share = (row: UsageSeries) =>

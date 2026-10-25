@@ -167,15 +167,17 @@ threads, routed by `threadId` and `agentId`.
   attempts retain their idempotency key, including renderer reloads. Account
   changes invalidate selections and pending operations. Quota notifications do
   not trigger banked-reset reads; confirmed outcomes trigger a fresh account read.
-- **Request pricing:** only the SDK's optional `executionUsage.requestUsage` projection
-  establishes request-pricing capability. Its public-runtime unavailable result is
-  retained with the execution in the analytics ledger, including after terminal
-  events and replay. Absent projections and incompatible payloads have separate
-  unavailable reasons. Execution counters, selected model/tier settings and reroute
-  events do not establish independently billable requests, actual request model or
-  served tier. The public Codex projection exposes no supported request DTO, so
-  Codex cost remains unavailable and its request count remains unknown. Korus never
-  parses raw response notifications or conversation logs to fill these gaps.
+- **Cost estimates:** analytics prices the retained execution model and token counters
+  using historical OpenAI rates. Cached reads receive their own rate and reasoning
+  already included in output is not charged again. Missing tiers use normal pricing;
+  aggregate estimates do not apply long-context premiums. Updates replace the same
+  execution estimate, including after replay and restart. Request observations, when
+  present, supersede the execution estimate instead of being charged twice.
+  The SDK's optional `executionUsage.requestUsage` projection describes independent
+  request telemetry; its absence or unavailable result does not prevent an aggregate
+  estimate. Execution estimates have a separate count and never invent request IDs.
+  Missing model, token counts or model rates still leave cost unavailable. Korus
+  does not parse raw notifications or conversation logs for pricing.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.

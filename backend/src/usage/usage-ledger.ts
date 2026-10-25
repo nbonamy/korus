@@ -6,18 +6,22 @@ import {
   validConsumption,
   validRequestObservation,
   validRequestCoverageReason,
-  type RequestCoverageReason,
   type RequestObservation,
   validExecutionTiming,
   type ExecutionObservation,
   type UsageRecord,
   type UsageFilter,
   type UsageSummary,
+  type UsageCostReason,
   type Consumption,
 } from "@workspace/core/usage";
 import { loadPricingHistory } from "../pricing/catalog";
 import type { PricingHistory } from "../pricing/schema";
-import { priceRequest, type RequestPrice } from "../pricing/evaluate";
+import {
+  priceRequest,
+  priceCodexExecution,
+  type RequestPrice,
+} from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
 const retention = 365 * 86400000;
 type Bucket = UsageSummary["rows"][number];
@@ -334,6 +338,16 @@ export class UsageLedger {
       dailyGroups = new Map<string, Map<string, Bucket>>(),
       cost = emptyCost();
     if (db) {
+      const requestRows = db
+        .prepare(
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? ORDER BY r.at,r.request_id",
+        )
+        .all(this.now() - retention, this.now() - retention);
+      const observedExecutions = new Set(
+        requestRows.map((row) =>
+          JSON.stringify([row.provider, row.session_id, row.turn_id]),
+        ),
+      );
       const conditions = ["started_at>=?"],
         args: (string | number)[] = [this.now() - retention];
       if (filter.from) {
@@ -355,45 +369,63 @@ export class UsageLedger {
           conditions.push(column + "=?");
           args.push(filter[key]!);
         }
-      if (!filter.apiProvider)
-        for (const row of db
-          .prepare(
-            "SELECT * FROM executions WHERE " +
-              conditions.join(" AND ") +
-              " ORDER BY started_at LIMIT 50000",
-          )
-          .all(...args)) {
-          const record = this.decode(row);
-          const label = filter.group
-            ? String(
-                filter.group === "apiProvider"
-                  ? "Unknown"
-                  : (record[filter.group] ?? "Unknown"),
-              )
-            : "All";
+      for (const row of db
+        .prepare(
+          "SELECT * FROM executions WHERE " +
+            conditions.join(" AND ") +
+            " ORDER BY started_at LIMIT 50000",
+        )
+        .all(...args)) {
+        const record = this.decode(row);
+        const codexEstimate =
+          record.provider === "codex" &&
+          !observedExecutions.has(
+            JSON.stringify([record.provider, record.sessionId, record.turnId]),
+          );
+        if (
+          filter.apiProvider &&
+          !(codexEstimate && filter.apiProvider === "openai")
+        )
+          continue;
+        const label = filter.group
+          ? String(
+              filter.group === "apiProvider"
+                ? "Unknown"
+                : (record[filter.group] ?? "Unknown"),
+            )
+          : "All";
+        if (!filter.apiProvider) {
           this.aggregate(rows, record, label);
           this.aggregate(daily, record, utcDay(record.startedAt));
           const day = utcDay(record.startedAt);
           const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
           this.aggregate(groups, record, label);
           dailyGroups.set(day, groups);
-          if (record.requestCoverage !== "complete")
-            this.aggregateCost(
-              rows,
-              daily,
-              dailyGroups,
-              record.startedAt,
-              label,
-              null,
-              cost,
-              record.requestCoverageReason ?? undefined,
-            );
         }
-      const requestRows = db
-        .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? ORDER BY r.at,r.request_id",
-        )
-        .all(this.now() - retention, this.now() - retention);
+        if (codexEstimate) {
+          this.aggregateCost(
+            rows,
+            daily,
+            dailyGroups,
+            record.startedAt,
+            filter.group === "apiProvider" ? "openai" : label,
+            priceCodexExecution(record, this.prices),
+            cost,
+            undefined,
+            true,
+          );
+        } else if (record.requestCoverage !== "complete")
+          this.aggregateCost(
+            rows,
+            daily,
+            dailyGroups,
+            record.startedAt,
+            label,
+            null,
+            cost,
+            record.requestCoverageReason ?? undefined,
+          );
+      }
       for (const row of requestRows) {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
         const parent = this.decode(row);
@@ -480,7 +512,8 @@ export class UsageLedger {
     label: string,
     price: RequestPrice | null,
     total: NonNullable<UsageSummary["cost"]>,
-    unknownReason?: RequestCoverageReason,
+    unknownReason?: UsageCostReason,
+    execution = false,
   ): void {
     const day = utcDay(at);
     const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
@@ -490,8 +523,8 @@ export class UsageLedger {
       this.bucket(daily, day),
       this.bucket(groups, label),
     ])
-      addCost(bucket.cost!, price, unknownReason);
-    addCost(total, price, unknownReason);
+      addCost(bucket.cost!, price, unknownReason, execution);
+    addCost(total, price, unknownReason, execution);
   }
   private aggregate(
     rows: Map<string, Bucket>,

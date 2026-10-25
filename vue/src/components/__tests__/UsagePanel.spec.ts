@@ -642,6 +642,24 @@ const costRow = (label: string, usd: number | null, partial = false) => ({
   cost: costFixture(usd, partial),
 });
 
+it('shows Codex execution costs without unavailable request metadata or pricing assumption copy', async () => {
+  const cost = { usd: 0.25, coverage: 'complete' as const, requests: 0, pricedRequests: 0,
+    unpricedRequests: 0, pricedExecutions: 1, unknownRequestExecutions: 0, reasons: [] };
+  setElectronTestClient({ getUsage: vi.fn(async () => ({ recordedSince: 1, retainedSince: 1,
+    cost, rows: [{ ...costRow('codex', 0.25), cost }], daily: [] })) });
+  const wrapper = mount(UsagePanel);
+  try {
+    await flushPromises();
+    await choose(wrapper, '#usage-measure', 'Estimated cost');
+    expect(wrapper.get('.hero-number strong').text()).toBe('$0.25');
+    expect(wrapper.text()).toContain('1 turn priced');
+    expect(wrapper.text()).not.toContain('0 of 0 observed requests');
+    expect(wrapper.text()).not.toContain('Runtime request evidence unavailable');
+    expect(wrapper.text()).not.toContain('assum');
+    expect(wrapper.get('[aria-label="Usage breakdown"]').text()).not.toContain('Observed requests');
+  } finally { wrapper.unmount(); }
+});
+
 it("uses request-attributed USD across model/provider filters, daily charts and shares, then returns to tokens and performance", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);

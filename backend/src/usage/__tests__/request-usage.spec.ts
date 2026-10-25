@@ -57,6 +57,41 @@ async function start(ledger: UsageLedger, event = parent) {
   await ledger.observe(event, attribution);
 }
 
+it("prices Codex execution counters with cached reads, normal missing tiers and no context premium without inventing requests", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'codex-cost-'));
+  const file = path.join(dir, 'usage.sqlite');
+  let ledger = new UsageLedger(file, () => at + 60000);
+  const tokens = { input: 300000, output: 1000, cacheRead: 200000, cacheWrite: null, reasoning: 200 };
+  const execution: ExecutionObservation = { ...parent, provider: 'codex', model: 'gpt-6-sol', tokens,
+    requestCoverage: 'partial', requestCoverageReason: 'public-runtime-request-evidence-unavailable' };
+  try {
+    await start(ledger, { ...execution, turnId: 'normal' });
+    await start(ledger, { ...execution, turnId: 'priority', serviceTier: 'priority' });
+    expect(ledger.query().cost).toStrictEqual({ usd: 0.75, coverage: 'complete', requests: 0,
+      pricedRequests: 0, unpricedRequests: 0, pricedExecutions: 2, unknownRequestExecutions: 0, reasons: [] });
+    expect(ledger.query({ group: 'model', model: 'gpt-6-sol' }).rows[0]?.cost?.usd).toBe(0.75);
+    expect(ledger.query({ apiProvider: 'openai', group: 'apiProvider' }).rows[0]?.cost?.usd).toBe(0.75);
+    expect(ledger.query({ apiProvider: 'google' }).cost?.usd).toBeNull();
+    await ledger.observe({ ...execution, turnId: 'normal', phase: 'usage', tokens: { ...tokens, output: 2000 } }, attribution);
+    expect(ledger.query().cost?.usd).toBe(0.76);
+    await ledger.close();
+    ledger = new UsageLedger(file, () => at + 60000);
+    await ledger.load();
+    expect(ledger.query().cost?.usd).toBe(0.76);
+    // Real request observations supersede the aggregate estimate rather than adding to it.
+    await ledger.observeRequest(request({ provider: 'codex', turnId: 'priority', apiProvider: 'openai', model: 'gpt-6-sol',
+      tokens: { ...request().tokens, input: 1000, output: 100, cacheRead: 0, cacheWrite: {}, reasoning: 0 },
+      pricingContext: { context: 1000, region: null }, reportedServiceTier: 'standard', cacheMode: 'implicit' }));
+    await ledger.observe({ ...execution, turnId: 'priority', phase: 'usage', requestCoverage: 'complete' }, attribution);
+    expect(ledger.query().cost).toMatchObject({ usd: 0.263, requests: 1, pricedExecutions: 1, coverage: 'complete' });
+    await start(ledger, { ...execution, turnId: 'zero', tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: null } });
+    await start(ledger, { ...execution, turnId: 'missing', model: null });
+    expect(ledger.query().cost).toMatchObject({ usd: 0.263, coverage: 'partial', pricedExecutions: 2, unknownRequestExecutions: 1 });
+    await ledger.clear();
+    expect(ledger.query().cost).toMatchObject({ usd: null, requests: 0 });
+  } finally { await ledger.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
 // Failure modes: cache double counting/lifetime loss; turn-total double charging;
 // wrong context inclusivity/category discount; stale replay; lost evidence at restart;
 // grouping costs by parent model/day; legacy migration/cleanup losing token history.

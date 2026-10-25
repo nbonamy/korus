@@ -1,6 +1,7 @@
 import type {
   RequestObservation,
   UsageCostReason,
+  UsageRecord,
 } from "@workspace/core/usage";
 import type { PricingHistory } from "./schema";
 
@@ -70,8 +71,12 @@ function factorAt(factor: unknown, path: string[]): number {
 
 /** Evaluate one request before aggregation. Missing evidence never selects a default branch. */
 export function priceRequest(
-  request: RequestObservation,
+  request: Omit<
+    RequestObservation,
+    "provider" | "agentId" | "sessionId" | "turnId" | "requestId" | "revision"
+  >,
   history: PricingHistory,
+  options: { ignoreContextPremiums?: boolean } = {},
 ): RequestPrice {
   const fail = (reason: UsageCostReason): RequestPrice => ({ reason });
   if (request.unavailableReason) return fail(request.unavailableReason);
@@ -182,6 +187,11 @@ export function priceRequest(
       return fail("missing-token-rate");
     let prices = { ...base };
     for (const override of (base.overrides ?? []) as ObjectValue[]) {
+      if (
+        options.ignoreContextPremiums &&
+        JSON.stringify(override.when).includes('"context"')
+      )
+        continue;
       const applies = matches(override.when as ObjectValue, evidence);
       if (applies === null)
         return fail(
@@ -252,6 +262,11 @@ export function priceRequest(
   }
   const multipliers: unknown[] = [];
   for (const multiplier of (cost.multipliers ?? []) as ObjectValue[]) {
+    if (
+      options.ignoreContextPremiums &&
+      JSON.stringify(multiplier.when).includes('"context"')
+    )
+      continue;
     // Unknown reasoning may still be affected even though it has no allocated count.
     const affectsUnknownReasoning =
       reasoningCategory &&
@@ -302,4 +317,45 @@ export function priceRequest(
       1e6;
   }
   return { usd: Number(usd.toPrecision(15)), snapshot: snapshot.date };
+}
+
+/** Price a measured Codex execution without fabricating billable request identities. */
+export function priceCodexExecution(
+  record: UsageRecord,
+  history: PricingHistory,
+): RequestPrice {
+  const t = record.tokens;
+  if (!t) return { reason: "missing-token-usage" };
+  const tier =
+    !record.serviceTier || ["normal", "default"].includes(record.serviceTier)
+      ? "standard"
+      : record.serviceTier === "fast"
+        ? "priority"
+        : record.serviceTier;
+  return priceRequest(
+    {
+      at: record.startedAt,
+      status: "final",
+      apiProvider: "openai",
+      model: record.model,
+      modality: "text",
+      cacheMode: "implicit",
+      tokens: {
+        input: t.input,
+        output: t.output,
+        cacheRead: t.cacheRead,
+        cacheWrite: t.cacheWrite ? { default: t.cacheWrite } : {},
+        reasoning: t.reasoning ?? null,
+        inputIncludesCacheRead: true,
+        inputIncludesCacheWrite: true,
+        outputIncludesReasoning: true,
+      },
+      pricingContext: { context: null, region: null },
+      requestedServiceTier: record.serviceTier ?? null,
+      reportedServiceTier: tier,
+      reportedMode: record.serviceTier === "fast" ? "fast" : null,
+    },
+    history,
+    { ignoreContextPremiums: true },
+  );
 }

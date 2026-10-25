@@ -16,13 +16,21 @@
               : "Unavailable"),
       )
     }}</strong>
-    <span v-if="cost">{{
+    <span v-if="cost && (cost.requests || !cost.pricedExecutions)">{{
       $t("analytics.costCoverage", {
         priced: cost.pricedRequests,
         requests: cost.requests,
       })
     }}</span>
-    <span v-else>{{ $t("analytics.costNoEvidence") }}</span>
+    <span v-if="cost?.pricedExecutions">{{
+      $t(
+        cost.pricedExecutions === 1
+          ? "analytics.costPricedTurn"
+          : "analytics.costPricedTurns",
+        { count: cost.pricedExecutions },
+      )
+    }}</span>
+    <span v-if="!cost">{{ $t("analytics.costNoEvidence") }}</span>
     <span v-if="cost?.unknownRequestExecutions">{{
       $t("analytics.costUnknownRequests", {
         count: cost.unknownRequestExecutions,

@@ -767,11 +767,14 @@ in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated
 from ordinary output before applying rates. Missing usage, inclusion semantics,
 cache rates/lifetimes, context, region, tier or model evidence leaves a request
-unpriced with a reason. There are no fallback estimates. Non-token charges remain
+unpriced with a reason. Codex executions without request observations are priced
+from their retained model and measured token counters, with cached reads priced
+separately, normal pricing for missing tiers, and no long-context premium. Real
+request observations supersede an execution estimate. Non-token charges remain
 outside the estimate.
 
 Cost and coverage accompany summary, daily and grouped results. USD sums only
-priced requests; a known zero differs from an unavailable total. Observed request
+priced usage; a known zero differs from an unavailable total. Observed request
 counts do not claim to count unknown legacy requests. Producers must explicitly
 attest a complete execution request set; otherwise coverage retains an execution
 with an unknown additional request count, even when some requests were captured.
