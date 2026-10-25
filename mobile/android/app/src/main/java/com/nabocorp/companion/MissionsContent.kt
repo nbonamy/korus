@@ -129,7 +129,7 @@ internal fun elapsedText(millis: Long): String {
             },
         )
     }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (detail != null) MissionDetail(model, detail) else MissionList(model)
         }
     }
@@ -184,11 +184,11 @@ internal fun elapsedText(millis: Long): String {
 }
 
 @Composable private fun MissionCard(mission: JSONObject, open: () -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.clickable(onClick = open).padding(14.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.clickable(onClick = open).padding(20.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
             MissionGauge(mission)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(mission.string("outcome"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val now = mission.nowLine
                 when {
@@ -302,18 +302,13 @@ internal fun elapsedText(millis: Long): String {
     }
 }
 
-/** Under a worker's header: which ticket this is and how the mission stands, so the conversation never loses its context. */
+/** Under a worker's header: which ticket this is, so the conversation never loses its context. */
 @Composable internal fun MissionContextBar(model: CompanionModel) {
     val reference = model.workerMission ?: return
     val mission = model.missions.firstOrNull { it.string("id") == reference.string("id") } ?: return
     val agentId = model.state.string("agentId")
     val ticket = mission.items("tickets").firstOrNull { it.string("agentId") == agentId } ?: return
-    val total = mission.items("tickets").size
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row {
-            Text("Mission · ticket ${ticket.optInt("number")} of $total · ${TicketState.of(ticket.string("state")).label}", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${mission.optInt("done")}/$total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        LinearProgressIndicator(progress = { mission.missionProgress.coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(3.dp), drawStopIndicator = {})
-    }
+    Text("Mission · ticket ${ticket.optInt("number")} of ${mission.items("tickets").size} · ${TicketState.of(ticket.string("state")).label}",
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

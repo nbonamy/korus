@@ -88,8 +88,7 @@ struct ConversationScreen: View {
                         }
                         .background(.regularMaterial)
                     }
-                    // A mission's worker is driven by its mission; what it asks still arrives above.
-                    if model.workerMission == nil { ComposerView() }
+                    ComposerView()
                 }
             }
             .toolbar {

@@ -131,8 +131,8 @@ type AgentOperation<Input, Result> = {
   check?(agent: CompanionAgent, input: Input, workspace: CompanionWorkspace): undefined;
   act(port: GatewayPort, agent: CompanionAgent, input: Input, target: CompanionTarget): Promise<Result>;
   read?: { verify?(result: Result, current: CompanionAgent, target: CompanionTarget): unknown };
-  /** Mission workers are driven by their mission: the phone may read them, and answer what they ask, nothing else. */
-  workerAllowed?: true;
+  /** Changes what the agent is rather than what it does; a mission's workers belong to their mission, so the phone may not do these to one. */
+  structural?: true;
 };
 /** Curried so the parsed input type is fixed before the handlers are checked against it. */
 const agentOperation = <Input>(parse: AgentOperation<Input, unknown>['parse']) => <Result>(operation: Omit<AgentOperation<Input, Result>, 'parse'>) =>
@@ -191,7 +191,6 @@ const agentOperations = {
     read: {},
   }),
   'conversation.read': agentOperation(withTarget(z.object({ revision: z.number().int().nonnegative().safe() }).strict()))({
-    workerAllowed: true,
     act: async (port, agent, { revision }) => {
       if (!port.markRead) throw new Error('Read acknowledgments unavailable.');
       await port.markRead(agent.id, revision); return {};
@@ -235,7 +234,6 @@ const agentOperations = {
     read: {},
   }),
   'agent.request.respond': agentOperation(withTarget(z.object({ id: identity, conversationId: z.string().min(1).max(500), outcome: requestOutcomeSchema }).strict()))({
-    workerAllowed: true,
     check: (agent, reply, workspace) => {
       if (!workspace.agentRequests?.[agent.id]?.some((request) => request.id === reply.id && request.conversationId === reply.conversationId)) throw new Error('Request is no longer pending.');
     },
@@ -306,6 +304,7 @@ const agentOperations = {
     act: async (port, agent, input) => ({ reviewerAgentId: await port.startReview(agent.id, input) ?? null }),
   }),
 } satisfies Record<string, AgentOperation<unknown, unknown>>;
+for (const method of ['agent.backend.set', 'agent.rename', 'agent.duplicate', 'agent.restart', 'agent.close.preview', 'agent.close', 'agent.review.setup', 'agent.review.start'] as const) agentOperations[method].structural = true;
 export const companionAgentMethods = Object.keys(agentOperations);
 type Peer = { peerId: string; grant: CompanionGrant };
 type Operation = (peer: Peer, args: unknown) => Promise<unknown>;
@@ -569,11 +568,11 @@ export class CompanionGateway {
   private async admit(peer: Peer, key: string, command: z.infer<typeof commandSchema>, fingerprint: string): Promise<SettledCommand> {
     const { pending, uploads } = await this.mutate(async () => {
       this.requireGrant(peer);
-      const agent = await this.validateTarget(command.target);
+      const agent = await this.validateTarget(command.target, true);
       if (command.options?.skills?.length) {
         const catalog = await this.port.skills(agent.id);
         if (command.options.skills.some((selected) => !catalog.some((skill) => skill.enabled && skill.name === selected.name && skill.path === selected.path))) throw new Error('Skill is unavailable.');
-        const current = await this.validateTarget(command.target);
+        const current = await this.validateTarget(command.target, true);
         if (current.backend !== agent.backend || current.folder !== agent.folder) throw new Error('Target is stale.');
         this.requireGrant(peer);
       }
@@ -602,7 +601,7 @@ export class CompanionGateway {
   }
   private async runAgentOperation(peer: Peer, operation: AgentOperation<unknown, unknown>, args: unknown) {
     const { target, input } = operation.parse(args);
-    const worker = Boolean(operation.read || operation.workerAllowed);
+    const worker = !operation.structural;
     const { agent, workspace } = await this.resolveTarget(target, worker);
     operation.check?.(agent, input, workspace);
     this.requireGrant(peer);

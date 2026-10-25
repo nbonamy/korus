@@ -170,8 +170,9 @@ the device grant before returning, and do not depend on the selected conversatio
 Missions cross as read-only progress: stage, status and each ticket's state, derived the
 way the desktop's implementation board derives it, for active missions and the most
 recent twenty. The workers implementing tickets stay out of the agent list but are
-listed separately, so a phone can open one from its mission. A worker accepts only reads
-and answers to the questions or approvals it raises; every other operation is refused.
+listed separately, so a phone can open one from its mission. A worker is talked to like any agent (prompts, answers
+to its questions and approvals, interrupts, model and permission choices), but the phone cannot rename, restart,
+close, duplicate or re-engine it; the laptop refuses those.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks

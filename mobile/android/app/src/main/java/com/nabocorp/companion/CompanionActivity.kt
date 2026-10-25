@@ -210,8 +210,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         },
                         bottomBar = { if (state.string("agentId").isNotBlank()) Column {
                             RequestBanner(model)
-                            // A mission drives its workers; what they ask still arrives in the banner above.
-                            if (model.workerMission == null) Composer(model, pickAttachment, toggleDictation)
+                            Composer(model, pickAttachment, toggleDictation)
                         } },
                         modifier = Modifier.imePadding(),
                     ) { padding ->

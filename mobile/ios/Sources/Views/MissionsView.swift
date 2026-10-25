@@ -11,7 +11,7 @@ struct MissionsScreen: View {
             let completed = model.missions.filter { !$0.isActive }
             let attention = active.filter { $0.attentionCount > 0 }
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     if let first = attention.first { AttentionStrip(count: attention.reduce(0) { $0 + $1.attentionCount }, open: first.id) }
                     ForEach(active) { mission in
                         NavigationLink(value: mission.id) { MissionCard(mission: mission) }.buttonStyle(.plain)
@@ -122,9 +122,9 @@ private struct MissionCard: View {
     let mission: MissionSummary
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             MissionGauge(mission: mission)
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(mission.outcome).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
                 if mission.isReadyToShip {
                     Label("Ready to ship", systemImage: "checkmark.circle.fill").font(.caption.weight(.medium)).foregroundStyle(.green)
@@ -137,9 +137,9 @@ private struct MissionCard: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, 20).padding(.vertical, 20)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
@@ -327,25 +327,19 @@ private struct TicketRow: View {
     }
 }
 
-/// Under a worker's header: which ticket this is and how the mission stands, so the conversation never loses its context.
+/// Under a worker's header: which ticket this is, so the conversation never loses its context.
 struct MissionContextBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         if let reference = model.workerMission, let mission = model.missions.first(where: { $0.id == reference.id }),
            let ticket = mission.tickets.first(where: { $0.agentId == model.activeAgentID }) {
-            VStack(spacing: 6) {
-                HStack {
-                    Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)").lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text("\(mission.done)/\(mission.tickets.count)").monospacedDigit()
-                }
-                .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                ProgressView(value: mission.progress).scaleEffect(x: 1, y: 0.6, anchor: .center).tint(.accentColor)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(.bar)
-            .accessibilityElement(children: .combine)
+            Text("Mission · ticket \(ticket.number) of \(mission.tickets.count) · \(MissionTicketState(ticket.state).label)")
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .background(.bar)
+                .accessibilityElement(children: .combine)
         }
     }
 }

@@ -345,7 +345,7 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
   });
 
-  it('lets the phone read a mission worker and answer what it asks, and nothing else', async () => {
+  it('lets the phone work with a mission worker like any agent, but not restructure it', async () => {
     const f = fixture();
     const worker = { id: 'worker', name: 'Worker', teamId: 'team', folder: '/private', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '' };
     const workerTarget = { ...target, agentId: 'worker' };
@@ -356,12 +356,15 @@ describe('companion authorization gateway', () => {
     const reply = { target: workerTarget, id: 'q', conversationId: 'conversation', outcome: { kind: 'answered', answers: { choice: { answers: ['Yes'] } } } };
     await f.gateway.request('phone', 'agent.request.respond', reply);
     expect(f.port.respondRequest).toHaveBeenCalledExactlyOnceWith({ agentId: 'worker', id: 'q', outcome: reply.outcome });
-    for (const [method, args] of [['agent.interrupt', workerTarget], ['agent.rename', { target: workerTarget, name: 'Mine' }],
-      ['prompt.submit', { target: workerTarget, text: 'Hi', clientCommandId: randomUUID() }]] as const) {
+    // Talking to a worker and steering it are the composer's business.
+    expect(await f.gateway.request('phone', 'prompt.submit', { target: workerTarget, text: 'Use the staging key', clientCommandId: randomUUID() })).toMatchObject({ state: 'accepted' });
+    await f.gateway.request('phone', 'agent.interrupt', workerTarget);
+    expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('worker');
+    for (const [method, args] of [['agent.rename', { target: workerTarget, name: 'Mine' }], ['agent.restart', workerTarget], ['agent.close', { target: workerTarget }],
+      ['agent.backend.set', { target: workerTarget, backend: 'claude' }], ['agent.duplicate', { target: workerTarget, backend: 'codex' }]] as const) {
       await expect(f.gateway.request('phone', method, args)).rejects.toThrow('read-only');
     }
-    expect(f.port.interrupt).not.toHaveBeenCalled();
-    expect(f.port.submit).not.toHaveBeenCalled();
+    expect(f.port.restart).not.toHaveBeenCalled();
   });
 
   it.each([
