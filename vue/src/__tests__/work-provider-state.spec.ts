@@ -8,6 +8,35 @@ import { createWorkProviderState } from '../work-provider-state';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); configureAppClient(); });
 
 describe('work provider authorization state', () => {
+  it('retains GitHub catalogs, work and polling when GitLab disconnects', async () => {
+    vi.useFakeTimers();
+    let snapshot = createInitialSnapshot();
+    const { api } = createClientApiMock(snapshot);
+    api.connectWorkProvider.mockImplementation(async provider => {
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = [...next.workBacklog.connections.filter(c => c.provider !== provider), { provider, status: 'connecting' }];
+      return { snapshot: next, authorization: { provider, userCode: provider, verificationUri: provider === 'gitlab' ? 'https://gitlab.com/oauth/device' : 'https://github.com/login/device', expiresAt: '2099-01-01' } };
+    });
+    api.disconnectWorkProvider.mockImplementation(async provider => {
+      const next = structuredClone(snapshot);
+      next.workBacklog.connections = next.workBacklog.connections.filter(c => c.provider !== provider);
+      return next;
+    });
+    api.pollWorkProviderAuthorization.mockImplementation(async () => structuredClone(snapshot));
+    configureAppClient({ platform: 'desktop', api });
+    const state = createWorkProviderState({ getSnapshot: () => snapshot, adoptSnapshot: value => { snapshot = value; } });
+    await state.connect('github'); await state.connect('gitlab');
+    state.itemsByRepository.value = { 'github:org/repo': [], 'gitlab:gitlab.com/org/repo': [] };
+    state.repositoriesByProvider.value = { github: [], gitlab: [] };
+    await state.disconnect('gitlab');
+    expect(state.itemsByRepository.value).toStrictEqual({ 'github:org/repo': [] });
+    expect(state.authorizations.value.github?.userCode).toBe('github');
+    expect(state.authorizations.value.gitlab).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(api.pollWorkProviderAuthorization.mock.calls).toStrictEqual([['github']]);
+    await state.disconnect('github');
+  });
+
   it('reports a failed direct GitHub connect while CLI access stays connected', async () => {
     let snapshot = createInitialSnapshot();
     const { api } = createClientApiMock(snapshot);

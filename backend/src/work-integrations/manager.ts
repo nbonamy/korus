@@ -254,6 +254,7 @@ export class WorkIntegrationManager {
     pending.lastPollAt = now;
     const result = await this.driver(provider).pollAuthorization(pending.deviceCode);
     if (this.generation(provider) !== generation || this.pendingAuthorizations.get(provider) !== pending) return this.snapshot();
+    if (!await this.activePendingAuthorization(provider)) return this.snapshot();
     if (result.status === 'pending') {
       if (result.intervalSeconds) {
         pending.intervalSeconds = result.intervalSeconds;
@@ -289,6 +290,7 @@ export class WorkIntegrationManager {
     let accountLabel: string;
     try {
       accountLabel = await this.driver(provider).currentAccountLabel(token);
+      if (this.generation(provider) !== generation || !await this.activePendingAuthorization(provider)) return this.snapshot();
       await this.writeToken(provider, async () => {
         if (this.generation(provider) === generation) await this.options.tokenStore.set({ ...token, accountLabel });
       });
@@ -319,7 +321,7 @@ export class WorkIntegrationManager {
     const generation = this.invalidate(provider);
     this.disconnects.set(provider, generation);
     try {
-      const source = provider === 'github' ? { source: 'none' as const } : {};
+      const source = provider === 'github' || provider === 'gitlab' ? { source: 'none' as const } : {};
       this.setConnection({ provider, ...source, status: 'disconnected' });
       await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
       if (this.generation(provider) !== generation) return this.snapshot();
@@ -453,11 +455,17 @@ export class WorkIntegrationManager {
     if (existingRefresh) return existingRefresh;
 
     const driver = this.driver(provider);
-    if (!driver.refreshToken || !token.refreshToken || refreshTokenExpired(token)) {
-      throw new Error(`${providerLabel(provider)} needs to be reconnected.`);
-    }
-
-    const refresh = driver.refreshToken(token)
+    // A delayed token read can arrive after the shared refresh has completed.
+    // Re-read inside the shared operation before consuming a rotating refresh token.
+    const refresh = Promise.resolve().then(async () => {
+      const current = await this.options.tokenStore.get(provider);
+      if (this.generation(provider) !== generation) throw new Error('Authorization was cancelled.');
+      if (current && (current.accessToken !== token.accessToken || current.refreshToken !== token.refreshToken)) return current;
+      if (!driver.refreshToken || !token.refreshToken || refreshTokenExpired(token)) {
+        throw new Error(`${providerLabel(provider)} needs to be reconnected.`);
+      }
+      return driver.refreshToken(token);
+    })
       .then(async (refreshedToken) => {
         await this.writeToken(provider, async () => {
           if (this.generation(provider) !== generation) throw new Error('Authorization was cancelled.');
@@ -576,7 +584,7 @@ function publicAuthorization(authorization: WorkProviderDeviceAuthorization): Wo
 }
 
 function directConnectionSource(provider: WorkProviderKind): { source?: 'api' } {
-  return provider === 'github' ? { source: 'api' } : {};
+  return provider === 'github' || provider === 'gitlab' ? { source: 'api' } : {};
 }
 
 function providerLabel(provider: WorkProviderKind): string {

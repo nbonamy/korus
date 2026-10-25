@@ -78,6 +78,7 @@ export type WorkProviderAuthorization = {
 /** An opaque provider-owned backlog scope, independent of an execution repository. */
 export type WorkSource = {
   provider: WorkProviderKind;
+  /** Opaque within the provider. GitLab repositories include gitlab.com and the full namespace path. */
   id: string;
   owner?: string;
   name: string;

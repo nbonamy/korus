@@ -109,7 +109,8 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     options.adoptSnapshot(snapshot);
     setAuthorization(provider, null);
     repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
-    itemsByRepository.value = {};
+    itemsByRepository.value = Object.fromEntries(Object.entries(itemsByRepository.value).filter(([key]) => !key.startsWith(`${provider}:`)));
+    assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: [] };
     status.value = 'notLoaded';
     error.value = null;
   }

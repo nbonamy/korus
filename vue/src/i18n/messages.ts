@@ -3,6 +3,10 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    gitlabIntegration: {
+      description: 'Repositories, issues and merge requests',
+      setup: `Register a ${product.name} public OAuth application on GitLab.com with the api scope, then set APP_GITLAB_CLIENT_ID on the owning host and restart it.`,
+    },
     modelPicker: { label: 'Coding agent and model', model: 'Model', loading: 'Loading models…' },
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {

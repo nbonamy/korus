@@ -7,6 +7,17 @@ afterEach(() => {
 });
 
 describe('backend runtime config', () => {
+  it('resolves the GitLab public client ID independently from settings, environment and build defaults', async () => {
+    vi.stubGlobal('__APP_GITLAB_CLIENT_ID__', 'packaged-gitlab');
+    vi.stubEnv('APP_GITLAB_CLIENT_ID', undefined);
+    const { runtimeGitLabOAuthClientId } = await import('../runtime-config');
+    expect(runtimeGitLabOAuthClientId()).toBe('packaged-gitlab');
+    vi.stubEnv('APP_GITLAB_CLIENT_ID', ' env-gitlab ');
+    expect(runtimeGitLabOAuthClientId()).toBe('env-gitlab');
+    expect(runtimeGitLabOAuthClientId({ oauthClientId: ' saved-gitlab ' })).toBe('saved-gitlab');
+    expect(runtimeGitLabOAuthClientId({ oauthClientId: ' ' })).toBe('env-gitlab');
+  });
+
   it('uses the app client ID when saved Linear settings are blank', async () => {
     vi.stubEnv('APP_LINEAR_CLIENT_ID', ' app-client ');
     const { runtimeLinearOAuthSettings } = await import('../runtime-config');

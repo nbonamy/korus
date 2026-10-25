@@ -4,6 +4,39 @@ import { describe, expect, it, vi } from 'vitest';
 import SettingsIntegrationsPanel from '../SettingsIntegrationsPanel.vue';
 
 describe('SettingsIntegrationsPanel', () => {
+  // Settings owns provider-specific actions: simultaneous codes/accounts/errors must
+  // stay in their own rows while the other provider remains usable.
+  it('keeps GitLab device authorization, account, errors and actions separate from GitHub', async () => {
+    const wrapper = mountPanel({ connections: [{ provider: 'github', source: 'api', status: 'connected', accountLabel: 'github-user' }] });
+    await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
+    expect(wrapper.emitted('connect')).toStrictEqual([['gitlab']]);
+    await wrapper.setProps({ connections: [
+      { provider: 'github', source: 'api', status: 'connected', accountLabel: 'github-user' },
+      { provider: 'gitlab', source: 'api', status: 'connecting' },
+    ], authorizations: { gitlab: { provider: 'gitlab', userCode: 'GL-CODE', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: '2026-12-01' } } });
+    const gitlab = wrapper.findAll('.form-section').find(row => row.text().includes('GitLab'))!;
+    expect(gitlab.text()).toContain('GL-CODE');
+    expect(gitlab.text()).not.toContain('github-user');
+    expect(wrapper.find('svg.gitlab-icon').exists()).toBe(true);
+    await gitlab.findAll('button').find(button => button.text() === 'Open GitLab')!.trigger('click');
+    expect(wrapper.emitted('open-authorization')).toStrictEqual([['gitlab']]);
+    await wrapper.get('[aria-label="Cancel GitLab authorization"]').trigger('click');
+    expect(wrapper.emitted('disconnect')).toStrictEqual([['gitlab']]);
+    await wrapper.setProps({ connections: [
+      { provider: 'github', status: 'connected', accountLabel: 'github-user' },
+      { provider: 'gitlab', status: 'notConfigured', detail: { key: 'gitlabIntegration.setup' } },
+    ] });
+    expect(wrapper.text()).toContain('APP_GITLAB_CLIENT_ID');
+    expect(wrapper.find('[aria-label="Disconnect GitHub"]').exists()).toBe(true);
+    await wrapper.setProps({ connections: [
+      { provider: 'github', status: 'connected', accountLabel: 'github-user' },
+      { provider: 'gitlab', status: 'connected', accountLabel: 'gitlab-user' },
+    ] });
+    await wrapper.get('[aria-label="Disconnect GitLab"]').trigger('click');
+    expect(wrapper.emitted('disconnect')).toStrictEqual([['gitlab'], ['gitlab']]);
+    wrapper.unmount();
+  });
+
   it('connects Linear using app configuration without showing or saving OAuth fields', async () => {
     const updateSettings = vi.fn();
     const wrapper = mountPanel({ updateSettings });
@@ -23,7 +56,7 @@ describe('SettingsIntegrationsPanel', () => {
     expect(updateSettings).not.toHaveBeenCalled();
     expect(wrapper.emitted('connect')).toEqual([['linear']]);
     await wrapper.setProps({ connections: [{ provider: 'linear', status: 'connecting' }], authorization: { provider: 'linear', flow: 'browser', verificationUri: 'https://linear.app/oauth/authorize', expiresAt: '2026-10-04T00:00:00Z' } });
-    expect(wrapper.findAll('article')).toHaveLength(2);
+    expect(wrapper.findAll('article')).toHaveLength(3);
     expect(wrapper.text()).toContain('Waiting for authorization');
     expect(wrapper.find('[aria-label="Open Linear authorization"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Cancel Linear authorization"]').trigger('click');

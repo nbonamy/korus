@@ -661,7 +661,7 @@ target and reviewer agents) plus an opaque reviewer session reference.
 
 ## Work Providers And Backlog
 
-Backlog providers (GitHub, Linear) are app-owned integrations, not agent-backend
+Work providers (GitHub, GitLab, Linear) are app-owned integrations, not agent-backend
 features. The boundary has three parts: the shared `WorkSource`/`WorkItem`
 contracts in `core/src/contracts/work.ts`, the registry in
 `core/src/work-providers.ts` (labels, capabilities, branch conventions, hosted MCP
@@ -684,6 +684,22 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   `APP_GITHUB_CLIENT_ID`, then a packaged default). Refresh-token rotation
   invalidates the old pair, so concurrent requests share one refresh. Opening the
   browser is a separate user action so the code is visible first.
+- GitLab.com uses public-client OAuth device authorization with the `api` scope.
+  The owning daemon resolves the public application ID from saved provider settings,
+  `APP_GITLAB_CLIENT_ID`, then the packaged build default. No client secret is used.
+  Register an application owned by Korus at
+  <https://gitlab.com/-/user_settings/applications>, disable **Confidential**, and
+  enable **api**. Use `https://gitlab.com/oauth/device` for the required redirect
+  URI field; the device flow does not use a local callback. Supply its Application
+  ID through `APP_GITLAB_CLIENT_ID` when starting or building the daemon, and restart
+  the owning host. A missing ID produces an actionable Settings state. Registration
+  and an authorized account/catalog smoke test are owner setup steps; no shared
+  application ID is supplied by the repository.
+  Project discovery includes role-based access inherited through groups and shared
+  projects, follows all API pages, and fails incomplete discovery explicitly.
+  GitLab source IDs are `gitlab.com/<full namespace>/<project path>`; subgroup paths
+  remain intact. These IDs are opaque to clients and are distinct from GitHub IDs.
+  API authorization does not configure Git transport credentials or hosted MCP access.
 - Linear uses authorization-code PKCE with single-use state and a fixed loopback
   callback bound only during authorization, so the browser must run on the
   computer hosting `daemon`. Scopes are `read,write`; no client secret exists.
