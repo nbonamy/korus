@@ -74,7 +74,8 @@ export type GatewayState = { push?: Record<string, CompanionPushRegistration>; g
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
   createTeam?(name: string): Promise<string>;
-  executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string })): Promise<void>;
+  executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string }
+    | { action: 'selectReviewFinding'; findingId: string; selected: boolean } | { action: 'fixSelectedReviewFindings' } | { action: 'rerunReview' })): Promise<void>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
@@ -420,7 +421,7 @@ export class CompanionGateway {
       this.requireGrant(peer);
       return { teamId: await this.port.createTeam(name) };
     },
-    // The only mission actions a phone has: move implementation on to review, and accept a finished ticket.
+    // The only mission actions a phone has: move implementation on to review, accept a finished ticket, and work through a review's findings.
     // Everything is checked against the mission as the laptop sees it now, so a stale tap changes nothing.
     'mission.continue': async (peer, args) => {
       const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
@@ -434,6 +435,28 @@ export class CompanionGateway {
       const mission = await this.mission(peer, missionId, revision);
       if (!mission.tickets.some((ticket) => ticket.state === 'awaitingReview' && ticket.runId === runId)) throw new Error('That ticket is not waiting for review.');
       await this.port.executeMission!({ id: missionId, revision, action: 'accept', runId });
+      return {};
+    },
+    'mission.finding.select': async (peer, args) => {
+      const { missionId, revision, findingId, selected } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe(), findingId: identity, selected: z.boolean() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.stage !== 'review' || !mission.review?.findings.some((finding) => finding.id === findingId && finding.state === 'open')) throw new Error('That finding cannot be changed.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'selectReviewFinding', findingId, selected });
+      return {};
+    },
+    'mission.findings.fix': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.stage !== 'review' || !mission.review?.findings.some((finding) => finding.state === 'open' && finding.selected)) throw new Error('Select a finding to fix.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'fixSelectedReviewFindings' });
+      return {};
+    },
+    'mission.review.rerun': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      const findings = mission.review?.findings ?? [];
+      if (mission.stage !== 'review' || !findings.length || !findings.every((finding) => finding.state === 'fixed' || finding.state === 'skipped')) throw new Error('Finish fixing before reviewing again.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'rerunReview' });
       return {};
     },
     'project.local.list': async (peer, args) => {

@@ -118,6 +118,19 @@ describe('companion workspace projection', () => {
       expect(workspace.agents.map(({ id }) => id)).toStrictEqual(['chat']);
       expect(workspace.missionAgents.map(({ id }) => id)).toStrictEqual(['lead']);
     });
+    it('shares a review\'s findings and what became of them without host paths', () => {
+      const finding = (id: string, patch: Record<string, unknown> = {}) => ({ id, priority: 'p1', title: `Finding ${id}`, body: 'Why it matters.', repositoryPath: '/Users/me/src/korus',
+        location: { file: '/Users/me/src/korus/auth/session.ts', line: 142, endLine: 150 }, selected: false, remediation: { state: 'open' }, createdAt: now, updatedAt: now, ...patch });
+      const review = projectCompanionWorkspace(source([mission('m', { stage: 'review', artifacts: { tickets: [], review: { summary: 'Two issues', pullRequestUrl: '', findings: [
+        finding('a', { selected: true }), finding('b', { priority: 'p3', location: undefined, remediation: { state: 'fixed', completedAt: now } }), finding('c', { remediation: { state: 'fixing', startedAt: now } })] } } })])).missionProgress[0]!.review!;
+      expect(review.summary).toBe('Two issues');
+      expect(review.findings[0]).toStrictEqual({ id: 'a', priority: 'p1', title: 'Finding a', body: 'Why it matters.', repository: 'korus', file: 'auth/session.ts', line: 142, endLine: 150, selected: true, state: 'open' });
+      expect(review.findings.map(({ state }) => state)).toStrictEqual(['open', 'fixed', 'fixing']);
+      expect(review.findings[1]).not.toHaveProperty('file');
+      expect(JSON.stringify(review)).not.toContain('/Users/me');
+      // A mission with nothing reviewed yet sends no review at all.
+      expect(projectCompanionWorkspace(source([mission('empty', { artifacts: { tickets: [], review: { summary: '', pullRequestUrl: '', findings: [] } } })])).missionProgress[0]).not.toHaveProperty('review');
+    });
     it('omits missions of teams the phone cannot see', () => {
       expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
     });

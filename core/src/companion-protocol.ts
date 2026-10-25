@@ -37,6 +37,12 @@ export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'chan
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
 /** A ticket's progress as the desktop's implementation board shows it. */
 export type CompanionMissionTicketState = 'blocked' | 'queued' | 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
+export type CompanionReviewFinding = { id: string; priority: 'p0' | 'p1' | 'p2' | 'p3'; title: string; body: string;
+  /** The repository's folder name, never its path on the laptop. */
+  repository: string; file?: string; line?: number; endLine?: number;
+  selected: boolean; state: 'open' | 'fixing' | 'fixed' | 'skipped' };
+/** The review's verdict and findings, so a person can choose what to fix without opening the desktop. */
+export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[] };
 /** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
 /** `after` lists the numbers of the unfinished tickets this one waits for. */
 export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[];
@@ -49,7 +55,8 @@ export type CompanionMission = { id: string; teamId: string; outcome: string; st
   /** Changes only with the mission; an action on it is refused if the mission moved on. */
   revision: number;
   /** What a person can do next: move implementation on to review, or ship (which only the desktop does). */
-  next?: 'review' | 'ship' };
+  next?: 'review' | 'ship';
+  review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
 export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
   /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */

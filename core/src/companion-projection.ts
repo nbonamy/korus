@@ -1,8 +1,8 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, BackendDefaults, Team } from './contracts';
-import type { CompanionGitStatus, CompanionMission, CompanionMissionTicketState, CompanionWorkspace } from './companion-protocol';
-import type { Mission } from './mission-types';
+import type { CompanionGitStatus, CompanionMission, CompanionMissionReview, CompanionMissionTicketState, CompanionReviewFinding, CompanionWorkspace } from './companion-protocol';
+import type { Mission, MissionReviewFinding } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentBackends, providerConnectionsForTeam } from './agent-backends';
 import { repositoryIconForAgent } from './workspace-sidebar';
@@ -94,6 +94,22 @@ function missionNext(mission: Mission): 'review' | 'ship' | undefined {
   return undefined;
 }
 
+const maxReviewFindings = 100;
+const lastSegments = (value: string, count: number) => value.replace(/\\/gu, '/').split('/').filter(Boolean).slice(-count).join('/');
+/** The review as the phone needs it: what was found, where, and what has happened to it, with no host paths. */
+function missionReview(mission: Mission): CompanionMissionReview | undefined {
+  const review = mission.artifacts?.review;
+  if (!review || (!review.summary?.trim() && !review.findings?.length)) return undefined;
+  const findings = (review.findings ?? []).slice(0, maxReviewFindings).map((finding: MissionReviewFinding): CompanionReviewFinding => {
+    const file = finding.location?.file ? lastSegments(finding.location.file, 2) : '';
+    return { id: finding.id, priority: finding.priority, title: finding.title.slice(0, maxMissionText), body: finding.body.slice(0, 4_000),
+      repository: lastSegments(finding.repositoryPath, 1), ...(file ? { file } : {}),
+      ...(finding.location?.line === undefined ? {} : { line: finding.location.line }), ...(finding.location?.endLine === undefined ? {} : { endLine: finding.location.endLine }),
+      selected: finding.selected, state: finding.remediation.state };
+  });
+  return { summary: review.summary.slice(0, 4_000), findings };
+}
+
 /** When the work began: the first implementation run, else when the mission was created. */
 function missionStart(mission: Mission): string {
   const runs = (mission.execution?.runs ?? []).filter((run) => run.stage === 'implementation' && run.startedAt).map((run) => run.startedAt).sort();
@@ -108,7 +124,7 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
   const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLead(mission) ? { leadAgentId: missionLead(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}),
+    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLead(mission) ? { leadAgentId: missionLead(mission)! } : {}), revision: mission.revision, ...(missionNext(mission) ? { next: missionNext(mission)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
     tickets: mission.artifacts.tickets.map((ticket, index) => {
       const { state, workerId, runId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);

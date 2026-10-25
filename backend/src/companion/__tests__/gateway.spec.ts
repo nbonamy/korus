@@ -394,6 +394,35 @@ describe('companion authorization gateway', () => {
     expect(executeMission).not.toHaveBeenCalled();
   });
 
+  it('lets the phone select a review\'s open findings, fix the selected ones and review again, only as the review stands', async () => {
+    const f = fixture();
+    const executeMission = vi.fn(async () => {});
+    (f.port as Record<string, unknown>).executeMission = executeMission;
+    const finding = (id: string, state: string, selected = false) => ({ id, priority: 'p1', title: id, body: '', repository: 'korus', selected, state });
+    const withFindings = (findings: ReturnType<typeof finding>[], stage = 'review') => f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [{ id: 'mission', teamId: 'team', outcome: '', stage, status: 'active', startedAt: '', updatedAt: '', revision: 6,
+      tickets: [], review: { summary: 'Reviewed', findings } }] as unknown as CompanionWorkspace['missionProgress'] });
+    withFindings([finding('open', 'open'), finding('picked', 'open', true), finding('busy', 'fixing', true)]);
+    await f.pair();
+    await f.gateway.request('phone', 'mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'open', selected: true });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'selectReviewFinding', findingId: 'open', selected: true });
+    await f.gateway.request('phone', 'mission.findings.fix', { missionId: 'mission', revision: 6 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'fixSelectedReviewFindings' });
+    executeMission.mockClear();
+    for (const [method, args] of [
+      ['mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'busy', selected: false }], // already being fixed
+      ['mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'nope', selected: true }],
+      ['mission.finding.select', { missionId: 'mission', revision: 5, findingId: 'open', selected: true }], // the review moved on
+      ['mission.review.rerun', { missionId: 'mission', revision: 6 }], // something is still open
+    ] as const) await expect(f.gateway.request('phone', method, args)).rejects.toThrow();
+    withFindings([finding('a', 'fixed'), finding('b', 'skipped')]);
+    await f.gateway.request('phone', 'mission.review.rerun', { missionId: 'mission', revision: 6 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'rerunReview' });
+    executeMission.mockClear();
+    withFindings([finding('a', 'open', true)], 'implementation');
+    await expect(f.gateway.request('phone', 'mission.findings.fix', { missionId: 'mission', revision: 6 })).rejects.toThrow('Select');
+    expect(executeMission).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['answers a request', 'agent.request.respond', 'respondRequest'],
     ['changes the engine', 'agent.backend.set', 'setBackend'],
