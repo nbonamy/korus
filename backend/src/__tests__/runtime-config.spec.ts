@@ -1,4 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { build } from 'vite';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -7,6 +14,32 @@ afterEach(() => {
 });
 
 describe('backend runtime config', () => {
+  it('retains all release application IDs in the executable package without runtime environment configuration', async () => {
+    const providers = ['GITHUB', 'GITLAB', 'LINEAR'] as const;
+    for (const provider of providers) vi.stubEnv(`APP_${provider}_CLIENT_ID`, `release-${provider.toLowerCase()}`);
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'korus-packaged-config-'));
+    try {
+      const result = await build({
+        configFile: path.resolve(import.meta.dirname, '../../vite.config.ts'),
+        logLevel: 'silent',
+        build: { ssr: path.resolve(import.meta.dirname, '../runtime-config.ts'), write: false, sourcemap: false },
+      });
+      if (Array.isArray(result) || !('output' in result)) throw new Error('Expected one executable package.');
+      const entry = result.output.find(output => output.type === 'chunk' && output.isEntry);
+      if (!entry || entry.type !== 'chunk') throw new Error('Packaged runtime configuration is missing.');
+      const file = path.join(directory, 'runtime.mjs');
+      await writeFile(file, entry.code);
+      const env = { ...process.env };
+      for (const provider of providers) delete env[`APP_${provider}_CLIENT_ID`];
+      const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e',
+        `const config = await import(${JSON.stringify(pathToFileURL(file).href)}); console.log(JSON.stringify({ github: config.runtimeGitHubOAuthClientId(), gitlab: config.runtimeGitLabOAuthClientId(), linear: config.runtimeLinearOAuthSettings().oauthClientId }));`,
+      ], { env });
+      expect(JSON.parse(stdout)).toStrictEqual({ github: 'release-github', gitlab: 'release-gitlab', linear: 'release-linear' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('resolves the GitLab public client ID independently from settings, environment and build defaults', async () => {
     vi.stubGlobal('__APP_GITLAB_CLIENT_ID__', 'packaged-gitlab');
     vi.stubEnv('APP_GITLAB_CLIENT_ID', undefined);

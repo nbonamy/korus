@@ -65,6 +65,7 @@ jobs:
     environment: desktop-build
     env:
       APP_GITHUB_CLIENT_ID: ${{ secrets.APP_GITHUB_CLIENT_ID }}
+      APP_GITLAB_CLIENT_ID: ${{ secrets.APP_GITLAB_CLIENT_ID }}
       APP_LINEAR_CLIENT_ID: ${{ secrets.APP_LINEAR_CLIENT_ID }}
       APP_COMPANION_RELAY_URL: ${{ secrets.APP_COMPANION_RELAY_URL }}
       APP_COMPANION_RELAY_PEER_ID: ${{ secrets.APP_COMPANION_RELAY_PEER_ID }}
