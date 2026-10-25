@@ -24,7 +24,7 @@ export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; 
 /** The link to one laptop: whether the app is looking at it, when it is lost, and how it ends. */
 type CompanionLink = {
   setActive?(active: boolean): Promise<void>;
-  onDisconnect(listener: () => void): () => void;
+  onDisconnect(listener: (reason?: string) => void): () => void;
   close(): void;
 };
 /** What the app can ask of the paired laptop over a link. */

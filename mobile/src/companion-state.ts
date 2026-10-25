@@ -34,6 +34,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
+  /** Why the laptop was last unreachable, for the person staring at "Connection lost"; cleared once connected. */
+  const errorDetail = ref('');
   // Every list read from the laptop on demand is dropped when the connection or its context changes.
   const remote = { session: () => session, connected: () => status.value === 'connected' };
   const usageList = createRemoteList<CompanionUsage>(remote, {});
@@ -338,8 +340,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (!isForeground) void session.setActive?.(false).catch(() => {});
       reconcileNotificationReads(nextWorkspace);
       workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
-      const removeDisconnect = session.onDisconnect(() => {
+      const removeDisconnect = session.onDisconnect((reason) => {
         if (epoch !== connectionEpoch) return;
+        errorDetail.value = reason ?? '';
         ++selectionEpoch;
         ++conversationGeneration.value;
         loading.value = false;
@@ -359,16 +362,17 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) forwardNotification(notification); }) ?? (() => {});
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
-      status.value = 'connected';
+      status.value = 'connected'; errorDetail.value = '';
       // Receipt reads must not hold back the transcript; they settle while it loads.
       const receiptsSettled = receipts.reconcile();
       if (teamId.value) await selectAgent(agentId.value);
       await receiptsSettled;
       if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) backoff.reset();
-    } catch {
+    } catch (failure) {
       opened?.close();
       if (epoch === connectionEpoch) {
         error.value = 'mobile.errors.openLaptop';
+        errorDetail.value = failure instanceof Error ? `${failure.name}: ${failure.message}`.slice(0, 160) : '';
         if (workspaceLoaded) { status.value = 'error'; retryConnection(); }
         else { reconnectWanted = false; status.value = 'unpaired'; }
       }
@@ -665,7 +669,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return {
     // The link to the laptop.
-    status, error, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
+    status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
     teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation,
     // The selected conversation and its history.

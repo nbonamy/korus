@@ -52,6 +52,8 @@ final class AppModel {
     var connection: ConnectionState = .unpaired {
         didSet { if connection != oldValue { updateConnectionNotice(); updateUpdatingIndicator(); updateBackgroundExecution() } }
     }
+    /// Why the laptop could not be reached, shown under the lost-connection message.
+    var connectionDetail = ""
     var laptops: [EngineState.Laptop] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
@@ -258,6 +260,7 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        set(\.connectionDetail, state.errorDetail ?? "")
         set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)

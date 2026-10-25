@@ -35,6 +35,7 @@ export type EngineState = {
   connection: string;
   /** A `mobile.errors.*` key the shell words itself. */
   error: string;
+  errorDetail: string;
   laptops: { id: string; name: string }[];
   pairing: 'idle' | 'working' | 'awaitingApproval';
   pairingError: string;
@@ -267,7 +268,7 @@ export function createEngine(port: EnginePort) {
       pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       usage: state.usage.value,
-      startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
+      startup: startup.value, connection: state.status.value, error: state.error.value, errorDetail: state.errorDetail.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,

@@ -45,7 +45,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const { host, network, caches, onClosed } = deps;
   const call = <Result>(method: string, args: unknown) => network.request<Result>(host, method, args);
   let closed = false; let workspace: CompanionWorkspace = { teams: [], agents: [] };
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(reason?: string) => void>();
   const notifications = new Set<(notification: CompanionNotification) => void>();
   const updates = new Set<(workspace: CompanionWorkspace, conversation: CompanionConversation | null) => void>();
 
@@ -73,7 +73,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
   const failed = (reason?: CompanionDisconnectReason) => {
     if (closed) return;
     if (reason === 'resume-timeout') network.retireRoutes(host);
-    close(); for (const listener of listeners) listener();
+    close(); for (const listener of listeners) listener(reason);
   };
   const cacheRequest: ConstructorParameters<typeof ConversationCache>[0] = (method, target, checkpoint) =>
     method === 'conversation.subscribe' && workspace.conversationSync

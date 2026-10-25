@@ -84,6 +84,7 @@ struct EngineState: Decodable {
     let startup: Startup
     let connection: ConnectionState
     let error: String
+    let errorDetail: String?
     let laptops: [Laptop]
     let pairing: Pairing
     let pairingError: String
