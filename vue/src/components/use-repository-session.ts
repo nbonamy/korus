@@ -16,6 +16,7 @@ import type {
   WorkProviderKind,
 } from '@workspace/core/contracts';
 import { workItemAssignmentPrompt, workItemBranchName } from '@workspace/core/work-item-prompts';
+import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { computed, ref } from 'vue';
 import { translate } from '../i18n';
 import type { WorkItemAssignmentSelection, WorkItemAssignmentSession } from './WorkItemAssignmentPicker.vue';
@@ -31,11 +32,13 @@ export function useRepositorySession(options: {
     options?: { reuseExisting?: boolean; backend?: AgentBackend; model?: string; reasoningEffort?: string; repository?: SourceRepository; isCurrent?: () => boolean; onPhase?: (phase: 'creatingAgent') => void },
   ) => Promise<{ agent: Agent; item: WorkItem }>;
   createSourceWorktree: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
+  getAgentGitRemote?: (agentId: string) => Promise<string | undefined>;
   getSnapshot: () => AppSnapshot;
-  getWorkRepositories: () => WorkSource[];
+  getWorkRepositories: (provider: WorkProviderKind) => WorkSource[];
+  listSourceRepositories: (remoteConnectionId?: string) => Promise<SourceRepository[]>;
   listSourceBranches: (repoPath: string, remoteConnectionId?: string) => Promise<SourceBranch[]>;
   loadWorkItems: (repositoryId: string, location?: AutomationLocation, provider?: WorkProviderKind) => Promise<WorkItem[]>;
-  loadWorkRepositories: (location?: AutomationLocation) => Promise<WorkSource[]>;
+  loadWorkRepositories: (location?: AutomationLocation, provider?: WorkProviderKind) => Promise<WorkSource[] | void>;
   notifyError: (message: string) => void;
   prefillWorkItemForAgent: (agentId: string, item: WorkItem) => void;
   startWorkItemInExistingSession: (
@@ -93,7 +96,7 @@ export function useRepositorySession(options: {
     workSourceId.value = null;
     error.value = null;
     loading.value = true;
-    const { remoteConnectionId, location } = context(nextSource);
+    const { teamId, remoteConnectionId, location } = context(nextSource);
     try {
       const loadedBranches = await options.listSourceBranches(nextSource.repositoryRoot, remoteConnectionId || undefined);
       if (requestId !== sourceRequestId) return;
@@ -105,17 +108,26 @@ export function useRepositorySession(options: {
           if (requestId === sourceRequestId) workItems.value = loadedItems;
           return;
         }
-        const repositories = await options.loadWorkRepositories(location);
+        const checkouts = await options.listSourceRepositories(remoteConnectionId);
         if (requestId !== sourceRequestId) return;
-        const matchingRepositories = (repositories.length > 0 ? repositories : options.getWorkRepositories())
-          .filter((repository) => (
-            repository.name === nextSource.repositoryName ||
-            repository.fullName.endsWith(`/${nextSource.repositoryName}`)
-          ));
+        const checkout = checkouts.find(repository => repository.path === nextSource.repositoryRoot
+          || repository.worktrees.some(worktree => worktree.path === nextSource.repositoryRoot));
+        const owningAgent = options.getSnapshot().agents.find(agent => (!nextSource.agentId || agent.id === nextSource.agentId)
+          && agent.teamId === teamId && agent.workspace?.kind === 'git'
+          && (agent.workspace.primaryWorktreeRoot === nextSource.repositoryRoot || agent.workspace.repositoryRoot === nextSource.repositoryRoot));
+        const identity = checkout ? checkout.remoteIdentity : owningAgent
+          ? canonicalGitRemoteIdentity(await options.getAgentGitRemote?.(owningAgent.id) ?? '') : undefined;
+        if (requestId !== sourceRequestId) return;
+        const provider = identity?.startsWith('github.com/') ? 'github' : identity?.startsWith('gitlab.com/') ? 'gitlab' : undefined;
+        if (!provider) return;
+        const repositories = await options.loadWorkRepositories(location, provider);
+        if (requestId !== sourceRequestId) return;
+        const matchingRepositories = (repositories ?? (location ? [] : options.getWorkRepositories(provider)))
+          .filter(repository => repository.provider === provider && canonicalGitRemoteIdentity(repository.url) === identity);
         const workRepository = matchingRepositories.length === 1 ? matchingRepositories[0] : undefined;
         if (workRepository) {
           workSourceId.value = workRepository.id;
-          const loadedItems = await options.loadWorkItems(workRepository.id, location);
+          const loadedItems = await options.loadWorkItems(workRepository.id, location, provider);
           if (requestId === sourceRequestId) workItems.value = loadedItems;
         }
       } catch {

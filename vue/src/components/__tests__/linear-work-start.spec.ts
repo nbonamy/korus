@@ -40,6 +40,7 @@ describe('Linear issue to repository session', () => {
           ui: { confirmReassignment: async () => true, focusComposer: vi.fn(), openNewAgent: vi.fn(), selectAgent: vi.fn(), updateComposer: vi.fn() },
         });
         session = useRepositorySession({ activeTeamId: () => team.id, getSnapshot: () => snapshot, getWorkRepositories: () => [],
+          listSourceRepositories: async () => [],
           assignWorkItem: assign, createAgent, createIsolatedWorkItemAgent: routing.createIsolatedAgent, createSourceWorktree: createWorktree,
           listSourceBranches: async () => [{ name: 'main', isDefault: true }], loadWorkRepositories: async () => [], loadWorkItems: async () => [],
           notifyError: vi.fn(), prefillWorkItemForAgent: routing.prefill, startWorkItemInExistingSession: routing.startInExistingSession,

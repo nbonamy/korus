@@ -46,6 +46,107 @@ afterEach(() => {
 });
 
 describe('AppShell work routing', () => {
+  it.each([
+    { provider: 'gitlab' as const, remoteConnectionId: undefined },
+    { provider: 'github' as const, remoteConnectionId: undefined },
+    { provider: 'gitlab' as const, remoteConnectionId: 'connection-devbox' },
+  ])('reopens $provider work from the selected checkout identity on host $remoteConnectionId', async ({ provider, remoteConnectionId }) => {
+    const snapshot = createInitialSnapshot();
+    const team = snapshot.teams[0]!;
+    if (remoteConnectionId) team.remoteConnectionId = remoteConnectionId;
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    const github: WorkSource = { provider: 'github', id: 'owner/repo', name: 'repo', fullName: 'owner/repo', url: 'https://github.com/owner/repo' };
+    const gitlab: WorkSource = { provider: 'gitlab', id: 'gitlab.com/group/sub/repo', name: 'repo', fullName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo' };
+    const selected = provider === 'github' ? github : gitlab;
+    const identity = provider === 'github' ? `github.com/${selected.id}` : selected.id;
+    if (remoteConnectionId) setElectronTestClient({ getAutomationSnapshot: async () => snapshot });
+    const request = workItem({ provider, kind: 'pullRequest', id: `${selected.id}!7`, sourceId: selected.id, sourceName: selected.fullName, number: 7, title: `${provider} selected request`, branchName: 'feature/selected' });
+    const listSourceRepositories = vi.fn().mockResolvedValue([{ name: 'renamed-local', path: '/code/selected', remoteIdentity: identity, worktrees: [] }]);
+    const loadWorkRepositories = vi.fn(async (host: string) => host === 'github' ? [github] : [gitlab, { ...gitlab, id: 'gitlab.com/other/repo', fullName: 'other/repo', url: 'https://gitlab.com/other/repo' }]);
+    const loadWorkItems = vi.fn().mockResolvedValue([request]);
+    const wrapper = mountShell({ snapshot, listSourceRepositories, listSourceBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]), loadWorkRepositories, loadWorkItems,
+      // An ambient same-named checkout must not override the selected host's scan.
+      sourceRepositories: [{ name: 'repo', path: '/code/selected', remoteIdentity: provider === 'gitlab' ? 'github.com/owner/repo' : gitlab.id, worktrees: [] }],
+      workRepositoriesByProvider: { github: [github], gitlab: [gitlab] },
+    });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { teamId: team.id, repositoryName: 'repo', repositoryRoot: '/code/selected' });
+    await flushPromises();
+    expect(listSourceRepositories).toHaveBeenCalledExactlyOnceWith(remoteConnectionId);
+    expect(loadWorkRepositories).toHaveBeenCalledExactlyOnceWith(provider, remoteConnectionId ? { kind: 'remote', remoteConnectionId } : undefined);
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith(provider, selected.id, remoteConnectionId ? { kind: 'remote', remoteConnectionId } : undefined, { kind: 'all', state: 'open' });
+    const dialog = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
+    expect(dialog.props('selectedRepositoryId')).toBe(selected.id);
+    expect(dialog.props('workItems')).toStrictEqual([request]);
+    await dialog.findAll('[role="tab"]').find(tab => tab.text() === (provider === 'gitlab' ? 'Merge requests' : 'Pull requests'))!.trigger('click');
+    expect(dialog.text()).toContain(request.title);
+  });
+
+  it.each([undefined, 'example.com/owner/repo'])('keeps unidentified or unsupported repository sessions branch-only (%s)', async remoteIdentity => {
+    const loadWorkRepositories = vi.fn(); const loadWorkItems = vi.fn();
+    const wrapper = mountShell({ listSourceRepositories: vi.fn().mockResolvedValue([{ name: 'repo', path: '/code/repo', remoteIdentity, worktrees: [] }]),
+      listSourceBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]), loadWorkRepositories, loadWorkItems });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { repositoryName: 'repo', repositoryRoot: '/code/repo' });
+    await flushPromises();
+    expect(loadWorkRepositories).not.toHaveBeenCalled(); expect(loadWorkItems).not.toHaveBeenCalled();
+    const dialog = wrapper.getComponent({ name: 'RepositorySessionSourceDialog' });
+    expect(dialog.props('selectedRepositoryId')).toBeNull(); expect(dialog.props('branches')).toStrictEqual([{ name: 'main', isDefault: true }]);
+    expect(dialog.props('workItems')).toStrictEqual([]);
+  });
+
+  it('resolves a URL checkout from the owning daemon without consulting a same-named GitHub catalog', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }];
+    const source: WorkSource = { provider: 'gitlab', id: 'gitlab.com/group/sub/repo', name: 'repo', fullName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo' };
+    const checkout = { name: 'repo', path: '/code/url-repo', remoteIdentity: source.id, worktrees: [] };
+    const loadWorkRepositories = vi.fn().mockResolvedValue([source]); const loadWorkItems = vi.fn().mockResolvedValue([]);
+    const wrapper = mountShell({ snapshot, cloneSourceRepository: vi.fn().mockResolvedValue(checkout), listSourceRepositories: vi.fn().mockResolvedValue([checkout]),
+      listSourceBranches: vi.fn().mockResolvedValue([{ name: 'main', isDefault: true }]), loadWorkRepositories, loadWorkItems });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('start-work', 'url');
+    await flushPromises();
+    wrapper.getComponent({ name: 'RepositoryAcquireDialog' }).vm.$emit('clone-url', 'git@gitlab.com:group/sub/repo.git');
+    await flushPromises();
+    expect(loadWorkRepositories).toHaveBeenCalledExactlyOnceWith('gitlab', undefined);
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('gitlab', source.id, undefined, { kind: 'all', state: 'open' });
+    expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('selectedRepositoryId')).toBe(source.id);
+  });
+
+  it('resolves a checkout outside the source folder from fresh owning-host metadata instead of its saved remote', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    agent.folder = '/external/renamed';
+    agent.workspace = { kind: 'git', folder: '/external/renamed', repositoryName: 'renamed', repositoryRoot: '/external/renamed', primaryWorktreeRoot: '/external/renamed', branch: 'main', isLinkedWorktree: false, originUrl: 'git@github.com:owner/repo.git', updatedAt: 'now' };
+    const project: WorkSource = { provider: 'gitlab', id: 'gitlab.com/group/sub/repo', name: 'repo', fullName: 'group/sub/repo', url: 'https://gitlab.com/group/sub/repo' };
+    const loadWorkRepositories = vi.fn().mockResolvedValue([project]); const loadWorkItems = vi.fn().mockResolvedValue([]);
+    const getAgentGitWorkflow = vi.fn().mockResolvedValue({ repository: 'gitlab.com/group/sub/repo', folder: agent.folder, remote: 'origin', remoteUrl: 'git@gitlab.com:group/sub/repo.git', isLinkedWorktree: false, detached: false, ahead: 0, behind: 0, files: [], stagedFiles: [], unstagedFiles: [], githubConnected: false });
+    const wrapper = mountShell({ snapshot, getAgentGitWorkflow, listSourceRepositories: vi.fn().mockResolvedValue([]), listSourceBranches: vi.fn().mockResolvedValue([]), loadWorkRepositories, loadWorkItems });
+    wrapper.getComponent({ name: 'AgentSidebar' }).vm.$emit('create-agent-from-repository', { agentId: agent.id, repositoryName: 'renamed', repositoryRoot: '/external/renamed' });
+    await flushPromises();
+    expect(getAgentGitWorkflow).toHaveBeenCalledExactlyOnceWith(agent.id, { includePullRequest: false });
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('gitlab', project.id, undefined, { kind: 'all', state: 'open' });
+  });
+
+  it('discards a late GitLab catalog after another repository session opens', async () => {
+    const snapshot = createInitialSnapshot();
+    const gl: WorkSource = { provider: 'gitlab', id: 'gitlab.com/group/repo', name: 'repo', fullName: 'group/repo', url: 'https://gitlab.com/group/repo' };
+    const gh: WorkSource = { provider: 'github', id: 'owner/repo', name: 'repo', fullName: 'owner/repo', url: 'https://github.com/owner/repo' };
+    let resolveGitLab!: (sources: WorkSource[]) => void;
+    const loadWorkRepositories = vi.fn((provider: string) => provider === 'gitlab' ? new Promise<WorkSource[]>(resolve => { resolveGitLab = resolve; }) : Promise.resolve([gh]));
+    const loadWorkItems = vi.fn().mockResolvedValue([]);
+    const wrapper = mountShell({ snapshot, listSourceRepositories: vi.fn().mockResolvedValue([
+      { name: 'repo', path: '/code/gitlab', remoteIdentity: gl.id, worktrees: [] },
+      { name: 'repo', path: '/code/github', remoteIdentity: 'github.com/owner/repo', worktrees: [] },
+    ]), listSourceBranches: vi.fn().mockResolvedValue([]), loadWorkRepositories, loadWorkItems });
+    const sidebar = wrapper.getComponent({ name: 'AgentSidebar' });
+    sidebar.vm.$emit('create-agent-from-repository', { repositoryName: 'repo', repositoryRoot: '/code/gitlab' });
+    await flushPromises();
+    expect(loadWorkRepositories).toHaveBeenCalledWith('gitlab', undefined);
+    sidebar.vm.$emit('create-agent-from-repository', { repositoryName: 'repo', repositoryRoot: '/code/github' });
+    await flushPromises();
+    resolveGitLab([gl]); await flushPromises();
+    expect(wrapper.getComponent({ name: 'RepositorySessionSourceDialog' }).props('selectedRepositoryId')).toBe(gh.id);
+    expect(loadWorkItems).toHaveBeenCalledExactlyOnceWith('github', gh.id, undefined, { kind: 'all', state: 'open' });
+  });
+
   it('opens and closes the resume-session dialog for the agent selected in the sidebar menu', async () => {
     const snapshot = createInitialSnapshot();
     const targetAgent = snapshot.agents[0]!;
@@ -82,6 +183,7 @@ describe('AppShell work routing', () => {
     const sourceRepository: SourceRepository = {
       name: 'agent-workspace',
       path: '/Users/nbonamy/src/agent-workspace',
+      remoteIdentity: 'github.com/nbonamy/agent-workspace',
       worktrees: [{ name: 'main', path: '/Users/nbonamy/src/agent-workspace' }],
     };
     const githubRepository: WorkSource = {
@@ -127,6 +229,7 @@ describe('AppShell work routing', () => {
     const wrapper = mountShell({
       snapshot,
       sourceRepositories: [sourceRepository],
+      listSourceRepositories: vi.fn().mockResolvedValue([sourceRepository]),
       listSourceBranches,
       loadWorkItems,
       createSourceWorktree,
@@ -828,6 +931,7 @@ describe('AppShell work routing', () => {
       sourceRepositories: [{
         name: 'agent-workspace',
         path: '/Users/nbonamy/src/agent-workspace',
+        remoteIdentity: 'github.com/nbonamy/agent-workspace',
         worktrees: [{ name: 'main', path: '/Users/nbonamy/src/agent-workspace' }],
       }],
     });
@@ -904,6 +1008,7 @@ describe('AppShell work routing', () => {
       sourceRepositories: [{
         name: 'agent-workspace',
         path: '/Users/nbonamy/src/agent-workspace',
+        remoteIdentity: 'github.com/nbonamy/agent-workspace',
         worktrees: [{ name: 'main', path: '/Users/nbonamy/src/agent-workspace' }],
       }],
     });
@@ -976,6 +1081,7 @@ describe('AppShell work routing', () => {
       sourceRepositories: [{
         name: 'agent-workspace',
         path: '/Users/nbonamy/src/agent-workspace',
+        remoteIdentity: 'github.com/nbonamy/agent-workspace',
         worktrees: [{ name: 'main', path: '/Users/nbonamy/src/agent-workspace' }],
       }],
     });

@@ -256,9 +256,10 @@ export function useWorkItemRouting(options: {
 
     const item = await resolvePullRequestBranch(listedItem);
     ensureCurrent(creationOptions.isCurrent);
-    const repositoryName = workItemRepositoryName(item);
+    const repositoryIdentity = item.provider === 'github' ? `github.com/${item.sourceId}`
+      : item.provider === 'gitlab' && item.sourceId.startsWith('gitlab.com/') ? item.sourceId : undefined;
     const repository = creationOptions.repository ?? (workProviderDefinition(item.provider).repositoryBacked
-      ? options.model.sourceRepositories().find((candidate) => item.provider === 'gitlab' ? item.sourceId.startsWith('gitlab.com/') && candidate.remoteIdentity === item.sourceId : candidate.name === repositoryName) : undefined);
+      ? options.model.sourceRepositories().find((candidate) => repositoryIdentity && candidate.remoteIdentity === repositoryIdentity) : undefined);
     if (!repository) throw new Error(`${item.sourceName} is not available in the source folder.`);
     if (!await confirmAssignedOverride(item, 'a new agent')) throw new Error(translate('surface.appShell.assignmentCancelled'));
     ensureCurrent(creationOptions.isCurrent);
