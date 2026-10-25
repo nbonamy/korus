@@ -153,12 +153,12 @@ describe('mobile project acquisition', () => {
     } finally { engine.dispose(); }
   });
 
-  it.each(['new', 'github', 'url'] as const)('creates from %s in the selected team and opens the result', async source => {
+  it.each(['new', 'github', 'gitlab', 'url'] as const)('creates from %s in the selected team and opens the result', async source => {
     const f = fixture();
     try {
       await f.engine.start();
       await f.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
-      const value = source === 'new' ? 'fresh-project' : source === 'github' ? 'org/repo' : 'https://github.com/org/repo';
+      const value = source === 'new' ? 'fresh-project' : source === 'gitlab' ? 'gitlab:opaque' : source === 'github' ? 'org/repo' : 'https://github.com/org/repo';
       await f.engine.dispatch({ type: 'createProject', source, value, backend: 'codex' });
       expect(f.createProject).toHaveBeenCalledExactlyOnceWith({ teamId: 'demo-team', source, value, backend: 'codex' });
       expect(f.engine.snapshot().agentId).toBe('demo-reviewer');
