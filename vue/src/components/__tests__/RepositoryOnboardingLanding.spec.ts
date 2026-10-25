@@ -64,7 +64,7 @@ describe('RepositoryOnboardingLanding', () => {
     const connect = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountLanding({ connections: [{ provider: 'gitlab', status: 'connecting' }], connect });
     await flushPromises();
-    expect(connect.mock.calls).toStrictEqual([['gitlab', { hostedMcp: true }]]);
+    expect(connect.mock.calls).toStrictEqual([['gitlab']]);
     await wrapper.setProps({ authorizations: { gitlab: pending } });
     expect(wrapper.text()).toContain('GL-CODE');
     expect(connect).toHaveBeenCalledTimes(1);
@@ -98,7 +98,7 @@ describe('RepositoryOnboardingLanding', () => {
     expect(wrapper.find('[aria-label="GitHub"] [role="alert"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Retry GitLab authorization"]').trigger('click');
     await flushPromises();
-    expect(connect.mock.calls).toStrictEqual([['gitlab', { hostedMcp: true }]]);
+    expect(connect.mock.calls).toStrictEqual([['gitlab']]);
     await wrapper.setProps({ authorizationErrors: {} });
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('GL-CODE');
@@ -110,7 +110,7 @@ describe('RepositoryOnboardingLanding', () => {
     await wrapper.get('[aria-label="Connect GitHub"]').trigger('click');
     await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
     await flushPromises();
-    expect(connect.mock.calls).toStrictEqual([['github'], ['gitlab', { hostedMcp: true }]]);
+    expect(connect.mock.calls).toStrictEqual([['github'], ['gitlab']]);
   });
 
   it('shows only the provider being authorized, without Continue, until it is cancelled', async () => {

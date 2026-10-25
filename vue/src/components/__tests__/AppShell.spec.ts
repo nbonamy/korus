@@ -212,7 +212,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.get('[aria-label="GitLab"]').text()).toContain('Using GitLab CLI');
     await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
     await flushPromises();
-    expect(connect.mock.calls).toStrictEqual([['gitlab', { hostedMcp: true }]]);
+    expect(connect.mock.calls).toStrictEqual([['gitlab']]);
     const authorization = { provider: 'gitlab' as const, userCode: 'gitlab-CODE', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: '2099-01-01' };
     const connecting = { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [both[0], { provider: 'gitlab', status: 'connecting' }] } };
     await wrapper.setProps({ snapshot: connecting as typeof snapshot, workProviderAuthorizations: { gitlab: authorization } });

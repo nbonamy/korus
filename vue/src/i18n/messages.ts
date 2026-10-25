@@ -656,7 +656,6 @@ export const messages = {
         noIssues: 'No matching issues.',
         noPullRequests: 'No matching pull requests.',
         pullRequests: 'Pull requests',
-        newBranch: 'New branch…',
         recentBranches: 'Recent branches',
         recentIssues: 'Recent issues',
         recentPullRequests: 'Recent pull requests',
@@ -696,6 +695,8 @@ export const messages = {
       branchesLoadWithDetail: 'Could not load branches: {detail}',
       clone: {
         alreadyExists: '{repository} already exists in the source folder.',
+        authenticationFailed: 'Could not access {repository} on {host}. Add an SSH key to your {host} account or sign in with its command-line tool, then try again.',
+        failed: 'Could not clone {repository}: {detail}',
         discoveryFailed: 'Cloned {repository}, but could not discover it in the source folder.',
         invalidName: 'Repository URL does not contain a valid repository name.',
         sourceFolderMissing: 'Source folder is not configured.',

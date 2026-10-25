@@ -20,9 +20,9 @@
           <p v-else-if="connection(provider)?.status === 'connecting'" class="repositories-onboarding__detail">{{ t('surface.settingsIntegrationsPanel.waitingForAuthorization') }}</p>
           <p v-if="providerError(provider)" class="repositories-onboarding__error" role="alert">{{ providerError(provider) }}</p>
           <div class="repositories-onboarding__actions">
-            <el-button v-if="connection(provider)?.status === 'connecting' && authorizationErrors?.[provider]" :aria-label="t('repositoryOnboarding.retryAuthorization', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => connectProvider(provider))">{{ t('repositoryOnboarding.retry') }}</el-button>
+            <el-button v-if="connection(provider)?.status === 'connecting' && authorizationErrors?.[provider]" :aria-label="t('repositoryOnboarding.retryAuthorization', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.retry') }}</el-button>
             <el-button v-if="connection(provider)?.status === 'connecting'" :aria-label="t('repositoryOnboarding.cancel', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => disconnect(provider))">{{ t('linearIntegration.cancel') }}</el-button>
-            <el-button v-else-if="connection(provider)?.status !== 'connected' || usingCli(provider)" type="primary" :aria-label="t('repositoryOnboarding.connect', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => connectProvider(provider))">{{ t('repositoryOnboarding.connect', { provider: label(provider) }) }}</el-button>
+            <el-button v-else-if="connection(provider)?.status !== 'connected' || usingCli(provider)" type="primary" :aria-label="t('repositoryOnboarding.connect', { provider: label(provider) })" :loading="busy[provider]" @click="run(provider, () => props.connect(provider))">{{ t('repositoryOnboarding.connect', { provider: label(provider) }) }}</el-button>
           </div>
         </section>
       </div>
@@ -85,8 +85,6 @@ async function run(provider: WorkProviderKind, action: () => Promise<void>): Pro
   catch (error) { errors.value[provider] = localizedErrorMessage(error, t); return false; }
   finally { busy.value[provider] = false; }
 }
-// GitLab's grant includes MCP so agents can use it right away, without a second authorization in Settings.
-const connectProvider = (provider: WorkProviderKind) => provider === 'gitlab' ? props.connect(provider, { hostedMcp: true }) : props.connect(provider);
 function continueOnboarding(): void {
   if (!anyBusy.value) emit('continue');
 }
@@ -94,7 +92,7 @@ onMounted(() => {
   for (const provider of providers) {
     if (connection(provider)?.status === 'connecting' && !props.authorizations[provider]) {
       // connect is idempotent for a pending backend-owned grant.
-      void run(provider, () => connectProvider(provider));
+      void run(provider, () => props.connect(provider));
     }
   }
 });

@@ -1,7 +1,7 @@
 import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { WorkProviderCliAuthenticationError, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver } from './types';
-import { workProviderDefinition } from '@workspace/core/work-providers';
+import { workProviderConnectOptions, workProviderDefinition } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
   drivers: WorkProviderDriver[];
@@ -222,7 +222,7 @@ export class WorkIntegrationManager {
     if (provider === 'linear') return this.startConnection(provider);
     const existing = this.connects.get(provider);
     if (existing) return existing;
-    const operation = this.startConnection(provider, options).finally(() => {
+    const operation = this.startConnection(provider, workProviderConnectOptions(provider, options)).finally(() => {
       if (this.connects.get(provider) === operation) this.connects.delete(provider);
     });
     this.connects.set(provider, operation);

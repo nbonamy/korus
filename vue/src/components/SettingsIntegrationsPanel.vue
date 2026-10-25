@@ -146,7 +146,11 @@ function actionLabel(action: 'connect' | 'disconnect' | 'cancel', provider: Work
 }
 
 .settings-integrations-panel__authorization {
-  padding: var(--space-16) var(--space-8) 0;
+  padding: 0 var(--space-12);
+}
+
+.settings-integrations-panel__authorization :deep(.work-authorization-steps) {
+  border-top: 1px solid var(--color-border);
 }
 
 .settings-integrations-panel__detail {
