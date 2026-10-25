@@ -74,6 +74,7 @@ export type GatewayState = { push?: Record<string, CompanionPushRegistration>; g
 const commandRetentionMs = 7 * 86_400_000;
 export type GatewayPort = {
   createTeam?(name: string): Promise<string>;
+  executeMission?(input: { id: string; revision: number } & ({ action: 'continueToReview' } | { action: 'accept'; runId: string })): Promise<void>;
   gitDiff?(agentId: string, scope: AgentGitDiffTarget): Promise<AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
   githubBranches?(repositoryId: string, remoteConnectionId?: string): Promise<CompanionProjectBranch[]>;
@@ -419,6 +420,22 @@ export class CompanionGateway {
       this.requireGrant(peer);
       return { teamId: await this.port.createTeam(name) };
     },
+    // The only mission actions a phone has: move implementation on to review, and accept a finished ticket.
+    // Everything is checked against the mission as the laptop sees it now, so a stale tap changes nothing.
+    'mission.continue': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (mission.next !== 'review') throw new Error('The mission is not ready for review.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'continueToReview' });
+      return {};
+    },
+    'mission.ticket.accept': async (peer, args) => {
+      const { missionId, revision, runId } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe(), runId: identity }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      if (!mission.tickets.some((ticket) => ticket.state === 'awaitingReview' && ticket.runId === runId)) throw new Error('That ticket is not waiting for review.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'accept', runId });
+      return {};
+    },
     'project.local.list': async (peer, args) => {
       const { teamId } = z.object({ teamId: identity }).strict().parse(args);
       if (!this.port.localRepositories) throw new Error('Repositories are unavailable.');
@@ -525,6 +542,14 @@ export class CompanionGateway {
     },
     'device.forget': async (peer, args) => { z.object({}).strict().parse(args); await this.revoke(peer.peerId); return {}; },
   };
+  private async mission(peer: Peer, missionId: string, revision: number) {
+    if (!this.port.executeMission) throw new Error('Mission actions are unavailable.');
+    this.requireGrant(peer);
+    const mission = (await this.port.workspace()).missionProgress?.find((candidate) => candidate.id === missionId);
+    if (!mission) throw new Error('Mission not found.');
+    if (mission.revision !== revision) throw new Error('The mission has changed.');
+    return mission;
+  }
   private claim(peerId: string, args: unknown) {
     const request = z.object({ code: z.string().length(8), name: z.string().trim().min(1).max(80) }).strict().parse(args);
     if (!this.pairingAttempts.take(peerId)) throw new Error('Too many pairing attempts.');

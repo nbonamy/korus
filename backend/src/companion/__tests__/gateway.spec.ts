@@ -367,6 +367,33 @@ describe('companion authorization gateway', () => {
     expect(f.port.restart).not.toHaveBeenCalled();
   });
 
+  it('lets the phone move a finished mission to review and accept a ready ticket, only as the mission stands now', async () => {
+    const f = fixture();
+    const executeMission = vi.fn(async () => {});
+    (f.port as Record<string, unknown>).executeMission = executeMission;
+    const mission = (patch: Record<string, unknown> = {}) => ({ id: 'mission', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', startedAt: '', updatedAt: '', revision: 4, next: 'review',
+      tickets: [{ number: 1, title: 'A', state: 'awaitingReview', agentId: 'w', runId: 'run-1' }, { number: 2, title: 'B', state: 'running' }], ...patch });
+    f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [mission()] as unknown as CompanionWorkspace['missionProgress'] });
+    await expect(f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 })).rejects.toThrow('authorized');
+    await f.pair();
+    await f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 4, action: 'continueToReview' });
+    await f.gateway.request('phone', 'mission.ticket.accept', { missionId: 'mission', revision: 4, runId: 'run-1' });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 4, action: 'accept', runId: 'run-1' });
+    executeMission.mockClear();
+    for (const [method, args] of [
+      ['mission.continue', { missionId: 'mission', revision: 3 }], // the mission moved on since the phone looked
+      ['mission.continue', { missionId: 'other', revision: 4 }],
+      ['mission.ticket.accept', { missionId: 'mission', revision: 4, runId: 'run-9' }], // not a run waiting for acceptance
+      ['mission.ticket.accept', { missionId: 'mission', revision: 5, runId: 'run-1' }],
+      ['mission.cancel', { missionId: 'mission', revision: 4 }],
+      ['mission.continue', { missionId: 'mission', revision: 4, action: 'reopen' }], // no way to smuggle another action in
+    ] as const) await expect(f.gateway.request('phone', method, args)).rejects.toThrow();
+    f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [mission({ next: undefined })] as unknown as CompanionWorkspace['missionProgress'] });
+    await expect(f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 })).rejects.toThrow('not ready');
+    expect(executeMission).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['answers a request', 'agent.request.respond', 'respondRequest'],
     ['changes the engine', 'agent.backend.set', 'setBackend'],
