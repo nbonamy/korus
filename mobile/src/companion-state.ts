@@ -12,7 +12,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -115,7 +115,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const rank = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
-  const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  // The sidebar lists the team's own agents; a mission's workers are opened from the mission and listed nowhere else.
+  const conversationAgents = computed(() => companionAgents(workspace.value).filter((a) => a.teamId === teamId.value));
+  const agent = computed(() => conversationAgents.value.find((a) => a.id === agentId.value) ?? null);
+  const missions = computed(() => workspace.value.missionProgress ?? []);
   function mostRecentAgent(): Agent | undefined {
     const activity = (candidate: Agent) => Math.max(Date.parse(candidate.lastActivityAt ?? '') || 0, Date.parse(candidate.createdAt) || 0);
     return agents.value.reduce<Agent | undefined>((latest, candidate) =>
@@ -425,7 +428,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   });
   const { action: sessionAction, failed: sessionActionFailed, closePreview } = actions;
   async function selectAgent(id: string) {
-    const nextAgent = agents.value.find((a) => a.id === id) ?? mostRecentAgent();
+    const nextAgent = conversationAgents.value.find((a) => a.id === id) ?? mostRecentAgent();
     id = nextAgent?.id ?? '';
     if (id !== agentId.value) queuedPromptFailed.value = false;
     goalError.value = false;
@@ -671,7 +674,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {

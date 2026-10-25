@@ -7,7 +7,7 @@ import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/co
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionBackgroundGraceMs, companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
@@ -19,7 +19,12 @@ import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
+/** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
+export type EngineMission = CompanionMission & { done: number };
 export type EngineState = {
+  missions: EngineMission[];
+  /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
+  mission: { id: string; outcome: string } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
@@ -253,11 +258,15 @@ export function createEngine(port: EnginePort) {
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
     const groups = sidebarGroups.value;
     const active = activeSession(groups);
+    const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
+      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length }));
+    const owner = agent ? state.missions.value.find((mission) => mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
+      missions, mission: owner ? { id: owner.id, outcome: owner.outcome } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
@@ -272,7 +281,8 @@ export function createEngine(port: EnginePort) {
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
       header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
-        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
+        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null }
+        : owner && agent ? { title: agent.conversationTitle || agentDisplayName(agent), repository: null, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null } : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
@@ -541,7 +551,8 @@ export function createEngine(port: EnginePort) {
       case 'selectAgent': {
         ++notificationEpoch; pendingNotification = null;
         ++restoreEpoch;
-        const owner = showingAllTeams.value ? state.workspace.value.agents.find(agent => agent.id === command.id) : undefined;
+        const owner = showingAllTeams.value || state.missions.value.some(mission => mission.tickets.some(ticket => ticket.agentId === command.id))
+          ? companionAgents(state.workspace.value).find(agent => agent.id === command.id) : undefined;
         const loading = owner?.teamId && owner.teamId !== state.teamId.value ? state.selectTeam(owner.teamId, owner.id) : state.selectAgent(command.id);
         await rememberSelection();
         return loading;

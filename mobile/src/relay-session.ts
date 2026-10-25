@@ -2,7 +2,7 @@ import { PromptRejectedError } from './companion-port';
 import { companionPushAuthorizationMessage, type CompanionNotification } from '@workspace/core/companion-notification';
 import { CompanionOperationDenied, createCompanionStream, type CompanionDisconnectReason } from './companion-stream';
 import { ConversationCache } from './conversation-cache';
-import { companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, companionUpdatesProtocol, isConversationReset } from '@workspace/core/companion-protocol';
 import type { BackendModelOption, BackendSkillSummary, BackendPluginSummary, ProviderConversationFrame } from '@workspace/core/contracts';
 import type { ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import type { CompanionChatCreation, CompanionCommandReceipt, CompanionWorkspace } from '@workspace/core/companion-protocol';
@@ -65,7 +65,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     return workspace;
   };
   const target = (agentId: string) => {
-    const agent = workspace.agents.find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
+    const agent = companionAgents(workspace).find((agent) => agent.id === agentId); const team = workspace.teams.find((team) => team.id === agent?.teamId);
     if (!agent || !team) throw new Error('Agent is outside the paired scope.');
     return companionTarget(host.hostId, team, agent);
   };
@@ -86,7 +86,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
     if (update.type === 'workspace') {
       workspace = { ...update.workspace, repositoryIcons: update.workspace.repositoryIcons ?? icons.value };
       if (update.workspace.repositoryIcons) icons = { version: (update.workspace as CompanionWorkspace & { iconsVersion?: string }).iconsVersion ?? icons.version, value: update.workspace.repositoryIcons };
-      cache.reconcile(workspace.agents.flatMap((agent) => {
+      cache.reconcile(companionAgents(workspace).flatMap((agent) => {
         const team = workspace.teams.find((team) => team.id === agent.teamId);
         return team ? [companionTarget(host.hostId, team, agent)] : [];
       }));
