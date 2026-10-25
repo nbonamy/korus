@@ -51,11 +51,13 @@ describe('mobile missions', () => {
       const opened = engine.snapshot();
       expect(opened.agentId).toBe('w-here');
       expect(opened.mission).toStrictEqual({ id: 'm-here', outcome: 'Outcome of m-here' });
-      expect(opened.header).toMatchObject({ title: 'Ticket w-here', repository: null });
+      // A ticket's agent is titled by its ticket, not by its generated conversation name.
+      expect(opened.header).toMatchObject({ title: '02 Endpoint', repository: null });
       expect(JSON.stringify(opened.groups)).not.toContain('w-here');
       // The mission's lead is an ordinary agent that belongs to the mission too, and says so.
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
       expect(engine.snapshot().mission).toStrictEqual({ id: 'm-here', outcome: 'Outcome of m-here', lead: true });
+      expect(engine.snapshot().header).toMatchObject({ title: 'Mission lead', repository: 'Implementation' });
     } finally { engine.dispose(); }
   });
   it('stays where it is when asked to open an agent the laptop does not show', async () => {

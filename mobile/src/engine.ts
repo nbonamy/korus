@@ -270,6 +270,12 @@ export function createEngine(port: EnginePort) {
           return activity ? { ...ticket, activity } : ticket;
         }) }));
     const owner = agent ? state.missions.value.find((mission) => mission.leadAgentId === agent.id || mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
+    // A mission's own agents are named for what they do in it, not by the generated names of their conversations.
+    const ticketOf = owner && agent ? owner.tickets.find((ticket) => ticket.agentId === agent.id) : undefined;
+    const missionTitle = owner && agent
+      ? owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: owner.stage.charAt(0).toUpperCase() + owner.stage.slice(1) }
+        : ticketOf ? { title: `${String(ticketOf.number).padStart(2, '0')} ${ticketOf.title}`, subtitle: null } : null
+      : null;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
@@ -289,9 +295,10 @@ export function createEngine(port: EnginePort) {
       startup: startup.value, connection: state.status.value, error: state.error.value, errorDetail: state.errorDetail.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
       teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
-      header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
+      header: owner && agent && missionTitle ? { title: missionTitle.title, repository: missionTitle.subtitle, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null }
+        : active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
         status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null }
-        : owner && agent ? { title: agent.conversationTitle || agentDisplayName(agent), repository: null, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null } : null,
+        : null,
       suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
