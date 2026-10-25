@@ -23,17 +23,15 @@ export const chartFormat = (
         maximumFractionDigits: 1,
         ...(compact ? { notation: "compact" as const } : {}),
       }).format(value);
-/** USD stays explicit; tiny nonzero charges never round to a free-looking zero. */
+/** Display USD consistently to the nearest cent. */
 export function usdFormat(value: number | null | undefined): string {
   if (value == null) return translate("analytics.costUnavailable");
-  if (value > 0 && value < 0.000001)
-    return "$" + value.toExponential(2).replace(/0+e/, "e").replace(/\.e/, "e");
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
     currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
-    maximumFractionDigits: value > 0 && value < 0.01 ? 6 : 4,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 export const measureFormat = (

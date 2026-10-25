@@ -87,7 +87,6 @@
                 ? usdFormat(row.value)
                 : chartFormat(row.tokens, true)
             }}
-            <UsageCostCoverage v-if="measure === 'cost'" :cost="row.cost" />
           </td>
         </tr>
       </tbody>
@@ -96,7 +95,6 @@
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
-import UsageCostCoverage from "./UsageCostCoverage.vue";
 import UsageBar from "./UsageBar.vue";
 import UsageCard from "./UsageCard.vue";
 import {
@@ -179,11 +177,6 @@ td:first-child {
 th:last-child,
 td:last-child {
   padding-right: 0;
-}
-.num :deep(.cost-coverage) {
-  max-width: 320px;
-  justify-content: flex-end;
-  margin-top: var(--space-2);
 }
 .num {
   text-align: right;

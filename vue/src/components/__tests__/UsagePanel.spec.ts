@@ -652,7 +652,7 @@ it('shows Codex execution costs without unavailable request metadata or pricing 
     await flushPromises();
     await choose(wrapper, '#usage-measure', 'Estimated cost');
     expect(wrapper.get('.hero-number strong').text()).toBe('$0.25');
-    expect(wrapper.text()).toContain('1 turn priced');
+    expect(wrapper.text()).not.toContain('turn priced');
     expect(wrapper.text()).not.toContain('0 of 0 observed requests');
     expect(wrapper.text()).not.toContain('Runtime request evidence unavailable');
     expect(wrapper.text()).not.toContain('assum');
@@ -703,22 +703,25 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
   try {
     await flushPromises();
     await choose(wrapper, "#usage-measure", "Estimated cost");
-    expect(wrapper.get(".hero-number strong").text()).toBe("$0.000006");
-    expect(wrapper.text()).toContain("API-equivalent");
+    expect(wrapper.get(".hero-number strong").text()).toBe("$0.00");
+    const hero = wrapper.get('.usage-hero');
+    expect(hero.text()).not.toContain('API-equivalent');
+    expect(hero.text()).not.toContain('Current period');
+    expect(hero.text()).not.toContain('Previous period');
     const table = wrapper.get('[aria-label="Usage breakdown"]');
     expect(table.text()).toContain("Estimated cost");
     expect(table.text()).toContain("Observed requests");
     expect(table.findAll("tbody tr")[0]!.findAll("td")[1]!.text()).toBe("1");
     expect(table.findAll("tbody tr").map((row) => row.text())).toEqual([
-      expect.stringContaining("$0.000004"),
-      expect.stringContaining("$0.000002"),
+      expect.stringContaining("$0.00"),
+      expect.stringContaining("$0.00"),
     ]);
     expect(wrapper.get('[aria-label="Usage share"]').text()).toContain("66.7%");
     const marker = wrapper.get(
-      `[aria-label="${today} · actual-model-b: $0.000002"]`,
+      `[aria-label="${today} · actual-model-b: $0.00"]`,
     );
     await marker.trigger("focus");
-    expect(wrapper.get(".chart-tooltip").text()).toContain("$0.000002");
+    expect(wrapper.get(".chart-tooltip").text()).toContain("$0.00");
     // Sub-cent values must occupy a meaningful part of the chart, not hug zero.
     expect(Number(marker.attributes("cy"))).toBeLessThan(240);
     await choose(wrapper, "#usage-grouping", "Provider");
@@ -747,7 +750,10 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
 
 it.each([
   { name: "zero", usd: 0, partial: false, expected: "$0.00" },
-  { name: "tiny", usd: 0.00000000012, partial: false, expected: "$1.2e-10" },
+  { name: "tiny", usd: 0.00000000012, partial: false, expected: "$0.00" },
+  { name: "rounded total", usd: 424.3997, partial: false, expected: "$424.40" },
+  { name: "rounded amount", usd: 3.0129, partial: false, expected: "$3.01" },
+  { name: "rounded cents", usd: 0.6595, partial: false, expected: "$0.66" },
   { name: "partial", usd: 0.04, partial: true, expected: "$0.04" },
   { name: "unavailable", usd: null, partial: false, expected: "Unavailable" },
   {
@@ -757,7 +763,7 @@ it.each([
     expected: "Unavailable",
   },
 ])(
-  "distinguishes $name costs and retains current/previous coverage independently",
+  "distinguishes $name costs without diagnostic copy",
   async ({ usd, partial, expected }) => {
     const today = new Date().toISOString().slice(0, 10);
     setElectronTestClient({
@@ -789,21 +795,14 @@ it.each([
       await choose(wrapper, "#usage-measure", "Estimated cost");
       expect(wrapper.get(".hero-number strong").text()).toBe(expected);
       expect(wrapper.find(".hero-delta").exists()).toBe(false);
-      const coverage = wrapper.findAll(".cost-coverage");
-      expect(coverage.length).toBeGreaterThanOrEqual(2);
-      expect(coverage[1]!.text()).toContain("Unavailable");
-      if (partial || usd === null) {
-        expect(coverage[0]!.text()).toContain(
-          partial ? "Partial" : "Unavailable",
-        );
-        expect(coverage[0]!.text()).toContain(`${partial ? 1 : 0} of 2`);
-        expect(coverage[0]!.text()).toContain("unknown request counts");
-        expect(coverage[0]!.text()).toContain("Cache usage");
-        expect(coverage[0]!.text()).toContain("Runtime request evidence");
-        expect(wrapper.get('[aria-label="Usage breakdown"]').text()).toContain(
-          partial ? "Partial" : "Unavailable",
-        );
-      }
+      expect(wrapper.get('.usage-hero').text()).not.toContain('Current period');
+      expect(wrapper.get('.usage-hero').text()).not.toContain('Previous period');
+      expect(wrapper.get('.usage-hero').find('.cost-coverage').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('unknown request counts');
+      expect(wrapper.text()).not.toContain('observed requests priced');
+      expect(wrapper.text()).not.toContain('Cache usage');
+      expect(wrapper.text()).not.toContain('Runtime request evidence');
+      expect(wrapper.text()).not.toContain('Partial');
       if (usd === null || usd === undefined) {
         expect(wrapper.get('[aria-label="Usage share"]').text()).not.toContain(
           "$0",
@@ -850,7 +849,7 @@ it.each([
       await choose(wrapper, "#usage-measure", "Estimated cost");
       expect(wrapper.find(".hero-delta").exists()).toBe(delta !== null);
       if (delta) expect(wrapper.get(".hero-delta").text()).toContain(delta);
-      expect(wrapper.text()).toContain("Previous period");
+      expect(wrapper.get('.usage-hero').text()).not.toContain('Previous period');
     } finally {
       wrapper.unmount();
     }
@@ -905,6 +904,8 @@ it("keeps unknown cost days as gaps, with unavailable tooltips and a focusable g
     );
     await wrapper.vm.$nextTick();
     expect(wrapper.get(".chart-tooltip").text()).toContain("Unavailable");
+    expect(wrapper.get('.chart-tooltip').text()).not.toContain('unknown request counts');
+    expect(wrapper.get('.chart-tooltip').text()).not.toContain('Cache usage');
   } finally {
     wrapper.unmount();
   }

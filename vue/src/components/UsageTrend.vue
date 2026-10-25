@@ -153,7 +153,6 @@
           <span>{{ $t("analytics.total") }}</span>
           <b>{{ metricFormat(hovered.total) }}</b>
         </div>
-        <UsageCostCoverage v-if="measure === 'cost'" :cost="hovered.cost" />
       </div>
     </div>
     <div v-if="series.length > 1" class="chart-legend">
@@ -164,7 +163,6 @@
   </section>
 </template>
 <script setup lang="ts">
-import UsageCostCoverage from "./UsageCostCoverage.vue";
 import { computed, ref, useId, watch } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";

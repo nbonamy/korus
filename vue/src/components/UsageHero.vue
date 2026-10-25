@@ -40,25 +40,12 @@
         </header>
       </template>
     </UsageTrend>
-    <div v-if="measure === 'cost'" class="hero-cost-notes">
-      <p>{{ $t("analytics.costExplanation") }}</p>
-      <UsageCostCoverage
-        :cost="current.cost"
-        :label="$t('analytics.costCurrent')"
-      />
-      <UsageCostCoverage
-        :cost="previous?.cost"
-        :label="$t('analytics.costPrevious')"
-        show-value
-      />
-    </div>
   </UsageCard>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
 import type { UsageSummary } from "@workspace/core/usage";
 import { translate } from "../i18n";
-import UsageCostCoverage from "./UsageCostCoverage.vue";
 import UsageCard from "./UsageCard.vue";
 import UsageToggle from "./UsageToggle.vue";
 import UsageTrend from "./UsageTrend.vue";
@@ -138,16 +125,6 @@ const delta = computed(() => {
       transparent 70%
     ),
     var(--color-surface-lowest);
-}
-.hero-cost-notes {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-}
-.hero-cost-notes p {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-12);
 }
 .hero-header {
   display: flex;
