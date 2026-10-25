@@ -1,6 +1,6 @@
 {
   "name": "agent-workspace",
-  "version": "0.41.0",
+  "version": "0.41.1",
   "private": true,
   "packageManager": "npm@10.9.4",
   "overrides": {
@@ -24,11 +24,13 @@
     "postcss-html": "^1.8.1",
     "prettier": "^3.8.3",
     "retimeable-signal": "1.0.1",
+    "smol-toml": "^1.8.0",
     "stylelint": "^17.12.0",
     "stylelint-config-recommended": "^18.0.0",
     "stylelint-config-recommended-vue": "^1.6.1",
     "typescript": "^6.0.3",
-    "vitepress": "1.6.4"
+    "vitepress": "1.6.4",
+    "zod": "4.4.3"
   },
   "workspaces": [
     "core",
@@ -40,6 +42,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/patch-relay-timers.mjs && node scripts/patch-cross-zip.mjs",
+    "pricing:update": "node scripts/update-pricing.mjs",
     "build": "npm run build:electron",
     "build:backend": "npm run build:sdk && npm run build -w @workspace/core && npm run build -w @workspace/backend && node scripts/package-backend.mjs",
     "build:computer-use": "node scripts/prepare-computer-use.mjs",

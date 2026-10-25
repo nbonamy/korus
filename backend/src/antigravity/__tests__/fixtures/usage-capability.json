@@ -1,0 +1,45 @@
+{
+  "provenance": {
+    "kind": "source-derived public wire fixtures; synthetic identifiers and numbers, not a live billing capture",
+    "registry": "https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json",
+    "archive": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.3.0-darwin-arm64.zip",
+    "archiveSha256": "7cd97045f7b4fe81175a107cdf16f9c51484e3c78a5162cae415338bb6aa5b88",
+    "executableSha256": "cb1f0725183ed922079ed6cd1d2422b4d8be44c5fb60be3e9a43d8d04f99a18e",
+    "sourceRoot": "google3/cloud/developer_experience/antigravity_extensions/acp_server/",
+    "sources": {
+      "server.py:1473-1528": "Collapses ordinary/cached input, output and thinking into a context count; main trajectory excludes subagents.",
+      "server.py:5000-5318": "Turn lifecycle, including retry/cancellation, returns PromptResponse(stop_reason=stop_reason) without usage.",
+      "server.py:5850-5941": "Emits UsageUpdate(session_update='usage_update', used=used, size=context_window_size); no cost, categories, request identity or served-model metadata.",
+      "config_options.py:49-103": "Model and permission-mode selection, not served model or billing tier.",
+      "google3/third_party/py/acp/schema.py:1397-1444,1697-1720,3846-3880": "Schema supports optional cumulative turn Usage and session Cost; neither establishes request boundaries/cache lifetimes, and this release does not populate them."
+    },
+    "protocol": "https://agentclientprotocol.com/protocol/v1/prompt-turn#session-usage-updates"
+  },
+  "configuration": {
+    "models": {
+      "currentModelId": "gemini-3.1-pro-high",
+      "availableModels": [
+        { "modelId": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High)" },
+        { "modelId": "opaque-claude-choice", "name": "Claude" },
+        { "modelId": "opaque-oss-choice", "name": "GPT-OSS 120B" }
+      ]
+    },
+    "configOptions": [
+      { "id": "model", "name": "Model", "type": "select", "category": "model", "currentValue": "gemini-3.1-pro-high", "options": [{ "value": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High)" }] },
+      { "id": "mode", "name": "Session Mode", "type": "select", "category": "mode", "currentValue": "default", "options": [{ "value": "default", "name": "Default" }] }
+    ]
+  },
+  "updates": [
+    { "sessionUpdate": "usage_update", "used": 53000, "size": 200000 },
+    { "sessionUpdate": "usage_update", "used": 53000, "size": 200000 },
+    { "sessionUpdate": "config_option_update", "configOptions": [{ "id": "model", "name": "Model", "type": "select", "category": "model", "currentValue": "opaque-claude-choice", "options": [{ "value": "opaque-claude-choice", "name": "Claude" }] }] },
+    { "sessionUpdate": "usage_update", "used": 12000, "size": 200000 }
+  ],
+  "lateUpdate": { "sessionUpdate": "usage_update", "used": 12000, "size": 200000 },
+  "completion": { "stopReason": "end_turn" },
+  "schemaOnlyNegativeControl": {
+    "description": "Published ACP schema fields, NOT emitted by the qualified runtime. Cumulative cost/turn totals still cannot establish request pricing.",
+    "update": { "sessionUpdate": "usage_update", "used": 53000, "size": 200000, "cost": { "amount": 0.045, "currency": "USD" } },
+    "completion": { "stopReason": "end_turn", "usage": { "totalTokens": 1800, "inputTokens": 1000, "outputTokens": 800, "cachedReadTokens": 900, "cachedWriteTokens": 0, "thoughtTokens": 200 } }
+  }
+}

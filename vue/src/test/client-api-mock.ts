@@ -223,6 +223,7 @@ export function createClientApiMock(
     browserGoBack: unscripted('browserGoBack'),
     browserGoForward: unscripted('browserGoForward'),
     browserReload: unscripted('browserReload'),
+    browserOpenDevTools: unscripted('browserOpenDevTools'),
     browserClearBrowsingData: unscripted('browserClearBrowsingData'),
     browserGetZoom: unscripted('browserGetZoom'),
     browserSetZoom: unscripted('browserSetZoom'),

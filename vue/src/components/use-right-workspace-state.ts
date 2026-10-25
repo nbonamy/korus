@@ -34,6 +34,7 @@ export type AgentRightWorkspaceState = {
   imagePanels: Partial<Record<RightWorkspaceImageTab, SidePanelImageState>>;
   planPanel: SidePanelMarkdownState | null;
   open: boolean;
+  expanded?: boolean;
   tabs: RightWorkspaceTab[];
   width: number;
 };

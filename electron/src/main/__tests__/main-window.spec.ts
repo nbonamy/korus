@@ -25,13 +25,13 @@ describe('main window options', () => {
   it(`admits only isolated ${product.name} browser guests with no preload or Node access`, () => {
     const deny = { preventDefault: vi.fn() };
     const preferences = {
-      preload: '/tmp/untrusted.js', nodeIntegration: true, sandbox: false, webviewTag: true,
+      preload: '/tmp/untrusted.js', nodeIntegration: true, sandbox: false, webviewTag: true, devTools: false,
     };
     secureBrowserGuestAttachment(deny, preferences, {
       src: 'about:blank', partition: 'persist:workspace-browser', preload: '/tmp/untrusted.js', allowpopups: '',
     });
     expect(deny.preventDefault).not.toHaveBeenCalled();
-    expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, webviewTag: false });
+    expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, webviewTag: false, devTools: true });
     expect(preferences).not.toHaveProperty('preload');
 
     const reject = { preventDefault: vi.fn() };

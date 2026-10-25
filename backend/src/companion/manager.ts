@@ -195,6 +195,7 @@ export class CompanionManager {
       push: (peerId, registration, notification) => this.connector.push(peerId, registration, notification),
       onEvent: (listener) => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
       workspace: () => this.workspace(),
+      executeMission: async (input) => { await this.backend.request(backendMethods.missionExecute, { input, _clientId: 'companion-write' }); },
       createTeam: async name => {
         const snapshot = await this.backend.request<AppSnapshot>(backendMethods.teamCreate, {
           input: { name, color: defaultTeamColor }, _clientId: 'companion-write',

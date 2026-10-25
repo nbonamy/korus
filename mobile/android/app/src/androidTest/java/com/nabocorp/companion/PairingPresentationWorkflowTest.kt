@@ -71,6 +71,10 @@ class PairingPresentationWorkflowTest {
     @Test fun largeTextAndTheRealKeyboardKeepCodeScannerConnectAndPrivacyReachable() {
         NativeEngineFixture(app.activityRule.scenario).use { e ->
             mount(e, state(error = "mobile.errors.pairingExpired"), fontScale = 1.6f)
+            app.onNodeWithTag("pairing-code").assertIsNotFocused()
+            app.runOnIdle {
+                assertFalse("The keyboard stays closed until code entry is tapped", ViewCompat.getRootWindowInsets(app.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true)
+            }
             app.onNodeWithTag("pairing-code").performScrollTo().performClick().performTextInput("AB")
             app.waitUntil(5_000) { ViewCompat.getRootWindowInsets(app.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true }
             app.onNodeWithContentDescription("Scan laptop QR code").performScrollTo().assertIsDisplayed()

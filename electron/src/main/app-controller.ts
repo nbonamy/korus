@@ -712,6 +712,7 @@ export class AppController {
     ipc.handle(ipcChannels.browserGoBack, (_event, agentId: string, browserId: string) => this.browserPane.goBack(agentId, browserId));
     ipc.handle(ipcChannels.browserGoForward, (_event, agentId: string, browserId: string) => this.browserPane.goForward(agentId, browserId));
     ipc.handle(ipcChannels.browserReload, (_event, agentId: string, browserId: string) => this.browserPane.reload(agentId, browserId));
+    ipc.handle(ipcChannels.browserOpenDevTools, (_event, agentId: string, browserId: string) => this.browserPane.openDevTools(agentId, browserId));
     ipc.handle(ipcChannels.browserClearBrowsingData, () => this.browserPane.clearBrowsingData());
     ipc.handle(ipcChannels.browserGetZoom, (_event, agentId: string, browserId: string) => this.browserPane.getZoom(agentId, browserId));
     ipc.handle(ipcChannels.browserSetZoom, (_event, agentId: string, browserId: string, percent: number) => this.browserPane.setZoom(agentId, browserId, percent));

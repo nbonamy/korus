@@ -52,7 +52,17 @@ final class AppModel {
     var connection: ConnectionState = .unpaired {
         didSet { if connection != oldValue { updateConnectionNotice(); updateUpdatingIndicator(); updateBackgroundExecution() } }
     }
+    /// Why the laptop could not be reached, shown under the lost-connection message.
+    var connectionDetail = ""
     var laptops: [EngineState.Laptop] = []
+    /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
+    var missions: [MissionSummary] = []
+    var workerMission: MissionReference?
+    /// "idle", "working" or "failed": a move on a mission is a request the laptop can refuse.
+    var missionAction = "idle"
+    /// The missions surface replaces the conversation in the main area, like a conversation does.
+    var missionsOpen = false
+    var missionPath: [String] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
     var teams: [Team] = []
@@ -65,7 +75,7 @@ final class AppModel {
     private(set) var sidebarOrganization: SidebarOrganization = .activity
     private(set) var sidebarIdleSort: SidebarIdleSort = .activity
     @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
-    var activeAgentID: String?
+    var activeAgentID: String? { didSet { if activeAgentID != oldValue { missionsOpen = false } } }
     var header: ConversationHeader?
     var models: [ModelChoice] = []
     var selectedModelID: String?
@@ -258,6 +268,10 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        set(\.missions, state.missions ?? [])
+        set(\.workerMission, state.mission)
+        set(\.missionAction, state.missionAction ?? "idle")
+        set(\.connectionDetail, state.errorDetail ?? "")
         set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)
@@ -354,8 +368,22 @@ final class AppModel {
 
     // MARK: Actions
 
+    func showMissions(_ id: String? = nil) {
+        dictation.cancel()
+        drawerOpen = false
+        missionPath = id.map { [$0] } ?? []
+        missionsOpen = true
+    }
+
+    /// A mission's agent, a ticket's worker or its lead, opens like any conversation; the mission stays one step back.
+    func open(missionAgent agentId: String) {
+        missionsOpen = false
+        select(agent: agentId)
+    }
+
     func select(agent id: String) {
         drawerOpen = false
+        missionsOpen = false
         guard id != activeAgentID else { return }
         dictation.cancel()
         conversationLoading.select()

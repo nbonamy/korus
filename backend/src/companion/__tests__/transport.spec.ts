@@ -160,8 +160,9 @@ describe('encrypted companion circuit', () => {
     await relay.stop();
     await expect.poll(() => connector.connected, { timeout: 5_000 }).toBe(false);
     relay = await createCompanionRelay({ key: relayKey, listen, hostIds: [hostId] });
-    await expect.poll(() => connector.connected, { timeout: 20_000, interval: 250 }).toBe(true);
-  }, 40_000);
+    // The link is rebuilt in seconds, not minutes, once the relay is back.
+    await expect.poll(() => connector.connected, { timeout: 8_000, interval: 100 }).toBe(true);
+  }, 20_000);
   it('keeps one update channel per phone, replacing a stale one from an older connection', async () => {
     const { hostKey, hostId, relay, address, port, phone, phoneKey } = await relayAndPhone();
     const workspace = { teams: [{ id: 'team', name: 'Team', agentIds: [] }], agents: [] } as CompanionWorkspace;

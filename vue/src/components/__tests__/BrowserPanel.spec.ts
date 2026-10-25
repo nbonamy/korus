@@ -42,6 +42,7 @@ function mountPanel(
     canGoForward: true,
   });
   const api = {
+    browserOpenDevTools: vi.fn().mockResolvedValue(undefined),
     browserClearBrowsingData: vi.fn().mockResolvedValue(undefined),
     browserExtensions: vi.fn().mockResolvedValue({ extensions: options.extensions ?? [] }),
     updateSettings: vi.fn().mockResolvedValue(createInitialSnapshot()),
@@ -491,12 +492,18 @@ describe('BrowserPanel', () => {
     expect(wrapper.find('[aria-label^="Send "]').exists()).toBe(false);
   });
 
-  it('keeps closing the browser in tab chrome, not its overflow menu', async () => {
+  it('opens developer tools for the current browser from its menu and keeps closing in tab chrome', async () => {
     const { api, wrapper } = mountPanel();
     await flushPromises();
 
     await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     expect(new DOMWrapper(document.body).findAll('[role="menuitem"]').some(item => item.text().includes('Close browser'))).toBe(false);
+    const devTools = new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Open DevTools')!;
+    await devTools.trigger('click');
+    await flushPromises();
+    expect(api.browserOpenDevTools).toHaveBeenCalledExactlyOnceWith('agent-1', 'primary');
+    expect(new DOMWrapper(document.body).find('[role="menu"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Browser menu"]').trigger('click');
     const screenshotItem = new DOMWrapper(document.body).findAll('[role="menuitem"]').find(item => item.text() === 'Screenshot')!;
     expect(screenshotItem.element.previousElementSibling?.getAttribute('role')).toBe('separator');
     wrapper.unmount();

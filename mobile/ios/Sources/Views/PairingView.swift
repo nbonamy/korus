@@ -12,9 +12,7 @@ struct PairingView: View {
         VStack(spacing: 28) {
             Spacer(minLength: 40)
             VStack(spacing: 10) {
-                Image(systemName: "laptopcomputer.and.iphone")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(Color.accentColor)
+                BrandMark(size: 72)
                 Text("Connect your laptop")
                     .font(.title.weight(.bold))
                 Text("On your laptop, open Settings → Connections → Mobile access and choose Pair phone.")
@@ -101,7 +99,6 @@ struct PairingView: View {
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
-        .onAppear { focused = true }
         .sheet(isPresented: $scannerOpen, onDismiss: {
             guard let scanned = scannedCode else { return }
             scannedCode = nil

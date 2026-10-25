@@ -4,6 +4,30 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+### New features
+
+- Follow missions from the mobile apps: see each mission's stage and ticket
+  progress, open the agent working on a ticket or the one leading the mission and talk
+  to it, then return to the mission. Accept a finished ticket and move a completed
+  implementation on to review from the phone, then read the review's findings,
+  choose which to fix, and launch remediation. Shipping stays on the desktop.
+
+## [0.41.1] - 2026-10-24
+
+### New features
+
+- Expand the artifact pane to fill the workspace, then restore its previous
+  width without losing conversation drafts.
+- Open detached developer tools for the current in-app browser tab from its menu.
+
+### Improvements and fixes
+
+- Group Claude's tool work under Working and Done disclosures, keeping the final
+  response separate from progress updates.
+- Show elapsed time while agents work and after a turn finishes. Restored Claude
+  conversations retain turn durations when valid timing is available.
+- Keep Add project and Quick chat beside each other in the Activity sidebar.
+
 ## [0.41.0] - 2026-10-24
 
 ### New features

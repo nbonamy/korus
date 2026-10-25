@@ -2,6 +2,7 @@ import { RelayIngress } from './relay-ingress';
 import { WindowBudget } from './source-budget';
 import { companionPushProtocol } from '@workspace/core/companion-notification';
 import { CompanionPushRelay } from './push-relay';
+import { RelayConnections } from './relay-connections';
 import type { ApnsSender } from './apns';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
@@ -35,7 +36,7 @@ export class CompanionRelayPolicy {
     }
     for (const [peer, until] of this.configuredClaims) if (until <= this.now()) this.configuredClaims.delete(peer);
   }
-  private admitted(host: string) { this.prune(); return this.hosts ? this.hosts.has(host) : this.leases.has(host); }
+  admitted(host: string) { this.prune(); return this.hosts ? this.hosts.has(host) : this.leases.has(host); }
   reserve(host: string, source = host) {
     if (this.hosts) return this.hosts.has(host);
     this.prune();
@@ -93,13 +94,15 @@ export class CompanionRelayPolicy {
       && !invite.withdrawn && invite.expiresAt > this.now());
   }
 }
-export async function createCompanionRelay(options: { key: PrivateKey; listen: string; trustedProxy?: boolean; hostIds?: string[]; pairing?: ConfiguredPairing; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'> }) {
+export async function createCompanionRelay(options: { key: PrivateKey; listen: string; trustedProxy?: boolean; hostIds?: string[]; pairing?: ConfiguredPairing; tls?: { cert: string; key: string }; push?: Pick<ApnsSender, 'send'>; log?: (message: string, details: Record<string, unknown>) => void }) {
   const ingress = new RelayIngress(options.trustedProxy);
   const policy = new CompanionRelayPolicy(options.hostIds ? new Set(options.hostIds) : undefined, Date.now, options.pairing);
   const relay = await createLibp2p({ privateKey: options.key, addresses: { listen: [options.listen] },
     transports: [webSockets({ http: { IncomingMessage: ingress.IncomingMessage }, https: options.tls ? { ...options.tls, IncomingMessage: ingress.IncomingMessage } : undefined, maxBufferedAmount: 1024 * 1024 })], connectionEncrypters: [noise()], streamMuxers: [yamux()],
     // The transport socket address is nginx’s loopback address. RelayIngress owns real-source rate limits.
     connectionManager: { maxConnections: 1000, maxParallelDials: 2, maxIncomingPendingConnections: 200, inboundConnectionThreshold: Number.MAX_SAFE_INTEGER },
+    // RelayConnections owns liveness: libp2p's monitor cuts a laptop link, and every phone circuit on it, after one slow ping.
+    connectionMonitor: { enabled: false },
     connectionGater: {
       denyInboundConnection: connection => {
         if (ingress.admit(connection.remoteAddr)) return false;
@@ -118,6 +121,9 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
         // Every phone circuit is cut after this duration or volume; the phone redials, so these bound relay cost per circuit.
         applyDefaultLimit: true, defaultDurationLimit: 600_000, defaultDataLimit: 64n * 1024n * 1024n } }) },
   });
+  const connections = new RelayConnections(relay, (peer) => policy.admitted(peer) ? 'laptop' : 'device', options.log ?? (() => {}));
+  connections.start();
+  relay.addEventListener('stop', () => { connections.stop(); });
   const request = z.object({ devices: z.array(z.string().min(32).max(128)).max(companionMaxDevices), invitations: z.array(z.object({ code: z.string().length(8), expiresAt: z.number().int() }).strict()).max(companionMaxInvitations) }).strict();
   await relay.handle(companionAdmissionProtocol, async (stream, connection) => {
     try {

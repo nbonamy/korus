@@ -3,6 +3,7 @@ package com.nabocorp.companion
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,6 +71,16 @@ import org.json.JSONObject
             }
             Spacer(Modifier.weight(1f))
             if (activity) IconButton(onClick = { model.openCreation(CreationKind.QUICK); close() }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Edit, "New chat", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (model.missions.isNotEmpty()) {
+            val active = model.missions.count { it.isActiveMission }
+            Row(Modifier.fillMaxWidth().clickable { model.showMissions(); close() }.padding(horizontal = 20.dp, vertical = 12.dp)
+                .semantics(mergeDescendants = true) { contentDescription = if (active > 0) "Missions, $active active" else "Missions" }, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.TrackChanges, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text("Missions", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                if (active > 0) Text("$active active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         var repositoryMenu by remember(sidebar.owner) { mutableStateOf<JSONObject?>(null) }
         val repositories = state.items("groups").flatMap { group -> group.items("sessions").map { it.string("agentId") to group } }.toMap()

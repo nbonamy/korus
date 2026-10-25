@@ -1,5 +1,6 @@
 import { canonicalGitRemoteIdentity } from '@workspace/core/git-remote';
 import { closeAgentInSnapshot, updateAgentFolder } from '@workspace/core/agent-manager';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { BackendEvent } from '@workspace/core/backend-driver';
 import { agentGitBackendMethods, backendMethods, type AgentGitBackendMethod } from '@workspace/core/backend-protocol/methods';
 import { repositoryPeersForAgent, requireAgentFolder } from '@workspace/core/agent-folder';
@@ -28,6 +29,7 @@ import type { DelegatedWorkReportPort } from '../agents/delegated-work-report-se
 import type { BranchCurrentWorkService } from './branch-current-work-service';
 import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult } from '@workspace/core/branch-current-work';
 import type { AgentGitService } from './agent-git-service';
+import { warnMain } from '../log';
 
 export type AgentGitRequest = {
   method: AgentGitBackendMethod;
@@ -137,9 +139,10 @@ export class AgentGitWorkflowService {
         await this.options.git.push(pushFolder, workflow.remote, workflow.branch, !workflow.upstream);
         const result = await this.workflow(agent, { refreshStatus: true });
         if (input.closeAgentAfterPush === true) {
-          await this.options.archiveConversation(agent);
           closeAgentInSnapshot(this.options.getSnapshot(), agentId);
           await this.options.persistAndEmitSnapshot();
+          try { await this.options.archiveConversation(agent); }
+          catch { warnMain('git', 'merged worktree conversation archive failed', { agentId }); }
         }
         return result;
       }
@@ -376,7 +379,8 @@ export class AgentGitWorkflowService {
         throw new Error('Choose another agent in the same repository for the merge report.');
       }
     }
-    const sourceWorkflow = input.reportBack === true ? await this.workflow(agent) : null;
+    const sourceWorkflow = input.reportBack === true || deleteWorktree ? await this.workflow(agent) : null;
+    const worktreeRoot = sourceWorkflow?.isLinkedWorktree ? sourceWorkflow.folder : folder;
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'handoff');
     const handoff = input.reportBack === true
       ? await this.options.delegatedWorkReports.prepare(agent, {
@@ -390,6 +394,11 @@ export class AgentGitWorkflowService {
     if (input.reportBack === true) this.emitOperationProgress(agentId, 'merge', 'delivery');
     const mergeResult = await this.options.git.merge(folder, strategy, input.deleteBranch === true, deleteWorktree, commitMessage);
     const targetFolder = mergeResult.targetFolder;
+    const owners = deleteWorktree ? this.options.getSnapshot().agents.filter(candidate => {
+      if (!candidate.folder || this.options.getSnapshot().teams.some(team => team.id === candidate.teamId && team.remoteConnectionId)) return false;
+      const path = relative(resolve(worktreeRoot), resolve(candidate.folder));
+      return !path || (path !== '..' && !path.startsWith('..' + sep) && !isAbsolute(path));
+    }) : [];
     const outcome = {
       kind: 'merge' as const,
       ...(sourceWorkflow?.repositoryProvider ? { provider: sourceWorkflow.repositoryProvider } : {}),
@@ -397,23 +406,28 @@ export class AgentGitWorkflowService {
       repository: sourceWorkflow?.repository ?? 'the base branch',
       ...(reportBackAgentId ? { reportBackAgentId } : {}),
     };
-    if (deleteWorktree) {
-      updateAgentFolder(this.options.getSnapshot(), agentId, targetFolder);
-      await this.options.releaseConversation(agent);
-    }
-    const targetWorkflow = await this.workflow(agent, { refreshStatus: true });
-    const result = mergeResult.warning ? { ...targetWorkflow, warning: mergeResult.warning } : targetWorkflow;
     if (input.reportBack === true) {
       this.options.delegatedWorkReports.deliver(agent, outcome, handoff);
     }
     if (deleteWorktree) {
-      if (input.pushAfter !== true) {
-        await this.options.archiveConversation(agent);
-        closeAgentInSnapshot(this.options.getSnapshot(), agentId);
-      }
+      // A requested push still addresses its initiator in the existing two-step
+      // workflow. Other owners must never remain attached to the removed tree.
+      const closing = owners.filter(owner => input.pushAfter !== true || owner.id !== agentId);
+      if (input.pushAfter === true) updateAgentFolder(this.options.getSnapshot(), agentId, targetFolder);
+      for (const owner of closing) closeAgentInSnapshot(this.options.getSnapshot(), owner.id);
       await this.options.persistAndEmitSnapshot();
+      await Promise.all(owners.map(async owner => {
+        try { await this.options.releaseConversation(owner); }
+        catch { warnMain('git', 'merged worktree conversation release failed', { agentId: owner.id }); }
+        if (closing.includes(owner)) {
+          try { await this.options.archiveConversation(owner); }
+          catch { warnMain('git', 'merged worktree conversation archive failed', { agentId: owner.id }); }
+        }
+      }));
     }
-    return result;
+    const targetAgent = deleteWorktree ? { ...agent, folder: targetFolder } : agent;
+    const targetWorkflow = await this.workflow(targetAgent, { refreshStatus: true });
+    return mergeResult.warning ? { ...targetWorkflow, warning: mergeResult.warning } : targetWorkflow;
   }
 
   private async updateFromBase(agent: Agent, agentId: string, params: Record<string, unknown>): Promise<AgentGitUpdateFromBaseResult> {

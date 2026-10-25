@@ -1,3 +1,4 @@
+import { ClaudeRequestUsageObserver, type ClaudeRequestUsage, type ClaudeRequestUsageOwner } from './request-usage';
 import { ClaudeModelObserver } from './claude-model-observer';
 import { validConsumption, type Consumption } from '@workspace/core/usage';
 import { product } from '@workspace/core/product';
@@ -10,6 +11,7 @@ import {
   deleteSession as deleteClaudeSession,
   forkSession as forkClaudeSession,
   query,
+  resolveSettings,
   type CanUseTool,
   type Options as ClaudeQueryOptions,
   type PermissionMode,
@@ -56,6 +58,7 @@ export type ClaudeQueryFactory = (input: {
 }) => ClaudeQueryRuntime;
 
 type ActiveTransportTurn = {
+  requestUsage: ClaudeRequestUsageOwner;
   model:ClaudeModelObserver;
   consumption?:Consumption|null;
   done: Promise<void>;
@@ -70,6 +73,8 @@ type ActiveTransportTurn = {
 };
 
 type ClaudeSdkSession = {
+  requestUsage: Promise<ClaudeRequestUsageObserver>;
+  lastRequestOwner: ClaudeRequestUsageOwner;
   sessionId: string;
   requestOwnerId: string;
   cwd: string;
@@ -125,6 +130,7 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     onMessage: (message: ClaudeSdkMessage) => void,
     onPermissionRequest?: (request: ClaudePermissionRequest) => void,
     onPermissionCancelled?: (requestId: string) => void,
+    onRequestUsage?: (usage: ClaudeRequestUsage | null) => void,
   ): ClaudeTurnHandle {
     if (this.closing) {
       throw new Error('Claude Agent SDK transport is closing.');
@@ -146,12 +152,15 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       }
     }
     const activeTurn = createActiveTurn(onMessage, onPermissionRequest, onPermissionCancelled);
+    activeTurn.requestUsage.emit = onRequestUsage ?? (() => undefined);
+    activeTurn.requestUsage.requestedServiceTier = params.fastMode ? "fast" : null;
     const session = existingSession ?? this.createSession(params, requestedSessionId, activeTurn, configurationKey);
     if (existingSession) {
       if (existingSession.activeTurn) {
         throw new Error('Claude session already has an active turn.');
       }
       existingSession.activeTurn = activeTurn;
+      existingSession.lastRequestOwner = activeTurn.requestUsage;
       existingSession.onSubagentMessage = onMessage;
     }
 
@@ -360,11 +369,11 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     const canUseTool: CanUseTool = (toolName, toolInput, requestOptions) => (
       this.requestPermission(session, toolName, toolInput, requestOptions)
     );
-    const queryRuntime = this.createQuery({
-      prompt: input,
-      options: claudeQueryOptions(params, sessionId, resumeSessionId, canUseTool, this.options),
-    });
+    const queryOptions = claudeQueryOptions(params, sessionId, resumeSessionId, canUseTool, this.options);
+    const queryRuntime = this.createQuery({ prompt: input, options: queryOptions });
     session = {
+      requestUsage: this.requestPricingProvider(queryOptions).then(provider => new ClaudeRequestUsageObserver(provider)),
+      lastRequestOwner: activeTurn.requestUsage,
       sessionId,
       requestOwnerId: params.ownerId ?? sessionId,
       cwd: expandHome(params.cwd),
@@ -415,8 +424,28 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
     session.input.push(await claudeUserMessage(params.prompt, params.attachments));
   }
 
+  private async requestPricingProvider(options: ClaudeQueryOptions): Promise<'anthropic' | null> {
+    try {
+      const settings = await resolveSettings({
+        cwd: options.cwd, settingSources: options.settingSources, managedSettings: options.managedSettings,
+      });
+      // The SDK resolver does not execute policy helpers, so their routing is unknown.
+      if (settings.effective.policyHelper) return null;
+      // Either layer can affect the child environment. Conflicting routing stays
+      // unknown rather than guessing which precedence a particular host applies.
+      const direct = [options.env ?? {}, settings.effective.env ?? {}].every(env =>
+        !['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'].some(key => env[key] && env[key] !== '0')
+        && (!env.ANTHROPIC_BASE_URL || env.ANTHROPIC_BASE_URL.replace(/\/+$/, '') === 'https://api.anthropic.com'));
+      return direct ? 'anthropic' : null;
+    } catch {
+      // Pricing attribution cannot prevent a conversation from running.
+      return null;
+    }
+  }
+
   private async consumeSession(session: ClaudeSdkSession): Promise<void> {
     try {
+      const requestUsage = await session.requestUsage;
       for await (const sdkMessage of session.query) {
         const message = sdkMessage as ClaudeSdkMessage;
         this.rekeySessionFromMessage(session, message);
@@ -436,11 +465,15 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
           } else activeTurn.consumption=null;
           message.executionConsumption=activeTurn.consumption;
           message.executionModel=activeTurn.model.snapshot();
+          message.executionRequestCoverage=requestUsage.finish(activeTurn.requestUsage, message.usage);
         }
         if (message.type === 'result' && activeTurn?.pendingInputs.size && !message.is_error && message.subtype === 'success') {
           continue;
         }
+        // Start/persist the execution before emitting request samples. Numeric capture
+        // is independent of transcript routing, including sidechain messages.
         activeTurn?.onMessage(message);
+        requestUsage.observe(sdkMessage, activeTurn?.requestUsage ?? session.lastRequestOwner);
         if (!activeTurn && (typeof (message as Record<string, unknown>).parent_tool_use_id === 'string'
           || message.type === 'system' && ['task_started', 'task_progress', 'task_notification'].includes(String(message.subtype)))) {
           session.onSubagentMessage(message);
@@ -612,6 +645,7 @@ function createActiveTurn(
     pendingInputs: new Set(),
     steered: false,
     model:new ClaudeModelObserver(),
+    requestUsage: { emit: () => undefined, requestedServiceTier: null, unknown: false, children: false, totals: [0,0,0,0] },
     onMessage,
     ...(onPermissionRequest ? { onPermissionRequest } : {}),
     ...(onPermissionCancelled ? { onPermissionCancelled } : {}),

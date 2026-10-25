@@ -1,6 +1,7 @@
 import type { Agent, AppCommand } from '@workspace/core/contracts';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { CodexConversationPaneController, CodexMessageImage, CodexMessageImageContext } from '@codex-app-sdk/vue';
+import { reactive } from 'vue';
 import { shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import AgentWorkspace from '../AgentWorkspace.vue';
@@ -33,7 +34,7 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
   const snapshot = createInitialSnapshot();
   configureSnapshot?.(snapshot);
   const currentAgent = snapshot.agents[0] as Agent;
-  const workspace = createWorkspaceState();
+  const workspace = reactive(createWorkspaceState());
   const closeRightWorkspaceTab = vi.fn();
   const discardCodeReview = vi.fn().mockResolvedValue(snapshot);
   const openRightWorkspaceTab = vi.fn((tab: RightWorkspaceTab) => {
@@ -43,6 +44,8 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
   });
   const updateAgent = vi.fn().mockResolvedValue(undefined);
   const wrapper = shallowMount(AgentWorkspace, {
+    attachTo: document.body,
+    global: { stubs: { AgentHeader: false } },
     props: {
       activeAttachmentAnnotationCounts: {},
       addChatTextAnnotation: vi.fn(),
@@ -53,7 +56,6 @@ function mountWorkspace(configureSnapshot?: (snapshot: ReturnType<typeof createI
       visualizationAnnotations: [],
       closeRightWorkspaceTab,
       commitAgentGitChanges: vi.fn(),
-      confirmPlan: vi.fn(),
       threadFlagBusy: false,
       conversationPaneController: {} as CodexConversationPaneController,
       savePromptDraft: vi.fn(),
@@ -163,6 +165,28 @@ describe('AgentWorkspace', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('expands and restores the artifact pane while retaining mounted conversations and the split-layout restore control', async () => {
+    const { wrapper, workspace } = mountWorkspace();
+    expect(wrapper.find('[aria-label="Expand workspace"]').exists()).toBe(false);
+    await wrapper.setProps({ rightWorkspaceVisible: true });
+    const conversation = wrapper.get('.app-shell__conversations');
+    const mountedConversation = wrapper.getComponent({ name: 'ConversationPane' });
+    const expand = wrapper.get('[aria-label="Expand workspace"]');
+    expect(expand.element.nextElementSibling?.hasAttribute('data-global-workspace-toggle')).toBe(true);
+    await expand.trigger('click');
+    expect(conversation.isVisible()).toBe(false);
+    expect(wrapper.get('.app-shell__right-workspace').attributes('style')).toContain('flex-basis: 100%');
+    expect(wrapper.find('.app-shell__right-workspace-resizer').exists()).toBe(false);
+    await wrapper.setProps({ splitHeaders: true });
+    await wrapper.get('[aria-label="Restore workspace width"]').trigger('click');
+    expect(conversation.isVisible()).toBe(true);
+    expect(wrapper.getComponent({ name: 'ConversationPane' }).vm).toBe(mountedConversation.vm);
+    expect(wrapper.get('.app-shell__right-workspace').attributes('style')).toContain('flex-basis: 420px');
+    expect(workspace.width).toBe(420);
+    expect(wrapper.find('.app-shell__right-workspace-resizer').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   describe('task list panel', () => {

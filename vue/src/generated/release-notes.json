@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.41.0",
+  "currentVersion": "0.41.1",
   "releases": [
+    {
+      "version": "0.41.1",
+      "releasedAt": "2026-10-24",
+      "sourceSha256": "d34209b63a0aa911e5da76d310b36d36ccb3c16dcc1e724e29de15f633fb4108",
+      "markdown": "### New features\n\n- Expand the artifact pane to fill the workspace, then restore its previous\n  width without losing conversation drafts.\n- Open detached developer tools for the current in-app browser tab from its menu.\n\n### Improvements and fixes\n\n- Group Claude's tool work under Working and Done disclosures, keeping the final\n  response separate from progress updates.\n- Show elapsed time while agents work and after a turn finishes. Restored Claude\n  conversations retain turn durations when valid timing is available.\n- Keep Add project and Quick chat beside each other in the Activity sidebar."
+    },
     {
       "version": "0.41.0",
       "releasedAt": "2026-10-24",

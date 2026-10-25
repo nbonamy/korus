@@ -191,6 +191,24 @@ describe('BackendDriverRpc', () => {
     } finally { await server.close(); }
   });
 
+  it('isolates request observers and unsubscribes request streams on replacement and shutdown', async () => {
+    const first = vi.fn(), second = vi.fn();
+    let emit!: (event: import('@workspace/core/usage').RequestObservation) => void;
+    const driver = (unsub: typeof first) => createDriver({ onRequestUsage: listener => { emit = listener; return unsub; } });
+    const rpc = new BackendDriverRpc(new Map([['codex', driver(first)]]));
+    const observe = vi.fn();
+    const stop = rpc.onRequestUsage(observe);
+    rpc.onRequestUsage(() => { throw new Error('observer failure'); });
+    try {
+      emit({ requestId: 'one' } as never);
+      expect(observe).toHaveBeenCalledOnce();
+      await rpc.replaceDriver('codex', () => driver(second));
+      expect(first).toHaveBeenCalledOnce();
+      stop(); emit({ requestId: 'two' } as never);
+      expect(observe).toHaveBeenCalledOnce();
+    } finally { await rpc.close(); }
+    expect(second).toHaveBeenCalledOnce();
+  });
   it('uses the selected Codex home and replaces only the configured provider driver', async () => {
     expect(appSurfaceOptions({ generalSettings: { ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/existing/codex' } } } }).codexHome).toBe('/existing/codex');
     const unsubscribe = vi.fn();

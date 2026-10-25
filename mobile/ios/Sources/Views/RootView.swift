@@ -29,6 +29,9 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.25), value: model.notifications.current?.id)
+        .alert("Couldn’t update the mission", isPresented: Binding(get: { model.missionAction == "failed" }, set: { if !$0 { model.command("dismissMissionAction") } })) {
+            Button("OK") { model.command("dismissMissionAction") }
+        } message: { Text("The mission may have changed on your laptop. It now shows how it stands.") }
         .alert("Notifications", isPresented: Binding(get: { model.notificationError != nil || model.push.error != nil }, set: { if !$0 { model.notificationError = nil; model.push.error = nil } })) {
             Button("OK") { model.notificationError = nil; model.push.error = nil }
         } message: { Text(model.notificationError ?? model.push.error ?? "") }
@@ -45,7 +48,10 @@ struct RootView: View {
                     .offset(x: reveal - drawerWidth)
                     .accessibilityHidden(!model.drawerOpen)
 
-                ConversationScreen()
+                ZStack {
+                    ConversationScreen()
+                    if model.missionsOpen { MissionsScreen() }
+                }
                     .mask {
                         // Navigation chrome extends beyond the safe-area layout bounds.
                         RoundedRectangle(cornerRadius: reveal > 1 ? 32 : 0, style: .continuous)

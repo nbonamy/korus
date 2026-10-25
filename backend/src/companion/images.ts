@@ -27,6 +27,9 @@ export function conversationImageReference(frame: CompanionReset, requestedPath:
 
 function imagePath(reference: string): string | null {
   try {
+    // The shared Markdown renderer hands over a destination written as `<path>` with its brackets.
+    reference = reference.trim();
+    if (reference.startsWith('<') && reference.endsWith('>')) reference = reference.slice(1, -1);
     const value = reference.startsWith('file:') ? fileURLToPath(reference) : decodeURIComponent(reference);
     if (/^[a-z][a-z\d+.-]*:/iu.test(value) && !/^[a-z]:[\\/]/iu.test(value)) return null;
     if (!/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/iu.test(value) || value.includes('\0')) return null;
