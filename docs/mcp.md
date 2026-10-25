@@ -358,6 +358,11 @@ integration enables its eligible entry; sessions see local servers named `github
   requires a top-level group that allows MCP client access under Settings → General
   → Permissions and group features. Group and project permissions still apply to
   individual tools. See [GitLab's MCP prerequisites](https://docs.gitlab.com/user/model_context_protocol/mcp_server/).
+  GitLab caches group eligibility and invalidates it asynchronously after group
+  settings change. A group-denied result can persist after access is enabled.
+  Retry the MCP check in Settings after propagation; another OAuth grant does not
+  clear GitLab's server-side eligibility cache. See the
+  [GitLab eligibility cache](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/models/concerns/ai/user_authorizable.rb).
 - GitLab MCP eligibility is public metadata separate from API connection state.
   Missing scope, group denial, or an unavailable MCP endpoint does not disconnect
   native repository/backlog/MR access or another provider. A cached gateway URL
