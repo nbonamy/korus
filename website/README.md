@@ -82,13 +82,13 @@ Re-export the films after updating their shared `website/assets/app-icon.png`.
 
 The hero leads with three visitor problems—parallel work, reliable results,
 and big ideas—each answered by a self-hosted product film: Delegation, Code
-Review, and Mission. Quick Chat and Visualize films sit in the feature cards.
+Review, and Mission. Quick Chat, Visualize, and Sharing films sit in the feature cards.
 Activity view, Automations, and Skills show real screenshots from
 `assets/screens/`, captured from the running app with neutral demo data (a
 sample storefront team, no private repository names or account details).
 Refresh them with the `korus-live-preview` skill when those surfaces change,
 and bump the `?v=` query on the image URLs. Computer Use and the choice of
-agents, Sharing, and Analytics use text-only cards.
+agents and Analytics use text-only cards.
 
 The Skills capture shows the real Discover panel with its curated catalog in an
 isolated preview. It contains no private skill names, provider accounts, or
@@ -122,7 +122,7 @@ files are loaded only when the visitor opens a film. Cover links also open the
 MP4 directly without JavaScript. These are animated walkthroughs, not live
 recordings.
 
-Before building or deploying from a fresh checkout, render all five films:
+Before building or deploying from a fresh checkout, render all six films:
 
 ```bash
 npm ci --prefix videos/remotion
@@ -130,7 +130,7 @@ npm run render --prefix videos/remotion -- --all
 ```
 
 The exporter uses existing approved takes without synthesizing speech; see
-**Calm American five-film exports** below when preparing new narration. The build
+**Calm American film exports** below when preparing new narration. The build
 uses the approved narrated MP4s, VTTs, and timing manifest from
 `videos/local/narrated/` (override with `APP_NARRATED_FILMS`) plus the
 ignored poster outputs in `videos/assets/`. Missing assets stop the build with
@@ -161,9 +161,9 @@ npm run test:website:browser
 
 ## Remotion films
 
-`videos/remotion/` is the rendering project for the five widescreen films and
-Quick Chat Shorts. Each film has a source composition; the five widescreen
-films also have narrated compositions using approved Calm American takes.
+`videos/remotion/` is the rendering project for the widescreen films and
+Quick Chat Shorts. Each film has a source composition; cached Calm American
+takes supply the narrated compositions.
 
 ```bash
 npm ci --prefix videos/remotion
@@ -220,7 +220,7 @@ and Remotion composition.
 
 ## Draft voice-over review
 
-The five widescreen films have first-person narration scripts in
+The widescreen films have first-person narration scripts in
 `videos/narration.json`. Each line has a start and end window tied to the existing
 animation. macOS speech is only a temporary voice for reviewing copy and pacing;
 it is not used for the website's selected Calm American narration.
@@ -232,7 +232,7 @@ node videos/render-narration.mjs
 npx vite videos/local/voiceover-drafts --host 127.0.0.1 --port 4187 --strictPort
 ```
 
-Open <http://127.0.0.1:4187> for a five-film review player with clickable timed
+Open <http://127.0.0.1:4187> for a film review player with clickable timed
 scripts and a **CC · Captions** toggle. Captions start off and your choice stays
 active when switching films; they are separate VTT tracks, not burned into the
 video. Narrated MP4s, captions, and the generated review
@@ -297,14 +297,14 @@ the macOS drafts are untouched; the two-voice comparison is not deployed.
 Use Vite for the reviewer: its byte-range responses allow immediate video seeking;
 Python's basic HTTP server can reset seeks to zero even after buffering the file.
 
-### Calm American five-film exports
+### Calm American film exports
 
-Calm American is the selected voice for all five widescreen films. Generate and
+Calm American is the selected voice for all widescreen films. Generate and
 check one continuous take per film using the same approved reference, then use
 the shared pacing pipeline (0.96× speech tempo, approved pause settings):
 
 ```bash
-for film in mission-film review-film delegation-film project-film visualize-film; do
+for film in mission-film review-film delegation-film project-film visualize-film sharing-film; do
   .app-dev/video-tts/bin/python videos/generate-local-narration.py "$film" --voice american-male --output "videos/local/narrated/$film" || break
   .app-dev/video-tts/bin/python videos/check-local-narration.py --voice american-male --output "videos/local/narrated/$film" || break
 done
@@ -316,7 +316,7 @@ To preserve an already approved take, copy its `narration.wav`, `narration.json`
 and `narration-aligned.json` into that film's `american-male` subfolder instead
 of regenerating it. The batch validates every film's script, voice, model,
 audio hash, and consistency check before rendering. MP4s, optional VTT captions,
-and the five-film review page are generated in `videos/local/narrated/`.
+and the review page are generated in `videos/local/narrated/`.
 Re-rendering pacing does not invoke speech synthesis. These files are local
 exports; producing them does not deploy or publish them.
 
@@ -367,7 +367,7 @@ To include an approved standalone take in the website, copy its `narration.wav`,
 `videos/local/review-automatic/review-film/american-male/` into
 `videos/local/narrated/review-film/american-male/`, then run
 `npm run render --prefix videos/remotion -- --all`. This regenerates the website's
-five-film manifest and exports without synthesizing new speech. Deploy through
+film manifest and exports without synthesizing new speech. Deploy through
 the website workflow below. The tracked thumbnail is
 `videos/assets/review-film-thumbnail.png`.
 
@@ -404,6 +404,39 @@ npm run render --prefix videos/remotion -- visualize-film --silent
 ```
 
 The source thumbnail is `videos/assets/visualize-film-thumbnail.png`.
+
+## Conversation sharing product film
+
+`videos/sharing-film.html` shows two Korus windows side by side: the conversation
+owner creates an invitation, a teammate joins with the existing history, and
+the teammate proposes a prompt. The suggestion crosses to the owner, who moves
+it into a draft, adds a regression-test request, and sends it. Both views follow
+the response; **Stop sharing** ends the teammate's access. The light app windows,
+charcoal titles, cursor clicks, and Calm American narration follow the existing
+series.
+
+This is a scripted product illustration with synthetic checkout work and a
+nonfunctional demo invitation, not a recording of a live shared session. The
+source runs for 54 seconds; measured narration and the shared pacing pipeline
+produce a roughly 49-second preview. Editable source is in `videos/sharing-film*`;
+the thumbnail is `videos/assets/sharing-film-thumbnail.png`.
+
+Generate and check one continuous take, then render the isolated local preview:
+
+```bash
+.app-dev/video-tts/bin/python videos/generate-local-narration.py sharing-film --voice american-male --output videos/local/sharing-preview/sharing-film
+.app-dev/video-tts/bin/python videos/check-local-narration.py --voice american-male --output videos/local/sharing-preview/sharing-film
+node videos/render-voice-comparison.mjs --film=sharing-film videos/local/sharing-preview
+npx vite videos/local/sharing-preview --host 127.0.0.1 --port 4190 --strictPort
+```
+
+The player includes optional captions and clickable narration cues. Regenerating
+speech is unnecessary when re-rendering an unchanged, checked take. The Sharing
+card publishes the approved narrated MP4, captions, and poster through the same
+content-hashed media pipeline as the other films. The public YouTube
+version is <https://youtu.be/YyM19DjLeI4>. For the website's standard media folder,
+keep the checked take under `videos/local/narrated/sharing-film/` and render with
+`npm run render --prefix videos/remotion -- sharing-film`.
 
 ## Deploy
 

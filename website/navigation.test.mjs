@@ -188,7 +188,7 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
           );
         }
       }
-      assert.equal(await films.count(), 2);
+      assert.equal(await films.count(), 3);
       const intro = await page.locator(".hero").boundingBox();
       const project = await films.first().boundingBox();
       assert.ok(

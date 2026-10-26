@@ -7,7 +7,11 @@
       "title": "Mission",
       "duration": 48,
       "cues": [
-        { "start": 0.5, "end": 3.2, "text": "Let's build a feature in Korus." },
+        {
+          "start": 0.5,
+          "end": 3.2,
+          "text": "Let's build a feature in Korus."
+        },
         {
           "start": 3.5,
           "end": 9.1,
@@ -43,7 +47,11 @@
           "end": 44.7,
           "text": "It's ready for my team to review."
         },
-        { "start": 45, "end": 47.7, "text": "From idea to delivery, in Korus." }
+        {
+          "start": 45,
+          "end": 47.7,
+          "text": "From idea to delivery, in Korus."
+        }
       ]
     },
     {
@@ -160,7 +168,11 @@
       "title": "Quick Chat to Project",
       "duration": 43,
       "cues": [
-        { "start": 0.4, "end": 2.8, "text": "I've got an idea for an app." },
+        {
+          "start": 0.4,
+          "end": 2.8,
+          "text": "I've got an idea for an app."
+        },
         {
           "start": 3.2,
           "end": 8,
@@ -213,7 +225,11 @@
           "end": 6.8,
           "text": "I type slash visualize to get diagram suggestions on the right."
         },
-        { "start": 7.1, "end": 9.4, "text": "I'll open this release flow." },
+        {
+          "start": 7.1,
+          "end": 9.4,
+          "text": "I'll open this release flow."
+        },
         {
           "start": 9.7,
           "end": 15.3,
@@ -233,6 +249,58 @@
           "start": 27,
           "end": 30.7,
           "text": "I can show what I mean, right on the diagram."
+        }
+      ]
+    },
+    {
+      "id": "sharing-film",
+      "title": "Share a conversation",
+      "duration": 54,
+      "cues": [
+        {
+          "start": 0.5,
+          "end": 2.9,
+          "text": "Let's bring a teammate into the conversation."
+        },
+        {
+          "start": 3.5,
+          "end": 9.4,
+          "text": "I'm working on checkout retries. I share this conversation and send the invitation."
+        },
+        {
+          "start": 10.2,
+          "end": 16.5,
+          "text": "My teammate joins in Korus. The history is already here, and new updates arrive on both sides."
+        },
+        {
+          "start": 17.3,
+          "end": 23.5,
+          "text": "They suggest testing a payment that times out, then succeeds."
+        },
+        {
+          "start": 24.3,
+          "end": 30.5,
+          "text": "Their suggestion appears above my composer. I move it into my draft."
+        },
+        {
+          "start": 31.3,
+          "end": 36.5,
+          "text": "I add a regression test to the request, then send it to the agent."
+        },
+        {
+          "start": 37.3,
+          "end": 43.4,
+          "text": "We both see the fix and test results as the work progresses."
+        },
+        {
+          "start": 44.3,
+          "end": 48.5,
+          "text": "When we're done, I stop sharing. Their access ends."
+        },
+        {
+          "start": 49.3,
+          "end": 53.5,
+          "text": "Work together. Keep control. In Korus."
         }
       ]
     }
