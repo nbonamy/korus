@@ -153,7 +153,7 @@
         @install="emit('install-update')"
       />
       <button
-        v-if="agent?.sharedConversation"
+        v-if="agent?.sharedConversation && guestStatus !== 'rejected' && guestStatus !== 'storageUnavailable'"
         class="app-button app-button--neutral agent-header__leave"
         type="button"
         :aria-label="$t('guest.leave')"

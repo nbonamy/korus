@@ -1,6 +1,13 @@
 <template>
   <section class="shared-conversation-pane">
+  <div v-if="accessEnded" class="shared-conversation-pane__ended">
+    <p role="status">{{ t('guest.noLongerAccessible') }}</p>
+    <p v-if="view.status === 'storageUnavailable'" role="alert">{{ t('guest.status.storageUnavailable') }}</p>
+    <p v-if="closeFailed" role="alert">{{ t('guest.storageFailed') }}</p>
+    <button type="button" class="app-button app-button--secondary" :disabled="busy || closing" @click="close">{{ t('common.close') }}</button>
+  </div>
   <CodexConversationPane
+    v-else
     :key="view.id"
     v-model="draft"
     :disabled="busy || view.status !== 'ready'"
@@ -63,6 +70,16 @@ import DeferredConversationContent from './DeferredConversationContent.vue';
 import ConversationShareActivity from './ConversationShareActivity.vue';
 const props = defineProps<{ view: GuestJoinView; busy: boolean; control: (input: GuestJoinControl) => Promise<boolean> }>();
 const draft = ref(''); const failed = ref(false); const withdrawing = ref(false); const withdrawFailed = ref(false);
+const accessEnded = computed(() => ['rejected', 'storageUnavailable'].includes(props.view.status));
+const closing = ref(false); const closeFailed = ref(false);
+async function close() {
+  if (props.busy || closing.value) return;
+  closing.value = true; closeFailed.value = false;
+  try { closeFailed.value = !await props.control({ action: 'leave', id: props.view.id }); }
+  catch { closeFailed.value = true; }
+  finally { closing.value = false; }
+}
+
 const visibleProposals = computed(() => props.view.proposalState?.proposals.filter(record => ['pending', 'queued', 'dispatching', 'unresolved'].includes(record.status)) ?? []);
 async function withdraw(proposalId: string) {
   if (props.busy || withdrawing.value || props.view.status !== 'ready') return;
@@ -111,6 +128,8 @@ function openLink(link: CodexConversationLink) {
 </script>
 <style scoped>
 .shared-conversation-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.shared-conversation-pane__ended { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-8); padding: var(--space-16); color: var(--color-text-muted); text-align: center; }
+.shared-conversation-pane__ended p { margin: 0; }
 .shared-conversation-pane__author { color: var(--color-text-muted); font-size: var(--font-size-12); }
 .guest-transcript {
   flex: 1 1 auto;

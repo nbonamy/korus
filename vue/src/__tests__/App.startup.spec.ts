@@ -164,6 +164,50 @@ describe('app startup', () => {
     expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(false);
     wrapper.unmount();
   });
+  it('keeps a revoked shared chat in an access-ended screen until Close without opening the invite dialog', async () => {
+    vi.useFakeTimers();
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const agent = snapshot.agents[0]!;
+    const id = 'e'.repeat(64);
+    agent.sharedConversation = { joinId: id }; agent.sessionKind = 'quickChat'; agent.folder = null;
+    snapshot.activeAgentId = agent.id;
+    const { api, emit } = createClientApiMock(snapshot);
+    const entry = { id, name: 'Alex', title: 'Sharing' };
+    let state: import('@workspace/core/guest-navigation').GuestJoinState = { entries: [entry], view: { ...entry, status: 'ready', participant: null, target: null, frame: null } };
+    let failClose = true;
+    api.guestConversationControl.mockImplementation(async input => {
+      if (input.action === 'leave') {
+        if (failClose) { failClose = false; throw new Error('Storage unavailable'); }
+        state = { entries: [], view: null };
+        snapshot.agents = snapshot.agents.filter(row => row.id !== agent.id);
+        snapshot.teams.forEach(team => { team.agentIds = team.agentIds.filter(row => row !== agent.id); });
+        snapshot.activeAgentId = snapshot.agents[0]?.id ?? null;
+        emit({ type: 'snapshot.updated', seq: 10, occurredAt: 'now', payload: structuredClone(snapshot) });
+      }
+      return structuredClone(state);
+    });
+    const wrapper = mountStartup(api);
+    try {
+      await flushPromises();
+      expect(wrapper.find('.shared-conversation-pane').exists()).toBe(true);
+      state = { entries: [entry], view: { ...entry, status: 'rejected', participant: null, target: null, frame: null } };
+      await vi.advanceTimersByTimeAsync(750); await flushPromises();
+      expect(wrapper.find('#guest-invitation').exists()).toBe(false);
+      const ended = wrapper.get('.shared-conversation-pane');
+      expect(ended.text()).toContain('This conversation is no longer accessible.');
+      expect(wrapper.find('.agent-header button[aria-label="Leave"]').exists()).toBe(false);
+      expect(ended.find('[contenteditable]').exists()).toBe(false);
+      const close = ended.findAll('button').find(button => button.text() === 'Close')!;
+      await close.trigger('click'); await flushPromises();
+      expect(ended.get('[role="alert"]').text()).toContain('Check local storage');
+      expect(wrapper.find('#guest-invitation').exists()).toBe(false);
+      await close.trigger('click'); await flushPromises();
+      expect(api.guestConversationControl).toHaveBeenLastCalledWith({ action: 'leave', id });
+      expect(wrapper.find('.shared-conversation-pane').exists()).toBe(false);
+      expect(wrapper.find('#guest-invitation').exists()).toBe(false);
+    } finally { wrapper.unmount(); vi.useRealTimers(); }
+  });
   it('waits for the saved workspace before deciding whether to show onboarding', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

@@ -233,6 +233,8 @@ baseline through the guest client. Concurrent opens reuse the session; switching
 entries disposes the old subscription. Temporary disconnect retains the loaded
 view with an unavailable status. An authenticated revocation clears the view and
 saved authorization; failed local removal is explicit and cannot reopen access.
+An ended conversation retains a memory-only navigation entry until it is closed;
+that entry has no transcript or saved authorization and cannot reconnect.
 Leaving persists removal before disposing its session. Canceling an unconfirmed
 invitation discards its temporary session without changing saved joins.
 

@@ -147,6 +147,16 @@ describe('encrypted guest conversation authorization', () => {
     expect(snapshot.agents).toHaveLength(1);
     expect(snapshot.activeTeamId).toBe('team-test');
     expect(snapshot.activeAgentId).toBe(snapshot.agents[0]!.id);
+    await f.shares.control({ action: 'revoke', handle: f.link.handle, target: f.target });
+    await vi.waitFor(async () => expect((await call({ action: 'state' })).view?.status).toBe('rejected'));
+    expect(snapshot.agents).toHaveLength(1);
+    expect(snapshot.activeAgentId).toBe(snapshot.agents[0]!.id);
+    const ended = await call({ action: 'open', id: prepared.view!.id });
+    expect(ended.entries).toHaveLength(1);
+    expect(ended.view).toMatchObject({ status: 'rejected', frame: null, participant: null, target: null });
+    await expect(call({ action: 'join', id: prepared.view!.id, name: 'Alex' })).rejects.toThrow();
+    expect(await call({ action: 'leave', id: prepared.view!.id })).toStrictEqual({ entries: [], view: null });
+    expect(snapshot.agents).toStrictEqual([]);
   }, 30_000);
   // Moderation failures: pending text leaks to other guests, Dismiss dispatches,
   // retry/late owner decisions duplicate execution, or saved identity bindings disappear.
@@ -271,9 +281,19 @@ describe('encrypted guest conversation authorization', () => {
     expect((await joins.control({ action: 'state' })).view!.participant!.identity).toBe(identity);
     await f.shares.control({ action: 'revoke', handle: f.link.handle, target: f.target });
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('rejected'));
-    expect((await joins.control({ action: 'state' })).entries).toHaveLength(0);
+    expect((await joins.control({ action: 'state' })).entries).toHaveLength(1);
     expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
     expect((await joins.control({ action: 'state' })).view?.frame).toBeNull();
+    const other = await f.addLink(2);
+    const otherId = (await joins.control({ action: 'prepare', link: encodeConversationShareLink(other) })).view!.id;
+    await joins.control({ action: 'join', id: otherId, name: 'Alex' });
+    await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
+    const reopened = await joins.control({ action: 'open', id });
+    expect(reopened.entries).toHaveLength(2);
+    expect(reopened.view).toMatchObject({ id, status: 'rejected', frame: null });
+    await joins.control({ action: 'leave', id });
+    expect((await joins.control({ action: 'state' })).entries.map(entry => entry.id)).toStrictEqual([otherId]);
+    expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
   it('blocks access and reports failed authorization removal when local storage becomes inaccessible during revocation', async () => {
     const f = await fixture(); const directory = path.join(f.directory, 'joined');

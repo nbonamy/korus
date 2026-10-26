@@ -33,9 +33,6 @@ export function useGuestNavigation(snapshot: () => AppSnapshot, selectAgent: (id
         if (!disposed) {
           state.value = next;
           if (input.action === 'prepare' || input.action === 'join') inviteView.value = next.view;
-          if (next.view && ['rejected', 'storageUnavailable'].includes(next.view.status) && !inviteVisible.value) {
-            inviteView.value = next.view; inviteVisible.value = true;
-          }
           if (['prepare', 'join', 'open'].includes(input.action) && next.entries.some(entry => entry.id === next.view?.id)) {
             const agent = snapshot().agents.find(agent => agent.sharedConversation?.joinId === next.view?.id);
             if (agent && agent.id !== snapshot().activeAgentId) await selectAgent(agent.id);

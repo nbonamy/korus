@@ -7,6 +7,7 @@ export const messages = {
       joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
 
       open: 'Open shared conversation', join: 'Join conversation', displayName: 'Display name',
+      noLongerAccessible: 'This conversation is no longer accessible.',
       suggestions: 'Suggestions', moveSuggestion: 'Move suggestion to composer', deleteSuggestion: 'Delete suggestion', deleteSuggestionFailed: 'Could not delete this suggestion. Try again.',
       displayNamePurpose: 'The conversation owner will see this name next to messages you propose.',
       displayNameSaveFailed: 'Could not save your display name. Try again.', settingsTitle: 'Collaboration',
@@ -17,7 +18,7 @@ export const messages = {
       guestProposals: 'Guest proposals',
       title: 'Share with guests', share: 'Share', close: 'Close',
       disclosure: 'Anyone with this link can read the full available history and future updates, including tool output.',
-      approval: 'You approve each proposed guest message before it is sent to the agent.',
+      approval: 'Collaborators can suggest prompts for you to review, edit, and send.',
       active: 'This conversation has an active share link.', guests: '{count} guests connected',
       temporarilyUnavailable: 'Sharing is temporarily unavailable. Please try again shortly.',
       copy: 'Copy link', stop: 'Stop sharing', inviteLinkCopied: 'Invite link copied to clipboard',

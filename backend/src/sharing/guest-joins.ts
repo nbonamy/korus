@@ -80,6 +80,8 @@ export class GuestJoins {
         this.select(session);
         if (record) this.connect(session);
       } else if (action.action === 'open') {
+        const ended = this.sessions.get(action.id);
+        if (ended?.view.status === 'rejected') { this.select(ended); return this.state(); }
         const record = this.saved!.joins.find(record => record.id === action.id); if (!record) throw new Error('Shared conversation not found.');
         let session = this.sessions.get(record.id);
         if (!session) {
@@ -89,7 +91,7 @@ export class GuestJoins {
         this.select(session); this.connect(session);
       } else if (action.action === 'join') {
         const name = nameSchema.safeParse(action.name); if (!name.success) throw new Error('Invalid display name.');
-        const session = this.sessions.get(action.id); if (!session) throw new Error('Shared conversation not found.');
+        const session = this.sessions.get(action.id); if (!session || ['rejected', 'storageUnavailable'].includes(session.view.status)) throw new Error('Shared conversation not found.');
         const existing = this.saved!.joins.find(record => record.id === action.id);
         if (!existing) await this.write({ ...this.saved!, joins: [...this.saved!.joins, { id: action.id, link: encodeConversationShareLink(session.link), name: name.data, ...(session.view.teamId ?? currentTeamId ? { teamId: session.view.teamId ?? currentTeamId } : {}) }] });
         session.view.name = existing?.name ?? name.data; this.select(session); this.connect(session);
@@ -100,7 +102,7 @@ export class GuestJoins {
           this.sessions.delete(action.id); if (this.selected?.id === action.id) this.selected = null;
         }
       } else if (action.action === 'leave') {
-        await this.write({ ...this.saved!, joins: this.saved!.joins.filter(record => record.id !== action.id) });
+        if (this.saved!.joins.some(record => record.id === action.id)) await this.write({ ...this.saved!, joins: this.saved!.joins.filter(record => record.id !== action.id) });
         const session = this.sessions.get(action.id); if (session) this.dispose(session);
         this.sessions.delete(action.id); if (this.selected?.id === action.id) this.selected = null;
       }
@@ -110,12 +112,18 @@ export class GuestJoins {
   private select(session: Session) {
     for (const previous of this.sessions.values()) {
       if (previous === session) continue;
-      this.dispose(previous); if (!this.saved?.joins.some(record => record.id === previous.view.id)) this.sessions.delete(previous.view.id);
+      this.dispose(previous); if (previous.view.status !== 'rejected' && !this.saved?.joins.some(record => record.id === previous.view.id)) this.sessions.delete(previous.view.id);
     }
     this.selected = session.view;
   }
   private state(): GuestJoinState {
     const entries = (this.saved?.joins ?? []).map(({ id, name, title, teamId }) => ({ id, name, title: emptyView(id, name, title).title, ...(teamId ? { teamId } : {}) }));
+    // Ended rows are navigation only: authorization and transcripts have been removed.
+    for (const session of this.sessions.values()) {
+      if (session.view.status !== 'rejected' || entries.some(entry => entry.id === session.view.id)) continue;
+      const { id, name, title, teamId } = session.view;
+      entries.push({ id, name, title, ...(teamId ? { teamId } : {}) });
+    }
     const view = this.selected ? { ...this.selected, title: entries.find(entry => entry.id === this.selected!.id)?.title ?? this.selected.title } : null;
     return structuredClone({ entries, view });
   }
@@ -189,7 +197,7 @@ export class GuestJoins {
     session.timer = setTimeout(() => { session.timer = undefined; this.connect(session); }, delay); session.timer.unref();
   }
   private async reject(session: Session) {
-    this.dispose(session); session.view.proposalState = undefined; session.view.status = 'rejected'; session.view.frame = null; session.view.participant = null;
+    this.dispose(session); session.view.proposalState = undefined; session.view.status = 'rejected'; session.view.frame = null; session.view.participant = null; session.view.target = null;
     try {
       await this.serial(async () => {
         if (this.saved) await this.write({ ...this.saved, joins: this.saved.joins.filter(record => record.id !== session.view.id) });

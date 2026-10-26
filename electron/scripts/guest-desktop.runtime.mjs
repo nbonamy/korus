@@ -135,11 +135,14 @@ try {
   assert.equal(await page.getByText('Synthetic history from before sharing.', { exact: false }).count(), 1);
   await page.screenshot({ path: path.join(evidence, 'guest-offline.png') });
   await writeFile(path.join(ownerHome, 'command'), 'online'); await page.getByText('Synthetic live update after reconnect.', { exact: true }).waitFor();
-  await writeFile(path.join(ownerHome, 'command'), 'revoke'); await page.getByText('This share link is no longer authorized.').waitFor();
+  await writeFile(path.join(ownerHome, 'command'), 'revoke'); await page.getByText('This conversation is no longer accessible.', { exact: true }).waitFor();
   assert.equal(await page.locator('.guest-transcript').count(), 0);
-  assert.equal((await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries.length, 0);
-  observations.scenarios.push('offline retained content; automatic reconnect replaces provider baseline; revoke removes saved authorization/cache');
+  assert.equal((await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries.length, 1);
+  assert.equal(await page.locator('#guest-invitation').count(), 0);
+  observations.scenarios.push('offline retained content; automatic reconnect replaces provider baseline; revoke clears authorization/cache and retains an access-ended screen until Close');
   await page.screenshot({ path: path.join(evidence, 'guest-revoked.png') });
+  await page.locator('.shared-conversation-pane').getByRole('button', { name: 'Close', exact: true }).click();
+  assert.equal((await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries.length, 0);
   const saved = await readFile(path.join(home, 'guest-joins/state.json'), 'utf8'); assert(!saved.includes('#credential=')); assert(!saved.includes('Synthetic history'));
   console.log('Native desktop guest workflow passed.');
   await writeFile(path.join(evidence, 'observations.json'), JSON.stringify(observations, null, 2));
