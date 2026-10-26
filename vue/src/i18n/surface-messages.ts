@@ -70,6 +70,7 @@ export const surfaceMessages = {
     "pullRequestInstructionsPlaceholder": "Add pull request guidance…",
     "worktrees": "Worktrees",
     "worktreeInitialization": "Worktree initialization",
+    "worktreeInitializationGuide": "Setup guide",
     "prepareNewWorktreesBeforeAgentsStart": "Use repository instructions when available; otherwise copy local environment files and detect setup from the project's tech stack",
     "worktreeInitializationAutomatic": "Auto-detect",
     "worktreeInitializationRepository": "Repo instructions only",
@@ -173,6 +174,13 @@ export const surfaceMessages = {
     "noMatchingAgents": "No matching agents.",
     "noTeam": "No team"
   },
+  "fileKind": {
+    "code": "Code",
+    "test": "Tests",
+    "docs": "Documentation",
+    "other": "Other",
+    "fileCount": "{count} file | {count} files"
+  },
   "agentHeader": {
     "showAgentSidebar": "Show agent sidebar",
     "noAgent": "No agent",
@@ -185,6 +193,7 @@ export const surfaceMessages = {
     "unstagedChanges": "Unstaged",
     "stagedChanges": "Staged",
     "lastTurnChanges": "Last turn",
+    "changesByType": "By file type",
     "commits": "Commits",
     "addedLines": "Added lines",
     "removedLines": "Removed lines",
@@ -538,6 +547,7 @@ export const surfaceMessages = {
     "refresh": "Refresh",
     "reviewOptions": "Review options",
     "wordWrap": "Word wrap",
+    "groupByFileType": "Group by file type",
     "workingTree": "Working tree",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all"

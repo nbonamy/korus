@@ -77,6 +77,8 @@ export type AppBackendRequestMap = {
   [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };
   [backendMethods.guestConversationContent]: { params: { id: string; input: import('../contracts/conversation').ConversationContentInput }; result: import('../contracts/conversation').ConversationContentChunk };
   [backendMethods.conversationShareControl]: { params: { input: import('../conversation-sharing').ConversationShareControl }; result: import('../conversation-sharing').ConversationShareResult };
+  [backendMethods.repositoryDeletePreview]: { params: { agentId: string }; result: import('../contracts/workspace').RepositoryDeletionPreview };
+  [backendMethods.repositoryDelete]: { params: { agentId: string; input: import('../contracts/workspace').DeleteRepositoryInput }; result: AppSnapshot };
   [backendMethods.browserExtensionPackages]: { params: { input: import('../browser-extensions').BrowserExtensionPackageRequest }; result: import('../browser-extensions').BrowserExtensionPackageState };
   [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {

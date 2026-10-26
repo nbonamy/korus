@@ -143,7 +143,9 @@ describe('mobile requests across the owning daemon', () => {
     });
     const target = companionTarget(f.hostId, wire.teams[0]!, wire.agents[0]!);
     const diff = await f.gateway.request('phone', 'agent.git.diff', { target, scope: { type: 'uncommitted' } }) as import('@workspace/core/contracts').AgentGitDiff;
-    expect(diff.summary).toStrictEqual({ changedFiles: 2, addedLines: 2, removedLines: 1 });
+    expect(diff.summary).toMatchObject({ changedFiles: 2, addedLines: 2, removedLines: 1 });
+    // The text files in this fixture are neither code, tests nor documentation.
+    expect(diff.summary.byKind).toMatchObject({ other: { changedFiles: 2, addedLines: 2, removedLines: 1 }, code: { changedFiles: 0 } });
     expect(diff.diff).toContain('+after'); expect(diff.diff).toContain('+new');
     expect(JSON.stringify(wire.gitStatuses)).not.toContain(directory);
     expect(git('status', '--porcelain').toString()).toContain('?? new.txt');

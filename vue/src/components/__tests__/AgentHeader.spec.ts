@@ -203,6 +203,37 @@ describe('AgentHeader', () => {
     expect(wrapper.emitted('open-git-diff')).toStrictEqual([[{ type: 'uncommitted' }]]);
   });
 
+  it('lists the selected diff by what each file is for and skips empty kinds', async () => {
+    const stats = (addedLines: number, removedLines: number, changedFiles: number) => ({ addedLines, removedLines, changedFiles });
+    const byKind = (code = stats(0, 0, 0), test = stats(0, 0, 0), docs = stats(0, 0, 0), other = stats(0, 0, 0)) => ({ code, test, docs, other });
+    const gitStatus = (catalog: Record<string, unknown>): AgentGitStatus => ({
+      folder: '/Users/nbonamy/src/id8', branch: 'feature', ahead: 0, behind: 0, changedFiles: 4, addedLines: 43, removedLines: 4, hasUntracked: false, state: 'dirty' as const,
+      diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, commits: [], ...catalog } as unknown as AgentGitStatus['diffCatalog'], updatedAt: '2026-06-05T00:00:00.000Z',
+    });
+    const withKinds = gitStatus({
+      uncommitted: { ...stats(43, 4, 4), byKind: byKind(stats(30, 4, 2), stats(12, 0, 1), stats(0, 0, 0), stats(1, 0, 1)) },
+      unstaged: { ...stats(1, 0, 1), byKind: byKind(stats(0, 0, 0), stats(0, 0, 0), stats(1, 0, 1)) },
+      staged: stats(3, 2, 1),
+    });
+    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, withKinds);
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.type === 'info');
+    const rows = menuRows;
+    expect(rows().map(row => [row.id, row.label, row.description])).toStrictEqual([
+      ['kinds-heading', 'By file type', undefined], ['kind:code', 'Code', '2 files'], ['kind:test', 'Tests', '1 file'], ['kind:other', 'Other', '1 file'],
+    ]);
+    expect(rows()[1]!.value).toStrictEqual({ addedLines: 30, removedLines: 4 });
+    wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'unstaged');
+    await wrapper.vm.$nextTick();
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    expect(rows().map(row => row.id)).toStrictEqual(['kinds-heading', 'kind:docs']);
+    expect(rows()[1]!.label).toBe('Documentation');
+    wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'staged');
+    await wrapper.vm.$nextTick();
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    expect(rows()).toStrictEqual([]);
+  });
+
   it('switches among diff targets and remembers the selection per agent', async () => {
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',

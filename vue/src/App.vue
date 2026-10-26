@@ -118,6 +118,7 @@
     :create-mission="createMission"
     :select-mission="selectMission"
     :delete-mission="deleteMission"
+    :delete-repository-action="deleteRepository"
     :read-mission-artifact="readMissionArtifact"
     :execute-mission="executeMission"
     :create-quick-chat="createQuickChat"
@@ -376,6 +377,7 @@ const {
   createMission,
   selectMission,
   deleteMission,
+  deleteRepository,
   readMissionArtifact,
   executeMission,
   createQuickChat,

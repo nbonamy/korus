@@ -229,6 +229,8 @@ export const backendMethods = {
   sourceRepositoriesList: 'source/repositories/list',
   sourceRepositoryClone: 'source/repository/clone',
   sourceRepositoryCreate: 'source/repository/create',
+  repositoryDeletePreview: 'repository/delete/preview',
+  repositoryDelete: 'repository/delete',
   sourceBranchesList: 'source/branches/list',
   sourceWorktreeCreate: 'source/worktree/create',
   sourceWorktreePathSuggest: 'source/worktree/path/suggest',

@@ -15,6 +15,8 @@ const EXTENDED_REQUEST_TIMEOUT_MS = 10 * 60_000;
  * and EXTENDED only for operations designed to run for several minutes.
  */
 const requestTimeoutByMethod = {
+  [backendMethods.repositoryDeletePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.repositoryDelete]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.browserExtensionPackages]: EXTENDED_REQUEST_TIMEOUT_MS,
   [backendMethods.agentClosePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,

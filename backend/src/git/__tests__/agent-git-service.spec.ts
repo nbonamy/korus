@@ -49,9 +49,55 @@ describe('agent git service parsers', () => {
       '',
       '2\t0\tb.ts',
     ].join('\n'))).toStrictEqual([
-      { sha: 'aaaaaaaa', shortSha: 'aaaaaaa', subject: 'first commit', addedLines: 3, removedLines: 1, changedFiles: 1 },
-      { sha: 'bbbbbbbb', shortSha: 'bbbbbbb', subject: 'second commit', addedLines: 2, removedLines: 0, changedFiles: 1 },
+      { sha: 'aaaaaaaa', shortSha: 'aaaaaaa', subject: 'first commit', addedLines: 3, removedLines: 1, changedFiles: 1, byKind: expect.objectContaining({ code: { addedLines: 3, removedLines: 1, changedFiles: 1 } }) },
+      { sha: 'bbbbbbbb', shortSha: 'bbbbbbb', subject: 'second commit', addedLines: 2, removedLines: 0, changedFiles: 1, byKind: expect.objectContaining({ code: { addedLines: 2, removedLines: 0, changedFiles: 1 } }) },
     ]);
+  });
+
+  it('splits commit and diff summaries by what each file is for', async () => {
+    const [commit] = parseCommitSummaries([
+      '\x1eaaaaaaaa\x1faaaaaaa\x1ffeature',
+      '',
+      '30\t4\tsrc/billing.ts',
+      '12\t0\tsrc/billing.test.ts',
+      '3\t1\tREADME.md',
+      '-\t-\tassets/logo.png',
+      '5\t5\tsrc/{old => new}/helper_test.go',
+    ].join('\n'));
+    expect(commit).toMatchObject({ addedLines: 50, removedLines: 10, changedFiles: 5 });
+    expect(commit!.byKind).toStrictEqual({
+      code: { addedLines: 30, removedLines: 4, changedFiles: 1 },
+      test: { addedLines: 17, removedLines: 5, changedFiles: 2 },
+      docs: { addedLines: 3, removedLines: 1, changedFiles: 1 },
+      other: { addedLines: 0, removedLines: 0, changedFiles: 1 },
+    });
+  });
+
+  it('adds the same breakdown to working-tree, untracked and unified-diff summaries', async () => {
+    const unified = [
+      'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1 +1,2 @@', '-old', '+new', '+more',
+      'diff --git a/tests/a_test.py b/tests/a_test.py', '--- a/tests/a_test.py', '+++ b/tests/a_test.py', '@@ -0,0 +1 @@', '+assert x',
+    ].join('\n');
+    const runGit = vi.fn(async (_folder: string, args: string[]) => {
+      if (args[0] === 'status') return { stdout: '## main\n M src/a.ts\n?? notes.md\n' };
+      if (args.includes('--cached')) return { stdout: '' };
+      if (args[0] === 'diff' && args.includes('--no-index')) return { stdout: args.includes('--numstat') ? '7\t0\t/dev/null => notes.md\n' : '' };
+      if (args[0] === 'diff' && args.includes('--numstat')) return { stdout: '2\t1\tsrc/a.ts\n' };
+      if (args[0] === 'ls-files') return { stdout: 'notes.md\0' };
+      return { stdout: args.includes('--cached') ? '' : unified };
+    });
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), runGit);
+    const status = await service.status('/repo');
+    expect(status.diffCatalog?.uncommitted.byKind).toMatchObject({
+      code: { addedLines: 2, removedLines: 1, changedFiles: 1 },
+      docs: { addedLines: 7, removedLines: 0, changedFiles: 1 },
+    });
+    expect(status.diffCatalog?.staged.byKind?.code.changedFiles).toBe(0);
+    const diff = await service.diff('/repo', { type: 'unstaged' });
+    expect(diff.summary.byKind).toMatchObject({
+      code: { addedLines: 2, removedLines: 1, changedFiles: 1 },
+      test: { addedLines: 1, removedLines: 0, changedFiles: 1 },
+    });
   });
 
   it('builds provider-neutral staged, commit, and branch comparisons', async () => {

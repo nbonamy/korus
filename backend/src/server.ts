@@ -2,6 +2,7 @@ import type { GuestJoins } from './sharing/guest-joins';
 import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { AutoResumeService } from './agents/auto-resume-service';
+import { previewRepositoryDeletion, removeRepositoryFolders } from './repository-deletion';
 import { BrowserExtensionPackages } from './browser-extension-packages';
 import { randomUUID } from 'node:crypto';
 import type { UsageService } from './usage/usage-service';
@@ -263,6 +264,7 @@ export class AppBackendServer {
   private readonly agentHandoffs: AgentHandoffService;
   private readonly handoffListeners = new Set<(event: BackendPublishedEvent) => void>();
   private readonly agentClosuresInFlight = new Set<string>();
+  private readonly repositoryDeletionsInFlight = new Set<string>();
   private readonly agentWorkspaces: AgentWorkspaceService;
   private readonly subagentIdentities: SubagentIdentityService;
   private readonly agentGitService: AgentGitService;
@@ -1582,6 +1584,47 @@ export class AppBackendServer {
         if (!route) throw new Error('Agent not found.');
         return createAppRpcResult(message.id, await readAgentClosePreview(await this.remoteTeams.clientSnapshot(), agentId, () =>
           this.backendHandleForAgentLocation(route).request(backendMethods.agentGitWorkflowGet, { agentId }, () => this.agentGitService.workflow(requireAgentFolder(route.agent)))));
+      }
+      case backendMethods.repositoryDeletePreview: {
+        const agentId = requireAgentId(message.params);
+        return this.routeAgentResultRequest(message.id, agentId, message.method, { agentId }, agent =>
+          previewRepositoryDeletion(this.snapshot, agent, this.agentGitService));
+      }
+      case backendMethods.repositoryDelete: {
+        const agentId = requireAgentId(message.params);
+        const input = requireRecord(requireRecord(message.params).input);
+        const confirmation = requireString(input.confirmation, 'confirmation');
+        const fingerprint = requireString(input.fingerprint, 'fingerprint');
+        return this.routeAgentSnapshotRequest(message.id, agentId, message.method, { agentId, input: { confirmation, fingerprint } }, async agent => {
+          const preview = await previewRepositoryDeletion(this.snapshot, agent, this.agentGitService);
+          if (confirmation !== preview.confirmationName) throw new Error('Type the repository name exactly to confirm deletion.');
+          if (fingerprint !== preview.fingerprint) throw new Error('Repository agents or folders changed. Reopen the confirmation.');
+          if (this.repositoryDeletionsInFlight.has(preview.repositoryPath)) throw new Error('This repository is already being deleted.');
+          this.repositoryDeletionsInFlight.add(preview.repositoryPath);
+          try {
+            for (const { id } of preview.agents) {
+              const target = this.snapshot.agents.find(candidate => candidate.id === id)!;
+              if (target.status.type === 'working' || target.status.type === 'awaitingInput') {
+                await this.handleAgentDriverRequest(target, backendMethods.driverInterrupt, { agent: target });
+              }
+              if (target.backendSession) {
+                await this.retireConversation(target);
+                await this.driverRpc?.handle(backendMethods.driverConversationRelease, { backend: target.backend, agentId: id });
+              }
+            }
+            const current = await previewRepositoryDeletion(this.snapshot, agent, this.agentGitService);
+            if (current.fingerprint !== fingerprint) throw new Error('Repository agents or folders changed. Reopen the confirmation.');
+            await removeRepositoryFolders(current);
+            for (const { id } of current.agents) {
+              const target = this.snapshot.agents.find(candidate => candidate.id === id);
+              if (target) this.codeReviews?.closeForAgentRemoval(target);
+              closeAgentInSnapshot(this.snapshot, id);
+              this.agentRequests.clearAgent(id);
+            }
+            this.snapshot.sourceFolder.recentRepoNames = this.snapshot.sourceFolder.recentRepoNames.filter(name => name !== path.basename(current.repositoryPath));
+            return this.persistAndEmitSnapshot();
+          } finally { this.repositoryDeletionsInFlight.delete(preview.repositoryPath); }
+        });
       }
       case backendMethods.agentDelete: {
         const { agentId, input } = requireAgentCloseRequest(message.params);

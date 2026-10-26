@@ -225,7 +225,7 @@ describe(`${product.name} MCP tool registration`, () => {
     expect(coordinator.upsertMissionTicket).toHaveBeenCalledWith('agent-dina', draft);
   });
 
-  it('exposes finding tools only for the authenticated Mission Review stage', async () => {
+  it('keeps finding tools discoverable across Mission stages but hides them from ordinary agents', async () => {
     coordinator.missionContext.mockReturnValue({ missionId: 'mission-1', runId: 'run-1', stage: 'review' });
     createServer();
     expect([...handlers.keys()]).toEqual(expect.arrayContaining(['report-mission-review-finding', 'update-mission-review-finding']));
@@ -236,6 +236,10 @@ describe(`${product.name} MCP tool registration`, () => {
     });
     handlers.clear();
     coordinator.missionContext.mockReturnValue({ missionId: 'mission-1', runId: 'run-2', stage: 'tickets' });
+    createServer();
+    expect([...handlers.keys()]).toEqual(expect.arrayContaining(['report-mission-review-finding', 'update-mission-review-finding']));
+    handlers.clear();
+    coordinator.missionContext.mockReturnValue(undefined);
     createServer();
     expect([...handlers.keys()]).not.toContain('report-mission-review-finding');
   });

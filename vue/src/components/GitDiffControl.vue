@@ -47,6 +47,8 @@ import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shar
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
+import { fileKinds } from '@workspace/core/file-kind';
+import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 
 const props = defineProps<{
   agentId: string;
@@ -115,8 +117,29 @@ const menuItems = computed<AppMenuItem[]>(() => {
       }),
     });
   }
+  const kinds = kindMenuItems(summaryFor(selectedTarget.value));
+  if (kinds.length > 0) items.push({ id: 'separator-kinds', type: 'separator' }, ...kinds);
   return items;
 });
+
+/** What the selected diff is made of, from the file types the daemon worked out. */
+function kindMenuItems(summary: AgentGitDiffSummary): AppMenuItem[] {
+  const rows = fileKinds
+    .map(kind => ({ kind, stats: summary.byKind?.[kind] }))
+    .filter(({ stats }) => stats && stats.changedFiles > 0);
+  if (rows.length === 0) return [];
+  return [
+    { id: 'kinds-heading', type: 'info', label: translate('surface.agentHeader.changesByType') },
+    ...rows.map(({ kind, stats }) => ({
+      id: `kind:${kind}`,
+      type: 'info' as const,
+      label: fileKindLabel(kind),
+      description: fileKindCount(stats!.changedFiles),
+      value: { addedLines: stats!.addedLines, removedLines: stats!.removedLines },
+      leadingColor: fileKindColor[kind],
+    })),
+  ];
+}
 
 watch([() => props.agentId, () => props.selectedTarget], ([, target]) => {
   hasUserSelection.value = Boolean(target);

@@ -9,6 +9,9 @@
       :title="$t('surface.instructionSettings.worktrees')"
       title-id="settings-git-worktrees-title"
     >
+      <template #actions>
+        <a class="settings-instructions__worktree-guide" :href="worktreeGuideUrl" target="_blank" rel="noopener noreferrer" @click.prevent="appPlatformActions.openExternal?.(worktreeGuideUrl)">{{ $t('surface.instructionSettings.worktreeInitializationGuide') }}</a>
+      </template>
       <FormRow
         :title="$t('surface.instructionSettings.worktreeInitialization')"
         :description="$t('surface.instructionSettings.prepareNewWorktreesBeforeAgentsStart')"
@@ -44,6 +47,8 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
+import { product } from '@workspace/core/product';
+import { appPlatformActions } from '../platform-api';
 import { useDebouncedSave } from '../shared/use-debounced-save';
 import type { AppGeneralSettings, UpdateSettingsInput, WorktreeInitializationMode } from '@workspace/core/contracts';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
@@ -57,6 +62,7 @@ const props = defineProps<{
   settings: AppGeneralSettings;
   updateSettings?: (input: UpdateSettingsInput) => Promise<void>;
 }>();
+const worktreeGuideUrl = `${product.repositoryUrl}/wiki/Automatic-worktree-initialization`;
 type Field = 'commitMessageInstructions' | 'pullRequestInstructions';
 const fields: Field[] = ['commitMessageInstructions', 'pullRequestInstructions'];
 const draft = reactive({ commitMessageInstructions: '', pullRequestInstructions: '' });
@@ -83,6 +89,7 @@ watch(() => [props.settings.commitMessageInstructions, props.settings.pullReques
 
 <style scoped>
 .settings-instructions__worktree-section { margin-bottom: var(--space-24); }
+.settings-instructions__worktree-guide { color: var(--color-primary); font-size: var(--font-size-13); }
 .settings-instructions__worktree-select { width: 280px; max-width: 100%; }
 .settings-instructions__fields { display: flex; flex-direction: column; gap: var(--space-24); }
 </style>

@@ -54,6 +54,10 @@ describe('mission execution', () => {
     await h.command({ action: 'run' });
     await h.service.waitForLaunches();
     const workerId = h.current().execution!.runs.at(-1)!.workerId!;
+    await expect(h.service.reportReviewFinding(workerId, {
+      priority: 'p2', title: 'Not a Review assignment', body: 'Reporting must remain stage-authorized.',
+      repositoryPath: h.originalAgents[0]!.folder!,
+    })).rejects.toThrow('available only during Review');
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
     const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
     const { createAppMcpServer } = await import('../mcp/tools');

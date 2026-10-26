@@ -1,3 +1,4 @@
+import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
 import {
   hasOwn,
@@ -175,7 +176,15 @@ function isAgentGitDiffSummary(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.addedLines === 'number' &&
     typeof value.removedLines === 'number' &&
-    typeof value.changedFiles === 'number';
+    typeof value.changedFiles === 'number' &&
+    optional(value, 'byKind', isKindBreakdown);
+}
+
+function isKindBreakdown(value: unknown): boolean {
+  return isRecord(value) && fileKinds.every(kind => {
+    const stats = value[kind];
+    return isRecord(stats) && typeof stats.addedLines === 'number' && typeof stats.removedLines === 'number' && typeof stats.changedFiles === 'number';
+  });
 }
 
 export function isTurnGitDiff(value: unknown): boolean {

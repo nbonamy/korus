@@ -64,6 +64,7 @@
       :phone-scope="compactViewport"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
+      @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
       :active-team="activeTeam"
       :active-team-agents="activeTeamAgents"
@@ -571,6 +572,13 @@
       @save="saveImageAnnotation"
     />
     <ProvisioningOperationHost />
+    <RepositoryDeleteDialog
+      v-if="repositoryDeletionAgentId"
+      :agent-id="repositoryDeletionAgentId"
+      :load-preview="loadRepositoryDeletionPreview"
+      :remove-repository="deleteRepositoryAction"
+      @close="repositoryDeletionAgentId = null"
+    />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -679,6 +687,8 @@ import MissionCodeReview from './MissionCodeReview.vue';
 import MissionShipBoard from './MissionShipBoard.vue';
 import MissionWorkspace from './MissionWorkspace.vue';
 import MissionDeleteDialog from './MissionDeleteDialog.vue';
+import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
+import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -818,6 +828,7 @@ const props = withDefaults(defineProps<{
   createMission?: (input: CreateMissionInput) => Promise<Mission>;
   selectMission?: (missionId: string | null) => Promise<void>;
   deleteMission?: (input: DeleteMissionInput) => Promise<void>;
+  deleteRepositoryAction?: (agentId: string, input: DeleteRepositoryInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
   executeMission?: (input: import('@workspace/core/mission-execution').MissionExecutionInput) => Promise<void>;
   missionImplementationStartProgress?: MissionImplementationStartProgress | null;
@@ -979,6 +990,7 @@ const props = withDefaults(defineProps<{
   createMission: async () => { throw new Error('Missions unavailable.'); },
   selectMission: async () => undefined,
   deleteMission: async () => { throw new Error('Missions unavailable.'); },
+  deleteRepositoryAction: async () => { throw new Error('Repository deletion unavailable.'); },
   readMissionArtifact: async () => { throw new Error('Mission artifacts unavailable.'); },
   createQuickChat: async () => undefined,
   createTeam: async () => undefined,
@@ -1269,6 +1281,12 @@ async function createNewMission() {
   } finally {
     missionCreationPending.value = false;
   }
+}
+
+const repositoryDeletionAgentId = ref<string | null>(null);
+async function loadRepositoryDeletionPreview(agentId: string) {
+  if (!appApi?.previewRepositoryDeletion) throw new Error('Repository deletion unavailable.');
+  return appApi.previewRepositoryDeletion(agentId);
 }
 
 function deleteMissionFromSidebar(id: string): void {

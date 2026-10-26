@@ -7,7 +7,9 @@ import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules'
 export function createMissionReviewToolModuleProvider(coordinator: AppMcpAgentCoordinator): AppMcpToolModuleProvider {
   return {
     id: 'mission-review-findings',
-    resolve: ({ agentId }) => coordinator.missionContext(agentId)?.stage === 'review' ? {
+    // Providers can retain the first tool catalog when a Mission lead is reused.
+    // Discoverability stays stable; MissionAgentTools checks stage and ownership.
+    resolve: ({ agentId }) => coordinator.missionContext(agentId) ? {
       id: 'mission-review-findings',
       register: server => registerMissionReviewTools(server, coordinator, agentId),
     } : undefined,

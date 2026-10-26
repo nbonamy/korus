@@ -29,6 +29,14 @@ export const messages = {
       restartRequired: 'Restart Korus to load the updated sharing controls.',
       copyFailed: 'The link is saved, but copying failed. Try Copy link again.',
     },
+    repositoryDeletion: {
+      action: 'Delete repository', title: 'Delete {name}?', loading: 'Checking repository…',
+      warning: 'This will permanently delete the repository, all linked worktrees, and all associated agents across all teams.',
+      loss: 'All local files, uncommitted changes, and local Git history will be lost.',
+      irreversible: 'This cannot be undone.',
+      remote: 'The remote repository will not be deleted.',
+      confirmation: 'Type {name} to confirm', deleting: 'Deleting…',
+    },
     repositoryOnboarding: {
       title: 'Connect your code.', titleDetail: `Bring your work into ${product.name}.`,
       connect: 'Connect {provider}', skip: 'Skip for now', usingCli: 'Using {provider} CLI',

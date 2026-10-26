@@ -1011,6 +1011,12 @@ export function useAppState() {
     await appApi?.selectMission(missionId);
   }
 
+  async function deleteRepository(agentId: string, input: import('@workspace/core/contracts/workspace').DeleteRepositoryInput): Promise<void> {
+    if (!appApi?.deleteRepository) throw new Error('Repository deletion unavailable.');
+    adoptBackgroundSnapshot(await appApi.deleteRepository(agentId, input));
+    await loadSourceRepositories();
+  }
+
   async function deleteMission(input: import('@workspace/core/missions').DeleteMissionInput) {
     if (!appApi) throw new Error('Missions unavailable.');
     adoptNavigationSnapshot(await appApi.deleteMission(input));
@@ -1796,6 +1802,7 @@ export function useAppState() {
     createMission,
     selectMission,
     deleteMission,
+    deleteRepository,
     readMissionArtifact,
     updateMission,
     createQuickChat,

@@ -92,6 +92,8 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   listSourceFolders: [backendMethods.sourceFoldersList, firstArgument],
   listSourceRepositories: [backendMethods.sourceRepositoriesList, optionalNamed('remoteConnectionId')],
   cloneSourceRepository: [backendMethods.sourceRepositoryClone, named('input')],
+  previewRepositoryDeletion: [backendMethods.repositoryDeletePreview, named('agentId')],
+  deleteRepository: [backendMethods.repositoryDelete, named('agentId', 'input')],
   listSourceBranches: [backendMethods.sourceBranchesList, namedOptional('repoPath', 'remoteConnectionId')],
   listSourceWorktrees: [backendMethods.sourceWorktreesList, namedOptional('repoPath', 'remoteConnectionId')],
   suggestSourceWorktreePath: [backendMethods.sourceWorktreePathSuggest, named('input')],

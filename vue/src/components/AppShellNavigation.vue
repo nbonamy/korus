@@ -47,6 +47,7 @@
       :mission-creation-pending="missionCreationPending"
       :phone-scope="phoneScope"
       @create-mission="$emit('create-mission')"
+      @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
@@ -158,6 +159,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'disconnect-team': [teamId: string];
   'duplicate-agent': [agentId: string];
