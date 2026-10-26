@@ -614,7 +614,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
@@ -663,6 +663,7 @@ import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
 import ConversationShareDialog from './ConversationShareDialog.vue';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SharedConversationPane from './SharedConversationPane.vue';
@@ -1329,6 +1330,8 @@ const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
 // IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
 const shareTarget = shallowRef<ConversationShareTarget | null>(null);
+const shareActiveByAgentId = reactive<Record<string, boolean>>({});
+provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
 function openShare(agentId: string) {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
   if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;

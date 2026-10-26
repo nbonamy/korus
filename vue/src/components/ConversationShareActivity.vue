@@ -13,16 +13,18 @@
   </section>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ConversationShareState, ConversationShareTarget, GuestAuthor } from '@workspace/core/conversation-sharing';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 import { appApi } from '../platform-api';
 const props = defineProps<{ target: ConversationShareTarget }>();
 const emit = defineEmits<{ authors: [authors: GuestAuthor[]] }>();
 const { t } = useI18n(); const state = ref<ConversationShareState | null>(null); const busy = ref(false); const failed = ref(false);
+const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
 const proposals = computed(() => state.value?.proposals?.filter(proposal => ['pending', 'queued', 'dispatching', 'unresolved'].includes(proposal.status)) ?? []);
 let disposed = false; let generation = 0; let unsubscribe: (() => void) | undefined;
-function receive(value: ConversationShareState) { state.value = value; emit('authors', value.authors ?? []); }
+function receive(value: ConversationShareState) { state.value = value; if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = value.active; emit('authors', value.authors ?? []); }
 async function load() {
   const expected = ++generation;
   try { const result = await appApi?.conversationShareControl({ action: 'status', target: props.target }); if (!disposed && expected === generation && result) receive(result.state); }

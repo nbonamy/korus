@@ -1,4 +1,4 @@
-import { createApp, h, ref, shallowRef } from 'vue';
+import { createApp, h, provide, reactive, ref, shallowRef } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import '../../../../styles/variables.css';
@@ -10,6 +10,7 @@ import AgentSidebar from '../../../AgentSidebar.vue';
 import ConversationShareDialog from '../../../ConversationShareDialog.vue';
 import type { Agent } from '@workspace/core/contracts';
 import { conversationShareTarget, type ConversationShareControl } from '@workspace/core/conversation-sharing';
+import { conversationShareActiveByAgentIdKey } from '../../../conversation-share-state';
 
 // Presentation-only fixture. No credentials, provider sessions or relay connections.
 const agent: Agent = { id: 'synthetic-owner', teamId: 'synthetic-team', name: 'Guest sharing demo', folder: '/synthetic/project', backend: 'codex', backendSession: { kind: 'codex', threadId: 'synthetic-thread' }, status: { type: 'idle' }, createdAt: '', updatedAt: '' };
@@ -17,6 +18,8 @@ const team = { id: agent.teamId!, name: 'Synthetic workspace', agentIds: [agent.
 createApp({
   setup() {
     const open = ref(false); const active = ref(false);
+    const shareActiveByAgentId = reactive<Record<string, boolean>>({});
+    provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
     const target = shallowRef(conversationShareTarget(agent)!);
     const control = async (input: ConversationShareControl) => {
       if (window.app?.conversationShareControl) return window.app.conversationShareControl(input);

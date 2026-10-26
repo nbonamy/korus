@@ -9,35 +9,34 @@
       </p>
       <el-alert v-if="(state?.active && state.availability !== 'ready') || state?.availability === 'notConfigured'" :title="t('sharing.temporarilyUnavailable')" type="warning" :closable="false" show-icon />
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-      <p v-if="copied" class="app-form-dialog__help" role="status">{{ t('sharing.copied') }}</p>
     </div>
-    <template #footer-left>
-      <button type="button" v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
-    </template>
     <template #footer>
-      <button type="button" v-if="!state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.cancel') }}</button>
-      <button type="button" v-if="!state && !loading" class="app-button app-button--primary" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
-      <button type="button" v-else class="app-button app-button--primary" :aria-busy="busy || loading" :disabled="busy || loading || !state || state.availability === 'notConfigured'" @click="run(state?.active ? 'copy' : 'create')">
-        {{ state?.active ? t('sharing.copy') : t('sharing.create') }}
+      <button v-if="state?.active" type="button" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
+      <button type="button" :class="['app-button', state?.active ? 'app-button--secondary' : 'app-button--tertiary']" :disabled="busy" @click="close">{{ t('sharing.close') }}</button>
+      <button v-if="!state && !loading" type="button" class="app-button app-button--primary" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
+      <button v-else-if="state" type="button" class="app-button app-button--primary" :aria-busy="busy || loading" :disabled="busy || loading || state.availability === 'notConfigured'" @click="run(state.active ? 'copy' : 'create')">
+        {{ state.active ? t('sharing.copy') : t('sharing.share') }}
       </button>
     </template>
   </FormDialog>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ConversationShareControl, ConversationShareResult, ConversationShareState, ConversationShareTarget } from '@workspace/core/conversation-sharing';
+import { ElMessage } from 'element-plus';
 import { appApi } from '../platform-api';
 import FormDialog from '../shared/dialog/FormDialog.vue';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 
 const props = defineProps<{ target: ConversationShareTarget; control: (input: ConversationShareControl) => Promise<ConversationShareResult> }>();
 const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
+const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
 const state = ref<ConversationShareState | null>(null);
 const loading = ref(true);
 const busy = ref(false);
-const copied = ref(false);
 const error = ref('');
 let disposed = false;
 let revision = 0;
@@ -58,13 +57,16 @@ async function load() {
   loading.value = true; error.value = '';
   try {
     const result = await props.control({ action: 'status', target: props.target });
-    if (!disposed && expected === revision) state.value = result.state;
+    if (!disposed && expected === revision) {
+      state.value = result.state;
+      if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = result.state.active;
+    }
   } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) loading.value = false; }
 }
 async function run(action: 'create' | 'copy' | 'revoke') {
   if (busy.value || !state.value) return;
-  busy.value = true; error.value = ''; copied.value = false;
+  busy.value = true; error.value = '';
   try {
     const input: ConversationShareControl = action === 'revoke'
       ? { action, target: props.target, handle: state.value.handle! }
@@ -72,9 +74,18 @@ async function run(action: 'create' | 'copy' | 'revoke') {
     const result = await props.control(input);
     if (disposed) return;
     revision++; state.value = result.state;
+    if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = result.state.active;
     if (result.link) {
-      try { await navigator.clipboard.writeText(result.link); if (!disposed) copied.value = true; }
+      try {
+        await navigator.clipboard.writeText(result.link);
+        if (!disposed) {
+          ElMessage.success(t('sharing.inviteLinkCopied'));
+          if (action === 'create') emit('close');
+        }
+      }
       catch { if (!disposed) error.value = t('sharing.copyFailed'); }
+    } else if (action === 'revoke' && !result.state.active) {
+      emit('close');
     }
   } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) busy.value = false; }
@@ -82,7 +93,8 @@ async function run(action: 'create' | 'copy' | 'revoke') {
 onMounted(() => {
   unsubscribe = appApi?.onEvent(event => {
     if (event.type !== 'conversation.shareChanged' || event.agentId !== props.target.agentId) return;
-    revision++; state.value = event.payload; copied.value = false;
+    revision++; state.value = event.payload;
+    if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = event.payload.active;
   });
   void load();
 });

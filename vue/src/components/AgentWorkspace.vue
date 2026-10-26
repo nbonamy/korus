@@ -490,6 +490,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     executionPlanAvailable: focused && Boolean(currentTurnPlan.value),
     executionPlanOpen: focused && executionPlanVisible.value,
     shareAvailable: Boolean(agent && supportsConversationSharing(agent) && isLocalAgent(agent)),
+    shareStatusOnMount: props.splitHeaders,
     onShare: () => agentId && emit('share-agent', agentId),
     openInAvailable: Boolean(agent && !agent.sharedConversation && appHostCapabilities.openInApplications && isLocalAgent(agent)),
     openInCatalog: props.openInApplications,
