@@ -213,8 +213,12 @@ Registered per authenticated request by independent modules
   assignments, not current turn or run status, so failed or finished attempts can
   still read artifacts; ordinary agents never receive them. Availability permits
   inspection; backend ownership checks separately control mutations and reject
-  stale or superseded attempts. A failed attempt stays recoverable: its worker can
-  continue and submit later, and success clears the error. Mission and run IDs are
+  stale or superseded attempts. Finding-reporting tools are discoverable from the
+  first Mission assignment so reused provider conversations retain them across
+  stages; reporting still requires ownership of the active Review run, and
+  remediation updates require the assigned finding. A failed attempt stays
+  recoverable: its worker can continue and submit later, and success clears the
+  error. Mission and run IDs are
   inferred from identity, never model input. Implementation workers read their
   explicit ticket assignment through `get-mission-assignment` and submit evidence
   against its stable ticket ID; the daemon owns backlog updates and aggregation.

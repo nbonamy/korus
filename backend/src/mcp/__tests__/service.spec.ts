@@ -691,7 +691,7 @@ describe('AppMcpService', () => {
     const workerTools = await postJson(agentUrl(url, 'agent-dina'), {
       jsonrpc: '2.0', id: 1, method: 'tools/list', params: {},
     });
-    const missionTools = ['set-mission-title', 'get-mission-assignment', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result'];
+    const missionTools = ['set-mission-title', 'get-mission-assignment', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result', 'report-mission-review-finding', 'update-mission-review-finding'];
     const workerToolNames = workerTools.result.tools.map((tool: { name: string }) => tool.name);
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-shape-requirements' })).result.isError).toBe(false);
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-review' })).result.isError).toBe(true);
