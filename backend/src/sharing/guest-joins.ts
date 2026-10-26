@@ -5,7 +5,7 @@ import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@
 import type { PrivateKey } from '@libp2p/interface';
 import { z } from 'zod';
 import { product } from '@workspace/core/product';
-import { decodeConversationShareLink, encodeConversationShareLink, type ConversationShareLink, type ShareRelay } from '@workspace/core/conversation-sharing';
+import { decodeConversationInvitation, decodeConversationShareLink, encodeConversationShareLink, type ConversationShareLink, type ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestJoinControl, GuestJoinState, GuestJoinView } from '@workspace/core/guest-navigation';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
 import { GuestConversationClient } from './guest-client';
@@ -14,14 +14,15 @@ import { GuestConversationTransport } from './guest-transport';
 const nameSchema = z.string().max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value)).transform(value => value.trim()).pipe(z.string().min(1).max(80));
 const idSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const controlSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('state') }).strict(), z.object({ action: z.literal('prepare'), link: z.string().max(2048) }).strict(),
+  z.object({ action: z.literal('state') }).strict(), z.object({ action: z.literal('prepare'), link: z.string().max(2048), teamId: z.string().min(1).max(200).optional() }).strict(),
   ...(['open', 'leave', 'history'] as const).map(action => z.object({ action: z.literal(action), id: idSchema }).strict()),
   z.object({ action: z.literal('join'), id: idSchema, name: z.string().max(200) }).strict(),
+  z.object({ action: z.literal('propose'), id: idSchema, proposalId: z.string().uuid(), text: z.string().min(1).max(100_000) }).strict(),
 ]);
 const titleSchema = z.string().min(1).max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value));
-const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, title: titleSchema.optional(), binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, title: titleSchema.optional(), teamId: z.string().min(1).max(200).optional(), binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 const storeSchema = z.object({ v: z.literal(1), identity: z.string().max(4096), joins: z.array(recordSchema) }).strict();
-type JoinRecord = { id: string; link: string; name: string; title?: string; binding?: string };
+type JoinRecord = { id: string; link: string; name: string; title?: string; teamId?: string; binding?: string };
 type Store = { v: 1; identity: string; joins: JoinRecord[] };
 type Session = { link: ConversationShareLink; view: GuestJoinView; client?: GuestConversationClient; transport?: GuestConversationTransport; connecting?: Promise<void>; generation: number; timer?: ReturnType<typeof setTimeout>; retries: number; stopping?: Promise<void> };
 export type GuestJoinsOptions = { directory: string; relay?: ShareRelay };
@@ -41,9 +42,16 @@ export class GuestJoins {
   private serial<T>(work: () => Promise<T>): Promise<T> {
     const next = this.operations.then(work); this.operations = next.then(() => {}, () => {}); return next;
   }
-  async control(input: GuestJoinControl): Promise<GuestJoinState> {
+  async control(input: GuestJoinControl, currentTeamId?: string): Promise<GuestJoinState> {
     const parsed = controlSchema.safeParse(input); if (!parsed.success) throw new Error('Invalid guest operation.');
     const action = parsed.data;
+    if (action.action === 'propose') {
+      const session = this.ready(action.id); const generation = session.generation;
+      await session.client!.propose({ id: action.proposalId, text: action.text });
+      const proposalState = await session.client!.proposals();
+      if (generation !== session.generation) throw new Error('Guest conversation unavailable.');
+      session.view.proposalState = proposalState; return this.state();
+    }
     // A history read must not hold the persistence mutex: Leave/revocation can cancel it.
     if (action.action === 'history') {
       const session = this.ready(action.id); const generation = session.generation;
@@ -54,9 +62,10 @@ export class GuestJoins {
       if (this.stopped) throw new Error('Guest conversations closed.');
       await this.load();
       if (action.action === 'prepare') {
-        const link = decodeConversationShareLink(action.link, this.relay);
+        const link = decodeConversationInvitation(action.link, this.relay);
         if (!link) {
-          let upgrade = false;
+          const version = /^KORUS(\d+)\./.exec(action.link.trim())?.[1];
+          let upgrade = Boolean(version && version !== '1');
           try { const url = new URL(action.link); upgrade = url.protocol === `${product.protocolScheme}:` && url.hostname === 'share' && /^\d+$/.test(url.searchParams.get('v') ?? '') && url.searchParams.get('v') !== '1'; } catch { /* invalid */ }
           this.selected = { ...emptyView('invalid'), status: upgrade ? 'upgradeRequired' : 'invalid' }; return this.state();
         }
@@ -65,6 +74,7 @@ export class GuestJoins {
         if (!session) { session = { link, view: emptyView(id, record?.name, record?.title), generation: 0, retries: 0 }; this.sessions.set(id, session); }
         // A substituted credential cannot replace a previously saved authorization for the same route.
         if (session.link.credential !== link.credential) { this.selected = { ...emptyView('invalid'), status: 'invalid' }; return this.state(); }
+        session.view.teamId ??= record?.teamId ?? action.teamId ?? currentTeamId;
         this.select(session);
         if (record) this.connect(session);
       } else if (action.action === 'open') {
@@ -72,14 +82,14 @@ export class GuestJoins {
         let session = this.sessions.get(record.id);
         if (!session) {
           const link = decodeConversationShareLink(record.link, this.relay); if (!link) throw new Error('Saved relay is unsupported.');
-          session = { link, view: emptyView(record.id, record.name, record.title), generation: 0, retries: 0 }; this.sessions.set(record.id, session);
+          session = { link, view: { ...emptyView(record.id, record.name, record.title), teamId: record.teamId ?? currentTeamId }, generation: 0, retries: 0 }; this.sessions.set(record.id, session);
         }
         this.select(session); this.connect(session);
       } else if (action.action === 'join') {
         const name = nameSchema.safeParse(action.name); if (!name.success) throw new Error('Invalid display name.');
         const session = this.sessions.get(action.id); if (!session) throw new Error('Shared conversation not found.');
         const existing = this.saved!.joins.find(record => record.id === action.id);
-        if (!existing) await this.write({ ...this.saved!, joins: [...this.saved!.joins, { id: action.id, link: encodeConversationShareLink(session.link), name: name.data }] });
+        if (!existing) await this.write({ ...this.saved!, joins: [...this.saved!.joins, { id: action.id, link: encodeConversationShareLink(session.link), name: name.data, ...(session.view.teamId ?? currentTeamId ? { teamId: session.view.teamId ?? currentTeamId } : {}) }] });
         session.view.name = existing?.name ?? name.data; this.select(session); this.connect(session);
       } else if (action.action === 'leave') {
         await this.write({ ...this.saved!, joins: this.saved!.joins.filter(record => record.id !== action.id) });
@@ -97,7 +107,7 @@ export class GuestJoins {
     this.selected = session.view;
   }
   private state(): GuestJoinState {
-    const entries = (this.saved?.joins ?? []).map(({ id, name, title }) => ({ id, name, title: emptyView(id, name, title).title }));
+    const entries = (this.saved?.joins ?? []).map(({ id, name, title, teamId }) => ({ id, name, title: emptyView(id, name, title).title, ...(teamId ? { teamId } : {}) }));
     const counts = new Map<string, number>();
     for (const entry of entries) counts.set(entry.title, (counts.get(entry.title) ?? 0) + 1);
     for (const entry of entries) if (counts.get(entry.title)! > 1) entry.title += ` · ${entry.id.slice(0, 8)}`;
@@ -133,6 +143,7 @@ export class GuestJoins {
       if (opened.status !== 'ready') { session.view.status = opened.status === 'upgradeRequired' ? 'upgradeRequired' : opened.status === 'capacity' || opened.status === 'rateLimited' ? 'busy' : 'unavailable'; return; }
       const client = new GuestConversationClient(opened.stream, () => {
         if (current() && client.snapshot) session.view.frame = client.snapshot;
+        if (current() && client.proposalState) session.view.proposalState = client.proposalState;
       }, reason => {
         if (!current()) return;
         session.client = undefined;
@@ -154,6 +165,7 @@ export class GuestJoins {
         session.view.target = joined.target; session.view.participant = joined.participant;
         await client.synchronize(); if (!current()) return;
         session.view.frame = client.snapshot; session.view.status = 'ready'; session.retries = 0;
+        void client.proposals().catch(() => {});
       } catch (error) {
         if (!current()) return;
         if (error instanceof Error && error.message === 'denied') { await this.reject(session); return; }
@@ -172,7 +184,7 @@ export class GuestJoins {
     session.timer = setTimeout(() => { session.timer = undefined; this.connect(session); }, delay); session.timer.unref();
   }
   private async reject(session: Session) {
-    this.dispose(session); session.view.status = 'rejected'; session.view.frame = null; session.view.participant = null;
+    this.dispose(session); session.view.proposalState = undefined; session.view.status = 'rejected'; session.view.frame = null; session.view.participant = null;
     try {
       await this.serial(async () => {
         if (this.saved) await this.write({ ...this.saved, joins: this.saved.joins.filter(record => record.id !== session.view.id) });

@@ -18,6 +18,7 @@ export class GuestConversationClient {
   private needsReset = false;
   private readonly heartbeat: ReturnType<typeof setInterval>;
   checkpoint: CompanionCheckpoint | null = null;
+  proposalState?: import('@workspace/core/conversation-sharing').GuestProposalState;
   get snapshot() { return this.cache.snapshot; }
   constructor(private readonly stream: Stream, private readonly changed: () => void = () => {}, private readonly disconnected: (reason: 'offline' | 'revoked') => void = () => {}) {
     stream.maxReadBufferLength = companionResponseLimit + 4; stream.maxWriteBufferLength = companionFrameLimit + 4; stream.inactivityTimeout = companionBackgroundIdleTimeoutMs;
@@ -50,6 +51,8 @@ export class GuestConversationClient {
   }
   readContent(input: ConversationContentInput): Promise<ConversationContentChunk> { return this.request('conversation.content.read', { input }) as Promise<ConversationContentChunk>; }
   readImage(path: string): Promise<{ dataUrl: string }> { return this.request('conversation.image.read', { path }) as Promise<{ dataUrl: string }>; }
+  propose(input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal> { return this.request('guest.propose', input) as Promise<import('@workspace/core/conversation-sharing').GuestProposal>; }
+  async proposals(): Promise<import('@workspace/core/conversation-sharing').GuestProposalState> { const state = await this.request('guest.proposals', {}) as import('@workspace/core/conversation-sharing').GuestProposalState; this.proposalState = state; this.changed(); return state; }
   private async request(method: string, args: unknown): Promise<unknown> {
     if (this.closed) throw new Error('Guest session closed.'); if (this.waiting.size >= 16) throw new Error('Guest session busy.');
     const id = randomUUID();
@@ -64,9 +67,10 @@ export class GuestConversationClient {
   private async receive() {
     try {
       for await (const raw of readCompanionFrames(this.stream, companionResponseLimit)) {
-        const value = raw as { v: number; update?: GuestConversationUpdate; id?: string; result?: unknown; error?: string; revoked?: boolean };
+        const value = raw as { v: number; update?: GuestConversationUpdate; proposalState?: import('@workspace/core/conversation-sharing').GuestProposalState; id?: string; result?: unknown; error?: string; revoked?: boolean };
         if (!value || value.v !== 1) throw new Error('Invalid guest response.');
         if (value.revoked === true) { this.close('revoked'); return; }
+        if (value.proposalState) { this.proposalState = value.proposalState; this.changed(); continue; }
         if (value.update) {
           if (!this.cache.receive(value.update)) {
             this.checkpoint = null; this.needsReset = true;
@@ -88,6 +92,7 @@ export class GuestConversationClient {
   close(reason: 'offline' | 'revoked' = 'offline') {
     if (this.closed) return; this.closed = true; clearInterval(this.heartbeat); this.stream.removeEventListener('close', this.ended);
     this.cache.clear(); this.checkpoint = null; this.joined = undefined;
+    this.proposalState = undefined;
     for (const pending of this.waiting.values()) { clearTimeout(pending.timer); pending.reject(new Error('Guest session closed.')); } this.waiting.clear();
     this.stream.abort(new Error('Guest session closed.')); this.changed(); this.disconnected(reason);
   }

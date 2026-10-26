@@ -4,7 +4,8 @@
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
   >
     <FirstRunOnboardingGate
-      @open-shared="emit('open-shared')"
+      v-if="!currentAgent?.sharedConversation"
+      @join-invite="emit('join-invite')"
       :provider-setup="displayProviderSetup"
       :allow-setup-reset="settingsVisible"
       :customized-setup="customizedSetup"
@@ -56,7 +57,6 @@
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
     <AppShellNavigation
-      @open-shared="emit('open-shared')"
       ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
       :mission-creation-error="missionCreationError"
@@ -299,6 +299,7 @@
       </MissionWorkspace>
       <AgentWorkspace
         v-else
+        :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
@@ -399,7 +400,9 @@
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
             <template #default="{ agentId, focused }">
-              <AgentConversationPanel v-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
+              <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :busy="guestBusy ?? false" :control="guestControl" />
+              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
+              <AgentConversationPanel v-else-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
                 :view="props.agentConversationFor(agentId)!" :actions="splitActions" :agents="snapshot.agents" :focused="focused"
                 :mention-groups="agentMentionGroups" :model-menu-items="splitModelFavoriteMenuItems(agentId)"
                 :select-model-menu-item="item => selectSplitModelMenuItem(agentId, item)"
@@ -662,6 +665,7 @@ import AgentHeader from './AgentHeader.vue';
 import ConversationShareDialog from './ConversationShareDialog.vue';
 import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
+import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
@@ -730,6 +734,9 @@ import { useWorkItemRouting } from './use-work-item-routing';
 import { useAppShellCommands } from './use-app-shell-commands';
 
 const props = withDefaults(defineProps<{
+  guestState?: import('@workspace/core/guest-navigation').GuestJoinState;
+  guestBusy?: boolean;
+  guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
   snapshot: AppSnapshot;
   activeAgent: Agent | null;
   unreadAgentIds?: string[];
@@ -1020,7 +1027,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  'open-shared': [];
+  'join-invite': [];
   'clear-agent-creation-progress': [id: string];
   'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
@@ -1377,7 +1384,7 @@ const debugProviderUpgrades = ref(false);
 provide(providerUpdatePreviewKey, debugProviderUpgrades);
 const debugReviewUncommitted = ref(false);
 provide(codeReviewUncommittedPreviewKey, debugReviewUncommitted);
-const showOnboardingGate = computed(() => debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value);
+const showOnboardingGate = computed(() => !currentAgent.value?.sharedConversation && (debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value));
 const showLoginLanding = computed(() => debugMissingEngines.value ? !settingsVisible.value : realLoginLanding.value);
 const displayProviderSetup = computed(() => debugMissingEngines.value
   ? providerSetup.value.map(setup => ({ ...setup, installed: false }))
@@ -2817,7 +2824,8 @@ async function createQuickChat(): Promise<void> {
   }
 }
 
-async function handleStartWorkAction(action: 'new' | 'github' | 'gitlab' | 'local' | 'url'): Promise<void> {
+async function handleStartWorkAction(action: import('./start-work-actions').StartWorkAction): Promise<void> {
+  if (action === 'invite') { emit('join-invite'); return; }
   if (action === 'new') {
     newProjectError.value = null;
     newProjectDialogVisible.value = true;

@@ -1,5 +1,6 @@
 import { GuestJoins } from '../sharing/guest-joins';
 import { createEmptySnapshot } from '@workspace/core/snapshot';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -37,6 +38,37 @@ async function fixture() {
   return { root, directory, snapshot, events, start, target, request };
 }
 describe('owner conversation sharing RPC and protected persistence', () => {
+  it('rejects sharing for an unsupported backend instead of exposing a read-only share', async () => {
+    const f = await fixture();
+    f.snapshot.agents[0]!.backend = 'antigravity';
+    f.snapshot.agents[0]!.backendSession = { kind: 'antigravity', sessionId: 'unsupported' };
+    const server = f.start();
+    try {
+      await expect(f.request(server, { action: 'create', target: conversationShareTarget(f.snapshot.agents[0]!)! })).rejects.toThrow(/support/i);
+    } finally { await server.close(); }
+  });
+  it('admits approved text through the normal owner boundary with a canonical identity and no app command', async () => {
+    const f = await fixture(); const sendPrompt = vi.fn(async (_agent: import('@workspace/core/contracts').Agent, _text: string) => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'native-turn', messageId: 'native-message' }));
+    const commands = vi.fn();
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, tryHandlePromptCommand: commands, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'original' } }),
+      respondToAgentRequest: async () => undefined, close: async () => undefined, onEvent: () => () => {},
+    };
+    const server = f.start(new BackendDriverRpc(new Map([['codex', driver]])));
+    try {
+      const share = await f.request(server, { action: 'create', target: f.target });
+      const id = randomUUID(); const text = '  /mission exact guest text  ';
+      await server.proposeConversationGuest(share.state.handle!, ownerId, 'Guest', { id, text });
+      expect(sendPrompt).not.toHaveBeenCalled();
+      await f.request(server, { action: 'send', target: f.target, handle: share.state.handle!, proposalId: id });
+      await vi.waitFor(() => expect(sendPrompt.mock.calls.length, JSON.stringify(f.snapshot.agents[0]?.status)).toBe(1));
+      await vi.waitFor(async () => expect((await f.request(server, { action: 'status', target: f.target })).state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message', name: 'Guest' })));
+      expect(sendPrompt).toHaveBeenCalledTimes(1); expect(sendPrompt.mock.calls[0]?.[1]).toBe(text); expect(commands).not.toHaveBeenCalled();
+      const stopped = await f.request(server, { action: 'revoke', target: f.target, handle: share.state.handle! });
+      expect(stopped.state.authors).toContainEqual(expect.objectContaining({ messageId: 'native-message' }));
+    } finally { await server.close(); }
+  });
   it('serves guest navigation RPCs with no provider, team or repository and rejects unscoped guest content reads', async () => {
     const f = await fixture();
     const joins = new GuestJoins({ directory: path.join(f.root, 'guest'), relay });

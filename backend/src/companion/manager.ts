@@ -41,6 +41,8 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
+  proposeGuest?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
+  guestProposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
   authorizeGuest?(handle: string, credential: string): Promise<GuestConversationGrant>;
   guestCount?(handle: string, count: number): void;
   desktopFocused?(): Promise<boolean>;
@@ -332,6 +334,8 @@ export class CompanionManager {
       revoked: (peerId) => this.connector.revoke(peerId),
     }, Date.now, pairing?.hostId === peerIdFromPrivateKey(this.key).toString() ? pairing.code : undefined);
     if (this.backend.authorizeGuest) this.guestGateway = new GuestConversationGateway({
+      ...(this.backend.proposeGuest ? { propose: (handle, identity, name, input) => this.backend.proposeGuest!(handle, identity, name, input) } : {}),
+      ...(this.backend.guestProposals ? { proposals: (handle, identity) => this.backend.guestProposals!(handle, identity) } : {}),
       authorize: (handle, credential) => this.backend.authorizeGuest!(handle, credential),
       connected: (handle, count) => this.backend.guestCount?.(handle, count),
       onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },

@@ -33,6 +33,8 @@ export type BackendEvent = BackendEventFrom<BackendPublishedEvent>;
 export type BackendSendResult = {
   backendSession: BackendSession;
   turnId?: string;
+  /** Public provider user-message ID, preserved by canonical history. */
+  messageId?: string;
 };
 
 export type BackendTurnActionResult = {

@@ -253,6 +253,7 @@
               ]"
               type="button"
               :data-session-kind="session.kind"
+              :data-shared="session.shared || undefined"
               :title="group.activity ? activityContext.get(session.agentId) : undefined"
               :aria-pressed="session.isActive"
               @click="selectAgent(session.agentId)"
@@ -264,7 +265,7 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
+                v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -314,8 +315,9 @@
     </nav>
 
     <AgentContextMenu
+      :shared="Boolean(contextMenuAgent?.sharedConversation)"
       v-if="contextMenuAgentId"
-      :share-available="Boolean(contextMenuAgentIsLocal && contextMenuAgent?.backendSession)"
+      :share-available="Boolean(contextMenuAgentIsLocal && supportsConversationSharing(contextMenuAgent))"
       :fork-disabled="!canForkContextMenuAgent"
       :compress-visible="canReplaceContextMenuConversation"
       :compress-disabled="!canCompressContextMenuAgent"
@@ -359,6 +361,7 @@
 </template>
 
 <script setup lang="ts">
+import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { computed, ref } from 'vue';
@@ -454,7 +457,7 @@ const emit = defineEmits<{
   'resume-session': [agentId: string];
   'restart-agent': [agentId: string];
   'select-agent': [agentId: string];
-  'start-work': [action: 'new' | 'github' | 'gitlab' | 'local' | 'url'];
+  'start-work': [action: import('./start-work-actions').StartWorkAction];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
@@ -1460,12 +1463,16 @@ function onResizePointerEnd(event: PointerEvent): void {
   .agent-sidebar__repository-agent,
 .agent-sidebar__workspace-group[data-group-kind="missions"]
   .agent-sidebar__agent {
-  grid-template-columns: 0 minmax(0, 1fr)
+  grid-template-columns: var(--agent-sidebar-quick-chat-icon-track, 0) minmax(0, 1fr)
     var(--agent-sidebar-engine-track,)
     var(--agent-sidebar-trailing-column-width, var(--agent-sidebar-status-column-width));
   padding-left: calc(
     var(--agent-sidebar-workspace-inline-padding) + var(--space-10)
   );
+}
+
+.agent-sidebar__agent[data-shared="true"] {
+  --agent-sidebar-quick-chat-icon-track: var(--agent-sidebar-repository-icon-column-width);
 }
 
 .agent-sidebar__workspace-group::before,

@@ -15,6 +15,7 @@
       <el-button v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</el-button>
     </template>
     <template #footer>
+      <el-button v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('copy', true)">{{ t('sharing.copyInvitation') }}</el-button>
       <el-button class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.done') }}</el-button>
       <el-button v-if="!state && !loading" class="app-button" :disabled="busy" @click="load">{{ t('common.retry') }}</el-button>
       <el-button v-else class="app-button" type="primary" :disabled="busy || loading || !state || state.availability === 'notConfigured'" @click="run(state?.active ? 'copy' : 'create')">
@@ -52,7 +53,7 @@ async function load() {
   } catch { if (!disposed) error.value = t('sharing.failed'); }
   finally { if (!disposed) loading.value = false; }
 }
-async function run(action: 'create' | 'copy' | 'revoke') {
+async function run(action: 'create' | 'copy' | 'revoke', invitation = false) {
   if (busy.value || !state.value) return;
   busy.value = true; error.value = ''; copied.value = false;
   try {
@@ -63,7 +64,7 @@ async function run(action: 'create' | 'copy' | 'revoke') {
     if (disposed) return;
     revision++; state.value = result.state;
     if (result.link) {
-      try { await navigator.clipboard.writeText(result.link); if (!disposed) copied.value = true; }
+      try { await navigator.clipboard.writeText(invitation ? result.invitation ?? result.link : result.link); if (!disposed) copied.value = true; }
       catch { if (!disposed) error.value = t('sharing.copyFailed'); }
     }
   } catch { if (!disposed) error.value = t('sharing.failed'); }

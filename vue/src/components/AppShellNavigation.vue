@@ -1,6 +1,5 @@
 <template>
   <TeamRail
-    @open-shared="emit('open-shared')"
     :teams="snapshot.teams"
     :remote-connections="snapshot.remoteConnections.connections"
     :load-remote-teams="loadRemoteTeams"
@@ -147,7 +146,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'open-shared': [];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];
   'compact-session': [agentId: string];
@@ -185,7 +183,7 @@ const emit = defineEmits<{
   'resume-session': [agentId: string];
   'select-agent': [agentId: string];
   'select-team': [teamId: string];
-  'start-work': [action: 'new' | 'github' | 'gitlab' | 'local' | 'url'];
+  'start-work': [action: import('./start-work-actions').StartWorkAction];
   'toggle-speech-mute': [];
   'update-collapsed-repositories': [repositoryKeys: string[]];
   'update-repository-icon': [
@@ -243,7 +241,7 @@ function createRepositorySessionOnBranch(payload: RepositorySessionPayload & { b
   emit('create-agent-on-branch', payload);
 }
 
-function handleStartWorkAction(action: 'new' | 'github' | 'gitlab' | 'local' | 'url'): void {
+function handleStartWorkAction(action: import('./start-work-actions').StartWorkAction): void {
   emit('start-work', action);
 }
 

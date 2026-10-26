@@ -46,7 +46,7 @@
     :celebrate="snapshot.general.celebrationsEnabled !== false"
     @complete="finishFirstRunOnboarding"
   />
-  <button v-if="appClientPlatform === 'desktop' && (showLoginLanding || repositoriesOnboardingVisible || onboardingCompleteVisible)" class="app-button app-button--tertiary first-run-guests" type="button" :aria-label="$t('guest.sharedWithMe')" @click="emit('open-shared')">{{ $t('guest.sharedWithMe') }}</button>
+  <button v-if="appClientPlatform === 'desktop' && (showLoginLanding || repositoriesOnboardingVisible || onboardingCompleteVisible)" class="app-button app-button--tertiary first-run-guests" type="button" :aria-label="$t('guest.joinWithInvite')" @click="emit('join-invite')">{{ $t('guest.joinWithInvite') }}</button>
   <LocalClaudeAuthenticationDialog
     :model-value="claudeDialogVisible"
     :executable-path="claudeAuthentication?.executablePath"
@@ -105,7 +105,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'open-shared': [];
+  'join-invite': [];
   customize: [backend: AgentBackend];
   'refresh-provider': [backend: AgentBackend];
   'install-provider': [backend: AgentBackend];

@@ -157,10 +157,8 @@ async function open(sessionId?: string, options: Partial<Parameters<typeof AcpSe
 }
 
 describe('Antigravity native session', () => {
-  // Deliberately red acceptance reproduction, opt-in until the provider identity
-  // boundary is decided. No text/order matching or replacement transcript is a
-  // permitted fix. This exercises the real app admission queue and ACP host.
-  it.runIf(process.env.APP_TEST_GUEST_AUTHORSHIP_BINDING === '1')('preserves canonical identities for identical idle, queued guest and owner prompts after restart', async () => {
+  // ACP replay lacks stable identities, so this backend must remain unqualified.
+  it('keeps sharing disabled when replay cannot preserve native message identities', async () => {
     const host = new AntigravityHost();
     const snapshot = createEmptySnapshot();
     const agent: Agent = { id: 'authorship', name: 'Authorship', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
@@ -206,24 +204,9 @@ describe('Antigravity native session', () => {
       try {
         const history = (await restarted.readConversationMessages(ref, agent.id)).filter(message => message.role === 'user');
         expect(history.map(message => message.parts)).toEqual(live.map(message => message.parts));
-        const identities = (rows: typeof live) => rows.map(message => ({ id: message.id, turnId: message.turnId }));
-        const evidence = {
-          provider: 'antigravity', fixtureOnly: true, liveProviderExecution: false,
-          provenance: authorshipFixture.provenance,
-          submissions: [{ id: 'guest-submission-one', author: 'Guest #one', admission: 'idle' },
-            { id: 'guest-submission-two', author: 'Guest #two', admission: 'queued', queueId: queued[0]?.id },
-            { id: 'owner-submission', author: null, admission: 'queued', queueId: queued[1]?.id }],
-          sessionId: ref.sessionId, live: identities(live), reloaded: identities(history),
-          stableMessageBindings: history.filter(message => live.some(before => before.id === message.id)).length,
-          stableTurnBindings: history.filter(message => live.some(before => before.turnId === message.turnId)).length,
-        };
-        if (process.env.APP_TEST_GUEST_AUTHORSHIP_EVIDENCE) {
-          await writeFile(process.env.APP_TEST_GUEST_AUTHORSHIP_EVIDENCE, JSON.stringify(evidence, null, 2));
-        }
-        // A binding keyed by admitted message/turn IDs cannot recover these
-        // rows. The qualified replay supplies no native IDs for aliasing them.
-        expect(new Set(history.map(message => message.id))).toEqual(new Set(live.map(message => message.id)));
-        expect(new Set(history.map(message => message.turnId))).toEqual(new Set(live.map(message => message.turnId)));
+        expect(history.some(message => live.some(before => before.id === message.id))).toBe(false);
+        expect(history.some(message => live.some(before => before.turnId === message.turnId))).toBe(false);
+        expect(host.getCapabilities().conversationSharing).toBe(false);
       } finally { await restarted.close(); }
     } finally { manager.close(); await host.close(); }
   });

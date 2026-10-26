@@ -15,6 +15,7 @@ import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-mana
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
+import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
@@ -853,6 +854,13 @@ export function useAppState() {
     }
 
     const requestId = ++agentSelectionRequestId;
+    const shared = snapshot.value.agents.find(agent => agent.id === agentId)?.sharedConversation;
+    if (shared) {
+      snapshot.value = selectAgentInSnapshot(snapshot.value, agentId);
+      adoptBackgroundSnapshot(await appApi.selectAgent(agentId));
+      await appApi.guestConversationControl?.({ action: 'open', id: shared.joinId });
+      return;
+    }
     const needsHistory = agentNeedsHistory(agentId);
     rememberActiveComposerConfiguration();
     snapshot.value = selectAgentInSnapshot(snapshot.value, agentId);
@@ -1958,6 +1966,7 @@ function messageActionCapabilities(agentId: string) {
 }
 
 function backendCapabilitiesForAgent(agent: Agent | null): BackendCapabilities {
+  if (agent?.sharedConversation) return guestConversationCapabilities;
   const backend = agent?.backend ?? 'codex';
   const defaults = defaultBackendCapabilities(backend);
   const runtime = snapshot.value.backendRuntimes.find((candidate) => candidate.backend === backend);

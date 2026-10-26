@@ -290,6 +290,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
     authorizeGuest: (handle, credential) => server.authorizeConversationGuest(handle, credential),
+    proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
+    guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
     guestCount: (handle, count) => server.conversationGuestCount(handle, count),
     desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),

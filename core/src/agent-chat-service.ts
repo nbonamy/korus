@@ -12,6 +12,8 @@ export type AgentChatEventEmitter = (
 export type SendAgentPromptHooks = {
   /** Backend-owned handoff transaction only; never exposed as a prompt option. */
   handoff?: boolean;
+  /** Trusted guest admission: no product commands, exact owner-approved text. */
+  plainText?: boolean;
   appendUserMessage?: boolean;
   onBackendSessionUpdated?: (result: BackendSendResult, wasNewSession: boolean) => void | Promise<void>;
   onPromptFailed?: (error: Error) => void | Promise<void>;
@@ -40,7 +42,7 @@ export function sendAgentPrompt(
   // Only app-submitted controls can override saved user preferences. Agent-
   // generated create-agent instructions never populate this field.
   const delegationControls = captureUserDelegationOverrides(agent, options?.delegation);
-  const promptResult = backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
+  const promptResult = hooks?.plainText ? null : backendDriver.tryHandlePromptCommand?.(agent, trimmedPrompt) ?? null;
   const hadBackendSession = Boolean(agent.backendSession);
 
   updateAgentStatus(agentId, { type: 'working' }, emit, snapshot);
@@ -61,7 +63,7 @@ export function sendAgentPrompt(
     ? { ...options, recordUserMessage: false }
     : options;
   const preparedOptions = backendDriver.preparePromptOptions?.(agent, routedOptions) ?? routedOptions;
-  const deliveredPrompt = options?.planMode === true && snapshot.general.useInteractivePlans !== false
+  const deliveredPrompt = hooks?.plainText ? prompt : options?.planMode === true && snapshot.general.useInteractivePlans !== false
     ? interactivePlanPrompt(trimmedPrompt) : trimmedPrompt;
   const sendResult = promptResult
     ?? (hasPromptOptions(preparedOptions)

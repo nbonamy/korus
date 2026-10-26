@@ -3,6 +3,7 @@ import { agentDisplayName } from './agent-display';
 import { repositoryIconKeyForRemote } from './git-remote';
 
 export type WorkspaceSidebarSession = {
+  shared?: boolean;
   agentId: string;
   customName: string | null;
   conversationTitle: string | null;
@@ -118,6 +119,7 @@ export function projectWorkspaceSidebar(input: {
       customName,
       conversationTitle,
       displayTitle: sessionLabel,
+      ...(agent.sharedConversation ? { shared: true } : {}),
       branch: isGit ? workspace.branch : null,
       folder: agent.folder,
       isLinkedWorktree: isGit && workspace.isLinkedWorktree,

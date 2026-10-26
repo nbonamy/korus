@@ -34,6 +34,7 @@
         </div>
       </template>
       <template #message-header="{ message }">
+        <span v-if="guestAuthor(message.id)" class="conversation-pane__message-header">{{ guestAuthor(message.id) }}</span>
         <DeferredConversationContent
           v-if="agent && contentSessionId && message.id && deferredContent(message) && !loadedContent.has(deferredContent(message)!.contentId)"
           :key="deferredContent(message)!.contentId"
@@ -102,6 +103,7 @@
         </div>
       </template>
       <template #before-composer>
+        <ConversationShareActivity v-if="shareTarget" :target="shareTarget" @authors="guestAuthors = $event" />
         <button v-if="agent && !backendChoices.includes(agent.backend)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
           {{ t('engineConnection.required') }}
         </button>
@@ -139,6 +141,8 @@
 </template>
 
 <script setup lang="ts">
+import ConversationShareActivity from './ConversationShareActivity.vue';
+import { supportsConversationSharing, conversationShareTarget, type GuestAuthor } from '@workspace/core/conversation-sharing';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
@@ -263,6 +267,9 @@ const emit = defineEmits<{
 
 const conversationKey = computed(() => props.agent?.id ?? 'no-agent');
 const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
+const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
+const guestAuthors = ref<GuestAuthor[]>([]);
+function guestAuthor(id: string | undefined) { const author = guestAuthors.value.find(author => author.messageId === id); return author ? `${author.name} · ${author.discriminator}` : null; }
 const loadedContent = reactive(new Map<string, RendererMessage>());
 watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
 function deferredContent(message: CodexChatMessage | SurfaceMessage): RendererMessage['deferredContent'] {

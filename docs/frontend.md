@@ -32,11 +32,12 @@ weight and predictable geometry over decorative cards or explanatory copy.
 ## Ownership
 
 - **Components:** ephemeral interaction and derived presentation state.
-- **Desktop guest navigation:** lives beside the local workspace and provider
-  onboarding, outside the local agent/team registry. The daemon owns saved join
-  authorization and provider replicas; Vue holds only its credential-free view.
-  The guest transcript reuses the SDK message list with owner actions disabled
-  and guest-scoped image/content readers, never the native local file host.
+- **Shared Quick Chats:** saved joins appear in their original local team's Quick
+  Chat list with a shared origin marker. Pasted invitations and native deep links
+  use the same join dialog. The daemon owns credentials and provider replicas;
+  Vue receives only a credential-free view. The normal conversation component
+  uses a text-only proposal composer and guest-scoped image/content readers.
+  Shared rows have no local provider session or workspace authority.
 - **`vue/src/app-state.ts`:** renderer state shared across surfaces, the replica of
   server-authored app state, and the registry of per-agent provider replicas. It
   routes provider frames to the matching provider reducer and never interprets or

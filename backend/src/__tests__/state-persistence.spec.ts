@@ -308,11 +308,13 @@ describe('state persistence', () => {
     snapshot.agents[0].sessionKind = 'quickChat';
     snapshot.agents[0].name = null;
     snapshot.agents[0].folder = null;
+    snapshot.agents[0].sharedConversation = { joinId: 'a'.repeat(64) };
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
     expect(restored.agents[0]).toMatchObject({
       sessionKind: 'quickChat',
+      sharedConversation: { joinId: 'a'.repeat(64) },
       name: null,
       folder: null,
     });

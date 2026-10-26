@@ -67,8 +67,9 @@
     </section>
 
     <AgentContextMenu
+      :shared="Boolean(contextMenuAgent?.sharedConversation)"
       v-if="contextMenuAgent"
-      :share-available="Boolean(contextMenuAgent?.backendSession && !teams.find(team => team.id === contextMenuAgent?.teamId)?.remoteConnectionId)"
+      :share-available="Boolean(supportsConversationSharing(contextMenuAgent) && !teams.find(team => team.id === contextMenuAgent?.teamId)?.remoteConnectionId)"
       :fork-disabled="!canForkContextMenuAgent"
       :compact-disabled="true"
       :resume-disabled="true"
@@ -83,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';

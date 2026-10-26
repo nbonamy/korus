@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeConversationShareLink, decodeConversationShareLink } from '../conversation-sharing';
+import { encodeConversationInvitation, decodeConversationInvitation, encodeConversationShareLink, decodeConversationShareLink } from '../conversation-sharing';
 import { product } from '../product';
 
 const relay = product.companionRelay!;
@@ -10,6 +10,12 @@ describe('conversation share deep links', () => {
   it('round trips a canonical reusable link against the configured relay', () => {
     const encoded = encodeConversationShareLink(link);
     expect(decodeConversationShareLink(encoded, relay)).toStrictEqual(link);
+    const invitation = encodeConversationInvitation({ ...link, target: { folder: 'PRIVATE_OWNER_PATH' } } as typeof link);
+    expect(decodeConversationInvitation(invitation, relay)).toStrictEqual(link);
+    expect(atob(invitation.slice(7).replace(/-/g, '+').replace(/_/g, '/'))).not.toContain('PRIVATE_OWNER_PATH');
+    expect(decodeConversationInvitation(` ${encoded} `, relay)).toStrictEqual(link);
+    expect(decodeConversationInvitation('KORUS1.invalid!', relay)).toBeNull();
+    expect(decodeConversationInvitation(invitation, { ...relay, origin: 'wss://untrusted.example' })).toBeNull();
     expect(encodeConversationShareLink(decodeConversationShareLink(encoded, relay)!)).toBe(encoded);
   });
   it('rejects malformed or unsupported links before networking without leaking input', () => {

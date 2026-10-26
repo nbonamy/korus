@@ -7,6 +7,16 @@ describe(`Codex SDK → ${product.name} backend lifecycle`, () => {
   const setup = () => { const fixture = codexSdkFixture(); fixtures.push(fixture); return fixture; };
   afterEach(async () => { await Promise.all(fixtures.splice(0).map(({ driver }) => driver.close())); vi.useRealTimers(); });
 
+  it('returns the public canonical user-message binding for a shared submission', async () => {
+    const { driver, conversation } = setup();
+    const message = { id: 'public-client-message-id', role: 'user' as const, status: 'complete' as const, turnId: 'shared-turn', parts: [{ type: 'text' as const, text: 'Identical prompt' }] };
+    conversation('conversation-a').handle.sendMessage.mockResolvedValue(sdkSnapshot('conversation-a', { turnIds: ['shared-turn'], activeTurnId: 'shared-turn', messages: [message] }));
+    await expect(driver.sendPrompt(sdkAgent(), 'Identical prompt')).resolves.toMatchObject({ turnId: 'shared-turn', messageId: 'public-client-message-id' });
+    // Canonical history may replace rows; the admitted public client ID, not text or position, is the binding.
+    conversation('conversation-a').handle.sendMessage.mockResolvedValue(sdkSnapshot('conversation-a', { turnIds: ['shared-turn', 'another-turn'], messages: [{ ...message, id: 'other-client-id', turnId: 'another-turn' }] }));
+    await expect(driver.sendPrompt(sdkAgent(), 'Identical prompt')).resolves.toMatchObject({ turnId: 'another-turn', messageId: 'other-client-id' });
+  });
+
   it('creates a user conversation in the assigned folder and sends prepared options to that handle', async () => {
     const { driver, surface, conversation } = setup();
     const agent = { ...sdkAgent(), backendSession: undefined };

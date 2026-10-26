@@ -22,10 +22,11 @@ describe('AgentEmptyState', () => {
       'GitHub repository…',
       'GitLab repository…',
       'Repository URL…',
+      'Join with invite…',
     ]);
 
     for (const action of actions) await action.trigger('click');
 
-    expect(wrapper.emitted('start-work')).toStrictEqual([['new'], ['local'], ['github'], ['gitlab'], ['url']]);
+    expect(wrapper.emitted('start-work')).toStrictEqual([['new'], ['local'], ['github'], ['gitlab'], ['url'], ['invite']]);
   });
 });

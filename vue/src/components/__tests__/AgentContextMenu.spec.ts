@@ -15,6 +15,12 @@ afterEach(() => {
 });
 
 describe('AgentContextMenu', () => {
+  it('offers only Leave for a shared Quick Chat', async () => {
+    const wrapper = mountMenu({ shared: true });
+    expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toStrictEqual(['Leave conversation']);
+    await wrapper.get('[role="menuitem"]').trigger('click');
+    expect(wrapper.emitted('action')).toStrictEqual([['close-agent']]);
+  });
   it('renders grouped agent actions at the requested position', () => {
     const wrapper = mountMenu();
 
@@ -182,7 +188,7 @@ describe('AgentContextMenu', () => {
 });
 
 function mountMenu(
-  props: { compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
+  props: { shared?: boolean; compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
   stubTeleport = true,
 ) {
   const wrapper = mount(AgentContextMenu, {

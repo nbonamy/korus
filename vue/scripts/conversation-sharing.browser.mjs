@@ -35,7 +35,7 @@ try {
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'active-share-copy-error.png') });
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(server.resolvedUrls.local[0]).origin });
   await page.getByRole('button', { name: 'Copy link', exact: true }).click();
-  await page.getByText('Link copied', { exact: true }).waitFor();
+  await page.getByText('Copied', { exact: true }).waitFor();
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'active-share-dialog.png') });
   assert.deepEqual(errors, []);
   await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'header-share-dialog.png', 'context-menu-share.png', 'active-share-dialog.png', 'active-share-copy-error.png'], pageErrors: errors }, null, 2));

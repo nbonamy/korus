@@ -9,6 +9,27 @@ import { mountShell, clickPortaledMenuItem } from './app-shell-test-harness';
 // stale async results and accidental credential display. Provider UI is a boundary fake.
 afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
 describe('owner Share workflow', () => {
+  it('requires an owner decision for a named guest proposal in the normal conversation', async () => {
+    const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
+    agent.backendSession = { kind: 'codex', threadId: 'owner' };
+    const proposal = { id: '11111111-1111-4111-8111-111111111111', handle: 'a'.repeat(32), identity: 'guest-identity', name: 'Alex', discriminator: '1234abcd', text: 'Please inspect the retry path', status: 'pending' as const, createdAt: 'now' };
+    const control = vi.fn(async (input: ConversationShareControl) => ({ state: { active: true, handle: proposal.handle, connectedGuests: 1, availability: 'ready' as const, proposals: input.action === 'send' || input.action === 'dismiss' ? [] : [proposal] } }));
+    setElectronTestClient({ conversationShareControl: control });
+    const wrapper = mountShell({ snapshot, realConversationPane: true, stubRightWorkspacePanel: true, stubTeamRail: true });
+    try {
+      await flushPromises();
+      expect(wrapper.text()).toContain(proposal.text); expect(wrapper.text()).toContain('Alex');
+      await wrapper.findAll('button').find(button => button.text() === 'Dismiss')!.trigger('click'); await flushPromises();
+      expect(control).toHaveBeenCalledWith(expect.objectContaining({ action: 'dismiss', handle: proposal.handle, proposalId: proposal.id }));
+      expect(wrapper.text()).not.toContain(proposal.text);
+    } finally { wrapper.unmount(); }
+  });
+  it.each(['claude', 'antigravity'] as const)('does not offer Share when the %s backend is unqualified', async backend => {
+    const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
+    agent.backend = backend; agent.backendSession = backend === 'claude' ? { kind: 'claude', sessionId: 'unqualified', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'unqualified' };
+    const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
+    try { await flushPromises(); expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(false); } finally { wrapper.unmount(); }
+  });
   it('uses one dialog and the same backend link from the header and context menu', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!; agent.backendSession = { kind: 'codex', threadId: 'share-fixture' };

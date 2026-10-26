@@ -27,13 +27,14 @@ import { ConversationSource } from '../conversation-source';
 import { createCompanionRelay } from '../relay';
 import { createTestSnapshot } from '../../__tests__/server-test-fixtures';
 import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
+import { AppBackendServer } from '../../server';
 
 vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const stop of cleanup.reverse()) await stop(); cleanup.length = 0; });
 // Failure modes: a bearer is claimed once; foreign targets or phone operations leak data;
 // async reads/event replay outlive revocation; cached pages cross sessions; slow peers grow queues.
-async function fixture(backend: Agent['backend'] = 'claude') {
+async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: import('@workspace/core/conversation-sharing').ConversationShareTarget, text: string) => Promise<{ turnId: string; messageId: string }>) {
   const directory = await mkdtemp(path.join(tmpdir(), 'guest-boundary-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: `/ip4/127.0.0.1/tcp/${await freePort()}/ws` }); cleanup.push(() => relay.stop());
   const address = relay.getMultiaddrs()[0]!.toString();
@@ -42,7 +43,8 @@ async function fixture(backend: Agent['backend'] = 'claude') {
   const snapshot = createTestSnapshot();
   const agent: Agent = { id: 'shared', name: 'Synthetic shared chat', teamId: 'team-test', backend, folder: '/fixture', backendSession: backend === 'codex' ? { kind: 'codex', threadId: 'bound' } : backend === 'claude' ? { kind: 'claude', sessionId: 'bound', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'bound' }, status: { type: 'idle' }, createdAt: 'now', updatedAt: 'now' };
   snapshot.agents = [agent]; snapshot.teams[0]!.agentIds = ['shared'];
-  const shares = new ConversationShares({ directory: path.join(directory, 'shares'), endpoint: async () => ({ ownerId, relay: pin }) }, () => snapshot, () => {}); cleanup.push(() => shares.close());
+  let shareChanged: (agentId: string, state: import('@workspace/core/conversation-sharing').ConversationShareState) => void = () => {};
+  const shares = new ConversationShares({ directory: path.join(directory, 'shares'), endpoint: async () => ({ ownerId, relay: pin }), submit, canSubmit: () => !['working', 'awaitingInput'].includes(agent.status.type) }, () => snapshot, (agentId, state) => shareChanged(agentId, state)); cleanup.push(() => shares.close());
   const target = conversationShareTarget(agent)!;
   const handles: string[] = [];
   const created = await shares.control({ action: 'create', target }); const link = decodeConversationShareLink(created.link!, pin)!; handles.push(link.handle);
@@ -60,7 +62,10 @@ async function fixture(backend: Agent['backend'] = 'claude') {
     emit(frame);
   });
   function emit(event: AppBackendEvent) { source.observe(event); for (const listener of listeners) listener(event); }
+  shareChanged = (agentId, state) => emit({ type: 'conversation.shareChanged', agentId, payload: state, seq: revision, occurredAt: 'now' });
   const port = {
+    propose: (handle: string, peer: string, name: string, input: { id: string; text: string }) => shares.propose(handle, peer, name, input),
+    proposals: (handle: string, peer: string) => shares.guestState(handle, peer),
     authorize: (handle: string, credential: string) => shares.authorize(handle, credential),
     connected: (handle: string, count: number) => shares.connected(handle, count),
     onEvent: (listener: (event: AppBackendEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -101,6 +106,116 @@ async function freePort() { const server = createServer(); await new Promise<voi
 async function wire(stream: Stream) { const frames = readCompanionFrames(stream, 5 * 1024 * 1024)[Symbol.asyncIterator](); return async (method: string, args: unknown) => { const id = randomUUID(); stream.send(encodeCompanionFrame({ v: 1, id, method, args })); for (;;) { const next = await frames.next(); if (next.done) throw new Error('closed'); const value = next.value as { id?: string; result?: unknown; error?: string }; if (value.id === id) return value; } }; }
 
 describe('encrypted guest conversation authorization', () => {
+  it('joins into team Quick Chats without local provider execution and reopens the original team', async () => {
+    const f = await fixture('codex');
+    const joins = new GuestJoins({ directory: path.join(f.directory, 'quick-chat-guest'), relay: f.pin });
+    const snapshot = createTestSnapshot(); snapshot.agents = []; snapshot.teams[0]!.agentIds = [];
+    snapshot.teams.push({ ...snapshot.teams[0]!, id: 'another-team', name: 'Another team', agentIds: [] });
+    const server = new AppBackendServer({ version: 'test', snapshot, guestJoins: joins }); cleanup.push(() => server.close());
+    const call = async (input: unknown) => {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: 'guest', method: backendMethods.guestConversationControl, params: { input } });
+      if (!response || 'error' in response) throw new Error(JSON.stringify(response));
+      return response.result as import('@workspace/core/guest-navigation').GuestJoinState;
+    };
+    const invitation = `KORUS1.${Buffer.from(JSON.stringify(f.link)).toString('base64url')}`;
+    const prepared = await call({ action: 'prepare', link: invitation, teamId: 'team-test' });
+    expect(prepared.view?.status).toBe('needsName');
+    await call({ action: 'join', id: prepared.view!.id, name: 'Alex' });
+    await vi.waitFor(async () => expect((await call({ action: 'state' })).view?.status).toBe('ready'));
+    expect(snapshot.agents).toHaveLength(1);
+    expect(snapshot.agents[0]).toMatchObject({ teamId: 'team-test', sessionKind: 'quickChat', sharedConversation: { joinId: prepared.view!.id } });
+    expect(snapshot.agents[0]!.backendSession).toBeUndefined();
+    const denied = await server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: backendMethods.agentPromptSend, params: { agentId: snapshot.agents[0]!.id, prompt: 'Must not execute locally' } });
+    expect(denied).toHaveProperty('error');
+    snapshot.activeTeamId = 'another-team'; snapshot.activeAgentId = null;
+    await call({ action: 'prepare', link: encodeConversationShareLink(f.link) });
+    expect(snapshot.agents).toHaveLength(1);
+    expect(snapshot.activeTeamId).toBe('team-test');
+    expect(snapshot.activeAgentId).toBe(snapshot.agents[0]!.id);
+  }, 30_000);
+  // Moderation failures: pending text leaks to other guests, Dismiss dispatches,
+  // retry/late owner decisions duplicate execution, or saved identity bindings disappear.
+  it('moderates private proposals once and restores canonical authorship after owner-state reload', async () => {
+    const submit = vi.fn(async () => ({ turnId: 'native-turn', messageId: 'native-user-id' }));
+    const f = await fixture('codex', submit);
+    const one = await f.client('Alex'); const two = await f.client('Alex');
+    const dismissed = { id: randomUUID(), text: 'Private draft' };
+    await one.client.propose(dismissed);
+    await vi.waitFor(() => expect(one.client.proposalState?.proposals).toContainEqual(expect.objectContaining({ id: dismissed.id, status: 'pending' })));
+    expect(two.client.proposalState?.proposals ?? []).toStrictEqual([]);
+    expect((await two.client.proposals()).proposals).toStrictEqual([]);
+    await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: dismissed.id });
+    expect(submit).not.toHaveBeenCalled();
+    expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(dismissed.text);
+    expect((await one.client.proposals()).proposals).toEqual([expect.objectContaining({ id: dismissed.id, status: 'dismissed' })]);
+    const accepted = { id: randomUUID(), text: 'Identical prompt' };
+    await Promise.all([one.client.propose(accepted), one.client.propose(accepted)]);
+    await Promise.all([f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id }), f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id })]);
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(async () => expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: accepted.id, status: 'submitted', messageId: 'native-user-id' })));
+    const other = await two.client.proposals();
+    expect(other.proposals).toStrictEqual([]);
+    expect(other.authors).toContainEqual(expect.objectContaining({ messageId: 'native-user-id', name: 'Alex' }));
+    expect(JSON.stringify(other)).not.toContain('Private draft');
+    await expect(one.client.propose({ ...accepted, text: 'Changed on retry' })).rejects.toThrow();
+    const saved = JSON.parse(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8'));
+    expect(saved.proposals.filter((p: { status: string }) => p.status === 'submitted')).toHaveLength(1);
+    expect(saved.proposals.find((p: { id: string }) => p.id === accepted.id).messageId).toBe('native-user-id');
+    await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: accepted.id });
+    expect(submit).toHaveBeenCalledTimes(1);
+    f.shares.close();
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
+    cleanup.push(() => restored.close());
+    expect((await restored.authorize(f.link.handle, f.link.credential)).valid()).toBe(true);
+    const recovered = await restored.guestState(f.link.handle, one.joined.participant.identity);
+    expect(recovered.authors).toContainEqual(expect.objectContaining({ messageId: 'native-user-id', name: 'Alex' }));
+    await restored.propose(f.link.handle, one.joined.participant.identity, 'Alex', accepted);
+    await restored.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id });
+    await restored.dispatchQueued();
+    expect(submit).toHaveBeenCalledTimes(1);
+    await restored.control({ action: 'revoke', target: f.target, handle: f.link.handle });
+    const replacement = await restored.control({ action: 'create', target: f.target });
+    expect((await restored.guestState(replacement.state.handle!, 'new-guest')).authors).toContainEqual(expect.objectContaining({ messageId: 'native-user-id', name: 'Alex' }));
+  }, 30_000);
+  it('holds approved proposals while busy, preserves them across restart and rejects unsent work on revoke', async () => {
+    const submit = vi.fn(async () => ({ turnId: 'queued-turn', messageId: 'queued-message' }));
+    const f = await fixture('codex', submit); const one = await f.client();
+    f.snapshot.agents[0]!.status = { type: 'working' };
+    const proposal = { id: randomUUID(), text: 'Wait for the owner agent' }; await one.client.propose(proposal);
+    await f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: proposal.id });
+    await f.shares.dispatchQueued(); expect(submit).not.toHaveBeenCalled();
+    expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: proposal.id, status: 'queued' }));
+    f.shares.close();
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit, canSubmit: () => f.snapshot.agents[0]!.status.type === 'idle' }, () => f.snapshot, () => {});
+    cleanup.push(() => restored.close());
+    await restored.dispatchQueued(); expect(submit).not.toHaveBeenCalled();
+    f.snapshot.agents[0]!.status = { type: 'idle' }; await restored.dispatchQueued(); expect(submit).toHaveBeenCalledTimes(1);
+    f.snapshot.agents[0]!.status = { type: 'working' };
+    const unsent = { id: randomUUID(), text: 'Never admit after revoke' };
+    await restored.propose(f.link.handle, one.joined.participant.identity, 'Alex', unsent);
+    await restored.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: unsent.id });
+    await restored.control({ action: 'revoke', target: f.target, handle: f.link.handle });
+    f.snapshot.agents[0]!.status = { type: 'idle' }; await restored.dispatchQueued();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect((await restored.guestState(f.link.handle, one.joined.participant.identity)).proposals).toContainEqual(expect.objectContaining({ id: unsent.id, status: 'rejected' }));
+  }, 30_000);
+  it('retains uncertain dispatch across owner restart and never retries it', async () => {
+    let complete!: (result: { turnId: string; messageId: string }) => void;
+    const submit = vi.fn(() => new Promise<{ turnId: string; messageId: string }>(resolve => { complete = resolve; }));
+    const f = await fixture('codex', submit); const one = await f.client();
+    const proposal = { id: randomUUID(), text: 'One uncertain prompt' }; await one.client.propose(proposal);
+    await f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: proposal.id });
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    f.shares.close();
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
+    cleanup.push(() => restored.close());
+    const status = await restored.guestState(f.link.handle, one.joined.participant.identity);
+    expect(status.proposals).toContainEqual(expect.objectContaining({ id: proposal.id, status: 'unresolved' }));
+    await restored.propose(f.link.handle, one.joined.participant.identity, 'Alex', proposal);
+    await restored.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: proposal.id });
+    await restored.dispatchQueued(); expect(submit).toHaveBeenCalledTimes(1);
+    complete({ turnId: 'late', messageId: 'late' });
+  }, 30_000);
   // Saved-join failure modes: duplicate URL races create sessions; restart loses pins/identity;
   // disconnect is mistaken for revoke; stale async joins reappear after Leave; secrets enter UI state.
   it('joins without local setup, deduplicates opens, returns with the same protected identity and clears learned revocation', async () => {

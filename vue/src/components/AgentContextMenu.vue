@@ -48,6 +48,7 @@ export type AgentContextMenuAction =
   | 'restart-agent';
 
 const props = defineProps<{
+  shared?: boolean;
   shareAvailable?: boolean;
   compressDisabled?: boolean;
   compressVisible?: boolean;
@@ -78,7 +79,7 @@ const menuStyle = computed<Record<string, string>>(() => ({
   overflow: 'visible',
   top: `${menuPosition.value.y}px`,
 }));
-const menuItems = computed<AppMenuItem[]>(() => [
+const menuItems = computed<AppMenuItem[]>(() => props.shared ? [{ id: 'close-agent', type: 'action', label: t('guest.leave'), icon: X }] : [
   {
     id: 'edit-agent',
     type: 'action',

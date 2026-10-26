@@ -8,7 +8,7 @@ import { handoffInProgress } from '@workspace/core/agent-handoff';
 export type AgentPromptManagerOptions = {
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   getSnapshot: () => AppSnapshot;
-  driverForAgent: (agent: Agent, expectedSessionId?: string | null) => AgentBackendDriver;
+  driverForAgent: (agent: Agent, expectedSessionId?: string | null, plainText?: boolean) => AgentBackendDriver;
   applyEvent: (event: BackendEvent) => void;
   persistSnapshot: () => Promise<unknown>;
   setNewConversationTitle: (agentId: string, wasNewSession: boolean) => void;
@@ -122,12 +122,13 @@ export class AgentPromptManager {
     try {
       return sendAgentPrompt(
         snapshot,
-        acceptance?.expectedSessionId !== undefined ? this.options.driverForAgent(agent, acceptance.expectedSessionId) : this.options.driverForAgent(agent),
+        acceptance?.expectedSessionId !== undefined ? this.options.driverForAgent(agent, acceptance.expectedSessionId, clientId === 'guest:approved') : this.options.driverForAgent(agent),
         agent.id,
         prompt,
         promptOptions,
         this.options.applyEvent,
         {
+          plainText: clientId === 'guest:approved',
           appendUserMessage: !queuedPrompt || (!queuedPrompt.submitted && (queuedPrompt.attempts ?? 0) === 0),
           onBackendSessionUpdated: async (_result, wasNewSession) => {
             this.options.setNewConversationTitle(agent.id, wasNewSession);

@@ -1,9 +1,10 @@
 <template>
   <div class="window-edge" aria-hidden="true" />
-  <GuestWorkspace v-if="guestVisible" :state="guestState" :busy="guestBusy" :failed="guestFailed" @control="runGuest" @local="guestVisible = false" />
+  <JoinSharedChatDialog v-if="inviteVisible" :view="guestState.view" :busy="guestBusy" :failed="guestFailed" :control="runGuest" @close="inviteVisible = false" />
   <AppShell
-    v-else-if="hasLoadedSnapshot"
-    @open-shared="showGuests"
+    v-if="hasLoadedSnapshot"
+    @join-invite="showGuestInvite"
+    :guest-state="guestState" :guest-busy="guestBusy" :guest-control="runGuest"
     :inert="backendRestartInProgress || pendingSessionCompression !== null ? '' : undefined"
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
@@ -263,7 +264,7 @@ import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
-import GuestWorkspace from './components/GuestWorkspace.vue';
+import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
 import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
@@ -279,7 +280,6 @@ import { localizedErrorMessage } from './i18n/errors';
 import { agentDisplayName } from '@workspace/core/agent-display';
 
 const { t } = useI18n();
-const { visible: guestVisible, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuests } = useGuestNavigation();
 
 const {
   snapshot,
@@ -498,6 +498,7 @@ const {
   restartApp,
   getPluginStatus,
 } = useAppState();
+const { inviteVisible, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuestInvite } = useGuestNavigation(() => snapshot.value, selectAgent, () => hasLoadedSnapshot.value);
 
 const agentConversationActions: AgentConversationActions = {
   planReview: respondToPlanReviewForAgent,

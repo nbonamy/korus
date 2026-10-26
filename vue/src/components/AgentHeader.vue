@@ -24,7 +24,7 @@
       />
       <div class="agent-header__agent-line">
         <strong class="workspace-header__title" :title="displayName">{{ displayName }}</strong>
-        <div class="agent-header__context">
+        <div v-if="!agent.sharedConversation" class="agent-header__context">
           <span
             v-if="agentLocationLabel"
             class="agent-header__folder"

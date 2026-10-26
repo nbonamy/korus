@@ -18,6 +18,8 @@ import { sendWithBackpressure } from '../companion/stream-io';
 import { UpdateStreamWriter } from '../companion/update-writer';
 
 export type GuestConversationPort = {
+  propose?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
+  proposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
   authorize(handle: string, credential: string): Promise<GuestConversationGrant>;
   connected(handle: string, count: number): void;
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
@@ -62,7 +64,7 @@ export class GuestConversationGateway {
     this.streams.add(stream);
     stream.maxReadBufferLength = companionFrameLimit + 4; stream.maxWriteBufferLength = companionResponseLimit + 4;
     stream.inactivityTimeout = 10_000;
-    let grant: GuestConversationGrant | undefined; let handle = ''; let closed = false; let unlisten: (() => void) | undefined; let unRevoke: (() => void) | undefined;
+    let grant: GuestConversationGrant | undefined; let handle = ''; let guestName = ''; let closed = false; let unlisten: (() => void) | undefined; let unRevoke: (() => void) | undefined;
     const images = new Set<string>(); const contentIds = new Set<string>();
     const remember = (frame: ProviderConversationFrame) => {
       const messages = isConversationReset(frame) ? frame.payload.snapshot.messages : (() => {
@@ -89,7 +91,7 @@ export class GuestConversationGateway {
     };
     const writer = new UpdateStreamWriter({ write: async bytes => { assert(); await sendWithBackpressure(stream, bytes); }, fail: () => close() });
     // Join failures have no grant; their small bounded response still uses transport backpressure.
-    const reply = async (value: unknown) => { if (closed) return; const bytes = encodeCompanionFrame(value); if (bytes.byteLength > companionResponseLimit + 4) throw new Error('denied'); if (grant) { assert(); writer.enqueue(bytes); await writer.drained(); } else await sendWithBackpressure(stream, bytes); };
+    const reply = async (value: unknown) => { if (closed) return; const bytes = encodeCompanionFrame(value, companionResponseLimit); if (bytes.byteLength > companionResponseLimit + 4) throw new Error('denied'); if (grant) { assert(); writer.enqueue(bytes); await writer.drained(); } else await sendWithBackpressure(stream, bytes); };
     const finish = async () => { await writer.flushed(); if (!closed) await stream.close({ signal: AbortSignal.timeout(5000) }); stream.inactivityTimeout = 10_000; close(false); };
     const deliver = async (frame: ProviderConversationFrame) => {
       assert(); if (!bound(frame, grant!.target)) throw new Error('denied');
@@ -111,7 +113,7 @@ export class GuestConversationGateway {
             if (closed || !candidate.valid()) throw new Error('denied');
             const count = [...this.sessions.values()].filter(session => session.handle === input.handle).length;
             if (count >= guestConversationLimit || this.sessions.size >= guestOwnerLimit) { await reply({ v: 1, id: request.id, error: 'busy' }); continue; }
-            grant = candidate; handle = input.handle; this.sessions.set(stream, { handle, close }); this.count(handle);
+            grant = candidate; handle = input.handle; guestName = input.name; this.sessions.set(stream, { handle, close }); this.count(handle);
             unRevoke = grant.onRevoke(() => {
               // Clear authorization and queued provider work before sending the terminal notice.
               close(false);
@@ -120,6 +122,11 @@ export class GuestConversationGateway {
             }); assert(); stream.inactivityTimeout = companionBackgroundIdleTimeoutMs;
             unlisten = this.port.onEvent(event => {
               if (!alive()) { close(); return; }
+              if (event.type === 'conversation.shareChanged' && event.agentId === grant!.target.agentId && this.port.proposals) {
+                // The owner event contains all proposals. Fetch a peer-filtered projection instead of forwarding it.
+                void this.port.proposals(handle, peer).then(proposalState => reply({ v: 1, proposalState })).catch(() => close());
+                return;
+              }
               if (!watching || !isConversationFrame(event) || !bound(event as ProviderConversationFrame, grant!.target)) return;
               const frame = event as ProviderConversationFrame;
               if (pending) {
@@ -132,6 +139,13 @@ export class GuestConversationGateway {
           } else {
             assert(); const target = grant!.target;
             switch (request.method) {
+              case 'guest.propose': {
+                const input = z.object({ id: z.string().uuid(), text: z.string().min(1).max(100_000) }).strict().parse(request.args);
+                if (!this.port.propose) throw new Error('denied');
+                result = await this.port.propose(handle, peer, guestName, input); break;
+              }
+              case 'guest.proposals':
+                emptySchema.parse(request.args); result = await this.port.proposals?.(handle, peer) ?? { proposals: [], authors: [] }; break;
               case 'ping': emptySchema.parse(request.args); result = {}; break;
               case 'conversation.synchronize': {
                 const { checkpoint } = syncSchema.parse(request.args);

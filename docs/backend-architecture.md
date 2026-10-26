@@ -224,7 +224,9 @@ material. Reusing the companion identity does not enable paired-phone access.
 
 Installed desktop guests keep a separate protected app identity and joined-link
 store under `APP_HOME/guest-joins`. It stores relay/owner pins, the credential,
-display name and an immutable target fingerprint, never transcript content.
+display name, original team and an immutable target fingerprint, never transcript content.
+A shared Quick Chat row is a navigation reference to this join, not a local provider
+session. Reopening the invitation focuses that row in its original team.
 Only the daemon can read these records; renderer projections contain no bearer
 material. Opening a saved entry reconnects and replaces its memory-only provider
 baseline through the guest client. Concurrent opens reuse the session; switching
@@ -232,6 +234,17 @@ entries disposes the old subscription. Temporary disconnect retains the loaded
 view with an unavailable status. An authenticated revocation clears the view and
 saved authorization; failed local removal is explicit and cannot reopen access.
 Leaving persists removal before disposing its session.
+
+Backend capabilities explicitly qualify conversation sharing. Supported owner headers
+and menus expose Share; unsupported backends cannot mint links. Approved guest
+submissions bypass app slash-command interpretation. Codex submissions use the canonical user-message identity returned by the public SDK snapshot.
+Durable app-owned authorship metadata labels those identities without changing
+provider transcripts. Guest text enters the normal prompt admission boundary only
+after an owner Send decision. Pending proposals and decisions are private to the
+owner and proposer. Persisted dispatch intent is never replayed after uncertain
+submission; restart exposes delivery unresolved. Dismiss never submits. Terminal
+receipts retain a text fingerprint for deduplication instead of discarded text;
+active proposal text has a two-MiB budget per link, alongside count limits.
 
 Guest rendezvous uses its own versioned protocols and in-memory owner/handle
 namespace. Only the Noise-authenticated owner registers its handles. Lookups return

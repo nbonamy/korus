@@ -7,6 +7,14 @@ afterEach(() => {
 });
 
 describe('StartWorkMenu', () => {
+  it('opens invitation joining from the project menu', async () => {
+    const wrapper = mount(StartWorkMenu, { attachTo: document.body });
+    await wrapper.get('[aria-label="Add project"]').trigger('click');
+    const invite = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Join with invite'));
+    expect(invite).toBeDefined();
+    invite!.click(); await wrapper.vm.$nextTick();
+    expect(wrapper.emitted('select')).toStrictEqual([['invite']]);
+  });
   it('offers project acquisition from a prominent new-session trigger', async () => {
     const wrapper = mount(StartWorkMenu, {
       attachTo: document.body,

@@ -4,13 +4,14 @@ import { surfaceMessages } from './surface-messages';
 export const messages = {
   en: {
     guest: {
-      sharedWithMe: 'Shared with me', localWorkspace: 'Local workspace', empty: 'No shared conversations yet.',
-      openLink: 'Open a conversation share link to join.', join: 'Join conversation', displayName: 'Display name',
-      nameDisclosure: 'The owner and other guests will see this name. A name does not verify identity.',
+      joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
+
+      open: 'Open shared conversation', join: 'Join conversation', displayName: 'Display name',
       leave: 'Leave conversation', storageFailed: 'Shared conversations are unavailable. Check local storage and try again.',
       status: { storageUnavailable: 'Access has stopped, but saved authorization could not be removed. Check local storage, then leave the conversation.', connecting: 'Connecting to owner…', ready: 'Connected', unavailable: 'Owner unavailable · Reconnecting…', rejected: 'This share link is no longer authorized.', upgradeRequired: 'Update Korus or the relay to join this conversation.', busy: 'The owner or relay is busy. Retrying…', invalid: 'This share link is invalid or uses an unsupported relay.' },
     },
     sharing: {
+      guestProposals: 'Guest proposals',
       title: 'Share with guests', share: 'Share', done: 'Done',
       disclosure: 'Anyone with this link can read the full available history and future updates, including tool output.',
       approval: 'You approve each proposed guest message before it is sent to the agent.',
@@ -21,7 +22,7 @@ export const messages = {
       rateLimited: 'The relay is busy. Routing will retry automatically.',
       upgradeRequired: 'Sharing requires a relay upgrade.',
       notConfigured: 'Conversation sharing requires a configured relay.',
-      create: 'Create and copy link', copy: 'Copy link', stop: 'Stop sharing', copied: 'Link copied',
+      create: 'Create and copy link', copy: 'Copy link', copyInvitation: 'Copy invitation', stop: 'Stop sharing', copied: 'Copied',
       failed: 'Sharing is unavailable. Check local storage and try again.',
       copyFailed: 'The link is saved, but copying failed. Try Copy link again.',
     },

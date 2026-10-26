@@ -31,6 +31,7 @@ async function closeDesktop() {
 }
 try {
   console.log('Building isolated desktop workflow…');
+  await build({ root: path.join(root, 'backend'), configFile: path.join(root, 'backend/vite.config.ts'), logLevel: 'error' });
   const shared = { ssr: { noExternal: true }, logLevel: 'error', define: { MAIN_WINDOW_VITE_DEV_SERVER_URL: 'undefined', MAIN_WINDOW_VITE_NAME: JSON.stringify('main_window') } };
   await build({ ...shared, configFile: path.join(root, 'electron/vite.main.config.ts'), build: { ssr: path.join(root, 'electron/src/main/index.ts'), outDir: path.join(root, 'electron/.vite/build'), emptyOutDir: true, rollupOptions: { external: ['electron', 'autolib'], output: { format: 'cjs', entryFileNames: 'main.js' } } } });
   await build({ ...shared, configFile: path.join(root, 'electron/vite.preload.config.ts'), build: { ssr: path.join(root, 'electron/src/preload/index.ts'), outDir: path.join(root, 'electron/.vite/build'), emptyOutDir: false, rollupOptions: { external: ['electron'], output: { format: 'cjs', entryFileNames: 'preload.js' } } } });
@@ -54,8 +55,8 @@ try {
   }
   console.log('Delivering cold URL through Launch Services…'); deliver(); let page = await attach();
   await page.getByRole('heading', { name: 'Join conversation', exact: true }).waitFor();
-  assert.equal(await page.locator('.codex-login').count(), 0); assert.equal(await page.locator('.guest-workspace').count(), 1);
-  assert.equal((await page.locator('.guest-workspace').boundingBox()).x, 0, 'Guest layout must start at the window edge.');
+  assert.equal(await page.locator('.guest-workspace').count(), 0);
+  await page.getByRole('textbox', { name: 'Display name' }).waitFor();
   await page.screenshot({ path: path.join(evidence, 'guest-join.png') });
   observations.scheme = target.scheme;
   observations.scenarios.push('cold OS URL delivery before renderer readiness; provider-free join screen');
@@ -71,9 +72,16 @@ try {
   deliver(alias.replace('v=1', 'v=9')); await page.getByText('Update Korus or the relay to join this conversation.').waitFor();
   deliver(); await page.getByRole('heading', { name: 'Join conversation', exact: true }).waitFor();
   console.log('Checking keyboard join and warm duplicate delivery…');
+  // Both OS-delivered URLs and self-contained pasted invitations enter the same join flow.
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Join with invite…', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Invitation or share link' }).fill(await readFile(path.join(ownerHome, 'invitation.txt'), 'utf8'));
+  await page.getByRole('button', { name: 'Join conversation', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Display name' }).waitFor();
+  observations.scenarios.push('self-contained invitation pasted through Join with invite; full link accepted on warm OS open');
   await page.getByRole('textbox', { name: 'Display name' }).fill('Synthetic Guest'); await page.keyboard.press('Enter');
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
-  assert.equal(await page.locator('[contenteditable="true"]').count(), 0); assert.equal(await page.getByRole('button', { name: 'Share', exact: true }).count(), 0);
+  assert.equal(await page.locator('[contenteditable="true"]').count(), 1); assert.equal(await page.getByRole('button', { name: 'Share', exact: true }).count(), 0);
   deliver(); deliver(); await wait(async () => (await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).view?.status === 'ready');
   assert.equal((await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries.length, 1);
   const after = await processSession.send('SystemInfo.getProcessInfo'); assert.equal(after.processInfo.find(process => process.type === 'browser').id, firstPid);
@@ -85,14 +93,27 @@ try {
     await wait(() => page.evaluate(expected => document.documentElement.dataset.effectiveAppearance === expected, theme));
     await page.screenshot({ path: path.join(evidence, `guest-${theme}.png`) });
   }
-  observations.scenarios.push('keyboard join; read-only transcript; warm OS duplicate links focus same process and saved entry; light/dark screenshots');
-  console.log('Checking guest restart and Shared with me…'); await closeDesktop();
+  observations.scenarios.push('keyboard join; normal conversation with text-only proposal composer; warm OS duplicate links focus same process and saved Quick Chat; light/dark screenshots');
+  console.log('Checking private proposals and owner decisions…');
+  await page.locator('[contenteditable="true"]').fill('Synthetic dismissed proposal'); await page.keyboard.press('Enter');
+  await page.getByText('Waiting for owner approval', { exact: true }).waitFor();
+  await writeFile(path.join(ownerHome, 'command'), 'dismiss'); await page.getByText('Dismissed', { exact: true }).waitFor();
+  assert.equal(JSON.parse(await readFile(path.join(ownerHome, 'observation.json'), 'utf8')).admissions, 0);
+  await page.locator('[contenteditable="true"]').fill('Synthetic approved proposal'); await page.keyboard.press('Enter');
+  await page.getByText('Waiting for owner approval', { exact: true }).waitFor();
+  await writeFile(path.join(ownerHome, 'command'), 'send'); await page.getByText('Sent to agent', { exact: true }).waitFor();
+  await page.getByText('Synthetic agent response to approved proposal.', { exact: true }).waitFor();
+  await wait(async () => (await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).view?.proposalState?.authors.length === 1);
+  observations.proposals = { dismissAdmissions: 0, sendAdmissions: 1, canonicalAuthorBound: true, fixtureOnly: true, ownerDecisionSurface: 'scripted owner authority; mounted owner controls covered separately' };
+  await page.screenshot({ path: path.join(evidence, 'guest-approved.png') });
+  console.log('Checking guest restart and shared Quick Chat…'); await closeDesktop();
   // Start the profile through its native launcher without resending the bearer link.
   execFileSync('/usr/bin/open', ['-a', target.nativePath], { stdio: 'ignore' }); page = await attach();
-  await page.getByRole('button', { name: 'Shared with me', exact: true }).first().click();
   const savedEntry = (await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries[0];
   assert.equal(savedEntry.title, 'Synthetic conversation');
-  await page.getByRole('navigation', { name: 'Shared with me' }).getByRole('button').filter({ hasText: savedEntry.title }).focus(); await page.keyboard.press('Enter');
+  await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
+  assert.equal(await page.locator('[aria-label="Shared conversation"]').count() > 0, true);
+  assert.equal(await page.getByRole('button', { name: 'Shared with me', exact: true }).count(), 0);
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
   assert.equal(await page.evaluate(async () => (await window.app.guestConversationControl({ action: 'state' })).view.participant.identity), identity);
   const restartedProcesses = await (await browser.newBrowserCDPSession()).send('SystemInfo.getProcessInfo');
@@ -100,7 +121,7 @@ try {
   assert.notEqual(restartedPid, firstPid);
   observations.profileIsolation.restartedGuestPid = restartedPid;
   observations.identityContinuity = { guestIdentitySha256: createHash('sha256').update(identity).digest('hex'), restoredAfterRestart: true };
-  observations.scenarios.push('restart without original URL; Shared with me reconnects with same protected identity');
+  observations.scenarios.push('restart without original URL; shared Quick Chat reconnects with same protected identity');
   console.log('Checking local identity reset with the same active bearer…');
   await closeDesktop(); await rm(path.join(home, 'guest-joins/state.json')); deliver(); page = await attach();
   await page.getByRole('heading', { name: 'Join conversation', exact: true }).waitFor();
@@ -125,7 +146,11 @@ try {
   for (const file of ['failure.png', 'failure.txt']) await rm(path.join(evidence, file), { force: true });
 } catch (error) {
   const page = browser?.contexts().flatMap(context => context.pages()).find(page => page.url().endsWith('index.html'));
-  if (page) { await page.screenshot({ path: path.join(evidence, 'failure.png') }).catch(() => {}); await writeFile(path.join(evidence, 'failure.txt'), await page.locator('body').innerText().catch(() => 'No renderer')).catch(() => {}); }
+  if (page) {
+    const state = await page.evaluate(() => window.app.guestConversationControl({ action: 'state' })).catch(() => null);
+    observations.failure = { guestStatus: state?.view?.status ?? null, savedEntries: state?.entries?.length ?? null };
+    await page.locator('#guest-invitation').fill('[invitation redacted]').catch(() => {});
+    await page.screenshot({ path: path.join(evidence, 'failure.png') }).catch(() => {}); await writeFile(path.join(evidence, 'failure.txt'), await page.locator('body').innerText().catch(() => 'No renderer')).catch(() => {}); }
   throw error;
 } finally {
   await closeDesktop(); if (owner) { owner.kill('SIGTERM'); await new Promise(resolve => owner.exitCode !== null ? resolve() : owner.once('exit', resolve)); }

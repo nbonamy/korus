@@ -377,6 +377,8 @@ export type Agent = {
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
+  /** Local navigation reference only. This agent never owns a local provider session. */
+  sharedConversation?: { joinId: string };
   name: string | null;
   conversationTitle?: string;
   avatar?: string;
