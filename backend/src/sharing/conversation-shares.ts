@@ -25,7 +25,7 @@ const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('revoke'), target: targetSchema, handle: handleSchema }).strict(),
 ]);
 type ShareRecord = ConversationShareLink & { target: ConversationShareTarget; createdAt: string; revokedAt?: string };
-export type GuestConversationGrant = { target: ConversationShareTarget; valid(): boolean; onRevoke(listener: () => void): () => void };
+export type GuestConversationGrant = { target: ConversationShareTarget; title: string; valid(): boolean; onRevoke(listener: () => void): () => void };
 type Store = { v: 1; links: ShareRecord[] };
 export type ConversationSharingOptions = { directory: string; endpoint(): Promise<{ ownerId: string; relay: ShareRelay } | null>;
   routing?: {
@@ -62,7 +62,9 @@ export class ConversationShares {
         || !timingSafeEqual(Buffer.from(link.credential), Buffer.from(credential))) throw new Error('denied');
       const valid = () => Boolean(this.saved?.links.some(saved => saved.handle === handle && !saved.revokedAt)
         && !this.invalidated.has(handle) && this.currentTarget(link.target));
-      return { target: structuredClone(link.target), valid, onRevoke: listener => {
+      const agent = this.snapshot().agents.find(agent => agent.id === link.target.agentId)!;
+      const title = (agent.conversationTitle?.trim() || agent.name || 'Shared conversation').replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim().slice(0, 200) || 'Shared conversation';
+      return { target: structuredClone(link.target), title, valid, onRevoke: listener => {
         const listeners = this.revocations.get(handle) ?? new Set<() => void>(); listeners.add(listener); this.revocations.set(handle, listeners);
         if (!valid()) listener();
         return () => { listeners.delete(listener); if (!listeners.size) this.revocations.delete(handle); };

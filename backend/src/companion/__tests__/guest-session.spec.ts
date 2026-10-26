@@ -151,18 +151,55 @@ describe('encrypted guest conversation authorization', () => {
     expect(await readFile(path.join(directory, 'state.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
   it('switches saved conversations without leaving background sessions or a stale ready view', async () => {
-    const f = await fixture(); const joins = new GuestJoins({ directory: path.join(f.directory, 'joined'), relay: f.pin }); cleanup.push(() => joins.close());
+    const f = await fixture(); const directory = path.join(f.directory, 'joined');
+    let joins = new GuestJoins({ directory, relay: f.pin }); cleanup.push(() => joins.close());
+    f.snapshot.agents[0]!.conversationTitle = 'Investigate login failures';
     const first = (await joins.control({ action: 'prepare', link: encodeConversationShareLink(f.link) })).view!.id;
     await joins.control({ action: 'join', id: first, name: 'Alex' });
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
     const link = await f.addLink(2);
+    f.snapshot.agents.find(agent => agent.id === 'shared-2')!.conversationTitle = 'Prepare the release';
     const second = (await joins.control({ action: 'prepare', link: encodeConversationShareLink(link) })).view!.id;
     await joins.control({ action: 'join', id: second, name: 'Alex' });
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
+    const expected = [
+      { id: first, name: 'Alex', title: 'Investigate login failures' },
+      { id: second, name: 'Alex', title: 'Prepare the release' },
+    ];
+    expect((await joins.control({ action: 'state' })).entries).toStrictEqual(expected);
     expect(f.listeners.size).toBe(1);
     await joins.control({ action: 'open', id: first });
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.frame?.agentId).toBe('shared'));
     expect(f.listeners.size).toBe(1); expect((await joins.control({ action: 'state' })).entries).toHaveLength(2);
+    expect((await joins.control({ action: 'state' })).view?.title).toBe(expected[0]!.title);
+    await joins.close(); joins = new GuestJoins({ directory, relay: f.pin });
+    // Saved labels must be useful before networking, including when the owner is offline.
+    const restored = await joins.control({ action: 'state' });
+    expect(restored).toStrictEqual({ entries: expected, view: null });
+    expect(JSON.stringify(restored)).not.toContain(link.credential);
+    expect(JSON.stringify(restored)).not.toContain(f.link.credential);
+    await joins.control({ action: 'open', id: second });
+    await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
+    expect((await joins.control({ action: 'state' })).view?.title).toBe(expected[1]!.title);
+    f.snapshot.agents.find(agent => agent.id === 'shared-2')!.conversationTitle = expected[0]!.title;
+    await joins.close(); joins = new GuestJoins({ directory, relay: f.pin });
+    await joins.control({ action: 'open', id: second });
+    await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
+    const duplicates = await joins.control({ action: 'state' });
+    expect(duplicates.entries.map(entry => entry.title)).toStrictEqual([
+      `Investigate login failures · ${first.slice(0, 8)}`,
+      `Investigate login failures · ${second.slice(0, 8)}`,
+    ]);
+    expect(duplicates.view?.title).toBe(duplicates.entries[1]!.title);
+    await joins.close();
+    const legacy = JSON.parse(await readFile(path.join(directory, 'state.json'), 'utf8'));
+    for (const record of legacy.joins) delete record.title;
+    await writeFile(path.join(directory, 'state.json'), JSON.stringify(legacy));
+    joins = new GuestJoins({ directory, relay: f.pin });
+    expect((await joins.control({ action: 'state' })).entries.map(entry => entry.title)).toStrictEqual([
+      `Shared conversation · ${first.slice(0, 8)}`,
+      `Shared conversation · ${second.slice(0, 8)}`,
+    ]);
   }, 30_000);
   it('keeps unavailable distinct from rejection, reconnects on open, and Leave cancels an in-flight read', async () => {
     const f = await fixture(); const joins = new GuestJoins({ directory: path.join(f.directory, 'joined'), relay: f.pin }); cleanup.push(() => joins.close());

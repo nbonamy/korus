@@ -18,14 +18,15 @@ const controlSchema = z.discriminatedUnion('action', [
   ...(['open', 'leave', 'history'] as const).map(action => z.object({ action: z.literal(action), id: idSchema }).strict()),
   z.object({ action: z.literal('join'), id: idSchema, name: z.string().max(200) }).strict(),
 ]);
-const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const titleSchema = z.string().min(1).max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value));
+const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, title: titleSchema.optional(), binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 const storeSchema = z.object({ v: z.literal(1), identity: z.string().max(4096), joins: z.array(recordSchema) }).strict();
-type JoinRecord = { id: string; link: string; name: string; binding?: string };
+type JoinRecord = { id: string; link: string; name: string; title?: string; binding?: string };
 type Store = { v: 1; identity: string; joins: JoinRecord[] };
 type Session = { link: ConversationShareLink; view: GuestJoinView; client?: GuestConversationClient; transport?: GuestConversationTransport; connecting?: Promise<void>; generation: number; timer?: ReturnType<typeof setTimeout>; retries: number; stopping?: Promise<void> };
 export type GuestJoinsOptions = { directory: string; relay?: ShareRelay };
 const keyFor = (link: ConversationShareLink) => createHash('sha256').update(JSON.stringify([link.relay, link.ownerId, link.handle])).digest('hex');
-const emptyView = (id: string, name = ''): GuestJoinView => ({ id, name, title: 'Shared conversation', status: 'needsName', participant: null, target: null, frame: null });
+const emptyView = (id: string, name = '', title?: string): GuestJoinView => ({ id, name, title: title ?? (idSchema.safeParse(id).success ? `Shared conversation · ${id.slice(0, 8)}` : 'Shared conversation'), status: 'needsName', participant: null, target: null, frame: null });
 
 /** Installed guest authority. One protected app identity, durable pins/authorization, memory-only transcripts. */
 export class GuestJoins {
@@ -61,7 +62,7 @@ export class GuestJoins {
         }
         const id = keyFor(link); let session = this.sessions.get(id);
         const record = this.saved!.joins.find(record => record.id === id);
-        if (!session) { session = { link, view: emptyView(id, record?.name), generation: 0, retries: 0 }; this.sessions.set(id, session); }
+        if (!session) { session = { link, view: emptyView(id, record?.name, record?.title), generation: 0, retries: 0 }; this.sessions.set(id, session); }
         // A substituted credential cannot replace a previously saved authorization for the same route.
         if (session.link.credential !== link.credential) { this.selected = { ...emptyView('invalid'), status: 'invalid' }; return this.state(); }
         this.select(session);
@@ -71,7 +72,7 @@ export class GuestJoins {
         let session = this.sessions.get(record.id);
         if (!session) {
           const link = decodeConversationShareLink(record.link, this.relay); if (!link) throw new Error('Saved relay is unsupported.');
-          session = { link, view: { ...emptyView(record.id, record.name), target: null }, generation: 0, retries: 0 }; this.sessions.set(record.id, session);
+          session = { link, view: emptyView(record.id, record.name, record.title), generation: 0, retries: 0 }; this.sessions.set(record.id, session);
         }
         this.select(session); this.connect(session);
       } else if (action.action === 'join') {
@@ -96,7 +97,12 @@ export class GuestJoins {
     this.selected = session.view;
   }
   private state(): GuestJoinState {
-    return structuredClone({ entries: (this.saved?.joins ?? []).map(({ id, name }) => ({ id, name, title: 'Shared conversation' })), view: this.selected });
+    const entries = (this.saved?.joins ?? []).map(({ id, name, title }) => ({ id, name, title: emptyView(id, name, title).title }));
+    const counts = new Map<string, number>();
+    for (const entry of entries) counts.set(entry.title, (counts.get(entry.title) ?? 0) + 1);
+    for (const entry of entries) if (counts.get(entry.title)! > 1) entry.title += ` · ${entry.id.slice(0, 8)}`;
+    const view = this.selected ? { ...this.selected, title: entries.find(entry => entry.id === this.selected!.id)?.title ?? this.selected.title } : null;
+    return structuredClone({ entries, view });
   }
   private ready(id: string) {
     const session = this.sessions.get(id);
@@ -140,9 +146,11 @@ export class GuestJoins {
         if (!record || (record.binding && record.binding !== createHash('sha256').update(JSON.stringify(joined.target)).digest('hex'))) { await this.reject(session); return; }
         await this.serial(async () => {
           if (!current()) return;
-          await this.write({ ...this.saved!, joins: this.saved!.joins.map(saved => saved.id === record.id ? { ...saved, binding: createHash('sha256').update(JSON.stringify(joined.target)).digest('hex') } : saved) });
+          const title = titleSchema.safeParse(joined.title);
+          await this.write({ ...this.saved!, joins: this.saved!.joins.map(saved => saved.id === record.id ? { ...saved, ...(title.success ? { title: title.data } : {}), binding: createHash('sha256').update(JSON.stringify(joined.target)).digest('hex') } : saved) });
         });
         if (!current()) return;
+        session.view.title = this.saved!.joins.find(saved => saved.id === record.id)?.title ?? session.view.title;
         session.view.target = joined.target; session.view.participant = joined.participant;
         await client.synchronize(); if (!current()) return;
         session.view.frame = client.snapshot; session.view.status = 'ready'; session.retries = 0;

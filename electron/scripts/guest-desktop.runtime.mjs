@@ -90,7 +90,9 @@ try {
   // Start the profile through its native launcher without resending the bearer link.
   execFileSync('/usr/bin/open', ['-a', target.nativePath], { stdio: 'ignore' }); page = await attach();
   await page.getByRole('button', { name: 'Shared with me', exact: true }).first().click();
-  await page.getByRole('button', { name: /Shared conversation/ }).focus(); await page.keyboard.press('Enter');
+  const savedEntry = (await page.evaluate(() => window.app.guestConversationControl({ action: 'state' }))).entries[0];
+  assert.equal(savedEntry.title, 'Synthetic conversation');
+  await page.getByRole('navigation', { name: 'Shared with me' }).getByRole('button').filter({ hasText: savedEntry.title }).focus(); await page.keyboard.press('Enter');
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
   assert.equal(await page.evaluate(async () => (await window.app.guestConversationControl({ action: 'state' })).view.participant.identity), identity);
   const restartedProcesses = await (await browser.newBrowserCDPSession()).send('SystemInfo.getProcessInfo');

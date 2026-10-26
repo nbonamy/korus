@@ -128,7 +128,7 @@ export class GuestConversationGateway {
                 buffered.push(frame);
               } else void deliver(frame).catch(() => close());
             });
-            result = { target: grant.target, participant: { identity: peer, name: input.name, discriminator: createHash('sha256').update(peer).digest('hex').slice(0, 8) } };
+            result = { target: grant.target, title: grant.title, participant: { identity: peer, name: input.name, discriminator: createHash('sha256').update(peer).digest('hex').slice(0, 8) } };
           } else {
             assert(); const target = grant!.target;
             switch (request.method) {
