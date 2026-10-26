@@ -44,6 +44,56 @@ describe('GitDiffPreviewPanel', () => {
     expect(wrapper.text()).toContain('oldValue');
   });
 
+  describe('grouping by file type', () => {
+    const fileDiff = (path: string, added = 1) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', ...Array.from({ length: added }, () => '+line')].join('\n');
+    const diff = [fileDiff('README.md'), fileDiff('src/app.test.ts', 2), fileDiff('package-lock.json'), fileDiff('src/app.ts', 3), fileDiff('src/util.ts')].join('\n');
+
+    it('puts files under code, tests, documentation and other headers, in that order, with each group total', () => {
+      const wrapper = mount(GitDiffPreviewPanel, { props: { diff, groupByKind: true } });
+      const groups = wrapper.findAll('.git-diff-preview-panel__group');
+      expect(groups.map(group => group.get('.git-diff-preview-panel__group-header').text())).toStrictEqual([
+        'Code2 files+4-0', 'Tests1 file+2-0', 'Documentation1 file+1-0', 'Other1 file+1-0',
+      ]);
+      expect(groups.map(group => group.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text()))).toStrictEqual([
+        ['app.ts', 'util.ts'], ['app.test.ts'], ['README.md'], ['package-lock.json'],
+      ]);
+    });
+
+    it('folds and unfolds a group from its header, keeping its totals and the other groups open', async () => {
+      const wrapper = mount(GitDiffPreviewPanel, { props: { diff, groupByKind: true } });
+      const header = (label: string) => wrapper.findAll('.git-diff-preview-panel__group-header').find(candidate => candidate.text().startsWith(label))!;
+      const names = () => wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text());
+      expect(header('Tests').attributes('aria-expanded')).toBe('true');
+      await header('Code').trigger('click');
+      expect(header('Code').attributes('aria-expanded')).toBe('false');
+      expect(header('Code').text()).toContain('2 files');
+      expect(header('Code').text()).toContain('+4-0');
+      expect(names()).toStrictEqual(['app.test.ts', 'README.md', 'package-lock.json']);
+      await header('Code').trigger('click');
+      expect(names()).toStrictEqual(['app.ts', 'util.ts', 'app.test.ts', 'README.md', 'package-lock.json']);
+    });
+
+    it('keeps a folded group folded when the diff reloads, and "expand all" opens groups and files', async () => {
+      const wrapper = mount(GitDiffPreviewPanel, { props: { diff, groupByKind: true } });
+      const header = (label: string) => wrapper.findAll('.git-diff-preview-panel__group-header').find(candidate => candidate.text().startsWith(label))!;
+      await header('Documentation').trigger('click');
+      await wrapper.setProps({ diff: `${diff}\n${fileDiff('src/new.ts')}` });
+      expect(header('Documentation').attributes('aria-expanded')).toBe('false');
+      expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).not.toContain('README.md');
+      await wrapper.setProps({ expandAllSignal: 1 });
+      expect(header('Documentation').attributes('aria-expanded')).toBe('true');
+      expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toContain('README.md');
+    });
+
+    it('lists the files in diff order without headers when grouping is off, and skips empty groups', () => {
+      const flat = mount(GitDiffPreviewPanel, { props: { diff } });
+      expect(flat.find('.git-diff-preview-panel__group-header').exists()).toBe(false);
+      expect(flat.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toStrictEqual(['README.md', 'app.test.ts', 'package-lock.json', 'app.ts', 'util.ts']);
+      const codeOnly = mount(GitDiffPreviewPanel, { props: { diff: fileDiff('src/app.ts'), groupByKind: true } });
+      expect(codeOnly.findAll('.git-diff-preview-panel__group-header')).toHaveLength(1);
+    });
+  });
+
   it('folds file sections from the file header', async () => {
     const wrapper = mount(GitDiffPreviewPanel, {
       props: {

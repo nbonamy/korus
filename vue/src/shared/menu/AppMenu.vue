@@ -15,6 +15,35 @@
       />
 
       <div
+        v-else-if="item.type === 'info'"
+        class="app-menu__info"
+        :class="{ 'app-menu__info--heading': !item.value && !item.description }"
+      >
+        <span
+          v-if="item.leadingColor"
+          class="app-menu__color-dot"
+          :style="{ backgroundColor: item.leadingColor }"
+          aria-hidden="true"
+        />
+        <span class="app-menu__copy">
+          <span class="app-menu__label">{{ item.label }}</span>
+          <span
+            v-if="item.description"
+            class="app-menu__description"
+          > &bull; {{ item.description }}</span>
+        </span>
+        <span
+          v-if="item.value"
+          class="app-menu__value"
+        >
+          <template v-if="typeof item.value === 'string'">{{ item.value }}</template>
+          <template v-else>
+            <span class="app-menu__value-added">+{{ item.value.addedLines }}</span>{{ ' ' }}<span class="app-menu__value-removed">-{{ item.value.removedLines }}</span>
+          </template>
+        </span>
+      </div>
+
+      <div
         v-else-if="item.type === 'submenu'"
         class="app-menu__submenu"
       >
@@ -220,6 +249,24 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   font-size: var(--font-size-13-5);
   text-align: left;
   cursor: pointer;
+}
+
+.app-menu__info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 26px;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-13-5);
+}
+
+.app-menu__info--heading {
+  padding-top: var(--space-3);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
 }
 
 .app-menu__item:hover:not(:disabled),

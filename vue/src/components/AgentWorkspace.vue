@@ -820,7 +820,8 @@ defineExpose({
 .app-shell__right-workspace-resizer::after {
   content: '';
   position: absolute;
-  inset: 0 auto 0 2px;
+  /* The line sits against the right workspace, leaving no gap between it and the content. */
+  inset: 0 0 0 auto;
   width: 1px;
   background: var(--color-border);
 }

@@ -46,7 +46,9 @@ Open **Changes** or press **⌘G** to inspect Git diffs. The agent header's diff
 | Branch | Changes against the available base reference. |
 | Commits | A selected commit from the available catalog. |
 
-The **Changes** pane's refresh action reloads the selected diff. Its **…** menu controls staged, unstaged, and untracked sections when available, word wrap, and expanding or collapsing files. Select a file in the diff to open its preview.
+The selector's menu also breaks the selected diff down by what each file is for: code, tests, documentation, and other files such as configuration, lock files, and assets. Korus works this out from file paths and names across common languages, including TypeScript, Python, Java, Go, and Rust, so there is nothing to configure.
+
+The **Changes** pane lists files under the same groups by default; select a group header to fold or unfold it. Its refresh action reloads the selected diff. Its **…** menu controls staged, unstaged, and untracked sections when available, grouping by file type, word wrap, and expanding or collapsing files. Select a file in the diff to open its preview.
 
 Use the full repository diff before delivery so earlier or unrelated edits are accounted for.
 

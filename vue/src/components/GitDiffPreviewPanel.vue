@@ -24,8 +24,37 @@
       v-else-if="files.length"
       class="git-diff-preview-panel__files"
     >
+      <div
+        v-for="group in groups"
+        :key="group.kind ?? 'all'"
+        class="git-diff-preview-panel__group"
+      >
+      <button
+        v-if="group.kind"
+        class="git-diff-preview-panel__group-header"
+        type="button"
+        :aria-expanded="isGroupExpanded(group.kind)"
+        @click="toggleGroup(group.kind)"
+      >
+        <component
+          :is="isGroupExpanded(group.kind) ? ChevronDown : ChevronRightIcon"
+          class="git-diff-preview-panel__group-chevron"
+          aria-hidden="true"
+        />
+        <span
+          class="git-diff-preview-panel__group-dot"
+          :style="{ backgroundColor: fileKindColor[group.kind] }"
+          aria-hidden="true"
+        />
+        <strong>{{ fileKindLabel(group.kind) }}</strong>
+        <span class="git-diff-preview-panel__group-count">{{ fileKindCount(group.files.length) }}</span>
+        <span class="git-diff-preview-panel__file-meta">
+          <span class="git-diff-preview-panel__file-added">+{{ group.addedLines }}</span>
+          <span class="git-diff-preview-panel__file-removed">-{{ group.removedLines }}</span>
+        </span>
+      </button>
       <section
-        v-for="file in files"
+        v-for="file in (group.kind && !isGroupExpanded(group.kind) ? [] : group.files)"
         :key="file.key"
         class="git-diff-preview-panel__file"
       >
@@ -103,6 +132,7 @@
           class="git-diff-preview-panel__empty git-diff-preview-panel__empty--file"
         > {{ $t('surface.gitDiffPreviewPanel.noTextualHunks') }} </div>
       </section>
+      </div>
     </div>
     <div
       v-else
@@ -116,13 +146,17 @@ import { computed, ref, watch } from 'vue';
 import { IconBrandJavascript, IconBrandTypescript, IconBrandVue, IconFileCode } from '@tabler/icons-vue';
 import parseGitDiff, { type AnyChunk, type AnyFileChange, type Chunk } from 'parse-git-diff';
 import { translate } from '../i18n';
-import { FileArrowRightIcon } from '../shared/icons/app-icons';
+import { ChevronDown, ChevronRightIcon, FileArrowRightIcon } from '../shared/icons/app-icons';
+import { classifyFile, fileKinds, type FileKind } from '@workspace/core/file-kind';
+import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 
 const props = withDefaults(defineProps<{
   diff: string;
   collapseAllSignal?: number;
   error?: string | null;
   expandAllSignal?: number;
+  /** Lists files under code, tests, documentation and other headers instead of in diff order. */
+  groupByKind?: boolean;
   openFileEnabled?: boolean;
   state?: 'idle' | 'loading' | 'error';
   wordWrap?: boolean;
@@ -130,6 +164,7 @@ const props = withDefaults(defineProps<{
   collapseAllSignal: 0,
   error: null,
   expandAllSignal: 0,
+  groupByKind: false,
   openFileEnabled: false,
   state: 'idle',
   wordWrap: false,
@@ -195,6 +230,20 @@ const parsed = computed(() => {
 
 const files = computed(() => parsed.value.files);
 const parseError = computed(() => parsed.value.error);
+const groups = computed<Array<{ kind: FileKind | null; files: DiffFileView[]; addedLines: number; removedLines: number }>>(() => {
+  if (!props.groupByKind) return [{ kind: null, files: files.value, addedLines: 0, removedLines: 0 }];
+  return fileKinds
+    .map(kind => {
+      const members = files.value.filter(file => classifyFile(file.fullPath) === kind);
+      return {
+        kind,
+        files: members,
+        addedLines: members.reduce((total, file) => total + file.addedLines, 0),
+        removedLines: members.reduce((total, file) => total + file.removedLines, 0),
+      };
+    })
+    .filter(group => group.files.length > 0);
+});
 const collapsedFileKeys = ref(new Set<string>());
 const isAllExpanded = computed(() => collapsedFileKeys.value.size === 0);
 
@@ -203,8 +252,21 @@ watch(files, (nextFiles) => {
   collapsedFileKeys.value = new Set([...collapsedFileKeys.value].filter((key) => nextFileKeys.has(key)));
 });
 
+const collapsedGroups = ref(new Set<FileKind>());
+
+function isGroupExpanded(kind: FileKind): boolean {
+  return !collapsedGroups.value.has(kind);
+}
+
+function toggleGroup(kind: FileKind): void {
+  const next = new Set(collapsedGroups.value);
+  if (!next.delete(kind)) next.add(kind);
+  collapsedGroups.value = next;
+}
+
 watch(() => props.expandAllSignal, () => {
   collapsedFileKeys.value = new Set();
+  collapsedGroups.value = new Set();
 });
 
 watch(() => props.collapseAllSignal, () => {
@@ -252,6 +314,7 @@ function mapFile(file: AnyFileChange, fileIndex: number): DiffFileView {
     chunks,
   };
 }
+
 
 function compactDirectory(directory: string): string {
   const segments = directory.split('/').filter(Boolean);
@@ -379,6 +442,53 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
 
 .git-diff-preview-panel--wrap .git-diff-preview-panel__files {
   min-width: 0;
+}
+
+.git-diff-preview-panel__group {
+  display: contents;
+}
+
+.git-diff-preview-panel__group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-6);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  cursor: pointer;
+  background: var(--color-surface-low);
+  color: var(--color-text);
+  font-size: var(--font-size-12);
+}
+
+.git-diff-preview-panel__group-header strong {
+  font-weight: var(--font-weight-semibold);
+}
+
+.git-diff-preview-panel__group-header:hover {
+  background: var(--color-surface-high);
+}
+
+.git-diff-preview-panel__group-chevron {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.git-diff-preview-panel__group-count {
+  flex: 1 1 auto;
+  color: var(--color-text-muted);
+}
+
+.git-diff-preview-panel__group-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
 }
 
 .git-diff-preview-panel__file {
@@ -510,12 +620,14 @@ function mapLine(line: Chunk['changes'][number]): DiffLineView {
   font-family: var(--font-family-mono);
 }
 
-.git-diff-preview-panel__file-header .git-diff-preview-panel__file-added {
+.git-diff-preview-panel__file-header .git-diff-preview-panel__file-added,
+.git-diff-preview-panel__group-header .git-diff-preview-panel__file-added {
   color: var(--color-success);
   font-size: var(--font-size-13);
 }
 
-.git-diff-preview-panel__file-header .git-diff-preview-panel__file-removed {
+.git-diff-preview-panel__file-header .git-diff-preview-panel__file-removed,
+.git-diff-preview-panel__group-header .git-diff-preview-panel__file-removed {
   color: var(--color-error);
   font-size: var(--font-size-13);
 }

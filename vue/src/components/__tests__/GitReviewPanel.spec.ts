@@ -111,6 +111,25 @@ describe('GitReviewPanel', () => {
     expect(wrapper.get('.git-diff-preview-panel__file-header').attributes('aria-expanded')).toBe('false');
   });
 
+  it('groups files by type by default and lets the options menu turn it off', async () => {
+    const wrapper = mount(GitReviewPanel, {
+      props: {
+        agent: {
+          id: 'agent-1', teamId: 'team-1', name: 'Dina', avatar: 'D', folder: '/repo', backend: 'codex', status: { type: 'idle' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+        },
+        panel: { kind: 'gitDiff', title: 'Review', diff, state: 'idle' },
+      },
+    });
+    expect(wrapper.find('.git-diff-preview-panel__group-header').exists()).toBe(true);
+    await wrapper.get('[aria-label="Review options"]').trigger('click');
+    const toggle = () => bodyAll('.app-menu__item').find(item => item.text().includes('Group by file type'))!;
+    expect(toggle().attributes('aria-checked')).toBe('true');
+    await toggle().trigger('click');
+    expect(wrapper.find('.git-diff-preview-panel__group-header').exists()).toBe(false);
+    await wrapper.get('[aria-label="Review options"]').trigger('click');
+    expect(toggle().attributes('aria-checked')).toBe('false');
+  });
+
   it('shows all git scopes by default and toggles each section locally', async () => {
     const wrapper = mount(GitReviewPanel, {
       props: {

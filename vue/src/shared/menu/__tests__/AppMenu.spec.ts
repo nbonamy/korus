@@ -17,6 +17,23 @@ describe('AppMenu', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('shows information rows that are not actions and cannot be selected', async () => {
+    const wrapper = mount(AppMenu, { props: { ariaLabel: 'Diff', items: [
+      { id: 'heading', type: 'info', label: 'By file type' },
+      { id: 'code', type: 'info', label: 'Code', description: '3 files', value: { addedLines: 12, removedLines: 4 }, leadingColor: '#4f8cff' },
+      { id: 'edit', type: 'action', label: 'Edit' },
+    ] } });
+    expect(wrapper.findAll('[role="menuitem"]')).toHaveLength(1);
+    const row = wrapper.get('.app-menu__info:nth-child(2)');
+    expect(row.text()).toContain('Code');
+    expect(row.text()).toContain('3 files');
+    expect(row.get('.app-menu__value-added').text()).toBe('+12');
+    expect(row.get('.app-menu__value-removed').text()).toBe('-4');
+    expect(row.get('.app-menu__color-dot').attributes('style')).toContain('background-color');
+    await row.trigger('click');
+    expect(wrapper.emitted('select')).toBeUndefined();
+  });
+
   it('replaces the icon of a selected item with a check and keeps the others\' icons', async () => {
     const items: AppMenuItem[] = [
       { id: 'branch', type: 'radio', label: 'Branch', value: '+12 -4', checked: false, icon: PencilIcon },

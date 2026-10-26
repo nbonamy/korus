@@ -1,3 +1,4 @@
+import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
 import { product } from '@workspace/core/product';
 import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -806,21 +807,33 @@ function summaryFromSections(sections: AgentGitDiffSection[]): AgentGitDiffSumma
 function parseUnifiedDiffSummary(diff: string): AgentGitDiffSummary {
   let addedLines = 0;
   let removedLines = 0;
-  const files = new Set<string>();
+  const files = new Map<string, { path: string; added: number; removed: number }>();
+  let current: { path: string; added: number; removed: number } | undefined;
   for (const line of diff.split(/\r?\n/u)) {
-    if (line.startsWith('diff --git ')) files.add(line);
-    else if (line.startsWith('+') && !line.startsWith('+++')) addedLines += 1;
-    else if (line.startsWith('-') && !line.startsWith('---')) removedLines += 1;
+    if (line.startsWith('diff --git ')) {
+      // The new path follows the last " b/", so paths containing spaces keep their own name.
+      current = files.get(line) ?? { path: line.slice(line.lastIndexOf(' b/') + 3), added: 0, removed: 0 };
+      files.set(line, current);
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      addedLines += 1;
+      if (current) current.added += 1;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      removedLines += 1;
+      if (current) current.removed += 1;
+    }
   }
-  return { addedLines, removedLines, changedFiles: files.size };
+  const byKind = emptyKindStats();
+  for (const file of files.values()) addFileToKindStats(byKind, file.path, file.added, file.removed);
+  return { addedLines, removedLines, changedFiles: files.size, byKind };
 }
 
-function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
-  return summaries.reduce<AgentGitDiffSummary>((total, summary) => ({
-    addedLines: total.addedLines + summary.addedLines,
-    removedLines: total.removedLines + summary.removedLines,
-    changedFiles: total.changedFiles + (summary.changedFiles ?? 0),
+function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
+  const total = summaries.reduce<AgentGitDiffSummary>((sum, summary) => ({
+    addedLines: sum.addedLines + summary.addedLines,
+    removedLines: sum.removedLines + summary.removedLines,
+    changedFiles: sum.changedFiles + (summary.changedFiles ?? 0),
   }), emptyDiffSummary());
+  return summaries.some(summary => summary.byKind) ? { ...total, byKind: mergeKindStats(...summaries.map(summary => summary.byKind)) } : total;
 }
 
 function emptyDiffSummary(): AgentGitDiffSummary {
@@ -835,15 +848,21 @@ export function parseCommitSummaries(output: string): AgentGitCommitSummary[] {
   }).filter((commit) => Boolean(commit.sha));
 }
 
-async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<{ addedLines: number; removedLines: number }> {
+async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'>> {
   const results = await Promise.all(paths.map(async (filePath) => {
     try {
-      return parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout);
+      return { filePath, ...parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout) };
     } catch {
-      return { addedLines: 0, removedLines: 0 };
+      return { filePath, addedLines: 0, removedLines: 0 };
     }
   }));
-  return results.reduce((total, result) => ({ addedLines: total.addedLines + result.addedLines, removedLines: total.removedLines + result.removedLines }), { addedLines: 0, removedLines: 0 });
+  const byKind = emptyKindStats();
+  for (const result of results) addFileToKindStats(byKind, result.filePath, result.addedLines, result.removedLines);
+  return {
+    addedLines: results.reduce((total, result) => total + result.addedLines, 0),
+    removedLines: results.reduce((total, result) => total + result.removedLines, 0),
+    byKind,
+  };
 }
 
 async function git(cwd: string, args: string[]): Promise<{ stdout: string }> {
@@ -929,9 +948,15 @@ export function parseNumstat(output: string): Pick<AgentGitStatus, 'addedLines' 
 }
 
 function parseNumstatSummary(output: string): AgentGitDiffSummary {
+  const byKind = emptyKindStats();
+  for (const line of output.split(/\r?\n/u)) {
+    const match = /^(\S+)\s+(\S+)\s+(.+)$/u.exec(line.trim());
+    if (match) addFileToKindStats(byKind, match[3]!, numericStat(match[1]), numericStat(match[2]));
+  }
   return {
     ...parseNumstat(output),
     changedFiles: output.split(/\r?\n/u).filter((line) => line.trim()).length,
+    byKind,
   };
 }
 

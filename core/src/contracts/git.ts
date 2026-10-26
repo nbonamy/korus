@@ -29,6 +29,8 @@ export type AgentGitDiffSummary = {
   addedLines: number;
   removedLines: number;
   changedFiles: number;
+  /** The same totals split by what each file is for (code, tests, docs, other). */
+  byKind?: import('../file-kind').KindBreakdown;
 };
 
 export type AgentGitCommitSummary = AgentGitDiffSummary & {
