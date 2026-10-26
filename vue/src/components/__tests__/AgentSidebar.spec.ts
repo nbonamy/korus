@@ -655,3 +655,13 @@ describe('mission navigation', () => {
     expect(wrapper.get('[role="alert"]').text()).toBe('Backend unavailable');
   });
 });
+
+it('offers repository deletion from the repository header context menu', async () => {
+  const wrapper = mount(AgentSidebar, { attachTo: document.body, props: { agents: [agents[0]!], activeAgentId: agents[0]!.id, teamName: 'Team' } });
+  try {
+    await wrapper.get('.agent-sidebar__workspace-header').trigger('contextmenu', { clientX: 80, clientY: 120 });
+    const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.trim() === 'Delete repository');
+    expect(action).toBeDefined(); action!.click(); await flushPromises();
+    expect(wrapper.emitted('delete-repository')).toStrictEqual([[agents[0]!.id]]);
+  } finally { wrapper.unmount(); }
+});

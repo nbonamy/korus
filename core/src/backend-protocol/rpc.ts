@@ -73,6 +73,8 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.repositoryDeletePreview]: { params: { agentId: string }; result: import('../contracts/workspace').RepositoryDeletionPreview };
+  [backendMethods.repositoryDelete]: { params: { agentId: string; input: import('../contracts/workspace').DeleteRepositoryInput }; result: AppSnapshot };
   [backendMethods.browserExtensionPackages]: { params: { input: import('../browser-extensions').BrowserExtensionPackageRequest }; result: import('../browser-extensions').BrowserExtensionPackageState };
   [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {

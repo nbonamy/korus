@@ -124,6 +124,7 @@
           v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
           @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
           @dragend="clientRepositoryOrderUpdate.onDragEnd"
+          @contextmenu="openRepositoryMenu(group, $event)"
         >
           <MessageIcon
             v-if="group.kind === 'quickChats'"
@@ -330,6 +331,16 @@
       @close="closeContextMenu"
     />
 
+    <AppContextMenu
+      v-if="contextMenuRepositoryAgentId"
+      :x="contextMenuPosition.x"
+      :y="contextMenuPosition.y"
+      :ariaLabel="t('repositoryDeletion.action')"
+      :items="repositoryMenuItems"
+      @select="deleteContextRepository"
+      @close="contextMenuRepositoryAgentId = null"
+    />
+
     <MissionContextMenu
       v-if="contextMenuMissionId"
       :x="contextMenuPosition.x"
@@ -381,6 +392,7 @@ import {
   PanelLeftCloseIcon,
   PlusIcon,
   TargetArrowIcon,
+  Trash2Icon,
 } from '../shared/icons/app-icons';
 import AgentContextMenu from './AgentContextMenu.vue';
 import BackendIcon from './BackendIcon.vue';
@@ -393,6 +405,7 @@ import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { useRepositorySessionMenu } from './use-repository-session-menu';
@@ -456,6 +469,7 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];
 }>();
@@ -541,6 +555,8 @@ const backendChoices = useBackendChoices(() => props.teamId);
 const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
+const contextMenuRepositoryAgentId = ref<string | null>(null);
+const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
 const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
 const collapsedRepositoryKeys = computed(() => new Set(props.collapsedRepositoryKeys ?? []));
@@ -749,7 +765,23 @@ function selectRepositorySessionMenuItem(
   repositorySessionMenuId.value = null;
 }
 
+function openRepositoryMenu(group: WorkspaceSidebarGroup, event: MouseEvent): void {
+  if (group.kind !== 'repository' || props.phoneScope) return;
+  event.preventDefault();
+  contextMenuAgentId.value = null;
+  contextMenuMissionId.value = null;
+  contextMenuRepositoryAgentId.value = group.sessions[0]?.agentId ?? null;
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY };
+}
+
+function deleteContextRepository(): void {
+  const agentId = contextMenuRepositoryAgentId.value;
+  contextMenuRepositoryAgentId.value = null;
+  if (agentId) emit('delete-repository', agentId);
+}
+
 function openAgentMenu(agentId: string, event: MouseEvent): void {
+  contextMenuRepositoryAgentId.value = null;
   contextMenuMissionId.value = null;
   contextMenuAgentId.value = agentId;
   contextMenuPosition.value = {
@@ -759,6 +791,7 @@ function openAgentMenu(agentId: string, event: MouseEvent): void {
 }
 
 function openMissionMenu(missionId: string, event: MouseEvent): void {
+  contextMenuRepositoryAgentId.value = null;
   contextMenuAgentId.value = null;
   contextMenuMissionId.value = missionId;
   contextMenuPosition.value = {

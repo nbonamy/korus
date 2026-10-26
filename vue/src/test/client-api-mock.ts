@@ -110,6 +110,8 @@ export function createClientApiMock(
     listSourceFolders: unscripted('listSourceFolders'),
     listSourceRepositories: unscripted('listSourceRepositories'),
     cloneSourceRepository: unscripted('cloneSourceRepository'),
+    previewRepositoryDeletion: unscripted('previewRepositoryDeletion'),
+    deleteRepository: unscripted('deleteRepository'),
     createSourceRepository: unscripted('createSourceRepository'),
     createProject: unscripted('createProject'),
     listSourceBranches: unscripted('listSourceBranches'),

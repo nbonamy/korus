@@ -940,6 +940,8 @@ export type AppApi = {
   listSourceRepositories(remoteConnectionId?: string): Promise<SourceRepository[]>;
   cloneSourceRepository(input: CloneSourceRepositoryInput): Promise<SourceRepository>;
   createSourceRepository(input: CreateSourceRepositoryInput): Promise<SourceRepository>;
+  previewRepositoryDeletion(agentId: string): Promise<import('./contracts/workspace').RepositoryDeletionPreview>;
+  deleteRepository(agentId: string, input: import('./contracts/workspace').DeleteRepositoryInput): Promise<AppSnapshot>;
   createProject(input: CreateProjectInput): Promise<AppSnapshot>;
   listSourceBranches(repoPath: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
   listSourceWorktrees(repoPath: string, remoteConnectionId?: string): Promise<SourceWorktree[]>;

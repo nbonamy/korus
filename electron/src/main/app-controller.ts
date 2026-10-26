@@ -352,6 +352,10 @@ export class AppController {
       }
     });
 
+    ipc.handle(ipcChannels.previewRepositoryDeletion, (_event, agentId: string) => this.requireBackendClient().request(backendMethods.repositoryDeletePreview, { agentId }));
+    ipc.handle(ipcChannels.deleteRepository, async (_event, agentId: string, input: import('@workspace/core/contracts/workspace').DeleteRepositoryInput) =>
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.repositoryDelete, { agentId, input })));
+
     ipc.handle(ipcChannels.createProject, async (_event, input: import('@workspace/core/contracts').CreateProjectInput) => {
       try {
         return await this.createProject(input);
