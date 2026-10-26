@@ -1,3 +1,7 @@
+import { GuestConversationGateway } from '../sharing/guest-gateway';
+import type { GuestConversationGrant } from '../sharing/conversation-shares';
+import type { ConversationShareRoute } from '@workspace/core/conversation-sharing';
+import type { ShareRoutingStatus } from '@workspace/core/conversation-share-relay';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import { product } from '@workspace/core/product';
 import { CompanionNotifications } from './notifications';
@@ -37,6 +41,11 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
   z.object({ action: z.literal('decide'), pendingId: z.string().uuid(), approve: z.boolean() }).strict(),
   z.object({ action: z.literal('revoke'), peerId: z.string().min(1).max(128) }).strict()]);
 export type CompanionBackendPort = {
+  proposeGuest?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
+  guestProposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
+  withdrawGuest?(handle: string, identity: string, proposalId: string): Promise<void>;
+  authorizeGuest?(handle: string, credential: string): Promise<GuestConversationGrant>;
+  guestCount?(handle: string, count: number): void;
   desktopFocused?(): Promise<boolean>;
   request<Result>(method: string, params?: unknown): Promise<Result>;
   onAccessChanged?: (enabled: boolean) => void;
@@ -44,7 +53,7 @@ export type CompanionBackendPort = {
 type Relay = { origin: string; peerId: string };
 
 /** The relay is deployment configuration: the operator sets it once and users only pair phones. */
-function relayFromEnvironment(env: NodeJS.ProcessEnv): { relay: Relay | null; error?: string } {
+export function relayFromEnvironment(env: NodeJS.ProcessEnv): { relay: Relay | null; error?: string } {
   const packaged = typeof __APP_COMPANION_RELAY__ === 'undefined' ? undefined : __APP_COMPANION_RELAY__;
   const runtimeOrigin = env.APP_COMPANION_RELAY_URL?.trim() ?? '';
   const runtimePeerId = env.APP_COMPANION_RELAY_PEER_ID?.trim() ?? '';
@@ -65,12 +74,57 @@ export class CompanionManager {
   /** What the person calls this computer, read once; phones pairing before it is known get no name from us. */
   private hostName = '';
   private gateway!: CompanionGateway;
+  private guestGateway?: GuestConversationGateway;
   private notifications?: CompanionNotifications;
   private notificationWork = Promise.resolve();
   private connector!: CompanionOutboundConnector;
   private writes = Promise.resolve();
   private controls = Promise.resolve();
   private ready: Promise<void> | null = null;
+  private shareRoutes: ConversationShareRoute[] = [];
+  private shareStatus: ShareRoutingStatus = 'unavailable';
+  private readonly shareListeners = new Set<(status: ShareRoutingStatus) => void>();
+  private transportRelay = '';
+  onShareRoutingStatus(listener: (status: ShareRoutingStatus) => void) {
+    this.shareListeners.add(listener); return () => { this.shareListeners.delete(listener); };
+  }
+  private setShareStatus(status: ShareRoutingStatus) {
+    if (this.shareRoutes.some(route => !this.matchesRelay(route))) status = 'unavailable';
+    this.shareStatus = status;
+    for (const listener of this.shareListeners) listener(status);
+  }
+  private matchesRelay(route: ConversationShareRoute) {
+    return route.ownerId === peerIdFromPrivateKey(this.key).toString()
+      && route.relay.origin === this.relay?.origin && route.relay.peerId === this.relay?.peerId;
+  }
+  async updateShareRoutes(routes: ConversationShareRoute[]): Promise<ShareRoutingStatus> {
+    await this.initialize();
+    const work = this.controls.then(async () => {
+      const changed = JSON.stringify(this.shareRoutes) !== JSON.stringify(routes);
+      this.shareRoutes = routes;
+      if (this.saved.enabled || this.shareRoutes.some(route => this.matchesRelay(route))) {
+        const started = await this.startTransport();
+        if (!started && changed) await this.connector.advertise();
+      } else if (this.transportRelay) {
+        // Withdraw while still connected; lease expiry covers a disconnected owner.
+        await this.connector.advertise();
+        await this.connector.stop(); this.transportRelay = '';
+      }
+      if (routes.some(route => !this.matchesRelay(route))) this.setShareStatus('unavailable');
+      return this.shareStatus;
+    });
+    this.controls = work.then(() => {}, () => {});
+    return work;
+  }
+  private async startTransport(): Promise<boolean> {
+    const relay = this.relay;
+    if (!relay) return false;
+    const key = JSON.stringify(relay);
+    if (this.transportRelay === key) return false;
+    await this.connector.start(relay.origin, relay.peerId);
+    this.transportRelay = key;
+    return true;
+  }
   private readonly conversations = new ConversationSource((agentId) => this.loadConversation(agentId));
   private readonly environment: ReturnType<typeof relayFromEnvironment>;
   constructor(private readonly directory: string, private readonly backend: CompanionBackendPort, private readonly env: NodeJS.ProcessEnv = process.env) {
@@ -122,12 +176,15 @@ export class CompanionManager {
           if (this.environment.relay) throw new Error('The relay is configured by the build or environment.');
           relayAddress(action.relayOrigin, action.relayPeerId);
           await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: action.relayOrigin, relayPeerId: action.relayPeerId }));
-          await this.connector.start(action.relayOrigin, action.relayPeerId);
+          await this.startTransport();
           break;
         case 'resume':
           await this.resume(); break;
         case 'disable':
-          await this.persist((saved) => ({ ...saved, enabled: false })); await this.connector.stop(); this.conversations.clear(); break;
+          await this.persist((saved) => ({ ...saved, enabled: false })); this.connector.disablePhone();
+          if (this.shareRoutes.some(route => this.matchesRelay(route))) await this.connector.advertise();
+          else { await this.connector.stop(); this.transportRelay = ''; }
+          if (!this.shareRoutes.length) this.conversations.clear(); break;
         case 'invite':
           await this.resume();
           if (!this.connector.connected) throw new Error('Relay is not connected.');
@@ -145,16 +202,23 @@ export class CompanionManager {
     this.controls = result.then(() => {}, () => {});
     return result;
   }
+  /** Reuse the protected endpoint identity without enabling access or minting phone grants. */
+  async shareEndpoint(): Promise<{ ownerId: string; relay: Relay } | null> {
+    await this.initialize();
+    const relay = this.relay;
+    return relay ? { ownerId: peerIdFromPrivateKey(this.key).toString(), relay } : null;
+  }
   private async resume() {
     if (!this.relay) throw new Error('Mobile access is not configured.');
     if (this.saved.enabled) return;
     const { origin, peerId } = this.relay;
     await this.persist((saved) => ({ ...saved, enabled: true, relayOrigin: origin, relayPeerId: peerId }));
-    await this.connector.start(origin, peerId);
+    await this.startTransport();
   }
   async stop() {
     await this.ready?.catch(() => {});
-    await this.connector?.stop();
+    await this.connector?.stop(); this.transportRelay = '';
+    this.guestGateway?.close();
     this.conversations.clear();
     this.backend.onAccessChanged?.(false);
   }
@@ -270,11 +334,27 @@ export class CompanionManager {
       save: (gateway) => this.persist((saved) => ({ ...saved, gateway })),
       revoked: (peerId) => this.connector.revoke(peerId),
     }, Date.now, pairing?.hostId === peerIdFromPrivateKey(this.key).toString() ? pairing.code : undefined);
-    this.connector = new CompanionOutboundConnector(this.key, this.gateway);
+    if (this.backend.authorizeGuest) this.guestGateway = new GuestConversationGateway({
+      ...(this.backend.proposeGuest ? { propose: (handle, identity, name, input) => this.backend.proposeGuest!(handle, identity, name, input) } : {}),
+      ...(this.backend.guestProposals ? { proposals: (handle, identity) => this.backend.guestProposals!(handle, identity) } : {}),
+      ...(this.backend.withdrawGuest ? { withdraw: (handle, identity, proposalId) => this.backend.withdrawGuest!(handle, identity, proposalId) } : {}),
+      authorize: (handle, credential) => this.backend.authorizeGuest!(handle, credential),
+      connected: (handle, count) => this.backend.guestCount?.(handle, count),
+      onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },
+      synchronize: (agentId, checkpoint) => this.conversations.synchronize(agentId, checkpoint),
+      conversation: agentId => this.conversations.read(agentId),
+      loadOlderHistory: agentId => this.backend.request(backendMethods.agentConversationHistoryLoadOlder, { agentId, _clientId: 'guest-read' }),
+      readConversationContent: (agentId, input) => this.backend.request(backendMethods.agentConversationContentRead, { agentId, input, _clientId: 'guest-read' }),
+      readImage: (agentId, filePath) => readConversationImage(() => this.backend.request(backendMethods.agentFilePreview, { agentId, filePath, _clientId: 'guest-read' })),
+    });
+    this.connector = new CompanionOutboundConnector(this.key, this.gateway, {
+      phoneEnabled: () => this.saved.enabled,
+      sharing: { handles: () => this.shareRoutes.filter(route => this.matchesRelay(route)).map(route => route.handle), status: value => this.setShareStatus(value), ...(this.guestGateway ? { accept: (stream, peer) => this.guestGateway!.accept(stream, peer) } : {}) },
+    });
     await this.persist();
     const relay = this.relay;
     this.backend.onAccessChanged?.(saved.enabled && Boolean(relay));
-    if (saved.enabled && relay) await this.connector.start(relay.origin, relay.peerId);
+    if (saved.enabled && relay) await this.startTransport();
   }
   private async loadConversation(agentId: string): Promise<void> {
     await this.backend.request(backendMethods.agentConversationLoad, { agentId, _clientId: 'companion-read' });

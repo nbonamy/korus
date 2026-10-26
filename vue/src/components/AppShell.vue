@@ -4,6 +4,8 @@
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
   >
     <FirstRunOnboardingGate
+      v-if="!currentAgent?.sharedConversation"
+      @join-invite="emit('join-invite')"
       :provider-setup="displayProviderSetup"
       :allow-setup-reset="settingsVisible"
       :customized-setup="customizedSetup"
@@ -101,6 +103,7 @@
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
+      @share-agent="openShare"
       @handoff-agent="openHandoff"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
       @new-team="openNewTeam"
@@ -229,6 +232,7 @@
         @close-agent="$emit('close-agent', $event)"
         @duplicate-agent="$emit('duplicate-agent', $event)"
         @fork-agent="$emit('fork-agent', $event)"
+        @share-agent="openShare"
         @handoff-agent="openHandoff"
         @edit-agent="openEditAgent"
         @move-agent-to-team="$emit('move-agent-to-team', $event)"
@@ -296,6 +300,7 @@
       </MissionWorkspace>
       <AgentWorkspace
         v-else
+        :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
@@ -376,6 +381,7 @@
         :select-visualization="props.selectVisualization"
         :delete-visualization="props.deleteVisualization"
         :read-visualization-asset="props.readVisualizationAsset"
+        @share-agent="openShare"
         @close-agent="$emit('close-agent', $event)"
         @clarify-code-review-finding="clarifyCodeReviewFinding"
         @expand-sidebar="expandSidebar"
@@ -395,7 +401,9 @@
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
             <template #default="{ agentId, focused }">
-              <AgentConversationPanel v-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
+              <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :busy="guestBusy ?? false" :control="guestControl" />
+              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
+              <AgentConversationPanel v-else-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
                 :view="props.agentConversationFor(agentId)!" :actions="splitActions" :agents="snapshot.agents" :focused="focused"
                 :mention-groups="agentMentionGroups" :model-menu-items="splitModelFavoriteMenuItems(agentId)"
                 :select-model-menu-item="item => selectSplitModelMenuItem(agentId, item)"
@@ -601,6 +609,7 @@
       @close="agentQuickOpenVisible = false"
       @select="selectAgentFromPalette"
     />
+    <ConversationShareDialog v-if="shareTarget" :key="JSON.stringify(shareTarget)" :target="shareTarget" :control="shareControl" @close="shareTarget = null" />
   </main>
 </template>
 
@@ -613,7 +622,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
@@ -661,7 +670,11 @@ import WhatsNewDialog from './WhatsNewDialog.vue';
 import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
+import ConversationShareDialog from './ConversationShareDialog.vue';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
+import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
@@ -732,6 +745,9 @@ import { useWorkItemRouting } from './use-work-item-routing';
 import { useAppShellCommands } from './use-app-shell-commands';
 
 const props = withDefaults(defineProps<{
+  guestState?: import('@workspace/core/guest-navigation').GuestJoinState;
+  guestBusy?: boolean;
+  guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
   snapshot: AppSnapshot;
   activeAgent: Agent | null;
   unreadAgentIds?: string[];
@@ -1024,6 +1040,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'join-invite': [];
   'clear-agent-creation-progress': [id: string];
   'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
@@ -1329,6 +1346,25 @@ const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
 const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
+// IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
+const shareTarget = shallowRef<ConversationShareTarget | null>(null);
+const shareActiveByAgentId = reactive<Record<string, boolean>>({});
+provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
+function openShare(agentId: string) {
+  const agent = props.snapshot.agents.find(agent => agent.id === agentId);
+  if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;
+  shareTarget.value = conversationShareTarget(agent);
+}
+watch(() => props.snapshot.agents.map(agent => conversationShareTarget(agent)), () => {
+  if (!shareTarget.value) return;
+  const agent = props.snapshot.agents.find(agent => agent.id === shareTarget.value?.agentId);
+  if (!agent || JSON.stringify(conversationShareTarget(agent)) !== JSON.stringify(shareTarget.value)
+    || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) shareTarget.value = null;
+}, { deep: true });
+const shareControl = (input: import('@workspace/core/conversation-sharing').ConversationShareControl) => {
+  if (!appApi) return Promise.reject(new Error('Sharing is unavailable.'));
+  return appApi.conversationShareControl(input);
+};
 const handoffAgentId = ref<string | null>(null);
 const handoffAgent = computed(() => props.snapshot.agents.find(agent => agent.id === handoffAgentId.value) ?? null);
 function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
@@ -1370,7 +1406,7 @@ const debugProviderUpgrades = ref(false);
 provide(providerUpdatePreviewKey, debugProviderUpgrades);
 const debugReviewUncommitted = ref(false);
 provide(codeReviewUncommittedPreviewKey, debugReviewUncommitted);
-const showOnboardingGate = computed(() => debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value);
+const showOnboardingGate = computed(() => !currentAgent.value?.sharedConversation && (debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value));
 const showLoginLanding = computed(() => debugMissingEngines.value ? !settingsVisible.value : realLoginLanding.value);
 const displayProviderSetup = computed(() => debugMissingEngines.value
   ? providerSetup.value.map(setup => ({ ...setup, installed: false }))
@@ -1711,6 +1747,7 @@ const rightWorkspaceState = useRightWorkspaceState({
 const documentWorkspaces = useDocumentWorkspaces({
   api: appApi,
   workspaces: rightWorkspaceState.workspaces,
+  canUseWorkspace: agentId => !props.snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation,
   workspaceFor: rightWorkspaceState.workspaceFor,
   reportError: message => ElMessage.error(message),
 });
@@ -2453,6 +2490,7 @@ async function setEngineEnabled(backend: AgentBackend, enabled: boolean) {
 const isAgentWorkspaceVisible = computed(() => activeSurface.value === 'agent');
 const isModalDialogVisible = computed(() => (
   agentDialogVisible.value
+  || shareTarget.value !== null
   || handoffAgentId.value !== null
   || modelFavoritesDialogVisible.value
   || newProjectDialogVisible.value
@@ -2809,7 +2847,8 @@ async function createQuickChat(): Promise<void> {
   }
 }
 
-async function handleStartWorkAction(action: 'new' | 'github' | 'gitlab' | 'local' | 'url'): Promise<void> {
+async function handleStartWorkAction(action: import('./start-work-actions').StartWorkAction): Promise<void> {
+  if (action === 'invite') { emit('join-invite'); return; }
   if (action === 'new') {
     newProjectError.value = null;
     newProjectDialogVisible.value = true;
@@ -3368,7 +3407,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete):not(.first-run-guests) {
   visibility: hidden;
 }
 

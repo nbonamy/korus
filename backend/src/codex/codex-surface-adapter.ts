@@ -427,7 +427,9 @@ export class CodexSurfaceAgentAdapter {
     const session = await this.ensureSession(agent);
     const beforeTurnIds = session.handle.getSnapshot().turnIds;
     const snapshot = await session.handle.sendMessage(prompt, surfacePromptOptions(options));
-    return { threadId: session.handle.id, turnId: resultTurnId(snapshot, beforeTurnIds) };
+    const turnId = resultTurnId(snapshot, beforeTurnIds);
+    const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && message.kind !== 'steer');
+    return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
   }
 
   async assertHandoffReady(agent: Agent): Promise<void> {

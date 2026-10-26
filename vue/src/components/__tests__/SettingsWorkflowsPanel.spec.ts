@@ -10,7 +10,7 @@ it('orders workflow sections and saves plan and review preferences independently
   const updateSettings = vi.fn().mockResolvedValue(undefined);
   const wrapper = mount(SettingsWorkflowsPanel, { props: { settings: defaultGeneralSettings, updateSettings }, global: { components: { ElInput, ElSwitch } } });
   try {
-    expect(wrapper.findAll('h3').map(heading => heading.text())).toStrictEqual(['Plan mode', 'Delegation', 'Code review']);
+    expect(wrapper.findAll('h3').map(heading => heading.text())).toStrictEqual(['Collaboration', 'Plan mode', 'Delegation', 'Code review']);
     const toggle = wrapper.get('[role="switch"][aria-label="Use interactive plans"]');
     expect(toggle.attributes('aria-checked')).toBe('true');
     await toggle.trigger('click');

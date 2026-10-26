@@ -59,6 +59,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   delegationUserInstructions?: Agent['delegationUserInstructions'];
   pullRequest?: Agent['pullRequest'];
   sessionKind?: Agent['sessionKind'];
+  sharedConversation?: Agent['sharedConversation'];
   conversationTitle?: string;
   avatar?: string;
   backend: AgentBackend;
@@ -137,6 +138,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.delegatedByAgentId ? { delegatedByAgentId: agent.delegatedByAgentId } : {}),
     ...(agent.pullRequest ? { pullRequest: { ...agent.pullRequest } } : {}),
     ...(agent.sessionKind ? { sessionKind: agent.sessionKind } : {}),
+    ...(agent.sharedConversation ? { sharedConversation: agent.sharedConversation } : {}),
     name: agent.name,
     ...(agent.conversationTitle ? { conversationTitle: agent.conversationTitle } : {}),
     avatar: agent.avatar,
@@ -356,6 +358,8 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   }
 
   const sessionKind = value.sessionKind === 'quickChat' ? value.sessionKind : undefined;
+  const shared = value.sharedConversation;
+  if (shared !== undefined && (!shared || typeof shared !== 'object' || !('joinId' in shared) || typeof shared.joinId !== 'string' || !/^[a-f0-9]{64}$/.test(shared.joinId) || sessionKind !== 'quickChat' || value.folder !== null)) return null;
   const folder = typeof value.folder === 'string'
     ? value.folder
     : sessionKind && value.folder === null ? null : undefined;
@@ -389,6 +393,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
       : {}),
     ...(pullRequest ? { pullRequest } : {}),
     ...(sessionKind ? { sessionKind } : {}),
+    ...(shared ? { sharedConversation: { joinId: (shared as { joinId: string }).joinId } } : {}),
     name: typeof value.name === 'string' ? value.name : null,
     ...(typeof value.conversationTitle === 'string' && value.conversationTitle.trim()
       ? { conversationTitle: value.conversationTitle.trim() }

@@ -53,6 +53,10 @@ export function createClientApiMock(
     checkRemoteConnection: unscripted('checkRemoteConnection'),
     updateRemoteConnection: unscripted('updateRemoteConnection'),
     removeRemoteConnection: unscripted('removeRemoteConnection'),
+    guestConversationControl: unscripted('guestConversationControl'),
+    guestConversationImage: unscripted('guestConversationImage'),
+    guestConversationContent: unscripted('guestConversationContent'),
+    conversationShareControl: unscripted('conversationShareControl'),
     companionControl: unscripted('companionControl'),
     getRemoteControlStatus: unscripted('getRemoteControlStatus'),
     enableRemoteControl: unscripted('enableRemoteControl'),
@@ -248,6 +252,7 @@ export function createClientApiMock(
   api.loadConversationHistory.mockImplementation(async () => api.getSnapshot());
   api.getAutomationSnapshot.mockImplementation(async () => api.getSnapshot());
   api.onEvent.mockImplementation(events.subscribe);
+  api.guestConversationControl.mockImplementation(async input => { if (input.action === 'state') return { entries: [], view: null }; throw new Error('Unscripted guest operation.'); });
   api.onAppCommand.mockImplementation(commands.subscribe);
   api.onUpdateStatusChanged.mockImplementation(updates.subscribe);
 

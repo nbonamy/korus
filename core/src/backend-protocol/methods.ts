@@ -1,4 +1,8 @@
 export const backendMethods = {
+  guestConversationControl: 'client/guest/conversation/control',
+  guestConversationImage: 'client/guest/conversation/image',
+  guestConversationContent: 'client/guest/conversation/content',
+  conversationShareControl: 'conversation/share/control',
   browserExtensionPackages: 'browser/extensions/packages',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',

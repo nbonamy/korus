@@ -206,6 +206,111 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
   client waits forever; Electron adds a grace period so a remote timeout reaches
   the desktop first.
 
+### Conversation share authority
+
+The daemon owns one durable bearer link for each immutable provider conversation
+and execution session. Agent entries referring to the same binding reuse that
+link. Protected share records live separately from roster/preferences and paired
+phone grants, under `APP_HOME/conversation-shares`, with private directory/file
+permissions and serialized atomic, synced writes. Creation and revocation persist
+before success; revoked records retain their identity, and replacement links use
+fresh credentials. Session changes and deletion invalidate the original binding.
+
+Links carry a version, configured relay origin/pin, companion endpoint identity,
+opaque routing handle and a 256-bit credential in the fragment. Decoding requires
+the supported relay configuration before networking. Share status events exclude
+credentials and full links; only explicit create/copy replies return bearer
+material. Reusing the companion identity does not enable paired-phone access.
+
+Installed desktop guests keep a separate protected app identity and joined-link
+store under `APP_HOME/guest-joins`. It stores relay/owner pins, the credential,
+display name, original team and an immutable target fingerprint, never transcript content.
+A shared Quick Chat row is a navigation reference to this join, not a local provider
+session. Reopening the invitation focuses that row in its original team.
+Only the daemon can read these records; renderer projections contain no bearer
+material. Opening a saved entry reconnects and replaces its memory-only provider
+baseline through the guest client. Concurrent opens reuse the session; switching
+entries disposes the old subscription. Temporary disconnect retains the loaded
+view with an unavailable status. An authenticated revocation clears the view and
+saved authorization; failed local removal is explicit and cannot reopen access.
+An ended conversation retains a memory-only navigation entry until it is closed;
+that entry has no transcript or saved authorization and cannot reconnect.
+Leaving persists removal before disposing its session. Canceling an unconfirmed
+invitation discards its temporary session without changing saved joins.
+
+Backend capabilities explicitly qualify conversation sharing. Supported owner headers
+and menus expose Share; unsupported backends cannot mint links. Approved guest
+submissions bypass app slash-command interpretation. Codex submissions use the canonical user-message identity returned by the public SDK snapshot.
+Durable app-owned authorship metadata labels those identities without changing
+provider transcripts. Guest text enters the normal prompt admission boundary only
+through an explicit owner action. Transferring a suggestion to an owner draft
+carries no execution authority. Pending proposals and decisions are private to the
+owner and proposer. Persisted dispatch intent is never replayed after uncertain
+submission; restart exposes delivery unresolved. Dismiss never submits. Guests
+can withdraw only their own pending proposals; withdrawal and owner decisions
+share the serialized authority boundary. Terminal
+receipts retain a text fingerprint for deduplication instead of discarded text;
+active proposal text has a two-MiB budget per link, alongside count limits.
+
+Guest rendezvous uses its own versioned protocols and in-memory owner/handle
+namespace. Only the Noise-authenticated owner registers its handles. Lookups return
+routing status, never a replacement owner identity, and receive no admission secret.
+Each guest authenticates the owner pin independently through the encrypted circuit.
+A routing permission grants no application operation; the dedicated guest gateway
+must authorize inside that channel. Missing guest protocols report upgrade-required
+without falling back to the phone API.
+
+The owner advertises saved active handles on startup, every relay reconnection and
+every 20-second renewal; revocation withdraws them. Routes and temporary circuit
+permissions have 120-second leases and disappear on relay restart. Relay identity
+remains owned by the persisted relay key. Phone claimed-code tombstones are separate.
+The guest directory has 5,000 global slots with explicit capacity refusal and no
+per-owner product quota. A refused addition still renews retained routes. Owners
+with more saved handles preserve creation order, report capacity and retry overflow
+as slots become available; links are never rotated or revoked to fit routing.
+
+`WindowBudget` limits full registration snapshots to 30/minute per owner and
+60/minute per source network, protecting decoding and directory replacement costs.
+Guest lookups allow 30/minute per peer and 120/minute per source network. Temporary
+permissions are bounded at 200 per owner, 200 per source network and 10,000 globally.
+These transient admission bounds sit alongside existing source socket, frame and
+circuit limits; they are not durable sharing quotas. Full owner snapshots have a
+192-KiB frame bound; lookups have a 4-KiB bound. Existing phone admission, pairing,
+paired routing and push policies retain their independent budgets.
+
+The daemon shares its outbound reservation between guest routing and mobile access.
+Mobile-disabled endpoints advertise no device grants or pairing codes and refuse
+phone streams even when a guest lookup permits a circuit. Libp2p's IP-based inbound
+threshold is unsuitable at the owner because all circuits arrive from one relay;
+real-source budgets belong to relay ingress, while endpoint pending connections,
+connections and STOP streams stay bounded.
+
+Guest admission checks the bearer credential against protected daemon state inside
+that authenticated channel. The authenticated app peer supplies participant identity;
+a trimmed display name is presentation. Authorization and proposal ownership use
+the peer identity even when names match. Joining never consumes the link or adds
+a phone grant. Active session counts
+are separate from durable links and feed owner Share status. Revocation and target
+invalidation dispose subscriptions and queued writes; asynchronous reads and each
+queued delivery recheck the original grant.
+
+A guest session exposes only its bound provider conversation, history and proven
+transcript content. Its wire requests cannot select another target or forward RPC.
+The daemon uses the existing conversation source and journal; the guest cache calls
+the existing provider replicas. Provider resets and events keep their immutable
+identity checks. Codex account/catalog state and unsent owner queues are excluded
+from the guest projection. Non-transcript provider events advance coordination
+revisions without sending their payloads or inventing transcript events. A revision
+gap, including one during catch-up, requests an authoritative reset.
+
+Content access uses a bounded index of references proven by authorized provider
+reads/pages, so older media remains readable after a recent-window reload without
+retaining a second transcript. The index is discarded with the session and fails
+explicitly at capacity. Existing frame, response, writer/backpressure and source
+network budgets remain in force. Endpoint and relay STOP stream caps accommodate
+the guest owner session budget alongside phone connections; source network socket
+limits can reject a circuit before application admission.
+
 ### Companion gateway and relay
 
 Each companion safety property has one owner. Extend the owner instead of adding a
@@ -559,6 +664,27 @@ of the same version. Backend changes rebuild and restart the process (no HMR) an
 the client re-syncs with `snapshot/get`; only durable state survives, and active
 turns, pending approvals and in-memory MCP sessions are interrupted. Protocol
 changes may require restarting both processes. Renderer changes keep Vite HMR.
+
+Desktop URL testing uses a dedicated native development target. The target binds
+one worktree and an explicit isolated profile to a stable `korus-dev-<hash>` alias,
+private Electron user-data directory and bundled stdio backend. Its per-profile
+single-instance lock forwards later launches to that target. It never replaces
+the installed product's URL handler. The ordinary Forge process remains separate
+unless it was launched with the target's profile and alias.
+
+`scripts/dev-link.mjs register --home <absolute-profile>` registers the compiled
+worktree's native launcher; `open` reads a normal product link from stdin and
+hands the equivalent alias URL to the operating system. `unregister` removes only
+that target. Build the current desktop assets before registering. On macOS, a
+small signed-ad-hoc launcher bundle lives under the user's Applications directory
+so Launch Services retains its URL registration. Windows uses a current-user
+scheme registration that launches Node directly without a shell; Linux uses a
+private desktop entry and `xdg-mime`. The launcher fixes the profile, app path and
+backend executable so installed-app environment overrides cannot redirect it.
+The opt-in `electron/scripts/guest-desktop.runtime.mjs` workflow builds the
+worktree, uses an isolated encrypted relay with a stable test key, performs native
+URL delivery, and removes its temporary profile and registration. Its scripted
+provider transcript is not live-provider execution evidence.
 
 `npm run dev:web` is the web equivalent: it builds `daemon` once, watches the web
 server bundle (restarting server and daemon on change) and serves the client from Vite

@@ -10,7 +10,9 @@
       <slot name="layout-control" />
     </div>
     <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor">
+    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :busy="guestBusy ?? false" :control="guestControl" />
     <ConversationPane
+      v-else-if="!currentAgent?.sharedConversation"
       ref="conversationPane"
       :controller="conversationPaneController"
       :agent="currentAgent"
@@ -40,7 +42,7 @@
     </slot>
     </div>
     <RightWorkspacePanel
-      v-for="agent in snapshot.agents"
+      v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)"
       :key="agent.id"
       v-show="!emptySplitPane && isRightWorkspaceVisible(agent.id)"
       class="app-shell__right-workspace"
@@ -115,7 +117,7 @@
       @drop="linkDrag.drop"
     />
     <div
-      v-if="!emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded"
+      v-if="!emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded && !currentAgent?.sharedConversation"
       class="app-shell__right-workspace-resizer"
       :aria-label="$t('surface.appShell.resizeRightWorkspace')"
       @pointerdown="startRightWorkspaceResize"
@@ -125,6 +127,8 @@
 </template>
 
 <script setup lang="ts">
+import SharedConversationPane from './SharedConversationPane.vue';
+import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type {
   Agent,
   AgentFileSearchItem,
@@ -193,6 +197,9 @@ import {
 } from './right-workspace';
 
 const props = defineProps<{
+  guestView?: import('@workspace/core/guest-navigation').GuestJoinView | null;
+  guestBusy?: boolean;
+  guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
   activeAttachmentAnnotationCounts: Readonly<Record<string, number>>;
   addChatTextAnnotation: (selection: CodexMessageTextSelection, comment: string) => void;
   addVisualizationAnnotation: (annotation: VisualizationAnnotationInput) => void;
@@ -222,7 +229,7 @@ const props = defineProps<{
     input: AgentGitMessageGenerationInput,
   ) => Promise<AgentGitMessageGenerationResult>;
   getAgentGitWorkflow: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<AgentGitWorkflow>;
-  handleStartWorkAction: (action: 'new' | 'github' | 'gitlab' | 'local' | 'url') => void;
+  handleStartWorkAction: (action: import('./start-work-actions').StartWorkAction) => void;
   isAgentEmpty: boolean;
   isConversationLoading: boolean;
   historyLoadFailed: boolean;
@@ -285,6 +292,7 @@ const agentHeaders = new Map<string, InstanceType<typeof AgentHeader>>();
 
 const emit = defineEmits<{
   'close-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'expand-sidebar': [];
   'install-update': [];
   'remove-work-item-assignment': [item: WorkItem];
@@ -343,7 +351,7 @@ const {
 const workspaceBody = ref<HTMLElement | null>(null);
 const workspaceBodyWidth = ref<number | null>(null);
 const rightWorkspaceExpanded = computed(() => Boolean(
-  !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent
+  !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent && !props.currentAgent.sharedConversation
   && props.rightWorkspaceFor(props.currentAgent.id).expanded,
 ));
 watch(workspaceBody, (body, _previous, onCleanup) => {
@@ -468,20 +476,29 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     },
     class: props.splitHeaders ? 'agent-header--pane' : undefined,
     agent,
+    guestStatus: agent?.sharedConversation?.joinId === props.guestView?.id ? props.guestView?.status : null,
+    guestBusy: props.guestBusy,
+    onLeaveSharedConversation: () => {
+      const id = agent?.sharedConversation?.joinId;
+      if (id) void props.guestControl?.({ action: 'leave', id });
+    },
     repositoryIcon: agent ? repositoryIconForAgent(agent, props.snapshot.general.repositoryIcons) : undefined,
     gitStatus: focused ? props.currentAgentGitStatus : agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null,
     lastTurnGitDiff: diff?.agentId === agentId && diff.diff ? diff : null,
     backendRuntime: focused ? props.currentBackendRuntime : props.snapshot.backendRuntimes.find(runtime => runtime.backend === backend) ?? { backend, status: 'notConfigured' as const },
     workspaceOpen: props.rightWorkspaceVisible && !props.emptySplitPane,
     workspaceExpanded: rightWorkspaceExpanded.value,
-    workspaceToggleAvailable: topRight,
+    workspaceToggleAvailable: topRight && !agent?.sharedConversation,
     workspaceToggleDisabled: !props.currentAgent || Boolean(props.emptySplitPane),
     isLoading: props.isLoading,
     sidebarCollapsed: topLeft && props.agentSidebarCollapsed,
     updateStatus: topRight && appHostCapabilities.appUpdates ? props.updateStatus : undefined,
     executionPlanAvailable: focused && Boolean(currentTurnPlan.value),
     executionPlanOpen: focused && executionPlanVisible.value,
-    openInAvailable: Boolean(agent && appHostCapabilities.openInApplications && isLocalAgent(agent)),
+    shareAvailable: Boolean(agent && supportsConversationSharing(agent) && isLocalAgent(agent)),
+    shareStatusOnMount: props.splitHeaders,
+    onShare: () => agentId && emit('share-agent', agentId),
+    openInAvailable: Boolean(agent && !agent.sharedConversation && appHostCapabilities.openInApplications && isLocalAgent(agent)),
     openInCatalog: props.openInApplications,
     subagentTree: agentId ? subagentTreeFor(agentId) : null,
     selectedSubagentConversationId: agentId ? selectedSubagentConversationIdFor(agentId) : null,

@@ -1,6 +1,7 @@
 <template>
   <button class="agent-sidebar__activity-agent" :class="{ 'agent-sidebar__activity-agent--cleanup': cleanup }">
-    <span v-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
+    <ShareIcon v-if="session.shared" class="agent-sidebar__session-icon" role="img" :aria-label="$t('guest.shared')" />
+    <span v-else-if="repositoryIcon" class="agent-sidebar__repository-mark" aria-hidden="true">
       <AgentAvatar :avatar="repositoryIcon" :name="context ?? ''" shape="square" />
     </span>
     <component :is="icon" v-else class="agent-sidebar__session-icon" aria-hidden="true" />
@@ -17,6 +18,7 @@
 </template>
 
 <script setup lang="ts">
+import { IconShare as ShareIcon } from '@tabler/icons-vue';
 import { computed } from 'vue';
 import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import AgentAvatar from './AgentAvatar.vue';

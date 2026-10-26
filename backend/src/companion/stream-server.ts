@@ -32,7 +32,7 @@ export class StreamServer {
   private readonly updates = new Map<string, Stream>();
 
   /** `claimed` runs after a pairing claim is accepted and before the phone is answered, so the relay routes the new invitation first. */
-  constructor(private readonly gateway: CompanionGateway, private readonly claimed: () => Promise<unknown>) {}
+  constructor(private readonly gateway: CompanionGateway, private readonly claimed: () => Promise<unknown>, private readonly enabled: () => boolean = () => true) {}
 
   async attach(node: Libp2p) {
     for (const { protocol, kind, compressed } of handlers) {
@@ -51,6 +51,7 @@ export class StreamServer {
   }
 
   private track(stream: Stream, peerId: string, run: (stream: Stream, peerId: string) => Promise<void>) {
+    if (!this.enabled()) { stream.abort(new Error('Mobile access disabled.')); return; }
     const streams = this.open.get(peerId) ?? new Set<Stream>();
     streams.add(stream); this.open.set(peerId, streams);
     run(stream, peerId).catch(() => {}).finally(() => {
@@ -67,6 +68,7 @@ export class StreamServer {
       const request = requestSchema.parse(await readFirstCompanionFrame(stream));
       let response;
       try {
+        if (!this.enabled()) throw new Error('Mobile access disabled.');
         const result = await this.gateway.request(peerId, request.method, request.args);
         if (request.method === 'pair.claim') await this.claimed();
         response = encodeCompanionResponse({ v: 1, id: request.id, result }, compressed);
@@ -121,6 +123,7 @@ export class StreamServer {
         method = request.method; requestId = request.id; requestStarted = Date.now();
         logMain('companion', 'updates request', diagnostic());
         try {
+          if (!this.enabled()) throw new Error('Mobile access disabled.');
           const result = await subscription.request(request.method, request.args);
           send({ v: 1, id: request.id, result });
           logMain('companion', 'updates reply', diagnostic());

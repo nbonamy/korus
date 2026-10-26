@@ -1,3 +1,5 @@
+import type { GuestJoins } from './sharing/guest-joins';
+import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { AutoResumeService } from './agents/auto-resume-service';
 import { previewRepositoryDeletion, removeRepositoryFolders } from './repository-deletion';
@@ -110,6 +112,8 @@ export type AppBackendServerOptions = {
   requirements?: Requirements;
   usage?:UsageService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
+  conversationSharing?: ConversationSharingOptions;
+  guestJoins?: GuestJoins;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
   tasks?: DurableTaskService;
@@ -188,6 +192,50 @@ export class AppBackendServer {
   private readonly missionArtifacts: MissionArtifactStorage;
   private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
   private remoteControlStatusLoaded = false;
+  /** In-process guest authority, separate from local RPC and paired-device grants. */
+  authorizeConversationGuest(handle: string, credential: string) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.authorize(handle, credential);
+  }
+  conversationGuestCount(handle: string, count: number) { this.conversationShares?.connected(handle, count); }
+  proposeConversationGuest(handle: string, identity: string, name: string, input: { id: string; text: string }) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.propose(handle, identity, name, input);
+  }
+  conversationGuestProposals(handle: string, identity: string) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.guestState(handle, identity);
+  }
+  withdrawConversationGuest(handle: string, identity: string, proposalId: string) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.withdraw(handle, identity, proposalId);
+  }
+  private async syncSharedQuickChats(state: import('@workspace/core/guest-navigation').GuestJoinState, action: string) {
+    let changed = false;
+    const live = new Set(state.entries.map(entry => entry.id));
+    for (const agent of [...this.snapshot.agents]) if (agent.sharedConversation && !live.has(agent.sharedConversation.joinId)) {
+      this.snapshot.agents = this.snapshot.agents.filter(candidate => candidate !== agent);
+      for (const team of this.snapshot.teams) team.agentIds = team.agentIds.filter(id => id !== agent.id);
+      if (this.snapshot.activeAgentId === agent.id) this.snapshot.activeAgentId = null;
+      changed = true;
+    }
+    for (const entry of state.entries) {
+      const team = this.snapshot.teams.find(team => team.id === entry.teamId) ?? this.snapshot.teams.find(team => team.id === this.snapshot.activeTeamId) ?? this.snapshot.teams[0];
+      if (!team || team.remoteConnectionId) continue;
+      let agent = this.snapshot.agents.find(agent => agent.sharedConversation?.joinId === entry.id);
+      if (!agent) {
+        const now = new Date().toISOString();
+        agent = { id: `shared-${entry.id}`, teamId: team.id, sessionKind: 'quickChat', sharedConversation: { joinId: entry.id }, name: entry.title, conversationTitle: entry.title, backend: 'codex', folder: null, status: { type: 'idle' }, createdAt: now, updatedAt: now };
+        this.snapshot.agents.push(agent); team.agentIds.push(agent.id); changed = true;
+      }
+      if (agent.name !== entry.title) { agent.name = entry.title; agent.conversationTitle = entry.title; changed = true; }
+      if (['prepare', 'join', 'open'].includes(action) && state.view?.id === entry.id) {
+        if (this.snapshot.activeAgentId !== agent.id || this.snapshot.activeTeamId !== agent.teamId) changed = true;
+        this.snapshot.activeAgentId = agent.id; this.snapshot.activeTeamId = agent.teamId ?? team.id;
+      }
+    }
+    if (changed) await this.persistAndEmitSnapshot();
+  }
   private companionAccessEnabled = false;
   private readonly driverRpc?: BackendDriverRpc;
   private readonly onEvent?: (event: AppBackendEvent) => void;
@@ -234,7 +282,23 @@ export class AppBackendServer {
   private readonly autoResume: AutoResumeService;
   private readonly providerConnections?: ProviderConnections;
 
+  private readonly conversationShares?: ConversationShares;
+
   constructor(private readonly options: AppBackendServerOptions) {
+    if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
+      supports: target => defaultBackendCapabilities(target.backend).conversationSharing === true,
+      canSubmit: target => {
+        const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
+        return Boolean(agent && this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));
+      },
+      submit: options.conversationSharing.submit ?? (async (target, text) => {
+        const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
+        if (!agent || agent.sharedConversation) throw new Error('Conversation unavailable.');
+        return this.agentPrompts.sendWithReceipt(agent, text, undefined, companionSessionId(agent), 'guest:approved');
+      }),
+    }, () => this.snapshot, (agentId, state) => {
+      this.onEvent?.({ seq: this.nextEventSeq(), type: 'conversation.shareChanged', agentId, payload: state, occurredAt: new Date().toISOString() });
+    });
     this.browserExtensionPackages = options.browserExtensionPackages ?? new BrowserExtensionPackages(path.join(backendHomeDir(), 'browser-extensions'));
     this.tasks = options.tasks;
     this.providerSetup = options.providerSetup;
@@ -324,7 +388,7 @@ export class AppBackendServer {
     this.agentPrompts = new AgentPromptManager({
       isEngineConnected: agent => !this.options.providerUpdates?.isUpdating(agent.backend) && this.snapshot.providerConnections?.some(connection => connection.backend === agent.backend && connection.connected && connection.installed && connection.enabled !== false) === true,
       getSnapshot: () => this.snapshot,
-      driverForAgent: (agent, expectedSessionId) => this.backendDriverForAgent(agent, expectedSessionId),
+      driverForAgent: (agent, expectedSessionId, plainText) => this.backendDriverForAgent(agent, expectedSessionId, plainText),
       applyEvent: (event) => this.applyAndEmitBackendEvent(event),
       persistSnapshot: () => this.persistSnapshotOnly(),
       setNewConversationTitle: (agentId, wasNewSession) => this.agentConversations.setNewTitle(agentId, wasNewSession),
@@ -741,6 +805,7 @@ export class AppBackendServer {
     if (this.snapshot.providerConnections?.some(provider => provider.backend === 'codex' && provider.connected)) await this.ensureRemoteControlStatus();
     await this.agentWorkspaces.reconcile();
     await this.reconcileConversationsOnce();
+    this.reconcileShares();
     await this.subagentIdentities.backfill();
     await this.missionExecution.refreshOwnedSkills();
     await this.missionExecution.recoverInterruptedRuns();
@@ -770,6 +835,44 @@ export class AppBackendServer {
 
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
+    if ([backendMethods.guestConversationControl, backendMethods.guestConversationImage, backendMethods.guestConversationContent].some(method => method === message.method)) {
+      try {
+        const joins = this.options.guestJoins; if (!joins) throw new Error('Unavailable');
+        const params = requireRecord(message.params);
+        if (message.method === backendMethods.guestConversationControl) {
+          const input = params.input as import('@workspace/core/guest-navigation').GuestJoinControl;
+          if (input?.action === 'prepare' && input.teamId && !this.snapshot.teams.some(team => team.id === input.teamId && !team.remoteConnectionId)) throw new Error('Join requires a local team.');
+        }
+        const result = message.method === backendMethods.guestConversationControl
+          ? await joins.control(params.input as import('@workspace/core/guest-navigation').GuestJoinControl, this.snapshot.activeTeamId ?? this.snapshot.teams[0]?.id)
+          : message.method === backendMethods.guestConversationImage
+            ? await joins.readImage(params.id as string, params.path as string)
+            : await joins.readContent(params.id as string, params.input as import('@workspace/core/contracts/conversation').ConversationContentInput);
+        if (message.method === backendMethods.guestConversationControl) await this.syncSharedQuickChats(result as import('@workspace/core/guest-navigation').GuestJoinState, (params.input as { action: string }).action);
+        return createAppRpcResult(message.id, result);
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Guest operation failed. Check local storage and try again.'); }
+    }
+    if (message.method === backendMethods.conversationShareControl) {
+      try {
+        if (!this.conversationShares) throw new Error('Conversation sharing is unavailable.');
+        return createAppRpcResult(message.id, await this.conversationShares.control(requireRecord(message.params).input as import('@workspace/core/conversation-sharing').ConversationShareControl));
+      } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Share operation failed.'); }
+    }
+    const sharedParams = message.params && typeof message.params === 'object' ? message.params as { agentId?: unknown; sourceAgentId?: unknown; input?: { id?: unknown; agentId?: unknown } } : undefined;
+    const sharedId = sharedParams?.agentId ?? sharedParams?.sourceAgentId ?? sharedParams?.input?.agentId ?? sharedParams?.input?.id;
+    const sharedAgent = typeof sharedId === 'string' ? this.snapshot.agents.find(agent => agent.id === sharedId && agent.sharedConversation) : undefined;
+    if (sharedAgent && message.method === backendMethods.agentDelete && this.options.guestJoins) {
+      const state = await this.options.guestJoins.control({ action: 'leave', id: sharedAgent.sharedConversation!.joinId });
+      await this.syncSharedQuickChats(state, 'leave');
+      return createAppRpcResult(message.id, this.snapshot);
+    }
+    if (sharedAgent && message.method === backendMethods.agentConversationLoad && this.options.guestJoins) {
+      await this.options.guestJoins.control({ action: 'open', id: sharedAgent.sharedConversation!.joinId });
+      return createAppRpcResult(message.id, this.snapshot);
+    }
+    if (sharedAgent && ![backendMethods.clientNavigationSelectAgent, backendMethods.agentMarkRead].some(method => method === message.method)) {
+      return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Use the shared conversation controls; local execution is unavailable.');
+    }
     if (message.method === backendMethods.companionControl) {
       try {
         if (!this.options.companionControl) throw new Error('Mobile access is unavailable.');
@@ -3080,6 +3183,8 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.conversationShares?.close();
+    await this.options.guestJoins?.close();
     this.autoResume.close();
     this.unsubscribeUsage?.();
     this.unsubscribeRequestUsage?.();
@@ -3131,6 +3236,7 @@ export class AppBackendServer {
   }
 
   private async handleAgentDriverRequest(agent: Agent, method: string, params: unknown): Promise<unknown> {
+    if (agent.sharedConversation) throw new Error('Shared conversations cannot execute on a local backend.');
     if (isMissionScreenshotAgent(agent)) {
       if (method === backendMethods.driverModelsList) return [missionScreenshotModel];
       throw new Error('Mission screenshot agents are read-only; no provider session is started.');
@@ -3331,6 +3437,7 @@ export class AppBackendServer {
   }
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
+    this.reconcileShares();
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3338,6 +3445,7 @@ export class AppBackendServer {
   }
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
+    this.reconcileShares();
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }
@@ -3359,7 +3467,7 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(event);
   }
 
-  private backendDriverForAgent(agent: Agent, expectedSessionId?: string | null): AgentBackendDriver {
+  private backendDriverForAgent(agent: Agent, expectedSessionId?: string | null, plainText = false): AgentBackendDriver {
     return {
       backend: agent.backend,
       getRuntimeStatus: () => ({ backend: agent.backend, status: 'running' }),
@@ -3369,7 +3477,7 @@ export class AppBackendServer {
       ),
       preparePromptOptions: (_currentAgent, options) => options,
       sendPrompt: async (currentAgent, prompt, options) => (
-        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
+        await this.handleAgentDriverRequest(currentAgent, backendMethods.driverPromptSend, { agent: currentAgent, prompt, options, ...(plainText ? { plainText: true } : {}), ...(expectedSessionId === undefined ? {} : { expectedSessionId }) }) as BackendSendResult
       ),
       interrupt: async (currentAgent) => (
         await this.handleAgentDriverRequest(currentAgent, backendMethods.driverInterrupt, { agent: currentAgent }) as BackendSendResult
@@ -3414,7 +3522,7 @@ export class AppBackendServer {
     if (!this.driverRpc) return;
     if (this.conversationsReconciliation) return this.conversationsReconciliation;
     const reconciliation = (async () => {
-      const localCodexAgents = this.snapshot.agents.filter((agent) => agent.backend === 'codex' && !this.remoteTeams.connectionIdForAgent(agent));
+      const localCodexAgents = this.snapshot.agents.filter((agent) => agent.backend === 'codex' && !agent.sharedConversation && !this.remoteTeams.connectionIdForAgent(agent));
       try {
         await this.driverRpc!.handle(backendMethods.driverConversationsReconcile, {
           backend: 'codex',
@@ -3466,6 +3574,7 @@ export class AppBackendServer {
     const fullEvent = this.nextMainEvent(event);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
@@ -3473,6 +3582,23 @@ export class AppBackendServer {
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);
+  }
+
+  /** Best effort and never awaited: grants are invalidated synchronously, so storage or relay trouble cannot block persistence. */
+  private reconcileShares(): void {
+    if (!this.conversationShares) return;
+    void this.conversationShares.reconcile().catch(() => {
+      warnMain('sharing', 'Share storage is unavailable; target invalidation will be retried before share access.');
+    });
+    void this.conversationShares.dispatchQueued().catch(() => {});
+  }
+
+  private observeShareTargetChange(event: BackendPublishedEvent): void {
+    if (event.type !== 'agent.updated' && event.type !== 'agent.conversationAttached' && event.type !== 'snapshot.updated') {
+      void this.conversationShares?.dispatchQueued().catch(() => {});
+      return;
+    }
+    this.reconcileShares();
   }
 
   private clearTurnSuggestionsForNewPrompt(agent: Agent): void {
@@ -3506,6 +3632,7 @@ export class AppBackendServer {
     const fullEvent = this.nextMainEvent(event);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {

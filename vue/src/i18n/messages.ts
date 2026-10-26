@@ -3,6 +3,33 @@ import { surfaceMessages } from './surface-messages';
 
 export const messages = {
   en: {
+    guest: {
+      joinWithInvite: 'Join with invite…', invitation: 'Invitation or share link', shared: 'Shared conversation', propose: 'Propose message', placeholder: 'Propose a message…', send: 'Send', dismiss: 'Dismiss', pending: 'Waiting for owner approval', queued: 'Approved · queued', submitted: 'Sent to agent', dismissed: 'Dismissed', rejected: 'Access ended', unresolved: 'Delivery unresolved · not resent', dispatching: 'Sending…', proposalFailed: 'Could not confirm this proposal. Retry to check its existing delivery.',
+
+      open: 'Open shared conversation', join: 'Join conversation', displayName: 'Display name',
+      noLongerAccessible: 'This conversation is no longer accessible.',
+      suggestions: 'Suggestions', moveSuggestion: 'Move suggestion to composer', deleteSuggestion: 'Delete suggestion', deleteSuggestionFailed: 'Could not delete this suggestion. Try again.',
+      displayNamePurpose: 'The conversation owner will see this name next to messages you propose.',
+      displayNameSaveFailed: 'Could not save your display name. Try again.', settingsTitle: 'Collaboration',
+      leave: 'Leave', storageFailed: 'Shared conversations are unavailable. Check local storage and try again.',
+      status: { storageUnavailable: 'Access has stopped, but saved authorization could not be removed. Check local storage, then leave the conversation.', connecting: 'Connecting to owner…', ready: 'Connected', unavailable: 'Owner unavailable · Reconnecting…', rejected: 'This share link is no longer authorized.', upgradeRequired: 'Update Korus or the relay to join this conversation.', busy: 'The owner or relay is busy. Retrying…', invalid: 'This share link is invalid or uses an unsupported relay.' },
+    },
+    sharing: {
+      guestProposals: 'Guest proposals',
+      title: 'Share with guests', share: 'Share', close: 'Close',
+      disclosure: 'Anyone with this link can read the full available history and future updates, including tool output.',
+      approval: 'Collaborators can suggest prompts for you to review, edit, and send.',
+      active: 'This conversation has an active share link.', guests: '{count} guests connected',
+      temporarilyUnavailable: 'Sharing is temporarily unavailable. Please try again shortly.',
+      copy: 'Copy link', stop: 'Stop sharing', inviteLinkCopied: 'Invite link copied to clipboard',
+      failed: 'Could not load sharing. Try again.',
+      storageUnavailable: 'Could not read or save local share data. Check local storage and try again.',
+      identityUnavailable: 'Could not load this app’s connection identity. Check local storage and try again.',
+      conversationChanged: 'This conversation has changed. Close this dialog and open Share again.',
+      unsupported: 'This coding backend does not support sharing.',
+      restartRequired: 'Restart Korus to load the updated sharing controls.',
+      copyFailed: 'The link is saved, but copying failed. Try Copy link again.',
+    },
     repositoryDeletion: {
       action: 'Delete repository', title: 'Delete {name}?', loading: 'Checking repository…',
       warning: 'This will permanently delete the repository, all linked worktrees, and all associated agents across all teams.',

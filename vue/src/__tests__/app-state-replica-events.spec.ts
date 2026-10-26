@@ -486,6 +486,7 @@ describe('useAppState', () => {
       'skills.changed',
       'conversation.historyLoadFailed',
       'conversation.modeUpdated',
+      'conversation.shareChanged',
     ].sort());
 
     listeners[0]?.({
@@ -527,6 +528,12 @@ describe('useAppState', () => {
       type: 'git.branchWorkProgress',
       payload: { id: 'branch-work-1', agentId: 'agent-dina', branchName: 'feat/example', state: 'running', phase: 'movingChanges' },
       occurredAt: '2026-06-05T00:00:05.000Z',
+    });
+
+    listeners[0]?.({
+      seq: 6, agentId: 'agent-dina', type: 'conversation.shareChanged',
+      payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' },
+      occurredAt: '2026-06-05T00:00:06.000Z',
     });
 
     expect(state.snapshot.value).toBe(originalSnapshot);

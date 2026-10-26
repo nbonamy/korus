@@ -24,7 +24,7 @@
       />
       <div class="agent-header__agent-line">
         <strong class="workspace-header__title" :title="displayName">{{ displayName }}</strong>
-        <div class="agent-header__context">
+        <div v-if="!agent.sharedConversation" class="agent-header__context">
           <span
             v-if="agentLocationLabel"
             class="agent-header__folder"
@@ -44,6 +44,9 @@
             {{ agentStatusDetail }}
           </span>
         </div>
+        <div v-else class="agent-header__context" role="status">
+          <span>{{ $t('guest.shared') }}<template v-if="guestStatus"> · {{ $t(`guest.status.${guestStatus}`) }}</template></span>
+        </div>
       </div>
     </div>
     <div
@@ -54,6 +57,17 @@
     </div>
 
     <div class="agent-header__activity">
+      <button
+        v-if="agent && shareAvailable"
+        class="agent-header__share"
+        type="button"
+        :aria-label="$t('sharing.share')"
+        :title="$t('sharing.share')"
+        :aria-pressed="shareActive"
+        @click="emit('share')"
+      >
+        <IconShare aria-hidden="true" />
+      </button>
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -138,6 +152,14 @@
         :status="updateStatus"
         @install="emit('install-update')"
       />
+      <button
+        v-if="agent?.sharedConversation && guestStatus !== 'rejected' && guestStatus !== 'storageUnavailable'"
+        class="app-button app-button--neutral agent-header__leave"
+        type="button"
+        :aria-label="$t('guest.leave')"
+        :disabled="guestBusy"
+        @click="emit('leave-shared-conversation')"
+      >{{ $t('guest.leave') }}</button>
     </div>
   </WorkspaceHeader>
 </template>
@@ -145,13 +167,15 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
-import { computed, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, BackendRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
+import { conversationShareTarget } from '@workspace/core/conversation-sharing';
+import type { GuestJoinStatus } from '@workspace/core/guest-navigation';
 import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
-import { IconLayoutSidebarRight } from '@tabler/icons-vue';
+import { IconLayoutSidebarRight, IconShare } from '@tabler/icons-vue';
 import AgentAvatar from './AgentAvatar.vue';
 import UpdateAvailableBadge from './UpdateAvailableBadge.vue';
 import OpenInControl from '../shared/OpenInControl.vue';
@@ -159,9 +183,15 @@ import SubagentControl from './SubagentControl.vue';
 import GitWorkflowControl from './GitWorkflowControl.vue';
 import GitDiffControl from './GitDiffControl.vue';
 import { effectiveOpenInApplication } from '../shared/open-in';
+import { appApi } from '../platform-api';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
 
 const props = withDefaults(defineProps<{
   agent: Agent | null;
+  guestStatus?: GuestJoinStatus | null;
+  guestBusy?: boolean;
+  shareAvailable?: boolean;
+  shareStatusOnMount?: boolean;
   repositoryIcon?: string;
   gitStatus?: AgentGitStatus | null;
   lastTurnGitDiff?: TurnGitDiff | null;
@@ -190,10 +220,46 @@ const props = withDefaults(defineProps<{
   updateGitBranchFromBase?: (agentId: string, input: import('@workspace/core/contracts').AgentGitUpdateFromBaseInput) => Promise<import('@workspace/core/contracts').AgentGitUpdateFromBaseResult>;
   pullGitBranch?: (agentId: string, input: import('@workspace/core/contracts').AgentGitPullInput) => Promise<import('@workspace/core/contracts').AgentGitPullResult>;
   revertGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
-}>(), { workspaceToggleAvailable: true, workspaceToggleDisabled: undefined });
+}>(), { workspaceToggleAvailable: true, workspaceToggleDisabled: undefined, shareStatusOnMount: false });
+
+const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
+const localShareActive = ref(false);
+const shareActive = computed(() => props.agent
+  ? shareActiveByAgentId?.[props.agent.id] ?? localShareActive.value
+  : false);
+function shareTargetKey() {
+  return props.agent && props.shareAvailable ? JSON.stringify(conversationShareTarget(props.agent)) : '';
+}
+let shareStatusGeneration = 0;
+let unsubscribeShareState: (() => void) | undefined;
+async function loadShareStatus() {
+  const agent = props.agent;
+  const target = agent && props.shareAvailable ? conversationShareTarget(agent) : null;
+  const expected = ++shareStatusGeneration;
+  if (!agent || !target || !appApi) return;
+  try {
+    const result = await appApi.conversationShareControl({ action: 'status', target });
+    if (expected !== shareStatusGeneration || props.agent?.id !== agent.id) return;
+    if (shareActiveByAgentId) shareActiveByAgentId[agent.id] = result.state.active;
+    else localShareActive.value = result.state.active;
+  } catch { /* A sharing status failure must not block the conversation header. */ }
+}
+watch(() => props.shareStatusOnMount ? shareTargetKey() : '', target => {
+  if (target) void loadShareStatus();
+}, { immediate: true });
+onMounted(() => {
+  unsubscribeShareState = appApi?.onEvent(event => {
+    if (event.type !== 'conversation.shareChanged' || event.agentId !== props.agent?.id) return;
+    if (shareActiveByAgentId) shareActiveByAgentId[event.agentId] = event.payload.active;
+    else localShareActive.value = event.payload.active;
+  });
+});
+onBeforeUnmount(() => { shareStatusGeneration++; unsubscribeShareState?.(); });
 
 const emit = defineEmits<{
   'expand-sidebar': [];
+  'share': [];
+  'leave-shared-conversation': [];
   'select-agent': [agentId: string];
   'toggle-workspace': [];
   'toggle-workspace-expanded': [];
@@ -363,9 +429,14 @@ const gitReviewAvailable = computed(() => {
   text-align: right;
 }
 
+.agent-header__leave {
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.agent-header__share,
 .agent-header__workspace {
   -webkit-app-region: no-drag;
-  border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text-muted);
@@ -375,6 +446,15 @@ const gitReviewAvailable = computed(() => {
   width: 32px;
   height: 32px;
   padding: 0;
+  cursor: pointer;
+}
+
+.agent-header__share {
+  border: 1px solid var(--color-border);
+}
+
+.agent-header__workspace {
+  border: 0;
 }
 
 .agent-header__execution-plan {
@@ -402,12 +482,19 @@ const gitReviewAvailable = computed(() => {
   height: var(--icon-md);
 }
 
+.agent-header__share:hover,
 .agent-header__workspace:hover,
 .agent-header__workspace[aria-pressed="true"] {
   background: var(--color-surface-high);
   color: var(--color-text);
 }
 
+.agent-header__share[aria-pressed="true"],
+.agent-header__share[aria-pressed="true"]:hover {
+  color: var(--color-primary);
+}
+
+.agent-header__share :deep(svg),
 .agent-header__workspace :deep(svg) {
   width: var(--icon-md);
   height: var(--icon-md);

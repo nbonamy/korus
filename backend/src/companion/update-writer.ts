@@ -42,6 +42,9 @@ export class UpdateStreamWriter {
     return this.closed || this.hasRoom() ? Promise.resolve() : new Promise<void>((resolve) => { this.waiters.push(resolve); });
   }
 
+  /** Wait until every currently queued frame has reached the transport before a terminal reply closes it. */
+  flushed(): Promise<void> { return this.chain; }
+
   close(): void { this.closed = true; this.release(); }
 
   private hasRoom() { return this.frames <= this.limits.resumeFrames && this.bytes <= this.limits.maxBytes / 2; }

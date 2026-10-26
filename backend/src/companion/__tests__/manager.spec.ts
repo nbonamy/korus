@@ -9,6 +9,7 @@ vi.mock('../connector', () => ({ CompanionOutboundConnector: class {
   async stop() { await transport.stop(); this.connected = false; }
   async advertise() { return transport.advertise(); }
   revoke() {}
+  disablePhone() {}
 } }));
 import { CompanionManager } from '../manager';
 import { generateKeyPair } from '@libp2p/crypto/keys';
@@ -23,6 +24,35 @@ async function fixture(onAccessChanged?: (enabled: boolean) => void) {
   return { directory, manager };
 }
 describe('daemon companion persistence', () => {
+  it('reuses the durable endpoint for sharing without enabling paired-phone access', async () => {
+    const { directory, manager } = await fixture();
+    const first = await manager.shareEndpoint();
+    expect(first?.ownerId).toEqual(expect.any(String));
+    expect(transport.start).not.toHaveBeenCalled();
+    const status = await manager.control({ action: 'status' });
+    expect(status.status.enabled).toBe(false);
+    expect(status.status.devices).toStrictEqual([]);
+    await manager.stop();
+    const restored = new CompanionManager(directory, { request: vi.fn() }, {});
+    try { expect(await restored.shareEndpoint()).toStrictEqual(first); }
+    finally { await restored.stop(); }
+  });
+  it('starts sharing connectivity without enabling phone access and keeps it across mobile disable', async () => {
+    const { manager, directory } = await fixture();
+    const endpoint = (await manager.shareEndpoint())!;
+    const routes = [{ ...endpoint, handle: 'a'.repeat(32) }];
+    await manager.updateShareRoutes(routes);
+    expect(transport.start).toHaveBeenCalledOnce();
+    expect((await manager.control({ action: 'status' })).status.enabled).toBe(false);
+    expect(JSON.parse(await readFile(path.join(directory, 'state.json'), 'utf8')).enabled).toBe(false);
+    await manager.control({ action: 'resume' });
+    const stops = transport.stop.mock.calls.length;
+    await manager.control({ action: 'disable' });
+    expect(transport.stop).toHaveBeenCalledTimes(stops);
+    await manager.updateShareRoutes([]);
+    expect(transport.stop).toHaveBeenCalledTimes(stops + 1);
+    await manager.stop();
+  });
   it('publishes mobile keep-awake policy through enablement, relay failure, preference changes, restart and disable', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'companion-manager-')); directories.push(directory);
     const onEvent = vi.fn();

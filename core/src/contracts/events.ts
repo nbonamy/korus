@@ -64,6 +64,7 @@ type AgentPromptRetryScheduledPayload = {
   retryAt?: string;
 };
 type AppEvent =
+  | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
   | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; backend: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
   | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; backend: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
   | EventWith<{

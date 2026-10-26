@@ -7,8 +7,14 @@ import type { CompanionImage, CompanionReset } from '@workspace/core/companion-p
 /** Authoritative message references are the allowlist; a phone cannot turn this into a file browser. */
 export function conversationImageReference(frame: CompanionReset, requestedPath: string): string {
   const normalized = imagePath(requestedPath);
-  if (!normalized) throw new Error('Image is unavailable.');
-  for (const message of frame.payload.snapshot.messages) {
+  if (!normalized || !conversationImageReferences(frame.payload.snapshot.messages).has(normalized)) throw new Error('Image is not referenced by this conversation.');
+  return normalized;
+}
+
+/** Extract bounded transcript ownership proofs without retaining a second transcript. */
+export function conversationImageReferences(messages: ReadonlyArray<CompanionReset['payload']['snapshot']['messages'][number]>): Set<string> {
+  const paths = new Set<string>();
+  for (const message of messages) {
     for (const part of message.parts) {
       const references: string[] = [];
       if (part.type === 'text') {
@@ -19,14 +25,15 @@ export function conversationImageReference(frame: CompanionReset, requestedPath:
         if (part.attachment.path) references.push(part.attachment.path);
         if (part.attachment.url) references.push(part.attachment.url);
       } else if (part.type === 'media') references.push(part.media.url);
-      if (references.some(reference => imagePath(reference) === normalized)) return normalized;
+      for (const reference of references) { const normalized = imagePath(reference); if (normalized) paths.add(normalized); }
     }
   }
-  throw new Error('Image is not referenced by this conversation.');
+  return paths;
 }
 
-function imagePath(reference: string): string | null {
+export function imagePath(reference: string): string | null {
   try {
+    if (reference.length > 4096) return null;
     // The shared Markdown renderer hands over a destination written as `<path>` with its brackets.
     reference = reference.trim();
     if (reference.startsWith('<') && reference.endsWith('>')) reference = reference.slice(1, -1);

@@ -1,7 +1,10 @@
 <template>
   <div class="window-edge" aria-hidden="true" />
+  <JoinSharedChatDialog v-if="inviteVisible" :view="guestInviteView" :busy="guestBusy" :failed="guestFailed" :control="runGuest" :save-display-name="saveGuestDisplayName" @close="closeGuestInvite" />
   <AppShell
     v-if="hasLoadedSnapshot"
+    @join-invite="showGuestInvite"
+    :guest-state="guestState" :guest-busy="guestBusy" :guest-control="runGuest"
     :inert="backendRestartInProgress || pendingSessionCompression !== null ? '' : undefined"
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
@@ -262,6 +265,8 @@ import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
+import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
+import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
@@ -495,6 +500,10 @@ const {
   restartApp,
   getPluginStatus,
 } = useAppState();
+const { inviteVisible, inviteView: guestInviteView, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuestInvite, close: closeGuestInvite } = useGuestNavigation(() => snapshot.value, selectAgent, () => hasLoadedSnapshot.value);
+async function saveGuestDisplayName(name: string): Promise<void> {
+  await updateSettings({ general: { guestDisplayName: name } });
+}
 
 const agentConversationActions: AgentConversationActions = {
   planReview: respondToPlanReviewForAgent,

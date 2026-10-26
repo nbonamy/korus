@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair } from '@libp2p/crypto/keys';
 import { peerIdFromPrivateKey } from '@libp2p/peer-id';
@@ -12,8 +14,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { sdkSnapshot } from '../../codex/__tests__/sdk-surface-fixture';
 import { readCompanionResponses, readFirstCompanionResponse } from '@workspace/core/companion-response';
-import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
+import { companionProtocol, companionUpdatesProtocol, companionResponseLimit, encodeCompanionFrame, readFirstCompanionFrame, CompanionFrameDecoder } from '@workspace/core/companion-protocol';
 import { companionPushAuthorizationMessage } from '@workspace/core/companion-notification';
+import { shareAdmissionProtocol, shareRendezvousProtocol } from '@workspace/core/conversation-share-relay';
+import { GuestConversationTransport } from '../../sharing/guest-transport';
 import { companionRendezvousProtocol } from '@workspace/core/companion-relay';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import { createCompanionRelay } from '../relay';
@@ -27,6 +31,162 @@ vi.mock('../../log', () => ({ logMain: vi.fn(), warnMain: vi.fn() }));
 const stops: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const stop of stops.reverse()) await stop(); stops.length = 0; });
 describe('encrypted companion circuit', () => {
+  it('routes one reusable guest handle to a pinned owner for two identities and restores it after relay restart', async () => {
+    const hostKey = await generateKeyPair('Ed25519'); const hostId = peerIdFromPrivateKey(hostKey).toString();
+    const relayKey = await generateKeyPair('Ed25519');
+    const port = await freePort(); const listen = `/ip4/127.0.0.1/tcp/${port}/ws`;
+    let relay = await createCompanionRelay({ key: relayKey, listen });
+    stops.push(() => relay.stop());
+    const pinnedRelay = { origin: `ws://127.0.0.1:${port}`, peerId: relay.peerId.toString() };
+    const observations: { step: string; status: string; guest?: number }[] = [];
+    const handles = ['a'.repeat(32)]; const accepted: string[] = [];
+    const statuses: string[] = [];
+    const phone = await newPhone();
+    let phoneEnabled = true;
+    const gateway = { grants: [{ peerId: phone.peerId.toString() }], pairingInvitations: () => [], request: async () => ({ phone: true }) } as unknown as CompanionGateway;
+    const connector = new CompanionOutboundConnector(hostKey, gateway, {
+      phoneEnabled: () => phoneEnabled,
+      sharing: { handles: () => [...handles], status: value => statuses.push(value), accept: async (stream, peer) => {
+        accepted.push(peer);
+        // Fixture endpoint only. Application admission belongs to the guest gateway ticket.
+        stream.send(encodeCompanionFrame({ transport: 'fixture', authorized: false }));
+        await stream.close();
+      } },
+    });
+    stops.push(() => connector.stop());
+    const guests = await Promise.all([generateKeyPair('Ed25519'), generateKeyPair('Ed25519')].map(async key => {
+      const guest = new GuestConversationTransport(await key, pinnedRelay);
+      stops.push(() => guest.stop()); return guest;
+    }));
+    const target = { relay: pinnedRelay, ownerId: hostId, handle: handles[0]! };
+    const initially = await guests[0]!.open(target);
+    observations.push({ step: 'before-owner-registration', status: initially.status });
+    expect(initially.status).toBe('unavailable');
+    await connector.start(pinnedRelay.origin, pinnedRelay.peerId);
+    expect(statuses.at(-1)).toBe('ready');
+    const read = async (index: number) => {
+      const result = await guests[index]!.open(target);
+      observations.push({ step: 'pinned-owner-circuit', status: result.status, guest: index + 1 });
+      expect(result.status).toBe('ready');
+      if (result.status !== 'ready') throw new Error('Missing circuit');
+      try { return await readFirstCompanionFrame(result.stream); }
+      finally { result.stream.abort(new Error('Fixture read complete')); }
+    };
+    expect(await read(0)).toStrictEqual({ transport: 'fixture', authorized: false });
+    expect(await read(1)).toStrictEqual({ transport: 'fixture', authorized: false });
+    expect(new Set(accepted).size).toBe(2);
+    expect(handles).toHaveLength(1);
+    const address = relay.getMultiaddrs()[0]!.toString();
+    const circuit = `${address}/p2p-circuit/p2p/${hostId}`;
+    expect(await rpc(phone, circuit, 'snapshot.get', {})).toMatchObject({ result: { phone: true } });
+    // A lookup route cannot manufacture a paired-phone grant; disabling phones
+    // keeps guest routing alive and denies even a previously paired phone.
+    phoneEnabled = false; connector.disablePhone(); await connector.advertise();
+    await expect(rpc(phone, circuit, 'snapshot.get', {})).rejects.toThrow();
+    expect(await read(1)).toStrictEqual({ transport: 'fixture', authorized: false });
+    const falseOwner = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+    const falseRoute = await guests[0]!.open({ ...target, ownerId: falseOwner });
+    observations.push({ step: 'false-owner-pin', status: falseRoute.status });
+    expect(falseRoute.status).toBe('unavailable');
+    // Registering under an attacker identity never overwrites the pinned owner's key.
+    const attacker = await newPhone();
+    const register = await attacker.dialProtocol(multiaddr(address), shareAdmissionProtocol);
+    register.send(encodeCompanionFrame({ v: 1, handles })); await register.close();
+    expect(await readFirstCompanionFrame(register)).toStrictEqual({ v: 1, status: 'ready' });
+    register.abort(new Error('Fixture finished'));
+    expect(await read(0)).toStrictEqual({ transport: 'fixture', authorized: false });
+    handles.splice(0); await connector.advertise();
+    const withdrawn = await guests[0]!.open(target);
+    observations.push({ step: 'withdrawal', status: withdrawn.status });
+    expect(withdrawn.status).toBe('unavailable');
+    handles.push(target.handle); await connector.advertise();
+    expect(await read(0)).toStrictEqual({ transport: 'fixture', authorized: false });
+    await connector.stop(); await relay.stop();
+    relay = await createCompanionRelay({ key: relayKey, listen });
+    expect(relay.peerId.toString()).toBe(pinnedRelay.peerId);
+    const restarted = await guests[0]!.open(target);
+    observations.push({ step: 'stable-relay-restart-before-advertisement', status: restarted.status });
+    expect(restarted.status).toBe('unavailable');
+    await connector.start(pinnedRelay.origin, pinnedRelay.peerId);
+    expect(await read(0)).toStrictEqual({ transport: 'fixture', authorized: false });
+    expect(await read(1)).toStrictEqual({ transport: 'fixture', authorized: false });
+    // Normal reconnect also re-advertises without changing the handle.
+    await relay.stop();
+    await expect.poll(() => connector.connected, { timeout: 5000 }).toBe(false);
+    expect(statuses.at(-1)).toBe('unavailable');
+    relay = await createCompanionRelay({ key: relayKey, listen });
+    await expect.poll(() => statuses.at(-1), { timeout: 12000 }).toBe('ready');
+    await expect.poll(() => connector.connected, { timeout: 12000 }).toBe(true);
+    expect(await read(1)).toStrictEqual({ transport: 'fixture', authorized: false });
+    await routeEvidence('recovery', { protocols: { shareAdmissionProtocol, shareRendezvousProtocol },
+      relayPinStable: relay.peerId.toString() === pinnedRelay.peerId, sameHandle: handles[0] === target.handle,
+      independentGuests: new Set(accepted).size, pairedPhoneRegression: 'passed', phoneDisableIsolation: 'passed',
+      applicationAuthorization: 'not granted by routing; fixture endpoint only', observations });
+  }, 40_000);
+
+  it('enforces routing capacity and leases over authenticated relay streams without losing saved handles', async () => {
+    let now = 1;
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws', now: () => now });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!;
+    const ownerKey = await generateKeyPair('Ed25519'); const ownerId = peerIdFromPrivateKey(ownerKey).toString();
+    const other = await newPhone(); const guest = await newPhone();
+    const handles = Array.from({ length: 5001 }, (_, index) => String(index).padStart(32, 'a'));
+    const statuses: string[] = [];
+    const connector = new CompanionOutboundConnector(ownerKey, { grants: [], pairingInvitations: () => [] } as unknown as CompanionGateway, {
+      sharing: { handles: () => [...handles], status: value => statuses.push(value) },
+    }); stops.push(() => connector.stop());
+    const exchange = async (node: Libp2p, registration: boolean, payload: unknown) => {
+      const stream = await node.dialProtocol(address, registration ? shareAdmissionProtocol : shareRendezvousProtocol);
+      stream.maxWriteBufferLength = 192 * 1024 + 4;
+      try { stream.send(encodeCompanionFrame(payload)); await stream.close(); return await readFirstCompanionFrame(stream); }
+      finally { stream.abort(new Error('Fixture complete')); }
+    };
+    const observations: { step: string; result: unknown }[] = [];
+    const register = async (node: Libp2p, value: string[]) => { const result = await exchange(node, true, { v: 1, handles: value }); observations.push({ step: 'registration', result }); return result; };
+    const lookup = async (handle: string) => { const result = await exchange(guest, false, { v: 1, ownerId, handle }); observations.push({ step: 'lookup', result }); return result; };
+    const port = address.toString().match(/\/tcp\/(\d+)/)![1];
+    await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
+    expect(statuses.at(-1)).toBe('capacity');
+    expect(await register(other, ['b'.repeat(32)])).toStrictEqual({ v: 1, status: 'capacity' });
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'ready' });
+    expect(await lookup(handles[4999]!)).toStrictEqual({ v: 1, status: 'ready' });
+    expect(await lookup(handles[5000]!)).toStrictEqual({ v: 1, status: 'unavailable' });
+    now += 120_000;
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'unavailable' });
+    handles.splice(1); await connector.advertise();
+    expect(statuses.at(-1)).toBe('ready');
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'ready' });
+    const original = handles[0]!; handles.splice(0); await connector.advertise();
+    expect(statuses.at(-1)).toBe('ready');
+    expect(await lookup(original)).toStrictEqual({ v: 1, status: 'unavailable' });
+    await routeEvidence('capacity-and-leases', { requestedOwnerHandles: 5001, globalCapacity: 5000, ownerRoutingStatuses: statuses, observations });
+  }, 15000);
+
+  it('reports unsupported guest protocols and rejects oversized or secret-bearing relay requests', async () => {
+    const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws' });
+    stops.push(() => relay.stop());
+    const address = relay.getMultiaddrs()[0]!;
+    const port = address.toString().match(/\/tcp\/(\d+)/)![1];
+    const pinnedRelay = { origin: `ws://127.0.0.1:${port}`, peerId: relay.peerId.toString() };
+    const guest = new GuestConversationTransport(await generateKeyPair('Ed25519'), pinnedRelay); stops.push(() => guest.stop());
+    const ownerId = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
+    const node = await newPhone();
+    const exchange = async (payload: unknown) => {
+      const stream = await node.dialProtocol(address, shareRendezvousProtocol);
+      try { stream.send(encodeCompanionFrame(payload)); await stream.close(); return await readFirstCompanionFrame(stream); }
+      finally { stream.abort(new Error('Fixture complete')); }
+    };
+    expect(await exchange({ v: 99, ownerId, handle: 'a'.repeat(32) })).toStrictEqual({ v: 1, status: 'upgradeRequired' });
+    await expect(exchange({ v: 1, ownerId, handle: 'a'.repeat(32), credential: 'redacted-fixture-only' })).rejects.toThrow();
+    const oversized = await node.dialProtocol(address, shareRendezvousProtocol);
+    const header = new Uint8Array(4); new DataView(header.buffer).setUint32(0, 4097); oversized.send(header);
+    await expect.poll(() => oversized.status, { timeout: 1000 }).not.toBe('open');
+    await relay.unhandle(shareRendezvousProtocol);
+    expect((await guest.open({ relay: pinnedRelay, ownerId, handle: 'a'.repeat(32) })).status).toBe('upgradeRequired');
+    expect((await guest.open({ relay: { ...pinnedRelay, peerId: ownerId }, ownerId, handle: 'a'.repeat(32) })).status).toBe('invalid');
+  }, 15000);
+
   it('rejects oversized rendezvous headers before reading their body', async () => {
     const relay = await createCompanionRelay({ key: await generateKeyPair('Ed25519'), listen: '/ip4/127.0.0.1/tcp/0/ws' });
     stops.push(() => relay.stop());
@@ -310,4 +470,12 @@ async function resolveCode(phone: Libp2p, relayAddress: string, code: string): P
       return null;
     } finally { stream.abort(new Error('Complete')); }
   } catch { return null; }
+}
+
+/** Optional retained evidence from the real isolated wire workflow, without pins/handles/secrets. */
+async function routeEvidence(name: string, observations: unknown) {
+  const directory = process.env.APP_SHARE_ROUTE_EVIDENCE;
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, `${name}.json`), `${JSON.stringify(observations, null, 2)}\n`);
 }

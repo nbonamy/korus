@@ -6,6 +6,15 @@ import type { AgentBackendDriver, BackendSendResult } from '../backend-driver';
 import { claudeBackendCapabilities, codexBackendCapabilities } from '../backend-capabilities';
 
 describe('agent chat service', () => {
+  it('delivers approved guest text verbatim without invoking app slash commands', async () => {
+    const snapshot = createInitialSnapshot();
+    const driver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'bound' }, messageId: 'canonical' }));
+    driver.tryHandlePromptCommand = vi.fn(() => Promise.resolve({ backendSession: { kind: 'codex' as const, threadId: 'wrong' } }));
+    sendAgentPrompt(snapshot, driver, 'agent-dina', '  /review exact guest text  ', undefined, vi.fn(), { plainText: true });
+    expect(driver.tryHandlePromptCommand).not.toHaveBeenCalled();
+    expect(driver.sendPrompt).toHaveBeenCalledWith(snapshot.agents[0], '  /review exact guest text  ');
+    await flushMicrotasks();
+  });
   it.each([{ interactive: true, planMode: true }, { interactive: false, planMode: true }, { interactive: true, planMode: false }, { interactive: true, planMode: undefined }])('adds hidden choice guidance only for interactive Plan-mode turns: %j', ({ interactive, planMode }) => {
     const snapshot = createInitialSnapshot();
     snapshot.general.useInteractivePlans = interactive;

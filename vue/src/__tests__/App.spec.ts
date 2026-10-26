@@ -10,6 +10,7 @@ import { setElectronTestClient } from '../test/client';
 import { ElMessage } from 'element-plus';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { deferred } from './app-state-test-harness';
+import { createClientApiMock } from '../test/client-api-mock';
 
 afterEach(() => {
   delete window.app;
@@ -100,15 +101,12 @@ describe('App', () => {
 
   it('opens a plan review from a backend domain event without a panel request', async () => {
     const snapshot = createInitialSnapshot();
-    let emitEvent!: (event: import('@workspace/core/contracts').MainToRendererEvent) => void;
-    setElectronTestClient({
-      getSnapshot: vi.fn().mockResolvedValue(snapshot),
-      onEvent: (listener) => { emitEvent = listener; return () => undefined; },
-    });
+    const { api, emit } = createClientApiMock(snapshot);
+    setElectronTestClient(api);
     const wrapper = mount(App);
     await flushPromises();
 
-    emitEvent({
+    emit({
       seq: 1, occurredAt: '2026-09-16T00:00:00.000Z',
       agentId: snapshot.activeAgentId!, turnId: 'turn-plan',
       type: 'plan.readyForReview',

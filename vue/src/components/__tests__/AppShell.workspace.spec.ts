@@ -68,6 +68,35 @@ it('opens branch history from the first Git menu action in the real shell and cl
 });
 
 describe('AppShell workspace and plans', () => {
+  it.each([false, true])('keeps shared Quick Chats out of local workspace restoration and persistence (saved: %s)', async savedShared => {
+    const snapshot = createInitialSnapshot();
+    const shared = snapshot.agents[0]!;
+    shared.sharedConversation = { joinId: 'saved-shared-chat' };
+    delete shared.backendSession;
+    const local = snapshot.agents[1]!;
+    const saved = { tabs: [{ id: 'file:markdown:saved', title: 'Local notes', documentId: 'saved' }], activeTab: 'file:markdown:saved', open: true, width: 420, filesPaneOpen: false, filesPaneWidth: 280 };
+    const update = vi.fn().mockResolvedValue({ tabs: [] });
+    const read = vi.fn().mockResolvedValue({ content: '# Local notes' });
+    setElectronTestClient({
+      getDocumentWorkspaces: vi.fn().mockResolvedValue({ ...(savedShared ? { [shared.id]: saved } : {}), [local.id]: saved }),
+      updateDocumentWorkspace: update,
+      readWorkspaceDocument: read,
+    });
+    const wrapper = mountShell({ snapshot });
+    try {
+      await flushPromises(); await settlePersistence();
+      expect(read.mock.calls.some(([agentId]) => agentId === shared.id)).toBe(false);
+      expect(read).toHaveBeenCalledWith(local.id, 'file:markdown:saved');
+      expect(update.mock.calls.some(([agentId]) => agentId === shared.id)).toBe(false);
+      await wrapper.setProps({ activeAgent: local }); await flushPromises();
+      await wrapper.setProps({ activeAgent: shared }); await flushPromises();
+      await settlePersistence();
+      expect(update.mock.calls.some(([agentId]) => agentId === shared.id)).toBe(false);
+    } finally { wrapper.unmount(); }
+    await flushPromises();
+    expect(update.mock.calls.some(([agentId]) => agentId === shared.id)).toBe(false);
+  });
+
   it('persists browser navigation and reopens primary and additional browsers in a fresh workspace', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     let stored: import('@workspace/core/document-workspace').DocumentWorkspace = {

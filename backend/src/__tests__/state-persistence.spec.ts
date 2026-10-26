@@ -27,6 +27,17 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it('retains a guest display name saved through settings update after restart', async () => {
+    const home = await tempHome();
+    const store = new AppStateStore(home);
+    const server = new AppBackendServer({ version: 'test', snapshot: createInitialSnapshot(), saveSnapshot: snapshot => store.save(snapshot) });
+    try {
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'save-name', method: backendMethods.settingsUpdate, params: { input: { general: { guestDisplayName: ' Nicolas ' } } } });
+      expect(result).not.toHaveProperty('error');
+    } finally { await server.close(); }
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.guestDisplayName).toBe('Nicolas');
+  });
   it('retains read revisions across a fresh store restart', async () => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
@@ -308,11 +319,13 @@ describe('state persistence', () => {
     snapshot.agents[0].sessionKind = 'quickChat';
     snapshot.agents[0].name = null;
     snapshot.agents[0].folder = null;
+    snapshot.agents[0].sharedConversation = { joinId: 'a'.repeat(64) };
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
     expect(restored.agents[0]).toMatchObject({
       sessionKind: 'quickChat',
+      sharedConversation: { joinId: 'a'.repeat(64) },
       name: null,
       folder: null,
     });
@@ -1397,7 +1410,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, codeReviewInstructions: '', autoResumeAfterLimit: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, guestDisplayName: '', codeReviewInstructions: '', autoResumeAfterLimit: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

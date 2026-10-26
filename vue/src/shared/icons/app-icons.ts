@@ -36,6 +36,7 @@ export {
   IconCode as CodeIcon,
   IconLayoutDashboard as DashboardIcon,
   IconCopy as CopyIcon,
+  IconShare as ShareIcon,
   IconDotsVertical as DotsVerticalIcon,
   IconDownload as DownloadIcon,
   IconEye as EyeIcon,

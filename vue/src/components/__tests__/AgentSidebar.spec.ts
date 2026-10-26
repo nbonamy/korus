@@ -546,11 +546,11 @@ describe('AgentSidebar sessions', () => {
     expect(wrapper.get('.agent-sidebar__meta strong').text()).toBe('main');
   });
 
-  it('does not append repository names to duplicate unnamed branch titles', () => {
+  it.each([null, 'Sharing'])('keeps matching %s titles literal across repositories', (name) => {
     const computerUseAgent: Agent = {
       ...agents[0]!,
       id: 'agent-computer-use',
-      name: null,
+      name,
       folder: '~/src/computer-use',
       workspace: {
         kind: 'git',
@@ -565,7 +565,7 @@ describe('AgentSidebar sessions', () => {
     };
     const wrapper = mount(AgentSidebar, {
       props: {
-        agents: [{ ...agents[0]!, name: null }, computerUseAgent],
+        agents: [{ ...agents[0]!, name }, computerUseAgent],
         activeAgentId: 'agent-dina',
         teamName: `${product.name}`,
       },
@@ -573,7 +573,7 @@ describe('AgentSidebar sessions', () => {
     });
 
     expect(wrapper.findAll('.agent-sidebar__meta strong').map((title) => title.text()))
-      .toStrictEqual(['main', 'main']);
+      .toStrictEqual([name ?? 'main', name ?? 'main']);
   });
 
   it('renders persisted repository collapse state and emits controlled updates', async () => {

@@ -8,6 +8,7 @@
     <div class="team-rail__header" />
 
     <div class="team-rail__body">
+
       <button
         v-if="!phoneScope"
         class="team-rail__backlog"

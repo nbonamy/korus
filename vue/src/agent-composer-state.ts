@@ -281,7 +281,7 @@ export function createAgentComposerState(options: {
   }
 
   async function loadActive(agentId = snapshot().activeAgentId): Promise<void> {
-    if (!agentId) return;
+    if (!agentId || snapshot().agents.find(agent => agent.id === agentId)?.sharedConversation) return;
     const key = `${agentId}:${snapshot().agents.find(agent => agent.id === agentId)?.backend}`;
     const existing = loadsByAgentId.get(key);
     if (existing) return existing;

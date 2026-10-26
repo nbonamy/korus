@@ -50,6 +50,7 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   autoResumeAfterLimit: true,
   sessionCompressionWarningEnabled: true,
   repositoryIcons: {},
+  guestDisplayName: '',
   appshots: { ...defaultAppshotSettings },
   plugins: { ...defaultPluginSettings },
 };
@@ -170,6 +171,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     autoResumeAfterLimit: value.autoResumeAfterLimit !== false,
     sessionCompressionWarningEnabled: value.sessionCompressionWarningEnabled !== false,
     repositoryIcons: normalizeRepositoryIcons(value.repositoryIcons),
+    guestDisplayName: (typeof value.guestDisplayName === 'string' ? value.guestDisplayName : '').replace(/[\p{Cc}\p{Cf}]/gu, '').trim().slice(0, 80),
     appshots: normalizeAppshotSettings(value.appshots),
     plugins: normalizePluginSettings(value.plugins),
   };
