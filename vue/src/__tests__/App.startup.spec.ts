@@ -35,14 +35,15 @@ describe('app startup', () => {
     try {
       await flushPromises();
       await wrapper.get('button[aria-label="Join with invite…"]').trigger('click'); await flushPromises();
-      const invitation = wrapper.get<HTMLTextAreaElement>('#guest-invitation');
+      const invitation = wrapper.get<HTMLInputElement>('#guest-invitation');
+      expect(invitation.element.tagName).toBe('INPUT');
       await invitation.setValue('KORUS1.partially-entered');
       await vi.advanceTimersByTimeAsync(1500); await flushPromises();
       expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(false);
-      expect(wrapper.get<HTMLTextAreaElement>('#guest-invitation').element.value).toBe('KORUS1.partially-entered');
+      expect(wrapper.get<HTMLInputElement>('#guest-invitation').element.value).toBe('KORUS1.partially-entered');
       expect(api.guestConversationControl.mock.calls.some(([input]) => input.action === 'prepare')).toBe(false);
       await invitation.setValue('KORUS1.complete-invitation');
-      await wrapper.findAll('button').find(button => button.text() === 'Join conversation')!.trigger('click'); await flushPromises();
+      await invitation.trigger('keyup', { key: 'Enter' }); await flushPromises();
       expect(api.guestConversationControl).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepare', link: 'KORUS1.complete-invitation' }));
       expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(true);
     } finally { wrapper.unmount(); vi.useRealTimers(); }

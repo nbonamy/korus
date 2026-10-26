@@ -4,7 +4,7 @@
       <el-input id="guest-display-name" v-model="name" autocomplete="nickname" :maxlength="80" :disabled="pending" @keyup.enter="submit" />
     </FormField>
     <FormField v-else :label="t('guest.invitation')" label-for="guest-invitation">
-      <el-input id="guest-invitation" v-model="invitation" type="textarea" :rows="3" :maxlength="2048" :disabled="pending" />
+      <el-input id="guest-invitation" v-model="invitation" :maxlength="2048" :disabled="pending" @keyup.enter="submit" />
     </FormField>
     <p v-if="saveFailed" role="alert">{{ t('guest.displayNameSaveFailed') }}</p>
     <p v-else-if="failed" role="alert">{{ t('guest.storageFailed') }}</p>
