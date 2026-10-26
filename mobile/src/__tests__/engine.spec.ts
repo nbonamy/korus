@@ -138,18 +138,27 @@ describe('companion engine', () => {
       expect(connect).toHaveBeenCalledTimes(2);
     } finally { finish?.(); engine.dispose(); vi.useRealTimers(); }
   });
-  it('restores pairing while locked without connecting or reading until the screen is unlocked', async () => {
-    const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
+  it.each([true, false])('returns from a long background launch to a saved laptop or pairing (paired=%s)', async paired => {
+    vi.useFakeTimers();
+    const connector = paired ? createDemoConnector() : unpaired(); const connect = vi.spyOn(connector, 'connect');
     const engine = createEngine({ connector, initialActive: false, post: () => {} });
     try {
       await engine.start();
       expect(engine.snapshot().startup).toBe('ready');
       expect(connect).not.toHaveBeenCalled();
       expect(engine.snapshot().canSend).toBe(false);
+      await engine.dispatch({ type: 'activity', active: false });
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(engine.snapshot().connection).toBe('unpaired');
       await engine.dispatch({ type: 'activity', active: true });
-      expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
-      expect(engine.snapshot().connection).toBe('connected');
-    } finally { engine.dispose(); }
+      if (paired) {
+        expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
+        expect(engine.snapshot().connection).toBe('connected');
+      } else {
+        expect(connect).not.toHaveBeenCalled();
+        expect(engine.snapshot()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
+      }
+    } finally { engine.dispose(); vi.useRealTimers(); }
   });
   it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;

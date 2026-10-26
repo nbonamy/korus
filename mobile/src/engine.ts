@@ -189,7 +189,11 @@ export function createEngine(port: EnginePort) {
   let activityEpoch = 0;
   // The state starts out foreground; tell it when the app was launched in the background.
   if (!foreground) void state.setActive(false);
-  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => { state.disconnect(); return port.connector.suspend?.(); } });
+  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => {
+    // An unopened or revoked connection is still a pairing screen, even after a long background stay.
+    if (state.status.value !== 'unpaired' && state.status.value !== 'revoked') state.disconnect();
+    return port.connector.suspend?.();
+  } });
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
