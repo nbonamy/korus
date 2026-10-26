@@ -211,12 +211,14 @@ describe('AgentHeader', () => {
       diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, commits: [], ...catalog } as unknown as AgentGitStatus['diffCatalog'], updatedAt: '2026-06-05T00:00:00.000Z',
     });
     const withKinds = gitStatus({
+      commits: [{ sha: 'abcdef123456', shortSha: 'abcdef1', subject: 'ship it', ...stats(5, 1, 1) }],
       uncommitted: { ...stats(43, 4, 4), byKind: byKind(stats(30, 4, 2), stats(12, 0, 1), stats(0, 0, 0), stats(1, 0, 1)) },
       unstaged: { ...stats(1, 0, 1), byKind: byKind(stats(0, 0, 0), stats(0, 0, 0), stats(1, 0, 1)) },
       staged: stats(3, 2, 1),
     });
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, withKinds);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    expect(wrapper.getComponent({ name: 'AppMenu' }).element.lastElementChild?.querySelector('.app-menu__label')?.textContent).toBe('Commits');
     const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.id === 'kinds-heading' || item.id.startsWith('kind:'));
     const rows = menuRows;
     expect(rows().map(row => [row.id, row.label, row.description])).toStrictEqual([

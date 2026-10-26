@@ -95,6 +95,8 @@ const menuItems = computed<AppMenuItem[]>(() => {
       value: summaryFor(target),
     };
   });
+  const kinds = kindMenuItems(summaryFor(selectedTarget.value));
+  if (kinds.length > 0) items.push({ id: 'separator-kinds', type: 'separator' }, ...kinds);
   const commits = catalog?.commits ?? [];
   if (commits.length > 0) {
     items.push({ id: 'separator-commits', type: 'separator' });
@@ -118,8 +120,6 @@ const menuItems = computed<AppMenuItem[]>(() => {
       }),
     });
   }
-  const kinds = kindMenuItems(summaryFor(selectedTarget.value));
-  if (kinds.length > 0) items.push({ id: 'separator-kinds', type: 'separator' }, ...kinds);
   return items;
 });
 
