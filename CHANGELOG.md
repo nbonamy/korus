@@ -4,6 +4,30 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.43.0] - 2026-10-26
+
+### New features
+
+- **Conversation sharing:** Invite collaborators with a link or code to follow a
+  conversation and suggest prompts for you to edit and send. Works across agent
+  providers; stop sharing to revoke access.
+- **Start a Mission from chat:** Use `/mission` or **+ → Mission** to turn your
+  conversation into a Mission brief.
+- **Delete repository:** Remove a local repository, its linked worktrees, and all
+  associated agents across teams from the sidebar, with typed-name confirmation.
+- **Changes by file type:** See code, tests, documentation, and other changes
+  separately, including the last turn. Click a category to open its review.
+
+### Improvements and fixes
+
+- Keep Mission finding-reporting tools available across stage changes and open
+  the correct Mission lead when launching a review from mobile.
+- Remove older completed Claude tasks from the execution plan while keeping
+  unfinished work visible.
+- Use compact, automatically focused inputs for joining conversations, renaming
+  agents, and continuing on a branch.
+- Open the worktree setup guide directly from Settings.
+
 ## [0.42.0] - 2026-10-25
 
 ### New features
