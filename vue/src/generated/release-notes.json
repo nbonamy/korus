@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.41.1",
+  "currentVersion": "0.42.0",
   "releases": [
+    {
+      "version": "0.42.0",
+      "releasedAt": "2026-10-25",
+      "sourceSha256": "3e3acc467d5d434d2e18a1d6504bba1a99aab13f631825de13c0875ca034838f",
+      "markdown": "### New features\n\n- Connect GitLab.com alongside GitHub, using a direct connection or an existing\n  GitLab CLI login. Discover and clone projects from desktop and mobile, browse\n  issues and merge requests, and start agent work or Missions from them.\n- Create draft GitLab merge requests and follow them through merge or closure\n  and worktree cleanup. Direct GitLab connections also make the official GitLab\n  MCP tools available to agents.\n- Compare estimated API costs in Analytics, with USD trends and breakdowns by\n  provider or model. Estimates use available usage and historical model prices;\n  usage without enough pricing evidence stays unavailable rather than counting\n  as free. Explore input/output token ratios alongside token totals.\n- Follow missions from the mobile apps: see each mission's stage and ticket\n  progress, open the agent working on a ticket or the one leading the mission and talk\n  to it, then return to the mission. Accept a finished ticket and move a completed\n  implementation on to review from the phone, then read the review's findings,\n  choose which to fix, and launch remediation. Shipping stays on the desktop.\n- Close every artifact tab at once from the workspace tab menu.\n\n### Improvements and fixes\n\n- Keep Mission delivery and worktree cleanup in sync: merging marks the repository\n  as shipped, closes agents from a removed worktree, and remembers that the\n  worktree no longer needs deleting when the Mission is removed.\n- Restore the live Working timer for Codex turns when the provider omits a start\n  timestamp, and retain it through subsequent updates.\n- Clear Claude's completed execution plan when the next turn starts, while keeping\n  unfinished tasks visible.\n- Clone GitHub and GitLab repositories over SSH first, with an HTTPS fallback and\n  clearer authentication failures.\n- Match repository work by its full remote identity, keeping projects with the\n  same name separate and showing work from the repository's own provider.\n- Recover phone connections faster after relay interruptions and let users open\n  their saved connections from the unreachable-computer screen.\n- Display conversation images on mobile when their Markdown paths use angle brackets."
+    },
     {
       "version": "0.41.1",
       "releasedAt": "2026-10-24",

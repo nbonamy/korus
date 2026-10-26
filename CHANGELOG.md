@@ -4,13 +4,43 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.42.0] - 2026-10-25
+
 ### New features
 
+- Connect GitLab.com alongside GitHub, using a direct connection or an existing
+  GitLab CLI login. Discover and clone projects from desktop and mobile, browse
+  issues and merge requests, and start agent work or Missions from them.
+- Create draft GitLab merge requests and follow them through merge or closure
+  and worktree cleanup. Direct GitLab connections also make the official GitLab
+  MCP tools available to agents.
+- Compare estimated API costs in Analytics, with USD trends and breakdowns by
+  provider or model. Estimates use available usage and historical model prices;
+  usage without enough pricing evidence stays unavailable rather than counting
+  as free. Explore input/output token ratios alongside token totals.
 - Follow missions from the mobile apps: see each mission's stage and ticket
   progress, open the agent working on a ticket or the one leading the mission and talk
   to it, then return to the mission. Accept a finished ticket and move a completed
   implementation on to review from the phone, then read the review's findings,
   choose which to fix, and launch remediation. Shipping stays on the desktop.
+- Close every artifact tab at once from the workspace tab menu.
+
+### Improvements and fixes
+
+- Keep Mission delivery and worktree cleanup in sync: merging marks the repository
+  as shipped, closes agents from a removed worktree, and remembers that the
+  worktree no longer needs deleting when the Mission is removed.
+- Restore the live Working timer for Codex turns when the provider omits a start
+  timestamp, and retain it through subsequent updates.
+- Clear Claude's completed execution plan when the next turn starts, while keeping
+  unfinished tasks visible.
+- Clone GitHub and GitLab repositories over SSH first, with an HTTPS fallback and
+  clearer authentication failures.
+- Match repository work by its full remote identity, keeping projects with the
+  same name separate and showing work from the repository's own provider.
+- Recover phone connections faster after relay interruptions and let users open
+  their saved connections from the unreachable-computer screen.
+- Display conversation images on mobile when their Markdown paths use angle brackets.
 
 ## [0.41.1] - 2026-10-24
 
