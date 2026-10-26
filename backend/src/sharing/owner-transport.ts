@@ -11,7 +11,7 @@ export type ShareOwnerOptions = {
   /** Dedicated application gateway. A circuit/handle is never application authorization. */
   accept?(stream: Stream, peerId: string): Promise<void>;
 };
-const answer = z.object({ v: z.literal(1), status: z.enum(['ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired']) }).strict();
+const answer = z.object({ v: z.literal(2), status: z.enum(['ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired']) }).strict();
 export const unsupportedShareProtocol = (error: unknown) => error instanceof Error && error.name === 'UnsupportedProtocolError';
 
 /** Uses the existing owner reservation, without installing any phone control API. */
@@ -54,7 +54,7 @@ export class ShareOwnerTransport {
       try {
         stream.maxReadBufferLength = 4096; stream.maxWriteBufferLength = shareAdmissionFrameLimit + 4;
         stream.inactivityTimeout = 10_000;
-        await sendWithBackpressure(stream, encodeCompanionFrame({ v: 1, handles }));
+        await sendWithBackpressure(stream, encodeCompanionFrame({ v: 2, handles }));
         await stream.close({ signal: AbortSignal.timeout(5000) });
         status = answer.parse(await readFirstCompanionFrame(stream, 4096)).status;
         if (status === 'ready' && desired.length > handles.length) status = 'capacity';

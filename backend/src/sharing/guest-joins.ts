@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys';
 import type { PrivateKey } from '@libp2p/interface';
 import { z } from 'zod';
+import { companionPeerIdPattern } from '@workspace/core/companion-relay';
 import { product } from '@workspace/core/product';
 import { decodeConversationInvitation, decodeConversationShareLink, encodeConversationShareLink, type ConversationShareLink, type ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestJoinControl, GuestJoinState, GuestJoinView } from '@workspace/core/guest-navigation';
@@ -21,13 +22,13 @@ const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('withdraw'), id: idSchema, proposalId: z.string().uuid() }).strict(),
 ]);
 const titleSchema = z.string().min(1).max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value));
-const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, title: titleSchema.optional(), teamId: z.string().min(1).max(200).optional(), binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
-const storeSchema = z.object({ v: z.literal(1), identity: z.string().max(4096), joins: z.array(recordSchema) }).strict();
-type JoinRecord = { id: string; link: string; name: string; title?: string; teamId?: string; binding?: string };
-type Store = { v: 1; identity: string; joins: JoinRecord[] };
+const recordSchema = z.object({ id: idSchema, link: z.string().max(2048), name: nameSchema, title: titleSchema.optional(), teamId: z.string().min(1).max(200).optional(), ownerId: z.string().regex(companionPeerIdPattern).optional(), binding: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const storeSchema = z.object({ v: z.literal(2), identity: z.string().max(4096), joins: z.array(recordSchema) }).strict();
+type JoinRecord = { ownerId?: string; id: string; link: string; name: string; title?: string; teamId?: string; binding?: string };
+type Store = { v: 2; identity: string; joins: JoinRecord[] };
 type Session = { link: ConversationShareLink; view: GuestJoinView; client?: GuestConversationClient; transport?: GuestConversationTransport; connecting?: Promise<void>; generation: number; timer?: ReturnType<typeof setTimeout>; retries: number; stopping?: Promise<void> };
 export type GuestJoinsOptions = { directory: string; relay?: ShareRelay };
-const keyFor = (link: ConversationShareLink) => createHash('sha256').update(JSON.stringify([link.relay, link.ownerId, link.handle])).digest('hex');
+const keyFor = (link: ConversationShareLink) => createHash('sha256').update(JSON.stringify([link.relay, link.handle])).digest('hex');
 const emptyView = (id: string, name = '', title?: string): GuestJoinView => ({ id, name, title: title ?? 'Shared conversation', status: 'needsName', participant: null, target: null, frame: null });
 
 /** Installed guest authority. One protected app identity, durable pins/authorization, memory-only transcripts. */
@@ -66,14 +67,11 @@ export class GuestJoins {
       if (action.action === 'prepare') {
         const link = decodeConversationInvitation(action.link, this.relay);
         if (!link) {
-          const version = /^KORUS(\d+)\./.exec(action.link.trim())?.[1];
-          let upgrade = Boolean(version && version !== '1');
-          try { const url = new URL(action.link); upgrade = url.protocol === `${product.protocolScheme}:` && url.hostname === 'share' && /^\d+$/.test(url.searchParams.get('v') ?? '') && url.searchParams.get('v') !== '1'; } catch { /* invalid */ }
-          this.selected = { ...emptyView('invalid'), status: upgrade ? 'upgradeRequired' : 'invalid' }; return this.state();
+          this.selected = { ...emptyView('invalid'), status: 'invalid' }; return this.state();
         }
         const id = keyFor(link); let session = this.sessions.get(id);
         const record = this.saved!.joins.find(record => record.id === id);
-        if (!session) { session = { link, view: emptyView(id, record?.name, record?.title), generation: 0, retries: 0 }; this.sessions.set(id, session); }
+        if (!session) { session = { link: { ...link, ...(record?.ownerId ? { ownerId: record.ownerId } : {}) }, view: emptyView(id, record?.name, record?.title), generation: 0, retries: 0 }; this.sessions.set(id, session); }
         // A substituted credential cannot replace a previously saved authorization for the same route.
         if (session.link.credential !== link.credential) { this.selected = { ...emptyView('invalid'), status: 'invalid' }; return this.state(); }
         session.view.teamId ??= record?.teamId ?? action.teamId ?? currentTeamId;
@@ -86,7 +84,7 @@ export class GuestJoins {
         let session = this.sessions.get(record.id);
         if (!session) {
           const link = decodeConversationShareLink(record.link, this.relay); if (!link) throw new Error('Saved relay is unsupported.');
-          session = { link, view: { ...emptyView(record.id, record.name, record.title), teamId: record.teamId ?? currentTeamId }, generation: 0, retries: 0 }; this.sessions.set(record.id, session);
+          session = { link: { ...link, ownerId: record.ownerId }, view: { ...emptyView(record.id, record.name, record.title), teamId: record.teamId ?? currentTeamId }, generation: 0, retries: 0 }; this.sessions.set(record.id, session);
         }
         this.select(session); this.connect(session);
       } else if (action.action === 'join') {
@@ -154,6 +152,15 @@ export class GuestJoins {
       const opened = await transport.open(session.link);
       if (!current()) { if (opened.status === 'ready') opened.stream.abort(new Error('Guest join cancelled.')); await transport.stop(); return; }
       if (opened.status !== 'ready') { session.view.status = opened.status === 'upgradeRequired' ? 'upgradeRequired' : opened.status === 'capacity' || opened.status === 'rateLimited' ? 'busy' : 'unavailable'; return; }
+      try {
+        await this.serial(async () => {
+          if (!current()) return;
+          if (session.link.ownerId === opened.ownerId) return;
+          await this.write({ ...this.saved!, joins: this.saved!.joins.map(record => record.id === session.view.id ? { ...record, ownerId: opened.ownerId } : record) });
+          session.link.ownerId = opened.ownerId;
+        });
+      } catch { await transport.stop(); session.view.status = 'storageUnavailable'; return; }
+      if (!current()) { await transport.stop(); return; }
       const client = new GuestConversationClient(opened.stream, () => {
         if (current() && client.snapshot) session.view.frame = client.snapshot;
         if (current() && client.proposalState) session.view.proposalState = client.proposalState;
@@ -227,7 +234,13 @@ export class GuestJoins {
       const file = path.join(this.options.directory, 'state.json');
       try {
         const stats = await lstat(file); if (!stats.isFile() || stats.isSymbolicLink() || stats.size > 16 * 1024 * 1024) throw new Error(); await chmod(file, 0o600);
-        const saved = storeSchema.parse(JSON.parse(await readFile(file, 'utf8')));
+        const raw = JSON.parse(await readFile(file, 'utf8')) as unknown;
+        // Legacy joins are intentionally discarded; retain only the protected app identity.
+        if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1 && 'identity' in raw && typeof raw.identity === 'string') {
+          this.key = privateKeyFromProtobuf(Buffer.from(raw.identity, 'base64'));
+          await this.write({ v: 2, identity: raw.identity, joins: [] }); return;
+        }
+        const saved = storeSchema.parse(raw);
         const seen = new Set<string>();
         for (const record of saved.joins) {
           const link = decodeConversationShareLink(record.link, this.relay); if (!link || keyFor(link) !== record.id || seen.has(record.id)) throw new Error(); seen.add(record.id);
@@ -235,7 +248,7 @@ export class GuestJoins {
         this.key = privateKeyFromProtobuf(Buffer.from(saved.identity, 'base64')); this.saved = saved as Store;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        this.key = await generateKeyPair('Ed25519'); await this.write({ v: 1, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), joins: [] });
+        this.key = await generateKeyPair('Ed25519'); await this.write({ v: 2, identity: Buffer.from(privateKeyToProtobuf(this.key)).toString('base64'), joins: [] });
       }
     } catch { throw new Error('Guest storage is unavailable. Check local storage and try again.'); }
   }

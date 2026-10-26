@@ -13,11 +13,11 @@ import { shareGuestProtocol, shareHandlePattern, shareRendezvousProtocol, type S
 import type { ShareRelay } from '@workspace/core/conversation-sharing';
 import { unsupportedShareProtocol } from './owner-transport';
 
-type Route = { relay: ShareRelay; ownerId: string; handle: string };
-type OpenResult = { status: 'ready'; stream: Stream } | { status: Exclude<ShareRoutingStatus, 'ready'> | 'invalid' };
-const answer = z.object({ v: z.literal(1), status: z.enum(['ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired']) }).strict();
+type Route = { relay: ShareRelay; ownerId?: string; handle: string };
+type OpenResult = { status: 'ready'; stream: Stream; ownerId: string } | { status: Exclude<ShareRoutingStatus, 'ready'> | 'invalid' };
+const answer = z.object({ v: z.literal(2), ownerId: z.string().regex(companionPeerIdPattern).optional(), status: z.enum(['ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired']) }).strict();
 
-/** Narrow desktop guest entry: resolve routing, then Noise-authenticate the independently pinned owner.
+/** Narrow desktop guest entry: resolve routing, then Noise-authenticate the discovered owner, enforcing any previously saved owner pin.
  * The caller must authorize inside the resulting stream; no paired-phone/session API is exposed.
  */
 export class GuestConversationTransport {
@@ -28,34 +28,38 @@ export class GuestConversationTransport {
   async open(route: Route): Promise<OpenResult> {
     if (this.opening) return { status: 'unavailable' };
     if (route.relay.origin !== this.supportedRelay.origin || route.relay.peerId !== this.supportedRelay.peerId
-      || !companionPeerIdPattern.test(route.ownerId) || !shareHandlePattern.test(route.handle)) return { status: 'invalid' };
+      || (route.ownerId !== undefined && !companionPeerIdPattern.test(route.ownerId)) || !shareHandlePattern.test(route.handle)) return { status: 'invalid' };
     this.opening = true;
     try {
       const relay = multiaddr(relayAddress(this.supportedRelay.origin, this.supportedRelay.peerId)).toString();
-      const circuit = `${relay}/p2p-circuit/p2p/${route.ownerId}`;
-      if (this.ownerId !== route.ownerId) await this.stop();
       const node = this.node ?? await createLibp2p({ privateKey: this.key,
         transports: [webSockets(), circuitRelayTransport()], connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
         connectionManager: { maxConnections: 2, maxParallelDials: 1 },
         connectionGater: {
-          denyDialPeer: peer => ![route.ownerId, this.supportedRelay.peerId].includes(peer.toString()),
-          denyDialMultiaddr: address => ![relay, circuit].includes(address.toString()),
+          denyDialPeer: peer => ![this.ownerId, this.supportedRelay.peerId].includes(peer.toString()),
+          denyDialMultiaddr: address => ![relay, `${relay}/p2p-circuit/p2p/${this.ownerId}`].includes(address.toString()),
           denyInboundConnection: () => true,
         },
       });
-      this.node = node; this.ownerId = route.ownerId;
+      this.node = node;
       const lookup = await node.dialProtocol(multiaddr(relay), shareRendezvousProtocol, { signal: AbortSignal.timeout(10_000) });
-      let status;
+      let response;
       try {
         lookup.maxReadBufferLength = 4096; lookup.maxWriteBufferLength = 4096; lookup.inactivityTimeout = 10_000;
         // The credential is intentionally absent from the routing contract.
-        lookup.send(encodeCompanionFrame({ v: 1, ownerId: route.ownerId, handle: route.handle }));
+        lookup.send(encodeCompanionFrame({ v: 2, handle: route.handle }));
         await lookup.close({ signal: AbortSignal.timeout(5000) });
-        status = answer.parse(await readFirstCompanionFrame(lookup, 4096)).status;
+        response = answer.parse(await readFirstCompanionFrame(lookup, 4096));
       } finally { lookup.abort(new Error('Guest lookup finished.')); }
-      if (status !== 'ready') return { status };
+      if (response.status !== 'ready') return { status: response.status };
+      if (!response.ownerId || (route.ownerId && route.ownerId !== response.ownerId)) { await this.stop(); return { status: 'invalid' }; }
+      if (this.ownerId && this.ownerId !== response.ownerId) {
+        for (const connection of node.getConnections()) if (connection.remotePeer.toString() === this.ownerId) await connection.close();
+      }
+      const ownerId = response.ownerId; this.ownerId = ownerId;
+      const circuit = `${relay}/p2p-circuit/p2p/${ownerId}`;
       const stream = await node.dialProtocol(multiaddr(circuit), shareGuestProtocol, { signal: AbortSignal.timeout(10_000), runOnLimitedConnection: true });
-      return { status: 'ready', stream };
+      return { status: 'ready', stream, ownerId };
     } catch (error) {
       await this.stop();
       return { status: unsupportedShareProtocol(error) ? 'upgradeRequired' : 'unavailable' };

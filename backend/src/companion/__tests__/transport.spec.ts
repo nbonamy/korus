@@ -87,12 +87,12 @@ describe('encrypted companion circuit', () => {
     const falseOwner = peerIdFromPrivateKey(await generateKeyPair('Ed25519')).toString();
     const falseRoute = await guests[0]!.open({ ...target, ownerId: falseOwner });
     observations.push({ step: 'false-owner-pin', status: falseRoute.status });
-    expect(falseRoute.status).toBe('unavailable');
+    expect(falseRoute.status).toBe('invalid');
     // Registering under an attacker identity never overwrites the pinned owner's key.
     const attacker = await newPhone();
     const register = await attacker.dialProtocol(multiaddr(address), shareAdmissionProtocol);
-    register.send(encodeCompanionFrame({ v: 1, handles })); await register.close();
-    expect(await readFirstCompanionFrame(register)).toStrictEqual({ v: 1, status: 'ready' });
+    register.send(encodeCompanionFrame({ v: 2, handles })); await register.close();
+    expect(await readFirstCompanionFrame(register)).toStrictEqual({ v: 2, status: 'unavailable' });
     register.abort(new Error('Fixture finished'));
     expect(await read(0)).toStrictEqual({ transport: 'fixture', authorized: false });
     handles.splice(0); await connector.advertise();
@@ -143,23 +143,23 @@ describe('encrypted companion circuit', () => {
       finally { stream.abort(new Error('Fixture complete')); }
     };
     const observations: { step: string; result: unknown }[] = [];
-    const register = async (node: Libp2p, value: string[]) => { const result = await exchange(node, true, { v: 1, handles: value }); observations.push({ step: 'registration', result }); return result; };
-    const lookup = async (handle: string) => { const result = await exchange(guest, false, { v: 1, ownerId, handle }); observations.push({ step: 'lookup', result }); return result; };
+    const register = async (node: Libp2p, value: string[]) => { const result = await exchange(node, true, { v: 2, handles: value }); observations.push({ step: 'registration', result }); return result; };
+    const lookup = async (handle: string) => { const result = await exchange(guest, false, { v: 2, handle }); observations.push({ step: 'lookup', result }); return result; };
     const port = address.toString().match(/\/tcp\/(\d+)/)![1];
     await connector.start(`ws://127.0.0.1:${port}`, relay.peerId.toString());
     expect(statuses.at(-1)).toBe('capacity');
-    expect(await register(other, ['b'.repeat(32)])).toStrictEqual({ v: 1, status: 'capacity' });
-    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'ready' });
-    expect(await lookup(handles[4999]!)).toStrictEqual({ v: 1, status: 'ready' });
-    expect(await lookup(handles[5000]!)).toStrictEqual({ v: 1, status: 'unavailable' });
+    expect(await register(other, ['b'.repeat(32)])).toStrictEqual({ v: 2, status: 'capacity' });
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 2, status: 'ready', ownerId });
+    expect(await lookup(handles[4999]!)).toStrictEqual({ v: 2, status: 'ready', ownerId });
+    expect(await lookup(handles[5000]!)).toStrictEqual({ v: 2, status: 'unavailable' });
     now += 120_000;
-    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'unavailable' });
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 2, status: 'unavailable' });
     handles.splice(1); await connector.advertise();
     expect(statuses.at(-1)).toBe('ready');
-    expect(await lookup(handles[0]!)).toStrictEqual({ v: 1, status: 'ready' });
+    expect(await lookup(handles[0]!)).toStrictEqual({ v: 2, status: 'ready', ownerId });
     const original = handles[0]!; handles.splice(0); await connector.advertise();
     expect(statuses.at(-1)).toBe('ready');
-    expect(await lookup(original)).toStrictEqual({ v: 1, status: 'unavailable' });
+    expect(await lookup(original)).toStrictEqual({ v: 2, status: 'unavailable' });
     await routeEvidence('capacity-and-leases', { requestedOwnerHandles: 5001, globalCapacity: 5000, ownerRoutingStatuses: statuses, observations });
   }, 15000);
 
@@ -177,8 +177,8 @@ describe('encrypted companion circuit', () => {
       try { stream.send(encodeCompanionFrame(payload)); await stream.close(); return await readFirstCompanionFrame(stream); }
       finally { stream.abort(new Error('Fixture complete')); }
     };
-    expect(await exchange({ v: 99, ownerId, handle: 'a'.repeat(32) })).toStrictEqual({ v: 1, status: 'upgradeRequired' });
-    await expect(exchange({ v: 1, ownerId, handle: 'a'.repeat(32), credential: 'redacted-fixture-only' })).rejects.toThrow();
+    expect(await exchange({ v: 99, ownerId, handle: 'a'.repeat(32) })).toStrictEqual({ v: 2, status: 'upgradeRequired' });
+    await expect(exchange({ v: 2, handle: 'a'.repeat(32), credential: 'redacted-fixture-only' })).rejects.toThrow();
     const oversized = await node.dialProtocol(address, shareRendezvousProtocol);
     const header = new Uint8Array(4); new DataView(header.buffer).setUint32(0, 4097); oversized.send(header);
     await expect.poll(() => oversized.status, { timeout: 1000 }).not.toBe('open');

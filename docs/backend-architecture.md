@@ -216,15 +216,21 @@ permissions and serialized atomic, synced writes. Creation and revocation persis
 before success; revoked records retain their identity, and replacement links use
 fresh credentials. Session changes and deletion invalidate the original binding.
 
-Links carry a version, configured relay origin/pin, companion endpoint identity,
-opaque routing handle and a 256-bit credential in the fragment. Decoding requires
-the supported relay configuration before networking. Share status events exclude
-credentials and full links; only explicit create/copy replies return bearer
-material. Reusing the companion identity does not enable paired-phone access.
+Invitations are cryptographically random UUIDv4 bearer secrets, also accepted as
+`korus://share/<uuid>` links. The daemon uses its configured relay origin and pin;
+invites cannot choose a relay. A domain-separated SHA-256 digest, truncated to 128
+bits, is the routing handle. The UUID itself travels only inside the encrypted
+owner channel. Share status events exclude credentials and full links; only
+explicit create/copy replies return bearer material. Sharing uses protocol and
+store version 2; legacy invitations, owner grants and saved joins are discarded.
+The guest app identity is retained. Reusing the companion identity does not enable
+paired-phone access.
 
 Installed desktop guests keep a separate protected app identity and joined-link
-store under `APP_HOME/guest-joins`. It stores relay/owner pins, the credential,
-display name, original team and an immutable target fingerprint, never transcript content.
+store under `APP_HOME/guest-joins`. It stores the UUID link, a relay-bound join
+identity, owner pin, display name, original team and an immutable target fingerprint,
+never transcript content. The discovered owner pin persists before the UUID is
+sent; reconnection rejects a different owner.
 A shared Quick Chat row is a navigation reference to this join, not a local provider
 session. Reopening the invitation focuses that row in its original team.
 Only the daemon can read these records; renderer projections contain no bearer
@@ -252,13 +258,14 @@ share the serialized authority boundary. Terminal
 receipts retain a text fingerprint for deduplication instead of discarded text;
 active proposal text has a two-MiB budget per link, alongside count limits.
 
-Guest rendezvous uses its own versioned protocols and in-memory owner/handle
-namespace. Only the Noise-authenticated owner registers its handles. Lookups return
-routing status, never a replacement owner identity, and receive no admission secret.
-Each guest authenticates the owner pin independently through the encrypted circuit.
-A routing permission grants no application operation; the dedicated guest gateway
-must authorize inside that channel. Missing guest protocols report upgrade-required
-without falling back to the phone API.
+Guest rendezvous uses its own versioned protocols and an in-memory handle directory.
+Only a Noise-authenticated owner registers its routing hashes; active hashes cannot
+be registered by a second owner. Lookups receive no admission secret and return the
+owner peer identity with routing status. Initial owner discovery trusts the pinned
+relay; subsequent connections enforce the saved owner pin. The guest authenticates
+that peer through the encrypted circuit. A routing permission grants no application
+operation; the dedicated guest gateway must authorize the UUID inside that channel.
+Missing guest protocols report upgrade-required without falling back to the phone API.
 
 The owner advertises saved active handles on startup, every relay reconnection and
 every 20-second renewal; revocation withdraws them. Routes and temporary circuit

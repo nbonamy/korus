@@ -1,17 +1,17 @@
-import { encodeConversationShareLink } from '@workspace/core/conversation-sharing';
+import { decodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
 import { product } from '@workspace/core/product';
 import { describe, expect, it } from 'vitest';
 import { appCommandFromDeepLink, deepLinksFromArgv } from '../deep-links';
 
 describe(`${product.name} deep links`, () => {
   it('routes bounded share links and development aliases without interpreting their secret as a prompt', () => {
-    const link = encodeConversationShareLink({ v: 1, relay: product.companionRelay, ownerId: product.companionRelay.peerId, handle: 'H'.repeat(32), credential: 'C'.repeat(43) });
+    const link = encodeConversationShareLink(decodeConversationInvitation('d83463c0-2445-4c27-8663-349ba222a931', product.companionRelay)!);
     expect(appCommandFromDeepLink(link)).toStrictEqual({ type: 'open-shared-conversation', link });
     const alias = link.replace(`${product.protocolScheme}:`, 'korus-dev-profile:');
     expect(appCommandFromDeepLink(alias, 'korus-dev-profile')).toStrictEqual({ type: 'open-shared-conversation', link });
     expect(appCommandFromDeepLink(alias, 'korus-dev-other')).toBeNull();
     expect(deepLinksFromArgv(['app', alias], 'korus-dev-profile')).toStrictEqual([alias]);
-    expect(appCommandFromDeepLink(link.replace('v=1', 'v=9'))).toStrictEqual({ type: 'open-shared-conversation', link: link.replace('v=1', 'v=9') });
+    expect(appCommandFromDeepLink(link + '?unexpected=1')).toStrictEqual({ type: 'open-shared-conversation', link: link + '?unexpected=1' });
     expect(appCommandFromDeepLink(link + 'x'.repeat(2048))).toBeNull();
   });
   it('submits to the active agent by default', () => {

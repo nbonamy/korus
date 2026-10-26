@@ -12,7 +12,7 @@ export const messages = {
       displayNamePurpose: 'The conversation owner will see this name next to messages you propose.',
       displayNameSaveFailed: 'Could not save your display name. Try again.', settingsTitle: 'Collaboration',
       leave: 'Leave', storageFailed: 'Shared conversations are unavailable. Check local storage and try again.',
-      status: { storageUnavailable: 'Access has stopped, but saved authorization could not be removed. Check local storage, then leave the conversation.', connecting: 'Connecting to owner…', ready: 'Connected', unavailable: 'Owner unavailable · Reconnecting…', rejected: 'This share link is no longer authorized.', upgradeRequired: 'Update Korus or the relay to join this conversation.', busy: 'The owner or relay is busy. Retrying…', invalid: 'This share link is invalid or uses an unsupported relay.' },
+      status: { storageUnavailable: 'Access has stopped, but saved authorization could not be removed. Check local storage, then leave the conversation.', connecting: 'Connecting to owner…', ready: 'Connected', unavailable: 'Owner unavailable · Reconnecting…', rejected: 'This share link is no longer authorized.', upgradeRequired: 'Update Korus or the relay to join this conversation.', busy: 'The owner or relay is busy. Retrying…', invalid: 'This invitation is invalid.' },
     },
     sharing: {
       guestProposals: 'Guest proposals',

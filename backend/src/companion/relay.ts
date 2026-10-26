@@ -151,24 +151,24 @@ export async function createCompanionRelay(options: { key: PrivateKey; listen: s
       await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Rendezvous denied.')); }
   }, { maxInboundStreams: 2, maxOutboundStreams: 1 });
-  const shareAdmission = z.object({ v: z.literal(1), handles: z.array(z.string().regex(shareHandlePattern)).max(shareDirectoryCapacity) }).strict();
-  const shareLookup = z.object({ v: z.literal(1), ownerId: z.string().regex(companionPeerIdPattern), handle: z.string().regex(shareHandlePattern) }).strict();
+  const shareAdmission = z.object({ v: z.literal(2), handles: z.array(z.string().regex(shareHandlePattern)).max(shareDirectoryCapacity) }).strict();
+  const shareLookup = z.object({ v: z.literal(2), handle: z.string().regex(shareHandlePattern) }).strict();
   for (const registration of [true, false]) await relay.handle(registration ? shareAdmissionProtocol : shareRendezvousProtocol, async (stream, connection) => {
     try {
       const source = ingress.source(connection.remoteAddr);
       if (!source) throw new Error('Denied.');
       const payload = await readOne(stream, registration ? shareAdmissionFrameLimit : shareLookupFrameLimit);
-      let status;
-      if (payload && typeof payload === 'object' && 'v' in payload && payload.v !== 1) status = 'upgradeRequired';
+      let status; let ownerId: string | undefined;
+      if (payload && typeof payload === 'object' && 'v' in payload && payload.v !== 2) status = 'upgradeRequired';
       else if (registration) {
         const { handles } = shareAdmission.parse(payload);
         status = policy.reserve(connection.remotePeer.toString(), source)
           ? policy.shares.register(connection.remotePeer.toString(), source, handles) : 'capacity';
       } else {
-        const { ownerId, handle } = shareLookup.parse(payload);
-        status = policy.shares.resolve(connection.remotePeer.toString(), source, ownerId, handle);
+        const { handle } = shareLookup.parse(payload);
+        ({ status, ownerId } = policy.shares.discover(connection.remotePeer.toString(), source, handle));
       }
-      stream.send(encodeCompanionFrame({ v: 1, status }));
+      stream.send(encodeCompanionFrame({ v: 2, status, ...(ownerId ? { ownerId } : {}) }));
       await stream.close({ signal: AbortSignal.timeout(5000) });
     } catch { stream.abort(new Error('Guest routing request denied.')); }
   }, { maxInboundStreams: 2, maxOutboundStreams: 1 });

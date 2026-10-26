@@ -1,10 +1,10 @@
-import type { ShareRoutingStatus } from '@workspace/core/conversation-share-relay';
+import { shareInvitationPattern, type ShareRoutingStatus } from '@workspace/core/conversation-share-relay';
 import { chmod, lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { AppSnapshot } from '@workspace/core/contracts';
-import { conversationShareTarget, encodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
+import { conversationShareTarget, decodeConversationInvitation, encodeConversationInvitation, encodeConversationShareLink } from '@workspace/core/conversation-sharing';
 import type { ConversationShareControl, ConversationShareRoute, ConversationShareLink, ConversationShareResult, ConversationShareState, ConversationShareTarget, ShareRelay } from '@workspace/core/conversation-sharing';
 import type { GuestProposal, GuestProposalState } from '@workspace/core/conversation-sharing';
 
@@ -16,10 +16,10 @@ const conversation = z.discriminatedUnion('backend', [
 ]);
 const targetSchema = z.object({ agentId: bounded, backend: z.enum(['codex', 'claude', 'antigravity']), sessionId: bounded, conversation }).strict();
 const handleSchema = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
-const recordSchema = z.object({ v: z.literal(1), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,
-  handle: handleSchema, credential: z.string().regex(/^[A-Za-z0-9_-]{43}$/), target: targetSchema, createdAt: z.string(), revokedAt: z.string().optional() }).strict();
+const recordSchema = z.object({ v: z.literal(2), relay: z.object({ origin: bounded, peerId: bounded }).strict(), ownerId: bounded,
+  handle: handleSchema, credential: z.string().regex(shareInvitationPattern), target: targetSchema, createdAt: z.string(), revokedAt: z.string().optional() }).strict();
 const proposalSchema = z.object({ id: z.string().uuid(), handle: handleSchema, identity: bounded, name: z.string().min(1).max(80), discriminator: z.string().length(8), text: z.string().max(100_000), fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(), status: z.enum(['pending', 'queued', 'dispatching', 'dismissed', 'submitted', 'rejected', 'unresolved']), createdAt: z.string(), messageId: bounded.optional(), turnId: bounded.optional() }).strict();
-const storeSchema = z.object({ v: z.literal(1), links: z.array(recordSchema), proposals: z.array(proposalSchema).optional() }).strict();
+const storeSchema = z.object({ v: z.literal(2), links: z.array(recordSchema), proposals: z.array(proposalSchema).optional() }).strict();
 const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('status'), target: targetSchema }).strict(),
   z.object({ action: z.literal('create'), target: targetSchema }).strict(),
@@ -27,10 +27,10 @@ const controlSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('revoke'), target: targetSchema, handle: handleSchema }).strict(),
   z.object({ action: z.enum(['send', 'dismiss']), target: targetSchema, handle: handleSchema, proposalId: z.string().uuid() }).strict(),
 ]);
-type ShareRecord = ConversationShareLink & { target: ConversationShareTarget; createdAt: string; revokedAt?: string };
+type ShareRecord = ConversationShareLink & { ownerId: string; target: ConversationShareTarget; createdAt: string; revokedAt?: string };
 export type GuestConversationGrant = { target: ConversationShareTarget; title: string; valid(): boolean; onRevoke(listener: () => void): () => void };
 type StoredProposal = GuestProposal & { fingerprint?: string };
-type Store = { v: 1; links: ShareRecord[]; proposals?: StoredProposal[] };
+type Store = { v: 2; links: ShareRecord[]; proposals?: StoredProposal[] };
 const fingerprint = (text: string) => createHash('sha256').update(text).digest('hex');
 const pendingStatuses = ['pending', 'queued', 'dispatching'];
 const compactProposal = (record: StoredProposal): StoredProposal => ['dismissed', 'submitted', 'rejected'].includes(record.status) ? { ...record, fingerprint: record.fingerprint ?? fingerprint(record.text), text: '' } : record;
@@ -136,7 +136,7 @@ export class ConversationShares {
   /** Admission is inside the authenticated guest circuit; credentials never reach routing. */
   authorize(handle: string, credential: string): Promise<GuestConversationGrant> {
     return this.serial(async () => {
-      if (!handleSchema.safeParse(handle).success || !/^[A-Za-z0-9_-]{43}$/.test(credential)) throw new Error('denied');
+      if (!handleSchema.safeParse(handle).success || !shareInvitationPattern.test(credential)) throw new Error('denied');
       await this.load(); await this.reconcileSaved();
       const link = this.saved!.links.find(link => link.handle === handle);
       if (!link || link.revokedAt || this.invalidated.has(handle) || !this.currentTarget(link.target)
@@ -216,7 +216,7 @@ export class ConversationShares {
       if (action.action === 'copy') throw new Error('Conversation is not shared.');
       if (!endpoint) throw new Error('Conversation sharing relay is not configured.');
       if (!this.currentTarget(action.target)) throw new Error('Conversation changed. Reopen Share.');
-      active = { v: 1, ...endpoint, handle: randomBytes(24).toString('base64url'), credential: randomBytes(32).toString('base64url'), target: action.target, createdAt: new Date().toISOString() };
+      active = { ...decodeConversationInvitation(randomUUID(), endpoint.relay)!, ownerId: endpoint.ownerId, target: action.target, createdAt: new Date().toISOString() };
       const link = encodeConversationShareLink(active);
       this.pendingRecord = active;
       try { await this.write({ ...this.saved!, links: [...this.saved!.links, active] }); }
@@ -294,7 +294,10 @@ export class ConversationShares {
         const stats = await lstat(file);
         if (!stats.isFile() || stats.isSymbolicLink()) throw new Error();
         await chmod(file, 0o600);
-        const saved = storeSchema.parse(JSON.parse(await readFile(file, 'utf8')));
+        const raw: unknown = JSON.parse(await readFile(file, 'utf8'));
+        // Big-bang switch: withdraw all legacy grants rather than accepting old invitations.
+        if (raw && typeof raw === 'object' && 'v' in raw && raw.v === 1) { await this.write({ v: 2, links: [] }); return; }
+        const saved = storeSchema.parse(raw);
         const handles = new Set<string>(); const active = new Set<string>();
         for (const link of saved.links) {
           encodeConversationShareLink(link);
@@ -305,7 +308,7 @@ export class ConversationShares {
         }
         this.saved = saved;
         if (saved.proposals?.some(record => record.status === 'dispatching')) await this.write({ ...saved, proposals: saved.proposals.map(record => record.status === 'dispatching' ? { ...record, status: 'unresolved' } : record) });
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; this.saved = { v: 1, links: [] }; }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; this.saved = { v: 2, links: [] }; }
     } catch { throw new Error('Share storage is unavailable. Check local storage and try again.'); }
   }
   private async write(next: Store) {

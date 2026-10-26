@@ -145,10 +145,12 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       f.snapshot.agents.push(alias);
       expect((await f.request(server, { action: 'create', target: conversationShareTarget(alias)! })).link === first.link).toBe(true);
       const decoded = decodeConversationShareLink(first.link!, relay)!;
-      expect(decoded.ownerId).toBe(ownerId);
-      expect(decoded.credential.length).toBe(43);
+      expect(decoded.ownerId).toBeUndefined();
+      expect(first.invitation).toBe(decoded.credential);
+      expect(decoded.credential).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
       const saved = JSON.parse(await readFile(path.join(f.directory, 'state.json'), 'utf8'));
       expect(saved.links).toHaveLength(1);
+      expect(saved.links[0].ownerId).toBe(ownerId);
       expect(saved.links[0].target).toStrictEqual(f.target);
       expect((await stat(path.join(f.directory, 'state.json'))).mode & 0o777).toBe(0o600);
       expect((await stat(f.directory)).mode & 0o777).toBe(0o700);

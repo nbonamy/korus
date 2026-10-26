@@ -28,6 +28,8 @@ export class ShareRelayDirectory {
     this.prune();
     if (!this.registrations.take(source) || !this.ownerRegistrations.take(owner)) return 'rateLimited';
     if (handles.some(handle => !shareHandlePattern.test(handle)) || new Set(handles).size !== handles.length) return 'unavailable';
+    const requested = new Set(handles);
+    if ([...this.owners].some(([id, entry]) => id !== owner && [...entry.handles].some(handle => requested.has(handle)))) return 'unavailable';
     const others = [...this.owners].reduce((count, [id, entry]) => count + (id === owner ? 0 : entry.handles.size), 0);
     if (others + handles.length > shareDirectoryCapacity) {
       const previous = this.owners.get(owner);
@@ -43,6 +45,13 @@ export class ShareRelayDirectory {
     else this.owners.delete(owner);
     this.prune();
     return 'ready';
+  }
+  /** Resolve the UUID's routing hash; a route still grants no conversation access. */
+  discover(guest: string, source: string, handle: string): { status: ShareRoutingStatus; ownerId?: string } {
+    this.prune();
+    const ownerId = [...this.owners].find(([, entry]) => entry.handles.has(handle))?.[0];
+    const status = this.resolve(guest, source, ownerId ?? '', handle);
+    return status === 'ready' ? { status, ownerId } : { status };
   }
   resolve(guest: string, source: string, owner: string, handle: string): ShareRoutingStatus {
     this.prune();

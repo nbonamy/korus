@@ -1,3 +1,4 @@
+import { shareInvitationPattern } from '@workspace/core/conversation-share-relay';
 import { createHash } from 'node:crypto';
 import type { Stream } from '@libp2p/interface';
 import { z } from 'zod';
@@ -32,7 +33,7 @@ export type GuestConversationPort = {
 };
 class GuestResourceLimit extends Error {}
 const requestSchema = z.object({ v: z.literal(1), id: z.string().uuid(), method: z.string().min(1).max(80), args: z.unknown() }).strict();
-const joinSchema = z.object({ handle: z.string().regex(/^[A-Za-z0-9_-]{32}$/), credential: z.string().regex(/^[A-Za-z0-9_-]{43}$/), name: z.string().max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value)).transform(value => value.trim()).pipe(z.string().min(1).max(80)) }).strict();
+const joinSchema = z.object({ handle: z.string().regex(/^[A-Za-z0-9_-]{32}$/), credential: z.string().regex(shareInvitationPattern), name: z.string().max(200).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value)).transform(value => value.trim()).pipe(z.string().min(1).max(80)) }).strict();
 const emptySchema = z.object({}).strict();
 const syncSchema = z.object({ checkpoint: z.object({ epoch: z.string().min(1).max(100), revision: z.number().int().nonnegative().safe() }).strict().nullable() }).strict();
 const contentSchema = z.object({ input: z.object({ sessionId: z.string().min(1).max(4096), contentId: z.string().regex(/^[a-f0-9]{64}$/), offset: z.number().int().nonnegative().safe() }).strict() }).strict();

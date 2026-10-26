@@ -163,7 +163,8 @@ describe('reusable guest routing directory', () => {
     const directory = new ShareRelayDirectory(() => now);
     expect(directory.resolve(phone, 'source', host, handle(1))).toBe('unavailable');
     expect(directory.register(host, 'owner-source', [handle(1), handle(2)])).toBe('ready');
-    expect(directory.register(other, 'other-source', [handle(1)])).toBe('ready');
+    expect(directory.register(other, 'other-source', [handle(1)])).toBe('unavailable');
+    expect(directory.discover(phone, 'source', handle(1))).toStrictEqual({ status: 'ready', ownerId: host });
     expect(directory.resolve(phone, 'source', host, handle(1))).toBe('ready');
     expect(directory.resolve(other, 'source', host, handle(1))).toBe('ready');
     expect(directory.route(phone, host)).toBe(true);
@@ -172,11 +173,14 @@ describe('reusable guest routing directory', () => {
     expect(directory.register(host, 'owner-source', [handle(2)])).toBe('ready');
     expect(directory.route(phone, host)).toBe(false);
     expect(directory.resolve(phone, 'source', host, handle(1))).toBe('unavailable');
+    expect(directory.discover(phone, 'source', handle(1))).toStrictEqual({ status: 'unavailable' });
+    expect(directory.register(other, 'other-source', [handle(1)])).toBe('ready');
     expect(directory.resolve(phone, 'source', other, handle(1))).toBe('ready');
     now += 120_000;
     expect(directory.route(phone, other)).toBe(false);
     expect(directory.resolve(phone, 'source', other, handle(1))).toBe('unavailable');
     expect(directory.register(other, 'other-source', [handle(1)])).toBe('ready');
+    expect(directory.discover(phone, 'source', handle(1))).toStrictEqual({ status: 'ready', ownerId: other });
     expect(directory.resolve(phone, 'source', other, handle(1))).toBe('ready');
     expect(new ShareRelayDirectory(() => now).resolve(phone, 'source', other, handle(1))).toBe('unavailable');
   });
@@ -207,14 +211,14 @@ describe('reusable guest routing directory', () => {
     expect(directory.resolve('overflow', 'third-network', host, handle(1))).toBe('ready');
     // Moving an existing peer's permission onto a saturated source must not
     // bypass the source budget merely because its owner/guest key already exists.
-    directory.register('roaming-owner', 'roaming-owner-network', [handle(1)]);
-    expect(directory.resolve('roaming-guest', 'home-network', 'roaming-owner', handle(1))).toBe('ready');
+    directory.register('roaming-owner', 'roaming-owner-network', [handle(2)]);
+    expect(directory.resolve('roaming-guest', 'home-network', 'roaming-owner', handle(2))).toBe('ready');
     for (let i = 0; i < 200; i++) {
-      directory.register(`crowd-owner-${i}`, `owner-network-${i}`, [handle(1)]);
+      directory.register(`crowd-owner-${i}`, `owner-network-${i}`, [handle(i + 3)]);
       if (i === 120) now += 60_000;
-      expect(directory.resolve(`crowd-guest-${i}`, 'crowded-network', `crowd-owner-${i}`, handle(1))).toBe('ready');
+      expect(directory.resolve(`crowd-guest-${i}`, 'crowded-network', `crowd-owner-${i}`, handle(i + 3))).toBe('ready');
     }
-    expect(directory.resolve('roaming-guest', 'crowded-network', 'roaming-owner', handle(1))).toBe('capacity');
+    expect(directory.resolve('roaming-guest', 'crowded-network', 'roaming-owner', handle(2))).toBe('capacity');
     for (let i = 0; i < 60; i++) directory.register(`owner-${i}`, 'flood', []);
     expect(directory.register('new-identity', 'flood', [])).toBe('rateLimited');
   });

@@ -100,7 +100,7 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
       : backend === 'claude' ? { type: 'message.userSubmitted', agentId: 'shared', backendSessionId: 'bound', seq: revision, occurredAt: 'now', payload: { message: messages.at(-1) } }
       : { type: 'message.upsert', agentId: 'shared', sessionId: 'bound', turnId: 'turn', occurredAt: 'now', payload: { message: messages.at(-1) } };
     emit({ ...reset(), type: `${backend}.conversationEventReceived`, payload: { revision, event } } as ProviderConversationFrame);
-  }, directory, pin, connector, gateway, shares, target, link, snapshot, port, listeners, client, open, emit, reset, source, block: (work?: () => Promise<void>) => { blocked = work; }, addMedia: () => { messages.push({ ...message('media'), parts: [{ type: 'text', text: '![image](/fixture/output.png)' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: 19 } } as never); revision++; }, live: () => { messages.push(message('live')); revision++; emit(reset()); }, replace: () => { agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'OTHER' } : backend === 'claude' ? { kind: 'claude', sessionId: 'OTHER', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'OTHER' }; void shares.reconcile(); } };
+  }, directory, pin, ownerId, connector, gateway, shares, target, link, snapshot, port, listeners, client, open, emit, reset, source, block: (work?: () => Promise<void>) => { blocked = work; }, addMedia: () => { messages.push({ ...message('media'), parts: [{ type: 'text', text: '![image](/fixture/output.png)' }], deferredContent: { contentId: 'a'.repeat(64), byteLength: 19 } } as never); revision++; }, live: () => { messages.push(message('live')); revision++; emit(reset()); }, replace: () => { agent.backendSession = backend === 'codex' ? { kind: 'codex', threadId: 'OTHER' } : backend === 'claude' ? { kind: 'claude', sessionId: 'OTHER', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'OTHER' }; void shares.reconcile(); } };
 }
 function message(id: string) { return { id, agentId: 'shared', role: 'user' as const, status: 'complete' as const, parts: [{ type: 'text' as const, text: id }], createdAt: '2026-01-01T00:00:00Z' }; }
 async function freePort() { const server = createServer(); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port; }
@@ -118,7 +118,8 @@ describe('encrypted guest conversation authorization', () => {
       if (!response || 'error' in response) throw new Error(JSON.stringify(response));
       return response.result as import('@workspace/core/guest-navigation').GuestJoinState;
     };
-    const invitation = `KORUS1.${Buffer.from(JSON.stringify(f.link)).toString('base64url')}`;
+    const invitation = f.link.credential;
+    expect(invitation).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     const prepared = await call({ action: 'prepare', link: invitation, teamId: 'team-test' });
     expect(prepared.view?.status).toBe('needsName');
     const canceled = await call({ action: 'cancel', id: prepared.view!.id });
@@ -198,7 +199,7 @@ describe('encrypted guest conversation authorization', () => {
     await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: accepted.id });
     expect(submit).toHaveBeenCalledTimes(1);
     f.shares.close();
-    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
     cleanup.push(() => restored.close());
     expect((await restored.authorize(f.link.handle, f.link.credential)).valid()).toBe(true);
     const recovered = await restored.guestState(f.link.handle, one.joined.participant.identity);
@@ -221,7 +222,7 @@ describe('encrypted guest conversation authorization', () => {
     await f.shares.dispatchQueued(); expect(submit).not.toHaveBeenCalled();
     expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: proposal.id, status: 'queued' }));
     f.shares.close();
-    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit, canSubmit: () => f.snapshot.agents[0]!.status.type === 'idle' }, () => f.snapshot, () => {});
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.ownerId, relay: f.pin }), submit, canSubmit: () => f.snapshot.agents[0]!.status.type === 'idle' }, () => f.snapshot, () => {});
     cleanup.push(() => restored.close());
     await restored.dispatchQueued(); expect(submit).not.toHaveBeenCalled();
     f.snapshot.agents[0]!.status = { type: 'idle' }; await restored.dispatchQueued(); expect(submit).toHaveBeenCalledTimes(1);
@@ -242,7 +243,7 @@ describe('encrypted guest conversation authorization', () => {
     await f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: proposal.id });
     await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
     f.shares.close();
-    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.link.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
+    const restored = new ConversationShares({ directory: path.join(f.directory, 'shares'), endpoint: async () => ({ ownerId: f.ownerId, relay: f.pin }), submit }, () => f.snapshot, () => {});
     cleanup.push(() => restored.close());
     const status = await restored.guestState(f.link.handle, one.joined.participant.identity);
     expect(status.proposals).toContainEqual(expect.objectContaining({ id: proposal.id, status: 'unresolved' }));
@@ -272,6 +273,8 @@ describe('encrypted guest conversation authorization', () => {
     const identity = joined.view!.participant!.identity;
     const saved = await readFile(path.join(directory, 'state.json'), 'utf8');
     expect(saved).toContain(f.link.credential); expect(saved).not.toContain('before-share');
+    const ownerPin = JSON.parse(saved).joins[0].ownerId;
+    expect(ownerPin).toMatch(/^12D3KooW/);
     expect((await stat(path.join(directory, 'state.json'))).mode & 0o777).toBe(0o600);
     await joins.close(); await vi.waitFor(() => expect(f.listeners.size).toBe(0));
     joins = new GuestJoins({ directory, relay: f.pin });
@@ -380,11 +383,11 @@ describe('encrypted guest conversation authorization', () => {
     expect(await joins.control({ action: 'state' })).toStrictEqual({ entries: [], view: null });
     expect(await readFile(path.join(f.directory, 'joined/state.json'), 'utf8')).not.toContain(f.link.credential);
   }, 30_000);
-  it('rejects malformed, unsupported and foreign relay links before networking and fails closed on storage', async () => {
+  it('rejects malformed invitations and relay overrides before networking and fails closed on storage', async () => {
     const f = await fixture(); const joins = new GuestJoins({ directory: path.join(f.directory, 'joined'), relay: f.pin }); cleanup.push(() => joins.close());
     const url = encodeConversationShareLink(f.link);
-    expect((await joins.control({ action: 'prepare', link: url.replace('v=1', 'v=2') })).view?.status).toBe('upgradeRequired');
-    for (const link of ['garbage', url + 'extra', url.replace('handle=', 'other='), encodeConversationShareLink({ ...f.link, relay: { ...f.pin, origin: 'wss://untrusted.example' } })]) {
+    expect((await joins.control({ action: 'prepare', link: f.link.credential.slice(0, -1) })).view?.status).toBe('invalid');
+    for (const link of ['garbage', url + 'extra', url + '?relay=wss://untrusted.example', url.replace('/share/', '/other/')]) {
       expect((await joins.control({ action: 'prepare', link })).view?.status).toBe('invalid');
     }
     expect(f.listeners.size).toBe(0);

@@ -39,14 +39,14 @@ describe('app startup', () => {
       expect(invitation.element.tagName).toBe('INPUT');
       expect(invitation.attributes('aria-label')).toBe('Invitation or share link');
       expect(wrapper.find('label[for="guest-invitation"]').exists()).toBe(false);
-      await invitation.setValue('KORUS1.partially-entered');
+      await invitation.setValue('d83463c0-2445');
       await vi.advanceTimersByTimeAsync(1500); await flushPromises();
       expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(false);
-      expect(wrapper.get<HTMLInputElement>('#guest-invitation').element.value).toBe('KORUS1.partially-entered');
+      expect(wrapper.get<HTMLInputElement>('#guest-invitation').element.value).toBe('d83463c0-2445');
       expect(api.guestConversationControl.mock.calls.some(([input]) => input.action === 'prepare')).toBe(false);
-      await invitation.setValue('KORUS1.complete-invitation');
+      await invitation.setValue('d83463c0-2445-4c27-8663-349ba222a931');
       await invitation.trigger('keyup', { key: 'Enter' }); await flushPromises();
-      expect(api.guestConversationControl).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepare', link: 'KORUS1.complete-invitation' }));
+      expect(api.guestConversationControl).toHaveBeenCalledWith(expect.objectContaining({ action: 'prepare', link: 'd83463c0-2445-4c27-8663-349ba222a931' }));
       expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(true);
     } finally { wrapper.unmount(); vi.useRealTimers(); }
   });

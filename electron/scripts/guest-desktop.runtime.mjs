@@ -69,16 +69,16 @@ try {
   assert(guestCommand.includes(`--user-data-dir=${home}/electron`), 'OS-delivered client must use the isolated guest profile.');
   assert.notEqual(firstPid, owner.pid);
   observations.profileIsolation = { ownerHome, guestHome: home, worktree: root, ownerPid: owner.pid, coldGuestPid: firstPid, verifiedGuestProcessProfile: true, separateStateDirectories: ownerHome !== home, ownerKind: 'scripted encrypted endpoint; not an owner desktop', guestKind: 'locally built Electron development client' };
-  deliver(alias.replace('v=1', 'v=9')); await page.getByText('Update Korus or the relay to join this conversation.').waitFor();
+  deliver(alias + '?unexpected=1'); await page.getByText('This invitation is invalid.').waitFor();
   deliver(); await page.getByRole('heading', { name: 'Join conversation', exact: true }).waitFor();
   console.log('Checking keyboard join and warm duplicate delivery…');
-  // Both OS-delivered URLs and self-contained pasted invitations enter the same join flow.
+  // Both OS-delivered URLs and UUID invitations enter the same join flow.
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Join with invite…', exact: true }).click();
   await page.getByRole('textbox', { name: 'Invitation or share link' }).fill(await readFile(path.join(ownerHome, 'invitation.txt'), 'utf8'));
   await page.getByRole('button', { name: 'Join conversation', exact: true }).click();
   await page.getByRole('textbox', { name: 'Display name' }).waitFor();
-  observations.scenarios.push('self-contained invitation pasted through Join with invite; full link accepted on warm OS open');
+  observations.scenarios.push('UUID invitation pasted through Join with invite; short link accepted on warm OS open');
   await page.getByRole('textbox', { name: 'Display name' }).fill('Synthetic Guest'); await page.keyboard.press('Enter');
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
   assert.equal(await page.locator('[contenteditable="true"]').count(), 1); assert.equal(await page.getByRole('button', { name: 'Share', exact: true }).count(), 0);
@@ -129,7 +129,7 @@ try {
   await page.getByText('Synthetic history from before sharing.', { exact: false }).waitFor();
   assert.notEqual(await page.evaluate(async () => (await window.app.guestConversationControl({ action: 'state' })).view.participant.identity), identity);
   observations.identityContinuity.resetJoinsAsNewIdentity = true;
-  observations.scenarios.push('local identity reset rejoins the same active link as a new app identity; unsupported link version shows upgrade-required');
+  observations.scenarios.push('local identity reset rejoins the same active link as a new app identity; malformed invitation is rejected');
   console.log('Checking disconnect, reconnect and learned revocation…');
   await writeFile(path.join(ownerHome, 'command'), 'offline'); await page.getByText('Owner unavailable · Reconnecting…').waitFor();
   assert.equal(await page.getByText('Synthetic history from before sharing.', { exact: false }).count(), 1);
