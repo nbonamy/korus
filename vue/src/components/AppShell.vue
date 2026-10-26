@@ -614,7 +614,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
@@ -1327,7 +1327,8 @@ const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
 const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
-const shareTarget = ref<ConversationShareTarget | null>(null);
+// IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
+const shareTarget = shallowRef<ConversationShareTarget | null>(null);
 function openShare(agentId: string) {
   const agent = props.snapshot.agents.find(agent => agent.id === agentId);
   if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;
@@ -1725,6 +1726,7 @@ const rightWorkspaceState = useRightWorkspaceState({
 const documentWorkspaces = useDocumentWorkspaces({
   api: appApi,
   workspaces: rightWorkspaceState.workspaces,
+  canUseWorkspace: agentId => !props.snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation,
   workspaceFor: rightWorkspaceState.workspaceFor,
   reportError: message => ElMessage.error(message),
 });

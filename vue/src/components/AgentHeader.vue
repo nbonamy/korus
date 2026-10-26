@@ -54,7 +54,16 @@
     </div>
 
     <div class="agent-header__activity">
-      <el-button v-if="agent && shareAvailable" class="app-button" :aria-label="$t('sharing.share')" @click="emit('share')">{{ $t('sharing.share') }}</el-button>
+      <button
+        v-if="agent && shareAvailable"
+        class="agent-header__share"
+        type="button"
+        :aria-label="$t('sharing.share')"
+        :title="$t('sharing.share')"
+        @click="emit('share')"
+      >
+        <IconShare aria-hidden="true" />
+      </button>
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -152,7 +161,7 @@ import { agentDisplayName } from '@workspace/core/agent-display';
 import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
-import { IconLayoutSidebarRight } from '@tabler/icons-vue';
+import { IconLayoutSidebarRight, IconShare } from '@tabler/icons-vue';
 import AgentAvatar from './AgentAvatar.vue';
 import UpdateAvailableBadge from './UpdateAvailableBadge.vue';
 import OpenInControl from '../shared/OpenInControl.vue';
@@ -366,6 +375,7 @@ const gitReviewAvailable = computed(() => {
   text-align: right;
 }
 
+.agent-header__share,
 .agent-header__workspace {
   -webkit-app-region: no-drag;
   border: 0;
@@ -405,12 +415,14 @@ const gitReviewAvailable = computed(() => {
   height: var(--icon-md);
 }
 
+.agent-header__share:hover,
 .agent-header__workspace:hover,
 .agent-header__workspace[aria-pressed="true"] {
   background: var(--color-surface-high);
   color: var(--color-text);
 }
 
+.agent-header__share :deep(svg),
 .agent-header__workspace :deep(svg) {
   width: var(--icon-md);
   height: var(--icon-md);

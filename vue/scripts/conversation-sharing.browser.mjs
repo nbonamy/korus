@@ -19,12 +19,19 @@ try {
   const page = await browser.newPage({ viewport: { width: 1200, height: 740 } });
   const errors = []; page.on('pageerror', error => errors.push(String(error)));
   await page.goto(server.resolvedUrls.local[0]);
-  await page.getByRole('button', { name: 'Share', exact: true }).waitFor();
+  const share = page.getByRole('button', { name: 'Share', exact: true });
+  await share.waitFor();
+  // Electron's frameless title bar consumes pointer input in draggable regions.
+  // A DOM-dispatched click alone cannot catch a header action that remains draggable.
+  assert.equal(await share.evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region')), 'no-drag');
+  assert.equal(await share.innerText(), '');
+  assert.equal(await share.locator('svg').count(), 1);
+  assert.equal(await share.getAttribute('title'), 'Share');
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'header-share.png') });
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('button', { name: 'Create and copy link' }).waitFor();
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'header-share-dialog.png') });
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.locator('.agent-sidebar__agent').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Share with guests', exact: true }).waitFor();
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'context-menu-share.png') });
@@ -36,6 +43,8 @@ try {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(server.resolvedUrls.local[0]).origin });
   await page.getByRole('button', { name: 'Copy link', exact: true }).click();
   await page.getByText('Copied', { exact: true }).waitFor();
+  assert.equal(await page.locator('.app-dialog__footer button').count(), 2);
+  assert.deepEqual(await page.locator('.app-dialog__footer button').allTextContents(), ['Stop sharing', 'Copy link']);
   await page.screenshot({ animations: 'disabled', path: path.join(output, 'active-share-dialog.png') });
   assert.deepEqual(errors, []);
   await writeFile(path.join(output, 'capture.json'), JSON.stringify({ fixture: 'production owner components; synthetic state and control port; no provider or relay', credentials: 'redacted fixture; no real bearer generated', entries: ['persistent header Share', 'conversation context menu Share with guests'], screenshots: ['header-share.png', 'header-share-dialog.png', 'context-menu-share.png', 'active-share-dialog.png', 'active-share-copy-error.png'], pageErrors: errors }, null, 2));

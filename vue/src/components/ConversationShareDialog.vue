@@ -1,26 +1,25 @@
 <template>
   <FormDialog :model-value="true" :title="t('sharing.title')" width="460px" @update:model-value="close">
-    <p class="conversation-share__disclosure">{{ t('sharing.disclosure') }}</p>
-    <p>{{ t('sharing.approval') }}</p>
-    <p v-if="loading" role="status">{{ t('common.loading') }}</p>
-    <p v-else-if="state?.active" role="status">
-      {{ state.connectedGuests === null ? t('sharing.active') : t('sharing.guests', { count: state.connectedGuests }) }}
-    </p>
-    <p v-if="state?.availability === 'transportPending'" class="conversation-share__detail">{{ t('sharing.transportPending') }}</p>
-    <p v-if="state?.active && ['unavailable', 'capacity', 'rateLimited', 'upgradeRequired'].includes(state.availability)" role="alert">{{ t(`sharing.${state.availability}`) }}</p>
-    <p v-if="state?.availability === 'notConfigured'" role="alert">{{ t('sharing.notConfigured') }}</p>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="copied" role="status">{{ t('sharing.copied') }}</p>
+    <div class="app-form-dialog" aria-live="polite">
+      <p class="app-form-dialog__help">{{ t('sharing.disclosure') }}</p>
+      <p class="app-form-dialog__help">{{ t('sharing.approval') }}</p>
+      <p v-if="loading" class="app-form-dialog__help" role="status">{{ t('common.loading') }}</p>
+      <p v-else-if="state?.active" class="app-form-dialog__help" role="status">
+        {{ state.connectedGuests === null ? t('sharing.active') : t('sharing.guests', { count: state.connectedGuests }) }}
+      </p>
+      <el-alert v-if="(state?.active && state.availability !== 'ready') || state?.availability === 'notConfigured'" :title="t('sharing.temporarilyUnavailable')" type="warning" :closable="false" show-icon />
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <p v-if="copied" class="app-form-dialog__help" role="status">{{ t('sharing.copied') }}</p>
+    </div>
     <template #footer-left>
-      <el-button v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</el-button>
+      <button type="button" v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
     </template>
     <template #footer>
-      <el-button v-if="state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="run('copy', true)">{{ t('sharing.copyInvitation') }}</el-button>
-      <el-button class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.done') }}</el-button>
-      <el-button v-if="!state && !loading" class="app-button" :disabled="busy" @click="load">{{ t('common.retry') }}</el-button>
-      <el-button v-else class="app-button" type="primary" :disabled="busy || loading || !state || state.availability === 'notConfigured'" @click="run(state?.active ? 'copy' : 'create')">
+      <button type="button" v-if="!state?.active" class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.cancel') }}</button>
+      <button type="button" v-if="!state && !loading" class="app-button app-button--primary" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
+      <button type="button" v-else class="app-button app-button--primary" :aria-busy="busy || loading" :disabled="busy || loading || !state || state.availability === 'notConfigured'" @click="run(state?.active ? 'copy' : 'create')">
         {{ state?.active ? t('sharing.copy') : t('sharing.create') }}
-      </el-button>
+      </button>
     </template>
   </FormDialog>
 </template>
@@ -44,16 +43,26 @@ let disposed = false;
 let revision = 0;
 let unsubscribe: (() => void) | undefined;
 function close() { if (!busy.value) emit('close'); }
+function shareError(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : '';
+  // Only known, credential-free errors become specific UI copy.
+  if (message.includes('Share storage is unavailable.')) return t('sharing.storageUnavailable');
+  if (message.includes('Companion identity cannot be loaded.')) return t('sharing.identityUnavailable');
+  if (message.includes('Conversation is unavailable for sharing.') || message.includes('Conversation changed.') || message.includes('Share link has changed.')) return t('sharing.conversationChanged');
+  if (message.includes('does not support conversation sharing')) return t('sharing.unsupported');
+  if (message.includes('conversationShareControl') || message.includes('No handler registered') || message.includes('Unknown backend method')) return t('sharing.restartRequired');
+  return t('sharing.failed');
+}
 async function load() {
   const expected = revision;
   loading.value = true; error.value = '';
   try {
     const result = await props.control({ action: 'status', target: props.target });
     if (!disposed && expected === revision) state.value = result.state;
-  } catch { if (!disposed) error.value = t('sharing.failed'); }
+  } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) loading.value = false; }
 }
-async function run(action: 'create' | 'copy' | 'revoke', invitation = false) {
+async function run(action: 'create' | 'copy' | 'revoke') {
   if (busy.value || !state.value) return;
   busy.value = true; error.value = ''; copied.value = false;
   try {
@@ -64,10 +73,10 @@ async function run(action: 'create' | 'copy' | 'revoke', invitation = false) {
     if (disposed) return;
     revision++; state.value = result.state;
     if (result.link) {
-      try { await navigator.clipboard.writeText(invitation ? result.invitation ?? result.link : result.link); if (!disposed) copied.value = true; }
+      try { await navigator.clipboard.writeText(result.link); if (!disposed) copied.value = true; }
       catch { if (!disposed) error.value = t('sharing.copyFailed'); }
     }
-  } catch { if (!disposed) error.value = t('sharing.failed'); }
+  } catch (cause) { if (!disposed) error.value = shareError(cause); }
   finally { if (!disposed) busy.value = false; }
 }
 onMounted(() => {
@@ -79,12 +88,3 @@ onMounted(() => {
 });
 onBeforeUnmount(() => { disposed = true; unsubscribe?.(); });
 </script>
-
-<style scoped>
-.conversation-share__disclosure {
-  margin-top: 0;
-}
-.conversation-share__detail {
-  color: var(--color-text-muted);
-}
-</style>

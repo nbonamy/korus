@@ -125,8 +125,10 @@ describe('encrypted guest conversation authorization', () => {
     expect(snapshot.agents).toHaveLength(1);
     expect(snapshot.agents[0]).toMatchObject({ teamId: 'team-test', sessionKind: 'quickChat', sharedConversation: { joinId: prepared.view!.id } });
     expect(snapshot.agents[0]!.backendSession).toBeUndefined();
-    const denied = await server.handleMessage({ jsonrpc: '2.0', id: 'prompt', method: backendMethods.agentPromptSend, params: { agentId: snapshot.agents[0]!.id, prompt: 'Must not execute locally' } });
-    expect(denied).toHaveProperty('error');
+    for (const method of [backendMethods.agentPromptSend, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead]) {
+      const denied = await server.handleMessage({ jsonrpc: '2.0', id: 'denied', method, params: { agentId: snapshot.agents[0]!.id, prompt: 'Must not execute locally', change: { upsert: [] }, tabId: 'private-file' } });
+      expect(denied).toHaveProperty('error');
+    }
     snapshot.activeTeamId = 'another-team'; snapshot.activeAgentId = null;
     await call({ action: 'prepare', link: encodeConversationShareLink(f.link) });
     expect(snapshot.agents).toHaveLength(1);

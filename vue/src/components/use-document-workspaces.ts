@@ -10,6 +10,7 @@ const persistDebounceMs = 250;
 export function useDocumentWorkspaces(options: {
   api?: Pick<AppApi, 'getDocumentWorkspaces' | 'updateDocumentWorkspace' | 'readWorkspaceDocument' | 'saveWorkspaceDocument'>;
   workspaces: Record<string, AgentRightWorkspaceState>;
+  canUseWorkspace: (agentId: string) => boolean;
   workspaceFor: (agentId: string) => AgentRightWorkspaceState;
   reportError: (error: string) => void;
 }) {
@@ -55,6 +56,7 @@ export function useDocumentWorkspaces(options: {
       const restored = await api.getDocumentWorkspaces();
       if (disposed) return;
       for (const [agentId, saved] of Object.entries(restored)) {
+        if (!options.canUseWorkspace(agentId)) continue;
         const workspace = options.workspaceFor(agentId);
         const hadLocalTabs = workspace.tabs.length > 0 || closedDuringRestore.has(agentId);
         for (const tab of saved.tabs) {
@@ -113,7 +115,7 @@ export function useDocumentWorkspaces(options: {
   }
 
   function capture(): DocumentWorkspaces {
-    return Object.fromEntries(Object.entries(options.workspaces).map(([id, workspace]) => [id, descriptor(workspace)]));
+    return Object.fromEntries(Object.entries(options.workspaces).filter(([id]) => options.canUseWorkspace(id)).map(([id, workspace]) => [id, descriptor(workspace)]));
   }
 
   /**
@@ -139,14 +141,16 @@ export function useDocumentWorkspaces(options: {
         activeTab: workspace.activeTab, open: workspace.open, width: workspace.width,
         filesPaneOpen: workspace.filesPaneOpen, filesPaneWidth: workspace.filesPaneWidth,
       };
-      pending = pending.catch(() => undefined).then(() => api!.updateDocumentWorkspace(agentId, change));
+      pending = pending.catch(() => undefined).then(() => {
+        if (options.canUseWorkspace(agentId)) return api!.updateDocumentWorkspace(agentId, change);
+      });
       void pending.catch(error => options.reportError(String(error)));
     }
     previous = next;
   }
 
   async function save(agentId: string, tabId: string, filePath: string, overwrite = false): Promise<void> {
-    if (!api) return;
+    if (!api || !options.canUseWorkspace(agentId)) return;
     await ready;
     persist(capture());
     await pending;
