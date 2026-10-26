@@ -217,6 +217,16 @@ Registered per authenticated request by independent modules
   complete artifacts. Mission workers get no generic
   thread-flag tools. Behavior is in
   [architecture.md](architecture.md#missions).
+- **GitLab** tools (`gitlab-list-issues`, `gitlab-list-merge-requests`,
+  `gitlab-get-issue`, `gitlab-get-merge-request`, `gitlab-comment`,
+  `gitlab-create-merge-request`) register while GitLab is connected. They use
+  GitLab's REST API with the `api` scope through `WorkIntegrationManager`, so they
+  work for direct and CLI connections and do not depend on GitLab's hosted MCP
+  server or its group-level access setting. Projects are gitlab.com only and are
+  accepted as `group/project`, a URL or a git remote. Reads return bounded text
+  (20,000 characters per field, the last 50 human comments); comments are posted as
+  the connected user; merge requests are created as drafts from a pushed branch into
+  the default branch.
 - **Browser:** `browser-open` opens the agent's Browser workspace without changing
   selection and waits for load; other `browser-*` tools operate the sandboxed page
   through `client/browser/open|execute`. The renderer never exposes DOM, cookies or
