@@ -6,10 +6,9 @@ import type { Agent, BackendConversationRef } from './contracts';
 import { conversationRefFromAgent } from './conversation-ref';
 import { companionPeerIdPattern, relayAddress } from './companion-relay';
 import { product } from './product';
-import { defaultBackendCapabilities } from './backend-capabilities';
 
 export function supportsConversationSharing(agent: Agent | null | undefined): boolean {
-  return Boolean(agent && !agent.sharedConversation && conversationShareTarget(agent) && defaultBackendCapabilities(agent.backend).conversationSharing === true);
+  return Boolean(agent && !agent.sharedConversation && conversationShareTarget(agent));
 }
 
 export type ShareRelay = { origin: string; peerId: string };

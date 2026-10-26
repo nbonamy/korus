@@ -35,7 +35,6 @@ const fingerprint = (text: string) => createHash('sha256').update(text).digest('
 const pendingStatuses = ['pending', 'queued', 'dispatching'];
 const compactProposal = (record: StoredProposal): StoredProposal => ['dismissed', 'submitted', 'rejected'].includes(record.status) ? { ...record, fingerprint: record.fingerprint ?? fingerprint(record.text), text: '' } : record;
 export type ConversationSharingOptions = { directory: string; endpoint(): Promise<{ ownerId: string; relay: ShareRelay } | null>;
-  supports?(target: ConversationShareTarget): boolean;
   canSubmit?(target: ConversationShareTarget): boolean;
   submit?(target: ConversationShareTarget, text: string): Promise<{ turnId?: string; messageId?: string }>;
   routing?: {
@@ -184,7 +183,6 @@ export class ConversationShares {
       const parsed = controlSchema.safeParse(input);
       if (!parsed.success) throw new Error('Invalid share operation.');
       const action = parsed.data;
-      if (action.action !== 'revoke' && this.options.supports?.(action.target) === false) throw new Error('This backend does not support conversation sharing.');
       await this.load();
       await this.reconcileSaved();
       if (!this.currentTarget(action.target)) throw new Error('Conversation is unavailable for sharing.');
@@ -254,11 +252,10 @@ export class ConversationShares {
     return snapshot.agents.flatMap(agent => {
       const team = snapshot.teams.find(team => team.id === agent.teamId);
       const target = conversationShareTarget(agent);
-      return team && !team.remoteConnectionId && target && this.options.supports?.(target) !== false ? [target] : [];
+      return team && !team.remoteConnectionId && target ? [target] : [];
     });
   }
   private currentTarget(target: ConversationShareTarget): boolean {
-    if (this.options.supports?.(target) === false) return false;
     const snapshot = this.snapshot();
     const agent = snapshot.agents.find(agent => agent.id === target.agentId);
     const team = snapshot.teams.find(team => team.id === agent?.teamId);

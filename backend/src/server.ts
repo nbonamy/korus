@@ -286,7 +286,6 @@ export class AppBackendServer {
 
   constructor(private readonly options: AppBackendServerOptions) {
     if (options.conversationSharing) this.conversationShares = new ConversationShares({ ...options.conversationSharing,
-      supports: target => defaultBackendCapabilities(target.backend).conversationSharing === true,
       canSubmit: target => {
         const agent = this.snapshot.agents.find(agent => agent.id === target.agentId);
         return Boolean(agent && this.agentPrompts?.canStart(agent) && !(this.snapshot.queuedPrompts ?? []).some(prompt => prompt.agentId === agent.id));

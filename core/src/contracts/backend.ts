@@ -90,8 +90,6 @@ export type AccountRateLimits = {
 export type BackendPlanModeSupport = 'native' | 'prompted' | 'unsupported';
 
 export type BackendCapabilities = {
-  /** Complete owner-moderated sharing, including durable submitted-message identity. */
-  conversationSharing?: boolean;
   codeReview?: boolean;
   planReview?: boolean;
   questions?: boolean;

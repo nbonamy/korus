@@ -4,7 +4,7 @@ import type { ConversationShareTarget } from './conversation-sharing';
 
 /** Shared navigation references carry no local execution or owner controls. */
 export const guestConversationCapabilities: BackendCapabilities = {
-  conversationSharing: false, codeReview: false, planReview: false, questions: false,
+  codeReview: false, planReview: false, questions: false,
   plugins: false, conversationArchive: false, conversationResume: false,
   conversationReplaceWithSummary: false, remoteControl: false,
   attachments: false, models: false, skills: false, reasoningEffort: false,

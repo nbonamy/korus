@@ -206,7 +206,6 @@ describe('Antigravity native session', () => {
         expect(history.map(message => message.parts)).toEqual(live.map(message => message.parts));
         expect(history.some(message => live.some(before => before.id === message.id))).toBe(false);
         expect(history.some(message => live.some(before => before.turnId === message.turnId))).toBe(false);
-        expect(host.getCapabilities().conversationSharing).toBe(false);
       } finally { await restarted.close(); }
     } finally { manager.close(); await host.close(); }
   });

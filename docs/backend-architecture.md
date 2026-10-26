@@ -244,13 +244,11 @@ that entry has no transcript or saved authorization and cannot reconnect.
 Leaving persists removal before disposing its session. Canceling an unconfirmed
 invitation discards its temporary session without changing saved joins.
 
-Backend capabilities explicitly qualify conversation sharing. Supported owner headers
-and menus expose Share; unsupported backends cannot mint links. Approved guest
-submissions bypass app slash-command interpretation. Codex submissions use the canonical user-message identity returned by the public SDK snapshot.
-Durable app-owned authorship metadata labels those identities without changing
-provider transcripts. Guest text enters the normal prompt admission boundary only
-through an explicit owner action. Transferring a suggestion to an owner draft
-carries no execution authority. Pending proposals and decisions are private to the
+Sharing is a Korus workflow, independent of provider capabilities. A local agent
+with a bound conversation can share it; shared guest entries cannot reshare it.
+Moving a suggestion into the owner's draft dismisses it for the collaborator and
+carries no execution authority. The owner edits and sends that draft through the
+ordinary composer; this handoff requires no provider message identity. Pending proposals and decisions are private to the
 owner and proposer. Persisted dispatch intent is never replayed after uncertain
 submission; restart exposes delivery unresolved. Dismiss never submits. Guests
 can withdraw only their own pending proposals; withdrawal and owner decisions

@@ -21,10 +21,10 @@ const relay = product.companionRelay!;
 const ownerId = '12D3KooWJ7cStPD8Mq1nJKegq5nTXWmKkRZAfkQxBBDQvhfHE3Ej';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function fixture() {
+async function fixture(session: import('@workspace/core/contracts').BackendSession = { kind: 'codex', threadId: 'original' }) {
   const root = await mkdtemp(path.join(tmpdir(), 'conversation-sharing-')); roots.push(root);
   const snapshot = createTestSnapshot();
-  snapshot.agents = [{ id: 'agent', teamId: 'team-test', name: 'Synthetic owner', backend: 'codex', folder: '/fixture', backendSession: { kind: 'codex', threadId: 'original' }, status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' }];
+  snapshot.agents = [{ id: 'agent', teamId: 'team-test', name: 'Synthetic owner', backend: session.kind, folder: '/fixture', backendSession: session, status: { type: 'idle' }, createdAt: '2026-01-01', updatedAt: '2026-01-01' }];
   snapshot.teams[0]!.agentIds = ['agent'];
   const events: AppBackendEvent[] = [];
   const directory = path.join(root, 'shares');
@@ -38,15 +38,6 @@ async function fixture() {
   return { root, directory, snapshot, events, start, target, request };
 }
 describe('owner conversation sharing RPC and protected persistence', () => {
-  it('rejects sharing for an unsupported backend instead of exposing a read-only share', async () => {
-    const f = await fixture();
-    f.snapshot.agents[0]!.backend = 'antigravity';
-    f.snapshot.agents[0]!.backendSession = { kind: 'antigravity', sessionId: 'unsupported' };
-    const server = f.start();
-    try {
-      await expect(f.request(server, { action: 'create', target: conversationShareTarget(f.snapshot.agents[0]!)! })).rejects.toThrow(/support/i);
-    } finally { await server.close(); }
-  });
   it('admits approved text through the normal owner boundary with a canonical identity and no app command', async () => {
     const f = await fixture(); const sendPrompt = vi.fn(async (_agent: import('@workspace/core/contracts').Agent, _text: string) => ({ backendSession: { kind: 'codex' as const, threadId: 'original' }, turnId: 'native-turn', messageId: 'native-message' }));
     const commands = vi.fn();
@@ -136,7 +127,7 @@ describe('owner conversation sharing RPC and protected persistence', () => {
     } finally { await server.close(); }
   });
   it('reuses one link across duplicate create/copy and restart, then permanently revokes it', async () => {
-    const f = await fixture(); let server = f.start();
+    const f = await fixture({ kind: 'claude', sessionId: 'original', transport: 'stdio' }); let server = f.start();
     try {
       const [first, duplicate] = await Promise.all([f.request(server, { action: 'create', target: f.target }), f.request(server, { action: 'create', target: f.target })]);
       expect(duplicate.link === first.link).toBe(true);

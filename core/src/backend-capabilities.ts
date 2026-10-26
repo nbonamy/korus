@@ -1,7 +1,6 @@
 import type { AgentBackend, BackendCapabilities } from './contracts';
 
 export const codexBackendCapabilities: BackendCapabilities = {
-  conversationSharing: true,
   codeReview: true,
   planReview: true,
   questions: true,
@@ -30,7 +29,6 @@ export const codexBackendCapabilities: BackendCapabilities = {
 };
 
 export const claudeBackendCapabilities: BackendCapabilities = {
-  conversationSharing: false,
   codeReview: true,
   planReview: true,
   questions: true,
@@ -93,7 +91,6 @@ export function defaultBackendCapabilities(backend: AgentBackend): BackendCapabi
 
 // Keep unimplemented app workflows unavailable until their owning integration is qualified.
 export const antigravityBackendCapabilities: BackendCapabilities = {
-  conversationSharing: false,
   codeReview: true, planReview: true, questions: true, plugins: false,
   conversationArchive: false, conversationResume: true, conversationReplaceWithSummary: false,
   remoteControl: false, attachments: true, models: true, skills: false,

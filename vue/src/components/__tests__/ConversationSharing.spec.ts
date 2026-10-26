@@ -12,7 +12,8 @@ afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
 describe('owner Share workflow', () => {
   it('moves a named suggestion from the composer drawer into the owner draft and deletes another without submitting', async () => {
     const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
-    agent.backendSession = { kind: 'codex', threadId: 'owner' };
+    agent.backend = 'claude'; agent.backendSession = { kind: 'claude', sessionId: 'owner', transport: 'stdio' };
+    snapshot.providerConnections = [{ backend: 'claude', installed: true, connected: true, checking: false }];
     const proposal = { id: '11111111-1111-4111-8111-111111111111', handle: 'a'.repeat(32), identity: 'guest-identity', name: 'Alex', discriminator: '1234abcd', text: 'Please inspect the retry path', status: 'pending' as const, createdAt: 'now' };
     const second = { ...proposal, id: '22222222-2222-4222-8222-222222222222', text: 'Another suggestion' };
     let proposals = [proposal, second];
@@ -72,15 +73,9 @@ describe('owner Share workflow', () => {
       expect(control).toHaveBeenLastCalledWith({ action: 'leave', id: view.id });
     } finally { wrapper.unmount(); }
   });
-  it.each(['claude', 'antigravity'] as const)('does not offer Share when the %s backend is unqualified', async backend => {
-    const snapshot = createInitialSnapshot(); const agent = snapshot.agents[0]!;
-    agent.backend = backend; agent.backendSession = backend === 'claude' ? { kind: 'claude', sessionId: 'unqualified', transport: 'stdio' } : { kind: 'antigravity', sessionId: 'unqualified' };
-    const wrapper = mountShell({ snapshot, stubRightWorkspacePanel: true, stubTeamRail: true });
-    try { await flushPromises(); expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(false); } finally { wrapper.unmount(); }
-  });
   it('uses one dialog and the same backend link from the header and context menu', async () => {
     const snapshot = createInitialSnapshot();
-    const agent = snapshot.agents[0]!; agent.backendSession = { kind: 'codex', threadId: 'share-fixture' };
+    const agent = snapshot.agents[0]!; agent.backend = 'antigravity'; agent.backendSession = { kind: 'antigravity', sessionId: 'share-fixture' };
     const inactive = { active: false, handle: null, connectedGuests: null, availability: 'transportPending' as const };
     const active = { ...inactive, active: true, handle: 'a'.repeat(32) };
     let shared = false;
