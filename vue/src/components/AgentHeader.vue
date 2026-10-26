@@ -75,7 +75,7 @@
         :git-status="gitStatus"
         :last-turn-git-diff="lastTurnGitDiff"
         :selected-target="agent.gitDiffTarget"
-        @open="emit('open-git-diff', $event)"
+        @open="(target, kind) => (kind ? emit('open-git-diff', target, kind) : emit('open-git-diff', target))"
         @select="emit('select-git-diff-target', $event)"
       />
       <GitWorkflowControl
@@ -168,6 +168,7 @@
 import { translate } from '../i18n';
 import { localizedText } from '../i18n/errors';
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { FileKind } from '@workspace/core/file-kind';
 import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, BackendRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { conversationShareTarget } from '@workspace/core/conversation-sharing';
@@ -265,7 +266,7 @@ const emit = defineEmits<{
   'toggle-workspace-expanded': [];
   'toggle-execution-plan': [];
   'open-git-log': [];
-  'open-git-diff': [target: AgentGitDiffTarget];
+  'open-git-diff': [target: AgentGitDiffTarget, focusKind?: FileKind];
   'select-git-diff-target': [target: AgentGitDiffTarget];
   'install-update': [];
   'open-in': [application: OpenInApplication];

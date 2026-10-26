@@ -85,6 +85,19 @@ describe('GitDiffPreviewPanel', () => {
       expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toContain('README.md');
     });
 
+    it('opens only the requested group once its diff is loaded, and again for each new request', async () => {
+      const wrapper = mount(GitDiffPreviewPanel, { props: { diff: '', groupByKind: true, focusKind: 'test', focusSequence: 1 } });
+      await wrapper.setProps({ diff });
+      const expanded = () => wrapper.findAll('.git-diff-preview-panel__group-header').filter(header => header.attributes('aria-expanded') === 'true').map(header => header.text().replace(/\d.*/, ''));
+      expect(expanded()).toStrictEqual(['Tests']);
+      expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toStrictEqual(['app.test.ts']);
+      await wrapper.setProps({ diff: `${diff}\n${fileDiff('src/new.ts')}` });
+      await wrapper.findAll('.git-diff-preview-panel__group-header').find(header => header.text().startsWith('Code'))!.trigger('click');
+      expect(expanded()).toStrictEqual(['Code', 'Tests']);
+      await wrapper.setProps({ focusKind: 'docs', focusSequence: 2 });
+      expect(expanded()).toStrictEqual(['Documentation']);
+    });
+
     it('lists the files in diff order without headers when grouping is off, and skips empty groups', () => {
       const flat = mount(GitDiffPreviewPanel, { props: { diff } });
       expect(flat.find('.git-diff-preview-panel__group-header').exists()).toBe(false);

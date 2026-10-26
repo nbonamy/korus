@@ -156,6 +156,7 @@ import type {
   WorkItem,
 } from '@workspace/core/contracts';
 import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
+import type { FileKind } from '@workspace/core/file-kind';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
   CodexConversationLink,
@@ -244,7 +245,7 @@ const props = defineProps<{
   pullAgentGitBranch?: (agentId: string, input: import('@workspace/core/contracts').AgentGitPullInput) => Promise<import('@workspace/core/contracts').AgentGitPullResult>;
   revertAgentGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   updateAgent: (input: import('@workspace/core/contracts').UpdateAgentInput) => Promise<void>;
-  openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget) => Promise<void>;
+  openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind) => Promise<void>;
   openAgentIn: (agentId: string, application: OpenInApplication, filePath?: string) => Promise<void>;
   openAttachmentImageAnnotation: (attachment: CodexNativeAttachment) => void;
   removeChatTextAnnotation: (annotationId: string) => void;
@@ -524,7 +525,7 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
       }
     },
     onOpenGitLog: () => agentId && openRightWorkspaceTab('gitLog', agentId),
-    onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
+    onOpenGitDiff: (target: AgentGitDiffTarget, focusKind?: FileKind) => agentId && openAgentGitDiffPreview(agentId, target, focusKind),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
     onOpenIn: (application: OpenInApplication) => agentId && props.openAgentIn(agentId, application),
     onSelectAgent: props.selectAgentFromShell,
@@ -533,8 +534,8 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
   };
 }
 
-function openAgentGitDiffPreview(agentId?: string, target?: AgentGitDiffTarget): Promise<void> {
-  return props.openAgentGitDiffPreview(agentId, target);
+function openAgentGitDiffPreview(agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind): Promise<void> {
+  return props.openAgentGitDiffPreview(agentId, target, focusKind);
 }
 
 function persistGitDiffTarget(agentId: string, target: AgentGitDiffTarget): void {

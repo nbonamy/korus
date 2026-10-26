@@ -42,6 +42,8 @@
       :diff="visibleDiff"
       :error="panel.error"
       :expand-all-signal="expandAllSignal"
+      :focus-kind="panel.focusKind"
+      :focus-sequence="panel.focusSequence"
       :group-by-kind="groupByKind"
       open-file-enabled
       :state="panel.state"
@@ -54,7 +56,7 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
 import { DotsVerticalIcon, FileDiffIcon, FolderIcon, FileTextIcon, GitCommitIcon, GitHubIcon, GitLabIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
@@ -75,6 +77,8 @@ const emit = defineEmits<{
 
 const wordWrap = ref(false);
 const groupByKind = ref(true);
+// A file type request only makes sense with the groups showing.
+watch(() => props.panel.focusSequence, (sequence) => { if (sequence) groupByKind.value = true; }, { immediate: true });
 const allExpanded = ref(true);
 const expandAllSignal = ref(0);
 const collapseAllSignal = ref(0);

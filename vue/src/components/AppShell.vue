@@ -1906,8 +1906,8 @@ const {
   openMarkdown: openMarkdownRequest,
   openSidePanel: openSidePanelRequest,
 } = workspacePreviews;
-function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<void> {
-  return agentId ? openAgentGitDiffForAgent(agentId, target) : Promise.resolve();
+function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget, focusKind?: import('@workspace/core/file-kind').FileKind): Promise<void> {
+  return agentId ? openAgentGitDiffForAgent(agentId, target, focusKind) : Promise.resolve();
 }
 const imageAnnotation = useImageAnnotation({
   composerAttachments: () => props.composerAttachments,

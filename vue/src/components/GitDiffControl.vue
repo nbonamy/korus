@@ -47,7 +47,7 @@ import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shar
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
-import { fileKinds } from '@workspace/core/file-kind';
+import { fileKinds, type FileKind } from '@workspace/core/file-kind';
 import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 
@@ -59,7 +59,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  open: [target: AgentGitDiffTarget];
+  open: [target: AgentGitDiffTarget, focusKind?: FileKind];
   select: [target: AgentGitDiffTarget];
 }>();
 
@@ -133,7 +133,7 @@ function kindMenuItems(summary: AgentGitDiffSummary): AppMenuItem[] {
     { id: 'kinds-heading', type: 'info', label: translate('surface.agentHeader.changesByType') },
     ...rows.map(({ kind, stats }) => ({
       id: `kind:${kind}`,
-      type: 'info' as const,
+      type: 'action' as const,
       label: fileKindLabel(kind),
       description: fileKindCount(stats!.changedFiles),
       value: { addedLines: stats!.addedLines, removedLines: stats!.removedLines },
@@ -171,6 +171,11 @@ function selectedTargetForAgent(): AgentGitDiffTarget {
 }
 
 function selectTarget(itemId: string): void {
+  if (itemId.startsWith('kind:')) {
+    menuOpen.value = false;
+    emit('open', { ...selectedTarget.value }, itemId.slice('kind:'.length) as FileKind);
+    return;
+  }
   const target = targetFromId(itemId);
   if (!target) return;
   hasUserSelection.value = true;

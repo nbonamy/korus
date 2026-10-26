@@ -217,7 +217,7 @@ describe('AgentHeader', () => {
     });
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, withKinds);
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
-    const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.type === 'info');
+    const menuRows = () => (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; label: string; description?: string; value?: unknown }>).filter(item => item.id === 'kinds-heading' || item.id.startsWith('kind:'));
     const rows = menuRows;
     expect(rows().map(row => [row.id, row.label, row.description])).toStrictEqual([
       ['kinds-heading', 'By file type', undefined], ['kind:code', 'Code', '2 files'], ['kind:test', 'Tests', '1 file'], ['kind:other', 'Other', '1 file'],
@@ -234,6 +234,23 @@ describe('AgentHeader', () => {
     expect(rows()).toStrictEqual([]);
   });
 
+  it('opens the review focused on the file type that was clicked', async () => {
+    const stats = (addedLines: number, removedLines: number, changedFiles: number) => ({ addedLines, removedLines, changedFiles });
+    const zero = stats(0, 0, 0);
+    const gitStatus = {
+      folder: '/repo', branch: 'feature', ahead: 0, behind: 0, changedFiles: 2, addedLines: 5, removedLines: 0, hasUntracked: false, state: 'dirty' as const,
+      diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, uncommitted: { ...stats(5, 0, 2), byKind: { code: stats(3, 0, 1), test: stats(2, 0, 1), docs: zero, other: zero } }, unstaged: stats(5, 0, 2), staged: zero, commits: [] },
+      updatedAt: '2026-06-05T00:00:00.000Z',
+    } as unknown as AgentGitStatus;
+    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, gitStatus);
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    const items = wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string }>;
+    expect(items.find(item => item.id === 'kind:test')!.type).toBe('action');
+    wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'kind:test');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted('open-git-diff')).toStrictEqual([[{ type: 'uncommitted' }, 'test']]);
+  });
+
   it('breaks the last turn down by file type from its recorded diff', async () => {
     const file = (path: string, added: number) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', ...Array.from({ length: added }, () => '+line')].join('\n');
     const gitStatus = {
@@ -247,7 +264,7 @@ describe('AgentHeader', () => {
     wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'turn');
     await wrapper.vm.$nextTick();
     await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
-    const rows = (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; description?: string; value?: unknown }>).filter(item => item.type === 'info');
+    const rows = (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; description?: string; value?: unknown }>).filter(item => item.id === 'kinds-heading' || item.id.startsWith('kind:'));
     expect(rows.map(row => [row.id, row.description])).toStrictEqual([['kinds-heading', undefined], ['kind:code', '1 file'], ['kind:test', '1 file']]);
     expect(rows[1]!.value).toStrictEqual({ addedLines: 3, removedLines: 0 });
   });

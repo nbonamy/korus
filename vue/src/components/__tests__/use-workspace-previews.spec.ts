@@ -70,6 +70,18 @@ describe('workspace diff queries', () => {
     expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).toMatchObject({ target: { type: 'staged' }, state: 'idle', diff: 'staged patch', error: null });
   });
 
+  it('keeps the requested file type focus on the loading and the loaded review, with a fresh sequence each time', async () => {
+    const state = setup(vi.fn().mockResolvedValue(result));
+    const open = state.previews.openAgentGitDiff(state.agent.id, { type: 'staged' }, 'test');
+    expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).toMatchObject({ state: 'loading', focusKind: 'test', focusSequence: 1 });
+    await open;
+    expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).toMatchObject({ state: 'idle', diff: 'staged patch', focusKind: 'test', focusSequence: 1 });
+    await state.previews.openAgentGitDiff(state.agent.id, { type: 'staged' }, 'docs');
+    expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).toMatchObject({ focusKind: 'docs', focusSequence: 2 });
+    await state.previews.openAgentGitDiff(state.agent.id, { type: 'staged' });
+    expect(state.workspace.workspaceFor(state.agent.id).gitReviewPanel).not.toHaveProperty('focusKind');
+  });
+
   it('renders a query error locally and treats an empty diff as success', async () => {
     const query = vi.fn<() => Promise<AgentGitDiff>>()
       .mockRejectedValueOnce(new Error('Git unavailable'))

@@ -155,6 +155,9 @@ const props = withDefaults(defineProps<{
   collapseAllSignal?: number;
   error?: string | null;
   expandAllSignal?: number;
+  /** With a new `focusSequence`, opens only this group (once its files are loaded) and folds the others. */
+  focusKind?: FileKind | null;
+  focusSequence?: number;
   /** Lists files under code, tests, documentation and other headers instead of in diff order. */
   groupByKind?: boolean;
   openFileEnabled?: boolean;
@@ -164,6 +167,8 @@ const props = withDefaults(defineProps<{
   collapseAllSignal: 0,
   error: null,
   expandAllSignal: 0,
+  focusKind: null,
+  focusSequence: 0,
   groupByKind: false,
   openFileEnabled: false,
   state: 'idle',
@@ -263,6 +268,14 @@ function toggleGroup(kind: FileKind): void {
   if (!next.delete(kind)) next.add(kind);
   collapsedGroups.value = next;
 }
+
+let appliedFocusSequence = 0;
+watch([() => props.focusSequence, files], () => {
+  if (!props.focusKind || !props.focusSequence || props.focusSequence === appliedFocusSequence || files.value.length === 0) return;
+  appliedFocusSequence = props.focusSequence;
+  collapsedFileKeys.value = new Set();
+  collapsedGroups.value = new Set(fileKinds.filter(kind => kind !== props.focusKind));
+}, { immediate: true });
 
 watch(() => props.expandAllSignal, () => {
   collapsedFileKeys.value = new Set();
