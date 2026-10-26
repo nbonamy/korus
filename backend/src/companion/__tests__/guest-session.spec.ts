@@ -66,6 +66,7 @@ async function fixture(backend: Agent['backend'] = 'claude', submit?: (target: i
   const port = {
     propose: (handle: string, peer: string, name: string, input: { id: string; text: string }) => shares.propose(handle, peer, name, input),
     proposals: (handle: string, peer: string) => shares.guestState(handle, peer),
+    withdraw: (handle: string, peer: string, proposalId: string) => shares.withdraw(handle, peer, proposalId),
     authorize: (handle: string, credential: string) => shares.authorize(handle, credential),
     connected: (handle: string, count: number) => shares.connected(handle, count),
     onEvent: (listener: (event: AppBackendEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -120,11 +121,23 @@ describe('encrypted guest conversation authorization', () => {
     const invitation = `KORUS1.${Buffer.from(JSON.stringify(f.link)).toString('base64url')}`;
     const prepared = await call({ action: 'prepare', link: invitation, teamId: 'team-test' });
     expect(prepared.view?.status).toBe('needsName');
+    const canceled = await call({ action: 'cancel', id: prepared.view!.id });
+    expect(canceled).toStrictEqual({ entries: [], view: null });
+    expect(snapshot.agents).toStrictEqual([]);
+    await expect(call({ action: 'join', id: prepared.view!.id, name: 'Alex' })).rejects.toThrow();
+    const retried = await call({ action: 'prepare', link: invitation, teamId: 'team-test' });
+    expect(retried.view?.id).toBe(prepared.view!.id);
     await call({ action: 'join', id: prepared.view!.id, name: 'Alex' });
+    await call({ action: 'join', id: prepared.view!.id, name: 'Alex' });
+    await call({ action: 'cancel', id: prepared.view!.id });
     await vi.waitFor(async () => expect((await call({ action: 'state' })).view?.status).toBe('ready'));
     expect(snapshot.agents).toHaveLength(1);
     expect(snapshot.agents[0]).toMatchObject({ teamId: 'team-test', sessionKind: 'quickChat', sharedConversation: { joinId: prepared.view!.id } });
     expect(snapshot.agents[0]!.backendSession).toBeUndefined();
+    const suggestion = { id: randomUUID(), text: 'A suggestion to withdraw' };
+    await call({ action: 'propose', id: prepared.view!.id, proposalId: suggestion.id, text: suggestion.text });
+    const withdrawn = await call({ action: 'withdraw', id: prepared.view!.id, proposalId: suggestion.id });
+    expect(withdrawn.view?.proposalState?.proposals).toContainEqual(expect.objectContaining({ id: suggestion.id, status: 'dismissed', text: '' }));
     for (const method of [backendMethods.agentPromptSend, backendMethods.clientWorkspaceApply, backendMethods.clientDocumentRead]) {
       const denied = await server.handleMessage({ jsonrpc: '2.0', id: 'denied', method, params: { agentId: snapshot.agents[0]!.id, prompt: 'Must not execute locally', change: { upsert: [] }, tabId: 'private-file' } });
       expect(denied).toHaveProperty('error');
@@ -141,6 +154,15 @@ describe('encrypted guest conversation authorization', () => {
     const submit = vi.fn(async () => ({ turnId: 'native-turn', messageId: 'native-user-id' }));
     const f = await fixture('codex', submit);
     const one = await f.client('Alex'); const two = await f.client('Alex');
+    const withdrawn = { id: randomUUID(), text: 'Only I can withdraw this suggestion' };
+    await one.client.propose(withdrawn);
+    await expect(two.client.withdraw(withdrawn.id)).rejects.toThrow();
+    expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: withdrawn.id, status: 'pending' }));
+    await one.client.withdraw(withdrawn.id);
+    await one.client.withdraw(withdrawn.id);
+    await one.client.propose(withdrawn);
+    expect((await one.client.proposals()).proposals).toContainEqual(expect.objectContaining({ id: withdrawn.id, status: 'dismissed', text: '' }));
+    expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(withdrawn.text);
     const dismissed = { id: randomUUID(), text: 'Private draft' };
     await one.client.propose(dismissed);
     await vi.waitFor(() => expect(one.client.proposalState?.proposals).toContainEqual(expect.objectContaining({ id: dismissed.id, status: 'pending' })));
@@ -149,7 +171,7 @@ describe('encrypted guest conversation authorization', () => {
     await f.shares.control({ action: 'dismiss', target: f.target, handle: f.link.handle, proposalId: dismissed.id });
     expect(submit).not.toHaveBeenCalled();
     expect(await readFile(path.join(f.directory, 'shares/state.json'), 'utf8')).not.toContain(dismissed.text);
-    expect((await one.client.proposals()).proposals).toEqual([expect.objectContaining({ id: dismissed.id, status: 'dismissed' })]);
+    expect((await one.client.proposals()).proposals).toEqual([expect.objectContaining({ id: withdrawn.id, status: 'dismissed' }), expect.objectContaining({ id: dismissed.id, status: 'dismissed' })]);
     const accepted = { id: randomUUID(), text: 'Identical prompt' };
     await Promise.all([one.client.propose(accepted), one.client.propose(accepted)]);
     await Promise.all([f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id }), f.shares.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id })]);
@@ -170,6 +192,7 @@ describe('encrypted guest conversation authorization', () => {
     cleanup.push(() => restored.close());
     expect((await restored.authorize(f.link.handle, f.link.credential)).valid()).toBe(true);
     const recovered = await restored.guestState(f.link.handle, one.joined.participant.identity);
+    expect(await restored.propose(f.link.handle, one.joined.participant.identity, 'Alex', withdrawn)).toMatchObject({ status: 'dismissed', text: '' });
     expect(recovered.authors).toContainEqual(expect.objectContaining({ messageId: 'native-user-id', name: 'Alex' }));
     await restored.propose(f.link.handle, one.joined.participant.identity, 'Alex', accepted);
     await restored.control({ action: 'send', target: f.target, handle: f.link.handle, proposalId: accepted.id });
@@ -304,8 +327,8 @@ describe('encrypted guest conversation authorization', () => {
     await vi.waitFor(async () => expect((await joins.control({ action: 'state' })).view?.status).toBe('ready'));
     const duplicates = await joins.control({ action: 'state' });
     expect(duplicates.entries.map(entry => entry.title)).toStrictEqual([
-      `Investigate login failures · ${first.slice(0, 8)}`,
-      `Investigate login failures · ${second.slice(0, 8)}`,
+      'Investigate login failures',
+      'Investigate login failures',
     ]);
     expect(duplicates.view?.title).toBe(duplicates.entries[1]!.title);
     await joins.close();
@@ -314,8 +337,8 @@ describe('encrypted guest conversation authorization', () => {
     await writeFile(path.join(directory, 'state.json'), JSON.stringify(legacy));
     joins = new GuestJoins({ directory, relay: f.pin });
     expect((await joins.control({ action: 'state' })).entries.map(entry => entry.title)).toStrictEqual([
-      `Shared conversation · ${first.slice(0, 8)}`,
-      `Shared conversation · ${second.slice(0, 8)}`,
+      'Shared conversation',
+      'Shared conversation',
     ]);
   }, 30_000);
   it('keeps unavailable distinct from rejection, reconnects on open, and Leave cancels an in-flight read', async () => {

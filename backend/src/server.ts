@@ -205,6 +205,10 @@ export class AppBackendServer {
     if (!this.conversationShares) return Promise.reject(new Error('denied'));
     return this.conversationShares.guestState(handle, identity);
   }
+  withdrawConversationGuest(handle: string, identity: string, proposalId: string) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.withdraw(handle, identity, proposalId);
+  }
   private async syncSharedQuickChats(state: import('@workspace/core/guest-navigation').GuestJoinState, action: string) {
     let changed = false;
     const live = new Set(state.entries.map(entry => entry.id));

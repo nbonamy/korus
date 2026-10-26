@@ -11,8 +11,8 @@
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     </div>
     <template #footer>
-      <button v-if="state?.active" type="button" class="app-button app-button--tertiary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
-      <button type="button" :class="['app-button', state?.active ? 'app-button--secondary' : 'app-button--tertiary']" :disabled="busy" @click="close">{{ t('sharing.close') }}</button>
+      <button type="button" class="app-button app-button--tertiary" :disabled="busy" @click="close">{{ t('sharing.close') }}</button>
+      <button v-if="state?.active" type="button" class="app-button app-button--secondary" :disabled="busy" @click="run('revoke')">{{ t('sharing.stop') }}</button>
       <button v-if="!state && !loading" type="button" class="app-button app-button--primary" :disabled="busy" @click="load">{{ t('common.retry') }}</button>
       <button v-else-if="state" type="button" class="app-button app-button--primary" :aria-busy="busy || loading" :disabled="busy || loading || state.availability === 'notConfigured'" @click="run(state.active ? 'copy' : 'create')">
         {{ state.active ? t('sharing.copy') : t('sharing.share') }}
@@ -80,7 +80,7 @@ async function run(action: 'create' | 'copy' | 'revoke') {
         await navigator.clipboard.writeText(result.link);
         if (!disposed) {
           ElMessage.success(t('sharing.inviteLinkCopied'));
-          if (action === 'create') emit('close');
+          emit('close');
         }
       }
       catch { if (!disposed) error.value = t('sharing.copyFailed'); }

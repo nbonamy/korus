@@ -538,6 +538,8 @@ export type AppGeneralSettings = {
   appshots: AppshotSettings;
   /** Optional for backwards compatibility with pre-plugin state files. */
   plugins?: AppPluginSettings;
+  /** Name used when joining shared conversations as a guest. */
+  guestDisplayName?: string;
 };
 
 export type UpdateGeneralSettingsInput = Partial<Omit<AppGeneralSettings, 'plugins' | 'git'>> & {

@@ -80,6 +80,9 @@
           </button>
         </el-tooltip>
       </template>
+      <template #composer-drawers>
+        <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
+      </template>
       <template #composer-shelf-actions="{ disabled }">
         <BackendSelector
           v-if="showBackendSelector && agent && backendSwitch"
@@ -103,7 +106,6 @@
         </div>
       </template>
       <template #before-composer>
-        <ConversationShareActivity v-if="shareTarget" :target="shareTarget" @authors="guestAuthors = $event" />
         <button v-if="agent && !backendChoices.includes(agent.backend)" class="app-button app-button--tertiary" type="button" @click="connectEngine">
           {{ t('engineConnection.required') }}
         </button>
@@ -142,7 +144,8 @@
 
 <script setup lang="ts">
 import ConversationShareActivity from './ConversationShareActivity.vue';
-import { supportsConversationSharing, conversationShareTarget, type GuestAuthor } from '@workspace/core/conversation-sharing';
+import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
+import { useConversationShareActivity } from './use-conversation-share-activity';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
@@ -268,8 +271,11 @@ const emit = defineEmits<{
 const conversationKey = computed(() => props.agent?.id ?? 'no-agent');
 const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
 const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
-const guestAuthors = ref<GuestAuthor[]>([]);
-function guestAuthor(id: string | undefined) { const author = guestAuthors.value.find(author => author.messageId === id); return author ? `${author.name} · ${author.discriminator}` : null; }
+const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);
+const movingSuggestion = ref(false);
+const movedSuggestions = new Set<string>();
+const canMoveSuggestion = computed(() => Boolean(resolveCodexConversationPaneValue(props.controller.actions).updateComposerState && resolveCodexConversationPaneValue(props.controller.state).composer?.state));
+function guestAuthor(id: string | undefined) { return guestAuthors.value.find(author => author.messageId === id)?.name ?? null; }
 const loadedContent = reactive(new Map<string, RendererMessage>());
 watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
 function deferredContent(message: CodexChatMessage | SurfaceMessage): RendererMessage['deferredContent'] {
@@ -290,6 +296,27 @@ function composerState(): CodexComposerState | null {
 
 function updateComposerState(state: CodexComposerState): void {
   void resolveCodexConversationPaneValue(props.controller.actions).updateComposerState?.(state);
+}
+
+async function moveSuggestion(proposal: GuestProposal): Promise<void> {
+  if (movingSuggestion.value || shareBusy.value) return;
+  const controller = props.controller;
+  const update = resolveCodexConversationPaneValue(controller.actions).updateComposerState;
+  const state = resolveCodexConversationPaneValue(controller.state).composer?.state;
+  if (!update || !state) return;
+  const identity = paneConversationKey.value;
+  movingSuggestion.value = true;
+  try {
+    if (!movedSuggestions.has(proposal.id)) {
+      const text = state.text ? `${state.text}\n\n${proposal.text}` : proposal.text;
+      await update({ ...state, text, selectionStart: text.length, selectionEnd: text.length });
+      movedSuggestions.add(proposal.id);
+    }
+    if (identity !== paneConversationKey.value) return;
+    await dismissSuggestion(proposal.id);
+    void nextTick(() => editorElement()?.focus());
+  } catch { shareFailed.value = true; }
+  finally { movingSuggestion.value = false; }
 }
 
 function editorElement(): HTMLElement | null {

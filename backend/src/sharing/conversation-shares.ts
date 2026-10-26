@@ -91,6 +91,19 @@ export class ConversationShares {
       return structuredClone({ proposals: records.filter(record => record.identity === identity), authors: this.authors(this.saved!.links.find(link => link.handle === handle)?.target) });
     });
   }
+  withdraw(handle: string, identity: string, proposalId: string): Promise<void> {
+    return this.serial(async () => {
+      if (!z.string().uuid().safeParse(proposalId).success) throw new Error('denied');
+      await this.load();
+      const link = this.saved!.links.find(link => link.handle === handle && !link.revokedAt);
+      const proposal = this.saved!.proposals?.find(record => record.handle === handle && record.id === proposalId);
+      if (this.closed || !link || this.invalidated.has(handle) || !this.currentTarget(link.target)
+        || !proposal || proposal.identity !== identity || !['pending', 'dismissed'].includes(proposal.status)) throw new Error('denied');
+      if (proposal.status === 'dismissed') return;
+      await this.write({ ...this.saved!, proposals: this.saved!.proposals!.map(record => record === proposal ? compactProposal({ ...record, status: 'dismissed' }) : record) });
+      this.changed(link.target.agentId, this.state(link, true));
+    });
+  }
   /** Coordination admission queue, not a provider transcript or provider-native queue. */
   async dispatchQueued(): Promise<void> {
     if (this.dispatching || this.closed || !this.options.submit) return;

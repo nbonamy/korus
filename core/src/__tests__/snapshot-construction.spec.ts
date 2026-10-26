@@ -198,6 +198,7 @@ function expectedEmptySnapshot(): AppSnapshot {
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: {},
+      guestDisplayName: '',
       appshots: {
         hotkey: 'command',
         destination: 'active-agent',

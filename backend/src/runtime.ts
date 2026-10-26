@@ -292,6 +292,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     authorizeGuest: (handle, credential) => server.authorizeConversationGuest(handle, credential),
     proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
     guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
+    withdrawGuest: (handle, identity, proposalId) => server.withdrawConversationGuest(handle, identity, proposalId),
     guestCount: (handle, count) => server.conversationGuestCount(handle, count),
     desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),

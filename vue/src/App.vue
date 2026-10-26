@@ -1,6 +1,6 @@
 <template>
   <div class="window-edge" aria-hidden="true" />
-  <JoinSharedChatDialog v-if="inviteVisible" :view="guestState.view" :busy="guestBusy" :failed="guestFailed" :control="runGuest" @close="inviteVisible = false" />
+  <JoinSharedChatDialog v-if="inviteVisible" :view="guestInviteView" :busy="guestBusy" :failed="guestFailed" :control="runGuest" :save-display-name="saveGuestDisplayName" @close="closeGuestInvite" />
   <AppShell
     v-if="hasLoadedSnapshot"
     @join-invite="showGuestInvite"
@@ -498,7 +498,10 @@ const {
   restartApp,
   getPluginStatus,
 } = useAppState();
-const { inviteVisible, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuestInvite } = useGuestNavigation(() => snapshot.value, selectAgent, () => hasLoadedSnapshot.value);
+const { inviteVisible, inviteView: guestInviteView, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuestInvite, close: closeGuestInvite } = useGuestNavigation(() => snapshot.value, selectAgent, () => hasLoadedSnapshot.value);
+async function saveGuestDisplayName(name: string): Promise<void> {
+  await updateSettings({ general: { guestDisplayName: name } });
+}
 
 const agentConversationActions: AgentConversationActions = {
   planReview: respondToPlanReviewForAgent,

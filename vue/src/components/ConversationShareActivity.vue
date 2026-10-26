@@ -1,49 +1,34 @@
 <template>
-  <section v-if="proposals.length" class="conversation-share-activity" :aria-label="t('sharing.guestProposals')">
-    <article v-for="proposal in proposals" :key="proposal.id" class="conversation-share-activity__proposal">
-      <strong>{{ proposal.name }} · {{ proposal.discriminator }}</strong>
-      <p>{{ proposal.text }}</p>
-      <template v-if="proposal.status === 'pending'">
-        <el-button class="app-button" type="primary" :disabled="busy" @click="decide(proposal.id, 'send')">{{ t('guest.send') }}</el-button>
-        <el-button class="app-button app-button--tertiary" :disabled="busy" @click="decide(proposal.id, 'dismiss')">{{ t('guest.dismiss') }}</el-button>
+  <CodexComposerDrawer v-if="proposals.length" class="conversation-share-activity" :aria-label="t('guest.suggestions')">
+    <CodexComposerDrawerRow v-for="proposal in proposals" :key="proposal.id">
+      <template #leading>
+        <ShareIcon class="conversation-share-activity__icon" aria-hidden="true" />
+        <strong v-if="owner" class="conversation-share-activity__author" :title="proposal.name">{{ proposal.name }}</strong>
       </template>
-      <span v-else role="status">{{ t(`guest.${proposal.status}`) }}</span>
-    </article>
+      <span :title="proposal.text">{{ proposal.text }}</span>
+      <template #actions>
+        <span v-if="proposal.status !== 'pending'" class="conversation-share-activity__status" role="status">{{ t(`guest.${proposal.status}`) }}</span>
+        <template v-else>
+          <CodexIconButton v-if="owner" :label="t('guest.moveSuggestion')" :disabled="disabled || editDisabled" @click="emit('edit', proposal)"><PencilIcon aria-hidden="true" /></CodexIconButton>
+          <CodexIconButton :label="t('guest.deleteSuggestion')" :disabled="disabled" @click="emit('delete', proposal.id)"><Trash2Icon aria-hidden="true" /></CodexIconButton>
+        </template>
+      </template>
+    </CodexComposerDrawerRow>
     <p v-if="failed" role="alert">{{ t('sharing.failed') }}</p>
-  </section>
+  </CodexComposerDrawer>
 </template>
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ConversationShareState, ConversationShareTarget, GuestAuthor } from '@workspace/core/conversation-sharing';
-import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
-import { appApi } from '../platform-api';
-const props = defineProps<{ target: ConversationShareTarget }>();
-const emit = defineEmits<{ authors: [authors: GuestAuthor[]] }>();
-const { t } = useI18n(); const state = ref<ConversationShareState | null>(null); const busy = ref(false); const failed = ref(false);
-const shareActiveByAgentId = inject(conversationShareActiveByAgentIdKey, null);
-const proposals = computed(() => state.value?.proposals?.filter(proposal => ['pending', 'queued', 'dispatching', 'unresolved'].includes(proposal.status)) ?? []);
-let disposed = false; let generation = 0; let unsubscribe: (() => void) | undefined;
-function receive(value: ConversationShareState) { state.value = value; if (shareActiveByAgentId) shareActiveByAgentId[props.target.agentId] = value.active; emit('authors', value.authors ?? []); }
-async function load() {
-  const expected = ++generation;
-  try { const result = await appApi?.conversationShareControl({ action: 'status', target: props.target }); if (!disposed && expected === generation && result) receive(result.state); }
-  catch { /* Sharing is inactive or unavailable; ordinary conversations remain usable. */ }
-}
-async function decide(proposalId: string, action: 'send' | 'dismiss') {
-  if (busy.value || !state.value?.handle || !appApi) return;
-  busy.value = true; failed.value = false;
-  const expected = ++generation;
-  try { const result = await appApi.conversationShareControl({ action, target: props.target, handle: state.value.handle, proposalId }); if (!disposed && expected === generation) receive(result.state); }
-  catch { if (!disposed) failed.value = true; }
-  finally { if (!disposed) busy.value = false; }
-}
-watch(() => JSON.stringify(props.target), () => { state.value = null; emit('authors', []); void load(); }, { immediate: true });
-onMounted(() => { unsubscribe = appApi?.onEvent(event => { if (event.type === 'conversation.shareChanged' && event.agentId === props.target.agentId) { generation++; receive(event.payload); } }); });
-onBeforeUnmount(() => { disposed = true; generation++; unsubscribe?.(); });
+import { CodexComposerDrawer, CodexComposerDrawerRow, CodexIconButton } from '@codex-app-sdk/vue';
+import type { GuestProposal } from '@workspace/core/conversation-sharing';
+import { PencilIcon, ShareIcon, Trash2Icon } from '../shared/icons/app-icons';
+defineProps<{ proposals: readonly GuestProposal[]; owner?: boolean; disabled?: boolean; editDisabled?: boolean; failed?: boolean }>();
+const emit = defineEmits<{ edit: [proposal: GuestProposal]; delete: [proposalId: string] }>();
+const { t } = useI18n();
 </script>
 <style scoped>
-.conversation-share-activity { padding: var(--space-8) var(--space-12); max-height: 35vh; overflow-y: auto; }
-.conversation-share-activity__proposal { padding: var(--space-8); border-top: 1px solid var(--color-border); font-size: var(--font-size-13); }
-.conversation-share-activity__proposal p { white-space: pre-wrap; margin: var(--space-8) 0; }
+.conversation-share-activity { max-height: 28vh; overflow-y: auto; }
+.conversation-share-activity__icon { flex: 0 0 auto; width: var(--icon-sm); height: var(--icon-sm); }
+.conversation-share-activity__author { min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: inherit; font-weight: var(--font-weight-semibold); }
+.conversation-share-activity__status { font-size: var(--font-size-12); }
 </style>

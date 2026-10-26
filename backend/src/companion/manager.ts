@@ -43,6 +43,7 @@ const controlSchema = z.discriminatedUnion('action', [z.object({ action: z.liter
 export type CompanionBackendPort = {
   proposeGuest?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
   guestProposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
+  withdrawGuest?(handle: string, identity: string, proposalId: string): Promise<void>;
   authorizeGuest?(handle: string, credential: string): Promise<GuestConversationGrant>;
   guestCount?(handle: string, count: number): void;
   desktopFocused?(): Promise<boolean>;
@@ -336,6 +337,7 @@ export class CompanionManager {
     if (this.backend.authorizeGuest) this.guestGateway = new GuestConversationGateway({
       ...(this.backend.proposeGuest ? { propose: (handle, identity, name, input) => this.backend.proposeGuest!(handle, identity, name, input) } : {}),
       ...(this.backend.guestProposals ? { proposals: (handle, identity) => this.backend.guestProposals!(handle, identity) } : {}),
+      ...(this.backend.withdrawGuest ? { withdraw: (handle, identity, proposalId) => this.backend.withdrawGuest!(handle, identity, proposalId) } : {}),
       authorize: (handle, credential) => this.backend.authorizeGuest!(handle, credential),
       connected: (handle, count) => this.backend.guestCount?.(handle, count),
       onEvent: listener => { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; },

@@ -150,23 +150,25 @@ export function projectAgentMentionLabels(agents: readonly Agent[], quickChatsLa
 }
 
 function disambiguateDuplicateSessionLabels(groups: WorkspaceSidebarGroup[]): void {
-  const sessions = groups.flatMap((group) => group.sessions.map((session) => ({ group, session })));
-  const namedSessions = sessions.filter(({ session }) => session.customName !== null);
-  const counts = labelCounts(sessions.map(({ session }) => session.displayTitle));
-  const candidates = namedSessions.map(({ group, session }) => {
-    if ((counts.get(normalizedLabel(session.displayTitle)) ?? 0) < 2) return session.displayTitle;
-    const context = session.branch && normalizedLabel(session.branch) !== normalizedLabel(session.displayTitle)
-      ? session.branch
-      : group.label;
-    return `${session.displayTitle} · ${context}`;
-  });
-  const disambiguated = disambiguateLabels(candidates.map((label, index) => ({
-    agentId: namedSessions[index]!.session.agentId,
-    label,
-  })));
-  disambiguated.forEach(({ label }, index) => {
-    namedSessions[index]!.session.displayTitle = label;
-  });
+  for (const group of groups) {
+    if (group.kind !== 'repository') continue;
+    const namedSessions = group.sessions.filter(session => session.customName !== null);
+    const counts = labelCounts(group.sessions.map(session => session.displayTitle));
+    const candidates = namedSessions.map(session => {
+      if ((counts.get(normalizedLabel(session.displayTitle)) ?? 0) < 2) return session.displayTitle;
+      const context = session.branch && normalizedLabel(session.branch) !== normalizedLabel(session.displayTitle)
+        ? session.branch
+        : group.label;
+      return `${session.displayTitle} · ${context}`;
+    });
+    const disambiguated = disambiguateLabels(candidates.map((label, index) => ({
+      agentId: namedSessions[index]!.agentId,
+      label,
+    })));
+    disambiguated.forEach(({ label }, index) => {
+      namedSessions[index]!.displayTitle = label;
+    });
+  }
 }
 
 function disambiguateLabels<T extends { agentId: string; label: string }>(values: T[]): T[] {

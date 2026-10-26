@@ -10,6 +10,7 @@ export type GuestJoinState = { entries: GuestJoinEntry[]; view: GuestJoinView | 
 export type GuestJoinControl =
   | { action: 'state' }
   | { action: 'prepare'; link: string; teamId?: string }
-  | { action: 'open' | 'leave' | 'history'; id: string }
+  | { action: 'open' | 'leave' | 'history' | 'cancel'; id: string }
   | { action: 'join'; id: string; name: string }
+  | { action: 'withdraw'; id: string; proposalId: string }
   | { action: 'propose'; id: string; proposalId: string; text: string };

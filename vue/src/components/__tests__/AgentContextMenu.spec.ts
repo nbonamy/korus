@@ -17,7 +17,7 @@ afterEach(() => {
 describe('AgentContextMenu', () => {
   it('offers only Leave for a shared Quick Chat', async () => {
     const wrapper = mountMenu({ shared: true });
-    expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toStrictEqual(['Leave conversation']);
+    expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toStrictEqual(['Leave']);
     await wrapper.get('[role="menuitem"]').trigger('click');
     expect(wrapper.emitted('action')).toStrictEqual([['close-agent']]);
   });

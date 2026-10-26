@@ -476,6 +476,12 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     },
     class: props.splitHeaders ? 'agent-header--pane' : undefined,
     agent,
+    guestStatus: agent?.sharedConversation?.joinId === props.guestView?.id ? props.guestView?.status : null,
+    guestBusy: props.guestBusy,
+    onLeaveSharedConversation: () => {
+      const id = agent?.sharedConversation?.joinId;
+      if (id) void props.guestControl?.({ action: 'leave', id });
+    },
     repositoryIcon: agent ? repositoryIconForAgent(agent, props.snapshot.general.repositoryIcons) : undefined,
     gitStatus: focused ? props.currentAgentGitStatus : agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null,
     lastTurnGitDiff: diff?.agentId === agentId && diff.diff ? diff : null,

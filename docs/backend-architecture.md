@@ -233,16 +233,20 @@ baseline through the guest client. Concurrent opens reuse the session; switching
 entries disposes the old subscription. Temporary disconnect retains the loaded
 view with an unavailable status. An authenticated revocation clears the view and
 saved authorization; failed local removal is explicit and cannot reopen access.
-Leaving persists removal before disposing its session.
+Leaving persists removal before disposing its session. Canceling an unconfirmed
+invitation discards its temporary session without changing saved joins.
 
 Backend capabilities explicitly qualify conversation sharing. Supported owner headers
 and menus expose Share; unsupported backends cannot mint links. Approved guest
 submissions bypass app slash-command interpretation. Codex submissions use the canonical user-message identity returned by the public SDK snapshot.
 Durable app-owned authorship metadata labels those identities without changing
 provider transcripts. Guest text enters the normal prompt admission boundary only
-after an owner Send decision. Pending proposals and decisions are private to the
+through an explicit owner action. Transferring a suggestion to an owner draft
+carries no execution authority. Pending proposals and decisions are private to the
 owner and proposer. Persisted dispatch intent is never replayed after uncertain
-submission; restart exposes delivery unresolved. Dismiss never submits. Terminal
+submission; restart exposes delivery unresolved. Dismiss never submits. Guests
+can withdraw only their own pending proposals; withdrawal and owner decisions
+share the serialized authority boundary. Terminal
 receipts retain a text fingerprint for deduplication instead of discarded text;
 active proposal text has a two-MiB budget per link, alongside count limits.
 
@@ -281,8 +285,9 @@ connections and STOP streams stay bounded.
 
 Guest admission checks the bearer credential against protected daemon state inside
 that authenticated channel. The authenticated app peer supplies participant identity;
-a trimmed display name is presentation, with a stable discriminator for duplicate
-names. Joining never consumes the link or adds a phone grant. Active session counts
+a trimmed display name is presentation. Authorization and proposal ownership use
+the peer identity even when names match. Joining never consumes the link or adds
+a phone grant. Active session counts
 are separate from durable links and feed owner Share status. Revocation and target
 invalidation dispose subscriptions and queued writes; asynchronous reads and each
 queued delivery recheck the original grant.

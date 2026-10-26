@@ -98,6 +98,7 @@ describe('settings contracts', () => {
       autoResumeAfterLimit: true,
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
+      guestDisplayName: '',
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,
     });
@@ -206,6 +207,7 @@ describe('settings contracts', () => {
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: {},
+      guestDisplayName: '',
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,
     });

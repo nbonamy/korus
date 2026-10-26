@@ -20,6 +20,7 @@ import { UpdateStreamWriter } from '../companion/update-writer';
 export type GuestConversationPort = {
   propose?(handle: string, identity: string, name: string, input: { id: string; text: string }): Promise<import('@workspace/core/conversation-sharing').GuestProposal>;
   proposals?(handle: string, identity: string): Promise<import('@workspace/core/conversation-sharing').GuestProposalState>;
+  withdraw?(handle: string, identity: string, proposalId: string): Promise<void>;
   authorize(handle: string, credential: string): Promise<GuestConversationGrant>;
   connected(handle: string, count: number): void;
   onEvent(listener: (event: AppBackendEvent) => void): () => void;
@@ -146,6 +147,11 @@ export class GuestConversationGateway {
               }
               case 'guest.proposals':
                 emptySchema.parse(request.args); result = await this.port.proposals?.(handle, peer) ?? { proposals: [], authors: [] }; break;
+              case 'guest.withdraw': {
+                const { id } = z.object({ id: z.string().uuid() }).strict().parse(request.args);
+                if (!this.port.withdraw) throw new Error('denied');
+                await this.port.withdraw(handle, peer, id); result = {}; break;
+              }
               case 'ping': emptySchema.parse(request.args); result = {}; break;
               case 'conversation.synchronize': {
                 const { checkpoint } = syncSchema.parse(request.args);

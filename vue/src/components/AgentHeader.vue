@@ -44,6 +44,9 @@
             {{ agentStatusDetail }}
           </span>
         </div>
+        <div v-else class="agent-header__context" role="status">
+          <span>{{ $t('guest.shared') }}<template v-if="guestStatus"> · {{ $t(`guest.status.${guestStatus}`) }}</template></span>
+        </div>
       </div>
     </div>
     <div
@@ -149,6 +152,14 @@
         :status="updateStatus"
         @install="emit('install-update')"
       />
+      <button
+        v-if="agent?.sharedConversation"
+        class="app-button app-button--neutral agent-header__leave"
+        type="button"
+        :aria-label="$t('guest.leave')"
+        :disabled="guestBusy"
+        @click="emit('leave-shared-conversation')"
+      >{{ $t('guest.leave') }}</button>
     </div>
   </WorkspaceHeader>
 </template>
@@ -160,6 +171,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffTarget, AgentGitStatus, AgentSubagentTree, BackendRuntimeStatus, DesktopUpdateStatus, OpenInApplication, OpenInApplicationCatalog, TurnGitDiff } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { conversationShareTarget } from '@workspace/core/conversation-sharing';
+import type { GuestJoinStatus } from '@workspace/core/guest-navigation';
 import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
@@ -176,6 +188,8 @@ import { conversationShareActiveByAgentIdKey } from './conversation-share-state'
 
 const props = withDefaults(defineProps<{
   agent: Agent | null;
+  guestStatus?: GuestJoinStatus | null;
+  guestBusy?: boolean;
   shareAvailable?: boolean;
   shareStatusOnMount?: boolean;
   repositoryIcon?: string;
@@ -245,6 +259,7 @@ onBeforeUnmount(() => { shareStatusGeneration++; unsubscribeShareState?.(); });
 const emit = defineEmits<{
   'expand-sidebar': [];
   'share': [];
+  'leave-shared-conversation': [];
   'select-agent': [agentId: string];
   'toggle-workspace': [];
   'toggle-workspace-expanded': [];
@@ -412,6 +427,11 @@ const gitReviewAvailable = computed(() => {
   min-width: 0;
   color: var(--color-text-muted);
   text-align: right;
+}
+
+.agent-header__leave {
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
 }
 
 .agent-header__share,

@@ -1,9 +1,5 @@
 <template>
   <section class="shared-conversation-pane">
-  <div class="shared-conversation-pane__status" role="status">
-    <span>{{ t('guest.shared') }} · {{ t(`guest.status.${view.status}`) }}<template v-if="view.participant"> · {{ view.participant.name }} · {{ view.participant.discriminator }}</template></span>
-    <button type="button" class="app-button app-button--tertiary" @click="control({ action: 'leave', id: view.id })">{{ t('guest.leave') }}</button>
-  </div>
   <CodexConversationPane
     :key="view.id"
     v-model="draft"
@@ -20,6 +16,7 @@
     :can-fork-turn="false"
     :can-retry-turn="false"
     follow-ups-disabled
+    :history-loading="view.status === 'connecting'"
     :messages="snapshot?.messages ?? []"
     :turns="snapshot?.turns"
     :active-turn-id="snapshot?.activeTurnId"
@@ -43,14 +40,12 @@
         @loaded="(id, full) => loaded.set(id, full)"
       />
     </template>
+    <template #composer-drawers>
+      <ConversationShareActivity v-if="visibleProposals.length" :proposals="visibleProposals" :disabled="busy || withdrawing || view.status !== 'ready'" @delete="withdraw" />
+    </template>
     <template #before-composer>
-      <div class="shared-conversation-pane__proposals">
-      <div v-for="proposal in visibleProposals" :key="proposal.id" class="shared-conversation-pane__proposal">
-        <span>{{ t(`guest.${proposal.status}`) }}</span>
-        <p>{{ proposal.text }}</p>
-      </div>
-      </div>
       <p v-if="failed" role="alert">{{ t('guest.proposalFailed') }}</p>
+      <p v-if="withdrawFailed" role="alert">{{ t('guest.deleteSuggestionFailed') }}</p>
     </template>
   </CodexConversationPane>
   </section>
@@ -65,17 +60,20 @@ import type { RendererMessage } from '@workspace/core/contracts';
 import { appApi } from '../platform-api';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import DeferredConversationContent from './DeferredConversationContent.vue';
+import ConversationShareActivity from './ConversationShareActivity.vue';
 const props = defineProps<{ view: GuestJoinView; busy: boolean; control: (input: GuestJoinControl) => Promise<boolean> }>();
-const draft = ref(''); const failed = ref(false);
-const visibleProposals = computed(() => {
-  const records = props.view.proposalState?.proposals ?? [];
-  const active = new Set(['pending', 'queued', 'dispatching', 'unresolved']);
-  const recent = new Set(records.filter(record => !active.has(record.status)).slice(-3).map(record => record.id));
-  return records.filter(record => active.has(record.status) || recent.has(record.id));
-});
+const draft = ref(''); const failed = ref(false); const withdrawing = ref(false); const withdrawFailed = ref(false);
+const visibleProposals = computed(() => props.view.proposalState?.proposals.filter(record => ['pending', 'queued', 'dispatching', 'unresolved'].includes(record.status)) ?? []);
+async function withdraw(proposalId: string) {
+  if (props.busy || withdrawing.value || props.view.status !== 'ready') return;
+  withdrawing.value = true; withdrawFailed.value = false;
+  try { withdrawFailed.value = !await props.control({ action: 'withdraw', id: props.view.id, proposalId }); }
+  catch { withdrawFailed.value = true; }
+  finally { withdrawing.value = false; }
+}
 let pending: { text: string; proposalId: string } | undefined;
 const capabilities = { ...guestConversationCapabilities, planMode: false };
-function author(id: string | undefined) { const value = props.view.proposalState?.authors.find(author => author.messageId === id); return value ? `${value.name} · ${value.discriminator}` : null; }
+function author(id: string | undefined) { return props.view.proposalState?.authors.find(author => author.messageId === id)?.name ?? null; }
 async function propose(text: string) {
   if (!text.trim() || props.view.status !== 'ready') return;
   if (!pending || pending.text !== text) pending = { text, proposalId: crypto.randomUUID() };
@@ -113,10 +111,6 @@ function openLink(link: CodexConversationLink) {
 </script>
 <style scoped>
 .shared-conversation-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.shared-conversation-pane__status { display: flex; justify-content: space-between; align-items: center; padding: var(--space-8) var(--space-16); color: var(--color-text-muted); font-size: var(--font-size-13); }
-.shared-conversation-pane__proposals { max-height: 30vh; overflow-y: auto; }
-.shared-conversation-pane__proposal { padding: var(--space-8) var(--space-16); border-top: 1px solid var(--color-border); }
-.shared-conversation-pane__proposal p { white-space: pre-wrap; margin: var(--space-4) 0; }
 .shared-conversation-pane__author { color: var(--color-text-muted); font-size: var(--font-size-12); }
 .guest-transcript {
   flex: 1 1 auto;
