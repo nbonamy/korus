@@ -437,7 +437,7 @@ export class ClaudeConversationHost implements AgentBackendDriver {
       if (taskPlan) {
         this.emitConversation({ agentId: agent.id, backend: 'claude',
           backendSessionId: existingSessionId ?? undefined, turnId,
-          type: 'turn.executionPlanUpdated', payload: { plan: taskPlan } });
+          type: 'turn.executionPlanUpdated', payload: { plan: taskPlan.plan } });
       }
       this.emit({
         agentId: agent.id,

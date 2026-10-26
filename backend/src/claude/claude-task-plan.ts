@@ -5,18 +5,34 @@ type Task = { subject: string; status: ThreadPlanStepStatus; activeForm?: string
 /** A session-scoped projection of confirmed native task results, shared by live and history reads. */
 export class ClaudeTaskPlan {
   private tasks = new Map<string, Task>();
+  /** Finished tasks that were dropped. Claude's own list keeps them, so listing it again must not bring them back. */
+  private retired = new Set<string>();
   plan: ThreadPlan | null = null;
 
-  startTurn(turnId: string): ThreadPlan | null {
-    if (this.plan?.status !== 'inProgress') return null;
-    this.plan = { ...this.plan, turnId };
-    return this.plan;
+  /**
+   * An unfinished plan follows the new turn. A plan that was already finished when the turn began is no longer shown,
+   * so it is deleted and the next task starts a fresh one. Returns the plan state to publish, or null when nothing changed.
+   */
+  startTurn(turnId: string): { plan: ThreadPlan | null } | null {
+    if (this.plan?.status === 'inProgress') {
+      this.plan = { ...this.plan, turnId };
+      return { plan: this.plan };
+    }
+    if (this.plan?.status !== 'completed') return null;
+    for (const id of this.tasks.keys()) this.retired.add(id);
+    this.tasks.clear();
+    this.plan = null;
+    return { plan: null };
   }
 
   private withKnownActiveForm(entry: [string, Task]): [string, Task] {
     const previous = this.tasks.get(entry[0]);
     entry[1].activeForm ??= previous?.subject === entry[1].subject ? previous.activeForm : undefined;
     return entry;
+  }
+
+  private isRetired([id, task]: [string, Task]): boolean {
+    return task.status === 'completed' && this.retired.has(id);
   }
 
   apply(tool: RendererToolPart, result: unknown, threadId: string, turnId: string, updatedAt: string): boolean {
@@ -30,11 +46,13 @@ export class ClaudeTaskPlan {
         const tasks = todos.map((value, index) => task({ ...record(value), id: String(index), subject: record(value).content }));
         if (tasks.some(value => !value)) return false;
         this.tasks = new Map(tasks as [string, Task][]);
+        this.retired.clear();
         break;
       }
       case 'TaskCreate': {
         const created = task({ ...record(output.task), status: 'pending', activeForm: input.activeForm ?? input.active_form });
         if (!created) return false;
+        this.retired.delete(created[0]);
         this.tasks.set(...created);
         break;
       }
@@ -57,6 +75,7 @@ export class ClaudeTaskPlan {
       }
       case 'TaskGet': {
         const found = task(output.task);
+        if (found && this.isRetired(found)) return false;
         if (found) this.tasks.set(...this.withKnownActiveForm(found));
         else if (output.task === null && text(input.taskId)) this.tasks.delete(input.taskId as string);
         else return false;
@@ -66,7 +85,7 @@ export class ClaudeTaskPlan {
         if (!Array.isArray(output.tasks)) return false;
         const tasks = output.tasks.map(task);
         if (tasks.some(value => !value)) return false;
-        this.tasks = new Map((tasks as [string, Task][]).map(entry => this.withKnownActiveForm(entry)));
+        this.tasks = new Map((tasks as [string, Task][]).filter(entry => !this.isRetired(entry)).map(entry => this.withKnownActiveForm(entry)));
         break;
       }
       default: return false;
