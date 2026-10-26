@@ -237,6 +237,10 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.guestConversationControl, (_event, input) => this.requireBackendClient().request(backendMethods.guestConversationControl, { input }));
+    ipc.handle(ipcChannels.guestConversationImage, (_event, id, path) => this.requireBackendClient().request(backendMethods.guestConversationImage, { id, path }));
+    ipc.handle(ipcChannels.guestConversationContent, (_event, id, input) => this.requireBackendClient().request(backendMethods.guestConversationContent, { id, input }));
+    ipc.handle(ipcChannels.conversationShareControl, (_event, input) => this.requireBackendClient().request(backendMethods.conversationShareControl, { input }));
     ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
@@ -777,7 +781,7 @@ export class AppController {
   }
 
   openDeepLink(value: string): boolean {
-    const command = appCommandFromDeepLink(value);
+    const command = appCommandFromDeepLink(value, process.env.APP_DEV_PROTOCOL_SCHEME);
     if (!command) return false;
     if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
       this.pendingDeepLinkCommands.push(command);
@@ -2148,9 +2152,9 @@ export function startMainApp(): void {
   });
   controller.setAutoUpdateService(autoUpdateService);
   let shutdownStarted = false;
-  // Development temporarily runs alongside the installed app. Keep packaged
-  // releases single-instance while allowing Electron Forge to start normally.
-  if (requiresSingleInstanceLock(app.isPackaged) && !app.requestSingleInstanceLock()) {
+  // Native development targets and packaged apps own one instance per profile.
+  // Untargeted Forge sessions can coexist with the installed app.
+  if (requiresSingleInstanceLock(app.isPackaged, process.env.APP_DEV_PROTOCOL_SCHEME) && !app.requestSingleInstanceLock()) {
     app.quit();
     return;
   }
@@ -2166,14 +2170,16 @@ export function startMainApp(): void {
     openDeepLinks([url]);
   });
   app.on('second-instance', (_event, argv) => {
-    openDeepLinks(deepLinksFromArgv(argv));
+    openDeepLinks(deepLinksFromArgv(argv, process.env.APP_DEV_PROTOCOL_SCHEME));
   });
-  openDeepLinks(deepLinksFromArgv(process.argv));
+  openDeepLinks(deepLinksFromArgv(process.argv, process.env.APP_DEV_PROTOCOL_SCHEME));
   controller.registerIpcHandlers();
 
   void app.whenReady().then(async () => {
     controller.installLocalMediaProtocol();
-    if (app.isPackaged) {
+    if (process.env.APP_DEV_PROTOCOL_SCHEME) {
+      // The profile-specific native launcher owns its alias registration.
+    } else if (app.isPackaged) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme);
     } else if (process.argv[1]) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme, process.execPath, [path.resolve(process.argv[1])]);
@@ -2225,8 +2231,8 @@ export function shouldBlockDisplaySleep(clientState: ClientState, isOnBattery: b
     (clientState.shouldPreventDisplaySleepForRemoteAccess === true && !isOnBattery);
 }
 
-export function requiresSingleInstanceLock(isPackaged: boolean): boolean {
-  return isPackaged;
+export function requiresSingleInstanceLock(isPackaged: boolean, developmentScheme?: string): boolean {
+  return isPackaged || Boolean(developmentScheme);
 }
 
 function overwriteAppSnapshot(target: AppSnapshot, source: AppSnapshot): void {

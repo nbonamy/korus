@@ -711,6 +711,7 @@ export type AgentCreationProgress = {
 };
 
 export type AppCommand =
+  | { type: 'open-shared-conversation'; link: string }
   | ({ type: 'set-browser-viewport' } & import('./browser-viewport').BrowserViewportRequest)
   | {
     type: 'attach-appshot';
@@ -882,6 +883,10 @@ export type AppApi = {
   checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
+  guestConversationControl(input: import('./guest-navigation').GuestJoinControl): Promise<import('./guest-navigation').GuestJoinState>;
+  guestConversationImage(id: string, path: string): Promise<{ dataUrl: string }>;
+  guestConversationContent(id: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
+  conversationShareControl(input: import('./conversation-sharing').ConversationShareControl): Promise<import('./conversation-sharing').ConversationShareResult>;
   companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
   getRemoteControlStatus(): Promise<DevicePairingStatus>;
   enableRemoteControl(): Promise<DevicePairingStatus>;

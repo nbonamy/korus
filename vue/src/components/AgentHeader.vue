@@ -54,6 +54,7 @@
     </div>
 
     <div class="agent-header__activity">
+      <el-button v-if="agent && shareAvailable" class="app-button" :aria-label="$t('sharing.share')" @click="emit('share')">{{ $t('sharing.share') }}</el-button>
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -162,6 +163,7 @@ import { effectiveOpenInApplication } from '../shared/open-in';
 
 const props = withDefaults(defineProps<{
   agent: Agent | null;
+  shareAvailable?: boolean;
   repositoryIcon?: string;
   gitStatus?: AgentGitStatus | null;
   lastTurnGitDiff?: TurnGitDiff | null;
@@ -194,6 +196,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'expand-sidebar': [];
+  'share': [];
   'select-agent': [agentId: string];
   'toggle-workspace': [];
   'toggle-workspace-expanded': [];

@@ -46,6 +46,7 @@
     :celebrate="snapshot.general.celebrationsEnabled !== false"
     @complete="finishFirstRunOnboarding"
   />
+  <button v-if="appClientPlatform === 'desktop' && (showLoginLanding || repositoriesOnboardingVisible || onboardingCompleteVisible)" class="app-button app-button--tertiary first-run-guests" type="button" :aria-label="$t('guest.sharedWithMe')" @click="emit('open-shared')">{{ $t('guest.sharedWithMe') }}</button>
   <LocalClaudeAuthenticationDialog
     :model-value="claudeDialogVisible"
     :executable-path="claudeAuthentication?.executablePath"
@@ -59,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { appClientPlatform } from '../platform-api';
 import type { AgentBackend, AppSnapshot, ClaudeAuthentication, CodexAuthentication, WorkProviderAuthorization, WorkProviderConnectOptions, WorkProviderKind } from '@workspace/core/contracts';
 import type { ProviderSetupChange, ProviderSetupStatus } from '@workspace/core/contracts/provider-setup';
 import ProviderSetupDialog from './ProviderSetupDialog.vue';
@@ -103,6 +105,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  'open-shared': [];
   customize: [backend: AgentBackend];
   'refresh-provider': [backend: AgentBackend];
   'install-provider': [backend: AgentBackend];
@@ -145,3 +148,12 @@ function startChatGptLogin(): void {
   emit('login');
 }
 </script>
+
+<style scoped>
+.first-run-guests {
+  position: fixed;
+  z-index: 100;
+  right: var(--space-24);
+  bottom: var(--space-24);
+}
+</style>

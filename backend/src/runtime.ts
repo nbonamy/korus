@@ -1,8 +1,9 @@
+import { GuestJoins } from './sharing/guest-joins';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
-import { CompanionManager } from './companion/manager';
+import { relayFromEnvironment, CompanionManager } from './companion/manager';
 import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -288,6 +289,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => pullRequestMonitor.check(),
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+    authorizeGuest: (handle, credential) => server.authorizeConversationGuest(handle, credential),
+    guestCount: (handle, count) => server.conversationGuestCount(handle, count),
     desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {
@@ -300,6 +303,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   server = new AppBackendServer({
     requirements,
     usage,
+    guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
+    conversationSharing: { directory: path.join(backendHomeDir(), 'conversation-shares'), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
     companionControl: (input) => companion.control(input),
     documents,
     tasks,

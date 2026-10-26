@@ -285,6 +285,7 @@ const agentHeaders = new Map<string, InstanceType<typeof AgentHeader>>();
 
 const emit = defineEmits<{
   'close-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'expand-sidebar': [];
   'install-update': [];
   'remove-work-item-assignment': [item: WorkItem];
@@ -481,6 +482,8 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     updateStatus: topRight && appHostCapabilities.appUpdates ? props.updateStatus : undefined,
     executionPlanAvailable: focused && Boolean(currentTurnPlan.value),
     executionPlanOpen: focused && executionPlanVisible.value,
+    shareAvailable: Boolean(agent?.backendSession && isLocalAgent(agent)),
+    onShare: () => agentId && emit('share-agent', agentId),
     openInAvailable: Boolean(agent && appHostCapabilities.openInApplications && isLocalAgent(agent)),
     openInCatalog: props.openInApplications,
     subagentTree: agentId ? subagentTreeFor(agentId) : null,

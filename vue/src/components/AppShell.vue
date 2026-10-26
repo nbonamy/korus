@@ -4,6 +4,7 @@
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
   >
     <FirstRunOnboardingGate
+      @open-shared="emit('open-shared')"
       :provider-setup="displayProviderSetup"
       :allow-setup-reset="settingsVisible"
       :customized-setup="customizedSetup"
@@ -55,6 +56,7 @@
       :class="{ 'app-shell__nav--compact': compactViewport, 'app-shell__nav--open': compactNavOpen }"
     >
     <AppShellNavigation
+      @open-shared="emit('open-shared')"
       ref="navigation"
       :active-mission-id="activeSurface === 'mission' ? selectedMissionId : null"
       :mission-creation-error="missionCreationError"
@@ -100,6 +102,7 @@
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
+      @share-agent="openShare"
       @handoff-agent="openHandoff"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
       @new-team="openNewTeam"
@@ -228,6 +231,7 @@
         @close-agent="$emit('close-agent', $event)"
         @duplicate-agent="$emit('duplicate-agent', $event)"
         @fork-agent="$emit('fork-agent', $event)"
+        @share-agent="openShare"
         @handoff-agent="openHandoff"
         @edit-agent="openEditAgent"
         @move-agent-to-team="$emit('move-agent-to-team', $event)"
@@ -375,6 +379,7 @@
         :select-visualization="props.selectVisualization"
         :delete-visualization="props.deleteVisualization"
         :read-visualization-asset="props.readVisualizationAsset"
+        @share-agent="openShare"
         @close-agent="$emit('close-agent', $event)"
         @clarify-code-review-finding="clarifyCodeReviewFinding"
         @expand-sidebar="expandSidebar"
@@ -593,6 +598,7 @@
       @close="agentQuickOpenVisible = false"
       @select="selectAgentFromPalette"
     />
+    <ConversationShareDialog v-if="shareTarget" :key="JSON.stringify(shareTarget)" :target="shareTarget" :control="shareControl" @close="shareTarget = null" />
   </main>
 </template>
 
@@ -653,6 +659,8 @@ import WhatsNewDialog from './WhatsNewDialog.vue';
 import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
+import ConversationShareDialog from './ConversationShareDialog.vue';
+import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
@@ -1012,6 +1020,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'open-shared': [];
   'clear-agent-creation-progress': [id: string];
   'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
@@ -1311,6 +1320,22 @@ const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
 const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
+const shareTarget = ref<ConversationShareTarget | null>(null);
+function openShare(agentId: string) {
+  const agent = props.snapshot.agents.find(agent => agent.id === agentId);
+  if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;
+  shareTarget.value = conversationShareTarget(agent);
+}
+watch(() => props.snapshot.agents.map(agent => conversationShareTarget(agent)), () => {
+  if (!shareTarget.value) return;
+  const agent = props.snapshot.agents.find(agent => agent.id === shareTarget.value?.agentId);
+  if (!agent || JSON.stringify(conversationShareTarget(agent)) !== JSON.stringify(shareTarget.value)
+    || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) shareTarget.value = null;
+}, { deep: true });
+const shareControl = (input: import('@workspace/core/conversation-sharing').ConversationShareControl) => {
+  if (!appApi) return Promise.reject(new Error('Sharing is unavailable.'));
+  return appApi.conversationShareControl(input);
+};
 const handoffAgentId = ref<string | null>(null);
 const handoffAgent = computed(() => props.snapshot.agents.find(agent => agent.id === handoffAgentId.value) ?? null);
 function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
@@ -2435,6 +2460,7 @@ async function setEngineEnabled(backend: AgentBackend, enabled: boolean) {
 const isAgentWorkspaceVisible = computed(() => activeSurface.value === 'agent');
 const isModalDialogVisible = computed(() => (
   agentDialogVisible.value
+  || shareTarget.value !== null
   || handoffAgentId.value !== null
   || modelFavoritesDialogVisible.value
   || newProjectDialogVisible.value
@@ -3350,7 +3376,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete):not(.first-run-guests) {
   visibility: hidden;
 }
 

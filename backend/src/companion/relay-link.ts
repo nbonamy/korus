@@ -1,3 +1,4 @@
+import { guestOwnerLimit } from '@workspace/core/guest-conversation';
 import { createLibp2p } from 'libp2p';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
@@ -29,6 +30,7 @@ type Start = {
   register(node: Libp2p): Promise<void>;
   /** Tells the relay which devices to route; run after every successful (re)connection. */
   admit(): Promise<boolean>;
+  disconnected?(): void;
 };
 
 /** The muxer is what carries every stream; libp2p does not expose its liveness on `Connection`. */
@@ -65,7 +67,7 @@ export class RelayLink {
 
   async stop() {
     this.stopped = true; clearTimeout(this.timer); this.timer = undefined; clearInterval(this.probe); this.probe = undefined;
-    this.connected = false; this.attempts = 0;
+    this.connected = false; this.options?.disconnected?.(); this.attempts = 0;
     const node = this.node; this.node = null;
     await this.release(node);
   }
@@ -96,7 +98,7 @@ export class RelayLink {
   private drop(reason: string, details: Record<string, unknown> = {}) {
     if (this.stopped || this.reserving) return;
     warnMain('companion', `${reason}; reconnecting`, details);
-    this.connected = false;
+    this.connected = false; this.options?.disconnected?.();
     this.attempts = 0;
     clearTimeout(this.timer); this.timer = undefined;
     this.schedule(0);
@@ -128,9 +130,11 @@ export class RelayLink {
 
   private async create(options: Start): Promise<Libp2p> {
     const node = await createLibp2p({ start: false, privateKey: options.key, addresses: { listen: [`${this.address}/p2p-circuit`] },
-      transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1, maxInboundStopStreams: 8 })],
+      transports: [webSockets(), circuitRelayTransport({ maxReservationQueueLength: 1, maxInboundStopStreams: guestOwnerLimit + 8 })],
       connectionEncrypters: [noise()], streamMuxers: [yamux()], services: { identify: identify() },
-      connectionManager: { maxConnections: 20, maxParallelDials: 2 },
+      // Every guest circuit has the same relay IP. Real-source admission belongs
+      // to RelayIngress; keep endpoint socket/pending/STOP limits here.
+      connectionManager: { maxConnections: guestOwnerLimit + 16, maxParallelDials: 2, maxIncomingPendingConnections: 8, inboundConnectionThreshold: Number.MAX_SAFE_INTEGER },
       // The update channel's heartbeat decides when a phone is gone, and the relay probe when the relay is:
       // a transport ping that times out during a brief stall must not tear a healthy circuit down.
       connectionMonitor: { abortConnectionOnPingFailure: false },
@@ -174,7 +178,7 @@ export class RelayLink {
       this.startProbe(node);
       await this.admit(options);
     } catch (error) {
-      this.connected = false;
+      this.connected = false; this.options?.disconnected?.();
       warnMain('companion', 'relay reservation failed', { error: describeError(error), attempt: this.attempts, ms: Date.now() - began });
       if (node && this.node === node) this.node = null;
       void this.release(node);

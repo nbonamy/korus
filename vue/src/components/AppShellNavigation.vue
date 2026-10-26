@@ -1,5 +1,6 @@
 <template>
   <TeamRail
+    @open-shared="emit('open-shared')"
     :teams="snapshot.teams"
     :remote-connections="snapshot.remoteConnections.connections"
     :load-remote-teams="loadRemoteTeams"
@@ -72,6 +73,7 @@
       :list-repository-branches="listRepositorySessionBranches"
       @duplicate-agent="$emit('duplicate-agent', $event)"
       @fork-agent="$emit('fork-agent', $event)"
+      @share-agent="$emit('share-agent', $event)"
       @handoff-agent="$emit('handoff-agent', $event)"
       @edit-agent="openEditAgent"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
@@ -145,6 +147,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  'open-shared': [];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];
   'compact-session': [agentId: string];
@@ -163,6 +166,7 @@ const emit = defineEmits<{
   'edit-agent': [agentId: string];
   'edit-team': [teamId: string];
   'fork-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
   'move-agent-to-team': [input: MoveAgentToTeamInput];
   'new-team': [];

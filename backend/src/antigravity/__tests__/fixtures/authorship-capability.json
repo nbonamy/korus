@@ -1,0 +1,20 @@
+{
+  "provenance": {
+    "kind": "Source-derived public ACP payload with synthetic text; not a live provider capture",
+    "registry": "https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json",
+    "archive": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.3.0-darwin-arm64.zip",
+    "executableSha256": "cb1f0725183ed922079ed6cd1d2422b4d8be44c5fb60be3e9a43d8d04f99a18e",
+    "sourceRoot": "google3/cloud/developer_experience/antigravity_extensions/acp_server/",
+    "sources": {
+      "server.py:AgyAdapter._stream_historical_step": "User input replay constructs UserMessageChunk with session_update and text content only; no message_id or submission metadata is assigned.",
+      "server.py:AgyAdapter.prompt": "Accepts optional client message_id and records it in the in-memory _prompt_ids map for citation/request metadata; returns PromptResponse(stop_reason=stop_reason). Historical user replay does not carry this ID.",
+      "google3/third_party/py/acp/schema.py:ContentChunk": "Defines optional message_id (messageId), but the qualified runtime's historical user emitter does not populate it. Schema support alone is not evidence of emitted IDs."
+    },
+    "protocol": "https://agentclientprotocol.com/protocol/v1/prompt-turn#message-ids"
+  },
+  "historyUpdate": {
+    "sessionUpdate": "user_message_chunk",
+    "content": { "type": "text", "text": "The identical approved prompt" }
+  },
+  "completion": { "stopReason": "end_turn" }
+}

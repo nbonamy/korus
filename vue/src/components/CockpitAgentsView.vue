@@ -68,6 +68,7 @@
 
     <AgentContextMenu
       v-if="contextMenuAgent"
+      :share-available="Boolean(contextMenuAgent?.backendSession && !teams.find(team => team.id === contextMenuAgent?.teamId)?.remoteConnectionId)"
       :fork-disabled="!canForkContextMenuAgent"
       :compact-disabled="true"
       :resume-disabled="true"
@@ -126,6 +127,7 @@ const emit = defineEmits<{
   'duplicate-agent': [agentId: string];
   'edit-agent': [agentId: string];
   'fork-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
   'move-agent-to-team': [payload: { agentId: string; teamId: string }];
   'prompt-agent': [payload: { agentId: string; prompt: string }];
@@ -232,7 +234,8 @@ function selectAgent(agent: Agent): void {
 function emitContextAgentAction(action: AgentContextMenuAction): void {
   const agentId = contextMenuAgentId.value;
   if (!agentId) return;
-  if (action === 'close-agent') emit('close-agent', agentId);
+  if (action === 'share-agent') emit('share-agent', agentId);
+  else if (action === 'close-agent') emit('close-agent', agentId);
   else if (action === 'duplicate-agent') emit('duplicate-agent', agentId);
   else if (action === 'edit-agent') emit('edit-agent', agentId);
   else if (action === 'fork-agent') emit('fork-agent', agentId);

@@ -106,6 +106,7 @@ function createFixtures(): EventFixtures {
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
+    'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' } },
     'antigravity.conversationSnapshotChanged': {
       ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },

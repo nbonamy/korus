@@ -20,6 +20,9 @@ import type { ExecutionObservation, UsageCost } from '@workspace/core/usage';
 import { UsageLedger } from '../../usage/usage-ledger';
 import { UsageService } from '../../usage/usage-service';
 import usageFixture from './fixtures/usage-capability.json';
+import authorshipFixture from './fixtures/authorship-capability.json';
+import { AgentPromptManager } from '../../agents/agent-prompt-manager';
+import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 
 
 let root: string;
@@ -42,6 +45,7 @@ const fs=require('node:fs'), catalogFile=require('node:path').join(process.env.G
 fs.mkdirSync(process.env.GEMINI_HOME,{recursive:true});
 const usageFile=require('node:path').join(process.cwd(),'usage-fixture.json');
 const usageFixture=()=>fs.existsSync(usageFile)?JSON.parse(fs.readFileSync(usageFile,'utf8')):undefined;
+const authorshipFixture=${JSON.stringify(authorshipFixture)};
 const catalog=()=>fs.existsSync(catalogFile)?fs.readFileSync(catalogFile,'utf8').trim().split('\\n').map(JSON.parse):[];
 let sessionId=require('node:crypto').randomUUID(), promptId, mcpServers=[], planPhase, utility, permissionFixture, cancelPermissionFixture;
 const update=update=>send({method:'session/update',params:{sessionId,update}});
@@ -81,7 +85,7 @@ rl.on('line',line=>{
    for(const item of usageFixture()?.updates??[]) update(item);
    const saved=require('node:path').join(process.env.GEMINI_HOME,sessionId+'.jsonl');
    if(fs.existsSync(saved)) {
-     for(const line of fs.readFileSync(saved,'utf8').trim().split('\\n')) {const prompt=JSON.parse(line);update({sessionUpdate:'user_message_chunk',content:{type:'text',text:prompt.replace(/^\\/plan\\s*/,'')}});update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Recovered.'}});}
+     for(const line of fs.readFileSync(saved,'utf8').trim().split('\\n')) {const prompt=JSON.parse(line);update({...authorshipFixture.historyUpdate,content:{...authorshipFixture.historyUpdate.content,text:prompt.replace(/^\\/plan\\s*/,'')}});update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Recovered.'}});}
      reply({});return;
    }
    update({sessionUpdate:'user_message_chunk',content:{type:'text',text:'Create a file'}});
@@ -153,6 +157,77 @@ async function open(sessionId?: string, options: Partial<Parameters<typeof AcpSe
 }
 
 describe('Antigravity native session', () => {
+  // Deliberately red acceptance reproduction, opt-in until the provider identity
+  // boundary is decided. No text/order matching or replacement transcript is a
+  // permitted fix. This exercises the real app admission queue and ACP host.
+  it.runIf(process.env.APP_TEST_GUEST_AUTHORSHIP_BINDING === '1')('preserves canonical identities for identical idle, queued guest and owner prompts after restart', async () => {
+    const host = new AntigravityHost();
+    const snapshot = createEmptySnapshot();
+    const agent: Agent = { id: 'authorship', name: 'Authorship', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    snapshot.agents.push(agent);
+    let completed = 0;
+    let sequence = 0;
+    const applyEvent = (event: BackendEvent) => {
+      applyMainEventToSnapshot(snapshot, decodeAppBackendEvent({ ...event, seq: ++sequence, occurredAt: event.occurredAt ?? new Date().toISOString() }));
+    };
+    host.onEvent(event => {
+      applyEvent(event);
+      if (event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed') completed++;
+    });
+    const manager = new AgentPromptManager({
+      getSnapshot: () => snapshot, driverForAgent: () => host, applyEvent,
+      persistSnapshot: () => writeFile(path.join(root, 'app-snapshot.json'), JSON.stringify(snapshot)),
+      setNewConversationTitle: () => undefined,
+    });
+    const prompt = authorshipFixture.historyUpdate.content.text;
+    try {
+      manager.send(agent.id, prompt, undefined, 'guest-one');
+      manager.send(agent.id, prompt, undefined, 'guest-two');
+      manager.send(agent.id, prompt, undefined, 'owner');
+      const queued = structuredClone(snapshot.queuedPrompts ?? []);
+      expect(queued).toHaveLength(2);
+      expect(new Set(queued.map(row => row.id)).size).toBe(2);
+      await vi.waitFor(() => expect(completed).toBe(1));
+      manager.drain(agent.id);
+      await vi.waitFor(() => expect(completed).toBe(2));
+      manager.drain(agent.id);
+      await vi.waitFor(() => expect(completed).toBe(3));
+      expect(snapshot.queuedPrompts).toEqual([]);
+      expect(agent.backendSession?.kind).toBe('antigravity');
+      if (agent.backendSession?.kind !== 'antigravity') throw new Error('Missing session');
+      const ref = { backend: 'antigravity' as const, sessionId: agent.backendSession.sessionId, folder: root };
+      const live = (await host.readConversationMessages(ref, agent.id)).filter(message => message.role === 'user');
+      expect(live).toHaveLength(3);
+      expect(live.map(message => message.parts)).toEqual(Array.from({ length: 3 }, () => [{ type: 'text', text: prompt }]));
+      expect(new Set(live.map(message => message.id)).size).toBe(3);
+      expect(new Set(live.map(message => message.turnId)).size).toBe(3);
+      await host.close();
+      const restarted = new AntigravityHost();
+      try {
+        const history = (await restarted.readConversationMessages(ref, agent.id)).filter(message => message.role === 'user');
+        expect(history.map(message => message.parts)).toEqual(live.map(message => message.parts));
+        const identities = (rows: typeof live) => rows.map(message => ({ id: message.id, turnId: message.turnId }));
+        const evidence = {
+          provider: 'antigravity', fixtureOnly: true, liveProviderExecution: false,
+          provenance: authorshipFixture.provenance,
+          submissions: [{ id: 'guest-submission-one', author: 'Guest #one', admission: 'idle' },
+            { id: 'guest-submission-two', author: 'Guest #two', admission: 'queued', queueId: queued[0]?.id },
+            { id: 'owner-submission', author: null, admission: 'queued', queueId: queued[1]?.id }],
+          sessionId: ref.sessionId, live: identities(live), reloaded: identities(history),
+          stableMessageBindings: history.filter(message => live.some(before => before.id === message.id)).length,
+          stableTurnBindings: history.filter(message => live.some(before => before.turnId === message.turnId)).length,
+        };
+        if (process.env.APP_TEST_GUEST_AUTHORSHIP_EVIDENCE) {
+          await writeFile(process.env.APP_TEST_GUEST_AUTHORSHIP_EVIDENCE, JSON.stringify(evidence, null, 2));
+        }
+        // A binding keyed by admitted message/turn IDs cannot recover these
+        // rows. The qualified replay supplies no native IDs for aliasing them.
+        expect(new Set(history.map(message => message.id))).toEqual(new Set(live.map(message => message.id)));
+        expect(new Set(history.map(message => message.turnId))).toEqual(new Set(live.map(message => message.turnId)));
+      } finally { await restarted.close(); }
+    } finally { manager.close(); await host.close(); }
+  });
+
   it("observes only admitted live ACP executions, with unknown model and consumption", async () => {
     const usage = vi.fn();
     const { session } = await open("stored-session", { usage });

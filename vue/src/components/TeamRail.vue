@@ -8,6 +8,7 @@
     <div class="team-rail__header" />
 
     <div class="team-rail__body">
+      <button v-if="!phoneScope && appClientPlatform === 'desktop'" class="team-rail__cockpit" type="button" :aria-label="$t('guest.sharedWithMe')" @click="emit('open-shared')"><ShareIcon aria-hidden="true" /></button>
       <button
         v-if="!phoneScope"
         class="team-rail__backlog"
@@ -146,6 +147,8 @@
 </template>
 
 <script setup lang="ts">
+import { appClientPlatform } from '../platform-api';
+import { IconShare as ShareIcon } from '@tabler/icons-vue';
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { AccountRateLimits, AgentBackend, AppSnapshot, CodexAccount, RemoteConnection, ReorderTeamsInput, Team } from '@workspace/core/contracts';
@@ -181,6 +184,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  'open-shared': [];
   'close-team': [teamId: string];
   'disconnect-team': [teamId: string];
   'edit-team': [teamId: string];

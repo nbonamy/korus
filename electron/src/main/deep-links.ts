@@ -5,12 +5,16 @@ export const appDeepLinkScheme = product.protocolScheme;
 const appDeepLinkProtocol = `${appDeepLinkScheme}:`;
 const MAX_DEEP_LINK_PROMPT_LENGTH = 100_000;
 
-export function appCommandFromDeepLink(value: string): AppCommand | null {
+export function appCommandFromDeepLink(value: string, developmentScheme?: string): AppCommand | null {
+  if (developmentScheme && value.startsWith(`${developmentScheme}://`)) value = `${appDeepLinkScheme}:${value.slice(developmentScheme.length + 1)}`;
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     return null;
+  }
+  if (url.protocol === appDeepLinkProtocol && url.hostname === 'share' && !url.username && !url.password && !url.port && value.length <= 2048) {
+    return { type: 'open-shared-conversation', link: value };
   }
   if (
     url.protocol !== appDeepLinkProtocol
@@ -47,6 +51,6 @@ export function appCommandFromDeepLink(value: string): AppCommand | null {
   };
 }
 
-export function deepLinksFromArgv(argv: readonly string[]): string[] {
-  return argv.filter((value) => value.startsWith(`${appDeepLinkProtocol}//`));
+export function deepLinksFromArgv(argv: readonly string[], developmentScheme?: string): string[] {
+  return argv.filter((value) => value.startsWith(`${appDeepLinkProtocol}//`) || Boolean(developmentScheme && value.startsWith(`${developmentScheme}://`)));
 }

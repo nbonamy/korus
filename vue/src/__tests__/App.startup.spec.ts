@@ -23,6 +23,47 @@ function mountStartup(api: ReturnType<typeof createClientApiMock>['api']) {
 }
 
 describe('app startup', () => {
+  // Guest navigation can fail by being trapped behind onboarding, retaining bearer URLs,
+  // showing owner controls, losing saved entries or reapplying a stale navigation response.
+  it('opens the provider-free join flow from a deep link and returns through Shared with me after remount', async () => {
+    const { api, emitAppCommand } = createClientApiMock(createEmptySnapshot());
+    const id = 'a'.repeat(64);
+    const entry = { id, name: 'Alex', title: 'Shared conversation' };
+    let state: import('@workspace/core/guest-navigation').GuestJoinState = { entries: [], view: null };
+    api.guestConversationControl.mockImplementation(async input => {
+      if (input.action === 'prepare') state = { entries: [], view: { ...entry, name: '', status: 'needsName', participant: null, target: null, frame: null } };
+      if (input.action === 'join' || input.action === 'open') state = { entries: [entry], view: { ...entry, status: 'ready', participant: { identity: 'fixture', name: 'Alex', discriminator: '1234abcd' }, target: { agentId: 'shared', backend: 'claude', sessionId: 'session', conversation: { backend: 'claude', sessionId: 'session', folder: null } }, frame: { type: 'claude.conversationSnapshotChanged', agentId: 'shared', backend: 'claude', backendSessionId: 'session', seq: 1, occurredAt: 'now', payload: { revision: 1, snapshot: { agentId: 'shared', sessionId: 'session', activeTurnId: null, turnIds: [], turns: [], messages: [{ id: 'past', agentId: 'shared', role: 'assistant', status: 'complete', parts: [{ type: 'text', text: 'History from before sharing' }], createdAt: 'now' }], answeredClientRequestIds: [], busy: false, historyLoading: false, historyState: { hasOlder: false, loadingOlder: false }, contextUsage: null, plan: null, error: null } } } } };
+      if (input.action === 'leave') state = { entries: [], view: null };
+      return structuredClone(state);
+    });
+    let wrapper = mountStartup(api); await flushPromises();
+    expect(wrapper.find('.codex-login--sign-in').exists()).toBe(true);
+    emitAppCommand({ type: 'open-shared-conversation', link: 'synthetic-redacted' }); await flushPromises();
+    expect(wrapper.find('.codex-login').exists()).toBe(false);
+    expect(wrapper.get('h1').text()).toBe('Join conversation');
+    const name = wrapper.get('input[autocomplete="nickname"]'); await name.setValue('Alex');
+    await wrapper.get('form').trigger('submit'); await flushPromises();
+    expect(wrapper.text()).toContain('History from before sharing');
+    expect(wrapper.text()).toContain('1234abcd');
+    expect(wrapper.find('[contenteditable="true"]').exists()).toBe(false);
+    expect(wrapper.find('button[aria-label="Share"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('synthetic-redacted');
+    expect(api.createAgent).not.toHaveBeenCalled(); expect(api.startCodexChatGptLogin).not.toHaveBeenCalled();
+    await wrapper.findAll('button').find(button => button.text() === 'Local workspace')!.trigger('click'); await flushPromises();
+    expect(wrapper.find('.codex-login--sign-in').exists()).toBe(true);
+    await wrapper.get('button[aria-label="Shared with me"]').trigger('click'); await flushPromises();
+    expect(wrapper.text()).toContain('Shared conversation');
+    wrapper.unmount(); state = { entries: [entry], view: null };
+    wrapper = mountStartup(api); await flushPromises();
+    await wrapper.get('button[aria-label="Shared with me"]').trigger('click'); await flushPromises();
+    await wrapper.findAll('button').find(button => button.text().includes('Shared conversation'))!.trigger('click'); await flushPromises();
+    expect(api.guestConversationControl).toHaveBeenCalledWith({ action: 'open', id });
+    expect(wrapper.text()).toContain('History from before sharing');
+    await wrapper.findAll('button').find(button => button.text() === 'Leave conversation')!.trigger('click'); await flushPromises();
+    expect(wrapper.text()).not.toContain('History from before sharing');
+    expect(api.guestConversationControl).toHaveBeenLastCalledWith({ action: 'leave', id });
+    wrapper.unmount();
+  });
   it('waits for the saved workspace before deciding whether to show onboarding', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

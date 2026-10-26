@@ -2097,6 +2097,7 @@ function handleMainEvent(event: MainToRendererEvent, adoptSnapshot = true): void
 function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
   switch (event.type) {
     case 'client.connectionChanged':
+    case 'conversation.shareChanged':
     case 'remoteControl.statusChanged':
     case 'git.branchWorkProgress':
     case 'git.operationProgress':

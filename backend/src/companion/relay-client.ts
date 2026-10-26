@@ -19,15 +19,15 @@ export class RelayClient {
   private renewal: ReturnType<typeof setInterval> | undefined;
   private renewing = false;
 
-  constructor(private readonly link: RelayLink, private readonly gateway: CompanionGateway) {}
+  constructor(private readonly link: RelayLink, private readonly gateway: CompanionGateway, private readonly phoneEnabled: () => boolean = () => true) {}
 
   /** Renews the relay's routing every few seconds so it never outlives a lease the relay has dropped. */
-  startRenewal() {
+  startRenewal(advertise = () => this.advertise()) {
     this.stopRenewal();
     this.renewal = setInterval(() => {
       if (this.renewing) return;
       this.renewing = true;
-      void this.advertise().finally(() => { this.renewing = false; });
+      void advertise().finally(() => { this.renewing = false; });
     }, companionAdmissionIntervalMs);
     this.renewal.unref();
   }
@@ -53,7 +53,7 @@ export class RelayClient {
     } finally { stream.abort(new Error('Push request finished.')); }
   }
 
-  private authorized(peerId: string) { return this.gateway.grants.some((grant) => grant.peerId === peerId); }
+  private authorized(peerId: string) { return this.phoneEnabled() && this.gateway.grants.some((grant) => grant.peerId === peerId); }
 
   private async sendAdmission(): Promise<boolean> {
     if (!this.link.connected) return false;
@@ -62,7 +62,7 @@ export class RelayClient {
       const stream = await this.link.dialRelay(companionAdmissionProtocol, dialTimeoutMs);
       try {
         stream.maxReadBufferLength = 16_384; stream.inactivityTimeout = dialTimeoutMs;
-        stream.send(encodeCompanionFrame({ devices: this.gateway.grants.map((grant) => grant.peerId), invitations: this.gateway.pairingInvitations() }));
+        stream.send(encodeCompanionFrame({ devices: this.phoneEnabled() ? this.gateway.grants.map((grant) => grant.peerId) : [], invitations: this.phoneEnabled() ? this.gateway.pairingInvitations() : [] }));
         await stream.close({ signal: AbortSignal.timeout(closeTimeoutMs) });
         ok = admissionAnswer.safeParse(await readFirstCompanionFrame(stream)).success;
       } finally { stream.abort(new Error('Admission finished.')); }

@@ -315,6 +315,7 @@
 
     <AgentContextMenu
       v-if="contextMenuAgentId"
+      :share-available="Boolean(contextMenuAgentIsLocal && contextMenuAgent?.backendSession)"
       :fork-disabled="!canForkContextMenuAgent"
       :compress-visible="canReplaceContextMenuConversation"
       :compress-disabled="!canCompressContextMenuAgent"
@@ -442,6 +443,7 @@ const emit = defineEmits<{
   'create-agent-worktree-in-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
   'edit-agent': [agentId: string];
   'move-agent-to-team': [payload: { agentId: string; teamId: string }];
@@ -785,6 +787,9 @@ function emitContextAgentAction(action: AgentContextMenuAction): void {
   }
 
   switch (action) {
+    case 'share-agent':
+      emit('share-agent', agentId);
+      break;
     case 'close-agent':
       emit('close-agent', agentId);
       break;

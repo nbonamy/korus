@@ -19,6 +19,7 @@
       @close-agent="emit('close-agent', $event)"
       @duplicate-agent="emit('duplicate-agent', $event)"
       @edit-agent="emit('edit-agent', $event)"
+      @share-agent="emit('share-agent', $event)"
       @fork-agent="emit('fork-agent', $event)"
       @move-agent-to-team="emit('move-agent-to-team', $event)"
       @prompt-agent="emit('prompt-agent', $event)"
@@ -52,6 +53,7 @@ const emit = defineEmits<{
   'close-agent': [agentId: string];
   'duplicate-agent': [agentId: string];
   'edit-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'fork-agent': [agentId: string];
   'move-agent-to-team': [payload: { agentId: string; teamId: string }];
   'prompt-agent': [payload: { agentId: string; prompt: string }];

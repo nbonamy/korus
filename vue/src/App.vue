@@ -1,7 +1,9 @@
 <template>
   <div class="window-edge" aria-hidden="true" />
+  <GuestWorkspace v-if="guestVisible" :state="guestState" :busy="guestBusy" :failed="guestFailed" @control="runGuest" @local="guestVisible = false" />
   <AppShell
-    v-if="hasLoadedSnapshot"
+    v-else-if="hasLoadedSnapshot"
+    @open-shared="showGuests"
     :inert="backendRestartInProgress || pendingSessionCompression !== null ? '' : undefined"
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
@@ -261,6 +263,8 @@ import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
+import GuestWorkspace from './components/GuestWorkspace.vue';
+import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
@@ -275,6 +279,7 @@ import { localizedErrorMessage } from './i18n/errors';
 import { agentDisplayName } from '@workspace/core/agent-display';
 
 const { t } = useI18n();
+const { visible: guestVisible, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuests } = useGuestNavigation();
 
 const {
   snapshot,

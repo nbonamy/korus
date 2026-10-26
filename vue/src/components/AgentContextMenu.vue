@@ -36,6 +36,7 @@ import {
 import { openInApplicationFromMenuItem, openInMenuItems } from '../shared/open-in';
 
 export type AgentContextMenuAction =
+  | 'share-agent'
   | 'close-agent'
   | 'compress-session'
   | 'compact-session'
@@ -47,6 +48,7 @@ export type AgentContextMenuAction =
   | 'restart-agent';
 
 const props = defineProps<{
+  shareAvailable?: boolean;
   compressDisabled?: boolean;
   compressVisible?: boolean;
   compactDisabled?: boolean;
@@ -96,6 +98,7 @@ const menuItems = computed<AppMenuItem[]>(() => [
     icon: GitForkIcon,
     disabled: props.forkDisabled === true,
   },
+  ...(props.shareAvailable ? [{ id: 'share-agent', type: 'action', label: t('sharing.title'), icon: ExternalLinkIcon } satisfies AppMenuItem] : []),
   { id: 'group-primary', type: 'separator' },
   { id: 'handoff-agent', type: 'action', label: t('handoff.action'), icon: SwitchHorizontalIcon },
   ...(props.openInCatalog?.applications.length ? [{
@@ -232,7 +235,7 @@ function teamIdFromMoveItemId(itemId: string): string | null {
 }
 
 function isAgentContextMenuAction(itemId: string): itemId is AgentContextMenuAction {
-  return itemId === 'close-agent' ||
+  return itemId === 'share-agent' || itemId === 'close-agent' ||
     itemId === 'compress-session' ||
     itemId === 'compact-session' ||
     itemId === 'duplicate-agent' ||

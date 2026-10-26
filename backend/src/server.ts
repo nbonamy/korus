@@ -1,3 +1,5 @@
+import type { GuestJoins } from './sharing/guest-joins';
+import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
 import { companionSessionId } from '@workspace/core/companion-protocol';
 import { AutoResumeService } from './agents/auto-resume-service';
 import { BrowserExtensionPackages } from './browser-extension-packages';
@@ -109,6 +111,8 @@ export type AppBackendServerOptions = {
   requirements?: Requirements;
   usage?:UsageService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
+  conversationSharing?: ConversationSharingOptions;
+  guestJoins?: GuestJoins;
   companionControl?: (input: import('@workspace/core/companion-protocol').CompanionControl) => Promise<import('@workspace/core/companion-protocol').CompanionControlResult>;
   documents?: DocumentWorkspaceService;
   tasks?: DurableTaskService;
@@ -187,6 +191,12 @@ export class AppBackendServer {
   private readonly missionArtifacts: MissionArtifactStorage;
   private remoteControlStatus: DevicePairingStatus = { status: 'disabled' };
   private remoteControlStatusLoaded = false;
+  /** In-process guest authority, separate from local RPC and paired-device grants. */
+  authorizeConversationGuest(handle: string, credential: string) {
+    if (!this.conversationShares) return Promise.reject(new Error('denied'));
+    return this.conversationShares.authorize(handle, credential);
+  }
+  conversationGuestCount(handle: string, count: number) { this.conversationShares?.connected(handle, count); }
   private companionAccessEnabled = false;
   private readonly driverRpc?: BackendDriverRpc;
   private readonly onEvent?: (event: AppBackendEvent) => void;
@@ -232,7 +242,12 @@ export class AppBackendServer {
   private readonly autoResume: AutoResumeService;
   private readonly providerConnections?: ProviderConnections;
 
+  private readonly conversationShares?: ConversationShares;
+
   constructor(private readonly options: AppBackendServerOptions) {
+    if (options.conversationSharing) this.conversationShares = new ConversationShares(options.conversationSharing, () => this.snapshot, (agentId, state) => {
+      this.onEvent?.({ seq: this.nextEventSeq(), type: 'conversation.shareChanged', agentId, payload: state, occurredAt: new Date().toISOString() });
+    });
     this.browserExtensionPackages = options.browserExtensionPackages ?? new BrowserExtensionPackages(path.join(backendHomeDir(), 'browser-extensions'));
     this.tasks = options.tasks;
     this.providerSetup = options.providerSetup;
@@ -739,6 +754,7 @@ export class AppBackendServer {
     if (this.snapshot.providerConnections?.some(provider => provider.backend === 'codex' && provider.connected)) await this.ensureRemoteControlStatus();
     await this.agentWorkspaces.reconcile();
     await this.reconcileConversationsOnce();
+    await this.conversationShares?.reconcile();
     await this.subagentIdentities.backfill();
     await this.missionExecution.refreshOwnedSkills();
     await this.missionExecution.recoverInterruptedRuns();
@@ -768,6 +784,24 @@ export class AppBackendServer {
 
   async handleMessage(message: AppRpcMessage): Promise<AppRpcResponse | undefined> {
     if (!isAppRpcRequest(message)) return this.dispatchMessage(message);
+    if ([backendMethods.guestConversationControl, backendMethods.guestConversationImage, backendMethods.guestConversationContent].some(method => method === message.method)) {
+      try {
+        const joins = this.options.guestJoins; if (!joins) throw new Error('Unavailable');
+        const params = requireRecord(message.params);
+        const result = message.method === backendMethods.guestConversationControl
+          ? await joins.control(params.input as import('@workspace/core/guest-navigation').GuestJoinControl)
+          : message.method === backendMethods.guestConversationImage
+            ? await joins.readImage(params.id as string, params.path as string)
+            : await joins.readContent(params.id as string, params.input as import('@workspace/core/contracts/conversation').ConversationContentInput);
+        return createAppRpcResult(message.id, result);
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Guest operation failed. Check local storage and try again.'); }
+    }
+    if (message.method === backendMethods.conversationShareControl) {
+      try {
+        if (!this.conversationShares) throw new Error('Conversation sharing is unavailable.');
+        return createAppRpcResult(message.id, await this.conversationShares.control(requireRecord(message.params).input as import('@workspace/core/conversation-sharing').ConversationShareControl));
+      } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Share operation failed.'); }
+    }
     if (message.method === backendMethods.companionControl) {
       try {
         if (!this.options.companionControl) throw new Error('Mobile access is unavailable.');
@@ -3037,6 +3071,8 @@ export class AppBackendServer {
   }
 
   async close(): Promise<void> {
+    this.conversationShares?.close();
+    await this.options.guestJoins?.close();
     this.autoResume.close();
     this.unsubscribeUsage?.();
     this.unsubscribeRequestUsage?.();
@@ -3288,6 +3324,7 @@ export class AppBackendServer {
   }
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
+    await this.conversationShares?.reconcile();
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3295,6 +3332,7 @@ export class AppBackendServer {
   }
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
+    await this.conversationShares?.reconcile();
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }
@@ -3423,6 +3461,7 @@ export class AppBackendServer {
     const fullEvent = this.nextMainEvent(event);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports?.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     this.agentRequests.record(fullEvent);
@@ -3430,6 +3469,13 @@ export class AppBackendServer {
     this.emitDerivedDomainEvents(fullEvent);
     if (fullEvent.type !== 'agent.updated') this.autoResume?.observe(fullEvent);
     this.onBackendEventApplied?.(fullEvent);
+  }
+
+  private observeShareTargetChange(event: BackendPublishedEvent): void {
+    if (event.type !== 'agent.updated' && event.type !== 'agent.conversationAttached' && event.type !== 'snapshot.updated') return;
+    void this.conversationShares?.reconcile().catch(() => {
+      warnMain('sharing', 'Share storage is unavailable; target invalidation will be retried before share access.');
+    });
   }
 
   private clearTurnSuggestionsForNewPrompt(agent: Agent): void {
@@ -3463,6 +3509,7 @@ export class AppBackendServer {
     const fullEvent = this.nextMainEvent(event);
     this.options.usage?.observeEvent(fullEvent);
     applyMainEventToSnapshot(this.snapshot, fullEvent);
+    this.observeShareTargetChange(fullEvent);
     this.delegatedWorkReports.handleEvent(fullEvent);
     for (const listener of this.handoffListeners) listener(fullEvent);
     if (fullEvent.agentId && providerConversationEventView(fullEvent).type === 'turn.completed') {
