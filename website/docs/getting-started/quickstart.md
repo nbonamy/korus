@@ -18,11 +18,11 @@ If your engine already shows **Connected**, select **Continue**. Otherwise, sele
 
 The [provider guides](../providers/) explain setup and sign-in, including bundled runtime options and [Antigravity installation](../providers/#antigravity). Model access and usage limits come from the provider account you connect.
 
-At the GitHub step, connect Korus directly for faster GitHub access. If an authenticated GitHub CLI is detected, you can choose **Use GitHub CLI** instead. Otherwise, select **Skip for now** for a local repository task.
+At the repository connection step, connect GitHub, GitLab.com, or both. Korus can also use an authenticated GitHub CLI (`gh`) or GitLab CLI (`glab`) on your computer. Select **Skip for now** for a local repository task.
 
 ## Open your repository
 
-Choose **Existing folder or repository…** from the empty workspace's start-work menu and select your local checkout. You can also open a GitHub repository or clone a repository URL from that menu.
+Choose **Existing folder or repository…** from the empty workspace's start-work menu and select your local checkout. You can also open a GitHub or GitLab repository or clone a repository URL from that menu.
 
 If multiple engines are enabled, select the engine for the new conversation. Keep the default checkout for a small first task. To add another conversation for an open repository, use its **New session** plus button in the sidebar and choose the checkout or branch you want.
 

@@ -26,6 +26,20 @@ After a response, the empty composer may suggest a follow-up. Press **Tab**, **R
 
 Use **Image Gen** in the skill picker when you want a Claude or other non-Codex agent to generate or edit an image through Codex. A connected Codex setup supplies that image capability. Manage reusable workflows in [Settings → Skills](../providers/#manage-agent-skills).
 
+## Share a conversation
+
+Invite someone to follow a conversation and suggest prompts while you keep control of what the agent runs. Sharing works across coding providers and also supports Quick Chats.
+
+1. Right-click a local agent and choose **Share with guests**.
+2. Choose **Share** to create and copy its invitation link. Share the link privately with the people you want to invite.
+3. The collaborator opens the link in Korus, or chooses **Join with invite…** from the start-work menu and pastes the link or invitation code. On their first join, they choose the display name you will see beside their suggestions.
+
+Anyone with the invitation can read the full available conversation history and future updates, including tool output and content attached to that conversation. Check what the history contains before sharing. Access is limited to that conversation; joining does not grant control of your workspace or coding-provider account.
+
+Collaborators propose messages from their composer. Their suggestions appear above your composer; choose **Move suggestion to composer** to put one in your draft. Edit it if needed and send it yourself, or delete the suggestion. A suggestion never runs automatically, and guests cannot approve tools or interrupt the agent. Each collaborator can delete their own pending suggestion.
+
+Return to **Share with guests** to **Copy link** again or **Stop sharing**. Stopping sharing revokes the invitation and ends guest access. Collaborators can also **Leave** a joined conversation. Your computer and Korus backend need to remain available for live updates.
+
 ## Attach an app window on macOS
 
 AppShots lets you show the agent a window from another app.

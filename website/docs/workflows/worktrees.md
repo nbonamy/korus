@@ -79,7 +79,7 @@ If provisioning fails, read the reported phase and error. Check whether a branch
 2. Commit the intended changes through the agent's Git controls. A merge includes committed changes; remaining uncommitted edits are not included.
 3. Open the merge action and verify the destination branch. Choose **Merge commit** to preserve the branch's commits, or **Squash and merge** and enter a single commit message.
 4. Decide whether to **Delete worktree after merging** and **Delete branch after removing worktree**. Keep them when you need follow-up work. Where offered, **Report back** sends the outcome to the delegating agent.
-5. Choose **Merge** for local integration, or **Merge and push** to also update the remote. Alternatively, create a pull request instead of merging locally.
+5. Choose **Merge** for local integration, or **Merge and push** to also update the remote. Alternatively, create a GitHub pull request or draft GitLab merge request instead of merging locally.
 
 Korus remembers your cleanup choices. Check them before each merge: deleting the worktree closes its agent, and branch cleanup can remove both the local branch and its matching remote branch. Keep them when more work is planned.
 

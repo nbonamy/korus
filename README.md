@@ -59,6 +59,9 @@ and API usage are billed separately.
 - **Let agents collaborate** — Agents can discover teammates, share status,
   send messages, queue follow-up work, and coordinate through Korus's
   built-in MCP tools.
+- **Bring people into the conversation** — Share a live conversation with a
+  collaborator who can follow the work and suggest prompts. You review, edit,
+  and send each suggestion, and can stop sharing at any time.
 - **Browse without leaving** — Every agent can keep an in-app browser for
   research, local previews, and browser-based tools. Share website sign-ins across
   agents and use Bitwarden or 1Password from the browser toolbar.
@@ -75,9 +78,9 @@ and API usage are billed separately.
 - **Take your team with you** — Pair the iPhone or Android companion with your
   computers, switch saved connections, and follow agents across teams. Respond to
   requests and send follow-ups while work continues on the connected computer.
-- **Bring your backlog** — Connect GitHub or Linear to browse issues, start
+- **Bring your backlog** — Connect GitHub, GitLab, or Linear to browse issues, start
   agent work, or shape a Mission. Choose the code repository separately from a
-  Linear team or project; GitHub remains the home for pull requests.
+  Linear team or project. Deliver through GitHub pull requests or GitLab merge requests.
 - **Schedule recurring work** — Send prompts to an existing agent or Quick Chat,
   or start a fresh Quick Chat each time. Choose daily, weekday, weekly, custom,
   or interval schedules, or ask an agent to create an automation from chat.
@@ -123,8 +126,9 @@ desktop app leaves the team running. Saved workspace state is restored when
 you return.
 
 When a provider supplies a usage-limit reset time, Auto-resume can continue the
-conversation after the reset. Track token usage and output speed over time in
-Settings → Analytics.
+conversation after the reset. Compare token usage, estimated API costs, and
+output speed over time in Settings → Analytics. Usage statistics and cost
+calculations stay on your computer.
 
 ## Get Korus
 

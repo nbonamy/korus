@@ -27,11 +27,11 @@ Check whether you changed **Location** between **Separate Korus chats** and **Us
 
 Read the [provider setup overview](../providers/) before making another change. Preserve any repository edits independently of the conversation history.
 
-## GitHub works in another app but not in Korus
+## GitHub or GitLab works in another app but not in Korus {#github-works-in-another-app-but-not-in-korus}
 
-Coding-provider authentication is separate from GitHub access. Korus can use GitHub CLI authenticated to github.com on the computer hosting the workspace, or its own GitHub connection. Check that the selected account can access the repository, then restart Korus if you changed the GitHub CLI account after launching it. If CLI access is unavailable, complete GitHub authorization in **Settings → Integrations**.
+Coding-provider authentication is separate from GitHub or GitLab access. Korus can use GitHub CLI (`gh`) authenticated to github.com, GitLab CLI (`glab`) authenticated to gitlab.com, or a direct connection. Check access on the computer hosting the workspace. In **Settings → Integrations**, verify the selected account and reconnect the affected service if its CLI account changed. If CLI access is unavailable, complete direct authorization there. Repository browsing and Git clone/push authentication are separate; also check your SSH or HTTPS Git credentials if those operations fail.
 
-If you skipped GitHub during onboarding, local folder tasks still work. Connect GitHub when you need repository browsing or issue and pull-request workflows. Automations only need GitHub if their prompt calls for it.
+If you skipped GitHub or GitLab during onboarding, local folder tasks still work. Connect the service when you need repository browsing, issues, or pull-request and merge-request workflows. Automations only need these integrations if their prompt calls for them.
 
 ## A task is waiting
 

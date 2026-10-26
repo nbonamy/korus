@@ -18,7 +18,7 @@ Check those repositories have Git history and can create worktrees. Have their s
 
 1. Select the team where the feature belongs.
 2. Click **New mission** in the sidebar. If the team already has Missions, use the **+** beside **Missions**.
-3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub or Linear integration. Choose the provider first, then its repository or **Team / project**, and select the issue.
+3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub, GitLab, or Linear integration. Choose the provider first, then its repository, GitLab project, or Linear **Team / project**, and select the issue.
 4. Work with the Mission lead until the Requirements artifact is specific enough to approve.
 
 To start from a conversation, type `/mission`, optionally followed by instructions, or choose **+ → Mission**. The current agent writes the brief from the conversation and your instructions, Korus creates the Mission, sends the brief to the Mission lead as the first message and opens the Mission.
@@ -27,7 +27,7 @@ For example:
 
 > Add CSV export to the reporting page. The API and web repositories are in this team. Only authorized users can export; preserve the current filters; escape spreadsheet formulas. Success means a browser download with the expected rows plus API authorization and escaping tests. Do not add scheduled exports.
 
-A selected issue supplies context for Requirements. A Linear team or project does not select an execution repository, and Mission tickets are not automatically exported as Linear issues. Review the code-repository assignment on each Mission ticket before approving implementation. GitHub still owns any pull requests created during Ship.
+A selected issue supplies context for Requirements. A Linear team or project does not select an execution repository, and Mission tickets are not automatically exported as Linear issues. Review the code-repository assignment on each Mission ticket before approving implementation. Ship uses the code repository's provider: pull requests on GitHub or merge requests on GitLab.
 
 ## Follow the stages
 
@@ -70,11 +70,11 @@ This review is part of the Mission. The separate conversation command [`/review`
 
 ## Ship each repository
 
-Ship shows a delivery card for each affected repository. Commit any remaining intended changes, then use its Git controls to create a pull request or merge. Check the branch, destination, title/message, and cleanup choices before confirming. Follow [Worktrees](./worktrees#review-and-merge) for merge prerequisites and cleanup behavior.
+Ship shows a delivery card for each affected repository. Commit any remaining intended changes, then use its Git controls to create a GitHub pull request, a draft GitLab merge request, or a local merge. Check the branch, destination, title/message, and cleanup choices before confirming. Follow [Worktrees](./worktrees#review-and-merge) for merge prerequisites and cleanup behavior.
 
 When the destination has advanced, use **Update from main** in the delivery card's Git controls; the label follows the repository's base branch name. Korus merges the base into the Mission branch. Resolve any conflicts in the Mission worktree and rerun the relevant checks, then return to Ship and refresh the Git state before merging. Updating the branch does not itself deliver the Mission.
 
-The Mission completes when every affected repository has a recorded pull request or merge. A created pull request can still need review and merging. Mission completion does not mean the code was deployed.
+The Mission completes when every affected repository has a recorded pull request, merge request, or local merge. A created request can still need review and merging. Mission completion does not mean the code was deployed.
 
 ## Resume or clean up
 

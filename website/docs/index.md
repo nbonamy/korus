@@ -36,9 +36,11 @@ Use a [Mission](./workflows/missions) to move through Requirements, Tickets, Imp
 
 Korus provides the workspace around your coding agent. Your selected provider supplies model access, account authentication, and usage limits. See the [provider guides](./providers/) for setup.
 
-For issue-driven work, connect [GitHub or Linear](./providers/#connect-github-or-linear), [browse the backlog](./features/workspace#browse-and-start-backlog-work), and choose the code repository where the agent should work.
+For issue-driven work, connect [GitHub, GitLab, or Linear](./providers/#connect-github-or-linear), [browse the backlog](./features/workspace#browse-and-start-backlog-work), and choose the code repository where the agent should work.
 
 Use [Automations](./features/automations) to schedule recurring prompts in an agent or Quick Chat.
+
+[Share a conversation](./features/conversations#share-a-conversation) to let a collaborator follow the work and suggest prompts. Use [Analytics](./features/workspace#understand-usage-and-performance) to compare token use, estimated API costs, and model performance.
 
 Install and sync reusable workflows in [Settings → Skills](./providers/#manage-agent-skills). Bring Bitwarden or 1Password into the [in-app browser](./features/browser#use-your-password-manager), and [continue from your phone](./features/workspace#continue-from-your-phone) when you step away from the desktop.
 

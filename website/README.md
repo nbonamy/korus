@@ -88,7 +88,7 @@ Activity view, Automations, and Skills show real screenshots from
 sample storefront team, no private repository names or account details).
 Refresh them with the `korus-live-preview` skill when those surfaces change,
 and bump the `?v=` query on the image URLs. Computer Use and the choice of
-agents stay text-only until a faithful capture exists.
+agents, Sharing, and Analytics use text-only cards.
 
 The Skills capture shows the real Discover panel with its curated catalog in an
 isolated preview. It contains no private skill names, provider accounts, or
