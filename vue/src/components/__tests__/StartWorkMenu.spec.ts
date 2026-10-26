@@ -12,6 +12,7 @@ describe('StartWorkMenu', () => {
     await wrapper.get('[aria-label="Add project"]').trigger('click');
     const invite = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.includes('Join with invite'));
     expect(invite).toBeDefined();
+    expect(invite!.querySelector('svg.tabler-icon-share')).not.toBeNull();
     invite!.click(); await wrapper.vm.$nextTick();
     expect(wrapper.emitted('select')).toStrictEqual([['invite']]);
   });
