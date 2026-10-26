@@ -115,6 +115,33 @@ Keep the heading and existing release history. Do not create a version heading,
 edit package versions, refresh the lockfile, generate renderer release notes,
 commit, tag, push, build, or publish.
 
+### Writing style
+
+Write for someone scanning What's New:
+
+- Lead with a recognizable feature name or the visible problem fixed. Use actual
+  UI labels, such as **Close all tabs**, rather than elaborate descriptions.
+- Give each feature one bullet. Consolidate its connection, browsing and delivery
+  capabilities instead of scattering them across entries or categories.
+- Prefer one short sentence per bullet. Add a second only for an essential usage
+  instruction, compatibility change or limitation that affects the user's choice.
+- Translate implementation details into outcomes. Omit internal state, protocol
+  fields, dependency versions and defensive explanations from release copy.
+- Keep claims factual: no promotional filler, invented benefits or unsupported
+  performance numbers. Preserve material limits in plain language.
+
+Examples:
+
+- **GitLab support:** Connect GitLab, work on issues and merge requests, and use
+  GitLab tools from your agents.
+- **API cost estimates:** Compare estimated spending by model and provider in
+  Analytics. Usage without enough pricing data remains unavailable.
+- **Close all tabs:** Close all artifact tabs from the tab menu.
+- Fixed Missions staying unshipped after merging and deleting their worktree.
+
+Before returning the notes, consolidate repeated features and remove wording a
+user would need to decode. Keep the detailed audit evidence in the handoff.
+
 If there are no release-worthy outcomes, leave `## Unreleased` empty and report
 that no release is recommended.
 
