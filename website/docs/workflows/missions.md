@@ -59,7 +59,7 @@ Use **Stop ticket** when a running task needs to halt, or **Retry ticket** after
 
 ## Review and remediate
 
-The Mission Review stage assesses the implemented feature against the approved requirements. Its **Changes** tab lets you select a repository and inspect its branch or uncommitted diff. Its **Review** tab holds the summary and structured findings.
+The Mission Review stage assesses the implemented feature against the approved requirements. Its **Changes** tab lets you select a repository and inspect its branch or uncommitted diff, with files grouped by code, tests, documentation, and other files (use the folder button to turn grouping off). Its **Review** tab holds the summary and structured findings.
 
 1. Inspect each finding's repository, location, impact, and priority. Use **Chat about finding** when you need clarification.
 2. Select the findings to fix, then choose **Fix N selected**. The affected repository workers apply and verify the fixes in the Mission worktrees. Unselected findings are skipped during this remediation batch.

@@ -21,6 +21,7 @@ describe('MissionCodeReview', () => {
     expect(toolbarButtons.map(button => button.attributes('aria-label'))).toStrictEqual([
       'Open in application',
       'Choose Open In application',
+      'Group by file type',
       'Refresh diff',
     ]);
     expect(toolbarButtons.slice(0, 2).every(button => button.attributes('disabled') !== undefined)).toBe(true);
@@ -145,6 +146,7 @@ it('switches repository-scoped diffs and Open In targets from the Mission Change
   expect(toolbarButtons.map(button => button.attributes('aria-label'))).toStrictEqual([
     'Open in VS Code',
     'Choose Open In application',
+    'Group by file type',
     'Refresh diff',
   ]);
   expect(toolbarButtons.at(-1)!.text()).toBe('');

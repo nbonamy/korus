@@ -209,7 +209,7 @@ export const messages = {
       activeTicketCount: '{count} active', reviewTicketCount: '{count} to review', completeTicketCount: '{count} complete', openTicketThread: 'Open {title} and its agent conversation',
       ticketRunStatus: { queued: 'Ready', blocked: 'Waiting', preparing: 'Preparing', running: 'Building', awaitingReview: 'Ready for review', accepted: 'Done', cancelled: 'Stopped', failed: 'Failed' },
       stopTicket: 'Stop ticket', retryTicket: 'Retry ticket',
-      codeReview: 'Code review', diffScope: 'Diff scope', branchDiff: 'Branch changes', uncommittedDiff: 'Uncommitted changes', refreshDiff: 'Refresh diff',
+      codeReview: 'Code review', diffScope: 'Diff scope', branchDiff: 'Branch changes', uncommittedDiff: 'Uncommitted changes', refreshDiff: 'Refresh diff', groupByFileType: 'Group by file type',
       reviewTab: 'Review', changesTab: 'Changes', reviewRepository: 'Repository to inspect', reviewRepositoryAgentUnavailable: 'The implementation agent for this repository is unavailable.',
       reviewFindings: 'Review findings', reviewFindingCount: '{count} finding | {count} findings', noReviewFindings: 'No structured findings reported.',
       includeReviewFinding: 'Include finding in remediation', fixSelected: 'Fix {count} selected', rerunReview: 'Re-run review', fixedWithoutEvidence: 'Marked fixed without additional evidence.',

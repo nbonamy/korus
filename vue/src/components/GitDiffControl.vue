@@ -48,6 +48,7 @@ import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
 import { fileKinds } from '@workspace/core/file-kind';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 
 const props = defineProps<{
@@ -210,15 +211,19 @@ function selectedLabelFor(target: AgentGitDiffTarget): string {
   return translate('surface.agentHeader.changesVsBranch', { branch });
 }
 
+/** The turn records its diff text; the file count and file types come from that text. */
+function turnSummary(turn: TurnGitDiff): AgentGitDiffSummary {
+  const { changedFiles, byKind } = summarizeUnifiedDiff(turn.diff ?? '');
+  return { addedLines: turn.addedLines, removedLines: turn.removedLines, changedFiles, byKind };
+}
+
 function summaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
   const catalog = props.gitStatus.diffCatalog;
   if (target.type === 'branch') return catalog?.branch ?? fallbackSummary.value;
   if (target.type === 'uncommitted') return catalog?.uncommitted ?? fallbackSummary.value;
   if (target.type === 'unstaged') return catalog?.unstaged ?? fallbackSummary.value;
   if (target.type === 'staged') return catalog?.staged ?? fallbackSummary.value;
-  if (target.type === 'turn') return props.lastTurnGitDiff
-    ? { ...props.lastTurnGitDiff, changedFiles: 0 }
-    : fallbackSummary.value;
+  if (target.type === 'turn') return props.lastTurnGitDiff ? turnSummary(props.lastTurnGitDiff) : fallbackSummary.value;
   return catalog?.commits.find((commit) => commit.sha === target.sha) ?? fallbackSummary.value;
 }
 </script>

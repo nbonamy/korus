@@ -1,4 +1,5 @@
 import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { product } from '@workspace/core/product';
 import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -805,26 +806,7 @@ function summaryFromSections(sections: AgentGitDiffSection[]): AgentGitDiffSumma
 }
 
 function parseUnifiedDiffSummary(diff: string): AgentGitDiffSummary {
-  let addedLines = 0;
-  let removedLines = 0;
-  const files = new Map<string, { path: string; added: number; removed: number }>();
-  let current: { path: string; added: number; removed: number } | undefined;
-  for (const line of diff.split(/\r?\n/u)) {
-    if (line.startsWith('diff --git ')) {
-      // The new path follows the last " b/", so paths containing spaces keep their own name.
-      current = files.get(line) ?? { path: line.slice(line.lastIndexOf(' b/') + 3), added: 0, removed: 0 };
-      files.set(line, current);
-    } else if (line.startsWith('+') && !line.startsWith('+++')) {
-      addedLines += 1;
-      if (current) current.added += 1;
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
-      removedLines += 1;
-      if (current) current.removed += 1;
-    }
-  }
-  const byKind = emptyKindStats();
-  for (const file of files.values()) addFileToKindStats(byKind, file.path, file.added, file.removed);
-  return { addedLines, removedLines, changedFiles: files.size, byKind };
+  return summarizeUnifiedDiff(diff);
 }
 
 function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
