@@ -1,7 +1,7 @@
-import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
+import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { WorkProviderCliAuthenticationError, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver } from './types';
-import { workProviderConnectOptions, workProviderDefinition } from '@workspace/core/work-providers';
+import { workProviderDefinition } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
   drivers: WorkProviderDriver[];
@@ -17,8 +17,6 @@ type PendingAuthorization = WorkProviderDeviceAuthorization & {
 };
 
 export class WorkIntegrationManager {
-  private readonly credentialCommits = new Map<WorkProviderKind, Promise<unknown>>();
-  private readonly mcpUpgrades = new Map<WorkProviderKind, { tokenBeforeWrite?: WorkProviderToken | null }>();
   private readonly drivers = new Map<WorkProviderKind, WorkProviderDriver>();
   private readonly pendingAuthorizations = new Map<WorkProviderKind, PendingAuthorization>();
   private readonly tokenRefreshes = new Map<WorkProviderKind, Promise<WorkProviderToken>>();
@@ -47,7 +45,7 @@ export class WorkIntegrationManager {
     ]);
 
     for (const provider of providers) {
-      if (this.disconnects.has(provider) || this.mcpUpgrades.has(provider) || this.credentialCommits.has(provider)) continue;
+      if (this.disconnects.has(provider)) continue;
       const generation = this.generation(provider);
       const driver = this.driver(provider);
       const connection = this.snapshot().workBacklog.connections.find((candidate) => candidate.provider === provider);
@@ -66,11 +64,8 @@ export class WorkIntegrationManager {
           }
         }
         if (this.generation(provider) !== generation) continue;
-        const hostedMcp = await this.hostedMcpState(provider, token);
-        if (this.generation(provider) !== generation || this.connection(provider) !== connection || this.mcpUpgrades.has(provider)) continue;
         changed = this.setConnection({
           provider,
-          ...(hostedMcp ? { hostedMcp } : {}),
           ...(connection?.source ? directConnectionSource(provider) : {}),
           status: 'connected',
           ...(token.accountLabel ? { accountLabel: token.accountLabel } : {}),
@@ -180,33 +175,7 @@ export class WorkIntegrationManager {
   }
 
   isHostedMcpConnected(provider: WorkProviderKind): boolean {
-    return this.isConnected(provider) && this.connection(provider)?.source !== 'cli'
-      && (provider !== 'gitlab' || this.connection(provider)?.hostedMcp?.status === 'available');
-  }
-
-  async hostedMcpAuthorizationHeader(provider: WorkProviderKind, options: { forceRefresh?: boolean } = {}): Promise<string> {
-    if (!this.isHostedMcpConnected(provider)) throw new Error('Hosted MCP requires authorization in Settings.');
-    const token = await this.connectedToken(provider, options.forceRefresh === true);
-    if (provider === 'gitlab' && !token.scope?.split(/\s+/).includes('mcp')) {
-      const connection = this.connection(provider);
-      if (connection) this.setConnection({ ...connection, hostedMcp: { status: 'authorizationRequired' } });
-      await this.options.saveSnapshot();
-      throw new Error('Authorize GitLab MCP in Settings.');
-    }
-    if (!this.isHostedMcpConnected(provider)) throw new Error('Hosted MCP authorization was disconnected.');
-    return `${token.tokenType || 'Bearer'} ${token.accessToken}`;
-  }
-
-  async reportHostedMcpFailure(provider: WorkProviderKind, status: number, authorization: string): Promise<void> {
-    if (provider !== 'gitlab' || status !== 403 || this.mcpUpgrades.has(provider) || this.credentialCommits.has(provider)) return;
-    const generation = this.generation(provider);
-    const token = await this.options.tokenStore.get(provider);
-    if (!token || generation !== this.generation(provider) || authorization !== `${token.tokenType || 'Bearer'} ${token.accessToken}`) return;
-    const connection = this.connection(provider);
-    if (connection && this.isConnected(provider)) {
-      this.setConnection({ ...connection, hostedMcp: { status: 'restricted' } });
-      await this.options.saveSnapshot();
-    }
+    return this.isConnected(provider) && this.connection(provider)?.source !== 'cli';
   }
 
   async authorizationHeader(
@@ -218,55 +187,34 @@ export class WorkIntegrationManager {
     return `${token.tokenType || 'Bearer'} ${token.accessToken}`;
   }
 
-  async connect(provider: WorkProviderKind, options: WorkProviderConnectOptions = {}): Promise<WorkProviderConnectResult> {
+  async connect(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
     if (provider === 'linear') return this.startConnection(provider);
     const existing = this.connects.get(provider);
     if (existing) return existing;
-    const operation = this.startConnection(provider, workProviderConnectOptions(provider, options)).finally(() => {
+    const operation = this.startConnection(provider).finally(() => {
       if (this.connects.get(provider) === operation) this.connects.delete(provider);
     });
     this.connects.set(provider, operation);
     return operation;
   }
 
-  private async startConnection(provider: WorkProviderKind, options: WorkProviderConnectOptions = {}): Promise<WorkProviderConnectResult> {
+  private async startConnection(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
     // A refreshed renderer retrieves public instructions for the same grant.
     // Device codes and credentials remain owned by this manager.
     if (provider !== 'linear' && this.pendingAuthorizations.has(provider)) {
       const pending = await this.activePendingAuthorization(provider);
       return { snapshot: this.snapshot(), ...(pending ? { authorization: publicAuthorization(pending) } : {}) };
     }
-    if (options.hostedMcp && provider !== 'gitlab') throw new Error('Hosted MCP authorization upgrades are supported for GitLab only.');
     const driver = this.driver(provider);
     const previous = this.connection(provider);
-    // Only an existing direct grant is upgraded in place. A first connection (or one replacing a CLI
-    // identity) simply requests the MCP scope up front, with the ordinary connect lifecycle.
-    const upgrading = options.hostedMcp === true && previous?.status === 'connected' && previous.source !== 'cli';
-    if (upgrading) {
-      const generation = this.generation(provider);
-      const token = await this.connectedToken(provider);
-      if (token.scope?.split(/\s+/).includes('mcp')) {
-        const hostedMcp = await this.hostedMcpState(provider, token);
-        if (this.generation(provider) === generation) {
-          this.setConnection({ ...previous, hostedMcp, detail: undefined });
-          await this.options.saveSnapshot();
-        }
-        return { snapshot: this.snapshot() };
-      }
-    }
     const cliFallback = this.cliDriver(provider) && previous?.source === 'cli' && previous.status === 'connected' ? previous : null;
     // A failed direct connect must not cost the user working CLI access.
     const fail = (connection: Pick<WorkIntegrationConnection, 'status' | 'detail'>) => this.setAuthorizationFailure(provider, { provider, ...directConnectionSource(provider), ...connection });
-    // Permission upgrades leave native refresh coordination and its generation intact.
-    const generation = upgrading ? this.generation(provider) : this.invalidate(provider);
-    const upgrade: { tokenBeforeWrite?: WorkProviderToken | null } | undefined = upgrading ? {} : undefined;
-    const active = () => this.generation(provider) === generation && (!upgrade || this.mcpUpgrades.get(provider) === upgrade);
-    const fallback = upgrading ? previous : cliFallback;
-    if (fallback) this.authorizationFallbacks.set(provider, fallback);
-    if (upgrade) this.mcpUpgrades.set(provider, upgrade);
+    const generation = this.invalidate(provider);
+    if (cliFallback) this.authorizationFallbacks.set(provider, cliFallback);
     this.setConnection({ provider, ...directConnectionSource(provider), status: 'connecting' });
-    if (!upgrading) await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
-    if (!active()) return { snapshot: this.snapshot() };
+    await this.writeToken(provider, () => this.options.tokenStore.delete(provider));
+    if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
     if (!await this.options.tokenStore.canStoreTokens()) {
       fail({ status: 'error', detail: { key: 'workProvider.tokenStorageUnavailable' } });
       await this.options.saveSnapshot();
@@ -281,14 +229,14 @@ export class WorkIntegrationManager {
 
     let authorization: WorkProviderDeviceAuthorization;
     try {
-      authorization = await driver.startAuthorization(options);
+      authorization = await driver.startAuthorization();
     } catch (error) {
-      if (!active()) return { snapshot: this.snapshot() };
+      if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
       fail({ status: 'error', detail: error instanceof Error ? error.message : 'Could not start authorization.' });
       await this.options.saveSnapshot();
       return { snapshot: this.snapshot() };
     }
-    if (!active()) return { snapshot: this.snapshot() };
+    if (this.generation(provider) !== generation) return { snapshot: this.snapshot() };
     this.pendingAuthorizations.set(provider, {
       ...authorization,
       lastPollAt: null,
@@ -321,7 +269,6 @@ export class WorkIntegrationManager {
 
   private async pollPendingAuthorization(provider: WorkProviderKind): Promise<AppSnapshot> {
     const generation = this.generation(provider);
-    const upgrade = this.mcpUpgrades.get(provider);
     const pending = await this.activePendingAuthorization(provider);
     if (!pending) {
       return this.snapshot();
@@ -377,48 +324,28 @@ export class WorkIntegrationManager {
       connectedAt: new Date().toISOString(),
     };
     let accountLabel: string;
-    let hostedMcp: HostedWorkMcpState | undefined;
     try {
       accountLabel = await this.driver(provider).currentAccountLabel(token);
-      const expected = this.mcpUpgrades.has(provider) ? this.authorizationFallbacks.get(provider)?.accountLabel : undefined;
-      if (expected && accountLabel !== expected) throw new Error('Account changed during MCP authorization.');
-      hostedMcp = await this.hostedMcpState(provider, token);
       if (this.generation(provider) !== generation || !await this.activePendingAuthorization(provider)) return this.snapshot();
-      // Block new credential reads across the grant swap. Existing native refreshes
-      // finish first, so rollback retains their usable rotating credentials.
-      let release!: () => void;
-      const commit = new Promise<void>(resolve => { release = resolve; });
-      if (upgrade) this.credentialCommits.set(provider, commit);
-      try {
-        if (upgrade) await this.tokenRefreshes.get(provider)?.catch(() => undefined);
-        await this.writeToken(provider, async () => {
-          const active = () => this.generation(provider) === generation && this.pendingAuthorizations.get(provider) === pending;
-          if (!active()) return;
-          if (upgrade) upgrade.tokenBeforeWrite = await this.options.tokenStore.get(provider);
-          if (active()) await this.options.tokenStore.set({ ...token, accountLabel });
-        });
-      } finally {
-        release();
-        if (this.credentialCommits.get(provider) === commit) this.credentialCommits.delete(provider);
-      }
+      await this.writeToken(provider, async () => {
+        if (this.generation(provider) === generation) await this.options.tokenStore.set({ ...token, accountLabel });
+      });
     } catch {
-      if (this.generation(provider) !== generation || this.pendingAuthorizations.get(provider) !== pending) return this.snapshot();
+      if (this.generation(provider) !== generation) return this.snapshot();
       this.pendingAuthorizations.delete(provider);
       this.driver(provider).cancelAuthorization?.();
       this.setAuthorizationFailure(provider, { provider, ...directConnectionSource(provider), status: 'error', detail: workProviderAuthorizationError('unavailable', providerLabel(provider)) });
       await this.options.saveSnapshot();
       return this.snapshot();
     }
-    if (this.generation(provider) !== generation || this.pendingAuthorizations.get(provider) !== pending) return this.snapshot();
+    if (this.generation(provider) !== generation) return this.snapshot();
     this.pendingAuthorizations.delete(provider);
-    this.mcpUpgrades.delete(provider);
     this.authorizationFallbacks.delete(provider);
     this.driver(provider).cancelAuthorization?.();
     this.setConnection({
       provider,
       ...directConnectionSource(provider),
       status: 'connected',
-      ...(hostedMcp ? { hostedMcp } : {}),
       accountLabel,
       connectedAt: token.connectedAt,
     });
@@ -428,26 +355,6 @@ export class WorkIntegrationManager {
   }
 
   async disconnect(provider: WorkProviderKind): Promise<AppSnapshot> {
-    const upgrade = this.mcpUpgrades.get(provider);
-    const upgradeFallback = this.authorizationFallbacks.get(provider);
-    if (upgrade && upgradeFallback) {
-      // Cancel only this grant. Native credentials may be rotating concurrently.
-      this.mcpUpgrades.delete(provider);
-      this.pendingAuthorizations.delete(provider);
-      this.authorizationFallbacks.delete(provider);
-      this.connects.delete(provider);
-      this.polls.delete(provider);
-      this.driver(provider).cancelAuthorization?.();
-      this.setConnection(upgradeFallback);
-      const restore = this.writeToken(provider, async () => {
-        if (upgrade.tokenBeforeWrite) await this.options.tokenStore.set(upgrade.tokenBeforeWrite);
-      });
-      this.credentialCommits.set(provider, restore);
-      try { await restore; }
-      finally { if (this.credentialCommits.get(provider) === restore) this.credentialCommits.delete(provider); }
-      await this.options.saveSnapshot();
-      return this.snapshot();
-    }
     const fallback = this.authorizationFallbacks.get(provider);
     const previous = this.connection(provider);
     const expectedCli = fallback ?? (previous?.source === 'cli' && previous.status === 'connected' ? previous : undefined);
@@ -554,13 +461,8 @@ export class WorkIntegrationManager {
   private async connectedToken(provider: WorkProviderKind, forceRefresh = false): Promise<WorkProviderToken> {
     if (this.connection(provider)?.source === 'none') throw new Error(`${providerLabel(provider)} is not connected.`);
     const generation = this.generation(provider);
-    while (this.credentialCommits.has(provider)) {
-      await this.credentialCommits.get(provider);
-      if (this.generation(provider) !== generation) throw new Error('Authorization was cancelled.');
-    }
     const token = await this.options.tokenStore.get(provider);
     if (this.generation(provider) !== generation) throw new Error('Authorization was cancelled.');
-    if (this.credentialCommits.has(provider)) return this.connectedToken(provider, forceRefresh);
     if (!token) {
       this.setConnection({
         provider,
@@ -639,7 +541,6 @@ export class WorkIntegrationManager {
 
   private invalidate(provider: WorkProviderKind): number {
     this.connects.delete(provider);
-    this.mcpUpgrades.delete(provider);
     const generation = this.generation(provider) + 1;
     this.generations.set(provider, generation);
     this.pendingAuthorizations.delete(provider);
@@ -659,7 +560,6 @@ export class WorkIntegrationManager {
   private setAuthorizationFailure(provider: WorkProviderKind, connection: WorkIntegrationConnection): void {
     const fallback = this.authorizationFallbacks.get(provider);
     this.authorizationFallbacks.delete(provider);
-    this.mcpUpgrades.delete(provider);
     this.setConnection(fallback ? { ...fallback, detail: connection.detail } : connection);
   }
 
@@ -675,12 +575,6 @@ export class WorkIntegrationManager {
       }
       throw error;
     }
-  }
-
-  private async hostedMcpState(provider: WorkProviderKind, token: WorkProviderToken): Promise<HostedWorkMcpState | undefined> {
-    if (provider !== 'gitlab') return undefined;
-    if (!token.scope?.split(/\s+/).includes('mcp')) return { status: 'authorizationRequired' };
-    return { status: await this.driver(provider).checkHostedMcp?.(token) ?? 'unavailable' };
   }
 
   private configurationDetail(provider: WorkProviderKind): WorkIntegrationConnection['detail'] {
@@ -710,8 +604,7 @@ export class WorkIntegrationManager {
   private setConnection(connection: WorkIntegrationConnection): boolean {
     const fallback = this.authorizationFallbacks.get(connection.provider);
     // Retain the usable CLI identity across a restart during direct authorization.
-    if (connection.status === 'connecting' && fallback) connection = { ...fallback, ...connection, source: fallback.source, accountLabel: fallback.accountLabel, connectedAt: fallback.connectedAt };
-    if (connection.provider === 'gitlab' && connection.source === 'cli') connection.hostedMcp = { status: 'directRequired' };
+    if (connection.status === 'connecting' && fallback) connection = { ...fallback, ...connection, source: 'cli', accountLabel: fallback.accountLabel, connectedAt: fallback.connectedAt };
     const snapshot = this.snapshot();
     const index = snapshot.workBacklog.connections.findIndex((candidate) => candidate.provider === connection.provider);
     if (index === -1) {

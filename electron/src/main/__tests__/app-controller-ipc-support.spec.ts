@@ -282,8 +282,6 @@ describe('AppController', () => {
       input: { provider: 'github', configuration: { sourceId: 'nbonamy/remote' } },
       location: { kind: 'remote', remoteConnectionId: 'connection-devbox' },
     });
-    await connectWorkProvider(controller, 'gitlab', { hostedMcp: true });
-    expect(request).toHaveBeenLastCalledWith('workProvider/connect', { provider: 'gitlab', options: { hostedMcp: true } });
   });
 
   it('routes work item assignment mutations through daemon', async () => {
@@ -859,10 +857,10 @@ async function deleteAutomation(controller: AppController, automationId: string,
   }).deleteAutomation(automationId, location);
 }
 
-async function connectWorkProvider(controller: AppController, provider: WorkProviderKind, options?: { hostedMcp?: boolean }): Promise<WorkProviderConnectResult> {
+async function connectWorkProvider(controller: AppController, provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
   return (controller as unknown as {
-    connectWorkProvider(provider: WorkProviderKind, options?: { hostedMcp?: boolean }): Promise<WorkProviderConnectResult>;
-  }).connectWorkProvider(provider, options);
+    connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult>;
+  }).connectWorkProvider(provider);
 }
 
 async function listSshHosts(controller: AppController): Promise<SshHostCandidate[]> {

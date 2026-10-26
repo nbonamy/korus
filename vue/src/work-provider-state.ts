@@ -9,7 +9,6 @@ import type {
   WorkItemQuery,
   WorkProviderAuthorization,
   WorkProviderKind,
-  WorkProviderConnectOptions,
   WorkSource,
 } from '@workspace/core/contracts';
 import { localizedText } from './i18n/errors';
@@ -43,7 +42,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   const catalogRevisions = new Map<WorkProviderKind, number>();
   const itemRevisions = new Map<string, number>();
 
-  async function connect(provider: WorkProviderKind, connectOptions?: WorkProviderConnectOptions): Promise<void> {
+  async function connect(provider: WorkProviderKind): Promise<void> {
     if (!appApi?.connectWorkProvider) return;
     const revision = (authorizationRevisions.get(provider) ?? 0) + 1;
     authorizationRevisions.set(provider, revision);
@@ -51,16 +50,16 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     error.value = null;
     setAuthorizationError(provider, null);
     try {
-      const result = await appApi.connectWorkProvider(provider, ...(connectOptions ? [connectOptions] : []));
+      const result = await appApi.connectWorkProvider(provider);
       if (revision !== authorizationRevisions.get(provider)) return;
       options.adoptSnapshot(result.snapshot);
       setAuthorization(provider, result.authorization ?? null);
       if (result.authorization) scheduleAuthorizationPoll(provider);
       else clearAuthorizationPoll(provider);
       const current = result.snapshot.workBacklog.connections.find(value => value.provider === provider);
-      // Failed permission upgrades retain the existing API or CLI connection.
-      const fallbackFailed = current?.status === 'connected' && !result.authorization && current.detail;
-      if (current?.status === 'notConfigured' || current?.status === 'error' || fallbackFailed) {
+      // A failed direct connect leaves GitHub CLI access connected and reports why in detail.
+      const cliFallbackFailed = current?.source === 'cli' && current.status === 'connected' && !result.authorization && current.detail;
+      if (current?.status === 'notConfigured' || current?.status === 'error' || cliFallbackFailed) {
         status.value = 'error';
         error.value = localizedText(current?.detail, translate);
         setAuthorizationError(provider, error.value);
@@ -262,14 +261,8 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (current?.status === 'connected') {
         clearAuthorizationPoll(provider);
         setAuthorization(provider, null);
-        const authorizationError = localizedText(current.detail, translate);
-        if (!authorizationError && !isFirstRunOnboardingActive()) useConfetti().celebrate();
+        if (!isFirstRunOnboardingActive()) useConfetti().celebrate();
         await loadRepositories(provider);
-        if (authorizationError) {
-          status.value = 'error';
-          error.value = authorizationError;
-          setAuthorizationError(provider, authorizationError);
-        }
         return;
       }
       if (current?.status === 'connecting' && authorizations.value[provider]) {

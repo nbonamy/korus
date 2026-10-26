@@ -661,7 +661,6 @@ describe('ClaudeBackendDriver', () => {
       appMcpServerUrl: 'http://127.0.0.1:4321/mcp',
       hostedMcpServerUrls: () => ({
         github: 'http://127.0.0.1:4321/mcp/providers/github',
-        gitlab: 'http://127.0.0.1:4321/mcp/providers/gitlab',
       }),
       celebrationsEnabled: () => false,
       additionalDeveloperInstructions: () => '<context>\nMission contract\n</context>',
@@ -673,7 +672,6 @@ describe('ClaudeBackendDriver', () => {
       mcpServerUrl: 'http://127.0.0.1:4321/mcp?agentId=agent-claude',
       hostedMcpServerUrls: {
         github: 'http://127.0.0.1:4321/mcp/providers/github?agentId=agent-claude',
-        gitlab: 'http://127.0.0.1:4321/mcp/providers/gitlab?agentId=agent-claude',
       },
       allowedTools: [`mcp__${product.mcpServerName}__*`],
       appendSystemPrompt: expect.stringContaining(`Use the ${product.mcpServerName} MCP server for agent collaboration.`),

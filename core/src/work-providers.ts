@@ -1,5 +1,4 @@
 import type { AppText } from './contracts/shared';
-import type { WorkProviderConnectOptions } from './contracts/work';
 
 type WorkProviderDefinition = {
   label: string;
@@ -30,7 +29,6 @@ export const workProviders = {
     configurationDetail: { key: 'gitlabIntegration.setup' },
     repositoryBacked: true, pullRequests: true, initialView: 'assignedToMe',
     branchPrefix: 'gl', automationBranchPrefix: 'gitlab',
-    hostedMcp: { url: 'https://gitlab.com/api/v4/mcp' },
   },
   linear: {
     label: 'Linear', sourceLabel: { key: 'backlogSource.teamProject' },
@@ -51,15 +49,6 @@ export function isWorkProviderKind(value: unknown): value is WorkProviderKind {
 
 export function workProviderDefinition(provider: WorkProviderKind): WorkProviderDefinition {
   return workProviders[provider];
-}
-
-/**
- * The grants every connect flow asks for. Onboarding, Settings and acquisition dialogs all go through
- * the daemon, which applies this, so they cannot request different scopes.
- * GitLab includes MCP so agents can use it right away; GitHub and Linear have no extra grant.
- */
-export function workProviderConnectOptions(provider: WorkProviderKind, requested: WorkProviderConnectOptions = {}): WorkProviderConnectOptions {
-  return provider === 'gitlab' ? { ...requested, hostedMcp: true } : requested;
 }
 
 /** The provider that hosts a repository identity such as `gitlab.com/group/project`, when it is one of ours. */

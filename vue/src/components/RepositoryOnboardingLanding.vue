@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import type { WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderConnectOptions, WorkProviderKind } from '@workspace/core/contracts';
+import type { WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { workProviderDefinition } from '@workspace/core/work-providers';
@@ -49,7 +49,7 @@ const props = defineProps<{
   connections: WorkIntegrationConnection[];
   authorizations: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
   authorizationErrors?: Partial<Record<WorkProviderKind, string>>;
-  connect: (provider: WorkProviderKind, options?: WorkProviderConnectOptions) => Promise<void>;
+  connect: (provider: WorkProviderKind) => Promise<void>;
   disconnect: (provider: WorkProviderKind) => Promise<void>;
   openAuthorization: (provider: WorkProviderKind) => Promise<void>;
 }>();

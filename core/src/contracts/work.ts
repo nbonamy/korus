@@ -6,14 +6,9 @@ export type { WorkProviderKind } from '../work-providers';
 
 export type WorkIntegrationStatus = 'notConfigured' | 'disconnected' | 'connecting' | 'connected' | 'error';
 
-export type WorkProviderConnectOptions = { hostedMcp?: boolean };
-
-export type HostedWorkMcpState = { status: 'directRequired' | 'authorizationRequired' | 'available' | 'restricted' | 'unavailable' };
-
 export type WorkIntegrationConnection = {
   provider: WorkProviderKind;
   status: WorkIntegrationStatus;
-  hostedMcp?: HostedWorkMcpState;
   /** Missing uses automatic detection; none has no direct connection and can fall back to CLI access. */
   source?: 'api' | 'cli' | 'none';
   accountLabel?: string;

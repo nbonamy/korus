@@ -51,9 +51,9 @@ it('connects through the protocol, paginates private subgroup projects/branches 
     const result = await rpc('workProvider/connect', { provider: 'gitlab' }) as { authorization: unknown };
     expect(result.authorization).toStrictEqual({ provider: 'gitlab', userCode: 'ABCD1234', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: expect.any(String) });
     const body = new URLSearchParams(String(upstream.mock.calls[0]![1]?.body));
-    expect(Object.fromEntries(body)).toStrictEqual({ client_id: 'korus-public-id', scope: 'api mcp' });
+    expect(Object.fromEntries(body)).toStrictEqual({ client_id: 'korus-public-id', scope: 'api' });
     await rpc('workProvider/authorization/poll', { provider: 'gitlab' });
-    expect(snapshot.workBacklog.connections).toContainEqual({ provider: 'gitlab', source: 'api', status: 'connected', hostedMcp: { status: 'authorizationRequired' }, accountLabel: 'gitlab-user', connectedAt: expect.any(String) });
+    expect(snapshot.workBacklog.connections).toContainEqual({ provider: 'gitlab', source: 'api', status: 'connected', accountLabel: 'gitlab-user', connectedAt: expect.any(String) });
     upstream.mockImplementation(async (input, init) => {
       const url = new URL(String(input));
       expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer private-access');

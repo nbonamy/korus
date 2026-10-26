@@ -723,7 +723,7 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   `APP_GITLAB_CLIENT_ID`, then the packaged build default. No client secret is used.
   Register an application owned by Korus at
   <https://gitlab.com/-/user_settings/applications>, disable **Confidential**, and
-  enable **api**, and **mcp** when offering agent MCP tools. Use `https://gitlab.com/oauth/device` for the required redirect
+  enable **api**. Use `https://gitlab.com/oauth/device` for the required redirect
   URI field; the device flow does not use a local callback. Supply its Application
   ID through `APP_GITLAB_CLIENT_ID` when starting or building the daemon, and restart
   the owning host. A missing ID produces an actionable Settings state. Registration
@@ -733,13 +733,7 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   projects, follows all API pages, and fails incomplete discovery explicitly.
   GitLab source IDs are `gitlab.com/<full namespace>/<project path>`; subgroup paths
   remain intact. These IDs are opaque to clients and are distinct from GitHub IDs.
-  GitLab MCP permission is requested explicitly through Settings using `api mcp`;
-  it shares the daemon credential store and refresh boundary. The daemon checks
-  initialize/tool discovery, scope and provider generation before enabling the
-  hosted gateway. MCP status is independent of native API connectivity; missing
-  group access or MCP authorization leaves native workflows usable. Canceled,
-  denied and wrong-account permission upgrades retain the existing credentials.
-  API authorization does not configure Git transport credentials.
+  API authorization does not configure Git transport credentials or hosted MCP access.
 - Git delivery selects the tracked upstream remote, then `origin`, then the first
   remote. That remote owns provider routing, connectivity and request identity;
   connecting another provider never changes it. GitLab request identities retain

@@ -199,13 +199,11 @@ describe('state persistence', () => {
     snapshot.workBacklog.providerSettings.github = { oauthClientId: 'github-client' };
     updateSettingsInSnapshot(snapshot, { workProviders: { linear: { oauthClientId: ' linear-client ' } } });
     snapshot.workBacklog.connections.push({ provider: 'linear', status: 'connected', accountLabel: 'Alex' });
-    snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gl-user', hostedMcp: { status: 'restricted' } });
     snapshot.workBacklog.providerConfigurations = { github: { sourceId: 'owner/repo' }, linear: { sourceId: 'linear:team:project', assigneeLogin: 'Alex', tagName: 'bug' } };
     await persistence.save(snapshot);
     const restored = await persistence.load();
     expect(restored.workBacklog.providerSettings).toEqual({ github: { oauthClientId: 'github-client' }, linear: { oauthClientId: 'linear-client' } });
     expect(restored.workBacklog.connections).toContainEqual({ provider: 'linear', status: 'connected', accountLabel: 'Alex' });
-    expect(restored.workBacklog.connections).toContainEqual({ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gl-user', hostedMcp: { status: 'restricted' } });
     expect(restored.workBacklog.providerConfigurations).toEqual(snapshot.workBacklog.providerConfigurations);
     expect(isAppSnapshot(restored)).toBe(true);
   });
