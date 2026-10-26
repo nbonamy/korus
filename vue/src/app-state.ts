@@ -67,6 +67,9 @@ const backendRestartInProgress = ref(false);
 const agentCreationProgresses = ref<AgentCreationProgress[]>([]);
 const backgroundedAgentCreationIds = new Set<string>();
 const missionImplementationStartProgress = ref<MissionImplementationStartProgress | null>(null);
+/** An agent asked to open a Mission. The sequence makes repeated requests for one Mission distinct. */
+const missionFocusRequest = ref<{ missionId: string; sequence: number } | null>(null);
+let missionFocusSequence = 0;
 const codexConversationFramesByAgentId = ref<Record<string, {
   replica: CodexConversationReplica;
   revision: number;
@@ -1722,6 +1725,7 @@ export function useAppState() {
     backendRestartInProgress,
     agentCreationProgresses,
     missionImplementationStartProgress,
+    missionFocusRequest,
     loadBackendModels: loadBackendModelsForActiveAgent,
     loadBackendPlugins: loadBackendPluginsForActiveAgent,
     loadBackendSkills: loadBackendSkillsForActiveAgent,
@@ -2207,6 +2211,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       return;
     case 'mission.implementationStartProgress':
       missionImplementationStartProgress.value = event.payload;
+      return;
+    case 'mission.focusRequested':
+      missionFocusRequest.value = { missionId: event.payload.missionId, sequence: ++missionFocusSequence };
       return;
     case 'workspace.fileActivityDetected':
       syncFileActivityFromMainEvent(event);

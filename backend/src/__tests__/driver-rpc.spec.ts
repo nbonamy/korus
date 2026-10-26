@@ -10,6 +10,7 @@ import { BackendDriverRpc, appSurfaceOptions } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { CodexBackendDriver } from '../codex/codex-driver';
+import { MISSION_COMMAND_PROMPT } from '../agents/mission-command';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 // Provider discovery has its own coverage; RPC tests must not run the host login shell.
@@ -70,6 +71,20 @@ describe('BackendDriverRpc', () => {
       await server.handleMessage({ jsonrpc: '2.0', id: 'next', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Another task' } });
       expect(agent.userDelegationOverrides).toBeUndefined();
     } finally { await server.close(); }
+  });
+  it('expands /mission into a request for the create-mission tool on send and steer', async () => {
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
+    const steerPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]));
+    const agent = createAgent();
+    try {
+      await rpc.handle('driver/prompt/send', { agent, prompt: '/mission Add CSV export' });
+      expect(sendPrompt.mock.calls[0]![1]).toBe(`${MISSION_COMMAND_PROMPT}\n\nMission request:\nAdd CSV export`);
+      await rpc.handle('driver/prompt/steer', { agent, prompt: '/mission' });
+      expect(steerPrompt.mock.calls[0]![1]).toBe(MISSION_COMMAND_PROMPT);
+      await rpc.handle('driver/prompt/send', { agent, prompt: 'Explain the mission statement' });
+      expect(sendPrompt.mock.calls[1]![1]).toBe('Explain the mission statement');
+    } finally { await rpc.close(); }
   });
   it('rejects malformed delegation overrides before asking a provider to execute', async () => {
     const sendPrompt = vi.fn();

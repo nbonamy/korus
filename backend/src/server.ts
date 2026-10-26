@@ -557,6 +557,56 @@ export class AppBackendServer {
     return { success: true as const, reviewId: session.id, reviewerAgentId: session.reviewerAgentId };
   }
 
+  /** Creates the Mission and starts its first stage, whose lead then waits for the user's first message. */
+  private async createMissionAndRun(input: import('@workspace/core/missions').CreateMissionInput) {
+    const previousIds = new Set(this.snapshot.missions?.map(mission => mission.id));
+    await this.missions.mutate('create', input);
+    const mission = this.snapshot.missions?.find(candidate => !previousIds.has(candidate.id));
+    if (!mission) throw new Error('Mission creation did not produce a mission.');
+    await this.missionExecution.execute({
+      id: mission.id,
+      revision: mission.revision,
+      action: 'run',
+      memberId: input.orchestratorMemberId,
+    });
+    return this.snapshot.missions!.find(candidate => candidate.id === mission.id)!;
+  }
+
+  /** The first run starts in the background; its lead agent exists once the run reports running. */
+  private async awaitMissionLead(missionId: string, timeoutMs = 30_000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const run = this.snapshot.missions?.find(candidate => candidate.id === missionId)?.execution?.runs.at(-1);
+      if (run?.workerId && run.status === 'running') return run.workerId;
+      if (!run || run.status === 'failed' || run.status === 'cancelled') throw new Error(run?.error ?? 'The Mission lead did not start.');
+      if (Date.now() >= deadline) throw new Error('The Mission lead is taking too long to start.');
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+
+  /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
+  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string }): Promise<{ missionId: string; outcome: string }> {
+    const caller = this.snapshot.agents.find(agent => agent.id === agentId);
+    const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
+    if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
+    const mission = await this.createMissionAndRun({
+      outcome: input.outcome,
+      workflowType: 'shapeAndShipFeature',
+      teamId: team.id,
+      orchestratorMemberId: caller.id,
+    });
+    const lead = await this.awaitMissionLead(mission.id);
+    this.agentPrompts.send(lead, input.prompt);
+    this.emitSnapshotUpdated(await this.remoteTeams.clientSnapshot());
+    this.onEvent?.({
+      seq: this.nextEventSeq(),
+      type: 'mission.focusRequested',
+      payload: { missionId: mission.id },
+      occurredAt: new Date().toISOString(),
+    });
+    return { missionId: mission.id, outcome: mission.outcome };
+  }
+
   async createProjectFromQuickChat(agentId: string, name: string, prompt: string, backend?: Agent['backend']): Promise<CreatedProject> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     if (caller?.sessionKind !== 'quickChat' || !caller.teamId) {
@@ -1258,16 +1308,7 @@ export class AppBackendServer {
       }
       case backendMethods.missionCreate: {
         const input = requireRecord(message.params).input as import('@workspace/core/missions').CreateMissionInput;
-        const previousIds = new Set(this.snapshot.missions?.map(mission => mission.id));
-        await this.missions.mutate('create', input);
-        const mission = this.snapshot.missions?.find(candidate => !previousIds.has(candidate.id));
-        if (!mission) throw new Error('Mission creation did not produce a mission.');
-        await this.missionExecution.execute({
-          id: mission.id,
-          revision: mission.revision,
-          action: 'run',
-          memberId: input.orchestratorMemberId,
-        });
+        await this.createMissionAndRun(input);
         const snapshot = await this.remoteTeams.clientSnapshot();
         this.emitSnapshotUpdated(snapshot);
         return createAppRpcResult(message.id, snapshot);

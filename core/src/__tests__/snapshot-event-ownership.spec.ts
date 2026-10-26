@@ -62,6 +62,7 @@ const rendererEventTypes = [
   'client.celebrationRequested',
   'agentCreation.progress',
   'mission.implementationStartProgress',
+  'mission.focusRequested',
   'git.branchWorkProgress',
   'git.operationProgress',
   'browser.annotationCreated',

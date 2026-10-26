@@ -169,6 +169,7 @@ function expectEventContext(event: EventRecord): void {
     case 'remoteControl.statusChanged':
     case 'browser.annotationCreated':
     case 'mission.implementationStartProgress':
+    case 'mission.focusRequested':
     case 'workItem.assignmentUpdated':
       return;
   }

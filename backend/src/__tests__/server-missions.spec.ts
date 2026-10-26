@@ -216,6 +216,34 @@ describe('mission backend boundary', () => {
     } finally { await server.close(); }
   });
 
+  it('starts a mission for an agent, hands its lead the brief and asks the renderer to open it', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const onEvent = vi.fn();
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'lead-thread' } }),
+      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
+    };
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent });
+    try {
+      const caller = snapshot.agents[0]!;
+      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal: export the report with the current filters.' });
+      const mission = snapshot.missions!.find(candidate => candidate.id === started.missionId)!;
+      expect(started).toStrictEqual({ missionId: mission.id, outcome: 'Add CSV export' });
+      expect(mission).toMatchObject({ outcome: 'Add CSV export', teamId: caller.teamId, workflow: { type: 'shapeAndShipFeature' } });
+      const lead = mission.execution!.runs.at(-1)!.workerId!;
+      expect(snapshot.agents.some(agent => agent.id === lead)).toBe(true);
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead }), 'Goal: export the report with the current filters.', undefined));
+      expect(sendPrompt.mock.calls.every(([agent]) => agent.id === lead)).toBe(true);
+      const events = onEvent.mock.calls.map(([event]) => event);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
+      expect(events.findIndex(event => event.type === 'snapshot.updated')).toBeLessThan(events.findIndex(event => event.type === 'mission.focusRequested'));
+      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local team');
+    } finally { await server.close(); }
+  });
+
   it('deletes every tracked Mission worktree and the Mission data directory when requested', async () => {
     const snapshot = createInitialSnapshot();
     snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];

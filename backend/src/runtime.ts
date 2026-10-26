@@ -172,6 +172,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     worktreeManager,
     agentCreation,
     createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
+    startMission: (agentId, input) => server.startMissionFromAgent(agentId, input),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [

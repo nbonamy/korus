@@ -1355,7 +1355,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it.each(['Review', 'Delegate', 'Visualize'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
+  it.each(['Visualize', 'Delegate', 'Review', 'Mission'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const startVisualize = vi.fn().mockResolvedValue(createInitialSnapshot());
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
@@ -1366,10 +1366,10 @@ describe('AppShell authentication and conversation', () => {
     const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
     await wrapper.setProps({ backendCapabilities: codexBackendCapabilities, backendCommands: defaultBackendCommands('codex'), approvalPreset: 'ask-for-approval' });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
-    if (label === 'Review') {
+    if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
         .map(row => row.attributes('role') === 'separator' ? '---' : row.text())).toStrictEqual([
-        'Approval', '---', 'Review', 'Delegate', 'Visualize', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
+        'Approval', '---', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
       ]);
     }
     const item = wrapper.findAll('[role="menuitem"]').find(item => item.text() === label);
@@ -1378,8 +1378,8 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
-    if (label === 'Delegate') {
-      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate');
+    if (label === 'Delegate' || label === 'Mission') {
+      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith(label === 'Delegate' ? '/delegate' : '/mission');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     }
     else expect(sendPromptAction).not.toHaveBeenCalled();

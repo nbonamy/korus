@@ -171,6 +171,10 @@ type AppEvent =
       payload: AgentCreationProgress;
     }>
   | EventWith<{
+      type: 'mission.focusRequested';
+      payload: { missionId: string };
+    }>
+  | EventWith<{
       type: 'mission.implementationStartProgress';
       payload: MissionImplementationStartProgress;
     }>

@@ -805,6 +805,8 @@ const props = withDefaults(defineProps<{
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
   executeMission?: (input: import('@workspace/core/mission-execution').MissionExecutionInput) => Promise<void>;
   missionImplementationStartProgress?: MissionImplementationStartProgress | null;
+  /** An agent asked to open this Mission (from `create-mission`). */
+  missionFocusRequest?: { missionId: string; sequence: number } | null;
   agentCreationProgresses?: AgentCreationProgress[];
   createQuickChat?: (input: CreateQuickChatInput) => Promise<Agent | null | void>;
   createTeam?: (input: CreateTeamInput) => Promise<Team | null | void>;
@@ -1400,6 +1402,16 @@ watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
     selectedMissionId.value = null;
     activeSurface.value = 'agent';
   }
+});
+// The Mission may reach the renderer a moment after the request, so keep the request until it is known.
+const pendingMissionFocusId = ref<string | null>(null);
+watch(() => props.missionFocusRequest, request => { pendingMissionFocusId.value = request?.missionId ?? null; });
+watch([pendingMissionFocusId, () => props.snapshot.missions], () => {
+  const missionId = pendingMissionFocusId.value;
+  const mission = missionId ? props.snapshot.missions?.find(candidate => candidate.id === missionId) : undefined;
+  if (!mission) return;
+  pendingMissionFocusId.value = null;
+  if (mission.teamId === activeTeam.value?.id) selectMissionSurface(mission.id);
 });
 watch(() => props.connectionState.status, (status) => {
   if (status !== 'connected' || !pendingMissionRestoreId) return;
@@ -2275,17 +2287,18 @@ const conversationPaneActions: CodexConversationPaneActions = {
 };
 
 const delegatingAgentIds = new Set<string>();
-async function delegateAgent(agentId: string): Promise<void> {
+/** `/delegate` and `/mission` hand the conversation to the model, which carries out the request with a tool. */
+async function sendModelCommand(agentId: string, command: '/delegate' | '/mission'): Promise<void> {
   if (delegatingAgentIds.has(agentId)) return;
   delegatingAgentIds.add(agentId);
   try {
     await backendSwitch.settled();
     if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
-    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate');
+    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, command);
     else if (currentAgent.value?.id === agentId) {
       requireConnectedConversation();
-      if (props.sendPromptAction) await props.sendPromptAction('/delegate');
-      else emit('sendPrompt', '/delegate');
+      if (props.sendPromptAction) await props.sendPromptAction(command);
+      else emit('sendPrompt', command);
     } else throw new Error(t('delegation.agentUnavailable'));
   } finally {
     delegatingAgentIds.delete(agentId);
@@ -2296,7 +2309,7 @@ async function runConversationMenuCommand(agentId: string, command: Conversation
   try {
     if (command === 'review') return await openCodeReviewForAgent(agentId);
     if (command === 'visualize') return await startVisualizeForAgent(agentId);
-    await delegateAgent(agentId);
+    await sendModelCommand(agentId, command === 'mission' ? '/mission' : '/delegate');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }

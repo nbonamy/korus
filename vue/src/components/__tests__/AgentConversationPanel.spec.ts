@@ -79,12 +79,12 @@ describe('AgentConversationPanel', () => {
       view, actions, agents: snapshot.agents, focused: false, mentionGroups: [], modelMenuItems: [], selectModelMenuItem,
       savedPromptDrafts: [], savePromptDraft: vi.fn(), removePromptDraft: vi.fn(), openLink: vi.fn(), openImage: vi.fn(), openVisualization: vi.fn(),
     }, global: { provide: { [backendChoicesKey as symbol]: computed(() => ['codex', 'claude']) } } });
-    for (const label of ['Review', 'Delegate', 'Visualize']) {
+    for (const label of ['Visualize', 'Delegate', 'Review', 'Mission']) {
       await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
       await wrapper.findAll('[role="menuitem"]').find(item => item.text() === label)!.trigger('click');
     }
     expect(wrapper.emitted('composer-command')).toStrictEqual([
-      [agent.id, 'review'], [agent.id, 'delegate'], [agent.id, 'visualize'],
+      [agent.id, 'visualize'], [agent.id, 'delegate'], [agent.id, 'review'], [agent.id, 'mission'],
     ]);
     expect(selectModelMenuItem).not.toHaveBeenCalled();
     expect(actions.send).not.toHaveBeenCalled();

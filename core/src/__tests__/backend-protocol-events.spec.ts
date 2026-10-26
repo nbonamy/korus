@@ -316,6 +316,7 @@ function createFixtures(): EventFixtures {
         ticketCount: 3,
       },
     },
+    'mission.focusRequested': { ...base, type: 'mission.focusRequested', payload: { missionId: 'mission-1' } },
     'git.branchWorkProgress': {
       ...agent, type: 'git.branchWorkProgress',
       payload: { id: 'branch-move-1', agentId: 'agent-1', branchName: 'feature/work', state: 'running', phase: 'movingChanges' },

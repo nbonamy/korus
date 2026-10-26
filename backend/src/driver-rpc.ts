@@ -4,6 +4,7 @@ import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { expandMissionCommand } from './agents/mission-command';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
@@ -344,7 +345,7 @@ export class BackendDriverRpc {
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
-        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
       }
@@ -540,7 +541,7 @@ export class BackendDriverRpc {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
-        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
+        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
           ? driver.steerPrompt(agent, prompt, options)

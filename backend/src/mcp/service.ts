@@ -46,6 +46,7 @@ import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-to
 import { AgentCreationService } from '../agents/agent-creation-service';
 import type { AppMcpToolModuleProvider } from './tool-modules';
 import { createQuickChatProjectToolModuleProvider } from './quick-chat-project-tools';
+import { createMissionStartToolModuleProvider, type StartedMission } from './mission-start-tools';
 import { createAutomaticReviewToolModuleProvider, type StartAutomaticReview } from './automatic-review-tools';
 import { createAutomationToolModuleProvider } from './automation-tools';
 import type { CreatedProject } from '../projects/project-creation-service';
@@ -71,6 +72,7 @@ export type AppMcpServiceOptions = {
   worktreeManager?: WorktreeManager;
   agentCreation?: AgentCreationService;
   createProject?: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
+  startMission?: (agentId: string, input: { outcome: string; prompt: string }) => Promise<StartedMission>;
   startAutomaticReview?: StartAutomaticReview;
   closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   toolModuleProviders?: readonly AppMcpToolModuleProvider[];
@@ -149,6 +151,7 @@ export class AppMcpService {
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
         ...(options.startAutomaticReview ? [createAutomaticReviewToolModuleProvider({ snapshot: this.snapshot, start: options.startAutomaticReview })] : []),
         ...(options.createProject ? [createQuickChatProjectToolModuleProvider({ snapshot: this.snapshot, createProject: options.createProject })] : []),
+        ...(options.startMission ? [createMissionStartToolModuleProvider({ snapshot: this.snapshot, startMission: options.startMission })] : []),
         ...(options.toolModuleProviders ?? []),
       ],
     });

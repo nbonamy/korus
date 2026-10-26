@@ -123,6 +123,12 @@ by mutating user-global tool config.
   retention are in [architecture.md](architecture.md#durable-delegated-tasks).
 - `create-project` exists only for Quick Chats and reuses the New Project service;
   a later failure leaves the created folder or agent for recovery.
+- `create-mission` lets an agent on a local team start a Mission when the user asks
+  (`/mission [instructions]` expands into that request). It creates the Mission with
+  the caller as orchestrator, waits for the first stage's lead agent to exist, sends
+  the supplied brief to that lead as its first message and asks the renderer, through
+  `mission.focusRequested`, to open the Mission. Mission workers and agents without a
+  team do not receive it.
 - Agent closure is authorized by the owning daemon against the authenticated
   caller and the persisted `delegatedByAgentId` link, which follows parent handoff.
   Only the creator can close an idle worker without pending prompts, requests or

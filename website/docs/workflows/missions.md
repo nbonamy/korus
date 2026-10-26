@@ -21,6 +21,8 @@ Check those repositories have Git history and can create worktrees. Have their s
 3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub or Linear integration. Choose the provider first, then its repository or **Team / project**, and select the issue.
 4. Work with the Mission lead until the Requirements artifact is specific enough to approve.
 
+To start from a conversation, type `/mission`, optionally followed by instructions, or choose **+ → Mission**. The current agent writes the brief from the conversation and your instructions, Korus creates the Mission, sends the brief to the Mission lead as the first message and opens the Mission.
+
 For example:
 
 > Add CSV export to the reporting page. The API and web repositories are in this team. Only authorized users can export; preserve the current filters; escape spreadsheet formulas. Success means a browser download with the expected rows plus API authorization and escaping tests. Do not add scheduled exports.

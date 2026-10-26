@@ -23,6 +23,7 @@ export const snapshotEventOwnership = {
   'client.celebrationRequested': 'renderer',
   'agentCreation.progress': 'renderer',
   'mission.implementationStartProgress': 'renderer',
+  'mission.focusRequested': 'renderer',
   'git.branchWorkProgress': 'renderer',
   'git.operationProgress': 'renderer',
   'browser.annotationCreated': 'renderer',

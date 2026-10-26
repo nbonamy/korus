@@ -875,7 +875,7 @@ export const messages = {
       completeAction: `Start using ${product.name}`,
     },
     chat: {
-      composerActions: { review: 'Review', delegate: 'Delegate', visualize: 'Visualize' },
+      composerActions: { visualize: 'Visualize', delegate: 'Delegate', review: 'Review', mission: 'Mission' },
       quickChatHeadline: 'What can I help with?',
       savedDrafts: {
         title: 'Saved drafts',

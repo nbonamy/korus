@@ -67,7 +67,8 @@ Type `/` in the composer to discover commands. Availability depends on the engin
 | `/visualize` | Open [Visualize](../features/visualize). |
 | `/delegate [task]` | Ask the current agent to hand off work to a new Korus teammate in a worktree. |
 | `/worktree [task]` | Alias for `/delegate`. |
+| `/mission [instructions]` | Ask the current agent to start a [Mission](../workflows/missions) from the conversation and your instructions, then open it. |
 
-Apart from `/compact`, the commands above are shared across supported engines, including Antigravity. The composer's **+** menu includes **Review**, **Delegate**, and **Visualize**. See [Worktree delegation](../workflows/worktrees#delegate-implementation) for handoff and local-commit behavior.
+Apart from `/compact`, the commands above are shared across supported engines, including Antigravity. The composer's **+** menu includes **Visualize**, **Delegate**, **Review**, and **Mission**. See [Worktree delegation](../workflows/worktrees#delegate-implementation) for handoff and local-commit behavior.
 
 Both Codex and Claude Code offer `/goal`. Claude goals have no token-budget support. Other composer controls and turn actions depend on the selected provider; see [Conversations](../features/conversations).

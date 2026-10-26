@@ -6,6 +6,7 @@
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
     :mission-implementation-start-progress="missionImplementationStartProgress"
+    :mission-focus-request="missionFocusRequest"
     :agent-creation-progresses="agentCreationProgresses"
     @clear-agent-creation-progress="clearAgentCreationProgress"
     @background-agent-creation-progress="backgroundAgentCreationProgress"
@@ -332,6 +333,7 @@ const {
   backendRestartInProgress,
   agentCreationProgresses,
   missionImplementationStartProgress,
+  missionFocusRequest,
   sourceRepositories,
   openInApplications,
   loadBackendModels,

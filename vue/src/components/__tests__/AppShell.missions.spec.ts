@@ -48,6 +48,31 @@ describe('AppShell missions', () => {
   });
   afterEach(() => window.localStorage.removeItem(missionStorageKey));
 
+  it('opens the mission an agent asked to focus, even when the snapshot arrives first or later', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'CSV export', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    const withoutMission = { ...snapshot, missions: [] };
+    const wrapper = mountShell({ snapshot: withoutMission });
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    await wrapper.setProps({ missionFocusRequest: { missionId: mission.id, sequence: 1 } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    await wrapper.setProps({ snapshot: { ...snapshot } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('ignores a focus request for a mission that never arrives or belongs to another team', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+    await wrapper.setProps({ missionFocusRequest: { missionId: 'mission-missing', sequence: 1 } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('restores the Mission workspace after reopening the app on a selected Mission', async () => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'Restore work', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });

@@ -20,7 +20,7 @@ Use the composer's available context controls to supply file mentions, skills, a
 
 Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Supported Claude models offer **Fast** in the speed selector; use the normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
 
-The composer's **+** menu includes **Review**, **Delegate**, and **Visualize** across supported engines. These open [Code Review](../workflows/code-review), request [worktree delegation](../workflows/worktrees#delegate-implementation), and open [Visualize](./visualize), respectively. The corresponding slash commands remain available.
+The composer's **+** menu includes **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. These open [Visualize](./visualize), request [worktree delegation](../workflows/worktrees#delegate-implementation), open [Code Review](../workflows/code-review), and request a [Mission](../workflows/missions), respectively. The corresponding slash commands remain available.
 
 After a response, the empty composer may suggest a follow-up. Press **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
 
