@@ -254,4 +254,14 @@ describe('owner conversation sharing RPC and protected persistence', () => {
       await expect(f.request(server, { action: 'create', target: f.target })).rejects.toThrow('Share storage is unavailable');
     } finally { await server.close(); }
   });
+  it('keeps persisting snapshots when share storage is unavailable', async () => {
+    const f = await fixture(); await mkdir(f.directory, { recursive: true }); await writeFile(path.join(f.directory, 'state.json'), '{broken-secret');
+    const saved = vi.fn(async () => undefined);
+    const server = new AppBackendServer({ version: 'test', snapshot: f.snapshot, saveSnapshot: saved, conversationSharing: { directory: f.directory, endpoint: async () => ({ ownerId, relay }) } });
+    try {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: 'rename', method: 'agent/update', params: { input: { id: 'agent', name: 'Renamed' } } });
+      expect(response && 'error' in response).toBe(false);
+      expect(saved).toHaveBeenCalled();
+    } finally { await server.close(); }
+  });
 });

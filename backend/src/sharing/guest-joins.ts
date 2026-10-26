@@ -189,6 +189,9 @@ export class GuestJoins {
     };
     session.connecting = work().catch(() => { if (current()) session.view.status = 'unavailable'; }).finally(() => {
       session.connecting = undefined; if (current() && (session.view.status === 'unavailable' || session.view.status === 'busy')) this.retry(session);
+      // A reopen during a stale attempt returned early from connect(); resume it now that the attempt has settled.
+      else if (!current() && !this.stopped && this.selected === session.view && this.sessions.get(session.view.id) === session && session.view.status === 'unavailable' && !session.timer
+        && this.saved?.joins.some(record => record.id === session.view.id)) this.connect(session);
     });
   }
   private retry(session: Session) {

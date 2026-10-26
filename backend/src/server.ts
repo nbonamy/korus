@@ -805,8 +805,7 @@ export class AppBackendServer {
     if (this.snapshot.providerConnections?.some(provider => provider.backend === 'codex' && provider.connected)) await this.ensureRemoteControlStatus();
     await this.agentWorkspaces.reconcile();
     await this.reconcileConversationsOnce();
-    await this.conversationShares?.reconcile();
-    void this.conversationShares?.dispatchQueued().catch(() => {});
+    this.reconcileShares();
     await this.subagentIdentities.backfill();
     await this.missionExecution.refreshOwnedSkills();
     await this.missionExecution.recoverInterruptedRuns();
@@ -3438,8 +3437,7 @@ export class AppBackendServer {
   }
 
   private async persistAndEmitSnapshot(): Promise<AppSnapshot> {
-    await this.conversationShares?.reconcile();
-    void this.conversationShares?.dispatchQueued().catch(() => {});
+    this.reconcileShares();
     await this.saveSnapshot?.(this.snapshot);
     const snapshot = await this.remoteTeams.clientSnapshot();
     this.emitSnapshotUpdated(snapshot);
@@ -3447,8 +3445,7 @@ export class AppBackendServer {
   }
 
   private async persistSnapshotOnly(): Promise<AppSnapshot> {
-    await this.conversationShares?.reconcile();
-    void this.conversationShares?.dispatchQueued().catch(() => {});
+    this.reconcileShares();
     await this.saveSnapshot?.(this.snapshot);
     return this.snapshot;
   }
@@ -3587,12 +3584,21 @@ export class AppBackendServer {
     this.onBackendEventApplied?.(fullEvent);
   }
 
-  private observeShareTargetChange(event: BackendPublishedEvent): void {
-    void this.conversationShares?.dispatchQueued().catch(() => {});
-    if (event.type !== 'agent.updated' && event.type !== 'agent.conversationAttached' && event.type !== 'snapshot.updated') return;
-    void this.conversationShares?.reconcile().catch(() => {
+  /** Best effort and never awaited: grants are invalidated synchronously, so storage or relay trouble cannot block persistence. */
+  private reconcileShares(): void {
+    if (!this.conversationShares) return;
+    void this.conversationShares.reconcile().catch(() => {
       warnMain('sharing', 'Share storage is unavailable; target invalidation will be retried before share access.');
     });
+    void this.conversationShares.dispatchQueued().catch(() => {});
+  }
+
+  private observeShareTargetChange(event: BackendPublishedEvent): void {
+    if (event.type !== 'agent.updated' && event.type !== 'agent.conversationAttached' && event.type !== 'snapshot.updated') {
+      void this.conversationShares?.dispatchQueued().catch(() => {});
+      return;
+    }
+    this.reconcileShares();
   }
 
   private clearTurnSuggestionsForNewPrompt(agent: Agent): void {

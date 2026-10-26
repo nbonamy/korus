@@ -57,6 +57,7 @@ export class ConversationShares {
   private readonly guestCounts = new Map<string, number>();
   private readonly revocations = new Map<string, Set<() => void>>();
   private pendingRecord?: ShareRecord;
+  private reconcileQueued?: Promise<void>;
   private routingStatus: ConversationShareState['availability'] = 'transportPending';
   private readonly unsubscribeRouting?: () => void;
   constructor(private readonly options: ConversationSharingOptions, private readonly snapshot: () => AppSnapshot,
@@ -236,7 +237,11 @@ export class ConversationShares {
     for (const link of [...(this.saved?.links ?? []), ...(this.pendingRecord ? [this.pendingRecord] : [])]) {
       if (!link.revokedAt && !targets.some(target => sameTarget(target, link.target))) this.invalidate(link.handle);
     }
-    return this.serial(async () => { await this.load(); await this.reconcileSaved(targets); await this.publish(); });
+    // Coalesce: invalidation above is already synchronous, so one queued pass covers every call made before it starts.
+    if (this.reconcileQueued) return this.reconcileQueued;
+    const queued = this.serial(async () => { this.reconcileQueued = undefined; await this.load(); await this.reconcileSaved(this.currentTargets()); await this.publish(); });
+    this.reconcileQueued = queued;
+    return queued;
   }
   private async checkCurrent(link: ShareRecord, requested: ConversationShareTarget) {
     if (this.invalidated.has(link.handle) || !this.currentTarget(link.target) || !this.currentTarget(requested)) {
