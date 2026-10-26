@@ -886,7 +886,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
-    expect(wrapper.text()).toContain('Edit agent');
+    expect(wrapper.text()).toContain('Rename agent');
 
     wrapper.unmount();
     expect(listeners.size).toBe(0);
@@ -1427,7 +1427,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('fork-agent')).toBeUndefined();
     expect(wrapper.emitted('restart-agent')).toBeUndefined();
     expect(wrapper.findComponent({ name: 'ConversationHistoryDialog' }).exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('Edit Agent');
+    expect(wrapper.text()).not.toContain('Rename agent');
     expect(wrapper.emitted('close-team')).toBeUndefined();
   });
 
@@ -1436,7 +1436,7 @@ describe('AppShell dialogs and commands', () => {
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
 
     await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('contextmenu');
-    await clickPortaledMenuItem('Edit Agent');
+    await clickPortaledMenuItem('Rename agent');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true }));
 

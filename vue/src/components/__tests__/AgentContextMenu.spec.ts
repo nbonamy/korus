@@ -27,7 +27,7 @@ describe('AgentContextMenu', () => {
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('left: 120px');
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('top: 80px');
     expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -75,7 +75,7 @@ describe('AgentContextMenu', () => {
     const items = wrapper.findAll('[role="menuitem"]');
 
     expect(items.map((item) => item.text()).slice(0, 4)).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',

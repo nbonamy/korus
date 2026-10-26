@@ -1,5 +1,5 @@
 <template>
-  <div class="app-form-dialog__control app-form-dialog__input-control">
+  <div class="app-form-dialog__control app-form-dialog__input-control" :class="{ 'clearable-text-input--subtle': subtle }">
     <input
       v-bind="$attrs"
       ref="input"
@@ -8,6 +8,7 @@
       :value="modelValue"
       :disabled="disabled"
       :readonly="readonly"
+      :autofocus="autofocus"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
     <span class="clearable-text-input__action">
@@ -28,10 +29,13 @@
 
 <script setup lang="ts">
 import { IconX } from '@tabler/icons-vue';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 
 defineOptions({ inheritAttrs: false });
-defineProps<{
+const props = defineProps<{
+  autofocus?: boolean;
+  subtle?: boolean;
+  selectOnMount?: boolean;
   modelValue: string;
   clearLabel?: string;
   disabled?: boolean;
@@ -39,6 +43,14 @@ defineProps<{
 }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 const input = ref<HTMLInputElement | null>(null);
+
+watch(() => props.autofocus && !props.disabled, async (autofocus) => {
+  if (!autofocus) return;
+  await nextTick();
+  if (props.disabled) return;
+  input.value?.focus();
+  if (props.selectOnMount) input.value?.select();
+}, { immediate: true, flush: 'post' });
 
 async function clear(): Promise<void> {
   emit('update:modelValue', '');
@@ -48,6 +60,19 @@ async function clear(): Promise<void> {
 </script>
 
 <style scoped>
+.clearable-text-input--subtle,
+.clearable-text-input--subtle:focus-within {
+  min-height: 36px;
+  border-color: color-mix(in srgb, var(--color-border) 50%, transparent);
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+}
+
+.clearable-text-input--subtle input {
+  padding: var(--space-3) var(--space-6);
+}
+
 .clearable-text-input__action {
   display: flex;
   flex: none;

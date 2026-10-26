@@ -181,7 +181,9 @@ without cancelling the request, and completion reports through a notification.
 Each request retains its original agent and cleanup choices; completion must not
 replace a newer dialog or navigation selection.
 
-- **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one
+- **Dialogs:** single-input prompts use `FormDialog` with `compact` and a subtle
+  `ClearableTextInput`. Autofocus runs after dialog focus trapping, with optional
+  selection of existing values. Compose `FormDialog`/`FormField` (title, optional subtitle, one
   padded body, labels above controls, divided footer, no second gutter). Footer:
   dismiss tertiary, alternatives secondary, at most one primary, ordered left to
   right as tertiary, secondary, primary. Compact pickers use

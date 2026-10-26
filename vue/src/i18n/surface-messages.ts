@@ -157,9 +157,9 @@ export const surfaceMessages = {
     "clear": "Clear",
     "sourceWorktreeCreationIsNotAvailable": "Source worktree creation is not available.",
     "noAgentSelectedForEditing": "No agent selected for editing.",
-    "editAgent": "Edit agent",
+    "editAgent": "Rename agent",
     "newAgent": "New agent",
-    "save": "Save",
+    "save": "Rename",
     "createAgent": "Create agent",
     "customFolder": "Custom folder",
     "chooseFolder": "Choose folder..."

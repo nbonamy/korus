@@ -37,6 +37,8 @@ describe('app startup', () => {
       await wrapper.get('button[aria-label="Join with invite…"]').trigger('click'); await flushPromises();
       const invitation = wrapper.get<HTMLInputElement>('#guest-invitation');
       expect(invitation.element.tagName).toBe('INPUT');
+      expect(invitation.attributes('aria-label')).toBe('Invitation or share link');
+      expect(wrapper.find('label[for="guest-invitation"]').exists()).toBe(false);
       await invitation.setValue('KORUS1.partially-entered');
       await vi.advanceTimersByTimeAsync(1500); await flushPromises();
       expect(wrapper.find('input[autocomplete="nickname"]').exists()).toBe(false);

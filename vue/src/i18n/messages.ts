@@ -87,7 +87,7 @@ export const messages = {
     shortcuts: {
       title: 'Keyboard Shortcuts', search: 'Search actions or keys…', noResults: 'No matching shortcuts.', empty: 'No shortcuts available in this context.', close: 'Close',
       groups: { navigation: 'Navigation', agents: 'Agents', application: 'Application' },
-      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Edit agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
+      actions: { commands: 'Command palette', help: 'Keyboard shortcuts', palette: 'Go to agent', files: 'Go to file', review: 'Open changes', browser: 'Open browser', nextAgent: 'Next agent', previousAgent: 'Previous agent', nextTeam: 'Next team', agent: 'Go to agent {number}', duplicate: 'Duplicate agent', restart: 'Restart agent', closeAgent: 'Close agent', edit: 'Rename agent', compact: 'Compact session', saveDraft: 'Save draft for later', drafts: 'Saved drafts', newTeam: 'New team', closeTeam: 'Close team', settings: 'Settings', quit: 'Quit', mute: 'Mute or unmute spoken announcements' },
     },
     antigravity: { name: 'Antigravity', connect: 'Connect Antigravity', connected: 'Antigravity connected', enable: 'Enable Antigravity', remoteLogin: 'Sign in to Antigravity on the remote host, then retry the connection.', install: 'Install Antigravity' },
     branchWork: {
@@ -429,7 +429,7 @@ export const messages = {
       replaceConversationWithSummary: 'Compress Session',
       compactSession: 'Compact Session',
       duplicate: 'Duplicate Agent',
-      edit: 'Edit Agent',
+      edit: 'Rename agent',
       fork: 'Fork Agent',
       moveToTeam: 'Move to Other Team',
       openIn: 'Open In…',

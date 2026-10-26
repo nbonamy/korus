@@ -352,7 +352,7 @@ describe('AgentSidebar actions', () => {
 
     expect(document.body.querySelector('.agent-context-menu')).not.toBeNull();
     expect(portaledMenuItems().map((item) => item.textContent?.trim())).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -364,7 +364,7 @@ describe('AgentSidebar actions', () => {
       'Close Agent',
     ]);
 
-    await clickPortaledMenuItem('Edit Agent');
+    await clickPortaledMenuItem('Rename agent');
 
     expect(wrapper.emitted('edit-agent')).toStrictEqual([['agent-dina']]);
     expect(document.body.querySelector('.agent-context-menu')).toBeNull();

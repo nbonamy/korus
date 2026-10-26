@@ -142,7 +142,8 @@ describe('AgentDialog', () => {
       updateAgent,
     });
 
-    expect(wrapper.get('.app-form-dialog__header').text()).toContain('Edit agent');
+    expect(wrapper.get('.app-form-dialog__header').text()).toContain('Rename agent');
+    expect(wrapper.find('label[for="agent-dialog-name"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Repository');
     expect(wrapper.text()).not.toContain('Work in...');
     expect(wrapper.findComponent({ name: 'ElSelect' }).exists()).toBe(false);
@@ -178,7 +179,7 @@ describe('AgentDialog', () => {
     expect(wrapper.get<HTMLInputElement>('#agent-dialog-name').element.value).toBe('');
     expect(updateAgent).not.toHaveBeenCalled();
     expect(wrapper.emitted('close')).toBeUndefined();
-    expect(wrapper.findAll('.app-dialog__footer button').map((button) => button.text())).toStrictEqual(['Cancel', 'Save']);
+    expect(wrapper.findAll('.app-dialog__footer button').map((button) => button.text())).toStrictEqual(['Cancel', 'Rename']);
     await saveButton(wrapper).trigger('click');
 
     expect(updateAgent).toHaveBeenCalledWith({
@@ -669,7 +670,7 @@ function mountDialog(overrides: Partial<{
 }
 
 function saveButton(wrapper: ReturnType<typeof mountDialog>) {
-  const button = wrapper.findAll('button').find((candidate) => ['Create agent', 'Save'].includes(candidate.text()));
+  const button = wrapper.findAll('button').find((candidate) => ['Create agent', 'Rename'].includes(candidate.text()));
   if (!button) {
     throw new Error('Save button not found');
   }

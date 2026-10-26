@@ -1251,11 +1251,11 @@ describe('AppShell work routing', () => {
       clientX: 120,
       clientY: 80,
     });
-    await clickPortaledMenuItem('Edit Agent');
+    await clickPortaledMenuItem('Rename agent');
 
-    expect(wrapper.text()).toContain('Edit agent');
+    expect(wrapper.text()).toContain('Rename agent');
     await wrapper.get('#agent-dialog-name').setValue('Dina Prime');
-    await wrapper.findAll('button').find((button) => button.text() === 'Save')?.trigger('click');
+    await wrapper.findAll('button').find((button) => button.text() === 'Rename')?.trigger('click');
 
     expect(updateAgent).toHaveBeenCalledWith({
       id: 'agent-dina',

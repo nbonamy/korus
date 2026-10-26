@@ -170,7 +170,7 @@ describe('app menu', () => {
       'Next Team',
     ]);
     expect(submenu(menu, 'Agent').map((item) => item.type ?? item.label)).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -213,7 +213,7 @@ describe('app menu', () => {
     const nextCallbacks = callbacks();
     const menu = buildAppMenuTemplate(nextCallbacks, { debugMode: false }, 'darwin');
     const actions = [
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -236,7 +236,7 @@ describe('app menu', () => {
       { type: 'resume-active-session' },
       { type: 'restart-active-agent' },
     ]);
-    expect(menuItem(menu, 'Agent', 'Edit Agent')?.accelerator).toBe('CommandOrControl+E');
+    expect(menuItem(menu, 'Agent', 'Rename agent')?.accelerator).toBe('CommandOrControl+E');
     expect(menuItem(menu, 'Agent', 'Duplicate Agent')?.accelerator).toBe('CommandOrControl+D');
     expect(menuItem(menu, 'Agent', 'Compact Session')?.accelerator).toBe('CommandOrControl+Shift+K');
   });
