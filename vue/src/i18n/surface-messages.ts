@@ -70,6 +70,7 @@ export const surfaceMessages = {
     "pullRequestInstructionsPlaceholder": "Add pull request guidance…",
     "worktrees": "Worktrees",
     "worktreeInitialization": "Worktree initialization",
+    "worktreeInitializationGuide": "Setup guide",
     "prepareNewWorktreesBeforeAgentsStart": "Use repository instructions when available; otherwise copy local environment files and detect setup from the project's tech stack",
     "worktreeInitializationAutomatic": "Auto-detect",
     "worktreeInitializationRepository": "Repo instructions only",

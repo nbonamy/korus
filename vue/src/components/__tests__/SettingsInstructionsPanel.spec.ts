@@ -2,14 +2,20 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 import { defaultGeneralSettings } from '@workspace/core/settings';
 import SettingsInstructionsPanel from '../SettingsInstructionsPanel.vue';
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 it('updates the worktree initialization policy', async () => {
+  const openExternal = vi.spyOn(window, 'open').mockImplementation(() => null);
   const updateSettings = vi.fn().mockResolvedValue(undefined);
   const wrapper = mount(SettingsInstructionsPanel, { props: { settings: defaultGeneralSettings, updateSettings } });
   await flushPromises();
   const section = wrapper.findAllComponents({ name: 'FormSection' })
     .find((candidate) => candidate.text().includes('Worktrees'));
   expect(section).toBeDefined();
+  const guide = section!.get('a');
+  const guideUrl = 'https://github.com/nbonamy/korus/wiki/Automatic-worktree-initialization';
+  expect(guide.attributes('href')).toBe(guideUrl);
+  await guide.trigger('click');
+  expect(openExternal).toHaveBeenCalledWith(guideUrl, '_blank', 'noopener,noreferrer');
   const row = section!.findAllComponents({ name: 'FormRow' })
     .find((candidate) => candidate.text().includes('Worktree initialization'));
   expect(row).toBeDefined();
