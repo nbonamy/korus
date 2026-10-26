@@ -55,4 +55,27 @@ describe('MissionReviewChanges', () => {
     expect(wrapper.text()).toContain('The implementation agent for this repository is unavailable.');
     expect(wrapper.text()).not.toContain('api.ts');
   });
+
+  it('groups the mission diff by file type, lets the reviewer turn that off and folds groups', async () => {
+    const snapshot = createInitialSnapshot();
+    const agent = snapshot.agents[0]!;
+    const mission = createMission(snapshot, { outcome: 'Review', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: agent.id });
+    mission.stage = 'review';
+    mission.execution = { teamId: mission.teamId, memberIds: [agent.id], workspaces: [{ repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/review' }],
+      runs: [{ id: 'run-api', stage: 'implementation', memberId: agent.id, workerId: agent.id, repositoryPath: '/repo/api', status: 'accepted', skills: [], feedback: '', startedAt: 'now' }] };
+    const file = (path: string) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', '+line'].join('\n');
+    const getDiff = vi.fn().mockResolvedValue({ diff: [file('README.md'), file('src/app.test.ts'), file('src/app.ts')].join('\n'), summary: { addedLines: 3, removedLines: 0, changedFiles: 3 }, sections: [], target: { type: 'branch' } });
+    const wrapper = mount(MissionReviewChanges, { props: { agent, agents: [agent], getDiff, mission } });
+    await flushPromises();
+    const headers = () => wrapper.findAll('.git-diff-preview-panel__group-header').map(header => header.text().split(/\d/u)[0]!.trim());
+    expect(headers()).toStrictEqual(['Code', 'Tests', 'Documentation']);
+    await wrapper.findAll('.git-diff-preview-panel__group-header')[0]!.trigger('click');
+    expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toStrictEqual(['app.test.ts', 'README.md']);
+    const toggle = wrapper.get('[aria-label="Group by file type"]');
+    expect(toggle.attributes('aria-pressed')).toBe('true');
+    await toggle.trigger('click');
+    expect(toggle.attributes('aria-pressed')).toBe('false');
+    expect(headers()).toStrictEqual([]);
+    expect(wrapper.findAll('.git-diff-preview-panel__file-title strong').map(name => name.text())).toStrictEqual(['README.md', 'app.test.ts', 'app.ts']);
+  });
 });

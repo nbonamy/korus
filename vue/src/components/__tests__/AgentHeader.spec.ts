@@ -234,6 +234,24 @@ describe('AgentHeader', () => {
     expect(rows()).toStrictEqual([]);
   });
 
+  it('breaks the last turn down by file type from its recorded diff', async () => {
+    const file = (path: string, added: number) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', ...Array.from({ length: added }, () => '+line')].join('\n');
+    const gitStatus = {
+      folder: '/repo', branch: 'feature', ahead: 0, behind: 0, changedFiles: 1, addedLines: 1, removedLines: 0, hasUntracked: false, state: 'dirty' as const,
+      diffCatalog: { defaultTarget: { type: 'uncommitted' as const }, uncommitted: { addedLines: 1, removedLines: 0, changedFiles: 1 }, unstaged: { addedLines: 1, removedLines: 0, changedFiles: 1 }, staged: { addedLines: 0, removedLines: 0, changedFiles: 0 }, commits: [] },
+      updatedAt: '2026-06-05T00:00:00.000Z',
+    } as AgentGitStatus;
+    const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, gitStatus);
+    await wrapper.setProps({ lastTurnGitDiff: { agentId: agent.id, turnId: 'turn-1', addedLines: 4, removedLines: 0, diff: [file('src/app.ts', 3), file('src/app.test.ts', 1)].join('\n'), updatedAt: '2026-06-05T00:00:01.000Z' } });
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    wrapper.getComponent({ name: 'AppMenu' }).vm.$emit('select', 'turn');
+    await wrapper.vm.$nextTick();
+    await wrapper.get('[aria-label="Choose repository diff"]').trigger('click');
+    const rows = (wrapper.getComponent({ name: 'AppMenu' }).props('items') as Array<{ id: string; type: string; description?: string; value?: unknown }>).filter(item => item.type === 'info');
+    expect(rows.map(row => [row.id, row.description])).toStrictEqual([['kinds-heading', undefined], ['kind:code', '1 file'], ['kind:test', '1 file']]);
+    expect(rows[1]!.value).toStrictEqual({ addedLines: 3, removedLines: 0 });
+  });
+
   it('switches among diff targets and remembers the selection per agent', async () => {
     const wrapper = mountHeader({ backend: 'codex', status: 'running' }, false, {
       folder: '/Users/nbonamy/src/id8',
