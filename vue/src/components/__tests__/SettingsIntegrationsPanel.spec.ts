@@ -57,6 +57,29 @@ describe('SettingsIntegrationsPanel', () => {
     wrapper.unmount();
   });
 
+  it('requests GitLab MCP explicitly and keeps native API and peer connections visible', async () => {
+    const wrapper = mountPanel({ connections: [
+      { provider: 'github', status: 'connected', accountLabel: 'github-user' },
+      { provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gitlab-user', hostedMcp: { status: 'authorizationRequired' } },
+    ] });
+    expect(wrapper.text()).toContain('GitLab MCP');
+    await wrapper.get('[aria-label="Authorize GitLab MCP"]').trigger('click');
+    expect(wrapper.emitted('connect-mcp')).toStrictEqual([['gitlab']]);
+    expect(wrapper.find('[aria-label="Disconnect GitHub"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Disconnect GitLab"]').exists()).toBe(true);
+    await wrapper.setProps({ connections: [{ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gitlab-user', hostedMcp: { status: 'restricted' } }] });
+    expect(wrapper.text()).toContain('top-level group');
+    expect(wrapper.find('[aria-label="Retry GitLab MCP"]').exists()).toBe(true);
+    await wrapper.setProps({ connections: [{ provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'cli-user', hostedMcp: { status: 'directRequired' } }] });
+    const cliRow = wrapper.findAll('article').find(row => row.text().includes('GitLab'))!;
+    expect(cliRow.get('.settings-integrations-panel__identity').text()).toBe('GitLabSigned in as cli-user');
+    expect(cliRow.get('.settings-integrations-panel__actions').text()).toBe('Using GitLab CLIConnect');
+    expect(cliRow.find('[aria-label="Authorize GitLab MCP"]').exists()).toBe(false);
+    await cliRow.get('[aria-label="Connect GitLab"]').trigger('click');
+    expect(wrapper.emitted('connect')).toStrictEqual([['gitlab']]);
+    wrapper.unmount();
+  });
+
   it('connects Linear using app configuration without showing or saving OAuth fields', async () => {
     const updateSettings = vi.fn();
     const wrapper = mountPanel({ updateSettings });

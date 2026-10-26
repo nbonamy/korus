@@ -2786,8 +2786,12 @@ export class AppBackendServer {
           return createAppRpcError(message.id, appRpcErrorCodes.internalError, error instanceof Error ? error.message : String(error));
         }
       }
-      case backendMethods.workProviderConnect:
-        return createAppRpcResult(message.id, await this.requireWorkIntegrations().connect(requireWorkProvider(message.params)));
+      case backendMethods.workProviderConnect: {
+        const params = requireRecord(message.params);
+        const options = params.options === undefined ? undefined : requireRecord(params.options);
+        if (options?.hostedMcp !== undefined && typeof options.hostedMcp !== 'boolean') throw new Error('hostedMcp must be a boolean.');
+        return createAppRpcResult(message.id, await this.requireWorkIntegrations().connect(requireWorkProvider(params), ...(options ? [options] : [])));
+      }
       case backendMethods.workProviderAuthorizationPoll:
         return createAppRpcResult(message.id, await this.requireWorkIntegrations().pollAuthorization(requireWorkProvider(message.params)));
       case backendMethods.workProviderConnectionsReload: {

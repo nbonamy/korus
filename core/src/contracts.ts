@@ -283,6 +283,8 @@ export type {
   WorkBacklogProviderConfigurations,
   WorkBacklogState,
   WorkIntegrationConnection,
+  WorkProviderConnectOptions,
+  HostedWorkMcpState,
   WorkIntegrationStatus,
   WorkItem,
   WorkItemKind,
@@ -888,7 +890,7 @@ export type AppApi = {
   checkDevicePairing(session: DevicePairingSession): Promise<boolean>;
   listPairedDevices(environmentId: string): Promise<PairedDevice[]>;
   revokePairedDevice(environmentId: string, clientId: string): Promise<void>;
-  connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult>;
+  connectWorkProvider(provider: WorkProviderKind, options?: import('./contracts/work').WorkProviderConnectOptions): Promise<WorkProviderConnectResult>;
   pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<AppSnapshot>;
   disconnectWorkProvider(provider: WorkProviderKind): Promise<AppSnapshot>;
   listWorkSources(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkSource[]>;

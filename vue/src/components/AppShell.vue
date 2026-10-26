@@ -839,7 +839,7 @@ const props = withDefaults(defineProps<{
   resumeAgentConversation?: (agentId: string, target: ConversationResumeTarget) => Promise<void>;
   handoffAgentAction?: (agentId: string, input: AgentHandoffInput) => Promise<void>;
   readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
-  connectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
+  connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
@@ -3278,8 +3278,9 @@ async function restartApp(): Promise<void> {
   await props.restartApp();
 }
 
-async function connectWorkProvider(provider: WorkProviderKind): Promise<void> {
-  await props.connectWorkProvider(provider);
+async function connectWorkProvider(provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions): Promise<void> {
+  if (options) await props.connectWorkProvider(provider, options);
+  else await props.connectWorkProvider(provider);
 }
 
 async function pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<void> {

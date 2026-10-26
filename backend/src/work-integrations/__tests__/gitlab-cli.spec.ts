@@ -70,7 +70,7 @@ it('uses CLI-only private subgroup catalogs and branch pages, restores metadata 
   const { snapshot, manager, tokenStore, options } = fixture();
   await tokenStore.set({ provider: 'github', accessToken: 'github-secret', tokenType: 'Bearer', accountLabel: 'github-user', connectedAt: 'then' });
   await manager.hydrateConnections();
-  expect(snapshot.workBacklog.connections).toContainEqual({ provider: 'gitlab', source: 'cli', status: 'connected', accountLabel: 'alice', connectedAt: expect.any(String) });
+  expect(snapshot.workBacklog.connections).toContainEqual({ provider: 'gitlab', source: 'cli', status: 'connected', hostedMcp: { status: 'directRequired' }, accountLabel: 'alice', connectedAt: expect.any(String) });
   expect((await manager.listSources('gitlab')).map(source => [source.id, source.isPrivate])).toStrictEqual([['gitlab.com/group/subgroup/repo', true], ['gitlab.com/other/nested/repo', true]]);
   expect(await manager.listBranches('gitlab', 'gitlab.com/group/subgroup/repo')).toStrictEqual([{ name: 'main', isDefault: true }, { name: 'topic', isDefault: false }]);
   expect(manager.isHostedMcpConnected('gitlab')).toBe(false);

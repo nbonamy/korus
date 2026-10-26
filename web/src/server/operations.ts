@@ -46,7 +46,7 @@ const directOperations: Readonly<Record<string, readonly [string, ParamsFactory?
   checkDevicePairing: [backendMethods.remoteControlPairingCheck, named('session')],
   listPairedDevices: [backendMethods.remoteControlClientsList, named('environmentId')],
   revokePairedDevice: [backendMethods.remoteControlClientRevoke, named('environmentId', 'clientId')],
-  connectWorkProvider: [backendMethods.workProviderConnect, named('provider')],
+  connectWorkProvider: [backendMethods.workProviderConnect, namedOptional('provider', 'options')],
   pollWorkProviderAuthorization: [backendMethods.workProviderAuthorizationPoll, named('provider')],
   disconnectWorkProvider: [backendMethods.workProviderDisconnect, named('provider')],
   listWorkSources: [backendMethods.workProviderSourcesList, namedOptional('provider', 'location')],

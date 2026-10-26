@@ -259,6 +259,7 @@ describe('ClaudeAgentSdkTransport', () => {
       mcpServerUrl: 'http://127.0.0.1:4321/mcp?agentId=agent-1',
       hostedMcpServerUrls: {
         github: 'http://127.0.0.1:4321/mcp/providers/github?agentId=agent-1',
+        gitlab: 'http://127.0.0.1:4321/mcp/providers/gitlab?agentId=agent-1',
       },
       allowedTools: [`mcp__${product.mcpServerName}__*`],
     }, (message) => firstMessages.push(message));
@@ -284,6 +285,10 @@ describe('ClaudeAgentSdkTransport', () => {
         github: {
           type: 'http',
           url: 'http://127.0.0.1:4321/mcp/providers/github?agentId=agent-1',
+        },
+        gitlab: {
+          type: 'http',
+          url: 'http://127.0.0.1:4321/mcp/providers/gitlab?agentId=agent-1',
         },
       },
       env: expect.objectContaining({

@@ -953,6 +953,8 @@ function sanitizeWorkIntegrationConnection(value: unknown): WorkIntegrationConne
     provider: value.provider,
     status: value.status,
     ...(value.source === 'api' || value.source === 'cli' || value.source === 'none' ? { source: value.source } : {}),
+    ...(isRecord(value.hostedMcp) && ['directRequired', 'authorizationRequired', 'available', 'restricted', 'unavailable'].includes(String(value.hostedMcp.status))
+      ? { hostedMcp: { status: value.hostedMcp.status as NonNullable<WorkIntegrationConnection['hostedMcp']>['status'] } } : {}),
     ...(typeof value.accountLabel === 'string' ? { accountLabel: value.accountLabel } : {}),
     ...(appText(value.detail) ? { detail: appText(value.detail)! } : {}),
     ...(typeof value.connectedAt === 'string' ? { connectedAt: value.connectedAt } : {}),
