@@ -274,16 +274,16 @@ describe('SettingsView', () => {
     workflows.unmount();
   });
 
-  it('routes the explicit GitLab MCP grant without disabling GitHub', async () => {
+  it('connects GitLab and GitHub independently', async () => {
     const connect = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(SettingsView, { props: {
       activeTab: 'integrations', settings: defaultThemeSettings, generalSettings: defaultGeneralSettings,
-      workBacklogConnections: [{ provider: 'gitlab', status: 'connected', source: 'api', hostedMcp: { status: 'authorizationRequired' } }, { provider: 'github', status: 'disconnected' }],
+      workBacklogConnections: [{ provider: 'gitlab', status: 'disconnected' }, { provider: 'github', status: 'disconnected' }],
       connectWorkProvider: connect,
     } });
-    await wrapper.get('[aria-label="Authorize GitLab MCP"]').trigger('click');
+    await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
     await flushPromises();
-    expect(connect).toHaveBeenCalledWith('gitlab', { hostedMcp: true });
+    expect(connect).toHaveBeenCalledWith('gitlab');
     await wrapper.get('[aria-label="Connect GitHub"]').trigger('click');
     await flushPromises();
     expect(connect).toHaveBeenCalledWith('github');

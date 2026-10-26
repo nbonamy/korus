@@ -111,7 +111,6 @@
           :update-settings="updateSettings"
           @complete="pollWorkProviderAuthorization"
           @connect="provider => runIntegrationAction(provider, connectWorkProvider)"
-          @connect-mcp="provider => runIntegrationAction(provider, value => connectWorkProvider(value, { hostedMcp: true }))"
           @disconnect="provider => runIntegrationAction(provider, disconnectWorkProvider)"
           @open-authorization="openWorkProviderAuthorization"
         />

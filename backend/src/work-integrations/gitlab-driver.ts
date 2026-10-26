@@ -4,7 +4,7 @@ import type { AgentGitPullRequest, GlobalWorkItemQuery, SourceBranch, WorkItem, 
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 import { product } from '@workspace/core/product';
 import { runtimeGitLabOAuthClientId } from '../runtime-config';
-import { requireWorkProviderToken, type WorkItemDetail, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
+import { requireWorkProviderToken, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDeviceTokenResult, type WorkProviderDriver } from './types';
 
 const ORIGIN = 'https://gitlab.com';
 const API = `${ORIGIN}/api/v4`;
@@ -67,23 +67,18 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     return { ...token, ...next };
   }
 
-  async checkHostedMcp(token: WorkProviderToken): Promise<'available' | 'restricted' | 'unavailable'> {
-    let forbidden = false;
+  async checkHostedMcp(token: WorkProviderToken): Promise<'available' | 'unavailable'> {
     const client = new Client({ name: product.mcpServerName, version: '1' });
     const transport = new StreamableHTTPClientTransport(new URL(`${API}/mcp`), {
       requestInit: { headers: { Authorization: `${token.tokenType || 'Bearer'} ${token.accessToken}` } },
-      fetch: async (url, init) => {
-        const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000), redirect: 'error' });
-        if (response.status === 403) forbidden = true;
-        return response;
-      },
+      fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(10_000), redirect: 'error' }),
     });
     try {
       await client.connect(transport, { timeout: 10_000 });
       await client.listTools({}, { timeout: 10_000 });
       return 'available';
     } catch {
-      return forbidden ? 'restricted' : 'unavailable';
+      return 'unavailable';
     } finally { await client.close().catch(() => {}); }
   }
 
@@ -225,37 +220,6 @@ export class GitLabWorkProviderDriver implements WorkProviderDriver {
     return gitlabRequest(await this.requestJson(response), path);
   }
 
-  async getItemDetail(credential: WorkProviderCredential, repositoryId: string, kind: WorkItemKind, iid: number): Promise<WorkItemDetail> {
-    const endpoint = itemEndpoint(repositoryId, kind, iid);
-    const value = await this.json(await this.api(credential, endpoint));
-    const item = gitlabItem(value, kind, credential.accountLabel, repositoryId);
-    if (item.number !== iid) throw new Error('GitLab returned an unexpected item.');
-    const notesValue = await this.json(await this.api(credential, `${endpoint}/notes?sort=asc&per_page=100`));
-    const notes = (Array.isArray(notesValue) ? notesValue : []).flatMap(note => record(note) && note.system !== true && nonempty(note.body)
-      && record(note.author) && nonempty(note.author.username) && nonempty(note.created_at)
-      ? [{ author: note.author.username, createdAt: note.created_at, body: note.body }] : []);
-    if (kind !== 'pullRequest' || !record(value) || !nonempty(value.source_branch) || !nonempty(value.target_branch)) return { item, notes };
-    const pipeline = record(value.head_pipeline) && nonempty(value.head_pipeline.status)
-      ? { status: value.head_pipeline.status, ...(nonempty(value.head_pipeline.web_url) ? { url: value.head_pipeline.web_url } : {}) } : undefined;
-    const mergeStatus = nonempty(value.detailed_merge_status) ? value.detailed_merge_status : nonempty(value.merge_status) ? value.merge_status : undefined;
-    return { item, notes, request: { sourceBranch: value.source_branch, targetBranch: value.target_branch, draft: value.draft === true,
-      ...(mergeStatus ? { mergeStatus } : {}), ...(pipeline ? { pipeline } : {}) } };
-  }
-
-  async addItemNote(credential: WorkProviderCredential, repositoryId: string, kind: WorkItemKind, iid: number, body: string): Promise<{ id: string; url: string }> {
-    const endpoint = itemEndpoint(repositoryId, kind, iid);
-    if (!body.trim()) throw new Error('Comment is empty.');
-    const value = await this.json(await this.api(credential, `${endpoint}/notes`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }),
-    }));
-    if (!record(value) || !Number.isSafeInteger(value.id) || Number(value.id) <= 0) throw new Error('GitLab returned an invalid comment response.');
-    return { id: String(value.id), url: `${ORIGIN}/${projectPath(repositoryId)}/-/${kind === 'issue' ? 'issues' : 'merge_requests'}/${iid}#note_${value.id}` };
-  }
-
-  private async json(response: Response): Promise<unknown> {
-    try { return await response.json(); } catch { throw new Error('GitLab returned an invalid response.'); }
-  }
-
   private async requestJson(response: Response): Promise<unknown> {
     try { return await response.json(); } catch { throw new Error('GitLab returned an invalid merge request response.'); }
   }
@@ -351,12 +315,6 @@ function tokenResponse(value: unknown): Omit<WorkProviderToken, 'provider' | 'co
     ...(nonempty(value.refresh_token) ? { refreshToken: value.refresh_token } : {}),
     ...(typeof value.scope === 'string' ? { scope: value.scope } : {}),
   };
-}
-
-function itemEndpoint(repositoryId: string, kind: WorkItemKind, iid: number): string {
-  const path = projectPath(repositoryId);
-  if (!Number.isSafeInteger(iid) || iid <= 0) throw new Error('Invalid GitLab item number.');
-  return `${API}/projects/${encodeURIComponent(path)}/${kind === 'issue' ? 'issues' : 'merge_requests'}/${iid}`;
 }
 
 function projectPath(id: string): string {

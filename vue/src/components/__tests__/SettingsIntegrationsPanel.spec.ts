@@ -57,19 +57,22 @@ describe('SettingsIntegrationsPanel', () => {
     wrapper.unmount();
   });
 
-  it('requests GitLab MCP explicitly and keeps native API and peer connections visible', async () => {
+  it('shows no MCP wording or action for GitLab in any MCP state and keeps peer connections visible', async () => {
     const wrapper = mountPanel({ connections: [
       { provider: 'github', status: 'connected', accountLabel: 'github-user' },
       { provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gitlab-user', hostedMcp: { status: 'authorizationRequired' } },
     ] });
-    expect(wrapper.text()).toContain('GitLab MCP');
-    await wrapper.get('[aria-label="Authorize GitLab MCP"]').trigger('click');
-    expect(wrapper.emitted('connect-mcp')).toStrictEqual([['gitlab']]);
-    expect(wrapper.find('[aria-label="Disconnect GitHub"]').exists()).toBe(true);
-    expect(wrapper.find('[aria-label="Disconnect GitLab"]').exists()).toBe(true);
-    await wrapper.setProps({ connections: [{ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gitlab-user', hostedMcp: { status: 'restricted' } }] });
-    expect(wrapper.text()).toContain('top-level group');
-    expect(wrapper.find('[aria-label="Retry GitLab MCP"]').exists()).toBe(true);
+    for (const status of ['authorizationRequired', 'unavailable', 'available'] as const) {
+      await wrapper.setProps({ connections: [
+        { provider: 'github', status: 'connected', accountLabel: 'github-user' },
+        { provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gitlab-user', hostedMcp: { status } },
+      ] });
+      expect(wrapper.text()).not.toContain('MCP');
+      expect(wrapper.find('[aria-label="Authorize GitLab MCP"]').exists()).toBe(false);
+      expect(wrapper.find('[aria-label="Retry GitLab MCP"]').exists()).toBe(false);
+      expect(wrapper.find('[aria-label="Disconnect GitHub"]').exists()).toBe(true);
+      expect(wrapper.find('[aria-label="Disconnect GitLab"]').exists()).toBe(true);
+    }
     await wrapper.setProps({ connections: [{ provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'cli-user', hostedMcp: { status: 'directRequired' } }] });
     const cliRow = wrapper.findAll('article').find(row => row.text().includes('GitLab'))!;
     expect(cliRow.get('.settings-integrations-panel__identity').text()).toBe('GitLabSigned in as cli-user');

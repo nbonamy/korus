@@ -12,7 +12,6 @@
           <div>
             <strong>{{ workProviderDefinition(connection.provider).label }}</strong>
             <span>{{ description(connection) }}</span>
-            <span v-if="connection.provider === 'gitlab' && connection.source === 'api' && connection.hostedMcp">{{ $t(`gitlabMcp.${connection.hostedMcp.status}`) }}</span>
             <span v-if="connection.detail && ['error', 'notConfigured', 'connected'].includes(connection.status)" class="settings-integrations-panel__error">{{ localizedText(connection.detail, translate) }}</span>
           </div>
         </div>
@@ -26,7 +25,6 @@
             <el-button size="small" :aria-label="actionLabel('connect', connection.provider)" @click="emit('connect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.connect') }}</el-button>
           </template>
           <template v-else-if="connection.status === 'connected'">
-            <el-button v-if="connection.provider === 'gitlab' && connection.hostedMcp && connection.hostedMcp.status !== 'available'" size="small" :aria-label="mcpActionLabel(connection)" :loading="busyProviders.includes(connection.provider)" @click="emit('connect-mcp', connection.provider)">{{ mcpActionLabel(connection) }}</el-button>
             <StatusPill tone="success">{{ $t('surface.settingsIntegrationsPanel.connected') }}</StatusPill>
             <el-button size="small" :aria-label="actionLabel('disconnect', connection.provider)" :loading="busyProviders.includes(connection.provider)" @click="emit('disconnect', connection.provider)">{{ $t('surface.settingsIntegrationsPanel.disconnect') }}</el-button>
           </template>
@@ -64,16 +62,12 @@ const props = withDefaults(defineProps<{
 }>(), { authorization: null, authorizations: () => ({}), busyProviders: () => [], error: null });
 const emit = defineEmits<{
   connect: [provider: WorkProviderKind];
-  'connect-mcp': [provider: WorkProviderKind];
   disconnect: [provider: WorkProviderKind];
   'open-authorization': [provider: WorkProviderKind];
 }>();
 const integrations = computed(() => workProviderKinds.map(provider => props.connections.find(connection => connection.provider === provider) ?? { provider, status: 'notConfigured' } as WorkIntegrationConnection));
 const pendingAuthorization = (provider: WorkProviderKind) => props.authorizations[provider]
   ?? (props.authorization?.provider === provider ? props.authorization : null);
-function mcpActionLabel(connection: WorkIntegrationConnection): string {
-  return translate(connection.hostedMcp?.status === 'restricted' || connection.hostedMcp?.status === 'unavailable' ? 'gitlabMcp.retry' : 'gitlabMcp.authorize');
-}
 function description(connection: WorkIntegrationConnection): string {
   if (connection.status === 'connected') return connection.accountLabel
     ? translate('linearIntegration.signedInAs', { account: connection.accountLabel })

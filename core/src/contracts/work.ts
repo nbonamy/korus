@@ -8,7 +8,7 @@ export type WorkIntegrationStatus = 'notConfigured' | 'disconnected' | 'connecti
 
 export type WorkProviderConnectOptions = { hostedMcp?: boolean };
 
-export type HostedWorkMcpState = { status: 'directRequired' | 'authorizationRequired' | 'available' | 'restricted' | 'unavailable' };
+export type HostedWorkMcpState = { status: 'directRequired' | 'authorizationRequired' | 'available' | 'unavailable' };
 
 export type WorkIntegrationConnection = {
   provider: WorkProviderKind;

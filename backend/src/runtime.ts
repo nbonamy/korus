@@ -48,7 +48,6 @@ import { VisualizeService } from './visualize-service';
 import { createVisualizeToolModuleProvider } from './mcp/visualize-tools';
 import { DurableTaskService } from './agents/durable-task-service';
 import { createTaskToolModuleProvider } from './mcp/task-tools';
-// import { createGitLabToolModuleProvider } from './mcp/gitlab-tools';
 import { createImageGenerationToolModuleProvider } from './mcp/image-generation-tools';
 import { ImageGenerationService } from './image-generation-service';
 import { loadBackendTasks, saveBackendTasks } from './state';
@@ -176,15 +175,6 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
-      // Korus-owned GitLab tools (REST, `api` scope) are switched off while GitLab's hosted MCP is the preferred path.
-      // Re-enable by uncommenting this registration and the import above.
-      // createGitLabToolModuleProvider({
-      //   connected: () => workIntegrations.isConnected('gitlab'),
-      //   listItems: (repositoryId, query) => workIntegrations.listItems('gitlab', repositoryId, query),
-      //   getItemDetail: (repositoryId, kind, iid) => workIntegrations.getItemDetail(repositoryId, kind, iid),
-      //   addItemNote: (repositoryId, kind, iid, body) => workIntegrations.addItemNote(repositoryId, kind, iid, body),
-      //   createMergeRequest: (repositoryId, input) => workIntegrations.createPullRequest(repositoryId, input),
-      // }),
       createImageGenerationToolModuleProvider(new ImageGenerationService({
         snapshot, generatedImagesRoot: path.join(backendCodexHomeDir(), 'generated_images'), defaultCwd: backendHomeDir(),
         generate: (agent, input, signal) => driverRpc.handle(backendMethods.driverImageGenerate, { agent, ...input }, { signal }) as Promise<import('@workspace/core/backend-driver').BackendImageGenerationResult>,

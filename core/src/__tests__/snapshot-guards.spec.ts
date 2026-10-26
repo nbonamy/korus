@@ -22,7 +22,7 @@ describe('snapshot guards', () => {
 
   it('validates public MCP eligibility without requiring it on legacy connections', () => {
     const snapshot = createInitialSnapshot();
-    snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', hostedMcp: { status: 'restricted' } });
+    snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', hostedMcp: { status: 'unavailable' } });
     expect(decodeAppSnapshot(snapshot)).toStrictEqual({ value: snapshot });
     snapshot.workBacklog.connections.at(-1)!.hostedMcp = { status: 'invalid' as never };
     expect(isAppSnapshot(snapshot)).toBe(false);

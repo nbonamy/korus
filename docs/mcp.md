@@ -217,18 +217,6 @@ Registered per authenticated request by independent modules
   complete artifacts. Mission workers get no generic
   thread-flag tools. Behavior is in
   [architecture.md](architecture.md#missions).
-- **GitLab** tools (`gitlab-list-issues`, `gitlab-list-merge-requests`,
-  `gitlab-get-issue`, `gitlab-get-merge-request`, `gitlab-comment`,
-  `gitlab-create-merge-request`) are implemented in `mcp/gitlab-tools.ts` but
-  currently **not registered** (see the commented block in `runtime.ts`). When
-  enabled they register while GitLab is connected. They use
-  GitLab's REST API with the `api` scope through `WorkIntegrationManager`, so they
-  work for direct and CLI connections and do not depend on GitLab's hosted MCP
-  server or its group-level access setting. Projects are gitlab.com only and are
-  accepted as `group/project`, a URL or a git remote. Reads return bounded text
-  (20,000 characters per field, the last 50 human comments); comments are posted as
-  the connected user; merge requests are created as drafts from a pushed branch into
-  the default branch.
 - **Browser:** `browser-open` opens the agent's Browser workspace without changing
   selection and waits for load; other `browser-*` tools operate the sandboxed page
   through `client/browser/open|execute`. The renderer never exposes DOM, cookies or
@@ -362,21 +350,15 @@ integration enables its eligible entry; sessions see local servers named `github
   **once**. A refresh failure marks only that provider as needing reconnection.
 - CLI connections supply app-owned operations through `gh` or `glab`, without
   bearer credentials. They do not enable hosted MCP or permit token extraction.
-- GitLab MCP requires a direct OAuth token with the `mcp` scope. Settings offers
-  explicit authorization with `api mcp`; ordinary repository authorization requests
-  only `api`. Register both scopes on the Korus public OAuth application. The daemon
-  verifies MCP initialize and tool discovery before publishing its local URL, and
-  rechecks eligibility on hydration or Settings retry. GitLab.com additionally
-  requires a top-level group that allows MCP client access under Settings → General
-  → Permissions and group features. Group and project permissions still apply to
-  individual tools. See [GitLab's MCP prerequisites](https://docs.gitlab.com/user/model_context_protocol/mcp_server/).
-  GitLab caches group eligibility and invalidates it asynchronously after group
-  settings change. A group-denied result can persist after access is enabled.
-  Retry the MCP check in Settings after propagation; another OAuth grant does not
-  clear GitLab's server-side eligibility cache. See the
-  [GitLab eligibility cache](https://gitlab.com/gitlab-org/gitlab/-/blob/master/ee/app/models/concerns/ai/user_authorizable.rb).
+- GitLab MCP requires a direct OAuth token with the `mcp` scope. Connecting GitLab
+  requests `api mcp` together; register both scopes on the Korus public OAuth
+  application. The daemon verifies MCP initialize and tool discovery before
+  publishing its local URL, and rechecks eligibility on hydration or Settings retry.
+  GitLab can refuse MCP access for an account (HTTP 403); the server is then
+  simply not offered to agents until a later check succeeds. Project permissions still apply to individual
+  tools. See [GitLab's MCP prerequisites](https://docs.gitlab.com/user/model_context_protocol/mcp_server/).
 - GitLab MCP eligibility is public metadata separate from API connection state.
-  Missing scope, group denial, or an unavailable MCP endpoint does not disconnect
+  Missing scope, a refused MCP request, or an unavailable MCP endpoint does not disconnect
   native repository/backlog/MR access or another provider. A cached gateway URL
   checks eligibility again; HTTP permission denial disables only GitLab MCP.
   Permission upgrades retain native credentials and coordinate with their refresh.

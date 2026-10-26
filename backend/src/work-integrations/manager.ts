@@ -1,6 +1,6 @@
-import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemKind, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
+import type { SourceBranch, AgentGitPullRequest, AppSnapshot, GlobalWorkItemQuery, WorkBacklogConfigurationInput, WorkIntegrationConnection, WorkItem, WorkItemPage, WorkItemQuery, WorkProviderAuthorization, WorkProviderConnectResult, WorkProviderKind, WorkProviderConnectOptions, HostedWorkMcpState, WorkSource } from '@workspace/core/contracts';
 import type { WorkIntegrationTokenStore, WorkProviderToken } from '@workspace/core/work-integration-tokens';
-import { WorkProviderCliAuthenticationError, type WorkProviderCliDriver, type WorkProviderCredential, type WorkItemDetail, type WorkProviderDeviceAuthorization, type WorkProviderDriver } from './types';
+import { WorkProviderCliAuthenticationError, type WorkProviderCliDriver, type WorkProviderCredential, type WorkProviderDeviceAuthorization, type WorkProviderDriver } from './types';
 import { workProviderConnectOptions, workProviderDefinition } from '@workspace/core/work-providers';
 
 type WorkIntegrationManagerOptions = {
@@ -162,20 +162,6 @@ export class WorkIntegrationManager {
     return driver.createPullRequest(token, repositoryId, input);
   }
 
-  async getItemDetail(repositoryId: string, kind: WorkItemKind, iid: number): Promise<WorkItemDetail> {
-    const token = await this.connectedCredential('gitlab');
-    const driver = this.driver('gitlab', token);
-    if (!driver.getItemDetail) throw new Error('Item lookup is unavailable.');
-    return driver.getItemDetail(token, repositoryId, kind, iid);
-  }
-
-  async addItemNote(repositoryId: string, kind: WorkItemKind, iid: number, body: string): Promise<{ id: string; url: string }> {
-    const token = await this.connectedCredential('gitlab');
-    const driver = this.driver('gitlab', token);
-    if (!driver.addItemNote) throw new Error('Commenting is unavailable.');
-    return driver.addItemNote(token, repositoryId, kind, iid, body);
-  }
-
   async repositoryConnected(repositoryId: string): Promise<boolean> {
     const provider = repositoryId.startsWith('gitlab.com/') ? 'gitlab' : 'github';
     if (this.connection(provider)?.source === 'none') return false;
@@ -218,7 +204,7 @@ export class WorkIntegrationManager {
     if (!token || generation !== this.generation(provider) || authorization !== `${token.tokenType || 'Bearer'} ${token.accessToken}`) return;
     const connection = this.connection(provider);
     if (connection && this.isConnected(provider)) {
-      this.setConnection({ ...connection, hostedMcp: { status: 'restricted' } });
+      this.setConnection({ ...connection, hostedMcp: { status: 'unavailable' } });
       await this.options.saveSnapshot();
     }
   }

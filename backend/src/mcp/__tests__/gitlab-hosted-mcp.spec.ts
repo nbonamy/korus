@@ -105,7 +105,7 @@ it('requests the MCP scope up front on a first GitLab connection and ends with a
   expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')).toMatchObject({ status: 'connected', source: 'api', hostedMcp: { status: 'available' } });
 });
 
-it('isolates group restriction and failed eligibility checks from API connectivity', async () => {
+it('isolates a refused eligibility check from API connectivity', async () => {
   const { manager, upstream, snapshot, options } = await setup('api mcp');
   expect(manager.isHostedMcpConnected('gitlab')).toBe(true);
   upstream.mockResolvedValue(new Response('private secret upstream details', { status: 403 }));
@@ -114,11 +114,11 @@ it('isolates group restriction and failed eligibility checks from API connectivi
   expect(restored.isHostedMcpConnected('gitlab')).toBe(false);
   expect(restored.isConnected('gitlab')).toBe(true);
   expect(restored.isHostedMcpConnected('github')).toBe(true);
-  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')?.hostedMcp?.status).toBe('restricted');
+  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')?.hostedMcp?.status).toBe('unavailable');
   expect(JSON.stringify(snapshot)).not.toContain('private secret');
 });
 
-it('rejects cached MCP URLs without a grant and isolates later group-access loss', async () => {
+it('rejects cached MCP URLs without a grant and isolates a later refusal', async () => {
   const { manager, gateway, upstream, tokenStore, snapshot } = await setup();
   upstream.mockClear();
   await expect(gateway.forward('gitlab', input())).rejects.toThrow();
@@ -128,13 +128,13 @@ it('rejects cached MCP URLs without a grant and isolates later group-access loss
   const original = (await setup('api mcp')).upstream.getMockImplementation()!;
   upstream.mockImplementation(original);
   await manager.hydrateConnections();
-  upstream.mockResolvedValueOnce(new Response('sensitive group details', { status: 403 }));
+  upstream.mockResolvedValueOnce(new Response('sensitive upstream details', { status: 403 }));
   expect((await gateway.forward('gitlab', input())).status).toBe(403);
   expect(manager.isConnected('gitlab')).toBe(true);
   expect(manager.isHostedMcpConnected('gitlab')).toBe(false);
   expect(manager.isHostedMcpConnected('github')).toBe(true);
-  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')?.hostedMcp?.status).toBe('restricted');
-  expect(JSON.stringify(snapshot)).not.toContain('sensitive group details');
+  expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')?.hostedMcp?.status).toBe('unavailable');
+  expect(JSON.stringify(snapshot)).not.toContain('sensitive upstream details');
 });
 
 it('shares rotating refreshes and refuses late credentials after disconnect or scope loss', async () => {
@@ -226,7 +226,7 @@ it('does not let late eligibility failure overwrite a canceled upgrade or a fres
   const poll = manager.pollAuthorization('gitlab');
   await vi.waitFor(() => expect(checking).toBe(true));
   await manager.disconnect('gitlab');
-  finish(new Response('group denial', { status: 403 }));
+  finish(new Response('upstream denial', { status: 403 }));
   await poll;
   expect(await manager.authorizationHeader('gitlab')).toBe('Bearer gitlab-secret');
   expect(snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')).toMatchObject({ status: 'connected', hostedMcp: { status: 'authorizationRequired' } });
@@ -267,10 +267,10 @@ it('refreshes simultaneous GitLab gateway rejections once without touching GitHu
   expect(manager.isHostedMcpConnected('github')).toBe(true);
 });
 
-it('rechecks group eligibility without another OAuth grant and clears stale authorization errors', async () => {
+it('rechecks eligibility without another OAuth grant and clears stale authorization errors', async () => {
   const { manager, snapshot, upstream } = await setup('api mcp');
   const connection = snapshot.workBacklog.connections.find(c => c.provider === 'gitlab')!;
-  connection.hostedMcp = { status: 'restricted' };
+  connection.hostedMcp = { status: 'unavailable' };
   connection.detail = 'Previous authorization failed';
   upstream.mockClear();
   const result = await manager.connect('gitlab', { hostedMcp: true });
