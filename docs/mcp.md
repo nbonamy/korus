@@ -219,7 +219,9 @@ Registered per authenticated request by independent modules
   [architecture.md](architecture.md#missions).
 - **GitLab** tools (`gitlab-list-issues`, `gitlab-list-merge-requests`,
   `gitlab-get-issue`, `gitlab-get-merge-request`, `gitlab-comment`,
-  `gitlab-create-merge-request`) register while GitLab is connected. They use
+  `gitlab-create-merge-request`) are implemented in `mcp/gitlab-tools.ts` but
+  currently **not registered** (see the commented block in `runtime.ts`). When
+  enabled they register while GitLab is connected. They use
   GitLab's REST API with the `api` scope through `WorkIntegrationManager`, so they
   work for direct and CLI connections and do not depend on GitLab's hosted MCP
   server or its group-level access setting. Projects are gitlab.com only and are
