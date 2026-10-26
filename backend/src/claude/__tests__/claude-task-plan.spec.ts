@@ -59,4 +59,48 @@ describe('ClaudeTaskPlan', () => {
     plan.apply(tool('TodoWrite', todos('pending')), { newTodos: todos('pending').todos }, 'thread', 'turn-2', '2026-10-25T00:00:01.000Z');
     expect(steps(plan)).toStrictEqual(['pending:One']);
   });
+
+  it('lets a finished task stay for one more turn, then drops it while open work remains', () => {
+    const plan = new ClaudeTaskPlan();
+    create(plan, 'turn-1', '1', 'Draft');
+    create(plan, 'turn-1', '2', 'Build');
+    create(plan, 'turn-1', '3', 'Ship');
+    complete(plan, 'turn-1', '1');
+    plan.startTurn('turn-2');
+    expect(steps(plan)).toStrictEqual(['completed:Draft', 'pending:Build', 'pending:Ship']);
+    complete(plan, 'turn-2', '2');
+    expect(plan.startTurn('turn-3')).toMatchObject({ plan: { turnId: 'turn-3' } });
+    expect(steps(plan)).toStrictEqual(['completed:Build', 'pending:Ship']);
+    expect(plan.startTurn('turn-4')).toMatchObject({ plan: { turnId: 'turn-4' } });
+    expect(steps(plan)).toStrictEqual(['pending:Ship']);
+  });
+
+  it('does not bring dropped tasks back when Claude lists its tasks or when a new task is added', () => {
+    const plan = new ClaudeTaskPlan();
+    create(plan, 'turn-1', '1', 'Old work');
+    create(plan, 'turn-1', '2', 'Current work');
+    complete(plan, 'turn-1', '1');
+    plan.startTurn('turn-2');
+    plan.startTurn('turn-3');
+    expect(steps(plan)).toStrictEqual(['pending:Current work']);
+    plan.apply(tool('TaskList'), { tasks: [
+      { id: '1', subject: 'Old work', status: 'completed' },
+      { id: '2', subject: 'Current work', status: 'in_progress' },
+    ] }, 'thread', 'turn-3', '2026-10-25T00:00:02.000Z');
+    create(plan, 'turn-3', '3', 'Next');
+    expect(steps(plan)).toStrictEqual(['inProgress:Current work', 'pending:Next']);
+  });
+
+  it('keeps a task completed in the previous turn when Claude lists its tasks again', () => {
+    const plan = new ClaudeTaskPlan();
+    create(plan, 'turn-1', '1', 'Draft');
+    create(plan, 'turn-1', '2', 'Ship');
+    plan.startTurn('turn-2');
+    complete(plan, 'turn-2', '1');
+    plan.startTurn('turn-3');
+    plan.apply(tool('TaskList'), { tasks: [{ id: '1', subject: 'Draft', status: 'completed' }, { id: '2', subject: 'Ship', status: 'pending' }] }, 'thread', 'turn-3', '2026-10-25T00:00:03.000Z');
+    expect(steps(plan)).toStrictEqual(['completed:Draft', 'pending:Ship']);
+    plan.startTurn('turn-4');
+    expect(steps(plan)).toStrictEqual(['pending:Ship']);
+  });
 });
