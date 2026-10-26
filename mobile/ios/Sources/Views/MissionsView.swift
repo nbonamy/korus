@@ -611,9 +611,6 @@ private struct TicketRow: View {
                     }
                 }
                 .font(.caption)
-                if let activity = ticket.activity {
-                    Text(activity).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
             }
             .padding(.vertical, 8)
             Spacer(minLength: 0)

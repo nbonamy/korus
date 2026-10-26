@@ -61,11 +61,11 @@ describe('companion workspace projection', () => {
 
     it('reports each ticket the way the desktop board does, with the worker of one that has run', () => {
       const workspace = projectCompanionWorkspace(source([mission('m', {
-        artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0] }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
+        artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0], repositoryPath: '/Users/me/src/billing-service' }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
         execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4')] },
       })], [agent('w1', {}), agent('old', {}), agent('w4', {}), agent('chat', {})]));
       expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, startedAt: '2026-01-01T00:30:00Z', updatedAt: now, tickets: [
-        { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked', after: [2] },
+        { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', repository: 'billing-service', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked', after: [2] },
         { number: 4, title: 'Free', state: 'queued' }, { number: 5, title: 'Retried', state: 'awaitingReview', agentId: 'w4', runId: 'run-4-awaitingReview' }] }]);
     });
     it('keeps ticket workers out of the agent list but lets the phone open them and answer their requests', () => {
@@ -93,9 +93,11 @@ describe('companion workspace projection', () => {
       expect(started!.startedAt).toBe('2026-01-01T01:00:00Z');
       expect(idle!.startedAt).toBe('2025-12-31T00:00:00Z');
     });
-    it('names the agent leading the mission: the current stage\'s, else the latest earlier one', () => {
+    it('names the mission lead without mistaking an implementation worker for it', () => {
       const lead = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.leadAgentId;
-      expect(lead({ stage: 'implementation', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('impl');
+      expect(lead({ stage: 'implementation', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('tix');
+      expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('tix');
+      expect(lead({ stage: 'review', stageAgentIds: { tickets: 'tix', review: 'reviewer' } })).toBe('reviewer');
       expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix' } })).toBe('tix');
       expect(lead({ stage: 'requirements', stageAgentIds: {} })).toBeUndefined();
     });

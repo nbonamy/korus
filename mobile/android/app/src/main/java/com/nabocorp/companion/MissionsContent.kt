@@ -501,7 +501,6 @@ private val JSONObject.findingLocation: String? get() {
             Text("%02d %s".format(ticket.optInt("number"), ticket.string("title")), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(state.label + if (after.isNotEmpty()) " · after $after" else "", style = MaterialTheme.typography.bodySmall,
                 color = if (quiet || state == TicketState.Accepted || state == TicketState.Cancelled) MaterialTheme.colorScheme.onSurfaceVariant else tint)
-            ticket.string("activity").takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         if (agentId.isNotBlank()) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.align(Alignment.CenterVertically), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

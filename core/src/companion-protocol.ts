@@ -46,6 +46,8 @@ export type CompanionMissionReview = { summary: string; findings: CompanionRevie
 /** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
 /** `after` lists the numbers of the unfinished tickets this one waits for. */
 export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[];
+  /** The repository's name, without its host path. */
+  repository?: string;
   /** The run waiting for a person's acceptance, present only while the ticket is ready for review. */
   runId?: string };
 /** What the phone knows of a mission: where it stands and its tickets, never its documents or workspaces. */

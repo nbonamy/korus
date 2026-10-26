@@ -270,18 +270,18 @@ export function createEngine(port: EnginePort) {
           return activity ? { ...ticket, activity } : ticket;
         }) }));
     const owner = agent ? state.missions.value.find((mission) => mission.leadAgentId === agent.id || mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
-    // A mission's own agents are named for what they do in it, not by the generated names of their conversations.
+    // Repository workers take precedence over the lead label, including workspaces from older hosts.
     const ticketOf = owner && agent ? owner.tickets.find((ticket) => ticket.agentId === agent.id) : undefined;
     const missionTitle = owner && agent
-      ? owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null }
-        : ticketOf ? { title: ticketOf.title, subtitle: null } : null
+      ? ticketOf ? { title: ticketOf.repository || (agent.workspace?.kind === 'git' ? agent.workspace.repositoryName : ticketOf.title), subtitle: null }
+        : owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null } : null
       : null;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
-      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
+      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
       activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),

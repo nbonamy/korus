@@ -10,7 +10,7 @@ const mission = (id: string, teamId: string, tickets: CompanionMission['tickets'
   ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', revision: 7, startedAt: now, updatedAt: now, tickets, ...(leadAgentId ? { leadAgentId } : {}) });
 
 /** A laptop with a second team, a mission in each, and the demo chat in the first. */
-function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket' | 'selectFinding' | 'fixFindings' | 'rerunReview'> = {}) {
+function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket' | 'selectFinding' | 'fixFindings' | 'rerunReview'> = {}, leadAgentId = 'demo-agent') {
   const connector = createDemoConnector(); const connect = connector.connect;
   connector.connect = async id => {
     const session = await connect(id);
@@ -20,7 +20,7 @@ function missionConnector(actions: Pick<import('../companion-port').CompanionSes
         return { ...base, teams: [...base.teams, { id: 'other', name: 'Other', agentIds: [] }],
           missionAgents: [{ ...worker('w-here', 'demo-team'), statusText: 'editing gitlab-client.ts' }, worker('w-there', 'other')],
           missionProgress: [
-            mission('m-here', 'demo-team', [{ number: 1, title: 'Schema', state: 'accepted' }, { number: 2, title: 'Endpoint', state: 'running', agentId: 'w-here' }, { number: 3, title: 'Docs', state: 'blocked' }, { number: 4, title: 'Review me', state: 'awaitingReview', agentId: 'w-here', runId: 'run-4' }], 'demo-agent'),
+            mission('m-here', 'demo-team', [{ number: 1, title: 'Schema', state: 'accepted' }, { number: 2, title: 'Endpoint', repository: 'billing-service', state: 'running', agentId: 'w-here' }, { number: 3, title: 'Docs', state: 'blocked' }, { number: 4, title: 'Review me', state: 'awaitingReview', agentId: 'w-here', runId: 'run-4' }], leadAgentId),
             mission('m-there', 'other', [{ number: 1, title: 'Elsewhere', state: 'running', agentId: 'w-there' }])],
         };
       },
@@ -43,17 +43,18 @@ describe('mobile missions', () => {
       expect(engine.snapshot().missions[0]!.tickets.map((ticket) => 'activity' in ticket)).toStrictEqual([false, true, false, false]);
     } finally { engine.dispose(); }
   });
-  it('opens a ticket\'s worker as a conversation of its mission, without adding it to the sidebar', async () => {
-    const engine = createEngine({ connector: missionConnector(), post: () => {} });
+  it.each(['demo-agent', 'w-here'])('opens a repository worker separately from the mission lead (%s)', async leadAgentId => {
+    const engine = createEngine({ connector: missionConnector({}, leadAgentId), post: () => {} });
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       await engine.dispatch({ type: 'selectAgent', id: 'w-here' });
       const opened = engine.snapshot();
       expect(opened.agentId).toBe('w-here');
       expect(opened.mission).toStrictEqual({ id: 'm-here', outcome: 'Outcome of m-here' });
-      // A ticket agent is titled by its ticket and says nothing about the mission's progress.
-      expect(opened.header).toMatchObject({ title: 'Endpoint', repository: null });
+      // A repository worker takes precedence even when an older laptop labels it as the lead.
+      expect(opened.header).toMatchObject({ title: 'billing-service', repository: null });
       expect(JSON.stringify(opened.groups)).not.toContain('w-here');
+      if (leadAgentId === 'w-here') return;
       // The mission's lead is an ordinary agent that belongs to the mission too, and says so.
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
       expect(engine.snapshot().mission).toStrictEqual({ id: 'm-here', outcome: 'Outcome of m-here', lead: true });

@@ -77,10 +77,15 @@ function ticketState(mission: Mission, index: number): { state: CompanionMission
 }
 
 const missionStages = ['requirements', 'tickets', 'implementation', 'review', 'ship'] as const;
-/** The lead is the agent of the current stage, or of the latest earlier stage that has one. */
+/** The current or latest earlier stage's lead; implementation agents belong to repositories, not the lead role. */
 function missionLead(mission: Mission): string | undefined {
   const agents = mission.stageAgentIds ?? {};
-  for (let index = missionStages.indexOf(mission.stage); index >= 0; index--) { const id = agents[missionStages[index]!]; if (id) return id; }
+  for (let index = missionStages.indexOf(mission.stage); index >= 0; index--) {
+    const stage = missionStages[index]!;
+    if (stage === 'implementation') continue;
+    const id = agents[stage];
+    if (id) return id;
+  }
   return undefined;
 }
 
@@ -129,7 +134,8 @@ function companionMissionsOf(source: { missions?: Mission[] }): { missions: Comp
       const { state, workerId, runId } = ticketState(mission, index);
       if (workerId) workerIds.add(workerId);
       const after = state === 'blocked' ? (ticket.dependsOn ?? []).filter((blocker) => !mission.artifacts.tickets[blocker]?.done).map((blocker) => blocker + 1) : [];
-      return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}), ...(runId ? { runId } : {}) };
+      const repository = ticket.repositoryPath ? lastSegments(ticket.repositoryPath, 1) : undefined;
+      return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(repository ? { repository } : {}), ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}), ...(runId ? { runId } : {}) };
     }) }));
   for (const mission of missions) if (mission.leadAgentId) workerIds.add(mission.leadAgentId);
   return { missions, workerIds };

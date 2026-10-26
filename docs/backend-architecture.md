@@ -247,7 +247,8 @@ way the desktop's implementation board derives it, for active missions and the m
 recent twenty. The workers implementing tickets stay out of the agent list but are
 listed separately, so a phone can open one from its mission. A worker is talked to like any agent (prompts, answers
 to its questions and approvals, interrupts, model and permission choices), but the phone cannot rename, restart,
-close, duplicate or re-engine it; the laptop refuses those. Five mission actions exist
+close, duplicate or re-engine it; the laptop refuses those. Repository workers are titled by repository name;
+the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Five mission actions exist
 and no others: continuing a completed implementation to review, accepting a ticket's run that awaits
 acceptance, and, during review, selecting an open finding, fixing the selected ones and reviewing again.
 A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Every action carries the mission revision the phone saw and is checked against the mission as it stands.

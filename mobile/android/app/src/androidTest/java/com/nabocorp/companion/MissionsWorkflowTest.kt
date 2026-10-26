@@ -13,7 +13,7 @@ import org.junit.Test
  * the worker can be typed into, or there is no way back to the mission. */
 class MissionsWorkflowTest {
     @get:Rule val app = createAndroidComposeRule<CompanionActivity>()
-    private val ticket = json("number" to 2, "title" to "Open workers", "state" to "running", "agentId" to "worker")
+    private val ticket = json("number" to 2, "title" to "Open workers", "state" to "running", "agentId" to "worker", "activity" to "Implement ticket 2")
     private val mission = json("id" to "m", "outcome" to "Follow missions on the phone", "stage" to "implementation", "status" to "active", "done" to 1, "leadAgentId" to "lead",
         "tickets" to JSONArray().put(json("number" to 1, "title" to "Project missions", "state" to "accepted")).put(ticket))
     private fun state(agentId: String = "agent", worker: Boolean = false) = json(
@@ -39,6 +39,8 @@ class MissionsWorkflowTest {
             app.onNodeWithText("Follow missions on the phone").performClick()
             app.onNodeWithText("1 of 2 tickets").assertIsDisplayed()
             app.onNodeWithText("Talk to the mission lead").assertIsDisplayed()
+            app.onNodeWithText("In progress").assertIsDisplayed()
+            app.onNodeWithText("Implement ticket 2").assertDoesNotExist()
             app.onNodeWithText("02 Open workers").performClick()
             app.waitUntil(5_000) { e.commands().lastOrNull()?.let { it.string("type") == "selectAgent" && it.string("id") == "worker" } == true }
             app.onNodeWithText("TICKETS").assertDoesNotExist()
