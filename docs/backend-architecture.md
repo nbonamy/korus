@@ -867,6 +867,13 @@ past prices; reappearance appends another event. The baseline is effective Octob
 1, 2026 UTC. Automatic refreshes record when a change was observed. A launch-date
 entry for a newly listed model requires published pricing evidence.
 
+The pricing workflow runs daily and supports manual dispatch on `main`. It
+validates the collector and offline bundles before committing changed history
+with the repository's Actions token; unchanged prices produce no commit.
+Concurrent pricing runs are serialized. If `main` advances during collection,
+the push fails rather than replacing newer repository changes. Bot pushes do not
+trigger the separate Quality workflow, so pricing validation runs before the push.
+
 The catalog retains context predicates, service tiers, mode mappings, category-specific multipliers,
 cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
 zero rates remain zero. Models without source prices are marked unpriced. The
