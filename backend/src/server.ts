@@ -663,11 +663,38 @@ export class AppBackendServer {
     }
   }
 
+  /** The lead's provider and model for `create-mission`, checked against the provider's own catalog. */
+  private async resolveMissionLeadSettings(
+    caller: Agent,
+    input: { backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string },
+  ): Promise<{ backend: Agent['backend']; backendDefaults: NonNullable<Agent['backendDefaults']> } | undefined> {
+    const { model, reasoningEffort, serviceTier } = input;
+    if (!input.backend && !model && !reasoningEffort && !serviceTier) return undefined;
+    if ((reasoningEffort || serviceTier) && !model) throw new Error('A reasoning effort or service tier needs a model.');
+    const backend = resolveAgentBackend(this.snapshot, input.backend ?? caller.backend);
+    if (!model) return { backend, backendDefaults: { kind: backend } as NonNullable<Agent['backendDefaults']> };
+    const catalog = await this.handleAgentDriverRequest({ ...caller, backend, backendSession: undefined, backendDefaults: undefined }, backendMethods.driverModelsList, { agent: { ...caller, backend, backendSession: undefined, backendDefaults: undefined } }) as BackendModelOption[];
+    const visible = catalog.filter(option => !option.hidden);
+    const selected = visible.find(option => option.model === model);
+    if (!selected) throw new Error(`${model} is not available for ${backend}. Available models: ${visible.map(option => option.model).join(', ') || 'none'}.`);
+    if (reasoningEffort && !selected.supportedReasoningEfforts?.some(option => option.reasoningEffort === reasoningEffort)) {
+      const supported = selected.supportedReasoningEfforts?.map(option => option.reasoningEffort).join(', ') || 'none';
+      throw new Error(`${model} does not support reasoning effort ${reasoningEffort}. Supported: ${supported}.`);
+    }
+    if (serviceTier && !selected.serviceTiers?.some(tier => tier.id === serviceTier)) {
+      const supported = selected.serviceTiers?.map(tier => tier.id).join(', ') || 'none';
+      throw new Error(`${model} does not offer service tier ${serviceTier}. Supported: ${supported}.`);
+    }
+    return { backend, backendDefaults: { kind: backend, model, userSelectedModel: true, ...(reasoningEffort ? { reasoningEffort } : {}), ...(serviceTier ? { serviceTier } : {}) } as NonNullable<Agent['backendDefaults']> };
+  }
+
   /** `create-mission` from an agent: start the Mission, hand its lead the brief and ask the renderer to open it. */
-  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string }): Promise<{ missionId: string; outcome: string }> {
+  async startMissionFromAgent(agentId: string, input: { outcome: string; prompt: string; backend?: Agent['backend']; model?: string; reasoningEffort?: string; serviceTier?: string }): Promise<{ missionId: string; outcome: string }> {
     const caller = this.snapshot.agents.find(agent => agent.id === agentId);
     const team = this.snapshot.teams.find(candidate => candidate.id === caller?.teamId && !candidate.remoteConnectionId);
     if (!caller || !team) throw new Error('create-mission needs an agent on a local team.');
+    // Checked before anything exists, so a bad model leaves no half-started Mission behind.
+    const leadSettings = await this.resolveMissionLeadSettings(caller, input);
     const mission = await this.createMissionAndRun({
       outcome: input.outcome,
       workflowType: 'shapeAndShipFeature',
@@ -675,6 +702,12 @@ export class AppBackendServer {
       orchestratorMemberId: caller.id,
     });
     const lead = await this.awaitMissionLead(mission.id);
+    // The lead has no conversation yet, so its provider and model can still be set. Later stages clone it.
+    const leadAgent = leadSettings ? this.snapshot.agents.find(agent => agent.id === lead) : undefined;
+    if (leadAgent && leadSettings) {
+      leadAgent.backend = leadSettings.backend;
+      leadAgent.backendDefaults = leadSettings.backendDefaults;
+    }
     this.agentPrompts.send(lead, input.prompt);
     this.emitSnapshotUpdated(await this.remoteTeams.clientSnapshot());
     this.onEvent?.({

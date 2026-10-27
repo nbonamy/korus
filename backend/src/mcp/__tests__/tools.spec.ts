@@ -127,6 +127,7 @@ describe(`${product.name} MCP tool registration`, () => {
       'backend',
       'model',
       'reasoningEffort',
+      'serviceTier',
       'repoPath',
       'createWorktree',
       'branchName',

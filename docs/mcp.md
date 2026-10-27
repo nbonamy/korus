@@ -108,8 +108,8 @@ by mutating user-global tool config.
   `instructions` supplements canonical task references with missing context,
   decisions and delivery constraints, prepended inside an escaped `<context>`
   block (presentation separation, not secret storage: both stay in the transcript).
-  Model and effort inherit from the caller only for the same backend; another
-  backend uses its own defaults. Target-provider saved approval settings apply
+  Model, effort and service tier inherit from the caller only for the same backend (each can be
+  overridden; antigravity has no service tier); another backend uses its own defaults. Target-provider saved approval settings apply
   before the initial prompt; explicit or inherited model selections override
   model defaults without replacing that approval policy.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
@@ -131,7 +131,10 @@ by mutating user-global tool config.
   (`/mission [instructions]` expands into that request). It creates the Mission with
   the caller as orchestrator, waits for the first stage's lead agent to exist, sends
   the supplied brief to that lead as its first message and asks the renderer, through
-  `mission.focusRequested`, to open the Mission. Mission workers and agents without a
+  `mission.focusRequested`, to open the Mission. Optional `backend`, `model`,
+  `reasoningEffort` and `serviceTier` set the lead's provider and model; the model, effort
+  and tier are checked against the provider's catalog before the Mission exists, and later
+  stages follow the lead. Mission workers and agents without a
   team do not receive it.
 - Agent closure is authorized by the owning daemon against the authenticated
   caller and the persisted `delegatedByAgentId` link, which follows parent handoff.

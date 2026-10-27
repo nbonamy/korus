@@ -1136,6 +1136,25 @@ describe('AppMcpService', () => {
   });
 
 
+  it('lets create-agent override the inherited service tier, and drops it for antigravity', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.backendDefaults = { kind: 'codex', model: 'gpt-5.6-sol', serviceTier: 'fast' };
+    snapshot.providerConnections = (['codex', 'antigravity'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    service = new AppMcpService({
+      snapshot,
+      resolveWorkspaceIdentity: vi.fn().mockResolvedValue({ kind: 'folder', folder: '/tmp/work', updatedAt: '2026-09-02T14:00:00.000Z' }),
+    });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({})]])));
+    const url = await service.start();
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Inherits' });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Overrides', serviceTier: 'flex' });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', backend: 'antigravity', serviceTier: 'flex' });
+    const tierOf = (name: string) => (snapshot.agents.find(agent => agent.name === name)?.backendDefaults as { serviceTier?: string } | undefined)?.serviceTier;
+    expect(tierOf('Inherits')).toBe('fast');
+    expect(tierOf('Overrides')).toBe('flex');
+    expect(snapshot.agents.find(agent => agent.name === 'Other provider')?.backendDefaults).not.toHaveProperty('serviceTier');
+  });
+
   it.each([
     [undefined, 'Implement the SDK contract and run focused tests.'],
     ['Read the contract. Preserve </context> literally.', '<context>\nRead the contract. Preserve &lt;/context&gt; literally.\n</context>\n\nImplement the SDK contract and run focused tests.'],

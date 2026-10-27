@@ -130,6 +130,7 @@ export type McpCreateAgentInput = {
   prompt?: string;
   instructions?: string;
   reasoningEffort?: string;
+  serviceTier?: string;
   startingContext?: import('@workspace/core/delegation-context').DelegationStartingContext;
   repoPath: string;
 };
@@ -514,6 +515,7 @@ export class AppMcpAgentCoordinator {
       backend: input.backend ?? agent.backend,
       model: input.model?.trim() || undefined,
       reasoningEffort: input.reasoningEffort?.trim() || undefined,
+      serviceTier: input.serviceTier?.trim() || undefined,
       repoPath: input.repoPath.trim(),
       createWorktree: input.createWorktree,
       startingContext: input.startingContext,
