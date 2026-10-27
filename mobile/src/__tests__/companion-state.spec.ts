@@ -534,6 +534,37 @@ describe('companion state', () => {
       expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { model: 'deep-1', planMode: true, reasoningEffort: 'high' });
     } finally { state.dispose(); }
   });
+  it('preserves supported reasoning effort across model switches and otherwise selects the middle available effort', async () => {
+    const connector = createDemoConnector(); const original = connector.connect;
+    const efforts = (...values: string[]) => values.map(reasoningEffort => ({ reasoningEffort, description: '' }));
+    const models = [
+      { id: 'first', model: 'first', displayName: 'First', isDefault: true, defaultReasoningEffort: 'high', supportedReasoningEfforts: efforts('low', 'medium', 'high') },
+      { id: 'shared', model: 'shared', displayName: 'Shared', defaultReasoningEffort: 'low', supportedReasoningEfforts: efforts('low', 'high') },
+      { id: 'other', model: 'other', displayName: 'Other', defaultReasoningEffort: 'low', supportedReasoningEfforts: efforts('minimal', 'low', 'medium', 'max') },
+      { id: 'none', model: 'none', displayName: 'None', supportedReasoningEfforts: [] },
+    ];
+    const selectModel = vi.fn(async () => {}); const sendPrompt = vi.fn(async () => {});
+    connector.connect = async id => ({ ...await original(id), listModels: async () => models, selectModel, sendPrompt });
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop'); await state.selectTeam('demo-team'); await state.selectAgent('demo-agent');
+      await vi.waitFor(() => expect(state.models.value).toHaveLength(4));
+      state.updateComposerSettings({ modelId: 'shared' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('high');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'shared', reasoningEffort: 'high', serviceTier: null });
+      state.updateComposerSettings({ modelId: 'other' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'other', reasoningEffort: 'medium', serviceTier: null });
+      await state.submit('Do it');
+      expect(sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Do it', expect.any(String), { model: 'other', planMode: false, reasoningEffort: 'medium' });
+      state.updateComposerSettings({ modelId: 'none' });
+      expect(state.composerSettings.value?.reasoningEffort).toBeNull();
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'none', reasoningEffort: null, serviceTier: null });
+      state.updateComposerSettings({ modelId: 'first' });
+      expect(state.composerSettings.value?.reasoningEffort).toBe('medium');
+      expect(selectModel).toHaveBeenLastCalledWith('demo-agent', { model: 'first', reasoningEffort: 'medium', serviceTier: null });
+    } finally { state.dispose(); }
+  });
   it('sends a prompt to the session it was written for, even if the session is replaced while the draft is saved', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let update!: (workspace: CompanionWorkspace, frame: CompanionConversation | null) => void;

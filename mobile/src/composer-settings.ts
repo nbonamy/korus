@@ -34,7 +34,11 @@ export function applyComposerChoice(models: readonly BackendModelOption[], curre
   if (change.modelId !== undefined) {
     const next = models.find((candidate) => candidate.id === change.modelId);
     if (!next) return { choice: current, save: null };
-    const choice = { ...current, model: next.model, reasoningEffort: defaultEffort(next), serviceTier: next.defaultServiceTier ?? null };
+    const efforts = next.supportedReasoningEfforts ?? [];
+    const reasoningEffort = efforts.some(option => option.reasoningEffort === current.reasoningEffort)
+      ? current.reasoningEffort ?? null
+      : efforts[Math.floor(efforts.length / 2)]?.reasoningEffort ?? null;
+    const choice = { ...current, model: next.model, reasoningEffort, serviceTier: next.defaultServiceTier ?? null };
     return { choice, save: { model: next.model, reasoningEffort: choice.reasoningEffort, serviceTier: choice.serviceTier } as AgentModelSelection };
   }
   if (change.reasoningEffort !== undefined) {
