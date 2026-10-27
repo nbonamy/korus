@@ -240,6 +240,7 @@ export const messages = {
     },
     surface: surfaceMessages,
     missions: {
+      costMenu: 'Mission cost', costLead: 'Lead', costOther: 'Other', costTotal: 'Total', costNoUsage: 'No usage yet',
       acceptedArtifact: 'Accepted artifact',
       draftTickets: 'Draft tickets', draftTicketsHint: '{count} draft | {count} drafts', ticketCount: '{count} ticket | {count} tickets', inProgress: 'In progress',
       blockedBy: 'Blocked by tickets', blockedByShort: 'After {tickets}',
@@ -609,6 +610,18 @@ export const messages = {
       sendPrompt: 'Send prompt to {agent}',
       sendPromptPlaceholder: 'Send prompt…',
       workingPlaceholder: 'Working…',
+    },
+    backlogShortcuts: {
+      label: 'Backlog shortcuts',
+      assignedToMe: 'Assigned to me',
+      awaitingMyReview: 'Awaiting my review',
+      createdByMe: 'Created by me',
+      work: 'Work',
+      allWork: 'All work',
+      inMyRepositories: 'In my repositories',
+      inMyProjects: 'In my projects',
+      acrossRepositories: 'Across repositories',
+      acrossSources: 'Across sources',
     },
     backlogFavorites: {
       heading: 'Favorites',

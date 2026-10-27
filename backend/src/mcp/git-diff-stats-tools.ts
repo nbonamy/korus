@@ -1,10 +1,11 @@
 import type { AgentGitDiff, AgentGitDiffTarget, AppSnapshot } from '@workspace/core/contracts';
 import { fileKinds, type KindBreakdown } from '@workspace/core/file-kind';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import * as z from 'zod/v4';
 import { McpToolError } from './agent-coordinator';
 import { loggedToolResult, type AppMcpToolModuleProvider } from './tool-modules';
 
-const scopes = ['uncommitted', 'unstaged', 'staged', 'branch', 'commit'] as const;
+const scopes = ['uncommitted', 'unstaged', 'staged', 'branch', 'commit', 'lastTurn'] as const;
 
 /** Lets an agent size up its own changes: how much, and how much of it is code, tests, docs or other. */
 export function createGitDiffStatsToolModuleProvider(options: {
@@ -19,7 +20,7 @@ export function createGitDiffStatsToolModuleProvider(options: {
         id: 'git-diff-stats',
         register: server => {
           server.registerTool('get-diff-stats', {
-            description: 'Sizes up the changes in this agent’s repository by file type (code, test, docs, other): lines added and removed and files changed, in total and per type. scope picks what to compare: uncommitted (default: staged, unstaged and untracked), unstaged, staged, branch (everything since the merge-base with the base branch, uncommitted work included) or commit (needs sha). Use it to check how much of a change is tests or docs before deciding what to review or write next. Example: {"scope":"branch"}.',
+            description: 'Sizes up the changes in this agent’s repository by file type (code, test, docs, other): lines added and removed and files changed, in total and per type. scope picks what to compare: uncommitted (default: staged, unstaged and untracked), unstaged, staged, branch (everything since the merge-base with the base branch, uncommitted work included) commit (needs sha) or lastTurn (what this agent changed in its most recent turn). Use it to check how much of a change is tests or docs before deciding what to review or write next. Example: {"scope":"branch"}.',
             inputSchema: z.strictObject({
               scope: z.enum(scopes).default('uncommitted').describe('Which changes to measure.'),
               baseRef: z.string().trim().min(1).optional().describe('Only for scope "branch": the ref to compare against. Defaults to the repository’s base branch.'),
@@ -29,6 +30,14 @@ export function createGitDiffStatsToolModuleProvider(options: {
           }, ({ scope, baseRef, sha }) => loggedToolResult('get-diff-stats', { agentId, scope }, async () => {
             const folder = options.snapshot.agents.find(candidate => candidate.id === agentId)?.folder;
             if (!folder) throw new McpToolError('This agent has no working folder.');
+            if (scope === 'lastTurn') {
+              const latest = Object.values(options.snapshot.turnGitDiffs ?? {})
+                .filter(turn => turn.agentId === agentId && turn.diff !== undefined)
+                .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+              if (!latest) throw new McpToolError('No turn changes have been recorded for this agent yet.');
+              const { addedLines, removedLines, changedFiles, byKind } = summarizeUnifiedDiff(latest.diff!);
+              return { scope, addedLines, removedLines, changedFiles, byKind };
+            }
             if (scope === 'commit' && !sha) throw new McpToolError('scope "commit" needs a sha.');
             const target: Exclude<AgentGitDiffTarget, { type: 'turn' }> = scope === 'commit'
               ? { type: 'commit', sha: sha! }

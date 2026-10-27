@@ -13,7 +13,7 @@ describe('SourcePreviewPanel', () => {
 
     expect(wrapper.find('.source-preview-panel').exists()).toBe(true);
     expect(wrapper.find('textarea').exists()).toBe(false);
-    expect(wrapper.html()).toContain('shiki');
+    expect(wrapper.find('pre code .line span[style]').exists()).toBe(true);
     expect(wrapper.findAll('.line')).toHaveLength(2);
     expect(wrapper.text()).toContain('value');
   });

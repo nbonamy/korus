@@ -9,6 +9,7 @@ import { CompanionFrameDecoder, companionFrameLimit, companionUpdatesProtocol, c
 const transport = vi.hoisted(() => ({ dial: vi.fn(), stop: vi.fn(), connections: [] as any[], requests: [] as { method: string; args: any }[], rendezvous: [] as { code: string }[], known: '', phone: '', publish: (_update: unknown) => {}, endUpdates: () => {}, response: (method: string, args: any): any => ({}) }));
 vi.mock('libp2p', () => ({ createLibp2p: async (config: { privateKey: Parameters<typeof peerIdFromPrivateKey>[0] }) => { transport.phone = peerIdFromPrivateKey(config.privateKey).toString(); return { dialProtocol: transport.dial, getConnections: () => transport.connections, stop: transport.stop, addEventListener: vi.fn() }; } }));
 import { createRelayConnector } from '../relay-connector';
+import { createEngine } from '../engine';
 import { normalizePairingCode } from '@workspace/core/companion-pairing';
 import type { ProtectedVault } from '../protected-storage';
 import { setConnectionDiagnosticSink } from '../connection-diagnostics';
@@ -424,9 +425,21 @@ describe('native relay host adapter', () => {
     expect(saved).not.toContain('K7QD'); expect(saved).not.toContain('M2XP');
     expect(JSON.parse(saved)).toStrictEqual([{ v: 1, relayOrigin: 'wss://relay.example', relayPeerId: host.relay.peerId, hostId: host.hostId, name: 'Paired laptop' }]);
     expect(storage.values.has('device-identity')).toBe(true);
-    const restored = connect(storage); await restored.initialize!();
-    expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
-    await connector.dispose!(); await restored.dispose!();
+    const identity = storage.values.get('device-identity');
+    const restored = connect(storage);
+    storage.read.mockRejectedValueOnce(new Error('Device storage locked'));
+    const engine = createEngine({ connector: restored, initialActive: false, post: () => {} });
+    try {
+      await engine.start();
+      expect(engine.snapshot().startup).toBe('error');
+      expect(storage.values.get('paired-hosts')).toBe(saved);
+      transport.response = () => ({ teams: [], agents: [] });
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(engine.snapshot()).toMatchObject({ startup: 'ready', connection: 'connected', laptopId: host.hostId,
+        laptops: [{ id: host.hostId, name: 'Paired laptop' }] });
+      expect(storage.values.get('paired-hosts')).toBe(saved);
+      expect(storage.values.get('device-identity')).toBe(identity);
+    } finally { engine.dispose(); await connector.dispose!(); await restored.dispose!(); }
   });
   it('refuses malformed or unavailable codes and never saves a host before approval', async () => {
     const storage = vault(); const connector = connect(storage);

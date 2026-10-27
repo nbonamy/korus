@@ -312,6 +312,32 @@ describe('GitHubWorkProviderDriver', () => {
     );
   });
 
+  it('queries personal issue, authored PR and review feeds before pagination', async () => {
+    const fetch = vi.fn(async (input: string) => {
+      const url = new URL(input);
+      expect(url.pathname).toBe('/search/issues');
+      expect(url.searchParams.get('page')).toBe('2');
+      return jsonResponse({ total_count: 51, items: [{ number: 24, title: 'Review this change', user: { login: 'someone-else' },
+        html_url: 'https://github.com/org/repo/pull/24', repository_url: 'https://api.github.com/repos/org/repo',
+        ...(url.searchParams.get('q')?.includes('is:pr') ? { pull_request: {} } : {}), state: 'open', labels: [], created_at: '2026-01-01', updated_at: '2026-01-02' }] },
+        { link: '<https://api.github.com/search/issues?page=3>; rel="next"' });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const driver = new GitHubWorkProviderDriver('client-id');
+    const token = { provider: 'github' as const, accessToken: 'secret', tokenType: 'bearer', accountLabel: 'alice', connectedAt: 'now' };
+    for (const [query, search] of [
+      [{ assignment: 'viewer', kind: 'issue' }, 'is:issue is:open assignee:alice'],
+      [{ involvement: 'author', kind: 'pullRequest' }, 'is:pr is:open author:alice'],
+      [{ involvement: 'reviewer', kind: 'pullRequest' }, 'is:pr is:open review-requested:alice'],
+      [{ repositoryScope: 'owned', kind: 'all' }, 'is:open user:alice'],
+    ] as const) {
+      expect(await driver.listGlobalItems(token, { ...query, cursor: '2', pageSize: 25 })).toMatchObject({
+        items: [{ kind: query.kind === 'all' ? 'issue' : query.kind, sourceId: 'org/repo', number: 24, authorName: 'someone-else' }], nextCursor: '3', totalItems: 51,
+      });
+      expect(new URL(fetch.mock.calls.at(-1)![0]).searchParams.get('q')).toBe(search);
+    }
+  });
+
   it('returns a continuation without fetching the final page to manufacture a total', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(jsonResponse([{

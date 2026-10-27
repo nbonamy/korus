@@ -466,6 +466,7 @@ export class AppBackendServer {
         if (!agent) throw new Error('Mission Review worker is unavailable.');
         await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt);
       },
+      sendMessage: this.sendAgentMessage,
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
     });
     this.planReviews = new AgentPlanReviewService({
@@ -3912,10 +3913,21 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   const query = requireRecord(value);
   const base = workItemQuery(query) ?? {};
   const assignment = query.assignment;
+  const involvement = query.involvement;
+  const repositoryScope = query.repositoryScope;
   const cursor = query.cursor;
   const pageSize = query.pageSize;
   if (assignment !== undefined && assignment !== 'all' && assignment !== 'viewer') {
     throw new Error('Invalid global work item assignment filter.');
+  }
+  if (involvement !== undefined && involvement !== 'author' && involvement !== 'reviewer') {
+    throw new Error('Invalid global work item involvement filter.');
+  }
+  if (involvement === 'reviewer' && base.kind !== 'pullRequest') {
+    throw new Error('Review requests require pull requests.');
+  }
+  if (repositoryScope !== undefined && repositoryScope !== 'owned') {
+    throw new Error('Invalid global work item repository scope.');
   }
   if (cursor !== undefined && (typeof cursor !== 'string' || !cursor || cursor.length > 4096)) {
     throw new Error('Invalid global work item cursor.');
@@ -3925,6 +3937,8 @@ function globalWorkItemQuery(value: unknown): import('@workspace/core/contracts'
   }
   return {
     ...base,
+    ...(involvement ? { involvement } : {}),
+    ...(repositoryScope ? { repositoryScope } : {}),
     ...(assignment ? { assignment } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(typeof pageSize === 'number' ? { pageSize } : {}),

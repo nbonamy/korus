@@ -43,7 +43,7 @@ export function createPairing(options: { vault: ProtectedVault; relay: RelayConf
         addressFor(record.relayOrigin, record.relayPeerId);
         try { peerIdFromString(record.hostId); } catch { throw new Error('Saved laptop identity is invalid.'); }
       }
-    })();
+    })().catch(error => { initialized = null; throw error; });
   }
 
   /** Trust the pinned relay for introduction, then authenticate this laptop identity through Noise. */

@@ -14,6 +14,7 @@ describe('BacklogView', () => {
     const sources: WorkSource[] = ['group/sub/repo', 'other/repo'].map(fullName => ({ provider: 'gitlab', id: `gitlab.com/${fullName}`, name: 'repo', fullName, url: `https://gitlab.com/${fullName}` }));
     const wrapper = mountView(createInitialSnapshot(), [], sources);
     await wrapper.setProps({ workProvider: 'gitlab' });
+    expect(wrapper.find('[aria-label="Merge requests: Awaiting my review"]').exists()).toBe(true);
     expect(wrapper.findAll('.cockpit-view__repositories button[aria-pressed]').map(button => button.text())).toStrictEqual(['group/sub/repo', 'other/repo']);
     await wrapper.get('[data-repository-id="gitlab.com/other/repo"] button[aria-pressed]').trigger('click');
     expect(wrapper.emitted('select-work-repository')).toStrictEqual([['gitlab.com/other/repo']]);
@@ -129,6 +130,7 @@ describe('BacklogView', () => {
     resolveOld({ items: [item(99)], totalItems: 1 });
     await flushPromises();
     expect(wrapper.text()).toContain('ENG-24');
+    expect(wrapper.get('[aria-label="Backlog shortcuts"]').findAll('button').map(button => button.attributes('aria-label'))).toStrictEqual(['Issues: Assigned to me', 'All work: Across sources']);
     expect(wrapper.text()).not.toContain('#99');
     expect(wrapper.get('.cockpit-view__repositories button[aria-pressed]').attributes('aria-pressed')).toBe('true');
     await wrapper.get('.cockpit-inbox__row-action').trigger('click');
@@ -316,13 +318,6 @@ describe('BacklogView', () => {
 
     expect(wrapper.findAll('h1')).toHaveLength(1);
     expect(wrapper.get('.workspace-header h1').text()).toBe('Backlog');
-    expect(wrapper.get('[data-tone="working"] span').text()).toBe('working');
-    expect(wrapper.get('[data-tone="working"] strong').text()).toBe('0');
-    expect(wrapper.get('[data-tone="review"] span').text()).toBe('ready for review');
-    expect(wrapper.get('[data-tone="review"] strong').text()).toBe('0');
-    expect(wrapper.find('.cockpit-view__activity').exists()).toBe(false);
-    expect(wrapper.findAll('.cockpit-view__summary button i')).toHaveLength(0);
-    expect(wrapper.find('.cockpit-view__agent-card').exists()).toBe(false);
     expect(wrapper.findComponent(CockpitWorkInbox).exists()).toBe(true);
 
     const navigation = wrapper.get('[aria-label="Backlog navigation"]');
@@ -461,37 +456,6 @@ describe('BacklogView', () => {
     expect(wrapper.emitted('select-agent')).toStrictEqual([[{ agentId: 'agent-dina', teamId: 'team-app' }]]);
     expect(inbox.props('startWorkAction')).toBe(startWorkItemsAction);
     expect(inbox.props('defaultTeamId')).toBe('team-app');
-  });
-
-  it('summarizes assignments as clickable working, blocked, and review filters', async () => {
-    const snapshot = createInitialSnapshot();
-    const working = item(24);
-    const blocked = item(25);
-    const review = item(26);
-    snapshot.workBacklog.assignments = {
-      [workItemAssignmentKey(working)]: { provider: 'github', itemId: working.id, agentId: 'agent-dina', assignedAt: '2026-08-12T00:00:00.000Z', policy: 'review', status: 'inProgress' },
-      [workItemAssignmentKey(blocked)]: { provider: 'github', itemId: blocked.id, agentId: 'agent-jesse', assignedAt: '2026-08-12T00:00:00.000Z', policy: 'review', status: 'blocked' },
-      [workItemAssignmentKey(review)]: { provider: 'github', itemId: review.id, agentId: 'agent-dina', assignedAt: '2026-08-12T00:00:00.000Z', policy: 'review', status: 'readyForReview' },
-    };
-    const wrapper = mountView(snapshot, [working, blocked, review]);
-
-    const summary = wrapper.get('[aria-label="Work summary filters"]');
-    expect(summary.get('[data-tone="working"] span').text()).toBe('working');
-    expect(summary.get('[data-tone="working"] strong').text()).toBe('1');
-    expect(summary.get('[data-tone="blocked"] span').text()).toBe('blocked');
-    expect(summary.get('[data-tone="blocked"] strong').text()).toBe('1');
-    expect(summary.get('[data-tone="review"] span').text()).toBe('ready for review');
-    expect(summary.get('[data-tone="review"] strong').text()).toBe('1');
-
-    await summary.get('[data-tone="working"]').trigger('click');
-    expect(wrapper.findComponent(CockpitWorkInbox).props()).toMatchObject({ activeView: 'wip', statusFilter: 'inProgress' });
-
-    await summary.get('[data-tone="blocked"]').trigger('click');
-    expect(wrapper.findComponent(CockpitWorkInbox).props()).toMatchObject({ activeView: 'focus', statusFilter: 'blocked' });
-
-    wrapper.findComponent(CockpitWorkInbox).vm.$emit('update-active-view', 'all');
-    await wrapper.vm.$nextTick();
-    expect(wrapper.findComponent(CockpitWorkInbox).props()).toMatchObject({ activeView: 'all', statusFilter: null });
   });
 
   it('shows a provider connection empty state', () => {

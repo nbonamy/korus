@@ -626,15 +626,24 @@ describe('companion engine', () => {
     }
     engine.dispose();
   });
-  it('shows pairing only after checking storage, and permits retry after a storage failure', async () => {
+  it.each(['retry', 'foreground', 'during restore'])('checks storage before pairing and recovers from a storage failure on %s', async recovery => {
     const connector = unpaired();
-    connector.initialize = vi.fn().mockRejectedValueOnce(new Error('Keychain unavailable')).mockResolvedValue(undefined);
+    let fail!: (error: Error) => void;
+    connector.initialize = vi.fn().mockImplementationOnce(() => new Promise<void>((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
     const { engine, latest } = open(connector);
-    await engine.start();
-    expect(latest().startup).toBe('error');
-    await engine.dispatch({ type: 'start' });
-    expect(latest()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
-    engine.dispose();
+    try {
+      const starting = engine.start();
+      expect(latest().startup).toBe('loading');
+      const resumed = recovery === 'during restore' ? engine.dispatch({ type: 'activity', active: true }) : undefined;
+      fail(new Error('Keychain unavailable')); await starting;
+      if (resumed) await resumed;
+      else {
+        expect(latest().startup).toBe('error');
+        await engine.dispatch(recovery === 'retry' ? { type: 'start' } : { type: 'activity', active: true });
+      }
+      expect(latest()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
+      expect(connector.initialize).toHaveBeenCalledTimes(2);
+    } finally { engine.dispose(); }
   });
   it('publishes conversation loading until the selected thread arrives and clears it on failure', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;

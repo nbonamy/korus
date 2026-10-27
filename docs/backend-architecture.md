@@ -429,6 +429,9 @@ reconnection), `RelayClient` (admission and push, one admission at a time) and
 `StreamServer` (request and update streams). The phone's is `relay-network` (the node
 and device identity), `relay-pairing` (stored laptops and the pairing flow) and
 `relay-session` (one laptop connection and the conversation caches later sessions share).
+Protected-storage read failures are distinct from missing records. A locked Keychain cannot
+turn a saved pairing or device identity into an empty value. Failed pairing restores remain
+retryable, and foreground activation retries startup after protected storage becomes available.
 
 The phone's state (`companion-state`) keeps the connection, the selection and the conversation, and composes small
 parts for the rest: `remote-list` (every list read from the laptop on demand, dropped when its context changes),

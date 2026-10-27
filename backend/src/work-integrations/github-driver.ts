@@ -214,6 +214,28 @@ export class GitHubWorkProviderDriver implements WorkProviderDriver {
     const page = query.cursor === undefined ? 1 : Number(query.cursor);
     if (!Number.isSafeInteger(page) || page < 1) throw new Error('Invalid work item page.');
     const pageSize = Math.max(1, Math.min(100, Math.trunc(query.pageSize ?? 50)));
+    if (query.repositoryScope || query.involvement || (query.kind && query.kind !== 'all')) {
+      const qualifiers: string[] = [];
+      if (query.kind && query.kind !== 'all') qualifiers.push(query.kind === 'issue' ? 'is:issue' : 'is:pr');
+      if ((query.state ?? 'open') !== 'all') qualifiers.push(`is:${query.state ?? 'open'}`);
+      if (query.repositoryScope || query.involvement || query.assignment === 'viewer') {
+        const viewer = token.accountLabel ?? await this.currentAccountLabel(token);
+        if (query.repositoryScope === 'owned') qualifiers.push(`user:${viewer}`);
+        if (query.involvement || query.assignment === 'viewer') {
+          const field = query.involvement === 'author' ? 'author' : query.involvement === 'reviewer' ? 'review-requested' : 'assignee';
+          qualifiers.push(`${field}:${viewer}`);
+        }
+      }
+      const params = new URLSearchParams({ q: qualifiers.join(' '), sort: 'updated', order: 'desc', per_page: String(pageSize), page: String(page) });
+      const response = await this.apiPageRequest(token, `/search/issues?${params}`);
+      if (!isRecord(response.value) || !Array.isArray(response.value.items)) throw new Error('GitHub returned an invalid work item search response.');
+      return {
+        items: response.value.items.map(githubAssignedIssue).filter((item): item is WorkItem => item !== null)
+          .map(item => ({ ...item, assignedToViewer: Boolean(token.accountLabel && item.assignees?.includes(token.accountLabel)) })),
+        ...(linkedPageUrl(response.linkHeader, 'next') ? { nextCursor: String(page + 1) } : {}),
+        ...(typeof response.value.total_count === 'number' ? { totalItems: response.value.total_count } : {}),
+      };
+    }
     const assignment = query.assignment === 'viewer' ? 'assigned' : 'all';
     const state = query.state ?? 'open';
     const path = `/issues?filter=${assignment}&state=${state}&sort=updated&direction=desc&per_page=${pageSize}&page=${page}`;

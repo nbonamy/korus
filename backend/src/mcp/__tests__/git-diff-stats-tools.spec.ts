@@ -76,6 +76,32 @@ describe('get-diff-stats tool', () => {
     expect(failed.content[0]!.text).toContain('Check out a branch');
   });
 
+  it('measures what the agent changed in its latest turn from the recorded turn diff', async () => {
+    const file = (path: string, added: number) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', ...Array.from({ length: added }, () => '+line')].join('\n');
+    const { diff, call } = await setup(snapshot => {
+      const agentId = snapshot.agents[0]!.id;
+      snapshot.turnGitDiffs = {
+        old: { agentId, turnId: 'old', addedLines: 9, removedLines: 0, diff: file('src/old.ts', 9), updatedAt: '2026-06-05T00:00:01.000Z' },
+        latest: { agentId, turnId: 'latest', addedLines: 4, removedLines: 0, diff: [file('src/app.ts', 3), file('src/app.test.ts', 1)].join('\n'), updatedAt: '2026-06-05T00:00:09.000Z' },
+        other: { agentId: 'someone-else', turnId: 'other', addedLines: 50, removedLines: 0, diff: file('src/x.ts', 50), updatedAt: '2026-06-05T00:00:99.000Z' },
+      };
+    });
+    const result = await call({ scope: 'lastTurn' });
+    expect(result.isError).toBe(false);
+    expect(diff).not.toHaveBeenCalled();
+    expect(result.structuredContent).toStrictEqual({
+      scope: 'lastTurn', ...stats(4, 0, 2),
+      byKind: { code: stats(3, 0, 1), test: stats(1, 0, 1), docs: stats(0, 0, 0), other: stats(0, 0, 0) },
+    });
+  });
+
+  it('says so when no turn changes were recorded yet', async () => {
+    const { call } = await setup();
+    const result = await call({ scope: 'lastTurn' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('No turn changes');
+  });
+
   it('is not offered to agents without a folder', async () => {
     const { request } = await setup(snapshot => { Reflect.deleteProperty(snapshot.agents[0]!, 'folder'); });
     expect((await request('tools/list', {})).tools.map(tool => tool.name)).not.toContain('get-diff-stats');

@@ -87,17 +87,20 @@
     <div class="cockpit-view__workspace">
       <header v-if="workBacklog" class="cockpit-view__header">
         <div class="cockpit-view__frame">
-          <div v-if="workBacklog" class="cockpit-view__summary" :aria-label="$t('surface.cockpitView.workSummaryFilters')">
+          <div class="cockpit-view__shortcuts" :aria-label="$t('backlogShortcuts.label')">
             <button
-              v-for="metric in summaryMetrics"
-              :key="metric.id"
+              v-for="shortcut in shortcuts"
+              :key="shortcut.id"
               type="button"
-              :data-tone="metric.id"
-              :aria-pressed="activeSummaryFilter === metric.filter"
-              @click="selectSummaryMetric(metric)"
+              :aria-pressed="activeShortcut === shortcut.id"
+              :aria-label="`${shortcut.title}: ${shortcut.subtitle}`"
+              @click="selectShortcut(shortcut.id)"
             >
-              <span>{{ metric.label }}</span>
-              <strong>{{ metric.count }}</strong>
+              <BacklogShortcutIcon :kind="shortcut.icon" />
+              <span class="cockpit-view__shortcut-copy">
+                <strong>{{ shortcut.title }}</strong>
+                <span>{{ shortcut.subtitle }}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -128,7 +131,7 @@
         :start-work-action="startWorkItemsAction"
         :list-source-repositories="listSourceRepositories"
         :status="workBacklog.status"
-        :status-filter="activeSummaryFilter"
+        v-model:kind-filter="kindFilter"
         :total-items="workBacklog.totalItems"
         @change-page="emit('change-work-items-page', $event)"
         @refresh="emit('refresh-work-items', $event)"
@@ -153,9 +156,10 @@ import { translate } from '../i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import { IconClockHour8, IconFolder, IconGripVertical, IconSearch, IconSortAZ, IconStar, IconStarFilled } from '@tabler/icons-vue';
 import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, WorkItem, WorkSource } from '@workspace/core/contracts';
-import { workItemAssignmentKey } from '@workspace/core/work-assignments';
+import type { BacklogScope } from './use-cockpit-backlog';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { ExternalLinkIcon } from '../shared/icons/app-icons';
+import BacklogShortcutIcon from './BacklogShortcutIcon.vue';
 import CockpitWorkInbox from './CockpitWorkInbox.vue';
 import BacklogSourceSelector from './BacklogSourceSelector.vue';
 import AppMenuChip from '../shared/menu/AppMenuChip.vue';
@@ -167,7 +171,7 @@ type CockpitWorkBacklog = {
   assignments: Record<string, WorkBacklogAssignment>;
   connection: WorkIntegrationConnection;
   error: string | null;
-  globalScope: 'assignedToMe' | 'all' | null;
+  globalScope: BacklogScope | null;
   items: WorkItem[];
   page?: number;
   pageLoading?: boolean;
@@ -184,8 +188,6 @@ type CockpitWorkBacklog = {
 type WorkItemAssignmentIntent = { item: WorkItem; teamId?: string };
 type InboxView = 'all' | 'backlog' | 'wip' | 'focus';
 type RepositorySortMode = 'recent' | 'alphabetical';
-type SummaryFilter = 'inProgress' | 'blocked' | 'readyForReview';
-type SummaryMetric = { count: number; filter: SummaryFilter; id: 'working' | 'blocked' | 'review'; label: string; view: InboxView };
 
 const props = defineProps<{
   workProvider?: import('@workspace/core/contracts').WorkProviderKind;
@@ -211,7 +213,7 @@ const emit = defineEmits<{
   'assign-work-item': [payload: { agentId: string; item: WorkItem }];
   'refresh-work-items': [repositoryId: string | null];
   'change-work-items-page': [page: number];
-  'select-global-scope': [scope: 'assignedToMe' | 'all'];
+  'select-global-scope': [scope: BacklogScope];
   'select-work-repository': [repositoryId: string | null];
   'select-work-assignee': [assigneeLogin: string | null];
   'select-work-tag': [tagName: string | null];
@@ -232,11 +234,11 @@ watch(() => props.workProvider, () => {
   favoriteReorder.onDragEnd();
 });
 const activeWorkView = ref<InboxView>('focus');
-const activeSummaryFilter = ref<SummaryFilter | null>(null);
+const kindFilter = ref<Array<'issue' | 'pullRequest'>>([]);
 watch(() => `${props.workProvider}:${props.workBacklog?.selectedRepositoryId}`, () => {
   searchQuery.value = '';
   repositoryFilter.value = '';
-  activeSummaryFilter.value = null;
+  if (props.workBacklog?.selectedRepositoryId) kindFilter.value = [];
 });
 const repositorySortMode = ref<RepositorySortMode>('recent');
 const repositorySortMenuItems = computed<AppMenuItem[]>(() => [
@@ -319,23 +321,38 @@ function moveFavorite(id: string, offset: -1 | 1, event: KeyboardEvent): void {
   void commitFavorites(next, event.currentTarget);
 }
 
-const visibleAssignments = computed(() => (props.workBacklog?.items ?? [])
-  .map((item) => props.workBacklog?.assignments[workItemAssignmentKey(item)])
-  .filter((assignment): assignment is WorkBacklogAssignment => Boolean(assignment)));
-const workSummary = computed(() => {
-  const assignments = visibleAssignments.value;
-  return {
-    working: assignments.filter((assignment) => assignment.status === 'inProgress').length,
-    blocked: assignments.filter((assignment) => assignment.status === 'blocked').length,
-    review: assignments.filter((assignment) => assignment.status === 'readyForReview').length,
-    wip: assignments.length,
-  };
-});
-const summaryMetrics = computed<SummaryMetric[]>(() => [
-  { id: 'working', label: translate('surface.cockpitView.working'), count: workSummary.value.working, filter: 'inProgress', view: 'wip' },
-  { id: 'blocked', label: translate('surface.cockpitView.blocked'), count: workSummary.value.blocked, filter: 'blocked', view: 'focus' },
-  { id: 'review', label: translate('surface.cockpitView.readyForReview'), count: workSummary.value.review, filter: 'readyForReview', view: 'focus' },
+const shortcuts = computed(() => [
+  { id: 'myIssues' as const, title: translate('surface.cockpitWorkInbox.issues'), subtitle: translate('backlogShortcuts.assignedToMe'), icon: 'issue' as const },
+  ...(workProviderDefinition(props.workProvider ?? 'github').pullRequests ? [
+    { id: 'reviewRequests' as const, title: translate(props.workProvider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests'), subtitle: translate('backlogShortcuts.awaitingMyReview'), icon: 'review' as const },
+    { id: 'myPullRequests' as const, title: translate(props.workProvider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests'), subtitle: translate('backlogShortcuts.createdByMe'), icon: 'pullRequest' as const },
+    { id: 'ownedWork' as const, title: translate('backlogShortcuts.work'), subtitle: translate(props.workProvider === 'gitlab' ? 'backlogShortcuts.inMyProjects' : 'backlogShortcuts.inMyRepositories'), icon: 'repository' as const },
+  ] : []),
+  { id: 'all' as const, title: translate('backlogShortcuts.allWork'), subtitle: translate(workProviderDefinition(props.workProvider ?? 'github').repositoryBacked ? 'backlogShortcuts.acrossRepositories' : 'backlogShortcuts.acrossSources'), icon: 'all' as const },
 ]);
+const activeShortcut = computed(() => {
+  const backlog = props.workBacklog;
+  if (!backlog || backlog.selectedRepositoryId || backlog.selectedAssigneeLogin || backlog.selectedTagName || searchQuery.value || activeWorkView.value !== 'all') return null;
+  const scope = backlog.globalScope;
+  const kind = scope === 'myIssues' ? 'issue' : scope === 'myPullRequests' || scope === 'reviewRequests' ? 'pullRequest' : null;
+  if (kind) return kindFilter.value.length === 1 && kindFilter.value[0] === kind ? scope : null;
+  return kindFilter.value.length === 0 ? scope : null;
+});
+let pendingShortcut: BacklogScope | null = null;
+watch(() => props.workBacklog?.globalScope, scope => {
+  if (scope && scope === pendingShortcut) { applyShortcut(scope); pendingShortcut = null; }
+});
+function selectShortcut(scope: BacklogScope): void {
+  pendingShortcut = scope;
+  if (scope === props.workBacklog?.globalScope) applyShortcut(scope);
+  emit('select-global-scope', scope);
+}
+function applyShortcut(scope: BacklogScope): void {
+  activeWorkView.value = 'all';
+  searchQuery.value = '';
+  kindFilter.value = scope === 'myIssues' ? ['issue'] : scope === 'myPullRequests' || scope === 'reviewRequests' ? ['pullRequest'] : [];
+}
+
 function selectAssignedAgent(agentId: string): void {
   const agent = agentsById.value.get(agentId);
   if (agent?.teamId) emit('select-agent', { agentId, teamId: agent.teamId });
@@ -349,11 +366,6 @@ function selectRepositorySortMode(mode: RepositorySortMode): void {
   repositorySortMode.value = mode;
 }
 
-function selectSummaryMetric(metric: SummaryMetric): void {
-  activeWorkView.value = metric.view;
-  activeSummaryFilter.value = metric.filter;
-}
-
 function repositoryActivityAt(repository: WorkSource): string {
   return repository.workItemsUpdatedAt ?? '';
 }
@@ -364,7 +376,7 @@ function repositoryDisplayName(repository: WorkSource): string {
 
 function selectWorkView(view: InboxView): void {
   activeWorkView.value = view;
-  activeSummaryFilter.value = null;
+
 }
 </script>
 
@@ -682,75 +694,75 @@ function selectWorkView(view: InboxView): void {
   font-size: var(--font-size-12);
 }
 
-.cockpit-view__summary {
-  width: min(100%, 640px);
+.cockpit-view__shortcuts {
+  width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-8);
-  margin-top: var(--space-8);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-6);
+  padding-block: var(--space-4);
 }
 
-.cockpit-view__summary button {
-  min-height: 82px;
+.cockpit-view__shortcuts button {
+  min-height: 72px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-4);
-  border: 1px solid
-    color-mix(in srgb, var(--metric-color) 30%, var(--color-border));
-  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: var(--radius-xl);
   padding: var(--space-8);
-  color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--metric-color) 5%, var(--color-surface));
+  color: var(--color-text);
+  background: var(--color-shell-main);
   font: inherit;
+  font-size: var(--font-size-16);
   font-weight: var(--font-weight-medium);
   text-align: left;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
-.cockpit-view__summary button:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--metric-color) 55%,
-    var(--color-border)
-  );
-  background: color-mix(in srgb, var(--metric-color) 9%, var(--color-surface));
+.cockpit-view__shortcut-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.cockpit-view__summary button[aria-pressed="true"] {
-  border-color: var(--metric-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--metric-color) 20%, transparent);
-  background: color-mix(in srgb, var(--metric-color) 12%, var(--color-surface));
+.cockpit-view__shortcut-copy strong {
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-20);
 }
 
-.cockpit-view__summary button > span {
+.cockpit-view__shortcut-copy > span {
   color: var(--color-text-muted);
-  font-size: var(--font-size-11);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
   line-height: var(--line-height-16);
 }
 
-.cockpit-view__summary strong {
-  color: var(--metric-color);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-28);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-32);
-  font-variant-numeric: tabular-nums;
+.cockpit-view__shortcuts button[aria-pressed="true"] .cockpit-view__shortcut-copy > span {
+  color: var(--color-primary);
 }
 
-.cockpit-view__summary button[data-tone="working"] {
-  --metric-color: var(--color-success);
+.cockpit-view__shortcuts button:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-low);
 }
 
-.cockpit-view__summary button[data-tone="blocked"] {
-  --metric-color: var(--color-warning);
+.cockpit-view__shortcuts button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.cockpit-view__summary button[data-tone="review"] {
-  --metric-color: var(--color-primary);
+.cockpit-view__shortcuts button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-shell-main));
+}
+
+@media (max-width: 1200px) {
+  .cockpit-view__shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cockpit-view__shortcuts:has(button:nth-child(5)) button:last-child { grid-column: 1 / -1; }
 }
 
 @media (max-width: 1050px) {

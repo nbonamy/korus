@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import WebKit
 
 /// Runs the companion engine (relay link, pairing, laptop calls) in a web view the person never sees,
@@ -97,7 +98,15 @@ final class EngineHost: NSObject, WKScriptMessageHandlerWithReply, WKScriptMessa
                     }
                 }
             }
-        case "vault.read": replyHandler(["value": Keychain.read(body["key"] as? String ?? "") as Any? ?? NSNull()], nil)
+        case "vault.read":
+            do {
+                let value = try Keychain.read(body["key"] as? String ?? "")
+                replyHandler(["value": value as Any? ?? NSNull()], nil)
+            } catch {
+                // Only the OS status is diagnostic metadata; keys and stored values stay private.
+                recordLifecycle("app.vault-read-failed", stage: String((error as? Keychain.ReadFailure)?.status ?? errSecDecode))
+                replyHandler(nil, "Protected storage is unavailable. Unlock your phone and try again.")
+            }
         case "vault.write": replyHandler(Keychain.write(body["key"] as? String ?? "", body["value"] as? String ?? ""), nil)
         case "vault.remove": Keychain.remove(body["key"] as? String ?? ""); replyHandler(true, nil)
         case "relay":

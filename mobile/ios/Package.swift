@@ -5,6 +5,8 @@ let package = Package(
     name: "CompanionDictation",
     platforms: [.macOS(.v14), .iOS("26.0")],
     targets: [
+        .target(name: "CompanionVault", path: "Sources/Engine", exclude: ["ChangesHost.swift", "EngineHost.swift", "EngineState.swift", "TranscriptHost.swift", "WebAssets.swift"], sources: ["Keychain.swift"]),
+        .testTarget(name: "CompanionVaultTests", dependencies: ["CompanionVault"], path: "Tests/Vault"),
         .target(name: "CompanionDiagnostics", path: "Sources/Diagnostics"),
         .testTarget(name: "CompanionDiagnosticsTests", dependencies: ["CompanionDiagnostics"], path: "Tests/Diagnostics"),
         .target(name: "CompanionUsage", path: "Sources/Usage"),
