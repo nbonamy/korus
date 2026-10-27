@@ -742,3 +742,20 @@ it("revokes authority while preview or delivery callbacks are stalled, rejecting
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it('accepts only desktop activity facts and delegates without sending or waiting for delivery', async () => {
+  const activity = vi.fn(() => new Promise<void>(() => {}));
+  const server = new AppBackendServer({
+    version: '1.2.3', snapshot: createTestSnapshot(), onEvent: () => {},
+    saveSnapshot: async () => {}, telemetryActivity: { activity },
+  });
+  try {
+    const call = (params?: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 1, method: backendMethods.telemetryActivity, params });
+    expect(await call()).toMatchObject({ result: null });
+    expect(activity).toHaveBeenCalledExactlyOnceWith();
+    for (const params of [42, [], 'PRIVATE_CANARY', { _clientId: 'companion' }, { _clientId: 'remote-controller' }, { body: 'PRIVATE_CANARY' }, { foreground: true }, { day: '2026-10-10' }]) expect(await call(params)).toHaveProperty('error');
+    expect(activity).toHaveBeenCalledTimes(1);
+    activity.mockRejectedValueOnce(new Error('private I/O failure'));
+    expect(await call()).toMatchObject({ result: null });
+  } finally { await server.close(); }
+});

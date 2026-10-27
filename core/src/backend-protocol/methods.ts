@@ -6,6 +6,7 @@ export const backendMethods = {
   browserExtensionPackages: 'browser/extensions/packages',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',
+  telemetryActivity: 'telemetry/activity',
   telemetryConsentGet: 'telemetry/consent/get',
   telemetryConsentChange: 'telemetry/consent/change',
   telemetryProfilePreview: 'telemetry/profile/preview',

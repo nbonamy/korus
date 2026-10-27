@@ -66,6 +66,8 @@ const mocks = vi.hoisted(() => ({
   automationRunAll: vi.fn(),
   serverEmitEvent: vi.fn(),
   serverClose: vi.fn(),
+  uploadOpen: vi.fn(), uploadStart: vi.fn(), uploadClose: vi.fn(), uploadActivity: vi.fn(),
+  uploadConsentChanged: vi.fn(), uploadSealedReport: vi.fn(),
   missionDeveloperInstructions: vi.fn(),
   createDefaultBackendDrivers: vi.fn(),
   createBackendDriver: vi.fn(),
@@ -79,6 +81,8 @@ vi.mock('@workspace/core/agent-chat-service', () => ({
   sendAgentPrompt: mocks.sendAgentPrompt,
 }));
 
+
+vi.mock('../telemetry/upload-service', () => ({ TelemetryUploadService: { open: mocks.uploadOpen } }));
 
 vi.mock('../state', () => ({
   backendHomeDir: mocks.backendHomeDir,
@@ -279,6 +283,7 @@ describe('daemon runtime', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.uploadOpen.mockResolvedValue({ start: mocks.uploadStart, close: mocks.uploadClose, activity: mocks.uploadActivity, consentChanged: mocks.uploadConsentChanged, sealedReport: mocks.uploadSealedReport });
     mocks.useRealDriverRpc = false;
     mocks.providerLifecycles = null;
     mocks.mcpOptions.length = 0;
@@ -351,6 +356,25 @@ describe('daemon runtime', () => {
       expect(claude.close).not.toHaveBeenCalled();
       expect(await updates.get('codex')).toMatchObject({ status: 'current', installedVersion: '1.1.0' });
     } finally { await updates?.close(); inspect.mockRestore(); upgrade.mockRestore(); }
+  });
+
+  it('owns exactly one local uploader and delegates consent, activity, sealed preview and shutdown', async () => {
+    const runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
+    expect(mocks.uploadOpen).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadStart).toHaveBeenCalledTimes(1);
+    const input = mocks.uploadOpen.mock.calls[0]![0];
+    const server = mocks.serverOptions[0] as { telemetryActivity: {activity(): Promise<void>}; telemetryConsent: import('../telemetry/consent-service').TelemetryConsentService };
+    expect(input.consent()).toStrictEqual(server.telemetryConsent.current());
+    await server.telemetryConsent.change('enable');
+    expect(mocks.uploadConsentChanged).toHaveBeenCalledWith(expect.objectContaining({ reason: 'enable' }));
+    await server.telemetryActivity.activity();
+    expect(mocks.uploadActivity).toHaveBeenCalledExactlyOnceWith();
+    requestClient.mockResolvedValueOnce({ focused: true });
+    expect(await input.foreground()).toBe(true);
+    expect(requestClient).toHaveBeenLastCalledWith(backendMethods.clientFocusGet, {});
+    await runtime.stop();
+    expect(mocks.uploadClose).toHaveBeenCalledTimes(1);
+    await server.telemetryConsent.change('reset');
   });
 
   it('constructs the runtime services and forwards client-owned operations', async () => {

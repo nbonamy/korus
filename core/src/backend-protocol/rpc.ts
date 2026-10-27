@@ -73,6 +73,7 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.telemetryActivity]: { params: undefined; result: null };
   [backendMethods.telemetryConsentGet]: { params: undefined; result: import('../telemetry-consent').TelemetryConsentView };
   [backendMethods.telemetryConsentChange]: { params: { action: import('../telemetry-consent').TelemetryConsentAction }; result: import('../telemetry-consent').TelemetryConsentView };
   [backendMethods.telemetryProfilePreview]: { params: { day: string }; result: import('../telemetry-consent').TelemetryProfilePreview };

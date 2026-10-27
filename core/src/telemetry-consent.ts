@@ -29,3 +29,6 @@ export type TelemetryDeliveryPort = {
   consentChanged(transition: TelemetryConsentTransition): Promise<void>;
   sealedReport(day: string): Promise<SealedTelemetryBody | null>;
 };
+
+/** Local desktop supplies an observed activity instant; no payload or timestamp. */
+export type TelemetryActivityPort = { activity(): Promise<void> };

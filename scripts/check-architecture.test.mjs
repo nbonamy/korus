@@ -15,6 +15,7 @@ const directories = [
   "electron/src/main",
   "electron/src/preload",
   "mobile/src",
+  "vue/src",
 ];
 
 async function checkFixture(files) {
@@ -141,6 +142,52 @@ test("telemetry projection and serialization cannot import delivery code or call
     "core/src/telemetry.ts",
     "backend/src/usage/telemetry-timer.ts",
     "backend/src/usage/telemetry-preview.ts",
+  ])
+    assert.ok(rejected.stderr.includes(file), rejected.stderr);
+});
+
+test("telemetry uploader ownership permits runtime composition and rejects alternate senders", async () => {
+  const accepted = await checkFixture({
+    "backend/src/runtime.ts":
+      "import { TelemetryUploadService } from './telemetry/upload-service';\nconst endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "backend/src/telemetry/upload-service.ts":
+      "import type { UsageService } from '../usage/usage-service';\nfetch(endpoint); setTimeout(wake, 1000);\n",
+    "electron/src/main/native.ts": "fetch(updateOrigin);\n",
+    "vue/src/components/TelemetryConsentPanel.vue":
+      '<script setup lang="ts">const example = "fetch()";</script>',
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "backend/src/telemetry/alternate.ts":
+      "import http from 'node:http';\nfetch(endpoint); setTimeout(send, 1000);\n",
+    "backend/src/claude/driver.ts":
+      "import { TelemetryUploadService } from '../telemetry/upload-service';\n",
+    "backend/src/codex/driver.ts":
+      "import type { DailyTelemetryPayload } from '@workspace/core/telemetry';\n",
+    "backend/src/telemetry/duplicate.ts":
+      "import { TelemetryUploadService } from './upload-service'; TelemetryUploadService.open({});\n",
+    "electron/src/main/app-controller.ts":
+      "class Controller { handleTelemetryActivity = () => fetch(endpoint); }\n",
+    "backend/src/server.ts":
+      "if (message.method === backendMethods.telemetryActivity) { fetch(endpoint); }\n",
+    "backend/src/telemetry/upload-service.ts":
+      "import { transport } from '../codex/transport';\n",
+    "electron/src/main/native.ts":
+      "const endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "vue/src/components/TelemetryConsentPanel.vue":
+      '<script setup lang="ts">fetch(endpoint); setTimeout(send, 1000);</script>',
+  });
+  assert.equal(rejected.status, 1, rejected.stderr);
+  for (const file of [
+    "backend/src/telemetry/alternate.ts",
+    "backend/src/claude/driver.ts",
+    "backend/src/codex/driver.ts",
+    "backend/src/telemetry/duplicate.ts",
+    "electron/src/main/app-controller.ts",
+    "backend/src/server.ts",
+    "backend/src/telemetry/upload-service.ts",
+    "electron/src/main/native.ts",
+    "vue/src/components/TelemetryConsentPanel.vue",
   ])
     assert.ok(rejected.stderr.includes(file), rejected.stderr);
 });

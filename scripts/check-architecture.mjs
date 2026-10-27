@@ -10,6 +10,7 @@ const areas = [
   ["electron/src/main", "electron-main"],
   ["electron/src/preload", "preload"],
   ["mobile/src", "mobile"],
+  ["vue/src", "renderer"],
 ];
 
 const violations = [];
@@ -18,7 +19,15 @@ for (const [directory, area] of areas) {
   for (const file of await sourceFiles(path.join(root, directory))) {
     const source = ts.createSourceFile(
       file,
-      await readFile(file, "utf8"),
+      file.endsWith(".vue")
+        ? [
+            ...(await readFile(file, "utf8")).matchAll(
+              /<script\b[^>]*>([\s\S]*?)<\/script>/g,
+            ),
+          ]
+            .map((match) => match[1])
+            .join("\n")
+        : await readFile(file, "utf8"),
       ts.ScriptTarget.Latest,
       true,
     );
@@ -29,33 +38,39 @@ for (const [directory, area] of areas) {
           `${path.relative(root, file)}: ${specifier} (${forbidden})`,
         );
     }
-    if (isTelemetryProjection(file) || isTelemetryConsent(file)) {
-      const forbiddenGlobals = new Set([
-        "fetch",
-        "XMLHttpRequest",
-        "WebSocket",
-        "EventSource",
-        "setTimeout",
-        "setInterval",
-        "setImmediate",
-      ]);
+    if (isTelemetryProjection(file) || isTelemetryCaller(file)) {
+      checkTelemetryCalls(source, file);
+    } else {
+      // Mixed owners (server/Electron) may have unrelated timers/network. Check
+      // only their named telemetry handlers and protocol branches.
       const visit = (node) => {
-        if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
-          const expression = node.expression;
-          const name = ts.isIdentifier(expression)
-            ? expression.text
-            : ts.isPropertyAccessExpression(expression)
-              ? expression.name.text
-              : null;
-          if (forbiddenGlobals.has(name))
-            violations.push(
-              `${path.relative(root, file)}: ${name} (telemetry projection cannot send or schedule delivery)`,
-            );
-        }
-        ts.forEachChild(node, visit);
+        const namedHandler =
+          (ts.isPropertyDeclaration(node) ||
+            ts.isMethodDeclaration(node) ||
+            ts.isFunctionDeclaration(node)) &&
+          node.name &&
+          /telemetry/i.test(node.name.getText(source));
+        const protocolBranch =
+          ts.isIfStatement(node) && mentionsTelemetry(node.expression);
+        if (namedHandler) checkTelemetryCalls(node, file);
+        else if (protocolBranch) checkTelemetryCalls(node.thenStatement, file);
+        else ts.forEachChild(node, visit);
       };
       visit(source);
     }
+    const visit = (node) => {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "APP_TELEMETRY_ENDPOINT" &&
+        path.relative(root, file).split(path.sep).join("/") !==
+          "backend/src/runtime.ts"
+      )
+        violations.push(
+          `${path.relative(root, file)}: telemetry endpoint belongs to runtime composition only`,
+        );
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
   }
 }
 
@@ -73,7 +88,7 @@ async function sourceFiles(directory) {
       if (entry.name === "__tests__") return [];
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(fullPath);
-      return entry.isFile() && /\.[cm]?tsx?$/.test(entry.name)
+      return entry.isFile() && /(?:\.[cm]?tsx?|\.vue)$/.test(entry.name)
         ? [fullPath]
         : [];
     }),
@@ -119,7 +134,90 @@ function moduleSpecifiers(source) {
   return specifiers;
 }
 
+function mentionsTelemetry(node) {
+  if (ts.isPropertyAccessExpression(node) && /telemetry/i.test(node.name.text))
+    return true;
+  return ts.forEachChild(node, mentionsTelemetry) === true;
+}
+
+function checkTelemetryCalls(node, file) {
+  const forbidden = new Set([
+    "fetch",
+    "XMLHttpRequest",
+    "WebSocket",
+    "EventSource",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
+  ]);
+  const visit = (node) => {
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const expression = node.expression;
+      const name = ts.isIdentifier(expression)
+        ? expression.text
+        : ts.isPropertyAccessExpression(expression)
+          ? expression.name.text
+          : null;
+      if (forbidden.has(name))
+        violations.push(
+          `${path.relative(root, file)}: ${name} (telemetry callers cannot send or schedule delivery)`,
+        );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(node);
+}
+
 function forbiddenImport(area, file, specifier) {
+  const relative = path.relative(root, file).split(path.sep).join("/");
+  if (
+    /^backend\/src\/(codex|claude|antigravity|pricing)\//.test(relative) &&
+    specifier.includes("telemetry")
+  )
+    return "provider and pricing code cannot depend on telemetry";
+  if (
+    (specifier.endsWith("/telemetry/upload-service") ||
+      (specifier.startsWith(".") &&
+        path
+          .resolve(path.dirname(file), specifier)
+          .replace(/\.[cm]?[jt]s$/, "") ===
+          path.join(root, "backend/src/telemetry/upload-service"))) &&
+    relative !== "backend/src/runtime.ts"
+  )
+    return "only local runtime composes TelemetryUploadService";
+  if (
+    relative === "backend/src/telemetry/upload-service.ts" &&
+    ![
+      "node:crypto",
+      "node:fs/promises",
+      "node:path",
+      "@workspace/core/telemetry",
+      "@workspace/core/telemetry-consent",
+      "@workspace/core/usage",
+      "../usage/usage-service",
+    ].includes(specifier)
+  )
+    return "telemetry uploader consumes only the allowlisted ledger and consent contracts";
+  if (
+    isTelemetryCaller(file) &&
+    [
+      "node:http",
+      "node:https",
+      "node:net",
+      "node:tls",
+      "node:timers",
+      "http",
+      "https",
+      "net",
+      "tls",
+      "timers",
+      "undici",
+      "axios",
+      "electron",
+    ].some((name) => isPackage(specifier, name))
+  )
+    return "telemetry callers cannot import an alternate transport or scheduler";
+
   if (
     isTelemetryConsent(file) &&
     ![
@@ -228,6 +326,14 @@ function forbiddenImport(area, file, specifier) {
     return "preload cannot use raw filesystem or process APIs";
   }
   return null;
+}
+
+function isTelemetryCaller(file) {
+  const relative = path.relative(root, file).split(path.sep).join("/");
+  return (
+    relative !== "backend/src/telemetry/upload-service.ts" &&
+    /telemetry/i.test(relative)
+  );
 }
 
 function isTelemetryConsent(file) {

@@ -112,6 +112,7 @@ export type AppBackendServerOptions = {
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
+  telemetryActivity?: import('@workspace/core/telemetry-consent').TelemetryActivityPort;
   telemetryConsent?: import('./telemetry/consent-service').TelemetryConsentService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   conversationSharing?: ConversationSharingOptions;
@@ -938,6 +939,12 @@ export class AppBackendServer {
       try {
         return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
+    }
+    if (message.method === backendMethods.telemetryActivity) {
+      if (clientId !== 'desktop' || (message.params !== undefined && !isRecord(message.params)) || (params && Object.keys(params).length) || !this.options.telemetryActivity) return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Desktop activity unavailable.');
+      // App actions never wait for queue persistence, sealing or network delivery.
+      void this.options.telemetryActivity.activity().catch(() => undefined);
+      return createAppRpcResult(message.id, null);
     }
     if ([backendMethods.telemetryConsentGet, backendMethods.telemetryConsentChange, backendMethods.telemetryProfilePreview].some(method => method === message.method)) {
       try {

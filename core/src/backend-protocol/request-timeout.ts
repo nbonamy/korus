@@ -21,6 +21,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentClosePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.telemetryActivity]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryConsentGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryConsentChange]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.telemetryProfilePreview]: IO_REQUEST_TIMEOUT_MS,

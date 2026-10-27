@@ -982,14 +982,49 @@ identity or eligibility override. One shared panel supplies onboarding, upgrade
 and Settings copy. Web and companion clients do not expose these profile actions.
 
 The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
-send, schedule or manage a queue. The delivery owner must cancel/purge on disable
-and reset, recover consent before restoring pending work, and recheck synchronous
-`current()` authority before each attempt. Revocation becomes visible in memory
-as soon as revocation is requested, including while an earlier callback is pending.
-Preview I/O does not hold the mutation lock, and obsolete preview results are
-rejected after a transition. Cancellation is requested even when saving fails.
-Failed actions remain visible and explicit opt-out retries delegate again.
-Durable opt-out still requires a successful local write.
+send, schedule or manage a queue. One backend `TelemetryUploadService` per local
+installation runtime owns sealing, the private durable queue, telemetry HTTP,
+acknowledgements, retry timers and cancellation. It consumes only the local
+allowlisted ledger projection and synchronous `current()` consent authority. Web
+hosts do not instantiate it; remote ledgers and mobile companions cannot supply
+activity or reporting data. Electron signals observed open/focus/resume activity
+through the desktop-only protocol. During periodic maintenance and at UTC midnight
+the service also confirms foreground activity with the desktop. A disconnected
+client or background daemon cannot create active days or fill unobserved gaps.
+
+Delivery state is bound to both UUID and eligibility interval. It retains at most
+the current day and seven completed days, including sealed bytes after success
+for exact preview and replay prevention. Queue writes are atomic and private;
+attempts are recorded before transport. Restart preserves frozen bodies and the
+six-attempt budget. A lost acknowledgement may cause identical physical retries;
+success never causes a fresh projection. Late ledger corrections do not alter a
+seal. Expired activity is discarded even when it ages out during a ledger read.
+Corrupt state fails closed rather than reconstructing already-sealed history.
+
+No configured `APP_TELEMETRY_ENDPOINT` means no requests, discovery or health
+checks. Its value is supplied outside Git; HTTPS is required except for explicit
+loopback HTTP test receivers. Requests have a ten-second deadline, no credentials
+or provider headers, and no redirect following. Network failures, 408, 429 and 5xx
+retry with bounded jittered backoff and a capped Retry-After; other responses end
+the report. Bodies and response contents never enter logs. App actions do not
+wait for telemetry work or present delivery failures.
+
+Disable/reset abort transport, cancel the timer and purge activity/pending work
+without waiting for ledger reads or acknowledgement. Revocation becomes visible
+in memory as soon as requested, including while an earlier consent callback is
+pending. Every await before sending is followed by an authority/interval guard;
+obsolete work cannot restore a purged report. Preview I/O does not hold the consent
+mutation lock, and obsolete preview results are rejected after a transition.
+Cancellation is requested even when saving consent fails. Failed user actions
+remain visible; durable opt-out still requires a successful local consent write.
+
+The uploader workflow uses temporary real SQLite/private files, fake time and a
+loopback HTTP receiver. Repeat with
+`npm run test -w @workspace/backend -- telemetry/__tests__/upload-service.spec.ts`.
+Set `TELEMETRY_TEST_EVIDENCE` to an untracked output file to retain the off/on trace
+and exact retry body. This proves local transport behavior, not production
+infrastructure privacy. Dependency/AST lint isolates telemetry callers from
+transport/timers and allows only runtime composition of the upload service.
 
 Profile preview resolves identity/eligibility inside the backend. Off and
 pre-interval previews are explicitly hypothetical and cannot enqueue history. An
