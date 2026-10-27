@@ -155,6 +155,8 @@ const props = withDefaults(defineProps<{
   collapseAllSignal?: number;
   error?: string | null;
   expandAllSignal?: number;
+  /** Limits the visible files without changing the loaded patch. */
+  fileKindFilter?: FileKind | null;
   /** With a new `focusSequence`, opens only this group (once its files are loaded) and folds the others. */
   focusKind?: FileKind | null;
   focusSequence?: number;
@@ -167,6 +169,7 @@ const props = withDefaults(defineProps<{
   collapseAllSignal: 0,
   error: null,
   expandAllSignal: 0,
+  fileKindFilter: null,
   focusKind: null,
   focusSequence: 0,
   groupByKind: false,
@@ -233,7 +236,9 @@ const parsed = computed(() => {
   }
 });
 
-const files = computed(() => parsed.value.files);
+const files = computed(() => props.fileKindFilter
+  ? parsed.value.files.filter(file => classifyFile(file.fullPath) === props.fileKindFilter)
+  : parsed.value.files);
 const parseError = computed(() => parsed.value.error);
 const groups = computed<Array<{ kind: FileKind | null; files: DiffFileView[]; addedLines: number; removedLines: number }>>(() => {
   if (!props.groupByKind) return [{ kind: null, files: files.value, addedLines: 0, removedLines: 0 }];
