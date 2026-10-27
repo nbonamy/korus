@@ -1056,7 +1056,7 @@ describe('AppShell workspace and plans', () => {
     expect(previewAgentFile).toHaveBeenCalledWith('agent-dina', 'src/main.ts');
     expect(wrapper.find('.source-preview-panel').exists()).toBe(true);
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Review', 'main.ts']);
-    expect(wrapper.html()).toContain('shiki');
+    expect(wrapper.find('.source-preview-panel pre code .line span[style]').exists()).toBe(true);
     expect(wrapper.text()).toContain('answer');
 
     await wrapper.setProps({
