@@ -1121,3 +1121,114 @@ status/count evidence. The workflow checks concurrent replacement across server
 instances, rollback/connection loss, lost acknowledgements, exact limits, bounded
 admission and retention of old accepted history. The executable build test also
 proves operator-secret canaries do not enter the generated bundle.
+
+### Telemetry container operations
+
+`backend/telemetry-stack/compose.yaml` runs a separate collector, private PostgreSQL
+18 database, migration/grant jobs, backup worker and minimal routing proxy. No
+service joins the companion relay. Only the proxy publishes a port, bound to an
+operator-supplied private interface behind an HTTPS edge. Database and collector
+networks are internal; the proxy has no database-network membership. PostgreSQL
+uses a project-scoped named volume mounted at its versioned data-directory parent.
+Restart policies, memory/CPU/process limits and health gates bound the stack.
+The collector handles database restarts; Compose also restarts it after explicit
+database restart operations. Health failures require operator monitoring; Compose
+restart policies alone do not restart a running unhealthy process.
+
+Build the image with `node scripts/package-telemetry.mjs <local-image-tag>`. Its
+temporary Docker context contains only the standalone bundle, runtime adapter and
+Dockerfile. The checkout, dependency tree, environment files and operator inputs
+are not sent to Docker. Node, PostgreSQL and nginx base images are digest pinned;
+review supported versions/security updates before deployment. The collector image
+runs without root, capabilities or a writable root filesystem. No credentials,
+external routes, TLS material or operator configuration are image layers.
+
+Copy `backend/telemetry-stack/operator.env.example` to an operator-managed location
+outside Git and replace every placeholder. Select a unique Compose project name,
+an unused private container subnet, and distinct collector/proxy addresses within
+it. Reserve both addresses for this stack. Supply distinct random database-role
+passwords as newline-terminated secret files, a private dashboard htpasswd file,
+the reviewed console build directory, and a trusted-edge nginx include. Keep their
+parent directory owner-only. Compose file-backed secrets retain host permissions:
+make the mounted files readable by their receiving container UID without opening
+the parent directory to other host users. The backup directory must be writable
+by the PostgreSQL image UID/GID (70:70), mode 0700, and reside on protected storage.
+Do not store these inputs, resolved Compose output, archives or inventories in Git.
+Ordinary Compose file secrets are bind mounts, not an encrypted secret store.
+
+Use `docker compose --env-file <external-env-file> -p <isolated-project> -f
+backend/telemetry-stack/compose.yaml config` to review the resolved deployment
+privately, then `up -d --wait` with the same options. Startup waits for database
+readiness, applies versioned migrations under `telemetry_migrate`, then grants only
+required table operations before admitting HTTP. Ingestion cannot create schema,
+delete active days, change registry history or read migration state. The backup
+role has SELECT only; the reserved dashboard role has SELECT only on data tables.
+The migration role has no cluster/role creation or superuser capability. Bootstrap
+roles run only for a new data volume: replacing a password file does not rotate a
+database role password. Perform role credential rotation privately and coordinate
+all consumers. Schema upgrades require rerunning migrations and grants explicitly
+with the new image before restarting ingestion; `up` reruns completed jobs.
+
+The proxy accepts only the ingestion route on the configured API host and serves
+the separate console host behind server-side basic authentication. This is an
+internal HTTP hop, never a public cleartext listener. The external HTTPS edge must
+preserve the virtual host and securely convey client addresses. Its private nginx
+include must trust only the actual TLS-edge peer ranges using `set_real_ip_from`,
+`real_ip_header` and an appropriate `real_ip_recursive` setting; never trust all
+peers. An empty include is suitable only when the proxy receives the source
+connection directly. The proxy replaces forwarding headers and strips cookies,
+authorization and user-agent before ingestion. The collector trusts only this
+stack's explicit proxy address. Aggregate API routing/access remains a separate
+read-service boundary; the ingestion proxy rejects every other API route.
+
+There are no access logs, persisted container stdout/stderr logs, request caches
+or disk-buffered ingestion bodies. PostgreSQL statement/parameter/connection logs
+and extensions are disabled; nginx access/error logging is disabled globally.
+Health checks use configuration/readiness only and produce no request records.
+The database and backups intentionally contain installation UUIDs and numeric
+rollups, never source addresses or conversation content. Container log suppression
+trades diagnostic detail for privacy: monitor health/exit state, backup freshness,
+disk capacity and bounded aggregate counters without exporting request details.
+Do not enable packet capture, debug logs, SQL audit extensions or request tracing
+on this route in production.
+
+Before Ship, privately verify the effective database configuration, HTTPS edge,
+upstream CDN/WAF/security/access logs, crash/support collectors and their backups.
+They must retain no source addresses, headers, request bodies, URL identifiers or
+queries for this telemetry path. Confirm direct collector/database ports are
+unreachable and the private console cannot bypass authentication. Verify Docker
+capacity, image provenance, filesystem permissions, TLS, routing and restore
+monitoring in that environment. Local containers prove only the supplied stack;
+production no-IP-storage verification remains a separate Ship precondition.
+
+The backup worker makes consistent custom-format `pg_dump` archives daily and
+checks seven-day expiry hourly, including when dumps fail. A copy expires at
+604800 seconds; the sweep removes it on the next hourly check. Dumps have a
+ten-minute wall deadline and bounded database queries. Only successful dumps are
+atomically published, with private file permissions; stale partial dumps expire
+as well. Health becomes unhealthy if rotation or successful backup is overdue.
+Archive timestamps describe backup creation, never a data-retention cutoff:
+accepted daily rollups and the installation registry stay indefinitely in primary
+storage and every complete backup. All replicas, snapshots and off-host archive
+copies must apply the same seven-day expiry, including while this worker is down.
+Operator monitoring must catch a stopped worker or failed deletion. No script
+truncates live history. These daily logical backups have up to one day of data
+loss; they do not provide continuous WAL recovery.
+
+Run `docker compose ... run --rm backup once` for an on-demand archive and
+`docker compose ... run --rm backup rotate` for immediate expiry. Restore only a
+trusted archive from the same service: PostgreSQL restore can execute SQL authored
+by the source database owner. Create a separate empty recovery database owned by
+`telemetry_migrate`, then run `docker compose ... run --rm -e
+PGDATABASE=<recovery-database> restore <archive-name>`. The restore refuses the
+primary database and nonempty destinations, restores in one transaction with
+original owners/ACLs omitted, and never changes the primary snapshot. Validate
+counts/aggregates and oldest retained days before any separately authorized
+recovery cutover. Reapply grants before serving a recovered database; restoration
+must not resurrect expired backup copies in other storage.
+
+`node --test scripts/telemetry-stack.test.mjs` builds the real isolated image and
+exercises the disposable Compose stack, role denials, HTTP through nginx,
+restart/recreation persistence, exact expiry boundaries, failed dumps and isolated
+restore including old history. It removes its containers, networks and volumes.
+Set `TELEMETRY_STACK_EVIDENCE` to an untracked output file for sanitized results.

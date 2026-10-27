@@ -48,7 +48,8 @@
         "src/collector/main.ts",
         "src/companion/relay-main.ts",
         "src/companion/__tests__/live-harness.ts",
-        "src/companion/__tests__/desktop-guest-owner.ts"
+        "src/companion/__tests__/desktop-guest-owner.ts",
+        "telemetry-stack/container.mjs"
       ]
     },
     "mobile": {

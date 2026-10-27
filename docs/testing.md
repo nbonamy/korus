@@ -22,7 +22,11 @@ Its backend workflows exercise actual HTTP and disposable real PostgreSQL, never
 SQLite or a database fake. Docker must be running for backend test/coverage gates;
 the fixture starts and removes its own temporary container and never contacts an
 operator database. Collector build tests inspect generated artifacts for external
-configuration canaries, rather than asserting production source text.
+configuration canaries, rather than asserting production source text. The
+telemetry-stack script workflow also builds an isolated image and exercises real
+Compose services, persistent volumes, role grants, proxy routing and backup/restore.
+It runs in the normal script test gate and requires local Docker; it never uses an
+operator environment file or database.
 
 Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
 their conversations from the persisted fixture identity and rejects provider
