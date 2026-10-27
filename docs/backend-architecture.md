@@ -970,8 +970,11 @@ empty active day.
 
 The private per-profile `telemetry.json` is initialized before runtime services. A
 cryptographic UUID v4 exists independently from consent. Missing state is off;
-malformed state fails closed. Atomic owner-readable writes keep consent, the
-next-UTC-day eligibility boundary, and the first-notice marker separate. Decline,
+malformed, unreadable or unwritable state makes profile telemetry unavailable for
+that runtime without blocking normal startup. No uploader starts without loaded
+consent authority; a failed file is not overwritten to manufacture consent.
+Atomic owner-readable writes keep consent, the next-UTC-day eligibility boundary,
+and the first-notice marker separate. Decline,
 dismissal and reset consume the notice; reset replaces identity, clears eligibility
 and requires another affirmative choice. Repeated opt-in preserves its interval.
 

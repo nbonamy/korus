@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => ({
   serverClose: vi.fn(),
   uploadOpen: vi.fn(), uploadStart: vi.fn(), uploadClose: vi.fn(), uploadActivity: vi.fn(),
   uploadConsentChanged: vi.fn(), uploadSealedReport: vi.fn(),
+  telemetryWriteFailure: false,
   missionDeveloperInstructions: vi.fn(),
   createDefaultBackendDrivers: vi.fn(),
   createBackendDriver: vi.fn(),
@@ -83,6 +84,15 @@ vi.mock('@workspace/core/agent-chat-service', () => ({
 
 
 vi.mock('../telemetry/upload-service', () => ({ TelemetryUploadService: { open: mocks.uploadOpen } }));
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
+    if (mocks.telemetryWriteFailure && typeof args[0] === 'string' && path.basename(args[0]).startsWith('telemetry.json.'))
+      throw Object.assign(new Error('Private state is unwritable'), { code: 'EACCES' });
+    return actual.writeFile(...args);
+  } };
+});
 
 vi.mock('../state', () => ({
   backendHomeDir: mocks.backendHomeDir,
@@ -283,6 +293,7 @@ describe('daemon runtime', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.telemetryWriteFailure = false;
     mocks.uploadOpen.mockResolvedValue({ start: mocks.uploadStart, close: mocks.uploadClose, activity: mocks.uploadActivity, consentChanged: mocks.uploadConsentChanged, sealedReport: mocks.uploadSealedReport });
     mocks.useRealDriverRpc = false;
     mocks.providerLifecycles = null;
@@ -356,6 +367,40 @@ describe('daemon runtime', () => {
       expect(claude.close).not.toHaveBeenCalled();
       expect(await updates.get('codex')).toMatchObject({ status: 'current', installedVersion: '1.1.0' });
     } finally { await updates?.close(); inspect.mockRestore(); upgrade.mockRestore(); }
+  });
+
+  it.each(['malformed', 'directory', 'unwritable'] as const)('starts normal services with telemetry unavailable when private state is %s', async failure => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'runtime-private-state-'));
+    const file = path.join(dir, 'telemetry.json');
+    mocks.backendHomeDir.mockReturnValue(dir);
+    vi.stubEnv('APP_TELEMETRY_ENDPOINT', failure === 'malformed' ? '' : 'https://collector.invalid/v1/telemetry/daily');
+    let runtime: Awaited<ReturnType<typeof createDaemonRuntime>> | undefined;
+    try {
+      if (failure === 'malformed') await writeFile(file, '{broken');
+      if (failure === 'directory') await mkdir(file);
+      // Inject only the failed initial private-state write; other filesystem I/O
+      // stays real, independent of the runner's UID/permission bypass privileges.
+      mocks.telemetryWriteFailure = failure === 'unwritable';
+      runtime = await createDaemonRuntime({ emitEvent, requestClient, version: '1.2.3' });
+      expect(mocks.initializeProviderSetup).toHaveBeenCalledOnce();
+      expect(mocks.mcpStart).toHaveBeenCalledOnce();
+      expect(mocks.schedulerStart).toHaveBeenCalledOnce();
+      expect(mocks.uploadOpen).not.toHaveBeenCalled();
+      expect(mocks.uploadStart).not.toHaveBeenCalled();
+      expect(mocks.serverOptions[0]).toMatchObject({ telemetryConsent: undefined, telemetryActivity: undefined });
+      if (failure === 'malformed') expect(await readFile(file, 'utf8')).toBe('{broken');
+      if (failure === 'directory') expect((await stat(file)).isDirectory()).toBe(true);
+      if (failure === 'unwritable') await expect(readFile(file)).rejects.toMatchObject({ code: 'ENOENT' });
+      await runtime.stop();
+      runtime = undefined;
+      expect(mocks.serverClose).toHaveBeenCalledOnce();
+      expect(mocks.uploadClose).not.toHaveBeenCalled();
+    } finally {
+      await runtime?.stop();
+      mocks.telemetryWriteFailure = false;
+      vi.unstubAllEnvs();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('owns exactly one local uploader and delegates consent, activity, sealed preview and shutdown', async () => {

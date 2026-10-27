@@ -86,7 +86,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
       consentChanged: transition => telemetryUpload?.consentChanged(transition) ?? Promise.resolve(),
       sealedReport: day => telemetryUpload?.sealedReport(day) ?? Promise.resolve(null),
     },
-  });
+  }).catch(() => undefined); // Optional telemetry must never prevent normal startup.
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
   const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
@@ -148,7 +148,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const localUsage = new UsageLedger(path.join(backendHomeDir(), 'usage.sqlite'));
   await localUsage.load();
   const usage = new UsageService(localUsage, id => snapshot.agents.find(a => a.id === id));
-  if (process.env.APP_HOST !== 'web') {
+  if (telemetryConsent && process.env.APP_HOST !== 'web') {
     telemetryUpload = await TelemetryUploadService.open({
       file: path.join(backendHomeDir(), 'telemetry-delivery.json'),
       consent: () => telemetryConsent.current(), usage, version: options.version, platform: process.platform,
