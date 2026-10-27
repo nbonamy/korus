@@ -2,7 +2,7 @@ import { product } from '@workspace/core/product';
 import { EventEmitter } from 'node:events';
 import type { Socket } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
-import { getDaemonStatus, getResolvedDaemonVersion, installDaemon, setDaemonEnabled } from '../daemon-launch-agent';
+import { getDaemonStatus, getResolvedDaemonVersion, installDaemon, refreshDaemon, setDaemonEnabled } from '../daemon-launch-agent';
 
 describe('daemon launch agent', () => {
   it('buffers health responses and closes probes on malformed replies or timeout', async () => {
@@ -147,6 +147,28 @@ describe('daemon launch agent', () => {
       '-k',
       `gui/501/${product.appId}.daemon`,
     ]);
+  });
+
+  it('refreshes the installed LaunchAgent with endpoint additions and removals without inventing a default', async () => {
+    const env: NodeJS.ProcessEnv = { APP_BACKEND_COMMAND: 'node', APP_BACKEND_ARGS: '/app/daemon.mjs,--stdio', APP_HOME: '/test/home/profile' };
+    const writeFile = vi.fn().mockResolvedValue(undefined);
+    const execFile = vi.fn().mockResolvedValue({});
+    const deps = {
+      env, platform: 'darwin' as const, homedir: () => '/test/home', getuid: () => 501,
+      access: vi.fn().mockResolvedValue(undefined), connectSocket: healthySocket(),
+      mkdir: vi.fn().mockResolvedValue(undefined), writeFile, execFile,
+    };
+    await installDaemon(deps);
+    expect(writeFile.mock.lastCall![1]).not.toContain('APP_TELEMETRY_ENDPOINT');
+    env.APP_TELEMETRY_ENDPOINT = ' https://collector.invalid/v1/telemetry/daily ';
+    await refreshDaemon(deps);
+    const configuredPlist = writeFile.mock.lastCall![1] as string;
+    expect(configuredPlist).toContain('<key>APP_TELEMETRY_ENDPOINT</key>');
+    expect(configuredPlist).toContain('<string>https://collector.invalid/v1/telemetry/daily</string>');
+    delete env.APP_TELEMETRY_ENDPOINT;
+    await refreshDaemon(deps);
+    expect(writeFile.mock.lastCall![1]).not.toContain('APP_TELEMETRY_ENDPOINT');
+    expect(execFile.mock.calls.filter(([, args]) => args[0] === 'bootstrap')).toHaveLength(3);
   });
 
   it('resolves the packaged daemon version through the runtime command', async () => {

@@ -63,11 +63,13 @@ for (const [directory, area] of areas) {
       if (
         ts.isPropertyAccessExpression(node) &&
         node.name.text === "APP_TELEMETRY_ENDPOINT" &&
-        path.relative(root, file).split(path.sep).join("/") !==
-          "backend/src/runtime.ts"
+        ![
+          "backend/src/runtime.ts",
+          "electron/src/main/runtime-config.ts",
+        ].includes(path.relative(root, file).split(path.sep).join("/"))
       )
         violations.push(
-          `${path.relative(root, file)}: telemetry endpoint belongs to runtime composition only`,
+          `${path.relative(root, file)}: telemetry endpoint belongs to runtime configuration only`,
         );
       ts.forEachChild(node, visit);
     };
@@ -370,8 +372,9 @@ function forbiddenImport(area, file, specifier) {
 function isTelemetryCaller(file) {
   const relative = path.relative(root, file).split(path.sep).join("/");
   return (
-    relative !== "backend/src/telemetry/upload-service.ts" &&
-    /telemetry/i.test(relative)
+    relative === "electron/src/main/runtime-config.ts" ||
+    (relative !== "backend/src/telemetry/upload-service.ts" &&
+      /telemetry/i.test(relative))
   );
 }
 

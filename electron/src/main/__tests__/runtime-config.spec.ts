@@ -172,6 +172,16 @@ describe('runtime config', () => {
     });
   });
 
+  it.each([undefined, '   ', ' https://collector.invalid/v1/telemetry/daily '])('carries only an explicitly configured telemetry endpoint into serve mode: %s', async configured => {
+    const { runtimeDaemonServeCommand, runtimeDaemonCommand } = await import('../runtime-config');
+    const deps = { env: { APP_BACKEND_COMMAND: 'node', APP_TELEMETRY_ENDPOINT: configured }, homedir: () => '/test/home' };
+    for (const command of [runtimeDaemonCommand(deps), runtimeDaemonServeCommand(deps)]) {
+      expect(command).not.toBeNull();
+      if (configured?.trim()) expect(command!.env.APP_TELEMETRY_ENDPOINT).toBe(configured.trim());
+      else expect(command!.env).not.toHaveProperty('APP_TELEMETRY_ENDPOINT');
+    }
+  });
+
   it('does not silently use system Node when the packaged runtime is missing', async () => {
     const { runtimeDaemonCommand } = await import('../runtime-config');
 

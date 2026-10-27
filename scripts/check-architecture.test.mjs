@@ -185,6 +185,8 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
   const accepted = await checkFixture({
     "backend/src/runtime.ts":
       "import { TelemetryUploadService } from './telemetry/upload-service';\nconst endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "electron/src/main/runtime-config.ts":
+      "const endpoint = env.APP_TELEMETRY_ENDPOINT; const config = { APP_TELEMETRY_ENDPOINT: endpoint };\n",
     "backend/src/telemetry/upload-service.ts":
       "import type { UsageService } from '../usage/usage-service';\nfetch(endpoint); setTimeout(wake, 1000);\n",
     "electron/src/main/native.ts": "fetch(updateOrigin);\n",
@@ -209,6 +211,8 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
       "import { transport } from '../codex/transport';\n",
     "electron/src/main/native.ts":
       "const endpoint = process.env.APP_TELEMETRY_ENDPOINT;\n",
+    "electron/src/main/runtime-config.ts":
+      "fetch(env.APP_TELEMETRY_ENDPOINT);\n",
     "vue/src/components/TelemetryConsentPanel.vue":
       '<script setup lang="ts">fetch(endpoint); setTimeout(send, 1000);</script>',
   });
@@ -222,6 +226,7 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
     "backend/src/server.ts",
     "backend/src/telemetry/upload-service.ts",
     "electron/src/main/native.ts",
+    "electron/src/main/runtime-config.ts",
     "vue/src/components/TelemetryConsentPanel.vue",
   ])
     assert.ok(rejected.stderr.includes(file), rejected.stderr);

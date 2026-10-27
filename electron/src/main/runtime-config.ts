@@ -131,6 +131,7 @@ function runtimeDaemonEnv(deps: RuntimeDaemonConfigDeps): NodeJS.ProcessEnv {
   const githubClientId = env.APP_GITHUB_CLIENT_ID?.trim();
   const gitlabClientId = env.APP_GITLAB_CLIENT_ID?.trim();
   const linearClientId = env.APP_LINEAR_CLIENT_ID?.trim();
+  const telemetryEndpoint = env.APP_TELEMETRY_ENDPOINT?.trim();
   const runtimePath = !deps.env || env.PATH ? discoveredRuntimePath(deps) : '';
   const home = env.HOME?.trim() || (deps.homedir ?? homedir)();
 
@@ -142,6 +143,7 @@ function runtimeDaemonEnv(deps: RuntimeDaemonConfigDeps): NodeJS.ProcessEnv {
     ...(githubClientId ? { APP_GITHUB_CLIENT_ID: githubClientId } : {}),
     ...(gitlabClientId ? { APP_GITLAB_CLIENT_ID: gitlabClientId } : {}),
     ...(linearClientId ? { APP_LINEAR_CLIENT_ID: linearClientId } : {}),
+    ...(telemetryEndpoint ? { APP_TELEMETRY_ENDPOINT: telemetryEndpoint } : {}),
   };
 }
 
