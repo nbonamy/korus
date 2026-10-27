@@ -595,6 +595,18 @@ export const messages = {
       sendPromptPlaceholder: 'Send prompt…',
       workingPlaceholder: 'Working…',
     },
+    backlogShortcuts: {
+      label: 'Backlog shortcuts',
+      assignedToMe: 'Assigned to me',
+      awaitingMyReview: 'Awaiting my review',
+      createdByMe: 'Created by me',
+      work: 'Work',
+      allWork: 'All work',
+      inMyRepositories: 'In my repositories',
+      inMyProjects: 'In my projects',
+      acrossRepositories: 'Across repositories',
+      acrossSources: 'Across sources',
+    },
     backlogFavorites: {
       heading: 'Favorites',
       saveFailed: 'Could not save favorites. Please try again.',

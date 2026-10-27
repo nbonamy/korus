@@ -110,6 +110,8 @@ export type WorkItemQuery = {
 
 export type GlobalWorkItemQuery = WorkItemQuery & {
   assignment?: 'all' | 'viewer';
+  involvement?: 'author' | 'reviewer';
+  repositoryScope?: 'owned';
   cursor?: string;
   pageSize?: number;
 };

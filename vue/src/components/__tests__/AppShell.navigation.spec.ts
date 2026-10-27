@@ -555,6 +555,31 @@ describe('AppShell navigation and teams', () => {
       assignment: 'viewer', state: 'open', pageSize: 25,
     });
     expect(wrapper.findComponent({ name: 'CockpitWorkInbox' }).props('selectedAssigneeLogin')).toBeNull();
+    for (const [title, query] of [
+      ['Issues: Assigned to me', { assignment: 'viewer', kind: 'issue' }],
+      ['Pull requests: Created by me', { assignment: 'all', kind: 'pullRequest', involvement: 'author' }],
+      ['Work: In my repositories', { assignment: 'all', kind: 'all', repositoryScope: 'owned' }],
+      ['Pull requests: Awaiting my review', { assignment: 'all', kind: 'pullRequest', involvement: 'reviewer' }],
+    ] as const) {
+      await wrapper.get('[aria-label="Backlog shortcuts"]').findAll('button').find(button => button.attributes('aria-label') === title)!.trigger('click');
+      await flushPromises();
+      expect(loadGlobalWorkItems).toHaveBeenLastCalledWith('github', undefined, { ...query, state: 'open', pageSize: 25 });
+      expect(wrapper.get('[aria-label="Backlog shortcuts"] [aria-pressed="true"]').attributes('aria-label')).toBe(title);
+    }
+    await wrapper.get('[aria-label="Search work"]').trigger('click');
+    const search = wrapper.get('input.cockpit-inbox__search-input');
+    await search.setValue('browser');
+    expect(wrapper.find('[aria-label="Backlog shortcuts"] [aria-pressed="true"]').exists()).toBe(false);
+    await search.setValue('');
+    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce('cancel').mockResolvedValueOnce('confirm' as never);
+    const allWork = wrapper.get('[aria-label="Backlog shortcuts"]').findAll('button').find(button => button.attributes('aria-label') === 'All work: Across repositories')!;
+    await allWork.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Backlog shortcuts"] [aria-pressed="true"]').attributes('aria-label')).toBe('Pull requests: Awaiting my review');
+    await allWork.trigger('click');
+    await flushPromises();
+    expect(loadGlobalWorkItems).toHaveBeenLastCalledWith('github', undefined, { assignment: 'all', state: 'open', pageSize: 25 });
+    expect(wrapper.get('[aria-label="Backlog shortcuts"] [aria-pressed="true"]').attributes('aria-label')).toBe('All work: Across repositories');
   });
 
   it('automatically loads one global page after the user remembers that scope', async () => {

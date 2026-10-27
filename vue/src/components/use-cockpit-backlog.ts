@@ -16,7 +16,8 @@ type CockpitBacklogConfiguration = {
   sourceId: string | null;
   tagName: string | null;
 };
-type GlobalScope = 'assignedToMe' | 'all';
+export type BacklogScope = 'assignedToMe' | 'all' | 'myIssues' | 'myPullRequests' | 'reviewRequests' | 'ownedWork';
+const backlogScopes: BacklogScope[] = ['assignedToMe', 'all', 'myIssues', 'myPullRequests', 'reviewRequests', 'ownedWork'];
 type GlobalFeed = {
   error: string | null;
   page: number;
@@ -46,10 +47,14 @@ export function useCockpitBacklog(options: {
   let initialized = false;
   let contextRevision = 0;
   const pendingConfiguration = ref<CockpitBacklogConfiguration | null>(null);
-  const globalScope = ref<GlobalScope | null>(null);
-  const feeds = reactive<Record<GlobalScope, GlobalFeed>>({
+  const globalScope = ref<BacklogScope | null>(null);
+  const feeds = reactive<Record<BacklogScope, GlobalFeed>>({
     assignedToMe: emptyFeed(),
     all: emptyFeed(),
+    myIssues: emptyFeed(),
+    myPullRequests: emptyFeed(),
+    reviewRequests: emptyFeed(),
+    ownedWork: emptyFeed(),
   });
 
   const savedConfiguration = computed<CockpitBacklogConfiguration>(() => {
@@ -127,8 +132,7 @@ export function useCockpitBacklog(options: {
   async function selectRepository(sourceId: string | null): Promise<void> {
     const selectedProvider = provider.value;
     const revision = ++contextRevision;
-    feeds.all = emptyFeed();
-    feeds.assignedToMe = emptyFeed();
+    for (const scope of backlogScopes) feeds[scope] = emptyFeed();
     globalScope.value = sourceId ? null : 'assignedToMe';
     rememberSource(selectedProvider, sourceId);
     await configure({ sourceId, assigneeLogin: null, tagName: null });
@@ -138,7 +142,7 @@ export function useCockpitBacklog(options: {
   }
 
   async function selectAssignee(assigneeLogin: string | null): Promise<void> {
-    if (globalScope.value === 'assignedToMe' && !assigneeLogin) {
+    if ((globalScope.value === 'assignedToMe' || globalScope.value === 'myIssues') && !assigneeLogin) {
       globalScope.value = 'all';
       await ensureGlobalItems('all');
     }
@@ -163,7 +167,7 @@ export function useCockpitBacklog(options: {
     else if (globalScope.value) await loadGlobalItems(globalScope.value, 1, true);
   }
 
-  async function selectGlobalScope(scope: GlobalScope): Promise<void> {
+  async function selectGlobalScope(scope: BacklogScope): Promise<void> {
     const revision = contextRevision;
     if (scope === 'all' && !await options.confirmLoadAll()) return;
     if (revision !== contextRevision) return;
@@ -196,11 +200,11 @@ export function useCockpitBacklog(options: {
     }
   }
 
-  async function ensureGlobalItems(scope: GlobalScope): Promise<void> {
+  async function ensureGlobalItems(scope: BacklogScope): Promise<void> {
     if (feeds[scope].status === 'notLoaded') await loadGlobalItems(scope, 1);
   }
 
-  async function loadGlobalItems(scope: GlobalScope, page: number, force = false): Promise<void> {
+  async function loadGlobalItems(scope: BacklogScope, page: number, force = false): Promise<void> {
     const feed = feeds[scope];
     if (feed.pendingPage !== null) return;
     if (!force && feed.pages[page]) {
@@ -219,7 +223,10 @@ export function useCockpitBacklog(options: {
     const revision = contextRevision;
     try {
       const result = await options.loadGlobalWorkItems({
-        assignment: scope === 'assignedToMe' ? 'viewer' : 'all',
+        assignment: scope === 'assignedToMe' || scope === 'myIssues' ? 'viewer' : 'all',
+        ...(scope === 'myIssues' ? { kind: 'issue' as const } : {}),
+        ...(scope === 'myPullRequests' || scope === 'reviewRequests' ? { kind: 'pullRequest' as const, involvement: scope === 'myPullRequests' ? 'author' as const : 'reviewer' as const } : {}),
+        ...(scope === 'ownedWork' ? { kind: 'all' as const, repositoryScope: 'owned' as const } : {}),
         state: 'open',
         ...(page > 1 ? { cursor: feed.cursors[page] } : {}),
         pageSize: globalPageSize,
@@ -244,8 +251,7 @@ export function useCockpitBacklog(options: {
       ++contextRevision;
       try { window.localStorage.setItem('cockpitBacklogProvider', provider.value); } catch { /* Optional renderer preference. */ }
       pendingConfiguration.value = null;
-      feeds.all = emptyFeed();
-      feeds.assignedToMe = emptyFeed();
+      for (const scope of backlogScopes) feeds[scope] = emptyFeed();
       if (initialized) await initialize();
   });
 

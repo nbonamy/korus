@@ -772,8 +772,10 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
   API pages; global reads return opaque continuations bound to account and filters.
   The all-work feed walks accessible projects because GitLab.com restricts global
-  issue reads with `scope=all`. Assigned-to-me reads use the global API. Direct and
-  `glab` connections share this normalization and perform no native workflow writes.
+  issue reads with `scope=all`. Personal issue, author and reviewer filters apply
+  at the provider before pagination; these feeds use the global API. Owned-project
+  feeds enumerate explicitly owned projects. Direct and `glab` connections share
+  this normalization and perform no native workflow writes.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped

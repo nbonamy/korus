@@ -85,6 +85,27 @@ it('pages assigned global issues and MRs without truncation or reusing a cursor 
     expect((await manager.listAssignedItems('gitlab')).map(item => item.identifier)).toStrictEqual(['#7', '!7']);
   } finally { manager.close(); }
 });
+it('routes authored and review-requested merge requests through the protocol with native scopes', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/v4/projects') {
+      expect(url.searchParams.get('owned')).toBe('true');
+      return Response.json([{ path: 'repo', path_with_namespace: 'group/sub/repo', web_url: 'https://gitlab.com/group/sub/repo', visibility: 'private' }]);
+    }
+    expect(url.pathname.endsWith('/merge_requests')).toBe(true);
+    return Response.json([native('merge_requests')], { headers: { 'x-next-page': '2' } });
+  });
+  const { manager, snapshot } = await fixture();
+  const server = new AppBackendServer({ version: 'test', snapshot, workIntegrations: manager });
+  try {
+    for (const [filter, scope] of [[{ involvement: 'author' }, 'created_by_me'], [{ involvement: 'reviewer' }, 'reviews_for_me'], [{ repositoryScope: 'owned' }, 'all']] as const) {
+      const response = await server.handleMessage({ jsonrpc: '2.0', id: scope, method: 'workProvider/globalItems/list',
+        params: { provider: 'gitlab', query: { kind: 'pullRequest', ...filter, pageSize: 25 } } });
+      expect(response).toMatchObject({ result: { items: [{ identifier: '!7' }], nextCursor: expect.any(String) } });
+      expect(new URL(String(fetch.mock.calls.at(-1)![0])).searchParams.get('scope')).toBe(scope);
+    }
+  } finally { await server.close(); }
+});
 it('browses all accessible project work without the restricted GitLab.com global scope=all endpoint', async () => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
     const url = new URL(String(input));

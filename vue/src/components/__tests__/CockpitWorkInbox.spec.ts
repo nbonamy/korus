@@ -217,16 +217,28 @@ describe('CockpitWorkInbox', () => {
 
   it('filters by item type only when the provider has pull requests', async () => {
     const pullRequest = { ...item(31, 'Fix the parser', 'repo-one'), kind: 'pullRequest' as const };
-    const wrapper = mountInbox([item(30, 'Parser crashes', 'repo-one'), pullRequest]);
+    const offPage = item(99, 'Assignment outside this page', 'repo-two');
+    const wrapper = mountInbox([item(30, 'Parser crashes', 'repo-one'), pullRequest], {
+      [workItemAssignmentKey(pullRequest)]: assignment(pullRequest, 'agent-one', 'readyForReview'),
+      [workItemAssignmentKey(offPage)]: assignment(offPage, 'agent-two', 'blocked'),
+    });
+    const counts = () => wrapper.findAll('.cockpit-inbox__view-count').map(count => count.text());
+    expect(counts()).toStrictEqual(['2', '1', '1', '1']);
     await wrapper.findAll('.cockpit-inbox__views > button')[0]?.trigger('click');
     const typeFilter = () => wrapper.findAllComponents({ name: 'ElSelect' }).find((select) => select.attributes('aria-label') === 'Item type')!;
     expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(2);
     await typeFilter().vm.$emit('update:modelValue', ['pullRequest']);
     expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(1);
     expect(wrapper.text()).toContain('Fix the parser');
+    expect(counts()).toStrictEqual(['1', '0', '1', '1']);
     await typeFilter().vm.$emit('update:modelValue', ['issue']);
     expect(wrapper.text()).toContain('Parser crashes');
     expect(wrapper.text()).not.toContain('Fix the parser');
+    expect(counts()).toStrictEqual(['1', '1', '0', '0']);
+    await wrapper.findAll('.cockpit-inbox__views > button')[2]!.trigger('click');
+    expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(0);
+    expect(wrapper.text()).toContain('No work in WIP');
+    await wrapper.findAll('.cockpit-inbox__views > button')[0]!.trigger('click');
     await typeFilter().vm.$emit('update:modelValue', []);
     expect(wrapper.findAll('.cockpit-inbox__row')).toHaveLength(2);
 
@@ -305,7 +317,7 @@ describe('CockpitWorkInbox', () => {
     expect(wrapper.emitted('select-global-scope')).toStrictEqual([['assignedToMe'], ['all']]);
   });
 
-  it('shows the exact global total and requests numbered pages with arrows', async () => {
+  it('keeps the global total in pagination while tab counts reflect this page', async () => {
     const wrapper = mountInbox([item(21, 'First page work', 'repo-one')], {}, {
       activeView: 'all',
       globalScope: 'all',
@@ -317,7 +329,7 @@ describe('CockpitWorkInbox', () => {
 
     expect(wrapper.get('.cockpit-inbox__pagination').text()).toContain('11 items total');
     expect(wrapper.get('.cockpit-inbox__pagination').text()).toContain('Page 1');
-    expect(wrapper.findAll('.cockpit-inbox__view-count')[0]?.text()).toBe('11');
+    expect(wrapper.findAll('.cockpit-inbox__view-count')[0]?.text()).toBe('1');
     expect(wrapper.get<HTMLButtonElement>('[aria-label="Previous page"]').element.disabled).toBe(true);
     expect(wrapper.get<HTMLButtonElement>('[aria-label="Next page"]').element.disabled).toBe(false);
     await wrapper.get('[aria-label="Next page"]').trigger('click');
