@@ -142,7 +142,9 @@ Project creation, new worktrees, Mission startup, and worktree deletion show pro
 
 ## Continue from your phone
 
-The iPhone and Android companions connect to your computer's Korus workspace. Enable mobile access in **Settings → Connections** on the desktop, create a pairing invitation, then scan or enter its code on the phone and approve the device on the desktop. Your computer needs to remain available for the phone to follow or send work.
+Download [Korus Mobile for iPhone](__PRODUCT_COMPANION_APP_STORE_URL__) to keep working away from your desk. Continue conversations, follow Missions, review code changes, and respond when an agent needs your attention.
+
+The iPhone and Android companions connect to your computer's Korus workspace. Enable mobile access in **Settings → Connections** on the desktop, create a pairing invitation, then scan or enter its code on the phone and approve the device on the desktop. Keep the computer awake, running Korus, and connected to the internet for the phone to follow or send work.
 
 The companion remembers multiple computers. Use **Connections** in mobile Settings to add or switch computers, rename a saved connection, or forget one you no longer use. Pairings start with the computer's name; renaming a connection changes the label on that phone. Forgetting removes its saved connection rather than deleting work on the computer. Revoke a lost device from the desktop.
 

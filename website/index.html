@@ -22,16 +22,16 @@
     <meta property="og:url" content="__PRODUCT_WEBSITE_URL__/" />
     <meta
       property="og:image"
-      content="__PRODUCT_WEBSITE_URL__/assets/og.png?v=mark-2"
+      content="__PRODUCT_WEBSITE_URL__/assets/workspace-anywhere.webp"
     />
     <meta
       property="og:image:alt"
-      content="__PRODUCT_NAME__ repository sessions arranged as parallel coding lanes"
+      content="__PRODUCT_NAME__ on a laptop and iPhone, with Missions and conversations available away from the desk"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:image"
-      content="__PRODUCT_WEBSITE_URL__/assets/og.png?v=mark-2"
+      content="__PRODUCT_WEBSITE_URL__/assets/workspace-anywhere.webp"
     />
     <title>
       __PRODUCT_NAME__ — Stop reading transcripts. Start steering the work.
@@ -42,7 +42,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=header-youtube" />
+    <link rel="stylesheet" href="styles.css?v=anywhere-1" />
   </head>
   <body>
     <header class="site-header shell">
@@ -52,8 +52,8 @@
       </a>
       <nav class="nav-links" aria-label="Primary navigation">
         <a href="#workflows">Workflows</a>
+        <a href="#anywhere">Anywhere</a>
         <a href="#features">Features</a>
-        <a href="#automations">Automations</a>
       </nav>
       <div class="header-actions">
         <a class="header-link" href="/docs/">Docs</a>
@@ -87,6 +87,7 @@
               <div class="hero-meta" aria-label="Product details">
                 <span>macOS</span><span class="dot"></span><span>Windows</span
                 ><span class="dot"></span><span>Linux</span
+                ><span class="dot"></span><span>iPhone</span
                 ><span class="dot"></span><span>Free to use</span>
               </div>
             </div>
@@ -107,10 +108,10 @@
 
         <figure class="hero-shot reveal delay-1">
           <img
-            src="assets/mission-screenshot.png?v=mission-2"
-            width="3360"
-            height="2100"
-            alt="A __PRODUCT_NAME__ Mission coordinating team invitation work across two repositories, with tickets and an agent conversation side by side"
+            src="assets/workspace-anywhere.webp"
+            width="2000"
+            height="858"
+            alt="__PRODUCT_NAME__ on a laptop beside an iPhone showing a Mission in progress"
             decoding="async"
           />
         </figure>
@@ -213,6 +214,58 @@
               ><span aria-hidden="true">▶</span> Watch with sound</a
             >
           </div>
+        </div>
+      </section>
+
+      <section
+        id="anywhere"
+        class="anywhere shell reveal"
+        aria-labelledby="anywhere-title"
+      >
+        <div class="anywhere-copy">
+          <h2 id="anywhere-title">
+            Your workspace.<br /><span>Anywhere you are.</span>
+          </h2>
+          <p class="anywhere-lede">
+            Step away from your desk without leaving the work behind. Follow
+            your agents, move a Mission forward, review changes, and send the
+            next instruction from your iPhone.
+          </p>
+          <p>
+            Pair __PRODUCT_COMPANION_NAME__ with your computer. Your code and
+            agents stay there; the conversation comes with you. Keep your
+            computer awake and connected while you’re away.
+          </p>
+          <div class="anywhere-actions">
+            <a
+              class="button button-primary"
+              href="__PRODUCT_COMPANION_APP_STORE_URL__"
+              >Download for iPhone <span aria-hidden="true">↗</span></a
+            >
+            <a
+              class="text-link"
+              href="/docs/features/workspace.html#continue-from-your-phone"
+              >Connect your workspace <span aria-hidden="true">↗</span></a
+            >
+          </div>
+        </div>
+        <div class="anywhere-previews">
+          <img
+            src="assets/screens/mobile-mission.webp"
+            width="780"
+            height="1696"
+            alt="A Mission on iPhone with two tickets complete and one in progress"
+            loading="lazy"
+            decoding="async"
+          />
+          <img
+            src="assets/screens/mobile-diff.webp"
+            width="780"
+            height="1696"
+            alt="Code changes and test changes ready to review on iPhone"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
       </section>
 
@@ -584,6 +637,19 @@
           <div class="download-options">
             <article
               class="download-option"
+              id="download-ios"
+              data-platform="ios"
+            >
+              <h3>iPhone</h3>
+              <p>Your desktop workspace, on the go</p>
+              <div class="download-formats">
+                <a href="__PRODUCT_COMPANION_APP_STORE_URL__"
+                  >App Store <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </article>
+            <article
+              class="download-option"
               id="download-macos"
               data-platform="macos"
             >
@@ -639,6 +705,6 @@
       <a class="header-link" href="/privacy/">Privacy</a>
       <span class="mono">© <span id="year"></span> nabocorp</span>
     </footer>
-    <script src="script.js?v=hero-films-1"></script>
+    <script src="script.js?v=anywhere-1"></script>
   </body>
 </html>
