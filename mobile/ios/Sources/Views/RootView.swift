@@ -46,12 +46,15 @@ struct RootView: View {
 
     /// Wide space is used on purpose: the agents stay in view and the conversation, or the missions, fill the rest.
     private var wideShell: some View {
-        HStack(spacing: 0) {
-            DrawerView().frame(width: sidebarWidth)
-            Divider().ignoresSafeArea()
-            ZStack {
-                ConversationScreen()
-                if model.missionsOpen { MissionsScreen() }
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                // A tall inner display is barely wider than the sidebar was: it takes a share of the width, not a fixed size.
+                DrawerView().frame(width: min(sidebarWidth, max(260, proxy.size.width * 0.38)))
+                Divider().ignoresSafeArea()
+                ZStack {
+                    ConversationScreen()
+                    if model.missionsOpen { MissionsScreen() }
+                }
             }
         }
         .background(Color(.systemBackground))
