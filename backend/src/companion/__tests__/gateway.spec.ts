@@ -423,6 +423,28 @@ describe('companion authorization gateway', () => {
     expect(executeMission).not.toHaveBeenCalled();
   });
 
+  it('finishes a submitted review through the desktop acceptance operation, only after all findings settle', async () => {
+    const f = fixture(); const executeMission = vi.fn(async () => {}); (f.port as Record<string, unknown>).executeMission = executeMission;
+    const review = { summary: 'Done', ready: true, runId: 'review-run', findings: [{ id: 'a', priority: 'p1', title: 'A', body: '', repository: 'korus', selected: true, state: 'fixed' }] };
+    const mission = { id: 'mission', teamId: 'team', outcome: '', stage: 'review', status: 'active', revision: 6, tickets: [], review };
+    const show = (patch = {}) => f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [{ ...mission, ...patch }] as unknown as CompanionWorkspace['missionProgress'] });
+    show(); await f.pair();
+    const finish = (peer = 'phone', revision = 6) => f.gateway.request(peer, 'mission.review.finish', { missionId: 'mission', revision });
+    for (const state of ['open', 'fixing']) {
+      show({ review: { ...review, findings: [{ ...review.findings[0], state }] } });
+      await expect(finish()).rejects.toThrow();
+    }
+    show({ review: { ...review, ready: false } }); await expect(finish()).rejects.toThrow();
+    show({ review: { ...review, runId: undefined } }); await expect(finish()).rejects.toThrow();
+    show({ stage: 'implementation' }); await expect(finish()).rejects.toThrow();
+    show(); await expect(finish('stranger')).rejects.toThrow(); await expect(finish('phone', 5)).rejects.toThrow();
+    expect(executeMission).not.toHaveBeenCalled();
+    await finish();
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'accept', runId: 'review-run' });
+    show({ review: { ...review, findings: [] } }); await finish();
+    expect(executeMission).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['answers a request', 'agent.request.respond', 'respondRequest'],
     ['changes the engine', 'agent.backend.set', 'setBackend'],

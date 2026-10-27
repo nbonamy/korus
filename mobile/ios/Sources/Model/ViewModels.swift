@@ -187,12 +187,16 @@ struct ReviewFindingSummary: Decodable, Hashable, Identifiable {
 
 struct MissionReviewSummary: Decodable, Hashable {
     let summary: String; let findings: [ReviewFindingSummary]
+    var ready: Bool? = nil
+
+    var canFinish: Bool { ready == true && findings.allSatisfy { $0.state == "fixed" || $0.state == "skipped" } }
+    var canFix: Bool { ready == true && selectedCount > 0 && fixingCount == 0 }
 
     var fixedCount: Int { findings.filter { $0.state == "fixed" }.count }
     var selectedCount: Int { findings.filter { $0.isOpen && $0.selected }.count }
     var fixingCount: Int { findings.filter { $0.state == "fixing" }.count }
     /// Only once nothing is open or being fixed can the review run again.
-    var canRerun: Bool { !findings.isEmpty && findings.allSatisfy { $0.state == "fixed" || $0.state == "skipped" } }
+    var canRerun: Bool { ready == true && !findings.isEmpty && findings.allSatisfy { $0.state == "fixed" || $0.state == "skipped" } }
     var progress: Double { findings.isEmpty ? 0 : Double(fixedCount) / Double(findings.count) }
     /// Findings by priority, most urgent first.
     var groups: [(priority: String, findings: [ReviewFindingSummary])] {
@@ -215,6 +219,14 @@ struct MissionSummary: Decodable, Hashable, Identifiable {
 struct MissionReference: Decodable, Equatable { let id: String; let outcome: String; let lead: Bool? }
 
 extension MissionSummary {
+    /// The chosen work replaces tickets once remediation starts and remains visible when fixed.
+    var remediationReview: MissionReviewSummary? {
+        guard let review, review.findings.contains(where: { $0.state != "open" }) else { return nil }
+        let findings = review.findings.filter { $0.state != "skipped" && ($0.selected || $0.state == "fixing" || $0.state == "fixed") }
+        guard !findings.isEmpty else { return nil }
+        return MissionReviewSummary(summary: review.summary, findings: findings, ready: review.ready)
+    }
+
     var isActive: Bool { status == "active" }
 
     var stageLabel: String {

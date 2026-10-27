@@ -32,6 +32,7 @@ type CompanionLink = {
 type CompanionOperations = {
   createTeam?(name: string): Promise<string>;
   /** Move a finished mission on to review, or accept a ticket waiting for it; `revision` is the mission as the phone saw it. */
+  finishReview?(missionId: string, revision: number): Promise<void>;
   continueMission?(missionId: string, revision: number): Promise<void>;
   acceptTicket?(missionId: string, revision: number, runId: string): Promise<void>;
   /** A review's findings: choose what to fix, fix it, and review again once nothing is open. */

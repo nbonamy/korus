@@ -10,7 +10,7 @@ const mission = (id: string, teamId: string, tickets: CompanionMission['tickets'
   ({ id, teamId, outcome: `Outcome of ${id}`, stage: 'implementation', status: 'active', revision: 7, startedAt: now, updatedAt: now, tickets, ...(leadAgentId ? { leadAgentId } : {}) });
 
 /** A laptop with a second team, a mission in each, and the demo chat in the first. */
-function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket' | 'selectFinding' | 'fixFindings' | 'rerunReview'> = {}, leadAgentId = 'demo-agent') {
+function missionConnector(actions: Pick<import('../companion-port').CompanionSession, 'continueMission' | 'acceptTicket' | 'selectFinding' | 'fixFindings' | 'rerunReview' | 'finishReview'> = {}, leadAgentId = 'demo-agent') {
   const connector = createDemoConnector(); const connect = connector.connect;
   connector.connect = async id => {
     const session = await connect(id);
@@ -108,8 +108,8 @@ describe('mobile missions', () => {
     } finally { engine.dispose(); }
   });
   it('chooses findings, fixes them and reviews again against the revision it saw', async () => {
-    const selectFinding = vi.fn(async () => {}); const fixFindings = vi.fn(async () => {}); const rerunReview = vi.fn(async () => {});
-    const engine = createEngine({ connector: missionConnector({ selectFinding, fixFindings, rerunReview }), post: () => {} });
+    const selectFinding = vi.fn(async () => {}); const fixFindings = vi.fn(async () => {}); const rerunReview = vi.fn(async () => {}); const finishReview = vi.fn(async () => {});
+    const engine = createEngine({ connector: missionConnector({ selectFinding, fixFindings, rerunReview, finishReview }), post: () => {} });
     try {
       await engine.start(); await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
       await engine.dispatch({ type: 'selectFinding', missionId: 'm-here', findingId: 'f1', selected: true });
@@ -118,6 +118,8 @@ describe('mobile missions', () => {
       expect(selectFinding).toHaveBeenCalledExactlyOnceWith('m-here', 7, 'f1', true);
       expect(fixFindings).toHaveBeenCalledExactlyOnceWith('m-here', 7);
       expect(rerunReview).toHaveBeenCalledExactlyOnceWith('m-here', 7);
+      await engine.dispatch({ type: 'finishReview', missionId: 'm-here' });
+      expect(finishReview).toHaveBeenCalledExactlyOnceWith('m-here', 7);
     } finally { engine.dispose(); }
   });
 });

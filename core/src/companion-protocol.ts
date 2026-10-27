@@ -42,7 +42,9 @@ export type CompanionReviewFinding = { id: string; priority: 'p0' | 'p1' | 'p2' 
   repository: string; file?: string; line?: number; endLine?: number;
   selected: boolean; state: 'open' | 'fixing' | 'fixed' | 'skipped' };
 /** The review's verdict and findings, so a person can choose what to fix without opening the desktop. */
-export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[] };
+export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[];
+  /** The latest Review run has submitted its result; absent on older daemons. */
+  ready?: boolean; runId?: string };
 /** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
 /** `after` lists the numbers of the unfinished tickets this one waits for. */
 export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[];

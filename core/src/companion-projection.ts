@@ -104,7 +104,10 @@ const lastSegments = (value: string, count: number) => value.replace(/\\/gu, '/'
 /** The review as the phone needs it: what was found, where, and what has happened to it, with no host paths. */
 function missionReview(mission: Mission): CompanionMissionReview | undefined {
   const review = mission.artifacts?.review;
-  if (!review || (!review.summary?.trim() && !review.findings?.length)) return undefined;
+  const run = mission.execution?.runs.slice().reverse().find(candidate => candidate.stage === 'review');
+  const ready = mission.status === 'active' && mission.stage === 'review' && run?.status === 'awaitingReview' && Boolean(run.proposal && run.workerId);
+  const summary = (ready ? run?.proposal?.review.summary : undefined) ?? review?.summary ?? '';
+  if (!review || (!summary.trim() && !review.findings?.length)) return undefined;
   const findings = (review.findings ?? []).slice(0, maxReviewFindings).map((finding: MissionReviewFinding): CompanionReviewFinding => {
     const file = finding.location?.file ? lastSegments(finding.location.file, 2) : '';
     return { id: finding.id, priority: finding.priority, title: finding.title.slice(0, maxMissionText), body: finding.body.slice(0, 4_000),
@@ -112,7 +115,7 @@ function missionReview(mission: Mission): CompanionMissionReview | undefined {
       ...(finding.location?.line === undefined ? {} : { line: finding.location.line }), ...(finding.location?.endLine === undefined ? {} : { endLine: finding.location.endLine }),
       selected: finding.selected, state: finding.remediation.state };
   });
-  return { summary: review.summary.slice(0, 4_000), findings };
+  return { summary: summary.slice(0, 4_000), findings, ready, ...(ready && run ? { runId: run.id } : {}) };
 }
 
 /** When the work began: the first implementation run, else when the mission was created. */
