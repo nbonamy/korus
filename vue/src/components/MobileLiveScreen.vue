@@ -10,9 +10,10 @@
       v-if="source"
       class="mobile-live-screen__device"
       :data-rotation="rotation"
+      :data-image-rotation="imageRotation"
       :data-platform="platform"
       :data-landscape="aspectRatio > 1"
-      :style="{ '--mobile-screen-ratio': aspectRatio }"
+      :style="frameStyle"
     >
       <button
         v-for="item in hardwareButtons"
@@ -59,6 +60,7 @@ const props = withDefaults(
     disabled: boolean;
     /** Frame style: iPhones are much rounder than Android phones. */
     platform?: 'ios' | 'android';
+    foldable?: boolean;
   }>(),
   { platform: 'ios' },
 );
@@ -83,12 +85,35 @@ const source = ref('');
 const error = ref('');
 const ended = ref(false);
 const aspectRatio = ref(402 / 874);
+const innerDisplay = ref(false);
+const landscapeFramebuffer = ref(false);
+const landscapeImage = ref(false);
 /** Clockwise quarter turns applied to the framebuffer (iOS draws a rotated UI inside a portrait buffer). */
 const rotation = ref<0 | 1 | 2 | 3>(0);
+// Duo video may arrive in either panel orientation. Correct its native panel
+// offset only when the decoded JPEG and input geometry use different axes.
+const imageRotation = computed(() => (rotation.value + (props.foldable && innerDisplay.value && landscapeFramebuffer.value !== landscapeImage.value ? 1 : 0)) % 4);
 // iOS turns the image inside a portrait framebuffer; an Android screen turns itself, so landscape is a quarter turn.
 const turns = computed(() => (props.platform === 'android' ? (aspectRatio.value > 1 ? 3 : 0) : rotation.value));
+const frameStyle = computed(() => {
+  const style: Record<string, string | number> = { '--mobile-screen-ratio': aspectRatio.value };
+  if (!props.foldable) return style;
+  // Xcode Duo profile, in device points: outer corners 8/59 on a 466pt
+  // short edge; inner corners 55 on a 669pt short edge.
+  const corners = innerDisplay.value ? [55, 55, 55, 55] : [8, 59, 59, 8];
+  const edge = innerDisplay.value ? 669 : 466;
+  for (const [index, corner] of ['tl', 'tr', 'br', 'bl'].entries()) {
+    const radius = corners[(index - rotation.value + 4) % 4]! / edge;
+    style[`--mobile-radius-${corner}`] = `calc(min(var(--mobile-screen-width), calc(var(--mobile-screen-width) / var(--mobile-screen-ratio))) * ${radius})`;
+  }
+  return style;
+});
 const hardwareButtons = computed(() =>
-  phoneButtons[props.platform].map((item) => {
+  (props.foldable ? [
+    { id: 'volumeUp' as const, edge: 'top' as const, from: innerDisplay.value ? 0.73 : 0.45, to: innerDisplay.value ? 0.79 : 0.59 },
+    { id: 'volumeDown' as const, edge: 'top' as const, from: innerDisplay.value ? 0.81 : 0.62, to: innerDisplay.value ? 0.87 : 0.76 },
+    { id: 'power' as const, edge: 'right' as const, from: 0.27, to: 0.4 },
+  ] : phoneButtons[props.platform]).map((item) => {
     const edge = edges[(edges.indexOf(item.edge) + turns.value) % 4]!;
     // Clockwise and half turns reverse the direction along the edge.
     const flipped = turns.value === 1 || turns.value === 2;
@@ -156,7 +181,11 @@ function fail(cause: unknown) {
   error.value = detail;
 }
 function imageLoaded(event: Event) {
-  if ((event.target as HTMLImageElement).getAttribute('src') === source.value) loaded?.();
+  const image = event.target as HTMLImageElement;
+  if (image.getAttribute('src') === source.value) {
+    landscapeImage.value = image.naturalWidth > image.naturalHeight;
+    loaded?.();
+  }
 }
 function imageFailed(event: Event) {
   if ((event.target as HTMLImageElement).getAttribute('src') === source.value) {
@@ -208,6 +237,9 @@ async function connect(recovering = false) {
       }
       if (!result.frame) continue; // Native Android streams remain silent on an unchanged screen.
       rotation.value = result.frame.rotation ?? 0;
+      // Both orientations of the Duo inner framebuffer have a 2007px short edge.
+      innerDisplay.value = Math.min(result.frame.width, result.frame.height) === 2007;
+      landscapeFramebuffer.value = result.frame.width > result.frame.height;
       aspectRatio.value =
         rotation.value % 2 ? result.frame.height / result.frame.width : result.frame.width / result.frame.height;
       const previous = source.value;
@@ -349,13 +381,17 @@ onBeforeUnmount(() => {
   --mobile-screen-ratio: calc(402 / 874);
   --mobile-screen-width: min(calc(100cqw - 40px), calc((100cqh - 40px) * var(--mobile-screen-ratio)));
   --mobile-screen-radius: calc(min(var(--mobile-screen-width), var(--mobile-screen-width) / var(--mobile-screen-ratio)) * var(--mobile-corner, 0.14));
+  --mobile-radius-tl: var(--mobile-screen-radius);
+  --mobile-radius-tr: var(--mobile-screen-radius);
+  --mobile-radius-br: var(--mobile-screen-radius);
+  --mobile-radius-bl: var(--mobile-screen-radius);
   position: relative;
   flex: none;
   box-sizing: content-box;
   width: var(--mobile-screen-width);
   padding: 5px;
   border: 2px solid var(--color-border-strong);
-  border-radius: calc(var(--mobile-screen-radius) + 7px);
+  border-radius: calc(var(--mobile-radius-tl) + 7px) calc(var(--mobile-radius-tr) + 7px) calc(var(--mobile-radius-br) + 7px) calc(var(--mobile-radius-bl) + 7px);
   background: var(--color-text);
   box-shadow: var(--shadow-lg);
 }
@@ -471,7 +507,7 @@ onBeforeUnmount(() => {
   width: 100%;
   aspect-ratio: var(--mobile-screen-ratio);
   overflow: hidden;
-  border-radius: var(--mobile-screen-radius);
+  border-radius: var(--mobile-radius-tl) var(--mobile-radius-tr) var(--mobile-radius-br) var(--mobile-radius-bl);
 }
 .mobile-live-screen img {
   display: block;
@@ -488,8 +524,8 @@ onBeforeUnmount(() => {
     var(--shadow-lg),
     0 0 0 2px var(--color-primary);
 }
-.mobile-live-screen__device[data-rotation='1'] img,
-.mobile-live-screen__device[data-rotation='3'] img {
+.mobile-live-screen__device[data-image-rotation='1'] img,
+.mobile-live-screen__device[data-image-rotation='3'] img {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -497,13 +533,13 @@ onBeforeUnmount(() => {
   width: calc(var(--mobile-screen-width) / var(--mobile-screen-ratio));
   height: var(--mobile-screen-width);
 }
-.mobile-live-screen__device[data-rotation='1'] img {
+.mobile-live-screen__device[data-image-rotation='1'] img {
   transform: translate(-50%, -50%) rotate(90deg);
 }
-.mobile-live-screen__device[data-rotation='2'] img {
+.mobile-live-screen__device[data-image-rotation='2'] img {
   transform: rotate(180deg);
 }
-.mobile-live-screen__device[data-rotation='3'] img {
+.mobile-live-screen__device[data-image-rotation='3'] img {
   transform: translate(-50%, -50%) rotate(270deg);
 }
 .mobile-live-screen__error {

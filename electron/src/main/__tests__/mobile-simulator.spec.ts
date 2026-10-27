@@ -14,6 +14,7 @@ function fixture() {
     perform: vi.fn(async () => undefined),
     inspect: vi.fn(async () => 'Settings'),
     rotate: vi.fn(async () => undefined),
+    setFolded: vi.fn(async () => undefined),
     displayRotation: vi.fn(async () => 0 as const),
     isRunning: vi.fn(async () => true),
     shutdown: vi.fn(async () => undefined),
@@ -23,6 +24,25 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('mobile simulator attachment', () => {
+  it('changes the hinge only for the desktop owner and closes stale video before changing displays', async () => {
+    const { service, adapter } = fixture();
+    vi.mocked(adapter.list).mockResolvedValue({ devices: [{ id: 'duo', name: 'My phone', platform: 'ios', state: 'booted', foldable: true }], setup: [] });
+    const stop = vi.fn();
+    adapter.startView = vi.fn(() => ({ touch: vi.fn(), stop }));
+    const { attachment } = await service.execute('a', { action: 'attach', deviceId: 'duo' }, true);
+    const target = { attachmentId: attachment!.id };
+    try {
+      await service.view('a', { action: 'start', ...target });
+      await expect(service.execute('a', { action: 'fold', ...target })).rejects.toThrow('desktop user');
+      await expect(service.execute('b', { action: 'fold', ...target }, true)).rejects.toThrow('No matching');
+      expect(adapter.setFolded).not.toHaveBeenCalled();
+      await service.execute('a', { action: 'fold', ...target }, true);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(adapter.setFolded).toHaveBeenLastCalledWith(attachment!.device, true);
+      await service.execute('a', { action: 'unfold', ...target }, true);
+      expect(adapter.setFolded).toHaveBeenLastCalledWith(attachment!.device, false);
+    } finally { service.clear(); }
+  });
   it('keeps an idle native video view open without repeating a frame or dropping pending touch ordering', async () => {
     vi.useFakeTimers();
     const { service, adapter } = fixture();

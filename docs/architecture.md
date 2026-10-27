@@ -58,6 +58,9 @@ in Electron. Its pane and provider-independent MCP tool share that authority;
 [the MCP model](mcp.md#mobile-simulators) records the attachment and coordinate rules.
 Normal video teardown settles pending reads with an ended result; cleanup is
 idempotent and cannot stop a replacement view. Native stream failures remain errors.
+Fold controls are exposed from the simulator's device type, independently of its
+editable name. Desktop-only hinge changes close the old view and wait for the
+active display to settle before capturing new dimensions and accepting touch.
 
 Host capabilities are enforced in `daemon` as well as in the UI: a persisted
 desktop preference cannot enable a tool the host does not provide.

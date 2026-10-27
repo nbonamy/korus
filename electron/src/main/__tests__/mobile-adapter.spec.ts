@@ -15,6 +15,8 @@ const wire = vi.hoisted(() => ({
   openTouch: vi.fn(),
   setOrientation: vi.fn(),
   getOrientation: vi.fn(),
+  setHingeAngle: vi.fn(),
+  getHingeAngle: vi.fn(),
 }));
 vi.mock('../mobile/ios-companion', () => ({
   IosCompanions: class {
@@ -53,10 +55,37 @@ beforeEach(() => {
   wire.screenshot.mockResolvedValue(png);
 });
 afterEach(() => {
+  vi.useRealTimers();
   Object.defineProperty(process, 'platform', { value: hostPlatform });
 });
 
 describe('native mobile adapters', () => {
+  it('waits for the Duo display and refreshes its reported orientation', async () => {
+    vi.useFakeTimers();
+    const adapter = new NativeMobileAdapter(runtime);
+    const duo = { ...ios, foldable: true };
+    await adapter.boot(duo);
+    wire.getOrientation.mockResolvedValue(1);
+    expect(await adapter.displayRotation(duo)).toBe(0);
+    wire.getHingeAngle.mockResolvedValueOnce(90).mockResolvedValue(180);
+    wire.describe.mockResolvedValue({ udid: ios.id, displays: [{ name: 'LCD-1', integrated: true, active: true }] });
+    let settled = false;
+    const changing = adapter.setFolded(duo, false).then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(100);
+    await changing;
+    expect(wire.setHingeAngle).toHaveBeenCalledWith(180);
+    wire.getOrientation.mockResolvedValue(4);
+    expect(await adapter.displayRotation(duo)).toBe(1);
+    wire.getHingeAngle.mockResolvedValue(0);
+    wire.describe.mockResolvedValue({ udid: ios.id, displays: [{ name: 'LCD', integrated: true, active: true }] });
+    await adapter.setFolded(duo, true);
+    wire.getOrientation.mockResolvedValue(2);
+    expect(await adapter.displayRotation(duo)).toBe(2);
+    await expect(adapter.setFolded(ios, true)).rejects.toThrow('fold');
+    adapter.detach(duo);
+  });
   it('maps live framebuffer coordinates to device points and releases touch when stopping video', async () => {
     const adapter = new NativeMobileAdapter(runtime);
     await adapter.boot(ios);
@@ -82,7 +111,7 @@ describe('native mobile adapters', () => {
           JSON.stringify({
             devices: {
               'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [
-                { udid: 'ios-device', name: 'iPhone', state: 'Shutdown' },
+                { udid: 'ios-device', name: 'iPhone', state: 'Shutdown', deviceTypeIdentifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-Duo' },
               ],
               'com.apple.CoreSimulator.SimRuntime.tvOS-27-0': [{ udid: 'tv', name: 'TV', state: 'Booted' }],
             },
@@ -96,7 +125,7 @@ describe('native mobile adapters', () => {
     });
     const adapter = new NativeMobileAdapter(runtime);
     expect((await adapter.list()).devices).toEqual([
-      { ...ios, state: 'shutdown' },
+      { ...ios, state: 'shutdown', foldable: true },
       { ...android, name: 'emulator-5554' },
     ]);
     native.run.mockRejectedValueOnce(new Error('Xcode missing')).mockRejectedValueOnce(new Error('adb missing'));
