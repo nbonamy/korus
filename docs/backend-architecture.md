@@ -358,10 +358,9 @@ recent twenty. The workers implementing tickets stay out of the agent list but a
 listed separately, so a phone can open one from its mission. A worker is talked to like any agent (prompts, answers
 to its questions and approvals, interrupts, model and permission choices), but the phone cannot rename, restart,
 close, duplicate or re-engine it; the laptop refuses those. Repository workers are titled by repository name;
-the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Five mission actions exist
-and no others: continuing a completed implementation to review, accepting a ticket's run that awaits
-acceptance, and, during review, selecting an open finding, fixing the selected ones and reviewing again.
-A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
+the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Mission actions are limited to continuing a completed implementation to review, accepting a ticket's run that awaits
+acceptance, and, during review, selecting an open finding, fixing the selected ones, reviewing again and accepting the submitted review after its findings are fixed or skipped. Acceptance uses the desktop operation; shipping remains desktop-owned.
+A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Review readiness comes from the latest run's submitted result, independently of findings that arrive while it is running; missing readiness on an older daemon does not authorize remediation. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks

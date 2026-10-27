@@ -2,7 +2,7 @@
   <AppMenuButton v-model:open="open" placement="bottom-end" :ariaLabel="t('missions.costMenu')" :items="items" :width="260">
     <template #trigger="{ attrs }">
       <button v-bind="attrs" class="mission-cost-menu__trigger" type="button" :aria-label="t('missions.costMenu')" :title="t('missions.costMenu')">
-        <IconCoin aria-hidden="true" />
+        <IconDots aria-hidden="true" />
       </button>
     </template>
   </AppMenuButton>
@@ -11,11 +11,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconCoin } from '@tabler/icons-vue';
+import { IconDots } from '@tabler/icons-vue';
 import type { Mission } from '@workspace/core/missions';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { formatCost } from './agent-cost';
+import { usageFormat } from './usage-chart';
 import { missionCostGroups } from './mission-cost';
 import { useUsageByAgent } from './use-usage-by-agent';
 
@@ -30,17 +30,15 @@ const items = computed<AppMenuItem[]>(() => {
   if (!loaded.value) return [];
   const { rows, total } = missionCostGroups(props.mission, summary.value);
   if (!total) return [{ id: 'none', type: 'info', label: t('missions.costNoUsage') }];
-  const partial = (cost: typeof total) => (cost.coverage === 'partial' ? { description: t('surface.agentHeader.costPartial') } : {});
   return [
     ...rows.map((row): AppMenuItem => ({
       id: `cost:${row.id}`,
       type: 'info',
       label: row.label ?? t(row.id === 'lead' ? 'missions.costLead' : 'missions.costOther'),
-      value: formatCost(row.cost!.usd),
-      ...partial(row.cost!),
+      value: usageFormat(row.cost!.totalTokens, row.cost!.usd),
     })),
     { id: 'separator-total', type: 'separator' },
-    { id: 'cost:total', type: 'info', label: t('missions.costTotal'), value: formatCost(total.usd), ...partial(total) },
+    { id: 'cost:total', type: 'info', label: t('missions.costTotal'), value: usageFormat(total.totalTokens, total.usd) },
   ];
 });
 </script>

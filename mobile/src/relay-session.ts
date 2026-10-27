@@ -121,6 +121,7 @@ export function createRelaySession(deps: { host: PairedLaptop; network: RelayNet
       }
     },
     getWorkspace: read,
+    finishReview: async (missionId, revision) => { await call('mission.review.finish', { missionId, revision }); },
     continueMission: async (missionId, revision) => { await call('mission.continue', { missionId, revision }); },
     acceptTicket: async (missionId, revision, runId) => { await call('mission.ticket.accept', { missionId, revision, runId }); },
     selectFinding: async (missionId, revision, findingId, selected) => { await call('mission.finding.select', { missionId, revision, findingId, selected }); },

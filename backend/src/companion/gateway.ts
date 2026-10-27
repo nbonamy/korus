@@ -460,6 +460,14 @@ export class CompanionGateway {
       await this.port.executeMission!({ id: missionId, revision, action: 'fixSelectedReviewFindings' });
       return {};
     },
+    'mission.review.finish': async (peer, args) => {
+      const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
+      const mission = await this.mission(peer, missionId, revision);
+      const review = mission.review;
+      if (mission.stage !== 'review' || !review?.ready || !review.runId || !review.findings.every(finding => finding.state === 'fixed' || finding.state === 'skipped')) throw new Error('Complete the review and its selected fixes before finishing.');
+      await this.port.executeMission!({ id: missionId, revision, action: 'accept', runId: review.runId });
+      return {};
+    },
     'mission.review.rerun': async (peer, args) => {
       const { missionId, revision } = z.object({ missionId: identity, revision: z.number().int().nonnegative().safe() }).strict().parse(args);
       const mission = await this.mission(peer, missionId, revision);

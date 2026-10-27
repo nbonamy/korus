@@ -614,6 +614,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (session === active) { missionAction.value = 'failed'; void refreshWorkspace(active).catch(() => {}); }
     }
   }
+  const finishReview = (missionId: string) => actOnMission((active, mission) => active.finishReview?.(mission.id, mission.revision), missionId);
   const continueMission = (missionId: string) => actOnMission((active, mission) => active.continueMission?.(mission.id, mission.revision), missionId);
   const acceptTicket = (missionId: string, number: number) => actOnMission((active, mission) => {
     const runId = mission.tickets.find((ticket) => ticket.number === number && ticket.state === 'awaitingReview')?.runId;
@@ -698,7 +699,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     // The link to the laptop.
     status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, finishReview, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {

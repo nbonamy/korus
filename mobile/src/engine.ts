@@ -111,7 +111,7 @@ export type TranscriptContext = {
 
 export type EngineCommand =
   | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
-  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
+  | { type: 'finishReview'; missionId: string } | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
@@ -577,6 +577,7 @@ export function createEngine(port: EnginePort) {
         return;
       }
       case 'dismissTeamCreation': return state.dismissTeamCreation();
+      case 'finishReview': return state.finishReview(command.missionId);
       case 'continueMission': return state.continueMission(command.missionId);
       case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
       case 'selectFinding': return state.selectFinding(command.missionId, command.findingId, command.selected);

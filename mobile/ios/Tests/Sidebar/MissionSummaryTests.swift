@@ -77,7 +77,7 @@ final class MissionSummaryTests: XCTestCase {
     }
 
     func testReadsAReviewAndSaysWhereAndWhatIsLeftToDo() throws {
-        let json = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":1,"tickets":[],"review":{"summary":"Three issues","findings":[{"id":"a","priority":"p1","title":"A","body":"b","repository":"korus","file":"auth/session.ts","line":142,"endLine":150,"selected":true,"state":"open"},{"id":"b","priority":"p3","title":"B","body":"b","repository":"korus","file":"x.ts","line":7,"selected":false,"state":"fixed"},{"id":"c","priority":"p1","title":"C","body":"b","repository":"korus","selected":true,"state":"fixing"},{"id":"d","priority":"p2","title":"D","body":"b","repository":"korus","selected":false,"state":"skipped"}]}}"#
+        let json = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":1,"tickets":[],"review":{"summary":"Three issues","ready":true,"findings":[{"id":"a","priority":"p1","title":"A","body":"b","repository":"korus","file":"auth/session.ts","line":142,"endLine":150,"selected":true,"state":"open"},{"id":"b","priority":"p3","title":"B","body":"b","repository":"korus","file":"x.ts","line":7,"selected":false,"state":"fixed"},{"id":"c","priority":"p1","title":"C","body":"b","repository":"korus","selected":true,"state":"fixing"},{"id":"d","priority":"p2","title":"D","body":"b","repository":"korus","selected":false,"state":"skipped"}]}}"#
         let review = try XCTUnwrap(try mission(json).review)
         XCTAssertEqual(review.findings[0].location, "auth/session.ts · lines 142–150")
         XCTAssertEqual(review.findings[1].location, "x.ts · line 7")
@@ -92,4 +92,32 @@ final class MissionSummaryTests: XCTestCase {
         let settled = json.replacingOccurrences(of: "\"state\":\"open\"", with: "\"state\":\"fixed\"").replacingOccurrences(of: "\"state\":\"fixing\"", with: "\"state\":\"skipped\"")
         XCTAssertTrue(try XCTUnwrap(try mission(settled).review).canRerun)
     }
+    // Partial findings must not allow a premature fix; remediation must survive a reload and stay visible after completion.
+    func testReviewWaitsForSubmissionAndShowsOnlyRemediationFindingsThroughCompletion() throws {
+        let json = #"{"id":"m","outcome":"o","stage":"review","status":"active","done":1,"tickets":[],"review":{"summary":"Two issues","ready":false,"findings":[{"id":"a","priority":"p1","title":"A","body":"b","repository":"korus","selected":true,"state":"open"},{"id":"b","priority":"p2","title":"B","body":"b","repository":"korus","selected":false,"state":"open"}]}}"#
+        let initial = try mission(json)
+        XCTAssertFalse(try XCTUnwrap(initial.review).canFix)
+        XCTAssertFalse(try XCTUnwrap(initial.review).canFinish)
+        XCTAssertNil(initial.remediationReview)
+        let oldDaemon = json.replacingOccurrences(of: #""ready":false,"#, with: "")
+        XCTAssertFalse(try XCTUnwrap(try mission(oldDaemon).review).canFix)
+        let submitted = json.replacingOccurrences(of: #""ready":false"#, with: #""ready":true"#)
+        XCTAssertTrue(try XCTUnwrap(try mission(submitted).review).canFix)
+        XCTAssertFalse(try XCTUnwrap(try mission(submitted).review).canFinish)
+        let fixing = submitted.replacingOccurrences(of: #""state":"open""#, with: #""state":"fixing""#, range: submitted.range(of: #""state":"open""#))
+            .replacingOccurrences(of: #""state":"open""#, with: #""state":"skipped""#)
+        let active = try XCTUnwrap(try mission(fixing).remediationReview)
+        XCTAssertEqual(active.findings.map(\.id), ["a"])
+        XCTAssertEqual(active.fixingCount, 1)
+        XCTAssertFalse(active.canFix)
+        XCTAssertFalse(active.canFinish)
+        let completed = fixing.replacingOccurrences(of: #""state":"fixing""#, with: #""state":"fixed""#)
+        let done = try XCTUnwrap(try mission(completed).remediationReview)
+        XCTAssertEqual(done.findings.map(\.id), ["a"])
+        XCTAssertEqual(done.fixedCount, 1)
+        XCTAssertEqual(done.progress, 1)
+        XCTAssertTrue(done.canRerun)
+        XCTAssertTrue(done.canFinish)
+    }
+
 }
