@@ -21,6 +21,7 @@ const requestTimeoutByMethod = {
   [backendMethods.agentClosePreview]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.usageGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.usageClear]: IO_REQUEST_TIMEOUT_MS,
+  [backendMethods.telemetryPreview]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientFocusGet]: 1_000,
   [backendMethods.agentMarkRead]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientMobileSimulatorExecute]: EXTENDED_REQUEST_TIMEOUT_MS,

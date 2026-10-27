@@ -1,5 +1,80 @@
 import { expect, it } from "vitest";
 import { isUtcDay, utcDay, validExecutionTiming } from "../usage";
+import {
+  serializeDailyTelemetry,
+  normalizeTelemetryVersion,
+  telemetryOs,
+} from "../telemetry";
+
+// Wire-boundary failures: extra fields, aliases, unsafe/unknown numbers, duplicate
+// groups and insertion-order drift must never become sealed telemetry bytes.
+it("seals only the closed telemetry contract in canonical order and preserves null and measured zero", () => {
+  const group = {
+    provider: "codex" as const,
+    model: "gpt-6-sol" as const,
+    turns: 1,
+    inputTokens: null,
+    cachedInputTokens: null,
+    outputTokens: null,
+    estimatedCostUsd: null,
+  };
+  const payload = {
+    installId: "d8b65ff5-179c-49b9-ac3a-f60a54a0f43f",
+    day: "2026-10-15",
+    appVersion: "0.44.0",
+    os: "macos" as const,
+    usage: [group],
+  };
+  expect(serializeDailyTelemetry({ ...payload, usage: [] }).body).toBe(
+    '{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-10-15","appVersion":"0.44.0","os":"macos","usage":[]}',
+  );
+  expect(serializeDailyTelemetry(payload)).toStrictEqual({
+    body: '{"installId":"d8b65ff5-179c-49b9-ac3a-f60a54a0f43f","day":"2026-10-15","appVersion":"0.44.0","os":"macos","usage":[{"provider":"codex","model":"gpt-6-sol","turns":1,"inputTokens":null,"cachedInputTokens":null,"outputTokens":null,"estimatedCostUsd":null}]}',
+  });
+  const zero = {
+    ...group,
+    provider: "claude" as const,
+    model: "unknown" as const,
+    turns: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    estimatedCostUsd: 0,
+  };
+  const body = serializeDailyTelemetry({
+    ...payload,
+    usage: [group, zero],
+  }).body;
+  expect(JSON.parse(body).usage).toStrictEqual([zero, group]);
+  expect(
+    serializeDailyTelemetry({ ...payload, usage: [zero, group] }).body,
+  ).toBe(body);
+  for (const patch of [
+    { prompt: "CANARY" },
+    { installId: "account" },
+    { day: "2026-02-29" },
+    { appVersion: "0.44.0-local" },
+    { os: "darwin" },
+    { usage: [group, group] },
+    { usage: [{ ...group, model: "private-alias" }] },
+    { usage: [{ ...group, provider: "proxy-alias" }] },
+    { usage: [{ ...group, path: "CANARY" }] },
+    { usage: [{ ...group, inputTokens: 1, cachedInputTokens: 2 }] },
+    { usage: [{ ...group, turns: Number.MAX_SAFE_INTEGER + 1 }] },
+    { usage: [{ ...group, outputTokens: -1 }] },
+    { usage: [{ ...group, estimatedCostUsd: Infinity }] },
+  ])
+    expect(() =>
+      serializeDailyTelemetry({ ...payload, ...patch } as typeof payload),
+    ).toThrow();
+  expect(normalizeTelemetryVersion("0.44.0-beta.2+private-build")).toBe(
+    "0.44.0",
+  );
+  expect(() => normalizeTelemetryVersion("private-version")).toThrow();
+  expect(
+    ["darwin", "win32", "linux", "freebsd"].map(telemetryOs),
+  ).toStrictEqual(["macos", "windows", "linux", "unknown"]);
+});
 
 it("groups timestamps by UTC day and rejects normalized or invalid calendar filters", () => {
   expect(utcDay(Date.parse("2026-10-15T23:30:00-05:00"))).toBe("2026-10-16");

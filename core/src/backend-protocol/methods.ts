@@ -6,6 +6,7 @@ export const backendMethods = {
   browserExtensionPackages: 'browser/extensions/packages',
   usageGet: 'usage/get',
   usageClear: 'usage/clear',
+  telemetryPreview: 'telemetry/preview',
   clientFocusGet: 'client/focus/get',
   companionControl: "companion/control",
   clientWorkspaceGet: "client/workspace/get",

@@ -113,3 +113,29 @@ test("mobile code only receives app-owned contracts and browser-safe UI", async 
     );
   }
 });
+
+test("telemetry projection and serialization cannot import delivery code or call network/timer globals", async () => {
+  const accepted = await checkFixture({
+    "backend/src/usage/usage-ledger.ts":
+      "import { DatabaseSync } from 'node:sqlite';\nimport { serializeDailyTelemetry } from '@workspace/core/telemetry';\n",
+    "core/src/telemetry.ts": "const example = 'fetch()';\n",
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = await checkFixture({
+    "backend/src/usage/usage-ledger.ts":
+      "import http from 'node:http';\nfetch('https://collector.invalid');\nsetTimeout(() => {}, 1);\n",
+    "core/src/telemetry.ts": "globalThis.fetch('https://collector.invalid');\n",
+    "backend/src/usage/telemetry-timer.ts":
+      "globalThis.setTimeout(() => {}, 1);\n",
+    "backend/src/usage/telemetry-preview.ts":
+      "import { sender } from '../telemetry/telemetry-upload-service';\n",
+  });
+  assert.equal(rejected.status, 1, rejected.stderr);
+  for (const file of [
+    "backend/src/usage/usage-ledger.ts",
+    "core/src/telemetry.ts",
+    "backend/src/usage/telemetry-timer.ts",
+    "backend/src/usage/telemetry-preview.ts",
+  ])
+    assert.ok(rejected.stderr.includes(file), rejected.stderr);
+});

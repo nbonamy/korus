@@ -29,6 +29,33 @@ for (const [directory, area] of areas) {
           `${path.relative(root, file)}: ${specifier} (${forbidden})`,
         );
     }
+    if (isTelemetryProjection(file)) {
+      const forbiddenGlobals = new Set([
+        "fetch",
+        "XMLHttpRequest",
+        "WebSocket",
+        "EventSource",
+        "setTimeout",
+        "setInterval",
+        "setImmediate",
+      ]);
+      const visit = (node) => {
+        if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+          const expression = node.expression;
+          const name = ts.isIdentifier(expression)
+            ? expression.text
+            : ts.isPropertyAccessExpression(expression)
+              ? expression.name.text
+              : null;
+          if (forbiddenGlobals.has(name))
+            violations.push(
+              `${path.relative(root, file)}: ${name} (telemetry projection cannot send or schedule delivery)`,
+            );
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
   }
 }
 
@@ -93,6 +120,28 @@ function moduleSpecifiers(source) {
 }
 
 function forbiddenImport(area, file, specifier) {
+  if (isTelemetryProjection(file)) {
+    const allowed =
+      area === "core"
+        ? ["./usage", "./telemetry-models"]
+        : [
+            "node:fs",
+            "node:path",
+            "node:sqlite",
+            "@workspace/core/usage",
+            "@workspace/core/contracts",
+            "@workspace/core/telemetry",
+            "@workspace/core/provider-conversation-event",
+            "../pricing/catalog",
+            "../pricing/schema",
+            "../pricing/evaluate",
+            "./cost",
+            "./usage-ledger",
+            "./turn-clock",
+          ];
+    if (!allowed.includes(specifier))
+      return "telemetry projection cannot depend on delivery or provider runtimes";
+  }
   if (area === "mobile") {
     const forbiddenPackages = [
       "electron",
@@ -167,6 +216,18 @@ function forbiddenImport(area, file, specifier) {
     return "preload cannot use raw filesystem or process APIs";
   }
   return null;
+}
+
+function isTelemetryProjection(file) {
+  const relative = path.relative(root, file).split(path.sep).join("/");
+  return (
+    [
+      "core/src/telemetry.ts",
+      "core/src/telemetry-models.ts",
+      "backend/src/usage/usage-ledger.ts",
+      "backend/src/usage/usage-service.ts",
+    ].includes(relative) || relative.startsWith("backend/src/usage/telemetry")
+  );
 }
 
 function isPackage(specifier, name) {

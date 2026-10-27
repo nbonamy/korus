@@ -73,6 +73,7 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.telemetryPreview]: { params: { input: import('../telemetry').TelemetryPreviewInput }; result: import('../telemetry').SealedTelemetryBody };
   [backendMethods.guestConversationControl]: { params: { input: import('../guest-navigation').GuestJoinControl }; result: import('../guest-navigation').GuestJoinState };
   [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };
   [backendMethods.guestConversationContent]: { params: { id: string; input: import('../contracts/conversation').ConversationContentInput }; result: import('../contracts/conversation').ConversationContentChunk };

@@ -946,3 +946,44 @@ summed generation time rather than averaging per-turn rates. Clearing statistics
 deletes the local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.
+
+### Private daily payload projection
+
+The local telemetry preview drains pending ledger observations and uses a numeric
+projection of that same SQLite ledger. Its required half-open eligibility interval
+filters execution starts and request timestamps; a request whose parent started
+before eligibility is excluded even if the request itself is later. Tokens and
+turns retain execution-start attribution; costs retain request-day/model
+attribution. Cost-only groups have zero execution tokens. Missing measurements in
+any contributing execution make that group's token fields null. Only complete
+ledger cost coverage becomes a number; partial subtotals remain null.
+
+The shared wire allowlist contains canonical IDs from the embedded pricing catalog,
+independent of runtime/user model catalogs. Other IDs coalesce into `unknown`.
+The serializer rejects extra fields, constructs every wire field explicitly, sorts
+driver/model groups and returns immutable canonical JSON text. Its UTF-8 bytes are
+the sealed-body representation shared by preview and delivery callers. Preview
+does not persist, queue, schedule or send; identity and consent owners must supply
+the eligible interval. The preview result carries only the body, never a ledger
+row, provider object or filesystem path. An unavailable ledger is an error, not an
+empty active day.
+
+Inclusive input includes cache reads and Claude cache creation. Cached input means
+reads only; output already includes reasoning. The input-minus-read remainder
+includes writes, so it is not an ordinary-rate fresh-input measurement. Claude's
+request observer retains write lifetimes, while execution totals collapse them.
+Codex execution cache-write counters, including a schema default of zero, do not
+establish inclusion semantics, write lifetime or independently billable request
+evidence. The projection uses existing ledger estimate coverage, including its
+execution fallbacks; it neither invents request evidence nor reprices usage. Its
+omitted cache-write categories prevent exact downstream repricing. Estimated USD
+is API-equivalent usage, not billing.
+
+The server-usage workflow compares persisted Claude/Codex measurements against
+`backend/src/usage/__tests__/fixtures/daily-telemetry.json`, the exact canonical
+macOS UTF-8 body without a trailing newline. Other platforms substitute only the
+coarse OS value. Repeat with
+`npm run test -w @workspace/backend -- usage/__tests__/server-usage.spec.ts`.
+It covers midnight attribution, model changes, interval exclusion, nulls and
+content/local-dimension canaries without an endpoint. Architecture AST lint limits
+projection dependencies and rejects direct network/timer operations.

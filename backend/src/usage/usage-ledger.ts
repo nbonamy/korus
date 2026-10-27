@@ -23,6 +23,14 @@ import {
   type RequestPrice,
 } from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
+import {
+  telemetryModel,
+  validTelemetryProjectionInput,
+  type TelemetryProjectionInput,
+  type TelemetryProvider,
+  type TelemetryModel,
+  type TelemetryUsage,
+} from "@workspace/core/telemetry";
 const retention = 365 * 86400000;
 type Bucket = UsageSummary["rows"][number];
 /** Statistics only. Provider conversation stores remain the sole owners of content. */
@@ -297,6 +305,50 @@ export class UsageLedger {
     ).run(provider, sessionId, turnId);
   }
   query(filter: UsageFilter = {}): UsageSummary {
+    return this.summarize(filter);
+  }
+  /** Numeric-only projection. No local identifiers, arbitrary labels, timing or
+   * provider objects leave this boundary. Reuses the ledger's pricing coverage.
+   */
+  projectDailyTelemetry(input: TelemetryProjectionInput): TelemetryUsage[] {
+    if (!validTelemetryProjectionInput(input))
+      throw new Error("Invalid telemetry interval.");
+    const summary = this.summarize({ from: input.day, to: input.day }, input);
+    if (summary.available === false) throw new Error("Usage is unavailable.");
+    return summary.rows
+      .map((row) => {
+        const [provider, model] = JSON.parse(row.label) as [
+          TelemetryProvider,
+          TelemetryModel,
+        ];
+        const measured = row.measuredTurns === row.started;
+        return {
+          provider,
+          model,
+          turns: row.started,
+          inputTokens: measured ? (row.tokens?.input ?? 0) : null,
+          cachedInputTokens: measured ? (row.tokens?.cacheRead ?? 0) : null,
+          outputTokens: measured ? (row.tokens?.output ?? 0) : null,
+          estimatedCostUsd:
+            row.cost?.coverage === "complete" ? row.cost.usd : null,
+        };
+      })
+      .sort((a, b) =>
+        a.provider < b.provider
+          ? -1
+          : a.provider > b.provider
+            ? 1
+            : a.model < b.model
+              ? -1
+              : a.model > b.model
+                ? 1
+                : 0,
+      );
+  }
+  private summarize(
+    filter: UsageFilter,
+    projection?: TelemetryProjectionInput,
+  ): UsageSummary {
     if (
       !filter ||
       typeof filter !== "object" ||
@@ -340,9 +392,14 @@ export class UsageLedger {
     if (db) {
       const requestRows = db
         .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? ORDER BY r.at,r.request_id",
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND e.started_at>=? AND e.started_at<? ORDER BY r.at,r.request_id",
         )
-        .all(this.now() - retention, this.now() - retention);
+        .all(
+          this.now() - retention,
+          this.now() - retention,
+          projection?.eligibleFrom ?? 0,
+          projection?.eligibleUntil ?? 8640000000000000,
+        );
       const observedExecutions = new Set(
         requestRows.map((row) =>
           JSON.stringify([row.provider, row.session_id, row.turn_id]),
@@ -350,6 +407,13 @@ export class UsageLedger {
       );
       const conditions = ["started_at>=?"],
         args: (string | number)[] = [this.now() - retention];
+      if (projection) {
+        conditions.push("started_at>=?", "started_at<?");
+        args.push(
+          projection.eligibleFrom,
+          projection.eligibleUntil ?? 8640000000000000,
+        );
+      }
       if (filter.from) {
         conditions.push("started_at>=?");
         args.push(Date.parse(filter.from));
@@ -394,13 +458,15 @@ export class UsageLedger {
           : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
-        const label = filter.group
-          ? String(
-              filter.group === "apiProvider"
-                ? "Unknown"
-                : (record[filter.group] ?? "Unknown"),
-            )
-          : "All";
+        const label = projection
+          ? JSON.stringify([record.provider, telemetryModel(record.model)])
+          : filter.group
+            ? String(
+                filter.group === "apiProvider"
+                  ? "Unknown"
+                  : (record[filter.group] ?? "Unknown"),
+              )
+            : "All";
         if (!filter.apiProvider) {
           this.aggregate(rows, record, label);
           this.aggregate(daily, record, utcDay(record.startedAt));
@@ -437,6 +503,10 @@ export class UsageLedger {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
         const parent = this.decode(row);
         if (
+          (projection &&
+            (event.at < projection.eligibleFrom ||
+              (projection.eligibleUntil !== null &&
+                event.at >= projection.eligibleUntil))) ||
           (filter.from && event.at < Date.parse(filter.from)) ||
           (filter.to && event.at >= Date.parse(filter.to) + 86400000) ||
           (filter.model && event.model !== filter.model) ||
@@ -446,8 +516,9 @@ export class UsageLedger {
           )
         )
           continue;
-        const label =
-          filter.group === "model"
+        const label = projection
+          ? JSON.stringify([parent.provider, telemetryModel(event.model)])
+          : filter.group === "model"
             ? (event.model ?? "Unknown")
             : filter.group === "apiProvider"
               ? (event.apiProvider ?? "Unknown")

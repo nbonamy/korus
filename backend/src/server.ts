@@ -938,9 +938,13 @@ export class AppBackendServer {
         return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
     }
-    if ([backendMethods.usageGet,backendMethods.usageClear].some(method=>method===message.method)) {
+    if ([backendMethods.usageGet,backendMethods.usageClear,backendMethods.telemetryPreview].some(method=>method===message.method)) {
       try {
         const usage=this.options.usage;if(!usage) throw new Error('Usage is unavailable on this host.');
+        if(message.method===backendMethods.telemetryPreview) {
+          if (!params || Object.keys(params).length !== 1 || !('input' in params)) throw new Error('Invalid preview request.');
+          return createAppRpcResult(message.id, await usage.previewTelemetry(params.input as import('@workspace/core/telemetry').TelemetryPreviewInput, this.options.version, process.platform));
+        }
         if(message.method===backendMethods.usageClear) {if(params&&Object.keys(params).length)throw new Error('Invalid clear request.');await usage.clear();return createAppRpcResult(message.id,null);}
         if(message.method===backendMethods.usageGet) {await usage.drain();return createAppRpcResult(message.id,usage.local.query((params?.filter??{}) as UsageFilter));}
       } catch { return createAppRpcError(message.id,appRpcErrorCodes.invalidParams,'Usage request is unavailable or invalid.'); }

@@ -1,7 +1,18 @@
 import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
-import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
+import type {
+  ExecutionObservation,
+  RequestObservation,
+} from "@workspace/core/usage";
 import { UsageLedger } from "./usage-ledger";
 import { TurnClock } from "./turn-clock";
+import {
+  validTelemetryPreviewInput,
+  normalizeTelemetryVersion,
+  serializeDailyTelemetry,
+  telemetryOs,
+  type TelemetryPreviewInput,
+  type SealedTelemetryBody,
+} from "@workspace/core/telemetry";
 import { providerConversationEventView } from "@workspace/core/provider-conversation-event";
 /** Tool calls an event reports as running or finished, however the provider surfaces them. */
 function toolStates(view: {
@@ -116,7 +127,11 @@ export class UsageService {
       .catch(() => undefined);
   }
   observeRequest(event: RequestObservation): void {
-    this.chain = this.chain.then(async () => { await this.local.observeRequest(event); }).catch(() => undefined);
+    this.chain = this.chain
+      .then(async () => {
+        await this.local.observeRequest(event);
+      })
+      .catch(() => undefined);
   }
   clear(): Promise<void> {
     const clearing = this.chain.then(() => this.local.clear());
@@ -125,6 +140,30 @@ export class UsageService {
   }
   async drain(): Promise<void> {
     await this.chain;
+  }
+  /** Local-only, hypothetical export. Does not queue, persist or send a report.
+   * Identity and consent owners supply the interval; runtime supplies version/OS.
+   */
+  async previewTelemetry(
+    input: TelemetryPreviewInput,
+    version: string,
+    platform: string,
+  ): Promise<SealedTelemetryBody> {
+    if (!validTelemetryPreviewInput(input))
+      throw new Error("Invalid telemetry preview.");
+    await this.drain();
+    const { day, eligibleFrom, eligibleUntil } = input;
+    return serializeDailyTelemetry({
+      installId: input.installId,
+      day,
+      appVersion: normalizeTelemetryVersion(version),
+      os: telemetryOs(platform),
+      usage: this.local.projectDailyTelemetry({
+        day,
+        eligibleFrom,
+        eligibleUntil,
+      }),
+    });
   }
   async close(): Promise<void> {
     await this.chain;
