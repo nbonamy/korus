@@ -125,7 +125,7 @@ by mutating user-global tool config.
   a later failure leaves the created folder or agent for recovery.
 - `get-diff-stats` is read-only and offered to agents with a working folder. `scope` picks
   `uncommitted` (default), `unstaged`, `staged`, `branch` (optional `baseRef`) or `commit`
-  (needs `sha`); it returns lines added and removed and files changed, in total and per file
+  (needs `sha`) or `lastTurn` (the agent's most recent recorded turn diff); it returns lines added and removed and files changed, in total and per file
   type (code, test, docs, other), using the same classifier as the review pane.
 - `create-mission` lets an agent on a local team start a Mission when the user asks
   (`/mission [instructions]` expands into that request). It creates the Mission with
