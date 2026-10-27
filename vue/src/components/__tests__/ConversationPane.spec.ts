@@ -98,7 +98,8 @@ describe('ConversationPane', () => {
       expect(option?.exists()).toBe(true);
       expect(option!.text()).toContain('Generate or edit images for websites, games, and more');
       await option!.trigger('mousedown');
-      expect(view.composerState.text).toContain('$imagegen');
+      expect(view.composerState.text).toBe('Image Gen ');
+      expect(view.composerState.content).toContainEqual({ type: 'mention', kind: 'skill', id: 'korus:skill/korus-imagegen', value: 'imagegen', label: 'Image Gen' });
       expect(submit).not.toHaveBeenCalled();
     } finally { wrapper.unmount(); }
   });
@@ -232,7 +233,8 @@ describe('ConversationPane', () => {
     expect(wrapper.get('details pre').text()).toBe('The next action is to review the diff.');
   });
   it('parks only the selected composer text and restores a saved draft at the caret', async () => {
-    const composerState = ref<CodexComposerState>({ text: 'first then second', selectionStart: 6, selectionEnd: 10 });
+    const mention = { type: 'mention' as const, kind: 'file' as const, id: 'docs/then.md', value: 'docs/then.md', label: 'then' };
+    const composerState = ref<CodexComposerState>({ text: 'first then second', content: [{ type: 'text', text: 'first ' }, mention, { type: 'text', text: ' second' }], selectionStart: 6, selectionEnd: 10 });
     const conversationId = ref(agent.id);
     const savePromptDraft = vi.fn().mockResolvedValue(undefined);
     const removePromptDraft = vi.fn().mockResolvedValue(undefined);
@@ -248,11 +250,11 @@ describe('ConversationPane', () => {
 
     await editor.trigger('keydown', { key: 'X', metaKey: true, shiftKey: true });
     await flushPromises();
-    expect(savePromptDraft).toHaveBeenCalledWith(agent.id, 'then');
+    expect(savePromptDraft).toHaveBeenCalledWith(agent.id, 'then', [mention]);
     expect(composerState.value.text).toBe('first  second');
     expect(document.body.textContent).toContain('Draft saved. Use ⇧⌘V to recall it.');
 
-    const draft: SavedPromptDraft = { id: 'draft-1', agentId: agent.id, text: 'then', createdAt: 1000 };
+    const draft: SavedPromptDraft = { id: 'draft-1', agentId: agent.id, text: 'then', content: [mention], createdAt: 1000 };
     await wrapper.setProps({ savedPromptDrafts: [draft] });
     await editor.trigger('keydown', { key: 'V', metaKey: true, shiftKey: true });
     await nextTick();
@@ -263,6 +265,7 @@ describe('ConversationPane', () => {
     await search.trigger('keydown', { key: 'Enter' });
     await flushPromises();
     expect(composerState.value.text).toBe('first then second');
+    expect(composerState.value.content).toContainEqual(mention);
     expect(removePromptDraft).toHaveBeenCalledWith(draft.id);
     expect(document.activeElement).toBe(editor.element);
 
@@ -628,17 +631,6 @@ describe('ConversationPane', () => {
   });
 
   it('renders persisted agent mentions with the app-owned bot treatment', () => {
-    const mentionGroup = {
-      id: 'agents',
-      label: 'Agents',
-      placement: 'before' as const,
-      items: [{
-        id: agent.id,
-        value: `agent:${agent.id}`,
-        label: agent.name ?? 'Dina',
-        payload: { agentId: agent.id },
-      }],
-    };
     const controller = createCodexConversationPaneController({
       state: {
         identity: {
@@ -648,10 +640,11 @@ describe('ConversationPane', () => {
             role: 'user',
             status: 'complete',
             createdAt: '2026-08-18T00:00:00.000Z',
-            parts: [{ type: 'text', text: `Ask @agent:${agent.id} to review this.` }],
+            parts: [{ type: 'text', text: 'Ask Dina to review this.' }],
+            metadata: { promptContent: [{ type: 'text', text: 'Ask ' }, { type: 'mention', kind: 'custom', groupId: 'agents', id: agent.id, value: `agent:${agent.id}`, label: 'Dina' }, { type: 'text', text: ' to review this.' }] },
           }],
         },
-        catalogs: { mentionGroups: [mentionGroup] },
+        catalogs: { mentionGroups: [] },
       },
       actions: {},
     });

@@ -523,16 +523,21 @@ describe('Antigravity native session', () => {
     const host = new AntigravityHost();
     const agent: Agent = { id: 'attachments', name: 'Attachments', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     const events: BackendEvent[] = [];
+    const content = [{ type: 'mention' as const, kind: 'file' as const, id: file, value: file, label: 'Read my notes' }];
     host.onEvent(event => events.push(event));
     try {
-      const result = await host.sendPrompt(agent, 'Read my notes', { attachments: [{ type: 'file', path: file, name: 'notes.txt', mimeType: 'text/plain' }] });
+      const result = await host.sendPrompt(agent, 'Read my notes', { content, attachments: [{ type: 'file', path: file, name: 'notes.txt', mimeType: 'text/plain' }] });
       agent.backendSession = result.backendSession;
       await vi.waitFor(() => expect(events.some(event => event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
       const ref = { backend: 'antigravity' as const, sessionId: result.backendSession.kind === 'antigravity' ? result.backendSession.sessionId : '', folder: root };
+      const admitted = JSON.parse((await readFile(path.join(root, 'home', 'korus-sessions', encodeURIComponent(ref.sessionId), 'prompts.jsonl'), 'utf8')).trim());
+      expect(admitted.wireText.startsWith(`@${file}\n\n<context>`)).toBe(true);
       const live = await host.readConversationMessages(ref, agent.id);
       await host.releaseConversation(agent.id);
       const replay = await host.readConversationMessages(ref, agent.id);
       expect(replay.map(message => message.parts)).toEqual(live.map(message => message.parts));
+      expect(live[0]?.metadata?.promptContent).toStrictEqual(content);
+      expect(replay[0]?.metadata?.promptContent).toStrictEqual(content);
       expect(replay[0]?.parts).toEqual([{ type: 'text', text: 'Read my notes' }, { type: 'attachment', attachment: { kind: 'file', name: 'notes.txt', path: file, mimeType: 'text/plain' } }]);
     } finally { await host.close(); }
   });

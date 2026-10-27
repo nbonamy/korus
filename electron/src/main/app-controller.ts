@@ -681,12 +681,12 @@ export class AppController {
       return this.deleteQueuedPrompt(agentId, promptId);
     });
 
-    ipc.handle(ipcChannels.updateQueuedPrompt, (_event, agentId: string, promptId: string, prompt: string) => {
-      return this.updateQueuedPrompt(agentId, promptId, prompt);
+    ipc.handle(ipcChannels.updateQueuedPrompt, (_event, agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.updateQueuedPrompt(agentId, promptId, prompt, options);
     });
 
-    ipc.handle(ipcChannels.steerQueuedPrompt, (_event, agentId: string, promptId: string, prompt?: string) => {
-      return this.steerQueuedPrompt(agentId, promptId, prompt);
+    ipc.handle(ipcChannels.steerQueuedPrompt, (_event, agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.steerQueuedPrompt(agentId, promptId, prompt, options);
     });
 
     ipc.handle(ipcChannels.interruptAgent, (_event, agentId: string) => {
@@ -697,8 +697,8 @@ export class AppController {
       return this.deleteTurn(agentId, turnId);
     });
 
-    ipc.handle(ipcChannels.editTurn, (_event, agentId: string, turnId: string, content: string) => {
-      return this.editTurn(agentId, turnId, content);
+    ipc.handle(ipcChannels.editTurn, (_event, agentId: string, turnId: string, content: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.editTurn(agentId, turnId, content, options);
     });
 
     ipc.handle(ipcChannels.retryTurn, (_event, agentId: string, turnId: string) => {
@@ -1514,15 +1514,16 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptDelete, { agentId, promptId }));
   }
 
-  private async updateQueuedPrompt(agentId: string, promptId: string, prompt: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt }));
+  private async updateQueuedPrompt(agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt, ...(options ? { options } : {}) }));
   }
 
-  private async steerQueuedPrompt(agentId: string, promptId: string, prompt?: string): Promise<AppSnapshot> {
+  private async steerQueuedPrompt(agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptSteer, {
       agentId,
       promptId,
       ...(prompt === undefined ? {} : { prompt }),
+      ...(options ? { options } : {}),
     }));
   }
 
@@ -1534,8 +1535,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnDelete, { agentId, turnId }));
   }
 
-  private async editTurn(agentId: string, turnId: string, content: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnEdit, { agentId, turnId, content }));
+  private async editTurn(agentId: string, turnId: string, content: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnEdit, { agentId, turnId, content, ...(options ? { options } : {}) }));
   }
 
   private async retryTurn(agentId: string, turnId: string): Promise<AppSnapshot> {

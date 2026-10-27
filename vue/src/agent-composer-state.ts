@@ -1,6 +1,3 @@
-import {
-  promptSkillInputsFromText,
-} from '@codex-app-sdk/vue';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import type {
   Agent,
@@ -407,7 +404,7 @@ export function createAgentComposerState(options: {
     prompt: string,
     submissionOptions?: RendererSendPromptOptions,
   ): RendererSendPromptOptions | undefined {
-    const selectedOptions = promptOptions(agentId, prompt);
+    const selectedOptions = promptOptions(agentId);
     const attachments = submissionOptions?.attachments?.length ? [...submissionOptions.attachments] : undefined;
     if (!selectedOptions && !submissionOptions) return undefined;
     return {
@@ -558,16 +555,14 @@ export function createAgentComposerState(options: {
     if (agentId === snapshot().activeAgentId) restore(agentId);
   }
 
-  function promptOptions(agentId: string, prompt: string): RendererSendPromptOptions | undefined {
+  function promptOptions(agentId: string): RendererSendPromptOptions | undefined {
     const isActiveAgent = agentId === snapshot().activeAgentId;
     const current = configuration(agentId);
     const models = isActiveAgent ? backendModels.value : current.models;
     const model = models.find((candidate) => candidate.id === (isActiveAgent ? selectedModelId.value : current.selectedModelId)) ?? null;
-    const skills = promptSkillInputsFromText(prompt, isActiveAgent ? backendSkills.value : current.skills);
     const agent = snapshot().agents.find((candidate) => candidate.id === agentId) ?? null;
     const capabilities = capabilitiesForAgent(agent);
     const promptModel = capabilities.models ? model : null;
-    const selectedSkills = capabilities.skills ? skills : [];
     const reasoningEffort = capabilities.reasoningEffort && promptModel
       ? (isActiveAgent ? selectedReasoningEffort.value : current.selectedReasoningEffort) ?? defaultReasoningEffort(promptModel)
       : null;
@@ -577,7 +572,7 @@ export function createAgentComposerState(options: {
     if (
       !promptModel &&
       (capabilities.planMode === 'unsupported' || !(isActiveAgent ? planMode.value : current.planMode)) &&
-      !reasoningEffort && serviceTier === undefined && selectedSkills.length === 0
+      !reasoningEffort && serviceTier === undefined
     ) return undefined;
     return {
       ...(promptModel ? { model: promptModel.model } : {}),
@@ -585,7 +580,6 @@ export function createAgentComposerState(options: {
       ...(capabilities.planMode === 'prompted' && (isActiveAgent ? planMode.value : current.planMode) ? { planMode: true } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
       ...(serviceTier !== undefined ? { serviceTier } : {}),
-      ...(selectedSkills.length > 0 ? { skills: selectedSkills } : {}),
     };
   }
 

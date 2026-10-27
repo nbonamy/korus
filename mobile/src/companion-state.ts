@@ -9,7 +9,7 @@ import { createComposerState } from './composer-state';
 import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
-import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
+import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
 import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
@@ -529,7 +529,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (active === session && epoch === selectionEpoch) queuedPromptFailed.value = true;
     } finally { queuedPromptPending.value = null; }
   }
-  async function submit(prompt: string, sendOptions?: { followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
+  async function submit(prompt: string, sendOptions?: { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
     if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
     const target = currentTarget();
@@ -537,14 +537,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const draftKey = key();
     const capturedSession = session;
     const epoch = selectionEpoch;
-    const catalogEpoch = skillList.epoch;
-    // Resolve the same typed skill aliases as the desktop, including pasted mentions.
-    if (/[$/][A-Za-z0-9_.-]+/.test(prompt)) {
-      await loadSkills();
-      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillList.epoch || !canSend.value) return 'rejected';
-    }
-    const selectedSkills = promptSkillInputsFromText(prompt, skills.value.items);
-    const sentDraft = draft.value.text ? { ...draft.value } : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length };
+    const sentDraft = { ...(draft.value.text ? draft.value : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length }), ...(sendOptions?.content === undefined ? {} : { content: sendOptions.content }) };
     // The SDK clears before dispatch; retain the submitted text until admission succeeds.
     if (!drafts[draftKey]?.text) drafts[draftKey] = sentDraft;
     sending[draftKey] = true;
@@ -562,7 +555,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const settings = composerSettings.value;
       const composerOptions = settings && agent.value ? promptOptionsFor(settings, composerCapabilitiesFor(agent.value.backend, models.value)) : undefined;
-      const options = selectedSkills.length || sendOptions?.followUpBehavior ? { ...composerOptions, ...(selectedSkills.length ? { skills: selectedSkills } : {}), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
+      const options = sendOptions?.content !== undefined || sendOptions?.followUpBehavior ? { ...composerOptions, ...(sendOptions?.content === undefined ? {} : { content: sendOptions.content }), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
       const promptText = prompt.trim() ? prompt : '(no user instructions)';
       await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };

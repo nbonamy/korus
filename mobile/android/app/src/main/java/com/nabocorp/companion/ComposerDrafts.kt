@@ -12,7 +12,7 @@ data class ComposerAttachment(val name: String, val mimeType: String, val type: 
 class ComposerDrafts {
     companion object { const val MAX_COUNT = 5; const val MAX_BYTES = 2_500_000 }
     data class Import(val target: ConversationTarget, val id: String = UUID.randomUUID().toString())
-    private data class Draft(val text: String = "", val items: List<ComposerAttachment> = emptyList(), val goal: Boolean = false,
+    private data class Draft(val text: String = "", val chips: List<ComposerChip> = emptyList(), val items: List<ComposerAttachment> = emptyList(), val goal: Boolean = false,
         val loading: Import? = null, val sending: String? = null, val error: String? = null)
     private data class Pending(var owner: ConversationTarget, val text: String, val attachmentIds: Set<String>, val goal: Boolean)
     private var draft by mutableStateOf(Draft())
@@ -22,7 +22,10 @@ class ComposerDrafts {
         private set
     var text: String
         get() = draft.text
-        set(value) { draft = draft.copy(text = value, error = null) }
+        set(value) { draft = draft.copy(text = value, chips = if (value == draft.text) draft.chips else emptyList(), error = null) }
+    var chips: List<ComposerChip>
+        get() = draft.chips
+        set(value) { draft = draft.copy(chips = value) }
     val items get() = draft.items
     val goalMode get() = draft.goal
     val importing get() = draft.loading != null
@@ -71,6 +74,7 @@ class ComposerDrafts {
         val id = UUID.randomUUID().toString()
         val command = json("type" to "send", "requestId" to id, "target" to owner.toJson(), "text" to text.trim(), "goalMode" to goalMode,
             "followUpBehavior" to mode, "uploads" to JSONArray().apply { items.forEach { item -> put(json("type" to item.type, "name" to item.name, "mimeType" to item.mimeType, "data" to Base64.encodeToString(item.data, Base64.NO_WRAP))) } })
+        if (chips.isNotEmpty() && !goalMode) command.put("options", json("content" to composerPromptContent(text, chips)))
         pending.entries.removeAll { it.value.owner == owner }
         pending[id] = Pending(owner, text.trim(), items.map { it.id }.toSet(), goalMode)
         draft = draft.copy(sending = id, error = null)
@@ -84,7 +88,7 @@ class ComposerDrafts {
             if (current.sending != null && current.sending != requestId) current
             else when (status) {
                 "accepted" -> current.copy(sending = null, error = null, goal = if (sent.goal) false else current.goal,
-                    text = if (current.text.trim() == sent.text) "" else current.text, items = current.items.filterNot { it.id in sent.attachmentIds })
+                    text = if (current.text.trim() == sent.text) "" else current.text, chips = if (current.text.trim() == sent.text) emptyList() else current.chips, items = current.items.filterNot { it.id in sent.attachmentIds })
                 "unknown" -> current.copy(sending = null, error = "Delivery couldn’t be confirmed. Check the conversation before sending again.")
                 else -> current.copy(sending = null, error = "Couldn’t send. Your draft and attachments are still here.")
             }

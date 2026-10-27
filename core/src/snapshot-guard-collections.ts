@@ -1,3 +1,4 @@
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
 import {
@@ -23,6 +24,7 @@ export function isRendererMessage(value: unknown): boolean {
     includes(['user', 'assistant', 'system'], value.role) &&
     includes(['complete', 'streaming', 'error'], value.status) &&
     optional(value, 'turnId', isString) &&
+    optional(value, 'metadata', metadata => isRecord(metadata) && optional(metadata, 'promptContent', isPromptContent)) &&
     isArrayOf(value.parts, isRendererMessagePart) &&
     typeof value.createdAt === 'string';
 }
@@ -88,6 +90,7 @@ export function isQueuedPrompt(value: unknown): boolean {
 
 function isSendPromptOptions(value: unknown): boolean {
   return isRecord(value) &&
+    optional(value, 'content', isPromptContent) &&
     optional(value, 'delegation', isDelegationOverrides) &&
     optional(value, 'attachments', (candidate) => isArrayOf(candidate, isPromptAttachment)) &&
     optional(value, 'model', isNullableString) &&
@@ -98,6 +101,11 @@ function isSendPromptOptions(value: unknown): boolean {
     optional(value, 'inputMethod', (candidate) => includes(['typed', 'dictated'], candidate)) &&
     optional(value, 'recordUserMessage', isBoolean) &&
     optional(value, 'backendOptions', isBackendPromptOptions);
+}
+
+export function isPromptContent(value: unknown): boolean {
+  try { normalizePromptContent(value); return true; }
+  catch { return false; }
 }
 
 function isPromptAttachment(value: unknown): boolean {

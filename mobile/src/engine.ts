@@ -1,6 +1,7 @@
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
+import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
@@ -77,8 +78,8 @@ export type EngineState = {
   canSelectBackend: boolean;
   draft: string;
   suggestedPrompt: string | null;
-  mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; description: string }[] };
-  skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; description: string }[] };
+  mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; value: string; description: string }[] };
+  skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; value: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
   permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
@@ -141,7 +142,7 @@ export type EngineCommand =
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
-  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('@codex-app-sdk/core/surface').CodexPromptPart[]; attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'queuedPrompt'; target: CompanionTarget; promptId: string; action: 'steer' | 'delete' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
@@ -313,12 +314,12 @@ export function createEngine(port: EnginePort) {
       conversationGeneration: state.conversationGeneration.value,
       mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
         ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
-          id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, description: '',
+          id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, value: `agent:${agentId}`, description: '',
         })),
         ...state.plugins.value.items.map(plugin => ({ id: `plugin:${plugin.id}`, kind: 'plugin' as const,
-          name: pluginDisplayName(plugin), insertText: pluginInsertText(plugin), description: pluginDescription(plugin) })),
+          name: pluginDisplayName(plugin), insertText: pluginInsertText(plugin), value: plugin.name || plugin.id, description: pluginDescription(plugin) })),
       ] },
-      skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
+      skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), value: skill.name, description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
       closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
@@ -349,7 +350,7 @@ export function createEngine(port: EnginePort) {
   watch(view, publish, { flush: 'sync' });
   // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
   // Until the real message arrives, the transcript shows the prompt as sent.
-  const pending: { id: string; agentId: string; text: string; baseline: number; expires: number; createdAt: string }[] = [];
+  const pending: { id: string; agentId: string; text: string; content?: readonly CodexPromptPart[]; baseline: number; expires: number; createdAt: string }[] = [];
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
     .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
@@ -365,7 +366,7 @@ export function createEngine(port: EnginePort) {
     });
     if (!shown.length) return { frame, key: '' };
     const snapshot = frame.payload.snapshot;
-    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], createdAt: entry.createdAt }))];
+    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
     return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
@@ -416,11 +417,14 @@ export function createEngine(port: EnginePort) {
     const onResolved = (status: 'accepted' | 'rejected') => { if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status }); };
     const frame = state.conversation.value;
     const followUpBehavior = command.followUpBehavior;
-    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
-    const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
+    const content = command.options?.content === undefined ? undefined : trimPromptContent(command.options.content);
+    const text = content === undefined ? command.text : promptContentText(content);
+    const options = { ...command.options, ...(content === undefined ? {} : { content }), followUpBehavior, uploads: command.uploads, onResolved };
+    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !text.trim()) return state.submit(text, options);
+    const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text, ...(content === undefined ? {} : { content }), baseline: userTexts(frame, text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
-    const result = await state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
+    const result = await state.submit(text, options);
     if (state.error.value || result !== 'accepted') { pending.splice(pending.indexOf(entry), 1); postConversation(); }
     return result;
   }

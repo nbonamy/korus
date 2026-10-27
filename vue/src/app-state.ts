@@ -706,12 +706,12 @@ export function useAppState() {
     adoptBackgroundSnapshot(await appApi.deleteTurn(agentId, turnId));
   }
 
-  async function editTurn(payload: { content: string; turnId: string }): Promise<void> {
+  async function editTurn(payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }): Promise<void> {
     const agentId = snapshot.value.activeAgentId;
     if (agentId) await editTurnForAgent(agentId, payload);
   }
 
-  async function editTurnForAgent(agentId: string, payload: { content: string; turnId: string }): Promise<void> {
+  async function editTurnForAgent(agentId: string, payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }): Promise<void> {
     const trimmed = payload.content.trim();
     if (!agentId || !trimmed || !appApi?.editTurn || isAgentSending(agentId)) {
       return;
@@ -723,7 +723,7 @@ export function useAppState() {
 
     markAgentSending(agentId, true);
     try {
-      adoptBackgroundSnapshot(await appApi.editTurn(agentId, payload.turnId, trimmed));
+      adoptBackgroundSnapshot(await (payload.options ? appApi.editTurn(agentId, payload.turnId, trimmed, payload.options) : appApi.editTurn(agentId, payload.turnId, trimmed)));
     } finally {
       markAgentSending(agentId, false);
     }
@@ -770,28 +770,28 @@ export function useAppState() {
     }
   }
 
-  async function updateQueuedPrompt(promptId: string, prompt: string): Promise<void> {
+  async function updateQueuedPrompt(promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     const agentId = activeAgent.value?.id;
-    if (agentId) await updateQueuedPromptForAgent(agentId, promptId, prompt);
+    if (agentId) await updateQueuedPromptForAgent(agentId, promptId, prompt, options);
   }
 
-  async function updateQueuedPromptForAgent(agentId: string, promptId: string, prompt: string): Promise<void> {
+  async function updateQueuedPromptForAgent(agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     if (!agentId || !appApi?.updateQueuedPrompt) {
       return;
     }
-    adoptBackgroundSnapshot(await appApi.updateQueuedPrompt(agentId, promptId, prompt));
+    adoptBackgroundSnapshot(await (options ? appApi.updateQueuedPrompt(agentId, promptId, prompt, options) : appApi.updateQueuedPrompt(agentId, promptId, prompt)));
   }
 
-  async function steerQueuedPrompt(promptId: string, prompt?: string): Promise<void> {
+  async function steerQueuedPrompt(promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     const agentId = activeAgent.value?.id;
-    if (agentId) await steerQueuedPromptForAgent(agentId, promptId, prompt);
+    if (agentId) await steerQueuedPromptForAgent(agentId, promptId, prompt, options);
   }
 
-  async function steerQueuedPromptForAgent(agentId: string, promptId: string, prompt?: string): Promise<void> {
+  async function steerQueuedPromptForAgent(agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     if (!agentId || !messageActionCapabilities(agentId).steerPrompt || !appApi?.steerQueuedPrompt) {
       return;
     }
-    adoptBackgroundSnapshot(await appApi.steerQueuedPrompt(agentId, promptId, prompt));
+    adoptBackgroundSnapshot(await (options ? appApi.steerQueuedPrompt(agentId, promptId, prompt, options) : appApi.steerQueuedPrompt(agentId, promptId, prompt)));
   }
 
   async function removeQueuedPrompt(promptId: string): Promise<void> {

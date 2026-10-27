@@ -1,8 +1,9 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RendererMessagePart } from '@workspace/core/contracts';
+import type { RendererMessage, RendererMessagePart } from '@workspace/core/contracts';
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 
-type Entry = { wireText: string; text: string; parts: RendererMessagePart[] };
+type Entry = { wireText: string; text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] };
 
 /** Presentation metadata for our own admitted prompts; native ACP owns history. */
 export class AcpPromptJournal {
@@ -45,7 +46,7 @@ export class AcpPromptJournal {
     this.entries.push(structuredClone(entry));
   }
 
-  display(nativeText: string): { text: string; parts: RendererMessagePart[] } {
+  display(nativeText: string): { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } {
     const index = this.entries.findIndex((candidate, index) => {
       if (index < this.replayIndex) return false;
       const text = candidate.wireText.replace(/^\/plan\s*/, '').trimStart();
@@ -53,13 +54,14 @@ export class AcpPromptJournal {
     });
     const entry = this.entries[index];
     if (entry) this.replayIndex = index + 1;
-    return entry ? structuredClone({ text: entry.text, parts: entry.parts }) : { text: nativeText, parts: [] };
+    return entry ? structuredClone({ text: entry.text, parts: entry.parts, ...(entry.metadata ? { metadata: entry.metadata } : {}) }) : { text: nativeText, parts: [] };
   }
 }
 
 function parseEntry(line: string): Entry | null {
   try {
     const entry = JSON.parse(line) as Entry;
+    if (entry.metadata?.promptContent !== undefined) entry.metadata.promptContent = normalizePromptContent(entry.metadata.promptContent);
     return typeof entry.wireText === 'string' && typeof entry.text === 'string' && Array.isArray(entry.parts)
       && entry.parts.every(part => part.type === 'attachment') ? entry : null;
   } catch { return null; }

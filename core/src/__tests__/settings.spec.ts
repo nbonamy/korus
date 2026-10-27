@@ -116,10 +116,10 @@ describe('settings contracts', () => {
       .toBe(false);
     expect(normalizeGeneralSettings({ cockpitAgentViewMode: 'invalid' }).cockpitAgentViewMode).toBe('teams');
     expect(normalizeGeneralSettings({ savedPromptDrafts: [
-      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', createdAt: 1000, unexpected: 'discard' },
+      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000, unexpected: 'discard' },
       { id: 'draft-2', agentId: 'agent-1', text: '', createdAt: 1001 },
     ] }).savedPromptDrafts).toStrictEqual([
-      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', createdAt: 1000 },
+      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000 },
     ]);
     expect(normalizeGeneralSettings(null)).toStrictEqual(defaultGeneralSettings);
     expect(normalizeAppshotSettings(null)).toStrictEqual(defaultAppshotSettings);

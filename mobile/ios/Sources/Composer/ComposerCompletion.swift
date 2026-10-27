@@ -10,19 +10,21 @@ struct ComposerSuggestion: Decodable, Equatable, Identifiable {
     let id: String
     let name: String
     let insertText: String
+    let value: String
     let description: String
     let kind: Kind
     var token: String { kind.trigger + insertText }
 
-    init(id: String, name: String, insertText: String, description: String, kind: Kind = .skill) {
-        self.id = id; self.name = name; self.insertText = insertText; self.description = description; self.kind = kind
+    init(id: String, name: String, insertText: String, description: String, kind: Kind = .skill, value: String? = nil) {
+        self.id = id; self.name = name; self.insertText = insertText; self.value = value ?? insertText; self.description = description; self.kind = kind
     }
-    private enum CodingKeys: CodingKey { case id, name, insertText, description, kind }
+    private enum CodingKeys: CodingKey { case id, name, insertText, description, kind, value }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(String.self, forKey: .id)
         name = try values.decode(String.self, forKey: .name)
         insertText = try values.decode(String.self, forKey: .insertText)
+        value = try values.decodeIfPresent(String.self, forKey: .value) ?? insertText
         description = try values.decode(String.self, forKey: .description)
         kind = try values.decodeIfPresent(Kind.self, forKey: .kind) ?? .skill
     }

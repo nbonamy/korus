@@ -83,13 +83,13 @@ export class AcpSession {
   get cwd(): string { return this.options.cwd; }
   get writtenPlan(): string | undefined { return this.planMarkdown; }
 
-  prompt(text: string, content: unknown[] = [{ type: 'text', text }], parts: RendererMessagePart[] = []): { turnId: string; completion: Promise<void> } {
+  prompt(text: string, content: unknown[] = [{ type: 'text', text }], parts: RendererMessagePart[] = [], metadata?: import('@workspace/core/contracts').RendererMessage['metadata']): { turnId: string; completion: Promise<void> } {
     if (this.disposed) throw new Error('Antigravity session is closed.');
     if (this.active) throw new Error('Antigravity is still finishing the previous turn. Queue the next prompt.');
     this.interrupted = false;
     this.promptSent = false;
     this.planMarkdown = undefined;
-    const turnId = this.transcript.start(text, parts);
+    const turnId = this.transcript.start(text, parts, metadata);
     const wireText = record(content[0]) && typeof content[0].text === 'string' ? content[0].text : text;
     let startedAt: number | undefined;
     let outcome: "completed" | "failed" | "interrupted" = "failed";
@@ -118,7 +118,7 @@ export class AcpSession {
         /* Numeric observation must not change ACP execution. */
       }
     };
-    const completion = this.journal.append({ wireText, text, parts }).then(() => {
+    const completion = this.journal.append({ wireText, text, parts, ...(metadata ? { metadata } : {}) }).then(() => {
       if (this.interrupted) return { stopReason: 'cancelled' };
       this.promptSent = true;
       startedAt = Date.now();

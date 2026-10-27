@@ -7,7 +7,7 @@ import type {
   CodexNativeAttachment,
   CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
@@ -660,6 +660,8 @@ describe('AppShell dialogs and commands', () => {
   });
 
   it('saves and opens drafts from native Edit menu commands', async () => {
+    const snapshot = reactive(createInitialSnapshot());
+    snapshot.general.savedPromptDrafts = [{ id: 'saved', agentId: 'agent-dina', text: 'Review', content: [{ type: 'mention', kind: 'file', id: 'review.md', label: 'Review', value: 'review.md' }], createdAt: 1 }];
     let listener: (command: AppCommand) => void = () => undefined;
     window.app = {
       onAppCommand: vi.fn((nextListener: (command: AppCommand) => void) => {
@@ -670,6 +672,7 @@ describe('AppShell dialogs and commands', () => {
     } as Partial<AppApi> as AppApi;
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountRealShell({
+      snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
       composerState: { text: 'Park this prompt', selectionStart: 0, selectionEnd: 0 },
@@ -679,8 +682,9 @@ describe('AppShell dialogs and commands', () => {
     listener({ type: 'save-active-prompt-draft' });
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith({
-      general: { savedPromptDrafts: [expect.objectContaining({ agentId: 'agent-dina', text: 'Park this prompt' })] },
+      general: { savedPromptDrafts: [expect.objectContaining({ id: 'saved' }), expect.objectContaining({ agentId: 'agent-dina', text: 'Park this prompt' })] },
     });
+    expect(() => structuredClone(updateSettings.mock.calls[0]![0])).not.toThrow();
     listener({ type: 'open-saved-prompt-drafts' });
     await flushPromises();
 

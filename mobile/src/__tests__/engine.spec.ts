@@ -879,11 +879,14 @@ describe('companion engine', () => {
     }
     it('shows it at once and does not duplicate it once it is published', async () => {
       const published = { texts: ['Earlier'] }; const { engine, events } = await opened(published);
-      await engine.dispatch({ type: 'send', text: 'Hello' });
-      expect(texts(events)).toEqual(['Earlier', 'Hello']);
-      published.texts.push('Hello');
+      const content = [{ type: 'mention' as const, kind: 'skill' as const, id: '/skills/review/SKILL.md', label: 'Review', value: 'review' }];
+      await engine.dispatch({ type: 'send', text: '$review', options: { content } });
+      expect(texts(events)).toEqual(['Earlier', 'Review']);
+      const shown = events.filter(event => event.type === 'conversation').at(-1);
+      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
+      published.texts.push('Review');
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      expect(texts(events)).toEqual(['Earlier', 'Hello']);
+      expect(texts(events)).toEqual(['Earlier', 'Review']);
       engine.dispose();
     });
     it('is not hidden by an earlier identical prompt', async () => {

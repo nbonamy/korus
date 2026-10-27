@@ -564,11 +564,9 @@ export class BackendDriverRpc {
         if (!driver.editTurn) {
           throw unsupportedBackendFeature(agent, 'turn editing');
         }
-        return driver.editTurn(
-          agent,
-          requireString(record.turnId, 'turnId'),
-          requireString(record.content, 'content'),
-        );
+        const turnId = requireString(record.turnId, 'turnId');
+        const content = requireString(record.content, 'content');
+        return record.options ? driver.editTurn(agent, turnId, content, record.options as Pick<SendPromptOptions, 'content'>) : driver.editTurn(agent, turnId, content);
       }
       case backendMethods.driverTurnRetry: {
         const { agent } = requireAgentParams(params);

@@ -149,7 +149,7 @@ export type AgentBackendDriver = {
   readConversationSummary?(agent: Agent, ref: BackendConversationRef): Promise<ConversationSummary | null>;
   steerPrompt?(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult>;
   deleteTurn?(agent: Agent, turnId: string): Promise<BackendTurnActionResult>;
-  editTurn?(agent: Agent, turnId: string, content: string): Promise<BackendTurnActionResult>;
+  editTurn?(agent: Agent, turnId: string, content: string, options?: Pick<SendPromptOptions, 'content'>): Promise<BackendTurnActionResult>;
   retryTurn?(agent: Agent, turnId: string): Promise<BackendTurnActionResult>;
   continueInterruptedTurn?(agent: Agent): Promise<BackendTurnActionResult>;
   listModels?(agent: Agent): Promise<BackendModelOption[]>;

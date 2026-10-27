@@ -92,12 +92,17 @@ describe(`Codex SDK → ${product.name} backend controls`, () => {
     const { driver, conversation, surface } = setup();
     const handle = conversation('conversation-a').handle;
     const attachments = [{ type: 'image' as const, path: '/image.png', detail: 'high' as const }, { type: 'file' as const, path: '/file.md', name: 'file' }];
-    await driver.sendPrompt(sdkAgent(), 'inspect', driver.preparePromptOptions(sdkAgent(), { attachments }));
-    expect(handle.sendMessage).toHaveBeenCalledWith('inspect', { attachments });
-    await driver.steerPrompt(sdkAgent(), 'adjust', driver.preparePromptOptions(sdkAgent(), { attachments }));
-    expect(handle.steerMessage).toHaveBeenCalledWith('adjust', { attachments });
-    await driver.editTurn(sdkAgent(), 'turn', 'corrected');
-    expect(handle.editTurn).toHaveBeenCalledWith('turn', 'corrected');
+    const content = [{ type: 'text' as const, text: '$cp vs ' },
+      { type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', value: 'cp', label: 'Commit and push' },
+      { type: 'text' as const, text: ' in ' }, { type: 'mention' as const, kind: 'file' as const, id: '/src/target.ts', value: '/src/target.ts', label: 'target.ts' }];
+    const visible = '$cp vs Commit and push in target.ts\n\n<context>Host context</context>';
+    const dispatched = '$cp vs [$cp](/skills/cp/SKILL.md) in @/src/target.ts\n\n<context>Host context</context>';
+    await driver.sendPrompt(sdkAgent(), visible, driver.preparePromptOptions(sdkAgent(), { attachments, content }));
+    expect(handle.sendMessage).toHaveBeenCalledWith(dispatched, { attachments, content });
+    await driver.steerPrompt(sdkAgent(), dispatched, driver.preparePromptOptions(sdkAgent(), { content }));
+    expect(handle.steerMessage).toHaveBeenCalledWith(dispatched, { content });
+    await driver.editTurn(sdkAgent(), 'turn', visible, { content });
+    expect(handle.editTurn).toHaveBeenCalledWith('turn', dispatched, { content });
     await driver.retryTurn(sdkAgent(), 'turn');
     expect(handle.retryTurn).toHaveBeenCalledWith('turn');
     await driver.continueInterruptedTurn(sdkAgent());

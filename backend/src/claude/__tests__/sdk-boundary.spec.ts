@@ -84,6 +84,31 @@ describe(`Claude Agent SDK → ${product.name} backend`, () => {
     vi.unstubAllEnvs();
   });
 
+  it('keeps selected mention identities across submission and native history reload', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'claude-mentions-')); homes.push(home);
+    const { sdk, driver, snapshot, events } = setup(false, undefined, [], home);
+    const owner = snapshot.agents[0]!;
+    const content = [{ type: 'text' as const, text: '$cp vs ' }, { type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', label: 'Commit and push', value: 'cp' }];
+    const pending = driver.sendPrompt(owner, '$cp vs Commit and push\n\n<context>Keep this host context.</context>', { content });
+    await vi.waitFor(() => expect(sdk.inputs).toHaveLength(1));
+    const input = sdk.inputs[0]!;
+    expect(input.uuid).toBeTypeOf('string');
+    expect(input.message.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining('$cp vs [$cp](/skills/cp/SKILL.md)\n\n<context>Keep this host context.</context>') })]));
+    const sessionId = randomUUID(); sdk.emit({ type: 'system', subtype: 'init', session_id: sessionId });
+    owner.backendSession = (await pending).backendSession;
+    const submitted = events.find(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'message.userSubmitted');
+    expect(submitted?.type === 'claude.conversationEventReceived' && submitted.payload.event.type === 'message.userSubmitted' && submitted.payload.event.payload.message.metadata?.promptContent).toStrictEqual(content);
+    sdk.emit({ type: 'result', subtype: 'success', session_id: sessionId, is_error: false });
+    await vi.waitFor(() => expect(events.some(event => event.type === 'claude.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
+    await driver.releaseConversation(owner.id);
+    const project = path.join(home, '.claude', 'projects', '-tmp-project'); await mkdir(project, { recursive: true });
+    await writeFile(path.join(project, `${sessionId}.jsonl`), JSON.stringify({ type: 'user', uuid: input.uuid, message: input.message }) + '\n');
+    events.splice(0); await driver.loadConversation(owner);
+    const restored = events.find(event => event.type === 'claude.conversationSnapshotChanged');
+    expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages[0]?.metadata?.promptContent).toStrictEqual(content);
+    expect(restored?.type === 'claude.conversationSnapshotChanged' && restored.payload.snapshot.messages[0]?.parts).toStrictEqual([{ type: 'text', text: '$cp vs Commit and push' }]);
+  });
+
   it('restores turn timing from native history and preserves a running turn when reloaded', async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), 'korus-claude-timing-'));
     homes.push(home);

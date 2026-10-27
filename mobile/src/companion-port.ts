@@ -1,3 +1,4 @@
+import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
@@ -12,7 +13,7 @@ export type CompanionConversation = Extract<ProviderConversationFrame, {
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
-export type CompanionPromptOptions = { followUpBehavior?: 'queue' | 'steer'; skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
+export type CompanionPromptOptions = { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
   delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
 /** Where and how a review of an agent's changes starts. */
 export type { CompanionReviewInput } from '@workspace/core/companion-review';

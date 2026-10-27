@@ -573,15 +573,12 @@ describe('useAppState', () => {
     ]);
 
     await state.sendPrompt('$frontend-design make the dialog beautiful');
+    expect(sendPrompt).toHaveBeenLastCalledWith('agent-dina', '$frontend-design make the dialog beautiful');
+    const content = [{ type: 'mention' as const, kind: 'skill' as const, id: '/Users/nbonamy/.codex/skills/frontend-design/SKILL.md', value: 'frontend-design', label: 'Frontend design' }, { type: 'text' as const, text: ' make the dialog beautiful' }];
+    await state.sendPrompt('Frontend design make the dialog beautiful', { content });
 
-    expect(sendPrompt).toHaveBeenCalledWith('agent-dina', '$frontend-design make the dialog beautiful', {
-      planMode: false,
-      skills: [
-        {
-          name: 'frontend-design',
-          path: '/Users/nbonamy/.codex/skills/frontend-design/SKILL.md',
-        },
-      ],
+    expect(sendPrompt).toHaveBeenLastCalledWith('agent-dina', 'Frontend design make the dialog beautiful', {
+      content,
     });
   });
 
@@ -673,7 +670,7 @@ describe('useAppState', () => {
     await nextTick();
     expect(wrapper.get('[role="option"]').text()).toContain('prepare-release');
     await wrapper.get('[role="option"]').trigger('mousedown');
-    expect(state.agentConversationFor(agent.id)?.composerState.text).toContain('$prepare-release');
+    expect(state.agentConversationFor(agent.id)?.composerState.content).toContainEqual({ type: 'mention', kind: 'skill', id: skill.path, value: skill.name, label: skill.name });
   });
 
   it.each(['codex', 'claude'] as const)('refreshes %s skills without applying another engine’s catalog', async (backend) => {

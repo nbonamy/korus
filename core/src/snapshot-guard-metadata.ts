@@ -1,3 +1,4 @@
+import { isPromptContent } from './snapshot-guard-collections';
 import { isRateLimitPause } from './auto-resume';
 import { isAgentReadState } from './agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
@@ -565,7 +566,7 @@ function isGeneralSettings(value: unknown): boolean {
     includes(['teams', 'recent'], value.cockpitAgentViewMode) &&
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
-      && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
+      && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && optional(draft, 'content', isPromptContent) && isNumber(draft.createdAt)) &&
     optional(value, 'autoResumeAfterLimit', isBoolean) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&

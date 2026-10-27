@@ -81,7 +81,7 @@ import type {
   AgentQueuedPrompt,
   AgentSubagentTree, BackendConversationRef, ClientRequestResponse, ConversationListInput,
   ConversationResumeTarget,
-  ConversationSummary, RendererMessage, RendererSendPromptOptions, ThreadGoal,
+  ConversationSummary, RendererMessage, RendererSendPromptOptions, PromptContentOptions, ThreadGoal,
   ThreadPlan
 } from './contracts/conversation';
 import type {
@@ -243,6 +243,7 @@ export type {
   RendererToolPart,
   RendererToolPartUpdate,
   SendPromptOptions,
+  PromptContentOptions,
   SubagentActivity,
   SubagentActivityChange,
   SubagentActivityKind,
@@ -487,6 +488,7 @@ export type SavedPromptDraft = {
   id: string;
   agentId: string;
   text: string;
+  content?: RendererSendPromptOptions['content'];
   createdAt: number;
 };
 
@@ -1045,11 +1047,11 @@ export type AppApi = {
   sendPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   steerPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   deleteQueuedPrompt(agentId: string, promptId: string): Promise<AppSnapshot>;
-  steerQueuedPrompt(agentId: string, promptId: string, prompt?: string): Promise<AppSnapshot>;
-  updateQueuedPrompt(agentId: string, promptId: string, prompt: string): Promise<AppSnapshot>;
+  steerQueuedPrompt(agentId: string, promptId: string, prompt?: string, options?: PromptContentOptions): Promise<AppSnapshot>;
+  updateQueuedPrompt(agentId: string, promptId: string, prompt: string, options?: PromptContentOptions): Promise<AppSnapshot>;
   interruptAgent(agentId: string): Promise<AppSnapshot>;
   deleteTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
-  editTurn(agentId: string, turnId: string, content: string): Promise<AppSnapshot>;
+  editTurn(agentId: string, turnId: string, content: string, options?: PromptContentOptions): Promise<AppSnapshot>;
   retryTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
   continueInterruptedTurn(agentId: string): Promise<AppSnapshot>;
   mobileSimulator?(agentId: string, input: import('./mobile-simulator').MobileRequest): Promise<import('./mobile-simulator').MobileResult>;

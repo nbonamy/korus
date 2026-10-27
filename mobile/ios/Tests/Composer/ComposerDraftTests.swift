@@ -108,7 +108,8 @@ final class ComposerDraftTests: XCTestCase {
     func testTextOnlySendToNewChatEncodesTheNullSessionRequiredByTheEngine() throws {
         let drafts = ComposerDrafts()
         drafts.select(ComposerTarget(hostId: "host", locationId: "local", teamId: "team", agentId: "new", sessionId: nil))
-        drafts.text = "Hello"
+        drafts.text = "$review"
+        drafts.chips = [.init(range: NSRange(location: 0, length: 7), item: .init(id: "/skills/review/SKILL.md", name: "Review", insertText: "review", description: "Review changes"))]
         XCTAssertEqual(drafts.primaryAction(isWorking: false), .send)
         let request = try XCTUnwrap(drafts.beginSend())
         XCTAssertEqual(drafts.primaryAction(isWorking: false), .sending)
@@ -116,7 +117,10 @@ final class ComposerDraftTests: XCTestCase {
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
         let target = try XCTUnwrap(payload["target"] as? [String: Any])
         XCTAssertTrue(target["sessionId"] is NSNull, "The engine target uses null for a chat without a provider session")
-        XCTAssertEqual(payload["text"] as? String, "Hello")
+        XCTAssertEqual(payload["text"] as? String, "$review")
+        let options = try XCTUnwrap(payload["options"] as? [String: Any])
+        let content = try XCTUnwrap(options["content"] as? [[String: String]])
+        XCTAssertEqual(content, [["type": "mention", "kind": "skill", "id": "/skills/review/SKILL.md", "label": "Review", "value": "review"]])
         XCTAssertEqual((payload["uploads"] as? [Any])?.count, 0)
         drafts.completeSend(.init(requestId: request.requestId, status: .accepted))
         XCTAssertEqual(drafts.text, "")

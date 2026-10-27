@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
+import { promptContentText } from '@codex-app-sdk/core/surface';
 import type { CodexConversationPaneState, CodexNativeAttachment, CodexNativeRendererApi } from '@codex-app-sdk/vue';
 import { useAgentConversation, type AgentConversationActions } from '../use-agent-conversation';
 import { resolveConversationControllerValue } from './app-shell-test-harness';
@@ -31,12 +32,16 @@ describe('useAgentConversation image annotations', () => {
       dataUrl: 'data:image/png;base64,YW5ub3RhdGVk', fileName: 'shot-annotated.png', width: 10, height: 10, pixelRatio: 1 });
 
     // Same order as the SDK composer: hand the prompt to submit, then clear its attachments synchronously.
-    const submitted = actions.submit?.('Fix this.', { attachments: [{ type: 'image', reference: image.reference }] });
+    const content = [{ type: 'mention' as const, kind: 'file' as const, id: 'src/fix.ts', value: 'src/fix.ts', label: 'Fix this.' }];
+    const submitted = actions.submit?.('Fix this.', { content, attachments: [{ type: 'image', reference: image.reference }] });
     actions.updateAttachments?.([]);
     await submitted;
 
     expect(ingestAttachments).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith('agent', expect.stringContaining('1. Look here.'),
-      { attachments: [{ type: 'image', reference: annotated.reference }] });
+      { content: expect.arrayContaining(content), attachments: [{ type: 'image', reference: annotated.reference }] });
+    expect(promptContentText(send.mock.calls[0]![2].content)).toBe(send.mock.calls[0]![1]);
+    await actions.submit?.('Fix this.', { content });
+    expect(send).toHaveBeenLastCalledWith('agent', 'Fix this.', { content });
   });
 });

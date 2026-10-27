@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// Native rich editing with the same canonical mention tokens as the SDK editor.
+/// Native rich editing with explicit picker-selected references.
 struct ComposerEditor: UIViewRepresentable {
     @Binding var text: String
+    @Binding var chips: [ComposerChipText.Chip]
     @Binding var selection: NSRange?
     @Binding var focused: Bool
     @Binding var query: ComposerQuery?
@@ -37,11 +38,11 @@ struct ComposerEditor: UIViewRepresentable {
         let font = UIFont.preferredFont(forTextStyle: .body)
         let appearance = "\(colorScheme)-\(dynamicTypeSize)"
         let catalogChanged = coordinator.suggestions != suggestions
-        if view.document.text != text || catalogChanged || coordinator.appearance != appearance {
+        if view.document.text != text || view.document.chips != chips || catalogChanged || coordinator.appearance != appearance {
             let caret = selection ?? NSRange(location: text.utf16.count, length: 0)
             // Don't interrupt an in-progress IME composition.
             if view.markedTextRange == nil {
-                view.render(ComposerChipText(text: text, suggestions: suggestions), selection: caret, font: font)
+                view.render(ComposerChipText(text: text, chips: chips), selection: caret, font: font)
                 coordinator.suggestions = suggestions
                 coordinator.appearance = appearance
             }
@@ -83,22 +84,14 @@ struct ComposerEditor: UIViewRepresentable {
             if parent.editable, parent.text.isEmpty, view.document.text == " ", view.markedTextRange == nil,
                let suggestion = parent.suggestedPrompt, !suggestion.isEmpty {
                 updating = true
-                view.render(ComposerChipText(text: suggestion, suggestions: parent.suggestions),
+                view.render(ComposerChipText(text: suggestion, chips: []),
                     selection: NSRange(location: suggestion.utf16.count, length: 0), font: UIFont.preferredFont(forTextStyle: .body))
                 updating = false
             }
             let document = view.document
             let selection = document.canonicalRange(view.selectedRange)
             parent.text = document.text
-            // Leave the active query editable; completed and pasted mentions can become chips.
-            if view.markedTextRange == nil, ComposerQuery.at(document.text, selection: selection) == nil {
-                let rendered = ComposerChipText(text: document.text, suggestions: parent.suggestions)
-                if rendered.chips != document.chips {
-                    updating = true
-                    view.render(rendered, selection: selection, font: UIFont.preferredFont(forTextStyle: .body))
-                    updating = false
-                }
-            }
+            parent.chips = document.chips
             view.placeholder.isHidden = !document.text.isEmpty
             view.invalidateIntrinsicContentSize()
             publishSelection(view)

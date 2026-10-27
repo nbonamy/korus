@@ -172,11 +172,11 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
 
     return {
       done: activeTurn.done,
-      steer: (prompt, attachments) => {
+      steer: (prompt, attachments, messageId) => {
         const queued = submission.then(async () => {
           const message = await claudeUserMessage(prompt, attachments);
           if (session.closed || session.activeTurn !== activeTurn || activeTurn.settled) return false;
-          message.uuid = randomUUID();
+          message.uuid = messageId ?? randomUUID();
           activeTurn.pendingInputs.add(message.uuid);
           activeTurn.steered = true;
           session.input.push(message);
@@ -421,7 +421,9 @@ export class ClaudeAgentSdkTransport implements ClaudeTurnTransport {
       session.permissionMode = nextPermissionMode;
     }
 
-    session.input.push(await claudeUserMessage(params.prompt, params.attachments));
+    const message = await claudeUserMessage(params.prompt, params.attachments);
+    if (params.messageId) message.uuid = params.messageId;
+    session.input.push(message);
   }
 
   private async requestPricingProvider(options: ClaudeQueryOptions): Promise<'anthropic' | null> {

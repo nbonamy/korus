@@ -85,6 +85,8 @@ class ComposerCompletionWorkflowTest {
             app.onNodeWithContentDescription("Send").performClick()
             val sent = engine.commands().single { it.string("type") == "send" }
             assertEquals("🦞 Ask @agent:reviewer later", sent.string("text"))
+            val mention = sent.obj("options").items("content").single { it.string("type") == "mention" }
+            assertEquals("reviewer", mention.string("id")); assertEquals("agents", mention.string("groupId")); assertEquals("Reviewer · team", mention.string("label"))
             assertEquals(target(), ConversationTarget.parse(sent.obj("target")))
             assertTrue(engine.commands().any { it.string("type") == "loadMentions" })
         }

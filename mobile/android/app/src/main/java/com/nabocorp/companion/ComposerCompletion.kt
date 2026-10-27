@@ -4,12 +4,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.json.JSONObject
+import org.json.JSONArray
 
-data class ComposerSuggestion(val id: String, val name: String, val insertText: String, val description: String, val kind: String) {
+data class ComposerSuggestion(val id: String, val name: String, val insertText: String, val description: String, val kind: String, val value: String = insertText) {
     val trigger get() = if (kind == "skill") '$' else '@'
     val token get() = "$trigger$insertText"
     companion object {
-        fun parse(value: JSONObject) = ComposerSuggestion(value.string("id"), value.string("name"), value.string("insertText"), value.string("description"), value.string("kind", "skill"))
+        fun parse(value: JSONObject) = ComposerSuggestion(value.string("id"), value.string("name"), value.string("insertText"), value.string("description"), value.string("kind", "skill"), value.string("value", value.string("insertText")))
     }
 }
 
@@ -42,26 +43,26 @@ data class ComposerChip(val start: Int, val end: Int, val item: ComposerSuggesti
 private fun boundary(text: String, index: Int) = index == 0 || index == text.length || !(text[index].isLowSurrogate() && text[index - 1].isHighSurrogate())
 
 /** Canonical text stays in the draft. Chip ranges survive adjacent edits, including removal of their trailing space. */
-class ComposerEditorState(text: String, catalog: List<ComposerSuggestion>) {
+class ComposerEditorState(text: String, catalog: List<ComposerSuggestion>, selected: List<ComposerChip> = emptyList()) {
     var value by mutableStateOf(TextFieldValue(text, TextRange(text.length)))
         private set
-    var chips by mutableStateOf<List<ComposerChip>>(emptyList())
+    var chips by mutableStateOf(selected)
         private set
     private var catalog = catalog
     val query get() = ComposerQuery.at(value)?.takeUnless { query -> chips.any { it.start == query.start && it.end == query.end } }
-    init { refresh(catalog, discoverAtCaret = true) }
 
-    fun synchronize(text: String, items: List<ComposerSuggestion>) {
-        if (text != value.text) {
-            value = TextFieldValue(text, TextRange(text.length)); chips = emptyList()
-            refresh(items, discoverAtCaret = true)
+    fun synchronize(text: String, items: List<ComposerSuggestion>, selected: List<ComposerChip> = chips) {
+        if (text != value.text || selected != chips) {
+            value = TextFieldValue(text, TextRange(text.length)); chips = selected
+            refresh(items)
         } else if (catalog != items) refresh(items)
     }
     fun choose(item: ComposerSuggestion): Boolean {
         if (item !in catalog) return false
-        val inserted = query?.insert(item, value.text) ?: return false
+        val target = query ?: return false
+        val inserted = target.insert(item, value.text) ?: return false
         edit(inserted)
-        refresh(catalog, discoverAtCaret = true)
+        chips = (chips + ComposerChip(target.start, target.start + item.token.length, item)).sortedBy { it.start }
         return true
     }
     fun edit(next: TextFieldValue) {
@@ -94,24 +95,21 @@ class ComposerEditorState(text: String, catalog: List<ComposerSuggestion>) {
         value = if (affected.isEmpty()) next else TextFieldValue(before.text.take(start) + replacement + before.text.substring(end), TextRange(start + replacement.length))
         refresh(catalog)
     }
-    private fun refresh(items: List<ComposerSuggestion>, discoverAtCaret: Boolean = false) {
+    private fun refresh(items: List<ComposerSuggestion>) {
         catalog = items
-        val text = value.text
-        val composition = value.composition
-        val active = if (discoverAtCaret) null else ComposerQuery.at(value)
-        fun visible(start: Int, end: Int) = text.take(start).count { it == '`' } % 2 == 0 &&
-            (composition == null || start >= composition.max || end <= composition.min)
-        val retained = chips.filter { it.end <= text.length && text.substring(it.start, it.end).equals(it.item.token, ignoreCase = true) && visible(it.start, it.end) }
-            .map { chip -> chip.copy(item = items.firstOrNull { it.id == chip.item.id && it.kind == chip.item.kind } ?: chip.item) }
-        val found = tokens.findAll(text).mapNotNull { match ->
-            val trigger = match.groups[2] ?: return@mapNotNull null
-            val alias = match.groupValues[3]
-            val item = items.firstOrNull { it.trigger.toString() == trigger.value && it.insertText.equals(alias, ignoreCase = true) } ?: return@mapNotNull null
-            val start = trigger.range.first; val end = match.range.last + 1
-            if (!visible(start, end) || active?.let { it.start == start && it.end == end } == true || retained.any { start < it.end && end > it.start }) null
-            else ComposerChip(start, end, item)
-        }.toList()
-        chips = (retained + found).sortedBy { it.start }
+        chips = chips.filter { it.start >= 0 && it.end <= value.text.length && value.text.substring(it.start, it.end) == it.item.token }
     }
-    companion object { private val tokens = Regex("(`[^`]+`)|(?<![\\p{L}\\p{M}\\p{N}\\p{Pc}.%+/@$-])([@$])([^\\s@$]+)") }
+}
+
+fun composerPromptContent(text: String, chips: List<ComposerChip>): JSONArray = JSONArray().apply {
+    var cursor = 0
+    chips.forEach { chip ->
+        if (chip.start > cursor) put(json("type" to "text", "text" to text.substring(cursor, chip.start)))
+        val item = chip.item
+        val id = if (item.kind == "agent") item.id.removePrefix("agent:") else if (item.kind == "plugin") item.id.removePrefix("plugin:") else item.id
+        put(json("type" to "mention", "kind" to if (item.kind == "agent") "custom" else item.kind, "id" to id,
+            "label" to item.name, "value" to item.value).apply { if (item.kind == "agent") put("groupId", "agents") })
+        cursor = chip.end
+    }
+    if (cursor < text.length) put(json("type" to "text", "text" to text.substring(cursor)))
 }

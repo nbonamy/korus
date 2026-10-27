@@ -1410,8 +1410,8 @@ describe('AppShell authentication and conversation', () => {
 
   it('clears earlier review instructions when plain /review reopens the same pane', async () => {
     const wrapper = mountRealShell({ realConversationPane: true });
-    const editor = wrapper.get('[role="textbox"][contenteditable]');
     for (const prompt of ['/review Focus on retries.', '/review']) {
+      const editor = wrapper.get('[role="textbox"][contenteditable]');
       editor.element.textContent = prompt;
       await editor.trigger('input');
       await nextTick();

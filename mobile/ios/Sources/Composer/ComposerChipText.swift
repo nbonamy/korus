@@ -1,6 +1,6 @@
 import Foundation
 
-/// Prompt text stays canonical. Only the editor collapses known mentions to one character.
+/// Only picker-selected mentions collapse to one rendered character.
 struct ComposerChipText {
     struct Chip: Equatable {
         let range: NSRange
@@ -16,16 +16,31 @@ struct ComposerChipText {
         self.chips = chips
     }
 
-    init(text: String, suggestions: [ComposerSuggestion]) {
-        self.text = text
-        chips = Self.tokens.matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).compactMap { match in
-            guard match.range(at: 3).location != NSNotFound else { return nil }
-            let alias = (text as NSString).substring(with: match.range(at: 3))
-            let trigger = (text as NSString).substring(with: match.range(at: 2))
-            guard let item = suggestions.first(where: { $0.kind.trigger == trigger && $0.insertText.caseInsensitiveCompare(alias) == .orderedSame }) else { return nil }
-            let range = NSRange(location: match.range(at: 2).location, length: match.range(at: 3).length + 1)
-            return Chip(range: range, item: item)
+    func selecting(_ item: ComposerSuggestion, at query: ComposerQuery) -> (document: ComposerChipText, caret: Int)? {
+        guard let result = query.inserting(item, into: text) else { return nil }
+        let delta = result.text.utf16.count - text.utf16.count
+        let retained = chips.compactMap { chip -> Chip? in
+            if chip.range.upperBound <= query.range.location { return chip }
+            if chip.range.location >= query.range.upperBound { return Chip(range: NSRange(location: chip.range.location + delta, length: chip.range.length), item: chip.item) }
+            return nil
         }
+        let selected = Chip(range: NSRange(location: query.range.location, length: item.token.utf16.count), item: item)
+        return (ComposerChipText(text: result.text, chips: (retained + [selected]).sorted { $0.range.location < $1.range.location }), result.caret)
+    }
+
+    var content: [ComposerPromptPart] {
+        var result: [ComposerPromptPart] = []
+        var cursor = 0
+        for chip in chips {
+            if chip.range.location > cursor { result.append(.init(type: "text", text: (text as NSString).substring(with: NSRange(location: cursor, length: chip.range.location - cursor)))) }
+            let item = chip.item
+            let prefix = item.kind == .agent ? "agent:" : "plugin:"
+            let id = item.kind != .skill && item.id.hasPrefix(prefix) ? String(item.id.dropFirst(prefix.count)) : item.id
+            result.append(.init(type: "mention", kind: item.kind == .agent ? "custom" : item.kind.rawValue, id: id, label: item.name, value: item.value, groupId: item.kind == .agent ? "agents" : nil))
+            cursor = chip.range.upperBound
+        }
+        if cursor < text.utf16.count { result.append(.init(type: "text", text: (text as NSString).substring(from: cursor))) }
+        return result
     }
 
     func canonicalRange(_ range: NSRange) -> NSRange {
@@ -61,6 +76,14 @@ struct ComposerChipText {
         return offset - removed
     }
 
-    // Match the SDK editor's token boundaries and preserve inline code as ordinary text.
-    private static let tokens = try! NSRegularExpression(pattern: #"(`[^`]+`)|(?<![\w.%+/\-$@])([@$])([^\s@$]+)"#)
+}
+
+struct ComposerPromptPart: Encodable {
+    let type: String
+    var text: String? = nil
+    var kind: String? = nil
+    var id: String? = nil
+    var label: String? = nil
+    var value: String? = nil
+    var groupId: String? = nil
 }

@@ -1,3 +1,4 @@
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
@@ -293,7 +294,9 @@ function normalizeSavedPromptDrafts(value: unknown): SavedPromptDraft[] {
       || typeof text !== 'string' || !text.trim() || text.length > 131_072
       || typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt < 0) continue;
     seen.add(id);
-    drafts.push({ id, agentId, text, createdAt });
+    try {
+      drafts.push({ id, agentId, text, createdAt, ...(candidate.content === undefined ? {} : { content: normalizePromptContent(candidate.content) }) });
+    } catch { /* Discard malformed authored drafts, preserving the other saved drafts. */ }
   }
   return drafts.slice(-100);
 }

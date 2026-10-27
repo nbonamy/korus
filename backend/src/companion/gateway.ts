@@ -1,3 +1,4 @@
+import { normalizePromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import { PromptRejectedError } from '../agents/prompt-rejected';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
@@ -37,6 +38,10 @@ const requestOutcomeSchema = z.discriminatedUnion('kind', [
 const closeInputSchema = z.object({ deleteWorktree: z.literal(true), deleteRemoteBranch: z.boolean(), discardChanges: z.boolean(), confirmed: z.literal(true) }).strict();
 /** What a phone may ask of a prompt beyond its text: the same composer choices the desktop sends. */
 const promptOptionsSchema = z.object({
+  content: z.custom<CodexPromptPart[]>(value => {
+    try { return Array.isArray(value) && value.length <= 1000 && JSON.stringify(normalizePromptContent(value)).length <= 100_000; }
+    catch { return false; }
+  }).optional(),
   followUpBehavior: z.enum(['queue', 'steer']).optional(),
   skills: z.array(z.object({ name: z.string().min(1).max(500), path: z.string().min(1).max(4096) }).strict()).max(100).optional(),
   model: z.string().min(1).max(200).nullable().optional(), reasoningEffort: z.string().min(1).max(40).nullable().optional(),

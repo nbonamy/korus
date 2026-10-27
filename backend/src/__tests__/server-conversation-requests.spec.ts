@@ -418,6 +418,8 @@ describe('AppBackendServer', () => {
   });
 
   it('updates queued prompt text in place and steers edited text atomically', async () => {
+    const content = [{ type: 'mention', kind: 'skill', id: '/skills/review/SKILL.md', value: 'review', label: 'edited second' }];
+    const steeredContent = [{ ...content[0]!, label: 'edited steer' }];
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -459,7 +461,7 @@ describe('AppBackendServer', () => {
 
     await server.handleMessage({
       jsonrpc: '2.0', id: 'update', method: 'agent/queuedPrompt/update',
-      params: { agentId: 'agent-dina', promptId: 'queued-2', prompt: 'edited second' },
+      params: { agentId: 'agent-dina', promptId: 'queued-2', prompt: 'edited second', options: { content } },
     });
 
     expect(snapshot.queuedPrompts).toStrictEqual([
@@ -467,19 +469,23 @@ describe('AppBackendServer', () => {
       expect.objectContaining({
         id: 'queued-2',
         text: 'edited second',
-        options: { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
+        options: { content, attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
       }),
     ]);
 
-    await server.handleMessage({
+    const steer = () => server.handleMessage({
       jsonrpc: '2.0', id: 'steer', method: 'agent/queuedPrompt/steer',
-      params: { agentId: 'agent-dina', promptId: 'queued-2', prompt: 'edited steer' },
+      params: { agentId: 'agent-dina', promptId: 'queued-2', prompt: 'edited steer', options: { content: steeredContent } },
     });
+    steerPrompt.mockRejectedValueOnce(new Error('Transport failed'));
+    await expect(steer()).rejects.toThrow('Transport failed');
+    expect(snapshot.queuedPrompts?.[1]?.options?.content).toStrictEqual(content);
+    await steer();
 
     expect(steerPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'agent-dina' }),
       'edited steer',
-      { attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
+      { content: steeredContent, attachments: [{ type: 'file', path: '/tmp/queue.txt', name: 'queue.txt' }] },
     );
     expect(snapshot.queuedPrompts).toEqual([
       expect.objectContaining({ id: 'queued-1', text: 'first' }),
@@ -612,10 +618,10 @@ describe('AppBackendServer', () => {
       jsonrpc: '2.0',
       id: 'edit',
       method: 'agent/turn/edit',
-      params: { agentId: 'agent-dina', turnId: 'turn-1', content: ' edited prompt ' },
+      params: { agentId: 'agent-dina', turnId: 'turn-1', content: ' edited prompt ', options: { content: [{ type: 'mention', kind: 'file', id: 'docs/edit.md', value: 'docs/edit.md', label: 'edited prompt' }] } },
     });
 
-    expect(editTurn).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'turn-1', 'edited prompt');
+    expect(editTurn).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-dina' }), 'turn-1', 'edited prompt', { content: [{ type: 'mention', kind: 'file', id: 'docs/edit.md', value: 'docs/edit.md', label: 'edited prompt' }] });
     await server.close();
   });
 });

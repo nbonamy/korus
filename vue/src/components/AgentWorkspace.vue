@@ -212,7 +212,7 @@ const props = defineProps<{
   respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
   threadFlagBusy: boolean;
   conversationPaneController: CodexConversationPaneController;
-  savePromptDraft: (agentId: string, text: string) => Promise<void>;
+  savePromptDraft: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft: (id: string) => Promise<void>;
   conversationPlan: ThreadPlan | null;
   chatTextAnnotations: readonly ChatTextAnnotation[];

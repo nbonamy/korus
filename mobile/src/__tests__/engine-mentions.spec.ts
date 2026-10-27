@@ -28,10 +28,16 @@ describe('mobile agent and plugin mentions', () => {
       expect(f.listPlugins).not.toHaveBeenCalled();
       await f.engine.dispatch({ type: 'loadMentions' });
       expect(f.engine.snapshot().mentions).toStrictEqual({ status: 'loaded', items: [...agents,
-        { id: 'plugin:github@bundled', kind: 'plugin', name: 'GitHub', insertText: 'github', description: 'Work with repositories' },
+        { id: 'plugin:github@bundled', kind: 'plugin', name: 'GitHub', insertText: 'github', value: 'github', description: 'Work with repositories' },
       ] });
       await f.engine.dispatch({ type: 'send', text: 'Ask @agent:demo-reviewer about @github' });
       expect(f.sendPrompt).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Ask @agent:demo-reviewer about @github', expect.any(String), expect.any(Object));
+      const content = [{ type: 'text' as const, text: 'Ask ' },
+        { type: 'mention' as const, kind: 'custom' as const, groupId: 'agents', id: 'demo-reviewer', value: 'agent:demo-reviewer', label: 'Reviewer' },
+        { type: 'text' as const, text: ' about ' },
+        { type: 'mention' as const, kind: 'plugin' as const, id: plugins[0]!.id, value: 'github', label: 'GitHub' }];
+      await f.engine.dispatch({ type: 'send', text: 'Ask @agent:demo-reviewer about @github', options: { content } });
+      expect(f.sendPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ agentId: 'demo-agent' }), 'Ask Reviewer about GitHub', expect.any(String), { planMode: false, content });
     } finally { f.engine.dispose(); }
   });
 

@@ -1,3 +1,5 @@
+import { normalizePromptContent, promptContentText } from '@codex-app-sdk/core/surface';
+import { promptWithSelectedReferences } from '../agents/prompt-content';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { mkdir, realpath } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -92,6 +94,7 @@ export class AntigravityHost implements AgentBackendDriver {
   }
 
   async sendPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
+    const content = options?.content === undefined ? undefined : normalizePromptContent(options.content);
     const attachments = await acpAttachments(options?.attachments ?? []);
     const session = await this.ensure(agent);
     const model = options?.model ?? (agent.backendDefaults?.kind === this.backend ? agent.backendDefaults.model : undefined);
@@ -103,11 +106,11 @@ export class AntigravityHost implements AgentBackendDriver {
       celebrationsEnabled: this.options.celebrationsEnabled?.(), developerInstructions: this.options.additionalDeveloperInstructions?.(agent),
     });
     const planning = options?.planMode === true || /^\/plan(?:\s|$)/.test(prompt);
-    const wireText = `${planning && !prompt.startsWith('/plan') ? '/plan ' : ''}${prompt}\n\n<context id="${randomUUID()}">\n${instructions}${planning ? '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.' : ''}\n</context>`;
-    const { turnId, completion } = session.prompt(prompt, [{ type: 'text', text: wireText }, ...attachments],
+    const wireText = `${planning && !prompt.startsWith('/plan') ? '/plan ' : ''}${promptWithSelectedReferences(prompt, content)}\n\n<context id="${randomUUID()}">\n${instructions}${planning ? '\nWrite the plan and stop. Do not implement it or request implementation approval in this turn; Korus will collect the decision after showing the plan.' : ''}\n</context>`;
+    const { turnId, completion } = session.prompt(content === undefined ? prompt : promptContentText(content), [{ type: 'text', text: wireText }, ...attachments],
       (options?.attachments ?? []).map(attachment => ({ type: 'attachment', attachment: {
         kind: attachment.type, name: attachment.name ?? path.basename(attachment.path), path: attachment.path, mimeType: attachment.mimeType,
-      } })));
+      } })), content === undefined ? undefined : { promptContent: content });
     if (planning) void completion.then(() => {
       if (this.sessions.get(agent.id) !== session || session.snapshot.turns.find(turn => turn.id === turnId)?.status !== 'completed') return;
       const markdown = session.writtenPlan ?? session.snapshot.messages.filter(message => message.turnId === turnId && message.role === 'assistant')

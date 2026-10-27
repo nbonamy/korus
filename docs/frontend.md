@@ -93,6 +93,14 @@ host's snapshot. A generic Codex interaction defect is an SDK defect. Never add 
 global message list or provider-neutral reducer to `app-state.ts`; Korus-only
 overlays read the provider frame or an explicit coordination projection.
 
+Mentions are authored parts created by picker selection, with stable targets and
+frozen labels. Drafts, saved selections, queues, submissions and mobile transports
+preserve those parts; catalogs never reinterpret plain text. The SDK owns editing
+and slicing parts, while Korus supplies selected teammate identities to providers.
+Provider dispatch uses the SDK's canonical projection while preserving hidden
+context: selected skills become Markdown references with their canonical names
+and paths, independently of the saved UI labels.
+
 Split layouts hold peer conversation panes, never parent/child agents.
 `useSplitWorkspace` owns layout, assignment, focus and split ratios per team,
 persisted in client-local storage so devices retain their own workspace preferences.

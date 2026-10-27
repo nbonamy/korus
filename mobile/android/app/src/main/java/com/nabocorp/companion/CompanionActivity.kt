@@ -262,8 +262,8 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
     val selected = state.items("models").firstOrNull { it.string("id") == composer.string("modelId") }
     val drafts = model.composerDrafts
     val catalogItems = (state.obj("skills").items("items") + state.obj("mentions").items("items")).map(ComposerSuggestion::parse)
-    val editor = remember(drafts.target) { ComposerEditorState(model.draft, catalogItems) }
-    editor.synchronize(model.draft, catalogItems)
+    val editor = remember(drafts.target) { ComposerEditorState(model.draft, catalogItems, drafts.chips) }
+    editor.synchronize(model.draft, catalogItems, drafts.chips)
     var editorFocused by remember(drafts.target) { mutableStateOf(false) }
     var dismissedQuery by remember(drafts.target) { mutableStateOf<ComposerQuery?>(null) }
     val editorFocus = remember { FocusRequester() }
@@ -368,7 +368,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             if (query != null) {
                 ComposerSuggestionsContent(query, catalog.string("status", "idle"), catalog.items("items").map(ComposerSuggestion::parse),
                     choose = { item ->
-                        if (editor.choose(item)) { model.editDraft(editor.value.text); dismissedQuery = null; editorFocus.requestFocus(); keyboard?.show() }
+                        if (editor.choose(item)) { model.editDraft(editor.value.text, editor.chips); dismissedQuery = null; editorFocus.requestFocus(); keyboard?.show() }
                     }, dismiss = { dismissedQuery = query }, retry = loadSuggestions)
                 Spacer(Modifier.height(6.dp))
             }
@@ -405,7 +405,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                     val accepted = if (editor.value.text.isEmpty() && next.text == " " && next.composition == null && suggestion != null)
                                         next.copy(text = suggestion, selection = androidx.compose.ui.text.TextRange(suggestion.length)) else next
                                     editor.edit(accepted)
-                                    if (model.draft != editor.value.text) model.editDraft(editor.value.text)
+                                    if (model.draft != editor.value.text) model.editDraft(editor.value.text, editor.chips)
                                 }
                             },
                                 visualTransformation = ComposerChipTransformation(editor.chips, MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer),

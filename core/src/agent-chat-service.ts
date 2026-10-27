@@ -105,6 +105,7 @@ export function sendAgentPrompt(
 
 function hasPromptOptions(options: SendPromptOptions | undefined): options is SendPromptOptions {
   return Boolean(
+    options?.content !== undefined ||
     options?.delegation ||
     (options?.attachments?.length ?? 0) > 0 ||
     options?.model ||

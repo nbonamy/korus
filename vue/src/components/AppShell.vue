@@ -716,7 +716,7 @@ import {
   type CodexQueuedPromptData as QueuedChatPrompt,
   type CodexRendererSendMessageOptions,
 } from '@codex-app-sdk/vue';
-import type { CodexConversationSnapshot, SurfaceMessage } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@codex-app-sdk/core/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
 import {
@@ -888,7 +888,7 @@ const props = withDefaults(defineProps<{
   updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlagAction?: (response: ThreadFlagResponse) => Promise<void>;
   deleteTurnAction?: (turnId: string) => Promise<void>;
-  editTurnAction?: (payload: { content: string; turnId: string }) => Promise<void>;
+  editTurnAction?: (payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }) => Promise<void>;
   retryTurnAction?: (turnId: string) => Promise<void>;
   continueInterruptedTurnAction?: () => Promise<void>;
   quit?: () => Promise<void>;
@@ -1057,7 +1057,7 @@ const emit = defineEmits<{
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
   'fork-turn': [turnId: string];
-  'edit-turn': [payload: { content: string; turnId: string }];
+  'edit-turn': [payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }];
   'interrupt-agent': [];
   'move-agent-to-team': [input: MoveAgentToTeamInput];
   'reorder-agents': [input: ReorderAgentsInput];
@@ -1076,8 +1076,8 @@ const emit = defineEmits<{
   'select-approval-preset': [preset: ApprovalPreset];
   'select-permission-mode': [mode: string];
   'select-team': [teamId: string];
-  'steer-queued-prompt': [promptId: string, prompt?: string];
-  'update-queued-prompt': [promptId: string, prompt: string];
+  'steer-queued-prompt': [promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>];
+  'update-queued-prompt': [promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>];
   'update:planMode': [enabled: boolean];
   'update:composerState': [payload: { agentId: string; state: CodexComposerState }];
   'update:composerAttachments': [payload: { agentId: string; attachments: readonly CodexNativeAttachment[] }];
@@ -2327,8 +2327,8 @@ const conversationPaneActions: CodexConversationPaneActions = {
   retryTurn: (turnId) => props.retryTurnAction?.(turnId) ?? emit('retry-turn', turnId),
   sendFollowUp: forwardCodexPrompt,
   steer: forwardCodexSteerPrompt,
-  steerQueuedPrompt: (promptId, prompt) => emit('steer-queued-prompt', promptId, prompt),
-  updateQueuedPrompt: (promptId, prompt) => emit('update-queued-prompt', promptId, prompt),
+  steerQueuedPrompt: (promptId, prompt, options) => options ? emit('steer-queued-prompt', promptId, prompt, options) : emit('steer-queued-prompt', promptId, prompt),
+  updateQueuedPrompt: (promptId, prompt, options) => options ? emit('update-queued-prompt', promptId, prompt, options) : emit('update-queued-prompt', promptId, prompt),
   submit: forwardCodexPrompt,
   updateAttachments: updateConversationAttachments,
   updateComposerState: updateConversationComposerState,
@@ -3267,16 +3267,20 @@ async function openAgentIn(
   await props.updateSettings(input);
 }
 
-async function savePromptDraft(agentId: string, text: string): Promise<void> {
+function copyPromptDraft(draft: AppSnapshot['general']['savedPromptDrafts'][number]) {
+  return { ...draft, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }) };
+}
+
+async function savePromptDraft(agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]): Promise<void> {
   if (!text.trim() || text.length > 131_072) throw new Error(t('chat.savedDrafts.invalid'));
-  const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map((draft) => ({ ...draft })), {
-    id: crypto.randomUUID(), agentId, text, createdAt: Date.now(),
+  const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map(copyPromptDraft), {
+    id: crypto.randomUUID(), agentId, text, ...(content === undefined ? {} : { content: normalizePromptContent(content) }), createdAt: Date.now(),
   }].slice(-100);
   await updateSettings({ general: { savedPromptDrafts } });
 }
 
 async function removePromptDraft(id: string): Promise<void> {
-  await updateSettings({ general: { savedPromptDrafts: props.snapshot.general.savedPromptDrafts.filter((draft) => draft.id !== id).map((draft) => ({ ...draft })) } });
+  await updateSettings({ general: { savedPromptDrafts: props.snapshot.general.savedPromptDrafts.filter((draft) => draft.id !== id).map(copyPromptDraft) } });
 }
 
 async function updateRepositoryIcon(payload: {

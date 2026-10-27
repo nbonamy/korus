@@ -1,3 +1,5 @@
+import { promptWithSelectedReferences } from '../agents/prompt-content';
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { ExecutionObservation } from '@workspace/core/usage';
 import { codexExecutionConsumption } from './execution-usage';
 import { codexRequestCoverage } from './request-usage';
@@ -426,7 +428,7 @@ export class CodexSurfaceAgentAdapter {
   async sendPrompt(agent: Agent, prompt: string, options: SendPromptOptions = {}) {
     const session = await this.ensureSession(agent);
     const beforeTurnIds = session.handle.getSnapshot().turnIds;
-    const snapshot = await session.handle.sendMessage(prompt, surfacePromptOptions(options));
+    const snapshot = await session.handle.sendMessage(promptWithSelectedReferences(prompt, options.content, true), surfacePromptOptions(options));
     const turnId = resultTurnId(snapshot, beforeTurnIds);
     const messages = snapshot.messages.filter(message => message.role === 'user' && message.turnId === turnId && message.kind !== 'steer');
     return { threadId: session.handle.id, turnId, ...(messages.length === 1 ? { messageId: messages[0]!.id } : {}) };
@@ -523,7 +525,7 @@ export class CodexSurfaceAgentAdapter {
   async steerPrompt(agent: Agent, prompt: string, options?: SendPromptOptions) {
     const session = await this.ensureSession(agent);
     const beforeTurnIds = session.handle.getSnapshot().turnIds;
-    const snapshot = await session.handle.steerMessage(prompt, surfacePromptOptions(options));
+    const snapshot = await session.handle.steerMessage(promptWithSelectedReferences(prompt, options?.content, true), surfacePromptOptions(options));
     return { threadId: session.handle.id, turnId: resultTurnId(snapshot, beforeTurnIds) };
   }
 
@@ -570,10 +572,10 @@ export class CodexSurfaceAgentAdapter {
     };
   }
 
-  async editTurn(agent: Agent, turnId: string, content: string) {
+  async editTurn(agent: Agent, turnId: string, content: string, options?: Pick<SendPromptOptions, 'content'>) {
     const session = await this.ensureSession(agent);
     const snapshot = await invokeCodexConversationBridgeOperation(
-      this.surface, session.handle.id, 'editTurn', [turnId, content],
+      this.surface, session.handle.id, 'editTurn', options ? [turnId, promptWithSelectedReferences(content, options.content, true), surfacePromptOptions(options)] : [turnId, content],
     );
     return {
       threadId: session.handle.id,
@@ -1825,6 +1827,7 @@ function resultTurnId(
 function surfacePromptOptions(options: SendPromptOptions = {}): SendCodexMessageOptions {
   const backendOptions = options.backendOptions?.kind === 'codex' ? options.backendOptions : undefined;
   return {
+    ...(options.content === undefined ? {} : { content: options.content }),
     ...(options.attachments?.length ? { attachments: options.attachments } : {}),
     ...(options.model ? { model: options.model } : {}),
     ...(typeof options.planMode === 'boolean' ? { planMode: options.planMode } : {}),
@@ -1862,6 +1865,7 @@ function surfaceMessages(
     role: message.role,
     status: completeStreaming && message.status === 'streaming' ? 'complete' : message.status,
     ...(message.turnId ? { turnId: message.turnId } : {}),
+    ...(message.metadata?.promptContent === undefined ? {} : { metadata: { promptContent: normalizePromptContent(message.metadata.promptContent) } }),
     parts: rendererParts(message.parts, omitToolPayloads),
     createdAt: message.createdAt ?? new Date(0).toISOString(),
   }));

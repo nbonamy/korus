@@ -1,5 +1,7 @@
+import { normalizePromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
+
 /** A prompt draft as the composer holds it. */
-export type DraftState = { text: string; selectionStart: number; selectionEnd: number };
+export type DraftState = { text: string; content?: readonly CodexPromptPart[]; selectionStart: number; selectionEnd: number };
 
 export type DraftRecord = { drafts: Record<string, DraftState>; uncertain: Record<string, boolean>; commandIds?: Record<string, string>; submittedTexts?: Record<string, string> };
 export type DraftStore = { read(): Promise<unknown>; write(record: DraftRecord): Promise<void> };
@@ -19,7 +21,7 @@ export function restoreDraftRecord(value: unknown): DraftRecord {
     const identity: unknown = JSON.parse(key);
     if (!Array.isArray(identity) || identity.length !== 2 || !identity.every((part) => typeof part === 'string')
       || !draft || typeof draft.text !== 'string' || !Number.isInteger(draft.selectionStart) || !Number.isInteger(draft.selectionEnd)) throw new Error('Invalid draft.');
-    restored.drafts[key] = { text: draft.text, selectionStart: Math.max(0, Math.min(draft.text.length, draft.selectionStart)),
+    restored.drafts[key] = { text: draft.text, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }), selectionStart: Math.max(0, Math.min(draft.text.length, draft.selectionStart)),
       selectionEnd: Math.max(0, Math.min(draft.text.length, draft.selectionEnd)) };
   }
   for (const [key, uncertain] of Object.entries(record.uncertain)) {

@@ -107,6 +107,12 @@ records. Queue operations, `last-prompt`, sidechains and meta command records ar
 ignored. Hydration also restores the latest model and effort, falling back to the
 agent's last used.
 
+Explicit mention metadata is scoped to the provider session and the native input
+UUID assigned at submission. Records live under the configured home's
+`prompt-content` directory, follow native forks, and are removed with the session.
+Hydration uses only matching authored records; text and current catalogs cannot
+create historical mention identities.
+
 The host opens the newest history window and prepends older pages through the
 driver history seam. Each page has both a message-count and serialized-byte
 budget; pages use immutable message/turn identities from one normalized transcript

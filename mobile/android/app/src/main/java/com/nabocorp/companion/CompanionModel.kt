@@ -253,9 +253,10 @@ class CompanionModel(application: Application) : AndroidViewModel(application) {
         command("activity", "active" to (foreground && unlocked))
         acknowledge()
     }
-    fun editDraft(text: String) {
+    fun editDraft(text: String, chips: List<ComposerChip> = emptyList()) {
         dictation.cancel()
         composerDrafts.text = text
+        composerDrafts.chips = chips
     }
     internal fun editPairingCode(value: String) {
         if (pairingBusy) return

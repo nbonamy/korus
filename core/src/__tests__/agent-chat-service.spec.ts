@@ -6,6 +6,13 @@ import type { AgentBackendDriver, BackendSendResult } from '../backend-driver';
 import { claudeBackendCapabilities, codexBackendCapabilities } from '../backend-capabilities';
 
 describe('agent chat service', () => {
+  it('delivers explicit mention content even when it is the only prompt option', () => {
+    const snapshot = createInitialSnapshot();
+    const driver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'bound' } }));
+    const options = { content: [{ type: 'mention' as const, kind: 'skill' as const, id: '/skills/cp/SKILL.md', value: 'cp', label: 'Commit and push' }] };
+    sendAgentPrompt(snapshot, driver, 'agent-dina', 'Commit and push', options, vi.fn());
+    expect(driver.sendPrompt).toHaveBeenCalledWith(snapshot.agents[0], 'Commit and push', options);
+  });
   it('delivers approved guest text verbatim without invoking app slash commands', async () => {
     const snapshot = createInitialSnapshot();
     const driver = createFakeBackendDriver(Promise.resolve({ backendSession: { kind: 'codex', threadId: 'bound' }, messageId: 'canonical' }));

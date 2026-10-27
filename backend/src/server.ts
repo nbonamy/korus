@@ -1,3 +1,4 @@
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import type { GuestJoins } from './sharing/guest-joins';
 import { ConversationShares, type ConversationSharingOptions } from './sharing/conversation-shares';
 import { companionSessionId } from '@workspace/core/companion-protocol';
@@ -171,6 +172,19 @@ type BackendHandle =
     connectionId: string;
     request<Result>(method: string, params: unknown, localHandler: () => Promise<Result> | Result): Promise<Result>;
   };
+
+function authoredContentOptions(value: unknown): Pick<SendPromptOptions, 'content'> | undefined {
+  if (value === undefined) return undefined;
+  const options = requireRecord(value);
+  return options.content === undefined ? undefined : { content: normalizePromptContent(options.content) };
+}
+
+function editedQueueOptions(previous: SendPromptOptions | undefined, options: Pick<SendPromptOptions, 'content'> | undefined): SendPromptOptions | undefined {
+  if (!previous && !options) return undefined;
+  const next = { ...previous };
+  delete next.content;
+  return { ...next, ...options };
+}
 
 export class AppBackendServer {
   private readonly browserExtensionPackages: BrowserExtensionPackages;
@@ -2324,10 +2338,12 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
         const prompt = requireString(params.prompt, 'prompt').trim();
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt }, async () => {
+        const options = authoredContentOptions(params.options);
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt, ...(options ? { options } : {}) }, async () => {
           const queuedPrompt = (this.snapshot.queuedPrompts ?? []).find((candidate) => candidate.agentId === agentId && candidate.id === promptId);
           if (!queuedPrompt) return this.snapshot;
           queuedPrompt.text = prompt;
+          queuedPrompt.options = editedQueueOptions(queuedPrompt.options, options);
           return this.persistAndEmitSnapshot();
         });
       }
@@ -2336,6 +2352,7 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const promptId = requireString(params.promptId, 'promptId');
         const replacement = params.prompt === undefined ? undefined : requireString(params.prompt, 'prompt').trim();
+        const options = authoredContentOptions(params.options);
         const expectedSessionId = requireExpectedSessionId(params);
         const expectation = expectedSessionId === undefined ? {} : { expectedSessionId };
         return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentQueuedPromptSteer, {
@@ -2343,18 +2360,22 @@ export class AppBackendServer {
           promptId,
           ...expectation,
           ...(replacement === undefined ? {} : { prompt: replacement }),
+          ...(options ? { options } : {}),
         }, async (agent) => {
           assertPromptSession(agent, expectedSessionId);
           const queuedPrompt = (this.snapshot.queuedPrompts ?? []).find((prompt) => prompt.agentId === agentId && prompt.id === promptId);
           if (!queuedPrompt) return this.snapshot;
           const prompt = replacement ?? queuedPrompt.text;
+          const promptOptions = replacement !== undefined || options ? editedQueueOptions(queuedPrompt.options, options) : queuedPrompt.options;
           if (this.agentPrompts.canStart(agent)) {
+            queuedPrompt.text = prompt;
+            queuedPrompt.options = promptOptions;
             return this.agentPrompts.startQueued(agent, queuedPrompt.id, prompt);
           }
           const result = await this.handleAgentDriverRequest(agent, backendMethods.driverPromptSteer, {
             agent,
             prompt,
-            options: queuedPrompt.options,
+            options: promptOptions,
             ...expectation,
           }) as BackendSendResult;
           agent.backendSession = result.backendSession;
@@ -2416,11 +2437,12 @@ export class AppBackendServer {
         const agentId = requireString(params.agentId, 'agentId');
         const turnId = requireString(params.turnId, 'turnId');
         const content = requireString(params.content, 'content').trim();
+        const options = authoredContentOptions(params.options);
         if (!content) {
           return createAppRpcResult(message.id, await this.remoteTeams.clientSnapshot());
         }
-        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentTurnEdit, { agentId, turnId, content }, async () => {
-          const snapshot = await this.agentConversations.editTurn(agentId, turnId, content);
+        return this.routeAgentSnapshotRequest(message.id, agentId, backendMethods.agentTurnEdit, { agentId, turnId, content, ...(options ? { options } : {}) }, async () => {
+          const snapshot = await this.agentConversations.editTurn(agentId, turnId, content, options);
           if (!snapshot) throw new Error(`Agent not found: ${agentId}`);
           return snapshot;
         });
