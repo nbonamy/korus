@@ -225,6 +225,7 @@ export const messages = {
     },
     surface: surfaceMessages,
     missions: {
+      costMenu: 'Mission cost', costLead: 'Lead', costOther: 'Other', costTotal: 'Total', costNoUsage: 'No usage yet',
       acceptedArtifact: 'Accepted artifact',
       draftTickets: 'Draft tickets', draftTicketsHint: '{count} draft | {count} drafts', ticketCount: '{count} ticket | {count} tickets', inProgress: 'In progress',
       blockedBy: 'Blocked by tickets', blockedByShort: 'After {tickets}',

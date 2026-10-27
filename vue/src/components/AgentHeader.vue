@@ -57,17 +57,13 @@
     </div>
 
     <div class="agent-header__activity">
-      <button
-        v-if="agent && shareAvailable"
-        class="agent-header__share"
-        type="button"
-        :aria-label="$t('sharing.share')"
-        :title="$t('sharing.share')"
-        :aria-pressed="shareActive"
-        @click="emit('share')"
-      >
-        <IconShare aria-hidden="true" />
-      </button>
+      <AgentMoreMenu
+        v-if="agent && !agent.sharedConversation"
+        :agent-id="agent.id"
+        :share-available="shareAvailable"
+        :share-active="shareActive"
+        @share="emit('share')"
+      />
       <GitDiffControl
         v-if="gitReviewAvailable && agent && gitStatus"
         class="agent-header__git-status"
@@ -176,7 +172,8 @@ import type { GuestJoinStatus } from '@workspace/core/guest-navigation';
 import { ArrowsDiagonalIcon, ArrowsDiagonalMinimize2Icon, ListIcon } from '../shared/icons/app-icons';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
-import { IconLayoutSidebarRight, IconShare } from '@tabler/icons-vue';
+import { IconLayoutSidebarRight } from '@tabler/icons-vue';
+import AgentMoreMenu from './AgentMoreMenu.vue';
 import AgentAvatar from './AgentAvatar.vue';
 import UpdateAvailableBadge from './UpdateAvailableBadge.vue';
 import OpenInControl from '../shared/OpenInControl.vue';
@@ -435,7 +432,6 @@ const gitReviewAvailable = computed(() => {
   -webkit-app-region: no-drag;
 }
 
-.agent-header__share,
 .agent-header__workspace {
   -webkit-app-region: no-drag;
   border-radius: var(--radius-md);
@@ -447,15 +443,8 @@ const gitReviewAvailable = computed(() => {
   width: 32px;
   height: 32px;
   padding: 0;
-  cursor: pointer;
-}
-
-.agent-header__share {
-  border: 1px solid var(--color-border);
-}
-
-.agent-header__workspace {
   border: 0;
+  cursor: pointer;
 }
 
 .agent-header__execution-plan {
@@ -483,19 +472,12 @@ const gitReviewAvailable = computed(() => {
   height: var(--icon-md);
 }
 
-.agent-header__share:hover,
 .agent-header__workspace:hover,
 .agent-header__workspace[aria-pressed="true"] {
   background: var(--color-surface-high);
   color: var(--color-text);
 }
 
-.agent-header__share[aria-pressed="true"],
-.agent-header__share[aria-pressed="true"]:hover {
-  color: var(--color-primary);
-}
-
-.agent-header__share :deep(svg),
 .agent-header__workspace :deep(svg) {
   width: var(--icon-md);
   height: var(--icon-md);

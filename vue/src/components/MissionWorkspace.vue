@@ -6,6 +6,7 @@
         <h1 class="workspace-header__title">{{ mission.outcome }}</h1>
       </div>
       <span class="mission-workspace__mission-status" :data-status="mission.status">{{ t(`missions.${mission.status}`) }}</span>
+      <MissionCostMenu :mission="mission" />
     </WorkspaceHeader>
 
     <div class="mission-workspace__body workspace-body">
@@ -182,6 +183,7 @@ import FormDialog from '../shared/dialog/FormDialog.vue';
 import MarkdownPanel from './MarkdownPanel.vue';
 import SidebarExpandButton from '../shared/SidebarExpandButton.vue';
 import WorkspaceHeader from '../shared/WorkspaceHeader.vue';
+import MissionCostMenu from './MissionCostMenu.vue';
 import MissionConversationRail from './MissionConversationRail.vue';
 import MissionImplementationBoard from './MissionImplementationBoard.vue';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
