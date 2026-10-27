@@ -34,6 +34,16 @@ export function usdFormat(value: number | null | undefined): string {
     maximumFractionDigits: 2,
   }).format(value);
 }
+/** Headline and axis figures: whole dollars once cents stop mattering, exact below $10 where they still do. */
+export function usdCompactFormat(value: number | null | undefined): string {
+  if (value == null || Math.abs(value) < 10) return usdFormat(value);
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
 export function usageFormat(tokens: number | null | undefined, usd: number | null | undefined): string {
   return `${chartFormat(tokens, true)} / ${usdFormat(usd)}`;
 }
@@ -42,7 +52,7 @@ export const measureFormat = (
   measure: UsageMeasure,
   compact = true,
 ) => {
-  if (measure === "cost") return usdFormat(value);
+  if (measure === "cost") return compact ? usdCompactFormat(value) : usdFormat(value);
   if (measure === "ratio")
     return value == null ? translate("analytics.notAvailable") : chartFormat(value) + "%";
   return chartFormat(value, compact);

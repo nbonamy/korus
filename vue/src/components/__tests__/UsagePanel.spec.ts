@@ -847,7 +847,7 @@ it("uses request-attributed USD across model/provider filters, daily charts and 
 it.each([
   { name: "zero", usd: 0, partial: false, expected: "$0.00" },
   { name: "tiny", usd: 0.00000000012, partial: false, expected: "$0.00" },
-  { name: "rounded total", usd: 424.3997, partial: false, expected: "$424.40" },
+  { name: "rounded total", usd: 424.3997, partial: false, expected: "$424.40", hero: "$424" },
   { name: "rounded amount", usd: 3.0129, partial: false, expected: "$3.01" },
   { name: "rounded cents", usd: 0.6595, partial: false, expected: "$0.66" },
   { name: "partial", usd: 0.04, partial: true, expected: "$0.04" },
@@ -860,7 +860,7 @@ it.each([
   },
 ])(
   "distinguishes $name costs without diagnostic copy",
-  async ({ usd, partial, expected }) => {
+  async ({ usd, partial, expected, hero }: { usd?: number | null; partial: boolean; expected: string; hero?: string }) => {
     const today = new Date().toISOString().slice(0, 10);
     setElectronTestClient({
       getUsage: vi.fn(async (filter) => {
@@ -889,7 +889,7 @@ it.each([
     try {
       await flushPromises();
       await choose(wrapper, "#usage-measure", "Cost");
-      expect(wrapper.get(".hero-number strong").text()).toBe(expected);
+      expect(wrapper.get(".hero-number strong").text()).toBe(hero ?? expected);
       const table = wrapper.get('[aria-label="Usage breakdown"]');
       expect(table.findAll("tbody td")[3]!.text()).toBe(expected);
       expect(wrapper.find(".hero-delta").exists()).toBe(false);

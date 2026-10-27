@@ -6,6 +6,8 @@ import {
   smoothPath,
   sumSpeed,
   tokensPerSecond,
+  measureFormat,
+  usdCompactFormat,
 } from "../usage-chart";
 const summary = (labels: string[]) => ({
   recordedSince: 1,
@@ -89,4 +91,14 @@ it("weights speed and time to first token by the turns they were measured on", (
   expect(averageTtftSeconds(speed)).toBe(2);
   expect(tokensPerSecond(undefined)).toBeNull();
   expect(averageTtftSeconds(sumSpeed([]))).toBeNull();
+});
+
+it("drops the cents from headline and axis figures once they reach $10, and keeps them below", () => {
+  expect(usdCompactFormat(1041.24)).toBe("$1,041");
+  expect(usdCompactFormat(400)).toBe("$400");
+  expect(usdCompactFormat(9.99)).toBe("$9.99");
+  expect(usdCompactFormat(0.04)).toBe("$0.04");
+  expect(usdCompactFormat(null)).toBe("Unavailable");
+  expect(measureFormat(1041.24, "cost")).toBe("$1,041");
+  expect(measureFormat(1041.24, "cost", false)).toBe("$1,041.24");
 });
