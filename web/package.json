@@ -1,6 +1,6 @@
 {
   "name": "@workspace/web",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@codex-app-sdk/web": "0.17.0",
-    "@workspace/core": "0.43.0",
-    "@workspace/vue": "0.43.0",
+    "@workspace/core": "0.44.0",
+    "@workspace/vue": "0.44.0",
     "express": "^5.1.0",
     "vue": "^3.5.35",
     "ws": "^8.18.0"

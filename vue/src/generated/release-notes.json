@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.43.0",
+  "currentVersion": "0.44.0",
   "releases": [
+    {
+      "version": "0.44.0",
+      "releasedAt": "2026-10-26",
+      "sourceSha256": "ea6e6ba559710c9ec6023e1997d7dbde45474265299829cd0f6c17040b82f4f1",
+      "markdown": "### New features\n\n- **Composer mentions:** Pick skills, agents, plugins, and files from suggestions\n  to insert reference chips that stay intact in drafts, queued prompts, and edited\n  messages. Typed or pasted `$skill` and `@name` remain plain text.\n- **Mission and agent models:** Ask for a specific provider, model, reasoning\n  effort, or service tier when starting a Mission or creating an agent.\n- **Diff summaries for agents:** Ask an agent to break down added and removed\n  lines by code, tests, documentation, and other files in a working tree, branch,\n  or commit.\n\n### Improvements and fixes\n\n- Move **Commits** below the file-type breakdown in the diff menu."
+    },
     {
       "version": "0.43.0",
       "releasedAt": "2026-10-26",

@@ -4,6 +4,23 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.44.0] - 2026-10-26
+
+### New features
+
+- **Composer mentions:** Pick skills, agents, plugins, and files from suggestions
+  to insert reference chips that stay intact in drafts, queued prompts, and edited
+  messages. Typed or pasted `$skill` and `@name` remain plain text.
+- **Mission and agent models:** Ask for a specific provider, model, reasoning
+  effort, or service tier when starting a Mission or creating an agent.
+- **Diff summaries for agents:** Ask an agent to break down added and removed
+  lines by code, tests, documentation, and other files in a working tree, branch,
+  or commit.
+
+### Improvements and fixes
+
+- Move **Commits** below the file-type breakdown in the diff menu.
+
 ## [0.43.0] - 2026-10-26
 
 ### New features
