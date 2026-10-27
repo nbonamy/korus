@@ -1183,6 +1183,16 @@ Run `TELEMETRY_METRICS_EVIDENCE=<external-evidence-file> npm run test -w
 aggregate JSON while verifying SQL/API parity, private access, corrections,
 unknowns, exact large integers and bounded database failure against real Postgres.
 
+Build the portable private console with `npm run build:console`. The static
+artifact is `web/dist/console`; supply its absolute directory privately through
+`TELEMETRY_CONSOLE_DIRECTORY`. API/console hosts, exact console origin, trusted
+edge configuration and viewer credentials remain external proxy inputs. The
+browser uses the console's protected same-origin `/v1/telemetry/metrics` route;
+there is no API host, service token or database credential to configure in a
+browser bundle. No Vite environment prefix or dotenv directory is enabled for
+this entry point. The ordinary web build includes this bundle as a separate
+output without replacing the desktop web host.
+
 ### Telemetry container operations
 
 `backend/telemetry-stack/compose.yaml` runs a separate collector, private PostgreSQL

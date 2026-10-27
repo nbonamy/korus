@@ -1,0 +1,12 @@
+{
+  "extends": [
+    "stylelint-config-recommended",
+    "stylelint-config-recommended-vue"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.vue"],
+      "customSyntax": "postcss-html"
+    }
+  ]
+}

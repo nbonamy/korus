@@ -11,6 +11,7 @@ const areas = [
   ["electron/src/preload", "preload"],
   ["mobile/src", "mobile"],
   ["vue/src", "renderer"],
+  ["web/src/console", "console"],
 ];
 
 const violations = [];
@@ -174,6 +175,18 @@ function forbiddenImport(area, file, specifier) {
   const target = specifier.startsWith(".")
     ? path.resolve(path.dirname(file), specifier)
     : null;
+  if (
+    area === "console" &&
+    !(
+      [
+        "vue",
+        "@workspace/core/telemetry-metrics",
+        "@workspace/core/telemetry-models",
+      ].includes(specifier) ||
+      (target && isWithin(path.join(root, "web/src/console"), target))
+    )
+  )
+    return "private dashboard consumes browser-safe aggregate contracts only";
   if (isWithin(collector, file)) {
     if (
       !(

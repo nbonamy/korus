@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { request } from "node:http";
 import { createHash } from "node:crypto";
+import { dashboardWorkflow } from "./telemetry-dashboard.browser.mjs";
 const http = (url, options = {}) =>
   new Promise((resolve, reject) => {
     const req = request(url, { ...options, timeout: 15000 }, (res) => {
@@ -113,14 +114,39 @@ test(
       await mkdir(path.join(dir, "backups"), { mode: 0o777 });
       await chmod(path.join(dir, "backups"), 0o777);
       await mkdir(path.join(dir, "console"));
-      await writeFile(
-        path.join(dir, "console/index.html"),
-        "<p>private console</p>",
+      await run(
+        process.execPath,
+        [
+          path.join(root, "node_modules/vite/bin/vite.js"),
+          "build",
+          "--config",
+          "web/vite.console.config.ts",
+          "--outDir",
+          path.join(dir, "console"),
+        ],
+        {
+          env: {
+            ...env,
+            VITE_OPERATOR_SECRET: canary,
+            TELEMETRY_DATABASE_URL: canary,
+            TELEMETRY_READ_ACCESS: canary,
+          },
+        },
       );
-      await writeFile(
-        path.join(dir, "console/main.js"),
-        "export const fixture = true;",
-      );
+      const builtFiles = await readdir(path.join(dir, "console/assets"));
+      for (const file of builtFiles) {
+        const contents = await readFile(
+          path.join(dir, "console/assets", file),
+          "utf8",
+        );
+        assert.equal(
+          contents.includes(canary) ||
+            contents.includes(dir) ||
+            contents.includes("api.invalid") ||
+            contents.includes("console.invalid"),
+          false,
+        );
+      }
       Object.assign(env, {
         TELEMETRY_IMAGE: image,
         TELEMETRY_BACKUP_DIRECTORY: path.join(dir, "backups"),
@@ -342,12 +368,15 @@ test(
               ).status,
               expected,
             );
-          const script = await http(`http://127.0.0.1:${port}/main.js`, {
-            headers: {
-              host: "console.invalid",
-              authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
+          const script = await http(
+            `http://127.0.0.1:${port}/assets/${builtFiles.find((f) => f.endsWith(".js"))}`,
+            {
+              headers: {
+                host: "console.invalid",
+                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
+              },
             },
-          });
+          );
           assert.equal(script.status, 200);
           assert.equal(
             script.headers["content-type"],
@@ -547,6 +576,20 @@ test(
               process.env.TELEMETRY_STACK_EVIDENCE,
               JSON.stringify(evidence, null, 2) + "\n",
             );
+        },
+      );
+      await t.test(
+        "renders the private dashboard from real seeded Postgres on desktop and mobile",
+        async () => {
+          const port = new URL(endpoint).port;
+          const seed = await readFile(
+            path.join(
+              root,
+              "backend/src/collector/__tests__/fixtures/metrics-seed.sql",
+            ),
+            "utf8",
+          );
+          await dashboardWorkflow({ port, password: canary, seed, sql });
         },
       );
       await t.test(

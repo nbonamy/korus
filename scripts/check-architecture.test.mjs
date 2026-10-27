@@ -16,6 +16,7 @@ const directories = [
   "electron/src/preload",
   "mobile/src",
   "vue/src",
+  "web/src/console",
 ];
 
 test("collector stays independently runnable without importing the desktop or companion relay", async () => {
@@ -224,4 +225,25 @@ test("telemetry uploader ownership permits runtime composition and rejects alter
     "vue/src/components/TelemetryConsentPanel.vue",
   ])
     assert.ok(rejected.stderr.includes(file), rejected.stderr);
+});
+
+test("private dashboard imports only browser-safe aggregate contracts", async () => {
+  const good = await checkFixture({
+    "web/src/console/view.ts":
+      "import {computed} from 'vue'; import type {TelemetryMetrics} from '@workspace/core/telemetry-metrics'; import {telemetryModels} from '@workspace/core/telemetry-models'; import './format';",
+  });
+  assert.equal(good.status, 0, good.stderr);
+  const bad = await checkFixture({
+    "web/src/console/database.ts":
+      "import fs from 'node:fs'; import pg from 'pg';",
+    "web/src/console/backend.ts":
+      "import {createMetricsServer} from '../../../backend/src/collector/metrics-server';",
+    "web/src/console/identity.ts":
+      "import type {Settings} from '@workspace/core/contracts';",
+    "web/src/console/desktop.ts":
+      "import {state} from '@workspace/vue/app-state';",
+  });
+  assert.equal(bad.status, 1);
+  for (const name of ["database.ts", "backend.ts", "identity.ts", "desktop.ts"])
+    assert.ok(bad.stderr.includes(name), bad.stderr);
 });

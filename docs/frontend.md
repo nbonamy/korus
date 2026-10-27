@@ -262,6 +262,29 @@ tokens (`--color-*`, `--diff-*`) applied as CSS custom properties on the documen
 root; syntax and diff highlighting share the theme source. VS Code theme import is a
 desired direction, not a requirement.
 
+## Private Usage Console
+
+`web/src/console` is a standalone Vue entry point for aggregate telemetry. It
+consumes only the shared aggregate contract and canonical model catalog, never
+the desktop shell, provider protocols, identity state or filesystem. Dependency
+lint enforces that boundary. The console uses native browser controls: desktop
+pickers and form wrappers assume app-owned platform state and localization, while
+this separately hosted surface has neither. Its SVG chart accepts aggregate
+series rather than local-ledger `UsageSummary` dimensions.
+
+The build copies semantic tokens from the app's light palette without external
+font imports. Charts use thin, bounded cubic curves with fading area fills,
+separate runs for missing values and markers only during inspection. One keyboard
+focus stop per chart supports Left/Right and Home/End; expandable tables preserve
+exact PostgreSQL decimal strings. Coordinate conversion is bounded to safe finite
+values; out-of-range measurements remain available in the exact table. Tables
+render on expansion so long retained-history ranges do not populate hidden rows.
+
+The private proxy owns authentication. Browser code performs only same-origin
+aggregate reads, keeps no credentials or metrics in storage, discards stale filter
+responses and clears displayed data during reload or access failure. Activity
+cards and series stay global; usage filters affect usage summaries and model rows.
+
 ## Editable Visualize Canvases
 
 Visualize imports Mermaid, SVG and image input into an Excalidraw canvas (read-only

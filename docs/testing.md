@@ -31,6 +31,17 @@ Compose services, persistent volumes, role grants, proxy routing and backup/rest
 It runs in the normal script test gate and requires local Docker; it never uses an
 operator environment file or database.
 
+The same Compose workflow builds `web/src/console` with operator-secret canaries
+and runs a real browser through the authenticated console proxy and aggregate
+service against the executable Postgres seed. Set
+`TELEMETRY_DASHBOARD_EVIDENCE=<external-directory>` when running
+`node --test scripts/telemetry-stack.test.mjs` to retain desktop/mobile charts,
+loading/empty/failure/access states, geometry and exact aggregate response evidence.
+It checks global-card filter scope, old retained history, corrected groups, missing
+spend gaps, keyboard inspection and absence of external browser requests or raw
+identities. The small rendered web workflow covers request races and exact
+small/large measurements through the same production console component.
+
 Mission screenshot fixtures use reserved synthetic sessions. The daemon rebuilds
 their conversations from the persisted fixture identity and rejects provider
 operations for those sessions. They exercise the real Mission and conversation
