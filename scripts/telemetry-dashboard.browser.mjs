@@ -7,7 +7,14 @@ import path from "node:path";
 // Real built console → authenticated nginx → read service → seeded Postgres.
 // Protects arithmetic/render drift, private access, filter scope, missing-data
 // interpolation, horizontal overflow and unexpected browser network dependencies.
-export async function dashboardWorkflow({ port, password, seed, sql }) {
+export async function dashboardWorkflow({
+  port,
+  password,
+  seed,
+  sql,
+  desktopProfile,
+  replaceProfile,
+}) {
   const output =
     process.env.TELEMETRY_DASHBOARD_EVIDENCE ||
     (await mkdtemp(path.join(os.tmpdir(), "telemetry-dashboard-")));
@@ -32,15 +39,13 @@ export async function dashboardWorkflow({ port, password, seed, sql }) {
       false,
     );
     await signedOut.close();
-    await sql("TRUNCATE usage_daily,install_days,installs");
-    await sql(seed);
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1100 },
       hasTouch: true,
       httpCredentials: { username: "viewer", password },
     });
     const page = await context.newPage();
-    await page.clock.install({ time: new Date("2026-10-25T12:00:00Z") });
+    await page.clock.install({ time: new Date() });
     const errors = [],
       external = [],
       aggregateBodies = [];
@@ -73,6 +78,53 @@ export async function dashboardWorkflow({ port, password, seed, sql }) {
       ]);
       await page.getByRole("region", { name: "Global activity" }).waitFor();
     }
+    if (desktopProfile) {
+      await range(desktopProfile.reportDay, desktopProfile.emptyDay);
+      await page
+        .getByLabel("Measured total tokens", { exact: true })
+        .getByText("120", { exact: true })
+        .waitFor();
+      await page
+        .getByLabel("Participating installs", { exact: true })
+        .getByText("1", { exact: true })
+        .waitFor();
+      await page
+        .getByLabel("Daily active installs", { exact: true })
+        .getByText("1", { exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(output, "desktop-profile.png"),
+        fullPage: true,
+      });
+      await replaceProfile();
+      await Promise.all([
+        page.waitForResponse(
+          (r) =>
+            r.url().includes("/v1/telemetry/metrics") && r.status() === 200,
+        ),
+        page.getByRole("button", { name: "Refresh metrics" }).click(),
+      ]);
+      await page
+        .getByLabel("Measured total tokens", { exact: true })
+        .getByText("70", { exact: true })
+        .waitFor();
+      await page
+        .getByLabel("Participating installs", { exact: true })
+        .getByText("1", { exact: true })
+        .waitFor();
+      const table = await page
+        .getByRole("region", { name: "Provider and model", exact: true })
+        .innerText();
+      assert.equal(table.includes("codex"), false);
+      assert.equal(table.includes("claude"), true);
+      await page.screenshot({
+        path: path.join(output, "desktop-profile-corrected.png"),
+        fullPage: true,
+      });
+    }
+    await sql("TRUNCATE usage_daily,install_days,installs");
+    await sql(seed);
+    await page.clock.setFixedTime(new Date("2026-10-25T12:00:00Z"));
     await range("2026-10-18", "2026-10-24");
     for (const [label, value] of [
       ["Participating installs", "6"],
@@ -406,10 +458,29 @@ export async function dashboardWorkflow({ port, password, seed, sql }) {
       ),
       false,
     );
+    if (desktopProfile) {
+      const installation = JSON.parse(
+        desktopProfile.attempts[0].body,
+      ).installId;
+      assert.equal(
+        aggregateBodies.some((body) => body.includes(installation)),
+        false,
+      );
+    }
     await writeFile(
       path.join(output, "evidence.json"),
       JSON.stringify(
         {
+          desktopProfile: desktopProfile
+            ? {
+                participatingInstalls: 1,
+                activeDays: 2,
+                tokensBeforeCorrection: 120,
+                tokensAfterReplacement: 70,
+                removedProvider: "codex",
+                replacementProvider: "claude",
+              }
+            : null,
           cards: { participating: 6, dau: 3, wau: 4, mau: 5 },
           tokens: 660,
           knownCostUsd: 1.5,

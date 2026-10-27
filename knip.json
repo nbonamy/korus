@@ -49,6 +49,7 @@
         "src/companion/relay-main.ts",
         "src/companion/__tests__/live-harness.ts",
         "src/companion/__tests__/desktop-guest-owner.ts",
+        "src/telemetry/__tests__/desktop-stack-workflow.ts",
         "telemetry-stack/container.mjs"
       ]
     },

@@ -22,6 +22,7 @@ let clock: number;
 let receiver: Server | undefined;
 const fetcher = vi.fn<typeof fetch>();
 const foreground = vi.fn(async () => false);
+const now = () => (vi.isFakeTimers() ? Date.now() : clock);
 async function eventually(check: () => unknown | Promise<unknown>) {
   let failure: unknown;
   for (let i = 0; i < 1000; i++) {
@@ -37,14 +38,18 @@ async function eventually(check: () => unknown | Promise<unknown>) {
 }
 const day = () => new Date(clock).toISOString().slice(0, 10);
 const advance = async (ms: number) => {
-  clock += ms;
+  // Advance authority time alongside timer time. Jumping authority to the end
+  // first makes maintenance repeatedly schedule against a stationary future.
+  vi.setSystemTime(clock);
   await vi.advanceTimersByTimeAsync(ms);
+  clock += ms;
 };
 async function open(
   endpoint: string | undefined = "https://collector.invalid/v1/telemetry/daily",
   real = false,
   random = () => 0.5,
 ) {
+  if (vi.isFakeTimers()) vi.setSystemTime(clock);
   upload = await TelemetryUploadService.open({
     file: path.join(directory, "delivery.json"),
     consent: () => consent.current(),
@@ -52,7 +57,7 @@ async function open(
     version: "1.2.3-local",
     platform: "darwin",
     endpoint,
-    now: () => clock,
+    now,
     random,
     foreground,
     ...(real ? {} : { fetch: fetcher }),
@@ -77,19 +82,17 @@ async function stored() {
   );
 }
 beforeEach(async () => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   directory = await mkdtemp(path.join(os.tmpdir(), "telemetry-upload-"));
   clock = epoch;
-  const ledger = new UsageLedger(
-    path.join(directory, "usage.sqlite"),
-    () => clock,
-  );
+  vi.setSystemTime(clock);
+  const ledger = new UsageLedger(path.join(directory, "usage.sqlite"), now);
   await ledger.load();
   usage = new UsageService(ledger, () => undefined);
   consent = await TelemetryConsentService.open(
     path.join(directory, "consent.json"),
     {
-      now: () => clock,
+      now,
       delivery: {
         consentChanged: (transition) =>
           upload?.consentChanged(transition) ?? Promise.resolve(),
@@ -476,6 +479,7 @@ it("does not send activity that expires while a ledger projection is in progress
       expect(usage.previewTelemetry).toHaveBeenCalledTimes(1),
     );
     clock += 8 * DAY;
+    vi.setSystemTime(clock);
     release();
     await eventually(() => expect(vi.getTimerCount()).toBe(1));
     expect(fetcher).not.toHaveBeenCalled();
@@ -548,6 +552,9 @@ it("freezes real ledger measurements once even when a late provider correction a
   await eventually(async () =>
     expect((await stored()).days[0].nextAttemptAt).toBe(clock + 60_000),
   );
+  // Persistence precedes arming the retry timer; wait for the owner to finish
+  // scheduling before advancing its fake clock.
+  await eventually(() => expect(vi.getTimerCount()).toBe(1));
   await advance(60_000);
   await eventually(() => expect(fetcher).toHaveBeenCalledTimes(2));
   expect(fetcher.mock.calls[1]![1]!.body).toBe(body);

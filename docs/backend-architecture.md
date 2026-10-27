@@ -1305,3 +1305,53 @@ exercises the disposable Compose stack, role denials, HTTP through nginx,
 restart/recreation persistence, exact expiry boundaries, failed dumps and isolated
 restore including old history. It removes its containers, networks and volumes.
 Set `TELEMETRY_STACK_EVIDENCE` to an untracked output file for sanitized results.
+
+The same workflow connects an isolated desktop-owned profile through the real
+settings/activity RPC, SQLite ledger and `TelemetryUploadService` to that stack.
+Its local fault receiver forwards canonical bytes and discards an acknowledgement
+after commit. Restart and repeated window notifications must preserve one logical
+day; the private console checks the resulting counts and a complete replacement.
+Time, desktop lifecycle notifications and provider observations are scripted. Provider
+normalization remains covered by the Claude/Codex ledger fixtures, not by live
+provider calls. Set `TELEMETRY_PROFILE_EVIDENCE` to an external JSON file and
+`TELEMETRY_DASHBOARD_EVIDENCE` to an external screenshot directory to retain this
+evidence. These artifacts contain synthetic installation IDs and local payloads;
+keep them out of deployment images and Git.
+
+### Telemetry Ship handoff
+
+Local validation does not authorize production activation. The operator must
+review the intended image and console build, supply the external inputs in
+`operator.env.example`, and complete these checks before enabling delivery:
+
+- Confirm supported Docker/Compose and pinned image availability, an unused
+  private subnet, memory/CPU/process capacity and durable disk capacity for
+  indefinitely retained history. Set monitoring for disk growth, health failures,
+  overdue backups/rotation and failed restore drills.
+- Supply separate least-privilege credentials, private console authentication and
+  the internal read-service token outside Git. Verify unauthenticated console
+  requests reveal no metrics, anonymous writes cannot read, and database/read
+  services cannot be reached directly from the public network.
+- Verify HTTPS routing and exact console-origin rules using privately supplied
+  host configuration. The desktop's `APP_TELEMETRY_ENDPOINT` has no tracked
+  default; keep it absent until activation is approved. The console build uses a
+  relative authenticated route and contains no operator credential.
+- Inspect effective collector, PostgreSQL, proxy, TLS edge and every upstream
+  CDN/WAF/security/access/crash-support logging path, including external copies
+  and backups. Prove the telemetry route retains no connection IP, request
+  headers, identifier-bearing URL/query or body. Local no-log assertions do not
+  establish this production fact. Resolve any mismatch before publishing the
+  no-IP-storage promise or releasing an enabled endpoint.
+- Verify seven-day expiry for every backup/replica copy, including worker
+  downtime, and perform an isolated restore with old retained history. Live
+  rollups and the minimal installation registry have no age-based cleanup.
+- Publish and verify the approved privacy policy and Analytics guidance before
+  a released app can offer active sharing. Recheck onboarding, first-upgrade and
+  Settings policy links against that published version. Coordinate the separately
+  approved endpoint activation and signed app release; opt-in still starts at the
+  next UTC day and missing consent remains off.
+
+Record production privacy verification, deployment, policy publication, signed app
+release and actual public availability as separate delivery evidence. A local
+unsigned build, synthetic provider fixture or disposable-container trace proves
+none of those facts. Shipping requires explicit authorization for each action.

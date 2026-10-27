@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { request } from "node:http";
 import { createHash } from "node:crypto";
+import { build } from "esbuild";
+import { pathToFileURL } from "node:url";
 import { dashboardWorkflow } from "./telemetry-dashboard.browser.mjs";
 const http = (url, options = {}) =>
   new Promise((resolve, reject) => {
@@ -86,6 +88,7 @@ test(
         )
       ).stdout.trim();
     let endpoint;
+    let desktopProfile;
     try {
       for (const name of [
         "admin",
@@ -579,8 +582,58 @@ test(
         },
       );
       await t.test(
-        "renders the private dashboard from real seeded Postgres on desktop and mobile",
+        "connects a private desktop profile through lost acknowledgements and restarts to the real collector",
         async () => {
+          await sql("TRUNCATE usage_daily,install_days,installs");
+          const bundleDir = await mkdtemp(
+            path.join(root, "node_modules/.telemetry-profile-"),
+          );
+          try {
+            const outfile = path.join(bundleDir, "workflow.mjs");
+            await build({
+              entryPoints: [
+                path.join(
+                  root,
+                  "backend/src/telemetry/__tests__/desktop-stack-workflow.ts",
+                ),
+              ],
+              outfile,
+              bundle: true,
+              platform: "node",
+              format: "esm",
+              packages: "external",
+              loader: { ".md": "text" },
+              alias: { "@workspace/core": path.join(root, "core/src") },
+            });
+            const { desktopStackWorkflow } = await import(
+              pathToFileURL(outfile).href
+            );
+            desktopProfile = await desktopStackWorkflow(endpoint);
+            assert.equal(await sql("SELECT count(*) FROM installs"), "1");
+            assert.equal(await sql("SELECT count(*) FROM install_days"), "2");
+            assert.equal(
+              await sql(
+                "SELECT sum(input_tokens+output_tokens) FROM usage_daily",
+              ),
+              "120",
+            );
+            if (process.env.TELEMETRY_PROFILE_EVIDENCE)
+              await writeFile(
+                process.env.TELEMETRY_PROFILE_EVIDENCE,
+                JSON.stringify(desktopProfile, null, 2) + "\n",
+              );
+          } finally {
+            await rm(bundleDir, { recursive: true, force: true });
+          }
+        },
+      );
+      await t.test(
+        "renders the private dashboard from the desktop profile and seeded Postgres on desktop and mobile",
+        async () => {
+          assert.ok(
+            desktopProfile,
+            "the desktop-to-collector workflow must succeed first",
+          );
           const port = new URL(endpoint).port;
           const seed = await readFile(
             path.join(
@@ -589,7 +642,53 @@ test(
             ),
             "utf8",
           );
-          await dashboardWorkflow({ port, password: canary, seed, sql });
+          await dashboardWorkflow({
+            port,
+            password: canary,
+            seed,
+            sql,
+            desktopProfile,
+            replaceProfile: async () => {
+              const body = JSON.parse(desktopProfile.attempts[0].body);
+              body.usage = [
+                {
+                  provider: "claude",
+                  model: "unknown",
+                  turns: 2,
+                  inputTokens: 60,
+                  cachedInputTokens: 10,
+                  outputTokens: 10,
+                  estimatedCostUsd: null,
+                },
+              ];
+              assert.equal(
+                (
+                  await http(endpoint, {
+                    method: "POST",
+                    headers: {
+                      host: "api.invalid",
+                      "content-type": "application/json",
+                    },
+                    body: JSON.stringify(body),
+                  })
+                ).status,
+                204,
+              );
+              assert.equal(await sql("SELECT count(*) FROM installs"), "1");
+              assert.equal(await sql("SELECT count(*) FROM install_days"), "2");
+              assert.equal(await sql("SELECT count(*) FROM usage_daily"), "1");
+              assert.equal(
+                await sql("SELECT provider FROM usage_daily"),
+                "claude",
+              );
+              assert.equal(
+                await sql(
+                  "SELECT sum(input_tokens+output_tokens) FROM usage_daily",
+                ),
+                "70",
+              );
+            },
+          });
         },
       );
       await t.test(
