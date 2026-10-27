@@ -361,6 +361,14 @@ function showsCheck(item: Exclude<AppMenuItem, { type: 'separator' | 'submenu' }
   white-space: nowrap;
 }
 
+.app-menu__info .app-menu__value {
+  flex: 0 0 auto;
+  max-width: none;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .app-menu__value-added,
 .app-menu__value-removed {
   font-family: var(--font-family-mono);

@@ -34,6 +34,9 @@ export function usdFormat(value: number | null | undefined): string {
     maximumFractionDigits: 2,
   }).format(value);
 }
+export function usageFormat(tokens: number | null | undefined, usd: number | null | undefined): string {
+  return `${chartFormat(tokens, true)} / ${usdFormat(usd)}`;
+}
 export const measureFormat = (
   value: number | null | undefined,
   measure: UsageMeasure,

@@ -10,7 +10,7 @@ const rowText = () => body('.app-menu__info, [role="menuitem"]').map(row => Arra
 const usage = (rows: UsageSummary['rows']): UsageSummary => ({ rows, recordedSince: 0, retainedSince: 0 });
 const row = (label: string, input: number, cacheRead: number, usd: number | null, coverage: 'complete' | 'partial' | 'unavailable' = 'complete'): UsageSummary['rows'][number] => ({
   label, started: 3, completed: 3, failed: 0, interrupted: 0, inProgress: 0, measuredTurns: 3,
-  tokens: { input, output: 10, cacheRead, cacheWrite: null },
+  tokens: { input, output: 10, total: input + 10, cacheRead, cacheWrite: null },
   cost: { usd, coverage, requests: 3, pricedRequests: 3, unpricedRequests: 0, unknownRequestExecutions: 0, reasons: [] },
 });
 
@@ -30,24 +30,24 @@ async function openMenu(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('AgentMoreMenu', () => {
-  it('reads usage only when opened and shows this agent’s estimated cost and cached share next to Share', async () => {
-    client.api.getUsage.mockResolvedValue(usage([row('agent-1', 1000, 900, 1.2345), row('agent-2', 50, 0, 9)]));
+  it('reads usage only when opened and shows this agent’s total tokens and cost next to Share', async () => {
+    client.api.getUsage.mockResolvedValue(usage([row('agent-1', 1_234_557, 900, 1234.56), row('agent-2', 50, 0, 9)]));
     const wrapper = render();
     expect(client.api.getUsage).not.toHaveBeenCalled();
     await openMenu(wrapper);
     expect(client.api.getUsage).toHaveBeenCalledExactlyOnceWith({ group: 'agentId' });
-    expect(rowText()).toStrictEqual(['Share', 'Estimated cost $1.23', 'Cached input 90%']);
+    expect(rowText()).toStrictEqual(['Share', 'Usage 1.2M / $1,234.56']);
   });
 
-  it('says the cost is unknown for an agent with no recorded usage and flags partial pricing', async () => {
+  it('shows unavailable usage and refreshes the recorded totals when reopened', async () => {
     client.api.getUsage.mockResolvedValue(usage([row('agent-2', 50, 0, 9)]));
     const wrapper = render();
     await openMenu(wrapper);
-    expect(rowText()).toStrictEqual(['Share', 'Estimated cost —']);
+    expect(rowText()).toStrictEqual(['Share', 'Usage N/A / Unavailable']);
     client.api.getUsage.mockResolvedValue(usage([row('agent-1', 100, 0, 2, 'partial')]));
     await wrapper.get('[aria-label="Agent actions"]').trigger('click');
     await openMenu(wrapper);
-    expect(rowText().join(' | ')).toContain('Estimated cost • Some usage could not be priced $2.00');
+    expect(rowText()).toStrictEqual(['Share', 'Usage 110 / $2.00']);
   });
 
   it('asks the parent to share', async () => {
@@ -61,13 +61,13 @@ describe('AgentMoreMenu', () => {
   it('leaves Share out when sharing is unavailable', async () => {
     client.api.getUsage.mockResolvedValue(usage([]));
     await openMenu(render({ shareAvailable: false }));
-    expect(rowText()).toStrictEqual(['Estimated cost —']);
+    expect(rowText()).toStrictEqual(['Usage N/A / Unavailable']);
   });
 
   it('still opens when the usage read fails', async () => {
     client.api.getUsage.mockRejectedValue(new Error('unavailable'));
     const wrapper = render();
     await openMenu(wrapper);
-    expect(rowText()).toContain('Estimated cost —');
+    expect(rowText()).toContain('Usage N/A / Unavailable');
   });
 });

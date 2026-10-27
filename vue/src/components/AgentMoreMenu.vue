@@ -20,7 +20,8 @@ import { IconDots, IconShare } from '@tabler/icons-vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
-import { agentCostFor, cachedShare, formatCost } from './agent-cost';
+import { agentCostFor } from './agent-cost';
+import { usageFormat } from './usage-chart';
 import { useUsageByAgent } from './use-usage-by-agent';
 
 const props = defineProps<{
@@ -41,17 +42,7 @@ const items = computed<AppMenuItem[]>(() => {
   const cost = agentCostFor(summary.value, [props.agentId]);
   if (loaded.value) {
     if (rows.length > 0) rows.push({ id: 'separator-cost', type: 'separator' });
-    rows.push({
-      id: 'cost',
-      type: 'info',
-      label: translate('surface.agentHeader.estimatedCost'),
-      value: formatCost(cost?.usd ?? null),
-      ...(cost?.coverage === 'partial' ? { description: translate('surface.agentHeader.costPartial') } : {}),
-    });
-    const cached = cost ? cachedShare(cost) : null;
-    if (cached !== null) {
-      rows.push({ id: 'cached', type: 'info', label: translate('surface.agentHeader.cachedInput'), value: `${Math.round(cached * 100)}%` });
-    }
+    rows.push({ id: 'usage', type: 'info', label: translate('surface.agentHeader.usage'), value: usageFormat(cost?.totalTokens, cost?.usd) });
   }
   return rows;
 });
