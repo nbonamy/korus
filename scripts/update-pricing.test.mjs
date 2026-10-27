@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { updatePricing } from './update-pricing.mjs';
+import { pricingHistorySchema } from '../backend/src/pricing/schema.ts';
 
 // HTTP-boundary failures: lost context/tier/cache rules; missing vs zero; mixed
 // revisions; ordering/metadata churn; lost same-day updates; partial responses;
@@ -56,27 +57,27 @@ async function fixture(t) {
 test('collects a complete October baseline with real context, category, tier, mode and cache lifetime rules', async (t) => {
   const { state, collect, history } = await fixture(t);
   assert.equal((await collect()).changed, true);
-  const [snapshot] = await history();
-  assert.equal(snapshot.date, '2026-10-01T00:00:00.000Z');
-  assert.equal(snapshot.provenance.revision, state.revision);
-  const openai = snapshot.openai.find((model) => model.id === 'gpt-6-sol');
-  assert.equal(openai.provider, 'openai');
-  assert.equal(openai.canonicalId, 'openai/gpt-6-sol');
-  assert.equal(openai.cost.text.input.unit, 'token');
-  assert.deepEqual(openai.cost.text.input.overrides, [{ when: { context: { gt: 272000 } }, price: 4, cache: { read: 0.4, write: 5 } }]);
-  assert.ok(openai.cost.multipliers.some((rule) => rule.when.service_tier.equals === 'priority' && rule.factor.text === 2));
-  assert.equal(openai.modes.fast.service_tier, 'priority');
-  assert.equal(snapshot.openai.find((model) => model.id === 'o4-mini').modes.fast.cost.text.input.price, 2);
-  const anthropic = snapshot.anthropic[0];
-  assert.deepEqual(anthropic.cost.text.input.cache, { read: 0.3, write: { '5m': 3.75, '1h': 6 } });
-  const google = snapshot.google[0];
-  assert.deepEqual(google.cost.multipliers.find((rule) => rule.when.service_tier.equals === 'flex').factor, { text: { input: { price: 0.5 }, output: { price: 0.5 } } });
-  assert.deepEqual(google.cost.text.input.overrides[0].when, { context: { gt: 200000 } });
-  assert.equal(google.cost.text.input.cache.storage, 4.5);
-  assert.equal(snapshot.openai.find((model) => model.id === 'gpt-image-1').availability, 'unpriced');
-  assert.equal(snapshot.openai.find((model) => model.id === 'gpt-image-1').cost, undefined);
-  assert.match(openai.source.path, /providers\/openai\/models\/gpt-6-sol.toml/);
-  assert.ok(openai.source.urls.includes('https://developers.openai.com/api/docs/models/gpt-6-sol'));
+  const catalog = await history();
+  const openai = catalog.openai['gpt-6-sol'];
+  const event = openai.cost[0];
+  assert.equal(event.date, '2026-10-01T00:00:00.000Z');
+  assert.equal(event.source.revision, state.revision);
+  assert.equal(openai.metadata.canonicalId, 'openai/gpt-6-sol');
+  assert.equal(event.rates.text.input.unit, 'token');
+  assert.deepEqual(event.rates.text.input.overrides, [{ when: { context: { gt: 272000 } }, price: 4, cache: { read: 0.4, write: 5 } }]);
+  assert.ok(event.rates.multipliers.some((rule) => rule.when.service_tier.equals === 'priority' && rule.factor.text === 2));
+  assert.equal(event.modes.fast.service_tier, 'priority');
+  assert.equal(catalog.openai['o4-mini'].cost[0].modes.fast.cost.text.input.price, 2);
+  const anthropic = catalog.anthropic['claude-sonnet-4-6'].cost[0];
+  assert.deepEqual(anthropic.rates.text.input.cache, { read: 0.3, write: { '5m': 3.75, '1h': 6 } });
+  const google = catalog.google['gemini-2.5-pro'].cost[0];
+  assert.deepEqual(google.rates.multipliers.find((rule) => rule.when.service_tier.equals === 'flex').factor, { text: { input: { price: 0.5 }, output: { price: 0.5 } } });
+  assert.deepEqual(google.rates.text.input.overrides[0].when, { context: { gt: 200000 } });
+  assert.equal(google.rates.text.input.cache.storage, 4.5);
+  assert.equal(catalog.openai['gpt-image-1'].cost[0].availability, 'unpriced');
+  assert.equal(catalog.openai['gpt-image-1'].cost[0].rates, undefined);
+  assert.match(openai.metadata.source.path, /providers\/openai\/models\/gpt-6-sol.toml/);
+  assert.ok(openai.metadata.source.urls.includes('https://developers.openai.com/api/docs/models/gpt-6-sol'));
   assert.ok(state.requests.filter((url) => url.endsWith('.toml')).every((url) => url.includes(state.revision)));
 });
 
@@ -96,10 +97,10 @@ test('reordered content, comments, explicit default units and revision metadata 
   assert.equal(await readFile(outputPath, 'utf8'), original);
 });
 
-test('conditional, lifetime, mode, membership and missing-to-zero changes each append one full same-day snapshot', async (t) => {
+test('pricing changes append dated cost events only to the affected model', async (t) => {
   const { state, collect, history } = await fixture(t);
   await collect();
-  const baseline = (await history())[0];
+  const baseline = await history();
   const changes = [
     () => { state.files['providers/openai/models/gpt-6-sol.toml'] = state.files['providers/openai/models/gpt-6-sol.toml'].replace('gt = 272_000', 'gte = 272_000'); },
     () => { state.files['providers/anthropic/models/claude-sonnet-4-6.toml'] = state.files['providers/anthropic/models/claude-sonnet-4-6.toml'].replace('"1h" = 6', '"1h" = 7'); },
@@ -114,13 +115,25 @@ test('conditional, lifetime, mode, membership and missing-to-zero changes each a
     change();
     const date = `2026-10-25T04:00:0${index}.000Z`;
     assert.equal((await collect(date)).changed, true);
-    const snapshots = await history();
-    assert.equal(snapshots.length, index + 2);
-    assert.deepEqual(snapshots[0], baseline);
-    assert.equal(snapshots.at(-1).date, date);
-    for (const provider of ['openai', 'anthropic', 'google']) assert.ok(snapshots.at(-1)[provider].length);
+    const catalog = pricingHistorySchema.parse(await history());
+    assert.deepEqual(catalog.openai['gpt-image-1'], baseline.openai['gpt-image-1']);
+    for (const provider of ['openai', 'anthropic', 'google']) {
+      for (const [id, model] of Object.entries(baseline[provider])) {
+        assert.deepEqual(catalog[provider][id].cost[0], model.cost[0]);
+      }
+    }
+    assert.equal(Object.values(catalog).flatMap(models => Object.values(models))
+      .flatMap(model => model.cost).filter(event => event.date === date).length, 1);
+    assert.equal(catalog.openai.zero?.cost.at(-1).availability, index >= 5 ? (index === 7 ? 'removed' : 'priced') : undefined);
     assert.equal((await collect(date)).changed, false);
   }
+  const catalog = await history();
+  assert.equal(catalog.openai['gpt-6-sol'].cost.length, 3);
+  assert.equal(catalog.openai['gpt-6-sol'].cost[1].rates.text.input.overrides[0].when.context.gte, 272000);
+  assert.equal(catalog.anthropic['claude-sonnet-4-6'].cost[1].rates.text.input.cache.write['1h'], 7);
+  assert.equal(catalog.openai['o4-mini'].cost.at(-1).modes.fast.cost.text.input.price, 2.5);
+  assert.equal(catalog.openai.zero.cost[0].rates.text.input.price, 0);
+  assert.equal(catalog.openai.zero.cost[1].rates.text.input.cache.read, 0);
 });
 
 test('network, TOML, rate, unknown-rule, partial tree and provider failures preserve history and clean temporary files', async (t) => {
@@ -168,7 +181,15 @@ test('invalid or non-monotonic history is never overwritten', async (t) => {
   const { collect, outputPath, history } = await fixture(t);
   await collect();
   const good = await history();
-  for (const invalid of ['{', '[]', JSON.stringify([...good, ...good])]) {
+  const model = good.openai['gpt-6-sol'];
+  const repeated = structuredClone(good);
+  repeated.openai['gpt-6-sol'].cost.push(model.cost[0]);
+  const beforeBaseline = structuredClone(good);
+  beforeBaseline.openai['gpt-6-sol'].cost[0].date = '2026-09-30T00:00:00.000Z';
+  const invalidPrice = structuredClone(good);
+  invalidPrice.openai['gpt-6-sol'].cost[0].rates.text.input.price = -1;
+  const emptyProvider = { ...good, google: {} };
+  for (const invalid of ['{', '{}', ...[repeated, beforeBaseline, invalidPrice, emptyProvider].map(value => JSON.stringify(value))]) {
     await writeFile(outputPath, invalid);
     await assert.rejects(collect());
     assert.equal(await readFile(outputPath, 'utf8'), invalid);

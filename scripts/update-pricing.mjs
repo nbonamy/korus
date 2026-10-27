@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'smol-toml';
 import { z } from 'zod';
-import { pricingHistorySchema, sourcePricingSchema } from '../backend/src/pricing/schema.ts';
+import { pricingBaselineDate, pricingHistorySchema, sourcePricingSchema } from '../backend/src/pricing/schema.ts';
 
 const providers = ['openai', 'anthropic', 'google'];
 const defaultOutput = fileURLToPath(new URL('../backend/src/pricing/history.json', import.meta.url));
@@ -41,10 +41,9 @@ function normalize(value, key = '') {
   return value;
 }
 
-function pricingContent(snapshot) {
-  return JSON.stringify(normalize(Object.fromEntries(providers.map((provider) => [provider,
-    snapshot[provider].map(({ source: _source, ...model }) => model).sort((a, b) => a.id.localeCompare(b.id, 'en')),
-  ]))));
+function modelContent(model) {
+  const { date: _date, source: _source, ...event } = model.cost.at(-1);
+  return JSON.stringify(normalize({ canonicalId: model.metadata.canonicalId, ...event }));
 }
 
 async function collect({ apiBase, rawBase, now }) {
@@ -59,7 +58,7 @@ async function collect({ apiBase, rawBase, now }) {
       throw new Error(`Missing required provider: ${provider}`);
     }
   }
-  const snapshot = Object.fromEntries(providers.map((provider) => [provider, []]));
+  const catalog = Object.fromEntries(providers.map((provider) => [provider, Object.create(null)]));
   // Bound concurrent raw requests; each path and blob is pinned to the same tree.
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(8, files.length) }, async () => {
@@ -75,28 +74,32 @@ async function collect({ apiBase, rawBase, now }) {
       try { authored = sourcePricingSchema.parse(parse(text)); }
       catch (error) { throw new Error(`Invalid pricing source: ${entry.path}`, { cause: error }); }
       const provider = entry.path.split('/')[1];
-      const model = {
-        id: entry.path.slice(`providers/${provider}/models/`.length, -5), provider,
-        ...(authored.base_model !== undefined ? { canonicalId: authored.base_model } : {}),
-        availability: authored.cost === undefined ? 'unpriced' : 'priced',
-        ...(authored.cost !== undefined ? { cost: authored.cost } : {}),
-        ...(authored.capabilities?.service_tier !== undefined ? { serviceTiers: authored.capabilities.service_tier } : {}),
-        ...(authored.capabilities?.cache !== undefined ? { cache: authored.capabilities.cache } : {}),
-        ...(authored.experimental?.modes !== undefined ? { modes: authored.experimental.modes } : {}),
-        source: {
-          path: entry.path, blobSha,
-          urls: [...new Set(text.split('\n').filter((line) => line.trimStart().startsWith('#'))
-            .flatMap((line) => [...line.matchAll(/https?:\/\/[^\s)]+/g)].map((match) => match[0])))].sort(),
+      const id = entry.path.slice(`providers/${provider}/models/`.length, -5);
+      catalog[provider][id] = {
+        metadata: {
+          ...(authored.base_model !== undefined ? { canonicalId: authored.base_model } : {}),
+          source: {
+            path: entry.path,
+            urls: [...new Set(text.split('\n').filter((line) => line.trimStart().startsWith('#'))
+              .flatMap((line) => [...line.matchAll(/https?:\/\/[^\s)]+/g)].map((match) => match[0])))].sort(),
+          },
         },
+        cost: [{
+          date: pricingBaselineDate,
+          availability: authored.cost === undefined ? 'unpriced' : 'priced',
+          ...(authored.cost !== undefined ? { rates: normalize(authored.cost) } : {}),
+          ...(authored.capabilities?.service_tier !== undefined ? { serviceTiers: normalize(authored.capabilities.service_tier, 'serviceTiers') } : {}),
+          ...(authored.capabilities?.cache !== undefined ? { cache: normalize(authored.capabilities.cache) } : {}),
+          ...(authored.experimental?.modes !== undefined ? { modes: normalize(authored.experimental.modes) } : {}),
+          source: { revision, collectedAt: now.toISOString(), blobSha },
+        }],
       };
-      snapshot[provider].push(normalize(model));
     }
   }));
-  for (const provider of providers) snapshot[provider].sort((a, b) => a.id.localeCompare(b.id, 'en'));
-  return {
-    ...snapshot,
-    provenance: { repository: 'https://github.com/anomalyco/models.dev', revision, collectedAt: now.toISOString(), schemaVersion: 1, currency: 'USD' },
-  };
+  for (const provider of providers) {
+    catalog[provider] = Object.fromEntries(Object.entries(catalog[provider]).sort(([a], [b]) => a.localeCompare(b, 'en')));
+  }
+  return pricingHistorySchema.parse(catalog);
 }
 
 export async function updatePricing({ outputPath = defaultOutput, apiBase = 'https://api.github.com', rawBase = 'https://raw.githubusercontent.com', now = new Date() } = {}) {
@@ -108,20 +111,36 @@ export async function updatePricing({ outputPath = defaultOutput, apiBase = 'htt
   const lock = await open(lockPath, 'wx');
   const temporary = `${outputPath}.${randomUUID()}.tmp`;
   try {
-    let history = [];
+    let history;
     try { history = pricingHistorySchema.parse(JSON.parse(await readFile(outputPath, 'utf8'))); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
-    const snapshot = { date: history.length ? now.toISOString() : '2026-10-01T00:00:00.000Z', ...collected };
-    // Validate even if identical: bad collections must not masquerade as no-ops.
-    pricingHistorySchema.parse([{ ...snapshot, date: '2026-10-01T00:00:00.000Z' }]);
-    if (history.length && pricingContent(snapshot) === pricingContent(history.at(-1))) return { changed: false, snapshots: history.length };
-    const next = [...history, snapshot];
+    const date = history ? now.toISOString() : pricingBaselineDate;
+    const next = history ?? Object.fromEntries(providers.map(provider => [provider, Object.create(null)]));
+    let events = 0;
+    for (const provider of providers) {
+      for (const [id, model] of Object.entries(collected[provider])) {
+        const previous = Object.hasOwn(next[provider], id) ? next[provider][id] : undefined;
+        if (previous && modelContent(previous) === modelContent(model)) continue;
+        next[provider][id] = { ...model, cost: [...(previous?.cost ?? []), { ...model.cost[0], date }] };
+        events += 1;
+      }
+      for (const [id, model] of Object.entries(next[provider])) {
+        if (Object.hasOwn(collected[provider], id) || model.cost.at(-1).availability === 'removed') continue;
+        model.cost.push({ date, availability: 'removed', source: {
+          revision: Object.values(collected[provider])[0].cost[0].source.revision,
+          collectedAt: now.toISOString(),
+        } });
+        events += 1;
+      }
+      next[provider] = Object.fromEntries(Object.entries(next[provider]).sort(([a], [b]) => a.localeCompare(b, 'en')));
+    }
     pricingHistorySchema.parse(next);
+    if (!events) return { changed: false, events: 0 };
     const file = await open(temporary, 'wx');
     try { await file.writeFile(`${JSON.stringify(next, null, 2)}\n`); await file.sync(); }
     finally { await file.close(); }
     await rename(temporary, outputPath);
-    return { changed: true, snapshots: next.length };
+    return { changed: true, events };
   } finally {
     await rm(temporary, { force: true });
     await lock.close();
@@ -133,7 +152,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   try {
     if (process.argv.length > 2) throw new Error('Usage: npm run pricing:update');
     const result = await updatePricing();
-    console.log(`[pricing] ${result.changed ? 'appended snapshot' : 'unchanged'} (${result.snapshots} total)`);
+    console.log(`[pricing] ${result.changed ? `appended ${result.events} model pricing events` : 'unchanged'}`);
   } catch (error) {
     console.error('[pricing] collection failed; history was preserved:', error);
     process.exitCode = 1;

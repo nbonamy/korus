@@ -60,6 +60,7 @@ export class ClaudeRequestUsageObserver {
           ? record(event.message)
           : null;
     if (body) {
+      if (body.model === '<synthetic>') return;
       const id = text(body.id);
       if (!id) {
         if (owner) this.incomplete(owner);

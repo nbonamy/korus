@@ -238,6 +238,7 @@ export class UsageLedger {
   async observeRequest(event: RequestObservation): Promise<boolean> {
     if (
       !validRequestObservation(event) ||
+      (event.provider === "claude" && event.model === "<synthetic>") ||
       event.at < this.now() - retention ||
       event.at > this.now() + 60000
     )
@@ -340,7 +341,7 @@ export class UsageLedger {
     if (db) {
       const requestRows = db
         .prepare(
-          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? ORDER BY r.at,r.request_id",
+          "SELECT r.observation,e.* FROM requests r JOIN executions e USING(provider,session_id,turn_id) WHERE e.started_at>=? AND r.at>=? AND (r.provider<>'claude' OR json_extract(r.observation,'$.model') IS NOT '<synthetic>') ORDER BY r.at,r.request_id",
         )
         .all(this.now() - retention, this.now() - retention);
       const observedExecutions = new Set(

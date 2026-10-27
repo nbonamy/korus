@@ -24,6 +24,7 @@ it("keeps actual main-loop model evidence across repeated blocks, excluding repl
       ...extra,
       message: { id: "ignored", model: "other" },
     } as ClaudeSdkMessage);
+  observer.observe({ type: "assistant", message: { id: "sdk-notice", model: "<synthetic>" } });
   expect(observer.snapshot()).toBe("sonnet");
   observer.observe({ type: "assistant", message: { id: "b", model: "opus" } });
   expect(observer.snapshot()).toBeNull();

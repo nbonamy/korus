@@ -858,13 +858,16 @@ manage MCP tools: treat it as a privileged control plane.
 `npm run pricing:update` collects Models.dev provider pricing from the public
 GitHub API and raw source files at one immutable revision. The collector verifies
 Git blob hashes, requires all three providers, validates pricing rules and the
-existing history, and atomically appends a full snapshot only when pricing
-content changes. Revision, comments and source links do not trigger snapshots.
-The initial snapshot is effective October 1, 2026 UTC; subsequent timestamps
-record when a change was observed, rather than asserting its actual start date.
+existing history, and atomically appends dated cost events only to models whose
+pricing content changes. Revision, comments and source links do not trigger events.
+`backend/src/pricing/history.json` is keyed by provider, then exact model ID; each
+model has shared metadata and a `cost` array. Each event retains rates, pricing
+rules and immutable source evidence. Removal records an event without erasing
+past prices; reappearance appends another event. The baseline is effective October
+1, 2026 UTC. Automatic refreshes record when a change was observed. A launch-date
+entry for a newly listed model requires published pricing evidence.
 
-`backend/src/pricing/history.json` retains exact provider/model identities,
-context predicates, service tiers, mode mappings, category-specific multipliers,
+The catalog retains context predicates, service tiers, mode mappings, category-specific multipliers,
 cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
 zero rates remain zero. Models without source prices are marked unpriced. The
 schema retains explicit billing units: token and character prices are USD per
@@ -875,8 +878,10 @@ estimates.
 Matching source overrides merge fields in order, including nested cache fields;
 all matching multipliers then apply only to the categories they name. Mode
 configuration maps names to request fields but does not establish a request's
-actually served tier. Each snapshot retains its source revision, and each model
-retains its source path, blob hash and documentation links for coverage diagnosis.
+actually served tier. Each pricing event retains its source revision, collection
+time and blob hash; model metadata retains the source path and documentation
+links for coverage diagnosis. Removal events reference the revision that omits
+the model and have no source blob.
 The catalog is statically embedded in the standalone daemon bundle, which is also
 copied into desktop resources. Builds and runtime catalog reads require no pricing
 network calls.
@@ -894,6 +899,8 @@ invalidated after completion.
 Claude execution consumption covers the main agent loop; independently observed billable requests retain their own identities.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
+Claude SDK `<synthetic>` assistant notices are not model responses or billable
+requests; retained placeholder request rows are ignored by usage queries.
 
 Request measurements have a separate identity scoped by backend provider, session,
 turn and request. Providers emit them through the optional `onRequestUsage` seam;
@@ -905,9 +912,9 @@ increase a persistent revision; stale revisions, changed request timestamps and
 final-to-provisional updates cannot replace newer evidence. Requests and their
 parent grouping metadata survive restart without storing conversation content.
 
-The backend prices each final request using the latest snapshot effective at its
-request timestamp. Exact model IDs are required; requested tiers do not establish
-served tiers. A documented default requires explicit producer evidence. Context
+The backend prices each final request using that model's latest cost event
+effective at the request timestamp. Exact model IDs are required; requested tiers
+do not establish served tiers. A documented default requires explicit producer evidence. Context
 predicates use their authored strict/inclusive operators, matching overrides merge
 in order, and matching multipliers affect only their named categories. Included
 cache reads/writes are subtracted from input and included reasoning is separated

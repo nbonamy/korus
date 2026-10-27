@@ -23,6 +23,7 @@ export class ClaudeModelObserver {
     ) as Record<string, unknown> | null;
     if (
       !metadata ||
+      metadata.model === "<synthetic>" ||
       typeof metadata.id !== "string" ||
       !metadata.id ||
       metadata.id.length > 256
