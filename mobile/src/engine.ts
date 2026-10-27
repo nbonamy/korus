@@ -167,6 +167,7 @@ export function createEngine(port: EnginePort) {
   const pairingError = ref('');
   const laptops = ref([...port.connector.laptops]);
   let disposed = false;
+  let startupWork: Promise<void> | null = null;
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
   const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
@@ -534,6 +535,12 @@ export function createEngine(port: EnginePort) {
         if (superseded()) return;
         await state.setActive(true);
         if (superseded()) return;
+        if (startupWork) {
+          // Native activation cannot wait for a restore that may itself need the phone to unlock.
+          void startupWork.then(() => { if (!superseded() && startup.value === 'error') void start(); });
+          return;
+        }
+        if (startup.value === 'error') return start();
         if (!choosingConnection && !state.laptopId.value && startup.value === 'ready') {
           const preferred = await preferredLaptop();
           if (!superseded() && preferred) await connect(preferred);
@@ -636,7 +643,11 @@ export function createEngine(port: EnginePort) {
   }
 
   /** Reopens the last successful laptop, or the sole saved pairing. */
-  async function start() {
+  function start(): Promise<void> {
+    return startupWork ??= restoreStartup().finally(() => { startupWork = null; });
+  }
+
+  async function restoreStartup() {
     startup.value = 'loading'; publish();
     try {
       await port.connector.initialize?.();
