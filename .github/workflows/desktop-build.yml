@@ -40,6 +40,8 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
       - run: npm install --global npm@10.9.4
       - run: npm ci --no-audit --no-fund
+      - name: Install script-test browser and system dependencies
+        run: npx playwright install --with-deps chromium
       - run: node node_modules/electron/install.js
       - run: npm run release-notes:check
       - run: npm run test --workspaces -- --maxWorkers=2

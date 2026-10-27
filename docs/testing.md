@@ -29,7 +29,13 @@ configuration canaries, rather than asserting production source text. The
 telemetry-stack script workflow also builds an isolated image and exercises real
 Compose services, persistent volumes, role grants, proxy routing and backup/restore.
 It runs in the normal script test gate and requires local Docker; it never uses an
-operator environment file or database.
+operator environment file or database. After installing npm dependencies, run
+`npx playwright install --with-deps chromium` before `npm test` or
+`npm run test:scripts`. This installs the browser revision matching the locked
+Playwright package and, on Linux, its system libraries (which require elevated
+package-manager access). Both Quality and desktop-release quality jobs provision
+these dependencies explicitly; a system browser or an existing browser cache is
+not a prerequisite.
 
 The same Compose workflow builds `web/src/console` with operator-secret canaries
 and runs a real browser through the authenticated console proxy and aggregate
