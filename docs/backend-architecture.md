@@ -1122,10 +1122,71 @@ instances, rollback/connection loss, lost acknowledgements, exact limits, bounde
 admission and retention of old accepted history. The executable build test also
 proves operator-secret canaries do not enter the generated bundle.
 
+### Private telemetry aggregates
+
+The standalone bundle's `read <external-json-file>` mode is a separate process
+using `telemetry_read`, never the ingestion pool or desktop runtime. Its runtime
+JSON supplies `listenHost`, `listenPort`, `consoleOrigin` and `accessTokenFile`;
+`TELEMETRY_DATABASE_URL` supplies the read-only database connection outside Git.
+Startup checks schema readiness without DDL. Both executable modes share bounded
+PostgreSQL timeouts and generic failures, with no access/error logger.
+
+The console proxy uses its existing server-side htpasswd gate for both static
+assets and `/v1/telemetry/metrics`. It replaces viewer authorization with a private
+service bearer token on the internal read hop. The API virtual host exposes only
+anonymous ingestion. The token and database credentials never enter browser
+assets, responses or image layers. Supply a distinct 32–256 character URL-safe
+random service token through `TELEMETRY_READ_ACCESS_FILE`, and the exact console
+origin (scheme, host and optional port, without trailing slash/path) through
+`TELEMETRY_CONSOLE_ORIGIN`. An absent Origin supports authenticated internal
+clients; any supplied Origin must exactly match. Browser reads use the protected
+console origin, without embedding an operator credential in JavaScript.
+
+The read endpoint accepts only inclusive `from`/`to` UTC days and optional canonical
+`provider`/`model` filters. It rejects unknown/duplicate filters, current/unclosed
+days and ranges longer than 3,660 days instead of clipping results. Older retained
+ranges remain available; the ingestion lateness window never applies to reads.
+At most four aggregate statements execute concurrently; excess work receives 429
+with a one-second Retry-After. Database lock/statement deadlines yield generic 503
+responses. Responses are not cached and contain no installation-level records.
+
+`core/src/telemetry-metrics.ts` is the browser-safe read contract. Cards use the
+range's end day and global activity, independent of usage filters: cumulative
+participating identities through that day, DAU, distinct trailing-seven WAU,
+distinct trailing-30 MAU, and distinct calendar-month-to-date activity. Daily first
+reports use the registry's first reported day. Empty-usage days contribute to
+activity; multiple models cannot multiply it. Availability and last receipt time
+are global so the console can explain delayed completed-day reporting.
+
+The single statement in `backend/src/collector/metrics.sql` supplies every API
+section from one committed snapshot. All counts and decimal costs are exact
+strings, including sums beyond JavaScript's safe integer range. Known token
+subtotals include unknown-group counts; input plus output totals use only complete
+pairs and expose excluded groups. Cache share and its non-cache-read remainder
+use only complete input/cache-read pairs, with zero denominators returning null.
+That remainder can include cache creation; it is not a fresh-input pricing claim.
+Weekly buckets start Monday UTC and include only selected days. Known complete
+cost groups sum without repricing; all-unknown and empty buckets have null cost,
+with explicit complete/partial/unavailable/empty coverage. Missing spend is never
+zero. Usage model rows are ordered by provider/model and expose aggregates only.
+
+The executable seed is
+`backend/src/collector/__tests__/fixtures/metrics-seed.sql`. Apply it only to a
+migrated disposable database. The owner workflow prepares the exact API SQL with
+`PREPARE dashboard_example(date,date,text,text) AS <metrics.sql>`, then executes
+`EXECUTE dashboard_example('2026-10-18','2026-10-24',NULL,NULL)`. Expected global
+cards are 6 participating identities, DAU 3, WAU 4, MAU 5 and calendar-month actives
+4. Complete token pairs total 660, measured cache share is 0.55, and known cost is
+1.5 USD with two unknown groups. The 2020 seed contributes another 1,100 tokens.
+Run `TELEMETRY_METRICS_EVIDENCE=<external-evidence-file> npm run test -w
+@workspace/backend -- collector/__tests__/metrics.spec.ts` to record repeatable
+aggregate JSON while verifying SQL/API parity, private access, corrections,
+unknowns, exact large integers and bounded database failure against real Postgres.
+
 ### Telemetry container operations
 
 `backend/telemetry-stack/compose.yaml` runs a separate collector, private PostgreSQL
-18 database, migration/grant jobs, backup worker and minimal routing proxy. No
+18 database, migration/grant jobs, read-only metrics process, backup worker and minimal routing proxy. No
 service joins the companion relay. Only the proxy publishes a port, bound to an
 operator-supplied private interface behind an HTTPS edge. Database and collector
 networks are internal; the proxy has no database-network membership. PostgreSQL
@@ -1145,8 +1206,8 @@ external routes, TLS material or operator configuration are image layers.
 
 Copy `backend/telemetry-stack/operator.env.example` to an operator-managed location
 outside Git and replace every placeholder. Select a unique Compose project name,
-an unused private container subnet, and distinct collector/proxy addresses within
-it. Reserve both addresses for this stack. Supply distinct random database-role
+an unused private container subnet, and distinct collector/metrics/proxy addresses within
+it. Reserve all three addresses for this stack. Supply distinct random database-role
 passwords as newline-terminated secret files, a private dashboard htpasswd file,
 the reviewed console build directory, and a trusted-edge nginx include. Keep their
 parent directory owner-only. Compose file-backed secrets retain host permissions:
@@ -1162,7 +1223,7 @@ privately, then `up -d --wait` with the same options. Startup waits for database
 readiness, applies versioned migrations under `telemetry_migrate`, then grants only
 required table operations before admitting HTTP. Ingestion cannot create schema,
 delete active days, change registry history or read migration state. The backup
-role has SELECT only; the reserved dashboard role has SELECT only on data tables.
+role has SELECT only; the dashboard role has SELECT only on data tables.
 The migration role has no cluster/role creation or superuser capability. Bootstrap
 roles run only for a new data volume: replacing a password file does not rotate a
 database role password. Perform role credential rotation privately and coordinate
@@ -1178,8 +1239,10 @@ include must trust only the actual TLS-edge peer ranges using `set_real_ip_from`
 peers. An empty include is suitable only when the proxy receives the source
 connection directly. The proxy replaces forwarding headers and strips cookies,
 authorization and user-agent before ingestion. The collector trusts only this
-stack's explicit proxy address. Aggregate API routing/access remains a separate
-read-service boundary; the ingestion proxy rejects every other API route.
+stack's explicit proxy address. The read service shares the private database and
+frontend networks under a separate SELECT-only role; its console route keeps
+server-side viewer authentication. The ingestion proxy rejects every other API
+route.
 
 There are no access logs, persisted container stdout/stderr logs, request caches
 or disk-buffered ingestion bodies. PostgreSQL statement/parameter/connection logs

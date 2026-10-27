@@ -34,4 +34,8 @@ export const telemetryMigrations = [
   CREATE INDEX usage_daily_provider_model_day ON usage_daily(provider, model, day);
 `,
   },
+  {
+    version: 2,
+    sql: `CREATE INDEX installs_first_reported_day ON installs(first_reported_day);`,
+  },
 ] as const;

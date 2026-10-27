@@ -47,7 +47,7 @@ test(
     const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-stack-"));
     const project = `telemetry-test-${process.pid}`;
     const image = `telemetry-test:${process.pid}`;
-    const canary = "SENTINEL_OPERATOR_SECRET_847295";
+    const canary = "SENTINEL_OPERATOR_SECRET_847295012345";
     const env = { ...process.env };
     const run = (cmd, args, extra = {}) =>
       exec(cmd, args, {
@@ -94,6 +94,7 @@ test(
         "read",
         "console_auth",
         "edge_realip",
+        "read_access",
       ]) {
         const file = path.join(dir, name);
         await writeFile(
@@ -126,11 +127,13 @@ test(
         TELEMETRY_CONSOLE_DIRECTORY: path.join(dir, "console"),
         TELEMETRY_API_HOST: "api.invalid",
         TELEMETRY_CONSOLE_HOST: "console.invalid",
+        TELEMETRY_CONSOLE_ORIGIN: "https://console.invalid",
         TELEMETRY_BIND_ADDRESS: "127.0.0.1",
         TELEMETRY_PORT: "0",
         TELEMETRY_PROXY_SUBNET: "172.29.253.0/24",
         TELEMETRY_PROXY_IP: "172.29.253.2",
         TELEMETRY_COLLECTOR_IP: "172.29.253.3",
+        TELEMETRY_METRICS_IP: "172.29.253.4",
       });
       await t.test(
         "renders external inputs without exposing database ports or secrets and builds an isolated image",
@@ -311,6 +314,34 @@ test(
             ).status,
             200,
           );
+          const metricsPath = `/v1/telemetry/metrics?from=${day}&to=${day}`;
+          for (const [headers, expected] of [
+            [{ host: "console.invalid" }, 401],
+            [
+              {
+                host: "console.invalid",
+                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
+              },
+              200,
+            ],
+            [
+              {
+                host: "console.invalid",
+                authorization: `Basic ${Buffer.from(`viewer:${canary}`).toString("base64")}`,
+                origin: "https://other.invalid",
+              },
+              403,
+            ],
+            [{ host: "api.invalid" }, 404],
+          ])
+            assert.equal(
+              (
+                await http(`http://127.0.0.1:${port}${metricsPath}`, {
+                  headers,
+                })
+              ).status,
+              expected,
+            );
           const script = await http(`http://127.0.0.1:${port}/main.js`, {
             headers: {
               host: "console.invalid",

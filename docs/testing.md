@@ -21,7 +21,10 @@ The independently runnable telemetry collector is a separate hosted boundary.
 Its backend workflows exercise actual HTTP and disposable real PostgreSQL, never
 SQLite or a database fake. Docker must be running for backend test/coverage gates;
 the fixture starts and removes its own temporary container and never contacts an
-operator database. Collector build tests inspect generated artifacts for external
+operator database. Private read workflows execute the seeded SQL through the
+HTTP gate and real Postgres, checking global activity independently of usage
+filters, incomplete coverage, retained history and exact aggregate strings.
+Collector build tests inspect generated artifacts for external
 configuration canaries, rather than asserting production source text. The
 telemetry-stack script workflow also builds an isolated image and exercises real
 Compose services, persistent volumes, role grants, proxy routing and backup/restore.

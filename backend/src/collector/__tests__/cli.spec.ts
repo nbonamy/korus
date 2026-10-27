@@ -1,3 +1,4 @@
+import type { TelemetryMetrics } from "@workspace/core/telemetry-metrics";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -58,6 +59,44 @@ it("runs explicit migrations and serves independently with supplied runtime conf
       },
     );
     expect(response.status).toBe(204);
+    const readConfig = path.join(directory, "read.json");
+    const accessFile = path.join(directory, "read-access");
+    const access = "synthetic-service-token-32-characters";
+    await writeFile(accessFile, access + "\n");
+    // A distinct executable role never exposes anonymous reads on ingestion.
+    const readProbe = createServer();
+    await new Promise<void>((resolve) =>
+      readProbe.listen(0, "127.0.0.1", resolve),
+    );
+    const readPort = (readProbe.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => readProbe.close(() => resolve()));
+    await writeFile(
+      readConfig,
+      JSON.stringify({
+        listenHost: "127.0.0.1",
+        listenPort: readPort,
+        consoleOrigin: "https://console.invalid",
+        accessTokenFile: accessFile,
+      }),
+    );
+    const reader = await runCollector(["read", readConfig], env);
+    const day = new Date(now - 86_400_000).toISOString().slice(0, 10);
+    const readUrl = `http://127.0.0.1:${readPort}/v1/telemetry/metrics?from=${day}&to=${day}`;
+    try {
+      expect((await fetch(readUrl)).status).toBe(401);
+      const result = await fetch(readUrl, {
+        headers: {
+          authorization: `Bearer ${access}`,
+          origin: "https://console.invalid",
+        },
+      });
+      expect(result.status).toBe(200);
+      expect(((await result.json()) as TelemetryMetrics).overview.dau).toBe(
+        "1",
+      );
+    } finally {
+      await reader?.close();
+    }
     await expect(runCollector(["serve", config], env)).rejects.toThrow(
       "Collector startup failed.",
     );

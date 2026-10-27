@@ -23,6 +23,8 @@ test("collector stays independently runnable without importing the desktop or co
     "backend/src/collector/server.ts":
       "import { createServer } from 'node:http'; import type { DailyTelemetryPayload } from '@workspace/core/telemetry'; import { TelemetryStore } from './store';",
     "backend/src/collector/store.ts": "import pg from 'pg';",
+    "backend/src/collector/metrics.ts":
+      "import type { TelemetryMetrics } from '@workspace/core/telemetry-metrics'; import { isUtcDay } from '@workspace/core/usage'; import { telemetryModels } from '@workspace/core/telemetry-models';",
   });
   assert.equal(good.status, 0, good.stderr);
   const bad = await checkFixture({
@@ -33,6 +35,8 @@ test("collector stays independently runnable without importing the desktop or co
       "import { BackendServer } from '../server';",
     "backend/src/collector/driver.ts":
       "import type { AgentBackendDriver } from '../drivers/types';",
+    "backend/src/collector/private-settings.ts":
+      "import type { Settings } from '@workspace/core/types';",
     "backend/src/collector/alias.ts":
       "import { makeRuntime } from '@workspace/backend/runtime';",
   });
@@ -43,6 +47,7 @@ test("collector stays independently runnable without importing the desktop or co
     "collector/server.ts",
     "collector/driver.ts",
     "collector/alias.ts",
+    "collector/private-settings.ts",
   ])
     assert.ok(bad.stderr.includes(file), bad.stderr);
 });

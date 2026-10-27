@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { Server } from "node:http";
 import { z } from "zod";
 import { normalizedAddress } from "./admission";
+import { createMetricsServer } from "./metrics-server";
 import { createCollectorServer } from "./server";
 import {
   createTelemetryPool,
@@ -23,6 +24,15 @@ const configSchema = z
   })
   .strict();
 
+const readConfigSchema = z
+  .object({
+    listenHost: z.string().refine((value) => isIP(value) !== 0),
+    listenPort: z.number().int().min(1024).max(65535),
+    consoleOrigin: z.string(),
+    accessTokenFile: z.string().min(1),
+  })
+  .strict();
+
 /** Configuration and DB credentials are read at runtime, never bundled. DDL is
  * an explicit migrate command using a separately supplied migration role. */
 export async function runCollector(
@@ -36,13 +46,15 @@ export async function runCollector(
       !env.TELEMETRY_DATABASE_URL ||
       !(
         (args[0] === "migrate" && args.length === 1) ||
-        (args[0] === "serve" && args.length === 2)
+        (["serve", "read"].includes(args[0]!) && args.length === 2)
       )
     )
       throw new Error();
     const config =
-      args[0] === "serve"
-        ? configSchema.parse(JSON.parse(await readFile(args[1]!, "utf8")))
+      args[0] !== "migrate"
+        ? (args[0] === "read" ? readConfigSchema : configSchema).parse(
+            JSON.parse(await readFile(args[1]!, "utf8")),
+          )
         : undefined;
     pool = createTelemetryPool(env.TELEMETRY_DATABASE_URL);
     const store = new TelemetryStore(pool);
@@ -60,10 +72,19 @@ export async function runCollector(
       pool.query<InstallDayRow>("SELECT * FROM install_days LIMIT 0"),
       pool.query<UsageDailyRow>("SELECT * FROM usage_daily LIMIT 0"),
     ]);
-    server = createCollectorServer({
-      store,
-      trustedProxies: config.trustedProxies,
-    });
+    server =
+      "accessTokenFile" in config
+        ? createMetricsServer({
+            pool,
+            accessToken: (
+              await readFile(config.accessTokenFile, "utf8")
+            ).replace(/\n+$/, ""),
+            consoleOrigin: config.consoleOrigin,
+          })
+        : createCollectorServer({
+            store,
+            trustedProxies: config.trustedProxies,
+          });
     await new Promise<void>((resolve, reject) => {
       server!.once("error", reject);
       server!.listen(config.listenPort, config.listenHost, () => {

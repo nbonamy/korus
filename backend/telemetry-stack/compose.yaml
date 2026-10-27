@@ -129,6 +129,34 @@ services:
       retries: 12
       start_period: 5s
 
+  metrics:
+    <<: *hardening
+    image: ${TELEMETRY_IMAGE:?build the isolated telemetry image}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    init: true
+    restart: unless-stopped
+    secrets: [read, read_access]
+    environment:
+      TELEMETRY_PROXY_IP: ${TELEMETRY_PROXY_IP:?provide an isolated internal proxy address}
+      TELEMETRY_CONSOLE_ORIGIN: ${TELEMETRY_CONSOLE_ORIGIN:?provide the HTTPS console origin}
+    command: [read]
+    networks:
+      database:
+      frontend:
+        ipv4_address: ${TELEMETRY_METRICS_IP:?provide an isolated internal metrics address}
+    tmpfs: ["/tmp:size=8m,mode=1777"]
+    depends_on:
+      grants: { condition: service_completed_successfully }
+      db: { condition: service_healthy, restart: true }
+    healthcheck:
+      test: [CMD, node, /opt/telemetry/container.mjs, check]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   backup:
     <<: *client
     restart: unless-stopped
@@ -172,7 +200,7 @@ services:
     environment:
       API_HOST: ${TELEMETRY_API_HOST:?provide the API virtual host}
       CONSOLE_HOST: ${TELEMETRY_CONSOLE_HOST:?provide the console virtual host}
-    secrets: [console_auth, edge_realip]
+    secrets: [console_auth, edge_realip, read_access]
     volumes:
       - ./proxy.sh:/ops/proxy.sh:ro
       - ./nginx.conf.template:/ops/nginx.conf.template:ro
@@ -184,6 +212,7 @@ services:
       edge:
     depends_on:
       collector: { condition: service_healthy }
+      metrics: { condition: service_healthy }
     healthcheck:
       test: [CMD-SHELL, "nginx -t -c /tmp/nginx.conf >/dev/null 2>&1"]
       interval: 30s
@@ -216,4 +245,8 @@ secrets:
   edge_realip:
     {
       file: "${TELEMETRY_EDGE_REALIP_FILE:?provide an external trusted TLS-edge configuration}",
+    }
+  read_access:
+    {
+      file: "${TELEMETRY_READ_ACCESS_FILE:?provide an external private service token file}",
     }

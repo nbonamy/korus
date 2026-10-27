@@ -15,8 +15,9 @@ try {
       process.exitCode = 1;
     });
   } else {
-    if (!["migrate", "serve"].includes(action)) throw new Error();
-    const role = action === "migrate" ? "migrate" : "ingest";
+    if (!["migrate", "serve", "read"].includes(action)) throw new Error();
+    const role =
+      action === "migrate" ? "migrate" : action === "read" ? "read" : "ingest";
     const password = (await readFile(`/run/secrets/${role}`, "utf8")).replace(
       /\n+$/,
       "",
@@ -26,7 +27,7 @@ try {
     url.username = `telemetry_${role}`;
     url.password = password;
     process.env.TELEMETRY_DATABASE_URL = url.toString();
-    if (action === "serve") {
+    if (action === "serve" || action === "read") {
       const ip = process.env.TELEMETRY_PROXY_IP;
       if (!ip || !isIP(ip)) throw new Error();
       await writeFile(
@@ -34,7 +35,12 @@ try {
         JSON.stringify({
           listenHost: "0.0.0.0",
           listenPort: 8080,
-          trustedProxies: [ip],
+          ...(action === "serve"
+            ? { trustedProxies: [ip] }
+            : {
+                consoleOrigin: process.env.TELEMETRY_CONSOLE_ORIGIN,
+                accessTokenFile: "/run/secrets/read_access",
+              }),
         }),
         { mode: 0o600 },
       );
@@ -43,7 +49,7 @@ try {
       process.execPath,
       "/opt/telemetry/collector.mjs",
       action,
-      ...(action === "serve" ? ["/tmp/collector.json"] : []),
+      ...(action !== "migrate" ? ["/tmp/collector.json"] : []),
     ];
     // The standalone bundle is staged beside this adapter only in the image.
     const bundle = new URL("./collector.mjs", import.meta.url);

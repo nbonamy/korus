@@ -178,7 +178,14 @@ function forbiddenImport(area, file, specifier) {
     if (
       !(
         specifier.startsWith("node:") ||
-        ["pg", "zod", "@workspace/core/telemetry"].includes(specifier) ||
+        [
+          "pg",
+          "zod",
+          "@workspace/core/telemetry",
+          "@workspace/core/telemetry-metrics",
+          "@workspace/core/telemetry-models",
+          "@workspace/core/usage",
+        ].includes(specifier) ||
         (target && isWithin(collector, target))
       )
     )
