@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConversationScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
@@ -93,7 +94,8 @@ struct ConversationScreen: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
+                    // The sidebar is always there on a wide display, so only the way back to a mission is needed.
+                    if sizeClass != .regular || model.workerMission != nil { Button {
                         if let mission = model.workerMission { model.showMissions(mission.id) } else { model.drawerOpen.toggle() }
                     } label: {
                         Image(systemName: model.workerMission == nil ? "line.3.horizontal" : "chevron.left")
@@ -101,7 +103,7 @@ struct ConversationScreen: View {
                     .buttonBorderShape(.circle)
                     .toolbarDot(model.teams.hasUnreadActivity)
                     .accessibilityLabel(model.workerMission == nil ? "Agents" : "Back to mission")
-                    .accessibilityValue(model.workerMission == nil && model.teams.hasUnreadActivity ? "Unread activity" : "")
+                    .accessibilityValue(model.workerMission == nil && model.teams.hasUnreadActivity ? "Unread activity" : "") }
                 }
                 ToolbarItem(placement: .principal) { HeaderTitle() }
                 ToolbarItem(placement: .topBarTrailing) {

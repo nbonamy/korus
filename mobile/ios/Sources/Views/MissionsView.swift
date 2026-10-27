@@ -3,6 +3,7 @@ import SwiftUI
 /// Missions the laptop is running or has finished, in the same surface as a conversation; the phone only follows them.
 struct MissionsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         @Bindable var model = model
@@ -29,9 +30,11 @@ struct MissionsScreen: View {
             .overlay { if model.missions.isEmpty { ContentUnavailableView("No missions", systemImage: "target") } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
-                        .buttonBorderShape(.circle)
-                        .accessibilityLabel("Agents")
+                    if sizeClass != .regular {
+                        Button { model.drawerOpen.toggle() } label: { Image(systemName: "line.3.horizontal") }
+                            .buttonBorderShape(.circle)
+                            .accessibilityLabel("Agents")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {

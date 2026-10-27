@@ -9,7 +9,7 @@ struct ActivityDrawerList: View {
     @State private var animateMoves = false
 
     private var items: [SidebarActivityItem] { SidebarActivityItem.project(groups) }
-    private var visible: Bool { model.drawerOpen && scenePhase == .active }
+    private var visible: Bool { (model.drawerOpen || model.persistentSidebar) && scenePhase == .active }
 
     var body: some View {
         let repositories = Dictionary(uniqueKeysWithValues: model.groups.flatMap { group in

@@ -147,6 +147,8 @@ final class AppModel {
     var mentions = EngineState.Suggestions()
     var skills = EngineState.Suggestions()
     private var conversationRead = ConversationReadState()
+    /// On a wide display (a Duo unfolded, split views) the agents sit beside the conversation instead of sliding over it.
+    var persistentSidebar = false
     var drawerOpen = false { didSet { if !drawerOpen { acknowledgeRead(); notifications.visibleChanged(visibleNotificationTarget) } } }
     let dictation = DictationController(capture: AppleDictationCapture())
     var isLive = false

@@ -3,10 +3,12 @@ import SwiftUI
 /// The conversation with a sidebar that slides it aside, like the apps people already know.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var drag: CGFloat = 0
     @GestureState private var isDragging = false
 
     private let drawerWidth: CGFloat = 316
+    private let sidebarWidth: CGFloat = 340
 
     var body: some View {
         @Bindable var model = model
@@ -38,7 +40,26 @@ struct RootView: View {
         .background { EngineView(host: model.engine).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false) }
     }
 
-    private var shell: some View {
+    @ViewBuilder private var shell: some View {
+        if sizeClass == .regular { wideShell } else { compactShell }
+    }
+
+    /// Wide space is used on purpose: the agents stay in view and the conversation, or the missions, fill the rest.
+    private var wideShell: some View {
+        HStack(spacing: 0) {
+            DrawerView().frame(width: sidebarWidth)
+            Divider().ignoresSafeArea()
+            ZStack {
+                ConversationScreen()
+                if model.missionsOpen { MissionsScreen() }
+            }
+        }
+        .background(Color(.systemBackground))
+        .onAppear { model.persistentSidebar = true; model.drawerOpen = false }
+        .onDisappear { model.persistentSidebar = false }
+    }
+
+    private var compactShell: some View {
         @Bindable var model = model
         return GeometryReader { _ in
             let reveal = revealAmount
