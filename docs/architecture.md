@@ -633,6 +633,9 @@ publishes only after saving.
   Host catalog policy is checked before provisioning and worker launch. This
   selection applies to implementation workers and retries without changing the lead
   or the Review configuration.
+- Each repository's remediation turn reports its recorded fixes, verification
+  evidence and unresolved findings to the Mission lead through agent messaging.
+  Reports do not start another Review or advance the Mission.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.

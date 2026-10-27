@@ -464,6 +464,7 @@ export class AppBackendServer {
         if (!agent) throw new Error('Mission Review worker is unavailable.');
         await this.agentPrompts.sendAndWaitForAcceptance(agent, prompt);
       },
+      sendMessage: this.sendAgentMessage,
       interrupt: agent => this.handleAgentDriverRequest(agent, backendMethods.driverInterrupt, { agent }),
     });
     this.planReviews = new AgentPlanReviewService({

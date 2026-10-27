@@ -29,6 +29,7 @@ export type MissionExecutionPorts = {
   refreshConversationContext(agent: Agent): Promise<void>;
   continueStage(agentId: string, prompt: string): Promise<void>;
   startRemediation(agentId: string, prompt: string): Promise<void>;
+  sendMessage?(fromAgentId: string, toAgentId: string, content: string): void;
   interrupt(agent: Agent): Promise<unknown>;
 };
 
@@ -37,7 +38,7 @@ export class MissionExecutionService {
   private readonly launches = new Map<string, Promise<void>>();
   private readonly postTurnLaunches = new Map<string, { missionId: string; runIds: string[] }>();
   private readonly remediationDispatches = new Set<string>();
-  private readonly remediationTurns = new Map<string, { missionId: string; findingIds: string[]; frozenFindingIds: string[] }>();
+  private readonly remediationTurns = new Map<string, { missionId: string; leadId: string; findingIds: string[]; frozenFindingIds: string[] }>();
   private readonly nonResultTurns = new Set<string>();
   private readonly completedTurns = new Map<string, Set<string>>();
   private readonly agentTools: MissionAgentTools;
@@ -201,6 +202,7 @@ export class MissionExecutionService {
           await this.ports.startRemediation(batch.workerId, missionFindingFixPrompt(mission, batch.findings));
           this.remediationTurns.set(batch.workerId, {
             missionId: input.id,
+            leadId: reviewRun.workerId!,
             findingIds: batch.findings.map(finding => finding.id),
             frozenFindingIds: batch.frozenFindingIds,
           });
@@ -562,6 +564,11 @@ export class MissionExecutionService {
         });
         await this.ports.publish();
       }
+      if (mission) {
+        const current = this.requireMission(remediationTurn.missionId);
+        const findings = (current.artifacts.review.findings ?? []).filter(finding => findingIds.has(finding.id));
+        this.ports.sendMessage?.(agentId, remediationTurn.leadId, missionRemediationReport(current, findings));
+      }
       return;
     }
     const postTurnLaunch = this.postTurnLaunches.get(agentId);
@@ -819,6 +826,20 @@ function missionFindingFixPrompt(mission: Mission, findings: MissionReviewFindin
       '',
     ]),
     'Load mission-review through read-skill for remediation. Fix only the selected findings in their mapped Mission worktrees; coherent local commits are authorized, not push, merge or PR creation. Record each verified committed fix with update-mission-review-finding; no new Review submission or round is authorized.',
+    'Korus reports your recorded fixes and any unresolved findings to the Mission lead when this turn ends. Include verification and commit references in each finding’s evidence; leave blocked findings unresolved.',
   ].join('\n');
   return `<context>\n${context.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>\n\nFix the ${findings.length} finding${findings.length === 1 ? '' : 's'} I selected.`;
+}
+
+function missionRemediationReport(mission: Mission, findings: MissionReviewFinding[]): string {
+  const report = [
+    `Mission Review remediation report: ${mission.outcome} (${mission.id}).`,
+    ...findings.flatMap(finding => [
+      `Repository: ${finding.repositoryPath}`,
+      `${finding.id}: ${finding.title} — ${finding.remediation.state === 'fixed' ? 'fixed' : 'unresolved'}`,
+      ...(finding.remediation.state === 'fixed' && finding.remediation.evidence ? [`Verification: ${finding.remediation.evidence}`] : []),
+    ]),
+    'Give the user a concise status update. Other repositories may still be remediating. This report does not authorize a new Review round, stage advancement, push, merge or PR creation.',
+  ].join('\n');
+  return `<context>\n${report.replace(/<\/?context>/giu, tag => tag.replace('<', '&lt;'))}\n</context>`;
 }

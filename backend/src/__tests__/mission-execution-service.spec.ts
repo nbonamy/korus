@@ -29,6 +29,7 @@ function setup() {
     refreshConversationContext: vi.fn().mockResolvedValue(undefined),
     continueStage: vi.fn().mockResolvedValue(undefined),
     startRemediation: vi.fn().mockResolvedValue(undefined),
+    sendMessage: vi.fn(),
     ensureStageSkills: vi.fn(async (_missionId: string, stage: MissionStage) => missionStageSkills(stage)),
     interrupt: vi.fn().mockResolvedValue(undefined) };
   const service = new MissionExecutionService(ports);
@@ -357,6 +358,36 @@ describe('mission execution', () => {
     await expect(h.service.reportReviewFinding(apiWorkerId, {
       priority: 'p3', title: 'Not allowed', body: 'Implementers only remediate assigned findings.', repositoryPath: '/repo/api',
     })).rejects.toThrow('active Mission Review stage');
+
+    // Each repository reports its own outcome to the lead only after its turn ends.
+    await h.service.updateReviewFinding(apiWorkerId, {
+      findingId: 'finding-api-1', status: 'fixed', evidence: 'API regression passes; committed abc123.',
+    });
+    await h.service.updateReviewFinding(apiWorkerId, {
+      findingId: 'finding-api-2', status: 'fixed', evidence: 'Validation regression passes; committed def456.',
+    });
+    expect(h.ports.sendMessage).not.toHaveBeenCalled();
+    await h.service.agentFinished(apiWorkerId, 'api-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(1);
+    const [sender, recipient, report] = h.ports.sendMessage.mock.calls[0]!;
+    expect([sender, recipient]).toStrictEqual([apiWorkerId, h.originalAgents[0]!.id]);
+    expect(report).toContain('/repo/api');
+    expect(report).toContain('finding-api-1');
+    expect(report).toContain('API regression passes; committed abc123.');
+    expect(report).toContain('Validation regression passes; committed def456.');
+    expect(report).not.toContain('finding-web');
+    expect(h.current().artifacts.review.findings?.map(finding => finding.remediation.state)).toStrictEqual(['fixed', 'fixed', 'fixing']);
+
+    await h.service.agentFinished(webWorkerId, 'web-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
+    expect(h.ports.sendMessage).toHaveBeenLastCalledWith(webWorkerId, h.originalAgents[0]!.id,
+      expect.stringMatching(/finding-web.*unresolved/s));
+    expect(h.current().artifacts.review.findings?.[2]?.remediation.state).toBe('open');
+    await h.service.agentFinished(apiWorkerId, 'api-remediation');
+    await h.service.agentFinished(webWorkerId, 'web-remediation');
+    expect(h.ports.sendMessage).toHaveBeenCalledTimes(2);
+    expect(h.current().stage).toBe('review');
+    expect(h.ports.continueStage).not.toHaveBeenCalled();
   });
 
   it('freezes a debug Review selection into fixed and skipped findings without dispatching a provider turn', async () => {
