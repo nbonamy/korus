@@ -12,7 +12,7 @@ struct ConversationScreen: View {
                     .accessibilityHidden(model.loadingConversation)
                     .allowsHitTesting(!model.loadingConversation)
                     .onChange(of: proxy.safeAreaInsets, initial: true) { _, insets in
-                        model.transcript.setInsets(top: insets.top, bottom: insets.bottom)
+                        model.transcript.setInsets(top: insets.top, bottom: insets.bottom, leading: insets.leading, trailing: insets.trailing)
                     }
             }
             .overlay {

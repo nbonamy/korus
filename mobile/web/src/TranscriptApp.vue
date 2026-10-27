@@ -1,5 +1,5 @@
 <template>
-  <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px` }">
+  <div class="transcript" :style="{ '--transcript-top': `${insets.top}px`, '--transcript-bottom': `${insets.bottom}px`, '--transcript-leading': `${insets.leading}px`, '--transcript-trailing': `${insets.trailing}px` }">
     <button v-if="history.failed" class="app-button app-button--tertiary transcript__history-retry" @click="loadOlder">Couldn’t load earlier messages. Retry</button>
     <div v-if="imageLoading" class="transcript__media-status" role="status">Loading image…</div>
     <ConversationPane
@@ -44,7 +44,7 @@ const agent = shallowRef<Agent | null>(null);
 const agents = shallowRef<Agent[]>([]);
 const ready = shallowRef(false);
 const engines = shallowRef<{ current: string; choices: string[] } | null>(null);
-const insets = reactive({ top: 0, bottom: 0 });
+const insets = reactive({ top: 0, bottom: 0, leading: 0, trailing: 0 });
 const history = shallowRef<CompanionHistoryState>({ hasOlder: false, loadingOlder: false, failed: false });
 provide(backendChoicesKey, computed(() => [...new Set(agents.value.map((candidate) => candidate.backend))]));
 
@@ -222,16 +222,16 @@ window.companionTranscript = {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     return revision === presentation ? { agentId: message.agent.id, revision: message.agent.readState?.revision ?? 0, generation: message.generation } : null;
   },
-  setInsets(top, bottom) { insets.top = top; insets.bottom = bottom; },
+  setInsets(top, bottom, leading = 0, trailing = 0) { insets.top = top; insets.bottom = bottom; insets.leading = leading; insets.trailing = trailing; },
 };
 </script>
 
 <style>
 html, body, #app { height: 100%; margin: 0; background: transparent; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-.transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) 0 var(--transcript-bottom); }
+.transcript { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; box-sizing: border-box; padding: var(--transcript-top) var(--transcript-trailing) var(--transcript-bottom) var(--transcript-leading); }
 /* History errors must not resize the reading viewport when shown or dismissed. */
-.transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; background: var(--color-surface-lowest); }
-.transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: 16px; right: 16px; padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
+.transcript__history-retry { position: absolute; z-index: 1; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); background: var(--color-surface-lowest); }
+.transcript__media-status { position: absolute; z-index: 2; top: calc(var(--transcript-top) + 8px); left: calc(var(--transcript-leading) + 16px); right: calc(var(--transcript-trailing) + 16px); padding: 8px; text-align: center; color: var(--color-text-muted); background: var(--color-surface-lowest); }
 /* Keep secondary transcript text legible at a phone's viewing distance. */
 .transcript, .transcript :where(.codex-chat-theme) {
   --font-size-12: 14px;

@@ -23,7 +23,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     private var latestKind: TranscriptRenderQueue.Kind = .conversation
     private var latestConversation: String?
     private var latestContext: String?
-    private var insets: (top: Double, bottom: Double) = (0, 0)
+    private var insets: (top: Double, bottom: Double, leading: Double, trailing: Double) = (0, 0, 0, 0)
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -151,10 +151,11 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         webView.callAsyncJavaScript("window.companionTranscript.setContent(json)", arguments: ["json": json], in: nil, in: .page) { _ in }
     }
 
-    func setInsets(top: Double, bottom: Double) {
-        insets = (top, bottom)
+    /// Every side separately: on an iPhone Duo's outer display the status bar and the vertical toolbar take the trailing edge only.
+    func setInsets(top: Double, bottom: Double, leading: Double, trailing: Double) {
+        insets = (top, bottom, leading, trailing)
         guard isReady else { return }
-        webView.callAsyncJavaScript("window.companionTranscript.setInsets(top, bottom)", arguments: ["top": top, "bottom": bottom], in: nil, in: .page) { _ in }
+        webView.callAsyncJavaScript("window.companionTranscript.setInsets(top, bottom, leading, trailing)", arguments: ["top": top, "bottom": bottom, "leading": leading, "trailing": trailing], in: nil, in: .page) { _ in }
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -187,7 +188,7 @@ final class TranscriptHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         watchdog?.invalidate()
         watchdog = nil
         isReady = true
-        setInsets(top: insets.top, bottom: insets.bottom)
+        setInsets(top: insets.top, bottom: insets.bottom, leading: insets.leading, trailing: insets.trailing)
         if let latestConversation, let job = queue.enqueue(latestKind, latestConversation) { run(job) }
         if let latestContext, let job = queue.enqueue(.context, latestContext) { run(job) }
     }
