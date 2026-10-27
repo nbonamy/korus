@@ -908,6 +908,7 @@ export const messages = {
       settingUp: 'Setting up…',
       connectingTitle: 'Getting your workspace ready.',
       connectingStatus: 'Checking your connections…',
+      retryingDaemon: 'Still connecting to the daemon. Retrying automatically…',
       continue: 'Continue',
       connectCodex: 'Connect Codex',
       separateSignInTitle: 'Sign-in required',

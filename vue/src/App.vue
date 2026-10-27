@@ -205,12 +205,7 @@
     @update:composer-attachments="updateComposerAttachments($event.agentId, $event.attachments)"
     @install-update="installUpdate"
   />
-  <main v-else class="app-startup">
-    <BackendConnectionBanner :connection-state="connectionState.status === 'connected' ? { status: 'connecting' } : connectionState" />
-    <button v-if="connectionState.status === 'error'" class="app-button app-button--secondary" :disabled="isLoading" @click="loadSnapshot">
-      {{ $t('common.retry') }}
-    </button>
-  </main>
+  <CodexLoginLanding v-else variant="connecting" :connection-status="startupDelayed ? $t('auth.retryingDaemon') : undefined" />
   <AgentCloseDialog
     :visible="pendingAgentClose !== null"
     :agent="pendingAgentClose?.agent"
@@ -268,7 +263,7 @@ import AppShell from './components/AppShell.vue';
 import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
 import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
-import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
+import CodexLoginLanding from './components/CodexLoginLanding.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
 import AgentCloseDialog from './components/AgentCloseDialog.vue';
 import PullRequestCleanupDialog from './components/PullRequestCleanupDialog.vue';
@@ -688,11 +683,18 @@ async function confirmSessionCompression(dontShowAgain: boolean): Promise<void> 
   }
 }
 
+const startupDelayed = ref(false);
+let startupDelayTimer: ReturnType<typeof setTimeout> | undefined;
+watch(hasLoadedSnapshot, loaded => {
+  if (loaded) clearTimeout(startupDelayTimer);
+});
+
 function syncRendererWindowFocus(): void {
   setRendererWindowFocused(document.visibilityState === 'visible' && document.hasFocus());
 }
 
 onMounted(() => {
+  startupDelayTimer = setTimeout(() => { startupDelayed.value = true; }, 15_000);
   window.addEventListener('focus', syncRendererWindowFocus);
   window.addEventListener('blur', syncRendererWindowFocus);
   document.addEventListener('visibilitychange', syncRendererWindowFocus);
@@ -717,6 +719,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  clearTimeout(startupDelayTimer);
   window.removeEventListener('focus', syncRendererWindowFocus);
   window.removeEventListener('blur', syncRendererWindowFocus);
   document.removeEventListener('visibilitychange', syncRendererWindowFocus);
@@ -732,14 +735,6 @@ watch(() => snapshot.value.theme, (theme) => {
 </script>
 
 <style scoped>
-.app-startup {
-  padding-top: var(--workbench-appbar-height);
-}
-
-.app-startup > .app-button {
-  margin: var(--space-4);
-}
-
 .backend-restart-overlay {
   position: fixed;
   z-index: 10000;

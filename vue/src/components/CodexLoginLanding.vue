@@ -22,13 +22,13 @@
         <div
           class="codex-login__progress"
           role="progressbar"
-          :aria-label="t('auth.connectingStatus')"
+          :aria-label="connectionStatus ?? t('auth.connectingStatus')"
         >
           <span class="codex-login__progress-segment" />
         </div>
         <div class="codex-login__status" role="status" aria-live="polite">
           <span class="codex-login__status-dot" aria-hidden="true" />
-          <span>{{ t('auth.connectingStatus') }}</span>
+          <span>{{ connectionStatus ?? t('auth.connectingStatus') }}</span>
         </div>
       </template>
       <template v-else>
@@ -113,6 +113,7 @@ const props = withDefaults(defineProps<{
   updatingProvider?: AgentBackend | null;
   setupError?: string | null;
   variant?: 'connecting' | 'sign-in';
+  connectionStatus?: string;
   loading?: boolean;
   cancellable?: boolean;
   cancelling?: boolean;
