@@ -862,6 +862,9 @@ export type DesktopUpdateStatus = {
 export type AppApi = {
   browserExtensions(agentId: string | null, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
+  getTelemetryConsent(): Promise<import('./telemetry-consent').TelemetryConsentView>;
+  changeTelemetryConsent(action: import('./telemetry-consent').TelemetryConsentAction): Promise<import('./telemetry-consent').TelemetryConsentView>;
+  previewTelemetryDay(day: string): Promise<import('./telemetry-consent').TelemetryProfilePreview>;
   clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
   setVisualizeOpen(agentId: string, input: import('./visualize').SetVisualizeOpenInput): Promise<AppSnapshot>;

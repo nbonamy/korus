@@ -73,6 +73,9 @@ export type AppSnapshotGetResult = {
 };
 
 export type AppBackendRequestMap = {
+  [backendMethods.telemetryConsentGet]: { params: undefined; result: import('../telemetry-consent').TelemetryConsentView };
+  [backendMethods.telemetryConsentChange]: { params: { action: import('../telemetry-consent').TelemetryConsentAction }; result: import('../telemetry-consent').TelemetryConsentView };
+  [backendMethods.telemetryProfilePreview]: { params: { day: string }; result: import('../telemetry-consent').TelemetryProfilePreview };
   [backendMethods.telemetryPreview]: { params: { input: import('../telemetry').TelemetryPreviewInput }; result: import('../telemetry').SealedTelemetryBody };
   [backendMethods.guestConversationControl]: { params: { input: import('../guest-navigation').GuestJoinControl }; result: import('../guest-navigation').GuestJoinState };
   [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };

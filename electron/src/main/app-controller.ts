@@ -533,6 +533,9 @@ export class AppController {
     });
 
     ipc.handle(ipcChannels.getUsage, (_event, filter) => this.requireBackendClient().request(backendMethods.usageGet,{filter}));
+    ipc.handle(ipcChannels.getTelemetryConsent, () => this.requireBackendClient().request(backendMethods.telemetryConsentGet));
+    ipc.handle(ipcChannels.changeTelemetryConsent, (_event, action) => this.requireBackendClient().request(backendMethods.telemetryConsentChange, {action}));
+    ipc.handle(ipcChannels.previewTelemetryDay, (_event, day) => this.requireBackendClient().request(backendMethods.telemetryProfilePreview, {day}));
     ipc.handle(ipcChannels.clearUsage, () => this.requireBackendClient().request(backendMethods.usageClear));
 
     ipc.handle(ipcChannels.updateSettings, async (_event, input: UpdateSettingsInput) => {

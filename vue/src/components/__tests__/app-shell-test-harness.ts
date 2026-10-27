@@ -304,8 +304,9 @@ export function mountShell(overrides: Partial<{
         TeamRail: overrides.stubTeamRail ? TeamRailStub : false,
         ElDialog: {
           props: ['modelValue'],
+          emits: ['update:modelValue'],
           template: `
-            <section v-if="modelValue" class="agent-dialog-test-shell">
+            <section v-if="modelValue" class="agent-dialog-test-shell" tabindex="-1" @keydown.esc="$emit('update:modelValue', false)">
               <slot name="header" />
               <slot />
               <slot name="footer" />

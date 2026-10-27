@@ -29,7 +29,7 @@ for (const [directory, area] of areas) {
           `${path.relative(root, file)}: ${specifier} (${forbidden})`,
         );
     }
-    if (isTelemetryProjection(file)) {
+    if (isTelemetryProjection(file) || isTelemetryConsent(file)) {
       const forbiddenGlobals = new Set([
         "fetch",
         "XMLHttpRequest",
@@ -120,6 +120,18 @@ function moduleSpecifiers(source) {
 }
 
 function forbiddenImport(area, file, specifier) {
+  if (
+    isTelemetryConsent(file) &&
+    ![
+      "node:crypto",
+      "node:fs/promises",
+      "node:path",
+      "@workspace/core/telemetry-consent",
+      "@workspace/core/usage",
+      "../usage/usage-service",
+    ].includes(specifier)
+  )
+    return "telemetry consent cannot depend on transport or scheduling";
   if (isTelemetryProjection(file)) {
     const allowed =
       area === "core"
@@ -216,6 +228,13 @@ function forbiddenImport(area, file, specifier) {
     return "preload cannot use raw filesystem or process APIs";
   }
   return null;
+}
+
+function isTelemetryConsent(file) {
+  return (
+    path.relative(root, file).split(path.sep).join("/") ===
+    "backend/src/telemetry/consent-service.ts"
+  );
 }
 
 function isTelemetryProjection(file) {

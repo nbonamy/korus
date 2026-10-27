@@ -112,6 +112,7 @@ export type AppBackendServerOptions = {
   browserExtensionPackages?: BrowserExtensionPackages;
   requirements?: Requirements;
   usage?:UsageService;
+  telemetryConsent?: import('./telemetry/consent-service').TelemetryConsentService;
   onPromptSource?: (agent: Agent, clientId: string) => (() => void) | undefined;
   conversationSharing?: ConversationSharingOptions;
   guestJoins?: GuestJoins;
@@ -937,6 +938,21 @@ export class AppBackendServer {
       try {
         return createAppRpcResult(message.id, await this.browserExtensionPackages.manage(clientId, requireRecord(params?.input) as import('@workspace/core/browser-extensions').BrowserExtensionPackageRequest));
       } catch (error) { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, error instanceof Error ? error.message : 'Browser extension operation failed.'); }
+    }
+    if ([backendMethods.telemetryConsentGet, backendMethods.telemetryConsentChange, backendMethods.telemetryProfilePreview].some(method => method === message.method)) {
+      try {
+        const consent = this.options.telemetryConsent;
+        if (clientId !== 'desktop' || !consent) throw new Error('Desktop telemetry settings unavailable.');
+        if (message.method === backendMethods.telemetryConsentGet) {
+          if (params && Object.keys(params).length) throw new Error('Invalid settings read.');
+          return createAppRpcResult(message.id, await consent.view());
+        }
+        const key = message.method === backendMethods.telemetryConsentChange ? 'action' : 'day';
+        if (!params || Object.keys(params).length !== 1 || typeof params[key] !== 'string') throw new Error('Invalid telemetry operation.');
+        if (message.method === backendMethods.telemetryConsentChange) return createAppRpcResult(message.id, await consent.change(params.action as import('@workspace/core/telemetry-consent').TelemetryConsentAction));
+        if (!this.options.usage) throw new Error('Usage unavailable.');
+        return createAppRpcResult(message.id, await consent.preview(params.day as string, this.options.usage, this.options.version, process.platform));
+      } catch { return createAppRpcError(message.id, appRpcErrorCodes.invalidParams, 'Telemetry settings are unavailable or invalid.'); }
     }
     if ([backendMethods.usageGet,backendMethods.usageClear,backendMethods.telemetryPreview].some(method=>method===message.method)) {
       try {

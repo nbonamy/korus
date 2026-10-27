@@ -291,6 +291,9 @@ describe(`${product.name} web operations`, () => {
     await expect(invokeAppWebOperation({ request }, 'setMenuBarVisible', [true])).rejects.toThrow(
       `'setMenuBarVisible' is not available in ${product.name} Web.`,
     );
+    for (const operation of ['getTelemetryConsent','changeTelemetryConsent','previewTelemetryDay']) {
+      await expect(invokeAppWebOperation({request},operation,[])).rejects.toThrow('not available');
+    }
     await expect(invokeAppWebOperation({ request }, 'arbitraryBackendCall', [])).rejects.toThrow(
       `Unknown ${product.name} web operation`,
     );

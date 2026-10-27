@@ -968,6 +968,40 @@ the eligible interval. The preview result carries only the body, never a ledger
 row, provider object or filesystem path. An unavailable ledger is an error, not an
 empty active day.
 
+The private per-profile `telemetry.json` is initialized before runtime services. A
+cryptographic UUID v4 exists independently from consent. Missing state is off;
+malformed state fails closed. Atomic owner-readable writes keep consent, the
+next-UTC-day eligibility boundary, and the first-notice marker separate. Decline,
+dismissal and reset consume the notice; reset replaces identity, clears eligibility
+and requires another affirmative choice. Repeated opt-in preserves its interval.
+
+Only explicit desktop operations return the credential-free consent view. Identity
+and consent never enter app settings, generic snapshots, coordination events or
+agent tools. The desktop bridge accepts an action or reporting day, never an
+identity or eligibility override. One shared panel supplies onboarding, upgrade
+and Settings copy. Web and companion clients do not expose these profile actions.
+
+The consent owner delegates transitions to `TelemetryDeliveryPort`; it does not
+send, schedule or manage a queue. The delivery owner must cancel/purge on disable
+and reset, recover consent before restoring pending work, and recheck synchronous
+`current()` authority before each attempt. Revocation becomes visible in memory
+as soon as revocation is requested, including while an earlier callback is pending.
+Preview I/O does not hold the mutation lock, and obsolete preview results are
+rejected after a transition. Cancellation is requested even when saving fails.
+Failed actions remain visible and explicit opt-out retries delegate again.
+Durable opt-out still requires a successful local write.
+
+Profile preview resolves identity/eligibility inside the backend. Off and
+pre-interval previews are explicitly hypothetical and cannot enqueue history. An
+unfinished eligible UTC day is provisional. For an eligible completed day, a
+sealed report supplied by the delivery owner takes precedence and returns its body
+verbatim. Preview and copy preserve that text without parsing or reserialization.
+The repeatable `npm run test:telemetry-dom -w @workspace/vue` harness exercises real
+Vue/Element Plus controls with a synthetic desktop API and writes screenshots and
+DOM evidence outside Git; temporary-ledger workflows own persistence evidence.
+The consent no-IP-storage statement requires collector, proxy and upstream
+verification before release activation; a local fixture cannot establish it.
+
 Inclusive input includes cache reads and Claude cache creation. Cached input means
 reads only; output already includes reasoning. The input-minus-read remainder
 includes writes, so it is not an ordinary-rate fresh-input measurement. Claude's

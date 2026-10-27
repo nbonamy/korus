@@ -1,9 +1,10 @@
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { it, expect, vi } from "vitest";
 import { AppBackendServer } from "../../server";
 import { createTestSnapshot } from "../../__tests__/server-test-fixtures";
+import { TelemetryConsentService } from "../../telemetry/consent-service";
 import { UsageService } from "../usage-service";
 import { UsageLedger } from "../usage-ledger";
 import type { ExecutionObservation } from "@workspace/core/usage";
@@ -394,4 +395,350 @@ it('routes request observations through usage/get with cost coverage and clears 
     await call('usage/clear');
     expect(await call('usage/get')).toMatchObject({ result: { cost: { usd: null, requests: 0 }, rows: [] } });
   } finally { await server.close(); expect(unsub).toHaveBeenCalledOnce(); }
+});
+
+
+it("owns private consent across upgrade, restart, opt-out and reset while delegating delivery transitions", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-consent-"));
+  const file = path.join(dir, "telemetry.json");
+  let now = Date.parse("2026-10-15T12:00:00Z");
+  const transitions = vi.fn(async () => undefined);
+  const events = vi.fn();
+  const snapshot = createTestSnapshot();
+  const ledger = new UsageLedger(path.join(dir, "usage.sqlite"));
+  await ledger.load();
+  const usage = new UsageService(ledger, () => undefined);
+  let consent = await TelemetryConsentService.open(file, {
+    now: () => now,
+    delivery: { consentChanged: transitions, sealedReport: async () => null },
+  });
+  const server = () =>
+    new AppBackendServer({
+      version: "0.44.0",
+      snapshot,
+      usage,
+      telemetryConsent: consent,
+      onEvent: events,
+    });
+  let backend = server();
+  const request = (method: string, params?: unknown) =>
+    backend.handleMessage({ jsonrpc: "2.0", id: 1, method, params } as any);
+  try {
+    const first = await consent.current();
+    expect(first).toMatchObject({
+      enabled: false,
+      eligibleFrom: null,
+      noticeHandled: false,
+    });
+    expect(first.installId).toMatch(
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+    );
+    expect(await request("telemetry/consent/get")).toMatchObject({
+      result: { enabled: false, eligibleFrom: null, noticePending: true },
+    });
+    expect(JSON.stringify(await request("snapshot/get"))).not.toContain(
+      first.installId,
+    );
+    expect(JSON.stringify(snapshot)).not.toContain("noticePending");
+    // Preview receives no renderer-provided identity or interval and makes no network call.
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("No telemetry transport allowed"));
+    try {
+      const preview = await request("telemetry/profile/preview", {
+        day: "2026-10-15",
+      });
+      expect(preview).toMatchObject({
+        result: { kind: "hypothetical", body: expect.any(String) },
+      });
+      expect(JSON.parse((preview as any).result.body)).toMatchObject({
+        installId: first.installId,
+        usage: [],
+      });
+      expect(
+        await request("telemetry/consent/change", { action: "dismiss" }),
+      ).toMatchObject({ result: { enabled: false, noticePending: false } });
+      consent = await TelemetryConsentService.open(file, {
+        now: () => now,
+        delivery: {
+          consentChanged: transitions,
+          sealedReport: async () => null,
+        },
+      });
+      backend = server();
+      expect(await consent.current()).toStrictEqual({
+        ...first,
+        noticeHandled: true,
+      });
+      expect(
+        await request("telemetry/consent/change", { action: "enable" }),
+      ).toMatchObject({
+        result: {
+          enabled: true,
+          eligibleFrom: Date.parse("2026-10-16T00:00:00Z"),
+          noticePending: false,
+        },
+      });
+      const enabled = await consent.current();
+      expect(transitions).toHaveBeenLastCalledWith({
+        reason: "enable",
+        previous: { ...first, noticeHandled: true },
+        current: enabled,
+      });
+      now += 1000;
+      await request("telemetry/consent/change", { action: "enable" });
+      expect(await consent.current()).toStrictEqual(enabled); // repeat click cannot move the interval
+      expect(transitions).toHaveBeenCalledTimes(1);
+      consent = await TelemetryConsentService.open(file, {
+        now: () => now,
+        delivery: {
+          consentChanged: transitions,
+          sealedReport: async () => null,
+        },
+      });
+      backend = server();
+      expect(await consent.current()).toStrictEqual(enabled);
+      await request("telemetry/consent/change", { action: "disable" });
+      expect(transitions).toHaveBeenLastCalledWith({
+        reason: "disable",
+        previous: enabled,
+        current: { ...enabled, enabled: false, eligibleFrom: null },
+      });
+      now = Date.parse("2026-10-17T00:00:00Z");
+      await request("telemetry/consent/change", { action: "enable" });
+      expect((await consent.current()).eligibleFrom).toBe(
+        Date.parse("2026-10-18T00:00:00Z"),
+      );
+      const beforeReset = await consent.current();
+      await request("telemetry/consent/change", { action: "reset" });
+      const reset = await consent.current();
+      expect(reset).toMatchObject({
+        enabled: false,
+        eligibleFrom: null,
+        noticeHandled: true,
+      });
+      expect(reset.installId).not.toBe(first.installId);
+      expect(transitions).toHaveBeenLastCalledWith({
+        reason: "reset",
+        previous: beforeReset,
+        current: reset,
+      });
+      consent = await TelemetryConsentService.open(file);
+      backend = server();
+      expect(await consent.current()).toStrictEqual(reset);
+      expect(events).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(
+        await request("telemetry/consent/change", {
+          action: "enable",
+          installId: "injected",
+        }),
+      ).toHaveProperty("error");
+      expect(
+        await request("telemetry/profile/preview", {
+          day: "2026-10-15",
+          eligibleFrom: 0,
+        }),
+      ).toHaveProperty("error");
+      expect(
+        await request("telemetry/consent/get", {
+          _clientId: "remote-controller",
+        }),
+      ).toHaveProperty("error");
+    } finally {
+      fetch.mockRestore();
+    }
+    await writeFile(file, '{"enabled":true}');
+    await expect(TelemetryConsentService.open(file)).rejects.toThrow(); // corrupt private state cannot imply consent
+  } finally {
+    await usage.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("delegates purge/cancellation and serves sealed bytes only within the current consent interval", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-delivery-port-"));
+  let now = Date.parse("2026-10-15T23:59:59Z");
+  let consent!: TelemetryConsentService;
+  const changes: unknown[] = [];
+  // The delivery owner is a boundary fake; no scheduler, transport or real queue.
+  const sealedReport = vi.fn<
+    import("@workspace/core/telemetry-consent").TelemetryDeliveryPort["sealedReport"]
+  >(async () => ({ body: '{"sealed":"verbatim"}' }));
+  const delivery = {
+    sealedReport,
+    consentChanged: vi.fn(
+      async (
+        transition: import("@workspace/core/telemetry-consent").TelemetryConsentTransition,
+      ) => {
+        expect(consent.current()).toStrictEqual(transition.current);
+        changes.push(transition.reason);
+      },
+    ),
+  };
+  const ledger = new UsageLedger(path.join(dir, "usage.sqlite"));
+  await ledger.load();
+  const usage = new UsageService(ledger, () => undefined);
+  try {
+    consent = await TelemetryConsentService.open(
+      path.join(dir, "telemetry.json"),
+      { now: () => now, delivery },
+    );
+    await consent.change("enable");
+    now = Date.parse("2026-10-16T12:00:00Z");
+    expect(
+      await consent.preview("2026-10-15", usage, "0.44.0", "darwin"),
+    ).toMatchObject({ kind: "hypothetical" });
+    expect(sealedReport).not.toHaveBeenCalled();
+    expect(
+      await consent.preview("2026-10-16", usage, "0.44.0", "darwin"),
+    ).toMatchObject({ kind: "provisional" });
+    expect(sealedReport).not.toHaveBeenCalled();
+    now = Date.parse("2026-10-17T12:00:00Z");
+    expect(
+      await consent.preview("2026-10-16", usage, "0.44.0", "darwin"),
+    ).toStrictEqual({ kind: "sealed", body: '{"sealed":"verbatim"}' });
+    await Promise.all([consent.change("disable"), consent.change("reset")]);
+    expect(changes).toStrictEqual(["enable", "disable", "reset"]);
+    sealedReport.mockClear();
+    expect(
+      await consent.preview("2026-10-16", usage, "0.44.0", "darwin"),
+    ).toMatchObject({ kind: "hypothetical" });
+    expect(sealedReport).not.toHaveBeenCalled();
+    const reset = consent.current();
+    await consent.change("enable");
+    expect(consent.current()).toMatchObject({
+      ...reset,
+      enabled: true,
+      eligibleFrom: Date.parse("2026-10-18T00:00:00Z"),
+    });
+    expect(
+      await consent.preview("2026-10-16", usage, "0.44.0", "darwin"),
+    ).toMatchObject({ kind: "hypothetical" });
+    expect(sealedReport).not.toHaveBeenCalled();
+  } finally {
+    await usage.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("revokes in memory and delegates cancellation even if private storage cannot save the opt-out", async () => {
+  const dir = await mkdtemp(
+    path.join(os.tmpdir(), "telemetry-storage-failure-"),
+  );
+  const file = path.join(dir, "telemetry.json");
+  const delivery = {
+    consentChanged: vi.fn(async () => undefined),
+    sealedReport: async () => null,
+  };
+  try {
+    const consent = await TelemetryConsentService.open(file, { delivery });
+    await consent.change("enable");
+    delivery.consentChanged.mockClear();
+    await rm(file);
+    await mkdir(file);
+    await expect(consent.change("disable")).rejects.toThrow();
+    expect(consent.current()).toMatchObject({
+      enabled: false,
+      eligibleFrom: null,
+    });
+    expect(delivery.consentChanged).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ reason: "disable" }),
+    );
+    await expect(TelemetryConsentService.open(file)).rejects.toThrow();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("allows an explicit opt-out retry to complete cancellation after a delivery owner failure", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "telemetry-cancel-retry-"));
+  const consentChanged = vi.fn(async () => undefined);
+  try {
+    const consent = await TelemetryConsentService.open(
+      path.join(dir, "telemetry.json"),
+      { delivery: { consentChanged, sealedReport: async () => null } },
+    );
+    await consent.change("enable");
+    consentChanged.mockClear();
+    consentChanged.mockRejectedValueOnce(Error("Cancellation interrupted"));
+    await expect(consent.change("disable")).rejects.toThrow();
+    expect(consent.current().enabled).toBe(false);
+    await consent.change("disable");
+    expect(consentChanged).toHaveBeenCalledTimes(2);
+    expect(
+      (
+        await TelemetryConsentService.open(path.join(dir, "telemetry.json"))
+      ).current().enabled,
+    ).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("revokes authority while preview or delivery callbacks are stalled, rejecting obsolete preview results", async () => {
+  const dir = await mkdtemp(
+    path.join(os.tmpdir(), "telemetry-revocation-race-"),
+  );
+  let releasePreview!: () => void;
+  let releaseTransition: () => void = () => {};
+  const pending: Promise<unknown>[] = [];
+  const previewWait = new Promise<void>((resolve) => {
+    releasePreview = resolve;
+  });
+  const sealedReport = vi.fn(async () => {
+    await previewWait;
+    return { body: "old identity" };
+  });
+  let now = Date.parse("2026-10-15T12:00:00Z");
+  const ledger = new UsageLedger(path.join(dir, "usage.sqlite"));
+  await ledger.load();
+  const usage = new UsageService(ledger, () => undefined);
+  const consentChanged = vi.fn(async () => undefined);
+  try {
+    const consent = await TelemetryConsentService.open(
+      path.join(dir, "telemetry.json"),
+      { now: () => now, delivery: { sealedReport, consentChanged } },
+    );
+    await consent.change("enable");
+    now = Date.parse("2026-10-17T12:00:00Z");
+    const preview = consent.preview("2026-10-16", usage, "0.44.0", "darwin");
+    const result = preview.then(
+      (value) => ({ value }),
+      () => ({ obsolete: true }),
+    );
+    pending.push(result);
+    await vi.waitFor(() => expect(sealedReport).toHaveBeenCalled());
+    let disabled = false;
+    const disabling = consent.change("disable").then(() => {
+      disabled = true;
+    });
+    pending.push(disabling);
+    await vi.waitFor(() => expect(disabled).toBe(true));
+    releasePreview();
+    await disabling;
+    expect(await result).toStrictEqual({ obsolete: true });
+    const transitionWait = new Promise<void>((resolve) => {
+      releaseTransition = resolve;
+    });
+    consentChanged.mockImplementationOnce(async () => {
+      await transitionWait;
+    });
+    const enabling = consent.change("enable");
+    pending.push(enabling);
+    await vi.waitFor(() => expect(consent.current().enabled).toBe(true));
+    const reset = consent.change("reset");
+    pending.push(reset);
+    expect(consent.current().enabled).toBe(false);
+    releaseTransition();
+    await enabling;
+    await reset;
+    expect(consent.current().enabled).toBe(false);
+  } finally {
+    releasePreview();
+    releaseTransition();
+    await Promise.allSettled(pending);
+    await usage.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

@@ -118,12 +118,16 @@ test("telemetry projection and serialization cannot import delivery code or call
   const accepted = await checkFixture({
     "backend/src/usage/usage-ledger.ts":
       "import { DatabaseSync } from 'node:sqlite';\nimport { serializeDailyTelemetry } from '@workspace/core/telemetry';\n",
+    "backend/src/telemetry/consent-service.ts":
+      "import { randomUUID } from 'node:crypto';\nimport type { TelemetryDeliveryPort } from '@workspace/core/telemetry-consent';\n",
     "core/src/telemetry.ts": "const example = 'fetch()';\n",
   });
   assert.equal(accepted.status, 0, accepted.stderr);
   const rejected = await checkFixture({
     "backend/src/usage/usage-ledger.ts":
       "import http from 'node:http';\nfetch('https://collector.invalid');\nsetTimeout(() => {}, 1);\n",
+    "backend/src/telemetry/consent-service.ts":
+      "import http from 'node:http';\nsetInterval(() => fetch('https://collector.invalid'), 1000);\n",
     "core/src/telemetry.ts": "globalThis.fetch('https://collector.invalid');\n",
     "backend/src/usage/telemetry-timer.ts":
       "globalThis.setTimeout(() => {}, 1);\n",
@@ -133,6 +137,7 @@ test("telemetry projection and serialization cannot import delivery code or call
   assert.equal(rejected.status, 1, rejected.stderr);
   for (const file of [
     "backend/src/usage/usage-ledger.ts",
+    "backend/src/telemetry/consent-service.ts",
     "core/src/telemetry.ts",
     "backend/src/usage/telemetry-timer.ts",
     "backend/src/usage/telemetry-preview.ts",

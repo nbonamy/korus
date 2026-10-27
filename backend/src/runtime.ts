@@ -1,4 +1,5 @@
 import { GuestJoins } from './sharing/guest-joins';
+import { TelemetryConsentService } from './telemetry/consent-service';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
 import { PromptRejectedError } from './agents/prompt-rejected';
@@ -78,6 +79,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   const computerUseAvailable = options.features?.computerUse !== false;
   const embeddedBrowserAvailable = options.features?.embeddedBrowser !== false;
   const snapshot = await loadBackendSnapshot();
+  const telemetryConsent = await TelemetryConsentService.open(path.join(backendHomeDir(), 'telemetry.json'));
   const savedTasks = await loadBackendTasks();
   await ensureBackendCodexHome();
   const providerSetup = new ProviderSetup(snapshot, () => saveBackendSnapshot(snapshot), async backend => {
@@ -307,6 +309,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   server = new AppBackendServer({
     requirements,
     usage,
+    telemetryConsent,
     guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
     conversationSharing: { directory: path.join(backendHomeDir(), 'conversation-shares'), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
     companionControl: (input) => companion.control(input),
