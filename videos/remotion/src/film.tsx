@@ -11,6 +11,7 @@ import { createFilm as review } from "../../review-film-controller.mjs";
 import { createFilm as delegation } from "../../delegation-film-controller.mjs";
 import { createFilm as project } from "../../project-film-controller.mjs";
 import { createFilm as visualize } from "../../visualize-film-controller.mjs";
+import { createFilm as sharing } from "../../sharing-film-controller.mjs";
 import { createFilm as shorts } from "../../project-shorts-controller.mjs";
 import { sourceFrameAt } from "../../film-timing.mjs";
 import { manifest } from "./manifest";
@@ -21,6 +22,7 @@ const controllers = {
   "delegation-film": delegation,
   "project-film": project,
   "visualize-film": visualize,
+  "sharing-film": sharing,
   "project-shorts": shorts,
 };
 type Controller = { seek: (time: number) => unknown; pause: () => void };

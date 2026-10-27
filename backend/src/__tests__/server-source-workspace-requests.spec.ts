@@ -1,3 +1,9 @@
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import type { SourceWorktree } from '@workspace/core/contracts';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -749,4 +755,54 @@ describe('AppBackendServer', () => {
       expect.any(Function),
     );
   });
+});
+
+// Real Git/filesystem boundary: confirmation must bind the exact local checkout,
+// worktree set and agents; another clone with the same remote must survive.
+it.each([true, false])('deletes a confirmed repository and its worktrees without affecting another clone (remote: %s)', async hasRemote => {
+  const root = await mkdtemp(path.join(tmpdir(), 'korus-delete-repository-'));
+  const git = async (cwd: string, ...args: string[]) => promisify(execFile)('git', args, { cwd });
+  const repo = path.join(root, 'repo');
+  const worktree = path.join(root, 'worktree');
+  const other = path.join(root, 'other');
+  try {
+    await mkdir(repo); await mkdir(other);
+    await git(repo, 'init', '-b', 'main');
+    await git(repo, 'config', 'user.name', 'Test'); await git(repo, 'config', 'user.email', 'test@example.com');
+    await git(repo, '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'initial');
+    if (hasRemote) await git(repo, 'remote', 'add', 'origin', 'https://github.com/nbonamy/deletion-test.git');
+    await git(other, 'init', '-b', 'main');
+    if (hasRemote) await git(other, 'remote', 'add', 'origin', 'https://github.com/nbonamy/deletion-test.git');
+    await git(repo, 'worktree', 'add', '-b', 'topic', worktree);
+    await writeFile(path.join(repo, 'uncommitted'), 'discarded with confirmation');
+    await writeFile(path.join(worktree, 'untracked'), 'discarded with confirmation');
+    await writeFile(path.join(other, 'keep'), 'untouched');
+    const snapshot = createInitialSnapshot();
+    snapshot.agents = snapshot.agents.slice(0, 2);
+    const identity = new AgentGitService();
+    snapshot.agents[0]!.folder = repo; snapshot.agents[0]!.workspace = await identity.identity(repo);
+    snapshot.agents[1]!.folder = worktree; snapshot.agents[1]!.workspace = await identity.identity(worktree);
+    snapshot.agents.push({ ...snapshot.agents[0]!, id: 'other-clone', folder: other,
+      workspace: await identity.identity(other) });
+    const originalIds = snapshot.agents.map(a => a.id);
+    const driverRpc = { handle: vi.fn().mockResolvedValue(undefined), onEvent: () => () => undefined, close: vi.fn() } as unknown as BackendDriverRpc;
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc, saveSnapshot: vi.fn().mockResolvedValue(undefined) });
+    const request = (method: string, params: unknown) => server.handleMessage({ jsonrpc: '2.0', id: 'delete-test', method, params });
+    const response = await request('repository/delete/preview', { agentId: originalIds[0] });
+    expect(response).toHaveProperty('result');
+    const preview = (response as { result: { confirmationName: string; fingerprint: string; paths: string[]; agents: { id: string }[] } }).result;
+    expect(preview.confirmationName).toBe(hasRemote ? 'nbonamy/deletion-test' : 'repo');
+    expect(preview.paths).toHaveLength(2);
+    expect(preview.agents.map(a => a.id).sort()).toStrictEqual(originalIds.slice(0, 2).sort());
+    const input = { confirmation: preview.confirmationName, fingerprint: preview.fingerprint };
+    await expect(request('repository/delete', { agentId: originalIds[0], input: { ...input, confirmation: 'wrong-name' } })).rejects.toThrow('Type the repository name');
+    await expect(request('repository/delete', { agentId: originalIds[0], input: { ...input, fingerprint: 'stale' } })).rejects.toThrow('changed');
+    expect(snapshot.agents.map(a => a.id)).toStrictEqual(originalIds);
+    expect((await stat(repo)).isDirectory()).toBe(true);
+    expect(await request('repository/delete', { agentId: originalIds[0], input })).toHaveProperty('result');
+    expect(snapshot.agents.map(a => a.id)).toStrictEqual(['other-clone']);
+    await expect(stat(repo)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(stat(worktree)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(path.join(other, 'keep'), 'utf8')).toBe('untouched');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

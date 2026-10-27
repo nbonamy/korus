@@ -15,6 +15,7 @@
     <main class="settings-view__content">
       <div class="settings-view__panel" :class="{ 'settings-view__panel--wide': activeTab === 'usage' }">
         <UsagePanel v-if="activeTab === 'usage'" />
+        <SettingsBrowserPanel v-else-if="activeTab === 'browser' && appHostCapabilities.embeddedBrowser" />
         <SettingsGeneralPanel
           v-else-if="activeTab === 'general'"
           :choose-source-folder="chooseSourceFolder"
@@ -113,6 +114,7 @@
           @disconnect="provider => runIntegrationAction(provider, disconnectWorkProvider)"
           @open-authorization="openWorkProviderAuthorization"
         />
+        <SettingsSkillsPanel v-else-if="activeTab === 'skills'" />
         <SettingsPluginsPanel
           v-else-if="activeTab === 'plugins'"
           :settings="generalSettings?.plugins"
@@ -151,6 +153,7 @@ import { computed, ref } from 'vue';
 import type { AddSshConnectionInput, AppGeneralSettings, AppPluginStatus, AppThemeSettings, DaemonStatus, DevicePairingSession, DevicePairingStatus, PairedDevice, RemoteConnection, SourceFolderListing, SourceFolderListInput, SourceFolderState, SshHostCandidate, Team, UpdateRemoteConnectionInput, UpdateSettingsInput, WorkBacklogState, WorkIntegrationConnection, WorkProviderAuthorization, WorkProviderKind } from '@workspace/core/contracts';
 import { defaultGeneralSettings, defaultSourceFolderState } from '@workspace/core/settings';
 import UsagePanel from './UsagePanel.vue';
+import SettingsBrowserPanel from './SettingsBrowserPanel.vue';
 import SettingsAppearancePanel from './SettingsAppearancePanel.vue';
 import SettingsAppshotsPanel from './SettingsAppshotsPanel.vue';
 import SettingsClaudeCodePanel from './SettingsClaudeCodePanel.vue';
@@ -163,6 +166,7 @@ import SettingsInstructionsPanel from './SettingsInstructionsPanel.vue';
 import SettingsPersonalizationPanel from './SettingsPersonalizationPanel.vue';
 import SettingsIntegrationsPanel from './SettingsIntegrationsPanel.vue';
 import SettingsPluginsPanel from './SettingsPluginsPanel.vue';
+import SettingsSkillsPanel from './SettingsSkillsPanel.vue';
 import SettingsSidebar from './SettingsSidebar.vue';
 import SettingsVoicePanel from './SettingsVoicePanel.vue';
 import type { SettingsTab } from './settings-tabs';
@@ -229,7 +233,7 @@ const props = withDefaults(defineProps<{
   listPairedDevices?: (environmentId: string) => Promise<PairedDevice[]>;
   revokePairedDevice?: (environmentId: string, clientId: string) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
-  connectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
+  connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   setDaemonEnabled?: (enabled: boolean) => Promise<void>;

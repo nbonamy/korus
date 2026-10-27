@@ -3,7 +3,7 @@
     <header class="git-review-panel__toolbar">
       <div class="git-review-panel__summary">
         <div class="git-review-panel__repository">
-          <GitHubIcon aria-hidden="true" />
+          <component :is="gitStatus?.repositoryProvider === 'gitlab' ? GitLabIcon : GitHubIcon" aria-hidden="true" />
           <strong>{{ repositoryName }}</strong>
         </div>
         <div class="git-review-panel__branch">
@@ -42,6 +42,9 @@
       :diff="visibleDiff"
       :error="panel.error"
       :expand-all-signal="expandAllSignal"
+      :focus-kind="panel.focusKind"
+      :focus-sequence="panel.focusSequence"
+      :group-by-kind="groupByKind"
       open-file-enabled
       :state="panel.state"
       :word-wrap="wordWrap"
@@ -53,9 +56,9 @@
 
 <script setup lang="ts">
 import { translate } from '../i18n';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Agent, AgentGitDiffScope, AgentGitStatus } from '@workspace/core/contracts';
-import { DotsVerticalIcon, FileDiffIcon, FileTextIcon, GitCommitIcon, GitHubIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, FileDiffIcon, FolderIcon, FileTextIcon, GitCommitIcon, GitHubIcon, GitLabIcon, ListDetailsIcon, RefreshIcon, TextWrapDisabledIcon, TextWrapIcon } from '../shared/icons/app-icons';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
@@ -73,6 +76,9 @@ const emit = defineEmits<{
 }>();
 
 const wordWrap = ref(false);
+const groupByKind = ref(true);
+// A file type request only makes sense with the groups showing.
+watch(() => props.panel.focusSequence, (sequence) => { if (sequence) groupByKind.value = true; }, { immediate: true });
 const allExpanded = ref(true);
 const expandAllSignal = ref(0);
 const collapseAllSignal = ref(0);
@@ -119,6 +125,13 @@ const menuItems = computed<AppMenuItem[]>(() => [
   ...sectionMenuItems.value,
   ...(sectionMenuItems.value.length ? [{ id: 'scope-separator', type: 'separator' as const }] : []),
   {
+    id: 'group-by-kind',
+    type: 'checkbox',
+    label: translate('surface.gitReviewPanel.groupByFileType'),
+    icon: FolderIcon,
+    checked: groupByKind.value,
+  },
+  {
     id: 'word-wrap',
     type: 'checkbox',
     label: translate('surface.gitReviewPanel.wordWrap'),
@@ -139,6 +152,8 @@ function selectMenuItem(itemId: string): void {
     if (scope === 'staged' || scope === 'unstaged' || scope === 'untracked') {
       visibleScopes.value[scope] = !visibleScopes.value[scope];
     }
+  } else if (itemId === 'group-by-kind') {
+    groupByKind.value = !groupByKind.value;
   } else if (itemId === 'word-wrap') {
     wordWrap.value = !wordWrap.value;
   } else if (itemId === 'expand-all') {

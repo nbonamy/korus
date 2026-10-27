@@ -70,6 +70,7 @@ describe('native notification bridge', () => {
     const events: EngineEvent[] = [];
     const write = vi.fn(async () => {});
     const engine = createEngine({ connector, initialActive: false, post: event => events.push(event), selectionStore: {
+      readLastLaptop: async () => null, writeLastLaptop: async () => {},
       read: async () => ({ teamId: 'demo-team', agentId: 'demo-reviewer' }), write, remove: async () => {},
     } });
     const target = { hostId: 'demo-laptop', locationId: 'local', teamId: 'demo-team', agentId: 'demo-agent', sessionId: null };

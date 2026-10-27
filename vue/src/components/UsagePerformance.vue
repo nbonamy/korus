@@ -18,6 +18,16 @@
       :unit="speed === null ? undefined : $t('analytics.tokensPerSecond')"
     />
   </UsageTileGrid>
+  <UsageCard>
+    <UsageTrend
+      :daily="summary.daily ?? []"
+      :series="speedSeries"
+      measure="speed"
+      :from="from"
+      :to="to"
+      :subtitle="$t('analytics.tokensPerSecond')"
+    />
+  </UsageCard>
   <div class="performance-grid">
     <UsageCard
       as="section"
@@ -109,15 +119,31 @@ import { translate } from "../i18n";
 import UsageCard from "./UsageCard.vue";
 import UsageStatTile from "./UsageStatTile.vue";
 import UsageTileGrid from "./UsageTileGrid.vue";
+import UsageTrend from "./UsageTrend.vue";
 import {
   averageTtftSeconds,
   chartFormat,
+  chartSeries,
   providerColorForModel,
   sumSpeed,
   tokensPerSecond,
 } from "./usage-chart";
 
-const props = defineProps<{ summary: UsageSummary }>();
+const props = defineProps<{
+  summary: UsageSummary;
+  from: string;
+  to: string;
+}>();
+const speedSeries = computed(() =>
+  chartSeries(props.summary, "turns", "model").filter((series) =>
+    props.summary.daily?.some((day) =>
+      day.groups?.some(
+        (group) =>
+          group.label === series.key && tokensPerSecond(group.speed) !== null,
+      ),
+    ),
+  ),
+);
 const overall = computed(() =>
   sumSpeed(props.summary.rows.map((row) => row.speed)),
 );

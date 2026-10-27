@@ -7,8 +7,78 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import { AgentGitService } from '../git/agent-git-service';
 import { applyMissionDebugFixture } from '../mission-debug-fixtures';
 import { applyMissionScreenshotFixture } from '../mission-screenshot-fixture';
+import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 
 describe('mission backend boundary', () => {
+  it.each(['keep', 'delete', 'push', 'legacy missing'])('persists merged delivery and worktree cleanup before removing its builder (%s)', async cleanup => {
+    const deleteWorktree = cleanup !== 'keep';
+    const exec = promisify(execFile);
+    const root = await mkdtemp(join(tmpdir(), 'mission-delivery-'));
+    const repo = join(root, 'repo');
+    const worktree = join(root, 'worktree');
+    let server: AppBackendServer | undefined;
+    try {
+      await exec('git', ['init', '-b', 'main', repo]);
+      await exec('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+      await exec('git', ['config', 'user.name', 'Mission test'], { cwd: repo });
+      await writeFile(join(repo, 'README.md'), 'Initial');
+      await exec('git', ['add', '.'], { cwd: repo });
+      await exec('git', ['commit', '-m', 'initial'], { cwd: repo });
+      if (cleanup === 'push') {
+        await exec('git', ['init', '--bare', join(root, 'remote.git')]);
+        await exec('git', ['remote', 'add', 'origin', join(root, 'remote.git')], { cwd: repo });
+      }
+      await exec('git', ['worktree', 'add', '-b', 'mission/delivery', worktree], { cwd: repo });
+      await writeFile(join(worktree, 'delivered.txt'), 'Delivered');
+      await exec('git', ['add', '.'], { cwd: worktree });
+      await exec('git', ['commit', '-m', 'implement'], { cwd: worktree });
+      const snapshot = createInitialSnapshot();
+      const builder = { ...snapshot.agents[0]!, id: 'mission-builder', folder: worktree, backendSession: undefined };
+      snapshot.agents.push(builder); snapshot.teams[0]!.agentIds.push(builder.id);
+      const mission = createMission(snapshot, { outcome: 'Deliver', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+      mission.stage = 'ship';
+      mission.execution!.workspaces = [{ repositoryPath: repo, path: worktree, branch: 'mission/delivery' }];
+      mission.execution!.workspace = { path: worktree, branch: 'mission/delivery' };
+      mission.execution!.repoPath = repo;
+      mission.execution!.deliveries = [{ repositoryPath: repo, agentId: builder.id, status: 'pending' }];
+      mission.execution!.runs = [{ id: 'build', stage: 'implementation', memberId: snapshot.agents[0]!.id, workerId: builder.id, status: 'accepted', skills: [], feedback: '', startedAt: '' }];
+      let disk: unknown;
+      const saveSnapshot = async (value: AppSnapshot) => { disk = persistedStateFromSnapshot(value); };
+      await saveSnapshot(snapshot);
+      server = new AppBackendServer({ version: 'test', snapshot, saveSnapshot,
+        workIntegrations: { githubConnected: async () => false } as never });
+      const merged = await server.handleMessage({ jsonrpc: '2.0', id: 'merge', method: 'agent/git/merge', params: {
+        agentId: builder.id, input: { strategy: 'merge', deleteWorktree, deleteBranch: deleteWorktree, ...(cleanup === 'push' ? { pushAfter: true } : {}), confirmed: true },
+      } });
+      expect(merged).not.toHaveProperty('error');
+      if (cleanup === 'push') {
+        expect(snapshot.missions![0]!.execution!.deliveries![0]!.status).toBe('pending');
+        expect(snapshot.agents.some(agent => agent.id === builder.id)).toBe(true);
+        await server.handleMessage({ jsonrpc: '2.0', id: 'push', method: 'agent/git/push', params: {
+          agentId: builder.id, input: { target: 'mergeTarget', closeAgentAfterPush: true, confirmed: true },
+        } });
+      }
+      expect((await exec('git', ['show', 'HEAD:delivered.txt'], { cwd: repo })).stdout).toBe('Delivered');
+      const restored = snapshotFromPersistedState(disk);
+      expect(restored.missions![0]!.execution!.deliveries).toStrictEqual([{ repositoryPath: repo, agentId: builder.id, status: 'merged' }]);
+      expect(restored.missions![0]!.status).toBe('completed');
+      expect(restored.agents.some(agent => agent.id === builder.id)).toBe(!deleteWorktree);
+      expect(missionCreatedWorkspaces(restored.missions![0])).toHaveLength(deleteWorktree ? 0 : 1);
+      if (cleanup === 'legacy missing') {
+        // Old releases retained worktree metadata after removing the directory.
+        restored.missions![0]!.execution!.workspaces = [{ repositoryPath: repo, path: worktree, branch: 'mission/delivery' }];
+        restored.missions![0]!.execution!.workspace = { path: worktree, branch: 'mission/delivery' };
+      }
+      await server.close();
+      server = new AppBackendServer({ version: 'test', snapshot: restored, saveSnapshot, deleteMissionHome: async () => {} });
+      await server.handleMessage({ jsonrpc: '2.0', id: 'delete', method: 'mission/delete', params: {
+        input: { id: mission.id, revision: restored.missions![0]!.revision, deleteWorktrees: true, confirmed: true },
+      } });
+      expect(snapshotFromPersistedState(disk).missions).toStrictEqual([]);
+      await expect(access(worktree)).rejects.toThrow();
+    } finally { await server?.close(); await rm(root, { recursive: true, force: true }); }
+  });
+
   it.each([
     { preset: 'workflow', deleteWorktrees: true },
     { preset: 'workflow', deleteWorktrees: false },
@@ -143,6 +213,62 @@ describe('mission backend boundary', () => {
       expect(snapshotFromPersistedState(disk).missions).toStrictEqual([]);
       expect(snapshotFromPersistedState({ ...disk as object, missions: [{}] }).missions).toStrictEqual([]);
       expect(snapshotFromPersistedState({ teams: [] }).missions).toBeUndefined();
+    } finally { await server.close(); }
+  });
+
+  it('starts a mission for an agent, hands its lead the brief and asks the renderer to open it', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const onEvent = vi.fn();
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
+    const driver: AgentBackendDriver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'lead-thread' } }),
+      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
+    };
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent });
+    try {
+      const caller = snapshot.agents[0]!;
+      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal: export the report with the current filters.' });
+      const mission = snapshot.missions!.find(candidate => candidate.id === started.missionId)!;
+      expect(started).toStrictEqual({ missionId: mission.id, outcome: 'Add CSV export' });
+      expect(mission).toMatchObject({ outcome: 'Add CSV export', teamId: caller.teamId, workflow: { type: 'shapeAndShipFeature' } });
+      const lead = mission.execution!.runs.at(-1)!.workerId!;
+      expect(snapshot.agents.some(agent => agent.id === lead)).toBe(true);
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead }), 'Goal: export the report with the current filters.', undefined));
+      expect(sendPrompt.mock.calls.every(([agent]) => agent.id === lead)).toBe(true);
+      const events = onEvent.mock.calls.map(([event]) => event);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'mission.focusRequested', payload: { missionId: mission.id } }));
+      expect(events.findIndex(event => event.type === 'snapshot.updated')).toBeLessThan(events.findIndex(event => event.type === 'mission.focusRequested'));
+      await expect(server.startMissionFromAgent('missing-agent', { outcome: 'x', prompt: 'y' })).rejects.toThrow('local team');
+    } finally { await server.close(); }
+  });
+
+  it('starts the Mission lead on the requested model and rejects one the provider does not offer', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'lead-thread' }, turnId: 'lead-turn' });
+    const option = (model: string, efforts: string[], tiers: string[] = []) => ({ id: model, model, displayName: model, supportedReasoningEfforts: efforts.map(reasoningEffort => ({ reasoningEffort, description: reasoningEffort })), serviceTiers: tiers.map(id => ({ id, name: id, description: id })) });
+    const driver = {
+      backend: 'codex', getRuntimeStatus: () => ({ backend: 'codex', status: 'running' }), getCapabilities: () => codexBackendCapabilities,
+      sendPrompt, interrupt: async () => ({ backendSession: { kind: 'codex', threadId: 'lead-thread' } }),
+      respondToAgentRequest: async () => undefined, onEvent: () => () => {}, close: async () => {},
+      listModels: async () => [option('gpt-fast', ['low', 'high'], ['fast']), option('gpt-big', ['high'])],
+    } as unknown as AgentBackendDriver;
+    const server = new AppBackendServer({ version: 'test', pid: 1, snapshot, driverRpc: new BackendDriverRpc(new Map([['codex', driver]])), saveSnapshot: async () => undefined, onEvent: vi.fn() });
+    try {
+      const caller = snapshot.agents[0]!;
+      const started = await server.startMissionFromAgent(caller.id, { outcome: 'Add CSV export', prompt: 'Goal', model: 'gpt-fast', reasoningEffort: 'high', serviceTier: 'fast' });
+      const lead = snapshot.agents.find(agent => agent.id === snapshot.missions!.find(mission => mission.id === started.missionId)!.execution!.runs.at(-1)!.workerId)!;
+      expect(lead).toMatchObject({ backend: 'codex', backendDefaults: { kind: 'codex', model: 'gpt-fast', userSelectedModel: true, reasoningEffort: 'high', serviceTier: 'fast' } });
+      await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledWith(expect.objectContaining({ id: lead.id, backendDefaults: expect.objectContaining({ model: 'gpt-fast' }) }), 'Goal', undefined));
+      const missions = snapshot.missions!.length;
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'nope' })).rejects.toThrow('gpt-fast, gpt-big');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'gpt-big', reasoningEffort: 'low' })).rejects.toThrow('reasoning effort');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', reasoningEffort: 'low' })).rejects.toThrow('needs a model');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', serviceTier: 'fast' })).rejects.toThrow('needs a model');
+      await expect(server.startMissionFromAgent(caller.id, { outcome: 'x', prompt: 'y', model: 'gpt-big', serviceTier: 'fast' })).rejects.toThrow('service tier fast');
+      expect(snapshot.missions!.length).toBe(missions);
     } finally { await server.close(); }
   });
 

@@ -2,21 +2,24 @@ import type { Dirent } from 'node:fs';
 import { access, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { Agent, BackendSession, ConversationSummary, RendererMessage, RendererMessagePart, RendererToolPart, ThreadGoal } from '@workspace/core/contracts';
+import type { Agent, BackendSession, ClaudeConversationTurn, ConversationSummary, RendererMessage, RendererMessagePart, RendererToolPart, ThreadGoal } from '@workspace/core/contracts';
 import { claudeWorkingDirectory } from './working-directory';
 import { claudeConfigDirectory } from './config-directory';
 import { claudeToolPart, completedClaudeToolPart } from './claude-tool-part-adapter';
 import { claudeToolResultText } from './claude-tool-result';
 import { claudeMessageContentBlocks, parseClaudeSdkMessage, type ClaudeSdkContentBlock, type ClaudeSdkMessage } from './protocol';
 import { claudeSubagentHistoryEvents } from './claude-subagents';
+import { ClaudeTaskPlan } from './claude-task-plan';
 
 export type ClaudeTranscriptHistory = {
   backendSession: BackendSession;
   messages: RendererMessage[];
+  turns?: ClaudeConversationTurn[];
   turnBoundaries?: Record<string, string>;
   nativeMessageTurnIds?: Record<string, string>;
   goal?: ThreadGoal | null;
   subagentEvents?: import('@workspace/core/backend-driver').BackendEvent[];
+  taskPlan?: ClaudeTaskPlan;
 };
 
 export type ClaudeTranscriptHistoryOptions = {
@@ -81,13 +84,17 @@ export async function loadClaudeTranscriptHistory(
   const nativeMessageTurnIds: Record<string, string> = {};
   const goal = claudeTranscriptGoal(content, agent.backendSession.sessionId);
   const subagentEvents = claudeSubagentHistoryEvents(content, agent.id, agent.backendSession.sessionId);
+  const taskPlan = new ClaudeTaskPlan();
+  const turns: ClaudeConversationTurn[] = [];
   return {
     backendSession: {
       ...session,
       transcriptSessionId: sessionId,
       ...settings,
     },
-    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds),
+    messages: claudeTranscriptToRendererMessages(content, agent.id, sessionId, turnBoundaries, nativeMessageTurnIds, false, taskPlan, turns),
+    turns,
+    ...(taskPlan.plan ? { taskPlan } : {}),
     turnBoundaries,
     nativeMessageTurnIds,
     ...(subagentEvents.length ? { subagentEvents } : {}),
@@ -222,10 +229,11 @@ export async function listClaudeTranscriptSummaries(
   return summaries;
 }
 
-export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false): RendererMessage[] {
+export function claudeTranscriptToRendererMessages(content: string, agentId: string, sessionId: string, turnBoundaries?: Record<string, string>, nativeMessageTurnIds?: Record<string, string>, includeSidechain = false, taskPlan?: ClaudeTaskPlan, turns?: ClaudeConversationTurn[]): RendererMessage[] {
   const messages: RendererMessage[] = [];
   let currentTurnId: string | null = null;
   let currentTurnCreatedAt: string | null = null;
+  let currentTurn: ClaudeConversationTurn | null = null;
   let assistantCreatedAt: string | null = null;
   let assistantSegmentIndex = 0;
   const assistantParts: RendererMessagePart[] = [];
@@ -269,7 +277,10 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
       if (toolResults.length > 0) {
         for (const toolResult of toolResults) {
           pendingTools.delete(toolResult.tool_use_id);
-          applyToolResult(assistantParts, toolResult);
+          const completed = applyToolResult(assistantParts, toolResult);
+          if (completed && currentTurnId) taskPlan?.apply(completed,
+            entry.toolUseResult ?? entry.tool_use_result ?? toolResult.content,
+            sessionId, currentTurnId, timestampToIso(entry.timestamp));
         }
         rememberBoundary(entry);
         continue;
@@ -286,8 +297,15 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
 
       flushAssistantMessage();
       currentTurnId = claudeTurnId(entry, sessionId, messages.length);
+      taskPlan?.startTurn(currentTurnId);
       if (nativeMessageTurnIds && entry.uuid) nativeMessageTurnIds[entry.uuid] = currentTurnId;
       currentTurnCreatedAt = timestampToIso(entry.timestamp);
+      currentTurn = {
+        id: currentTurnId, status: 'completed', error: null, willRetry: false,
+        startedAt: typeof entry.timestamp === 'string' && Number.isFinite(Date.parse(entry.timestamp)) ? currentTurnCreatedAt : null,
+        completedAt: null, durationMs: null,
+      };
+      turns?.push(currentTurn);
       assistantSegmentIndex = 0;
       messages.push({
         id: `user-${sessionId}-${entry.uuid ?? messages.length}`,
@@ -312,6 +330,12 @@ export function claudeTranscriptToRendererMessages(content: string, agentId: str
         currentTurnCreatedAt = timestampToIso(entry.timestamp);
       }
       assistantCreatedAt ??= timestampToIso(entry.timestamp);
+      if (currentTurn) {
+        currentTurn.completedAt = typeof entry.timestamp === 'string' && Number.isFinite(Date.parse(entry.timestamp)) ? timestampToIso(entry.timestamp) : null;
+        const durationMs = currentTurn.startedAt && currentTurn.completedAt
+          ? Date.parse(currentTurn.completedAt) - Date.parse(currentTurn.startedAt) : NaN;
+        currentTurn.durationMs = Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null;
+      }
       for (const block of claudeMessageContentBlocks(entry)) {
         if (block.type === 'tool_use' && typeof block.id === 'string') pendingTools.add(block.id);
       }
@@ -484,7 +508,7 @@ function messageText(message: ClaudeSdkMessage): string {
     .trim();
 }
 
-function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkContentBlock, { type: 'tool_result' }>): void {
+function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkContentBlock, { type: 'tool_result' }>): RendererToolPart | undefined {
   const toolPart = parts.find((part): part is RendererToolPart => part.type === 'tool' && part.id === block.tool_use_id);
   if (!toolPart) {
     return;
@@ -499,6 +523,7 @@ function applyToolResult(parts: RendererMessagePart[], block: Extract<ClaudeSdkC
       claudeToolResultText(block.content),
     ),
   );
+  return toolPart;
 }
 
 function claudeTurnId(entry: TranscriptLine, sessionId: string, index: number): string {

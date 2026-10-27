@@ -26,9 +26,9 @@ See [Provider guides](../providers/) for the exact account, skills, and plugin b
 
 Check the engine's selected setup location. A separate Korus environment has its own authentication; **Use existing setup** selects the provider environment already configured on this computer. Signing in to one engine does not authenticate the others.
 
-## Do I need GitHub to use Korus?
+## Do I need GitHub or GitLab to use Korus? {#do-i-need-github-to-use-korus}
 
-You can skip GitHub onboarding and work in an existing local folder. Connect GitHub in **Settings → Integrations** when you want GitHub repository browsing or issue and pull-request workflows. [Automations](../features/automations) do not require GitHub unless the scheduled task uses it.
+You can skip repository connections during onboarding and work in an existing local folder. Connect GitHub or GitLab.com in **Settings → Integrations** when you want repository browsing, issues, and pull-request or merge-request workflows. [Automations](../features/automations) do not require either service unless the scheduled task uses it.
 
 ## Does creating a new project create a Git worktree?
 

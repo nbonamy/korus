@@ -110,7 +110,7 @@ export function presentAppToolTitle({
   return translate(`chat.tool.mcp.app.${key}.${phase}`, {
     target: simulatorAction === 'attach'
       ? (phase === 'completed' ? simulatorDeviceName(toolCall.result) : undefined) ?? translate('chat.tool.mcp.app.simulator.device')
-      : toolTarget(tool, args, toolCall.result, phase, resolveAgentName),
+      : toolTarget(tool, args, toolCall.result, phase, resolveAgentName) || (tool === 'send-message' ? translate('chat.tool.mcp.app.sendMessage.otherAgent') : ''),
   });
 }
 

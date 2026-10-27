@@ -124,6 +124,7 @@
           v-bind="group.kind === 'repository' ? clientRepositoryOrderUpdate.dragItemAttributes(group.id) : {}"
           @dragstart="group.kind === 'repository' && clientRepositoryOrderUpdate.onDragStart(group.id, $event)"
           @dragend="clientRepositoryOrderUpdate.onDragEnd"
+          @contextmenu="openRepositoryMenu(group, $event)"
         >
           <MessageIcon
             v-if="group.kind === 'quickChats'"
@@ -253,6 +254,7 @@
               ]"
               type="button"
               :data-session-kind="session.kind"
+              :data-shared="session.shared || undefined"
               :title="group.activity ? activityContext.get(session.agentId) : undefined"
               :aria-pressed="session.isActive"
               @click="selectAgent(session.agentId)"
@@ -264,7 +266,7 @@
               @dragend="clientAgentOrderUpdate.onDragEnd"
             >
               <span
-                v-if="backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
+                v-if="!session.shared && backendChoices.length > 1 && agentsById.get(session.agentId) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
                 class="agent-sidebar__engine"
                 role="img"
                 :aria-label="backendDisplayName(agentsById.get(session.agentId)!.backend)"
@@ -314,7 +316,9 @@
     </nav>
 
     <AgentContextMenu
+      :shared="Boolean(contextMenuAgent?.sharedConversation)"
       v-if="contextMenuAgentId"
+      :share-available="Boolean(contextMenuAgentIsLocal && supportsConversationSharing(contextMenuAgent))"
       :fork-disabled="!canForkContextMenuAgent"
       :compress-visible="canReplaceContextMenuConversation"
       :compress-disabled="!canCompressContextMenuAgent"
@@ -328,6 +332,16 @@
       @move-agent-to-team="emitContextAgentMove"
       @open-in="emitContextAgentOpenIn"
       @close="closeContextMenu"
+    />
+
+    <AppContextMenu
+      v-if="contextMenuRepositoryAgentId"
+      :x="contextMenuPosition.x"
+      :y="contextMenuPosition.y"
+      :ariaLabel="t('repositoryDeletion.action')"
+      :items="repositoryMenuItems"
+      @select="deleteContextRepository"
+      @close="contextMenuRepositoryAgentId = null"
     />
 
     <MissionContextMenu
@@ -358,6 +372,7 @@
 </template>
 
 <script setup lang="ts">
+import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type { Mission } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
 import { computed, ref } from 'vue';
@@ -381,6 +396,7 @@ import {
   PanelLeftCloseIcon,
   PlusIcon,
   TargetArrowIcon,
+  Trash2Icon,
 } from '../shared/icons/app-icons';
 import AgentContextMenu from './AgentContextMenu.vue';
 import BackendIcon from './BackendIcon.vue';
@@ -393,6 +409,7 @@ import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import RepositoryIconPicker from './RepositoryIconPicker.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import AppContextMenu from '../shared/menu/AppContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { useRepositorySessionMenu } from './use-repository-session-menu';
@@ -442,6 +459,7 @@ const emit = defineEmits<{
   'create-agent-worktree-in-repository': [payload: { agentId: string; repositoryName: string; repositoryRoot: string }];
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
   'edit-agent': [agentId: string];
   'move-agent-to-team': [payload: { agentId: string; teamId: string }];
@@ -452,10 +470,11 @@ const emit = defineEmits<{
   'resume-session': [agentId: string];
   'restart-agent': [agentId: string];
   'select-agent': [agentId: string];
-  'start-work': [action: 'new' | 'github' | 'local' | 'url'];
+  'start-work': [action: import('./start-work-actions').StartWorkAction];
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'update-repository-icon': [payload: { repositoryKey: string; repositoryRoot: string; icon: string | undefined }];
 }>();
@@ -541,6 +560,8 @@ const backendChoices = useBackendChoices(() => props.teamId);
 const quickChatGroup = computed(() => repositoryGroups.value.find((group) => group.kind === 'quickChats') ?? null);
 const contextMenuAgentId = ref<string | null>(null);
 const contextMenuMissionId = ref<string | null>(null);
+const contextMenuRepositoryAgentId = ref<string | null>(null);
+const repositoryMenuItems = computed<AppMenuItem[]>(() => [{ id: 'delete', type: 'action', label: t('repositoryDeletion.action'), icon: Trash2Icon, danger: true }]);
 const repositorySessionMenu = useRepositorySessionMenu(() => props.listRepositoryBranches, t);
 const repositorySessionMenuId = repositorySessionMenu.visibleGroupId;
 const collapsedRepositoryKeys = computed(() => new Set(props.collapsedRepositoryKeys ?? []));
@@ -721,7 +742,9 @@ function pullRequestAttentionLabel(session: WorkspaceSidebarSession): string {
   const pullRequest = session.pullRequest;
   if (!pullRequest) return '';
   return t(
-    pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup',
+    pullRequest.provider === 'gitlab'
+      ? (pullRequest.state === 'closed' ? 'sidebar.mergeRequestClosedCleanup' : 'sidebar.mergeRequestMergedCleanup')
+      : (pullRequest.state === 'closed' ? 'sidebar.pullRequestClosedCleanup' : 'sidebar.pullRequestMergedCleanup'),
     { number: pullRequest.number },
   );
 }
@@ -747,7 +770,23 @@ function selectRepositorySessionMenuItem(
   repositorySessionMenuId.value = null;
 }
 
+function openRepositoryMenu(group: WorkspaceSidebarGroup, event: MouseEvent): void {
+  if (group.kind !== 'repository' || props.phoneScope) return;
+  event.preventDefault();
+  contextMenuAgentId.value = null;
+  contextMenuMissionId.value = null;
+  contextMenuRepositoryAgentId.value = group.sessions[0]?.agentId ?? null;
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY };
+}
+
+function deleteContextRepository(): void {
+  const agentId = contextMenuRepositoryAgentId.value;
+  contextMenuRepositoryAgentId.value = null;
+  if (agentId) emit('delete-repository', agentId);
+}
+
 function openAgentMenu(agentId: string, event: MouseEvent): void {
+  contextMenuRepositoryAgentId.value = null;
   contextMenuMissionId.value = null;
   contextMenuAgentId.value = agentId;
   contextMenuPosition.value = {
@@ -757,6 +796,7 @@ function openAgentMenu(agentId: string, event: MouseEvent): void {
 }
 
 function openMissionMenu(missionId: string, event: MouseEvent): void {
+  contextMenuRepositoryAgentId.value = null;
   contextMenuAgentId.value = null;
   contextMenuMissionId.value = missionId;
   contextMenuPosition.value = {
@@ -783,6 +823,9 @@ function emitContextAgentAction(action: AgentContextMenuAction): void {
   }
 
   switch (action) {
+    case 'share-agent':
+      emit('share-agent', agentId);
+      break;
     case 'close-agent':
       emit('close-agent', agentId);
       break;
@@ -1044,6 +1087,11 @@ function onResizePointerEnd(event: PointerEvent): void {
   flex-wrap: wrap;
   gap: var(--space-2);
   padding-inline: var(--space-4);
+}
+
+.agent-sidebar__start-work--activity > :deep(.app-menu-button) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .agent-sidebar__start-work--activity > button,
@@ -1448,12 +1496,16 @@ function onResizePointerEnd(event: PointerEvent): void {
   .agent-sidebar__repository-agent,
 .agent-sidebar__workspace-group[data-group-kind="missions"]
   .agent-sidebar__agent {
-  grid-template-columns: 0 minmax(0, 1fr)
+  grid-template-columns: var(--agent-sidebar-quick-chat-icon-track, 0) minmax(0, 1fr)
     var(--agent-sidebar-engine-track,)
     var(--agent-sidebar-trailing-column-width, var(--agent-sidebar-status-column-width));
   padding-left: calc(
     var(--agent-sidebar-workspace-inline-padding) + var(--space-10)
   );
+}
+
+.agent-sidebar__agent[data-shared="true"] {
+  --agent-sidebar-quick-chat-icon-track: var(--agent-sidebar-repository-icon-column-width);
 }
 
 .agent-sidebar__workspace-group::before,

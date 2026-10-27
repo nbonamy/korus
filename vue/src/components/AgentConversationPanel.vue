@@ -86,7 +86,7 @@ const props = defineProps<{
   plan?: ThreadPlan | null;
   planVisible?: boolean;
   savedPromptDrafts: readonly SavedPromptDraft[];
-  savePromptDraft: (agentId: string, text: string) => Promise<void>;
+  savePromptDraft: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft: (id: string) => Promise<void>;
   reviewFinding?: CodeReviewFinding | null;
   openLink: NonNullable<CodexConversationPaneActions['openLink']>;

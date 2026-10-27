@@ -52,6 +52,92 @@ describe('companion workspace projection', () => {
     expect(projectCompanionWorkspace(workspace).agentRequests).toStrictEqual({ keep: [request] });
   });
 
+  describe('missions', () => {
+    const ticket = (title: string, patch: Record<string, unknown> = {}) => ({ title, done: false, ...patch });
+    const run = (ticketIndex: number, status: string, workerId?: string, startedAt = '2026-01-01T00:30:00Z') => ({ id: `run-${ticketIndex}-${status}`, stage: 'implementation', ticketIndex, status, startedAt, ...(workerId ? { workerId } : {}) });
+    const mission = (id: string, patch: Record<string, unknown> = {}) => ({ id, teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, createdAt: '2025-12-31T00:00:00Z', updatedAt: now,
+      artifacts: { tickets: [] }, execution: { runs: [] }, ...patch });
+    const source = (missions: unknown[], agents: Agent[] = []) => companionWorkspaceOf({ teams, agents, general: {} as AppSnapshot['general'], missions: missions as AppSnapshot['missions'] });
+
+    it('reports each ticket the way the desktop board does, with the worker of one that has run', () => {
+      const workspace = projectCompanionWorkspace(source([mission('m', {
+        artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0], repositoryPath: '/Users/me/src/billing-service' }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
+        execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4')] },
+      })], [agent('w1', {}), agent('old', {}), agent('w4', {}), agent('chat', {})]));
+      expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, startedAt: '2026-01-01T00:30:00Z', updatedAt: now, tickets: [
+        { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', repository: 'billing-service', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked', after: [2] },
+        { number: 4, title: 'Free', state: 'queued' }, { number: 5, title: 'Retried', state: 'awaitingReview', agentId: 'w4', runId: 'run-4-awaitingReview' }] }]);
+    });
+    it('keeps ticket workers out of the agent list but lets the phone open them and answer their requests', () => {
+      const request = { id: 'ask', conversationId: 'thread', kind: 'approval' as const,
+        approval: { id: 'ask', conversationId: 'thread', itemId: 'command', kind: 'command' as const, title: 'Run command', command: 'git status', allowedScopes: ['once' as const] } };
+      const workspace = projectCompanionWorkspace(companionWorkspaceOf({ teams, general: {} as AppSnapshot['general'], agentRequests: { w1: [request], old: [request] },
+        agents: [agent('w1', { folder: '/Users/me/work' }), agent('old', {}), agent('chat', {})],
+        missions: [mission('m', { artifacts: { tickets: [ticket('Going')] }, execution: { runs: [run(0, 'failed', 'old'), run(0, 'running', 'w1')] } })] as unknown as AppSnapshot['missions'] }));
+      expect(workspace.agents.map(({ id }) => id)).toStrictEqual(['chat']);
+      expect(workspace.missionAgents.map(({ id }) => id)).toStrictEqual(['w1']);
+      expect(workspace.missionAgents[0]!.folder).not.toContain('/Users/me');
+      expect(workspace.agentRequests).toStrictEqual({ chat: [], w1: [request] });
+    });
+    it('shows completed missions after the active ones, and no more than the most recent twenty', () => {
+      const dated = (id: string, minutes: number, status: 'active' | 'completed') => mission(id, { status, updatedAt: new Date(Date.parse(now) + minutes * 60_000).toISOString() });
+      const many = [dated('done-new', 99, 'completed'), dated('active-old', 0, 'active'), ...Array.from({ length: 25 }, (_, index) => dated(`done-${index}`, index, 'completed'))];
+      const ids = projectCompanionWorkspace(source(many)).missionProgress.map(({ id }) => id);
+      expect(ids).toHaveLength(20);
+      expect(ids.slice(0, 2)).toStrictEqual(['active-old', 'done-new']);
+    });
+    it('dates a mission from its first implementation run, or from its creation before any run', () => {
+      const [started, idle] = projectCompanionWorkspace(source([
+        mission('started', { artifacts: { tickets: [ticket('A'), ticket('B')] }, execution: { runs: [run(1, 'running', 'w', '2026-01-01T02:00:00Z'), run(0, 'accepted', 'x', '2026-01-01T01:00:00Z')] } }),
+        mission('idle')])).missionProgress.sort((a, b) => a.id === 'started' ? -1 : 1);
+      expect(started!.startedAt).toBe('2026-01-01T01:00:00Z');
+      expect(idle!.startedAt).toBe('2025-12-31T00:00:00Z');
+    });
+    it('names the mission lead without mistaking an implementation worker for it', () => {
+      const lead = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.leadAgentId;
+      expect(lead({ stage: 'implementation', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('tix');
+      expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix', implementation: 'impl' } })).toBe('tix');
+      expect(lead({ stage: 'review', stageAgentIds: { tickets: 'tix', review: 'reviewer' } })).toBe('reviewer');
+      expect(lead({ stage: 'review', stageAgentIds: { requirements: 'req', tickets: 'tix' } })).toBe('tix');
+      expect(lead({ stage: 'requirements', stageAgentIds: {} })).toBeUndefined();
+    });
+    it('says what a person can do next: review once implementation is complete, ship once the review is', () => {
+      const artifacts = (patch: Record<string, unknown> = {}) => ({ tickets: [ticket('A', { done: true })], requirements: { problem: 'p', acceptance: 'a' }, implementation: { changes: 'c', tests: 't' }, review: { summary: '', pullRequestUrl: '' }, ...patch });
+      const next = (patch: Record<string, unknown>) => projectCompanionWorkspace(source([mission('m', patch)])).missionProgress[0]!.next;
+      expect(next({ stage: 'implementation', artifacts: artifacts() })).toBe('review');
+      // Tickets done but the implementation record missing, or a ticket still open, is not ready.
+      expect(next({ stage: 'implementation', artifacts: artifacts({ implementation: { changes: '', tests: '' } }) })).toBeUndefined();
+      expect(next({ stage: 'implementation', artifacts: artifacts({ tickets: [ticket('A')] }) })).toBeUndefined();
+      expect(next({ stage: 'review', artifacts: artifacts() })).toBeUndefined();
+      expect(next({ stage: 'review', artifacts: artifacts({ review: { summary: 'Looks good', pullRequestUrl: '' } }) })).toBe('ship');
+      expect(next({ stage: 'ship', artifacts: artifacts() })).toBe('ship');
+      expect(next({ stage: 'ship', status: 'completed', artifacts: artifacts() })).toBeUndefined();
+    });
+    it('lets the phone open a lead that is itself a mission worker, without listing it among the agents', () => {
+      const workspace = projectCompanionWorkspace(source([mission('m', { stage: 'review', stageAgentIds: { review: 'lead' }, execution: { runs: [{ id: 'run', stage: 'review', status: 'running', workerId: 'lead', startedAt: now }] } })],
+        [agent('lead', {}), agent('chat', {})]));
+      expect(workspace.missionProgress[0]!.leadAgentId).toBe('lead');
+      expect(workspace.agents.map(({ id }) => id)).toStrictEqual(['chat']);
+      expect(workspace.missionAgents.map(({ id }) => id)).toStrictEqual(['lead']);
+    });
+    it('shares a review\'s findings and what became of them without host paths', () => {
+      const finding = (id: string, patch: Record<string, unknown> = {}) => ({ id, priority: 'p1', title: `Finding ${id}`, body: 'Why it matters.', repositoryPath: '/Users/me/src/korus',
+        location: { file: '/Users/me/src/korus/auth/session.ts', line: 142, endLine: 150 }, selected: false, remediation: { state: 'open' }, createdAt: now, updatedAt: now, ...patch });
+      const review = projectCompanionWorkspace(source([mission('m', { stage: 'review', artifacts: { tickets: [], review: { summary: 'Two issues', pullRequestUrl: '', findings: [
+        finding('a', { selected: true }), finding('b', { priority: 'p3', location: undefined, remediation: { state: 'fixed', completedAt: now } }), finding('c', { remediation: { state: 'fixing', startedAt: now } })] } } })])).missionProgress[0]!.review!;
+      expect(review.summary).toBe('Two issues');
+      expect(review.findings[0]).toStrictEqual({ id: 'a', priority: 'p1', title: 'Finding a', body: 'Why it matters.', repository: 'korus', file: 'auth/session.ts', line: 142, endLine: 150, selected: true, state: 'open' });
+      expect(review.findings.map(({ state }) => state)).toStrictEqual(['open', 'fixed', 'fixing']);
+      expect(review.findings[1]).not.toHaveProperty('file');
+      expect(JSON.stringify(review)).not.toContain('/Users/me');
+      // A mission with nothing reviewed yet sends no review at all.
+      expect(projectCompanionWorkspace(source([mission('empty', { artifacts: { tickets: [], review: { summary: '', pullRequestUrl: '', findings: [] } } })])).missionProgress[0]).not.toHaveProperty('review');
+    });
+    it('omits missions of teams the phone cannot see', () => {
+      expect(projectCompanionWorkspace(source([mission('elsewhere', { teamId: 'other' })])).missionProgress).toStrictEqual([]);
+    });
+  });
+
   const agents = [
     git('sdk', '/Users/me/src/codex-app-sdk-sdk', 'sdk', {}, true),
     git('builder', '/Users/me/src/codex-app-sdk-builder', 'app-builder', {}, true),
@@ -93,9 +179,10 @@ describe('companion workspace projection', () => {
     expect(first!.backendDefaults).toStrictEqual({ kind: 'codex', model: 'gpt', reasoningEffort: 'high', serviceTier: 'fast', approvalPreset: 'full-access' });
   });
   it('keeps only presentation fields', () => {
-    const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
+    const [first] = projectCompanionWorkspace({ teams, agents: [{ ...agents[0]!, suggestedPrompt: 'Run the tests', mcpSessionId: 'private' } as Agent], repositoryIcons: {} }).agents;
     expect(first).not.toHaveProperty('mcpSessionId');
-    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt'];
+    expect(first!.suggestedPrompt).toBe('Run the tests');
+    const allowed = ['id', 'teamId', 'name', 'avatar', 'backend', 'backendSession', 'status', 'statusText', 'createdAt', 'updatedAt', 'sessionKind', 'conversationTitle', 'workspace', 'folder', 'backendDefaults', 'hasSubmittedPrompt', 'suggestedPrompt'];
     expect(Object.keys(first!).every((key) => allowed.includes(key))).toBe(true);
   });
 

@@ -3,6 +3,8 @@
     class="agent-dialog"
     :model-value="visible"
     :title="title"
+    :compact="isEditing"
+    :width="isEditing ? '420px' : undefined"
     @update:model-value="onVisibilityChanged"
   >
     <form class="app-form-dialog" @submit.prevent="submit">
@@ -96,7 +98,19 @@
         </div>
       </FormField>
 
+      <ClearableTextInput
+        v-if="isEditing"
+        id="agent-dialog-name"
+        v-model="name"
+        subtle
+        autofocus
+        select-on-mount
+        :disabled="submitting"
+        :aria-label="$t('surface.agentDialog.agentName')"
+        :placeholder="namePlaceholder"
+      />
       <FormField
+        v-else
         :label="$t('surface.agentDialog.name')"
         label-for="agent-dialog-name"
       >

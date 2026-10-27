@@ -27,6 +27,15 @@ function create(props = {}) {
 }
 
 describe('GitPruneDialog', () => {
+  it.each(['github', 'gitlab'] as const)('shows a native %s request status beside the remote branch', async provider => {
+    const url = provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7';
+    const requestRemote = { ...remote, pullRequest: { number: 7, url, title: 'Work', draft: false, headSha: 'abc', state: 'merged' as const } };
+    const wrapper = create({ load: async () => ({ ...inventory, groups: [{ branch: 'feat/web', remotes: [requestRemote] }] }) });
+    await flushPromises();
+    const link = wrapper.get('.git-prune-dialog__pr');
+    expect(link.text()).toBe(provider === 'gitlab' ? 'MR !7 merged' : 'PR #7 merged');
+    expect(link.attributes('href')).toBe(url);
+  });
   it.each([
     { ...blocked, merged: false, changedFiles: 3 },
     { ...blocked, blocked: 'changes' as const, usedBy: [], changedFiles: 3 },

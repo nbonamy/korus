@@ -4,6 +4,159 @@ All notable Korus changes are recorded here.
 
 ## Unreleased
 
+## [0.44.0] - 2026-10-26
+
+### New features
+
+- **Composer mentions:** Pick skills, agents, plugins, and files from suggestions
+  to insert reference chips that stay intact in drafts, queued prompts, and edited
+  messages. Typed or pasted `$skill` and `@name` remain plain text.
+- **Mission and agent models:** Ask for a specific provider, model, reasoning
+  effort, or service tier when starting a Mission or creating an agent.
+- **Diff summaries for agents:** Ask an agent to break down added and removed
+  lines by code, tests, documentation, and other files in a working tree, branch,
+  or commit.
+
+### Improvements and fixes
+
+- Move **Commits** below the file-type breakdown in the diff menu.
+
+## [0.43.0] - 2026-10-26
+
+### New features
+
+- **Conversation sharing:** Invite collaborators with a link or code to follow a
+  conversation and suggest prompts for you to edit and send. Works across agent
+  providers; stop sharing to revoke access.
+- **Start a Mission from chat:** Use `/mission` or **+ → Mission** to turn your
+  conversation into a Mission brief.
+- **Delete repository:** Remove a local repository, its linked worktrees, and all
+  associated agents across teams from the sidebar, with typed-name confirmation.
+- **Changes by file type:** See code, tests, documentation, and other changes
+  separately, including the last turn. Click a category to open its review.
+
+### Improvements and fixes
+
+- Keep Mission finding-reporting tools available across stage changes and open
+  the correct Mission lead when launching a review from mobile.
+- Remove older completed Claude tasks from the execution plan while keeping
+  unfinished work visible.
+- Use compact, automatically focused inputs for joining conversations, renaming
+  agents, and continuing on a branch.
+- Open the worktree setup guide directly from Settings.
+
+## [0.42.0] - 2026-10-25
+
+### New features
+
+- Connect GitLab.com alongside GitHub, using a direct connection or an existing
+  GitLab CLI login. Discover and clone projects from desktop and mobile, browse
+  issues and merge requests, and start agent work or Missions from them.
+- Create draft GitLab merge requests and follow them through merge or closure
+  and worktree cleanup. Direct GitLab connections also make the official GitLab
+  MCP tools available to agents.
+- Compare estimated API costs in Analytics, with USD trends and breakdowns by
+  provider or model. Estimates use available usage and historical model prices;
+  usage without enough pricing evidence stays unavailable rather than counting
+  as free. Explore input/output token ratios alongside token totals.
+- Follow missions from the mobile apps: see each mission's stage and ticket
+  progress, open the agent working on a ticket or the one leading the mission and talk
+  to it, then return to the mission. Accept a finished ticket and move a completed
+  implementation on to review from the phone, then read the review's findings,
+  choose which to fix, and launch remediation. Shipping stays on the desktop.
+- Close every artifact tab at once from the workspace tab menu.
+
+### Improvements and fixes
+
+- Keep Mission delivery and worktree cleanup in sync: merging marks the repository
+  as shipped, closes agents from a removed worktree, and remembers that the
+  worktree no longer needs deleting when the Mission is removed.
+- Restore the live Working timer for Codex turns when the provider omits a start
+  timestamp, and retain it through subsequent updates.
+- Clear Claude's completed execution plan when the next turn starts, while keeping
+  unfinished tasks visible.
+- Clone GitHub and GitLab repositories over SSH first, with an HTTPS fallback and
+  clearer authentication failures.
+- Match repository work by its full remote identity, keeping projects with the
+  same name separate and showing work from the repository's own provider.
+- Recover phone connections faster after relay interruptions and let users open
+  their saved connections from the unreachable-computer screen.
+- Display conversation images on mobile when their Markdown paths use angle brackets.
+
+## [0.41.1] - 2026-10-24
+
+### New features
+
+- Expand the artifact pane to fill the workspace, then restore its previous
+  width without losing conversation drafts.
+- Open detached developer tools for the current in-app browser tab from its menu.
+
+### Improvements and fixes
+
+- Group Claude's tool work under Working and Done disclosures, keeping the final
+  response separate from progress updates.
+- Show elapsed time while agents work and after a turn finishes. Restored Claude
+  conversations retain turn durations when valid timing is available.
+- Keep Add project and Quick chat beside each other in the Activity sidebar.
+
+## [0.41.0] - 2026-10-24
+
+### New features
+
+- Install Bitwarden and 1Password in the in-app browser from Settings. Open your
+  vault from the browser toolbar, and update, disable, reinstall or remove each
+  extension independently.
+- Save custom review instructions in Settings > Workflows. They accompany every
+  review agent, including automatic reviews and fresh rounds.
+- Track output speed over time in Analytics, with a separate line for each model.
+- Select Image Gen from the skill picker in Claude and other non-Codex agents.
+- The mobile companion remembers multiple computers, supports renaming and
+  forgetting saved connections, and uses your computer's name when pairing.
+- Browse agents across all teams and create teams from the mobile sidebar.
+
+### Improvements and fixes
+
+- All agents share browser accounts, cookies and extensions. Existing per-agent
+  website sessions are not migrated; sign in again after upgrading.
+- Clear browsing data across agents without removing extensions or their saved data.
+- Accept a suggested follow-up in an empty composer with Right Arrow or Space,
+  as well as Tab. Accepting the suggestion fills the draft without sending it.
+- Mobile composers offer follow-up suggestions, and mobile Settings groups account,
+  preference and app information more clearly.
+- Dismiss stale mobile questions without retry errors.
+- Suppress phone alerts for the exact conversation being viewed in the focused
+  desktop window.
+
+## [0.40.0] - 2026-10-23
+
+### New features
+
+- Install and manage coding-agent skills from Settings. Discover curated skills
+  and packs, install from GitHub or skills.sh, and sync skills across configured
+  agents. Browse existing installations, read skill documents, refresh managed
+  packs, and delete personal skills with confirmation while protecting system skills.
+- Featured skills include Cloudflare's Security audit, Vercel's Web design
+  guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack.
+- Automatically resume conversations after a usage limit resets. A compact
+  composer drawer shows the reset time and a saved Auto-resume toggle, enabled
+  by default. Pending resumes survive restarts and cancel when you send a prompt
+  or start a different conversation.
+
+### Improvements and fixes
+
+- Completed execution plans stay closed after a restart and clear when the next
+  turn starts.
+- Sending a message shows "other agent" while the recipient's name is unknown.
+
+## [0.39.3] - 2026-10-23
+
+### Improvements and fixes
+
+- Claude Code's native task lists appear in the execution-plan panel, with live
+  progress updates and restored progress when reopening a conversation.
+- Worktree deletion shows its progress without a stale close-confirmation title.
+  Agents without a custom name use their normal display name when confirming closure.
+
 ## [0.39.2] - 2026-10-23
 
 ### New features

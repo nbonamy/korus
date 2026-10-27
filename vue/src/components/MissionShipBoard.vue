@@ -10,18 +10,18 @@
     <div class="mission-ship__grid">
       <article v-for="delivery in deliveries" :key="delivery.repositoryPath" class="mission-ship__card" :data-status="delivery.status">
         <header class="mission-ship__card-header">
-          <button class="mission-ship__repository" type="button" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
+          <button class="mission-ship__repository" type="button" :disabled="!agent(delivery.agentId)" :aria-label="t('missions.shipOpenConversation', { repository: repositoryName(delivery.repositoryPath) })" @click="emit('open-conversation', delivery.agentId)">
             <GitForkIcon aria-hidden="true" />
             <span><strong>{{ repositoryName(delivery.repositoryPath) }}</strong><small>{{ workspaceBranch(delivery.repositoryPath) }}</small></span>
             <ArrowRightIcon aria-hidden="true" />
           </button>
           <div class="mission-ship__status" :data-status="delivery.status">
             <CheckIcon v-if="delivery.status !== 'pending'" aria-hidden="true" />
-            {{ statusLabel(delivery.status) }}
+            {{ statusLabel(delivery) }}
           </div>
         </header>
         <template v-if="delivery.status === 'pending'">
-          <p>{{ t('missions.shipActionsHint') }}</p>
+          <p>{{ t(isGitLab(delivery) ? 'missions.shipMergeActionsHint' : 'missions.shipActionsHint') }}</p>
           <p v-if="mission.execution?.debugFixture" class="mission-ship__debug">{{ t('missions.shipDebugFixture') }}</p>
           <div v-else-if="agent(delivery.agentId)" class="mission-ship__actions">
             <MissionWorkspaceOpenIn
@@ -51,7 +51,7 @@
           <p v-if="errors[delivery.repositoryPath]" class="mission-ship__error" role="alert">{{ errors[delivery.repositoryPath] }}</p>
         </template>
         <a v-else-if="delivery.pullRequest" class="mission-ship__pull-request" :href="delivery.pullRequest.url" target="_blank" rel="noreferrer">
-          {{ t('missions.shipPullRequest', { number: delivery.pullRequest.number }) }} <ArrowRightIcon aria-hidden="true" />
+          {{ t(isGitLab(delivery) ? 'missions.shipMergeRequest' : 'missions.shipPullRequest', { number: delivery.pullRequest.number }) }} <ArrowRightIcon aria-hidden="true" />
         </a>
       </article>
     </div>
@@ -105,12 +105,17 @@ function reportRecipients(agentId: string) {
 function repositoryName(path: string): string { return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path; }
 function workspacePath(repositoryPath: string): string | undefined { return props.mission.execution?.workspaces?.find(workspace => workspace.repositoryPath === repositoryPath)?.path; }
 function workspaceBranch(repositoryPath: string): string { return props.mission.execution?.workspaces?.find(workspace => workspace.repositoryPath === repositoryPath)?.branch ?? repositoryPath; }
-function statusLabel(status: MissionDelivery['status']): string {
-  if (status === 'pullRequestCreated') return t('missions.shipPullRequestCreated');
-  if (status === 'merged') return t('missions.shipMerged');
+function isGitLab(delivery: MissionDelivery): boolean {
+  return delivery.pullRequest?.url.startsWith('https://gitlab.com/') ?? (props.gitStatuses[delivery.agentId]?.repositoryProvider === 'gitlab');
+}
+function statusLabel(delivery: MissionDelivery): string {
+  if (delivery.status === 'pullRequestCreated') return t(isGitLab(delivery) ? 'missions.shipMergeRequestCreated' : 'missions.shipPullRequestCreated');
+  if (delivery.status === 'merged') return t('missions.shipMerged');
   return t('missions.shipPending');
 }
 async function recordDelivery(repositoryPath: string, result: { kind: 'pullRequest'; number: number; url: string } | { kind: 'merge' }): Promise<void> {
+  // Merges are recorded by the backend before cleanup can unmount this control.
+  if (result.kind === 'merge') return;
   errors[repositoryPath] = '';
   try {
     if (!props.executeMission) throw new Error('Mission delivery is unavailable.');

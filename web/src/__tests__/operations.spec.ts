@@ -12,6 +12,12 @@ it('routes document saves and layout changes through client-scoped operations', 
   expect(request).toHaveBeenLastCalledWith(backendMethods.clientWorkspaceApply, { agentId: 'agent', change: { close: [input.tabId] } });
 });
 
+it('forwards explicit hosted MCP authorization separately from the provider identity', async () => {
+  const request = vi.fn().mockResolvedValue({ snapshot: {} });
+  await invokeAppWebOperation({ request }, 'connectWorkProvider', ['gitlab', { hostedMcp: true }]);
+  expect(request).toHaveBeenLastCalledWith(backendMethods.workProviderConnect, { provider: 'gitlab', options: { hostedMcp: true } });
+});
+
 describe(`${product.name} web operations`, () => {
   it('preserves the reviewed profile target and output/stop owner at the web boundary', async () => {
     const request = vi.fn().mockResolvedValue({});
@@ -28,6 +34,15 @@ describe(`${product.name} web operations`, () => {
     ]);
   });
 
+  it('opts into request discovery while retaining local-only background Git reads', async () => {
+    const request = vi.fn(async () => ({}));
+    await invokeAppWebOperation({ request }, 'getAgentGitWorkflow', ['agent']);
+    await invokeAppWebOperation({ request }, 'getAgentGitWorkflow', ['agent', { includePullRequest: true }]);
+    expect(request.mock.calls).toStrictEqual([
+      [backendMethods.agentGitWorkflowGet, { agentId: 'agent' }],
+      [backendMethods.agentGitWorkflowGet, { agentId: 'agent', includePullRequest: true }],
+    ]);
+  });
   it('routes manual review handoff without discarding or interrupting the review', async () => {
     const snapshot = { agents: [{ id: 'reviewer', codeReview: { id: 'review', automation: { state: 'manual' } } }] };
     const request = vi.fn().mockResolvedValue(snapshot);

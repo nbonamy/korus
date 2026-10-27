@@ -90,6 +90,10 @@ test("the built website has reachable documentation pages, anchors, and assets",
   try {
     const landing = documents.get("index.html").window.document;
     assert.ok(landing.title.startsWith(product.name));
+    assert.ok(
+      landing.querySelector('#sharing video[aria-label="Sharing walkthrough"]'),
+      "The Sharing card exposes its walkthrough",
+    );
     // The deployed films and captions must preserve the approved local exports.
     const narrated = process.env.APP_NARRATED_FILMS
       ? pathToFileURL(`${resolve(process.env.APP_NARRATED_FILMS)}/`)

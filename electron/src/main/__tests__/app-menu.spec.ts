@@ -82,6 +82,18 @@ const callbacks = (): AppMenuCallbacks => ({
 });
 
 describe('app menu', () => {
+  it('closes a focused extension window without closing the agent or team', () => {
+    const main = { webContents: {} }, auxiliary = { close: vi.fn() };
+    installAppMenu(main as never, { debugMode: false });
+    const template = electronMenuMocks.buildFromTemplate.mock.calls.at(-1)![0];
+    for (const label of ['Close Agent', 'Close Team']) {
+      menuItem(template, 'File', label)!.click!({} as never, auxiliary as never, {} as never);
+    }
+    expect(auxiliary.close).toHaveBeenCalledTimes(2);
+    expect(sendAppCommand).not.toHaveBeenCalled();
+    menuItem(template, 'File', 'Close Agent')!.click!({} as never, main as never, {} as never);
+    expect(sendAppCommand).toHaveBeenCalledWith(main.webContents, { type: 'close-active-agent' });
+  });
   it('shows Execution Plan as a checkbox reflecting the selected agent plan', () => {
     const cb = callbacks();
     cb.hasDebugExecutionPlan = () => true;
@@ -158,7 +170,7 @@ describe('app menu', () => {
       'Next Team',
     ]);
     expect(submenu(menu, 'Agent').map((item) => item.type ?? item.label)).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -201,7 +213,7 @@ describe('app menu', () => {
     const nextCallbacks = callbacks();
     const menu = buildAppMenuTemplate(nextCallbacks, { debugMode: false }, 'darwin');
     const actions = [
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -224,7 +236,7 @@ describe('app menu', () => {
       { type: 'resume-active-session' },
       { type: 'restart-active-agent' },
     ]);
-    expect(menuItem(menu, 'Agent', 'Edit Agent')?.accelerator).toBe('CommandOrControl+E');
+    expect(menuItem(menu, 'Agent', 'Rename agent')?.accelerator).toBe('CommandOrControl+E');
     expect(menuItem(menu, 'Agent', 'Duplicate Agent')?.accelerator).toBe('CommandOrControl+D');
     expect(menuItem(menu, 'Agent', 'Compact Session')?.accelerator).toBe('CommandOrControl+Shift+K');
   });

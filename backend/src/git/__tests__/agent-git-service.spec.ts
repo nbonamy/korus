@@ -49,9 +49,55 @@ describe('agent git service parsers', () => {
       '',
       '2\t0\tb.ts',
     ].join('\n'))).toStrictEqual([
-      { sha: 'aaaaaaaa', shortSha: 'aaaaaaa', subject: 'first commit', addedLines: 3, removedLines: 1, changedFiles: 1 },
-      { sha: 'bbbbbbbb', shortSha: 'bbbbbbb', subject: 'second commit', addedLines: 2, removedLines: 0, changedFiles: 1 },
+      { sha: 'aaaaaaaa', shortSha: 'aaaaaaa', subject: 'first commit', addedLines: 3, removedLines: 1, changedFiles: 1, byKind: expect.objectContaining({ code: { addedLines: 3, removedLines: 1, changedFiles: 1 } }) },
+      { sha: 'bbbbbbbb', shortSha: 'bbbbbbb', subject: 'second commit', addedLines: 2, removedLines: 0, changedFiles: 1, byKind: expect.objectContaining({ code: { addedLines: 2, removedLines: 0, changedFiles: 1 } }) },
     ]);
+  });
+
+  it('splits commit and diff summaries by what each file is for', async () => {
+    const [commit] = parseCommitSummaries([
+      '\x1eaaaaaaaa\x1faaaaaaa\x1ffeature',
+      '',
+      '30\t4\tsrc/billing.ts',
+      '12\t0\tsrc/billing.test.ts',
+      '3\t1\tREADME.md',
+      '-\t-\tassets/logo.png',
+      '5\t5\tsrc/{old => new}/helper_test.go',
+    ].join('\n'));
+    expect(commit).toMatchObject({ addedLines: 50, removedLines: 10, changedFiles: 5 });
+    expect(commit!.byKind).toStrictEqual({
+      code: { addedLines: 30, removedLines: 4, changedFiles: 1 },
+      test: { addedLines: 17, removedLines: 5, changedFiles: 2 },
+      docs: { addedLines: 3, removedLines: 1, changedFiles: 1 },
+      other: { addedLines: 0, removedLines: 0, changedFiles: 1 },
+    });
+  });
+
+  it('adds the same breakdown to working-tree, untracked and unified-diff summaries', async () => {
+    const unified = [
+      'diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1 +1,2 @@', '-old', '+new', '+more',
+      'diff --git a/tests/a_test.py b/tests/a_test.py', '--- a/tests/a_test.py', '+++ b/tests/a_test.py', '@@ -0,0 +1 @@', '+assert x',
+    ].join('\n');
+    const runGit = vi.fn(async (_folder: string, args: string[]) => {
+      if (args[0] === 'status') return { stdout: '## main\n M src/a.ts\n?? notes.md\n' };
+      if (args.includes('--cached')) return { stdout: '' };
+      if (args[0] === 'diff' && args.includes('--no-index')) return { stdout: args.includes('--numstat') ? '7\t0\t/dev/null => notes.md\n' : '' };
+      if (args[0] === 'diff' && args.includes('--numstat')) return { stdout: '2\t1\tsrc/a.ts\n' };
+      if (args[0] === 'ls-files') return { stdout: 'notes.md\0' };
+      return { stdout: args.includes('--cached') ? '' : unified };
+    });
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), runGit);
+    const status = await service.status('/repo');
+    expect(status.diffCatalog?.uncommitted.byKind).toMatchObject({
+      code: { addedLines: 2, removedLines: 1, changedFiles: 1 },
+      docs: { addedLines: 7, removedLines: 0, changedFiles: 1 },
+    });
+    expect(status.diffCatalog?.staged.byKind?.code.changedFiles).toBe(0);
+    const diff = await service.diff('/repo', { type: 'unstaged' });
+    expect(diff.summary.byKind).toMatchObject({
+      code: { addedLines: 2, removedLines: 1, changedFiles: 1 },
+      test: { addedLines: 1, removedLines: 0, changedFiles: 1 },
+    });
   });
 
   it('builds provider-neutral staged, commit, and branch comparisons', async () => {
@@ -411,13 +457,13 @@ describe('agent git service parsers', () => {
     expect(runGit).toHaveBeenCalledWith('/repo', ['diff', '--no-ext-diff', 'origin/main...HEAD', '--']);
   });
 
-  it('explains that a feature branch with only uncommitted work must be committed first', async () => {
+  it.each(['github', 'gitlab'])('explains that %s uncommitted work must be committed first', async provider => {
     const runGit = vi.fn(async (_folder: string, args: string[]) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return { stdout: '/repo\n' };
       if (args[0] === 'symbolic-ref' && args[3] === 'HEAD') return { stdout: 'fix/issue-7\n' };
       if (args.includes('@{upstream}')) return { stdout: '' };
       if (args[0] === 'remote' && args[1] === undefined) return { stdout: 'origin\n' };
-      if (args[0] === 'remote') return { stdout: 'git@github.com:owner/repo.git\n' };
+      if (args[0] === 'remote') return { stdout: `git@${provider}.com:owner/repo.git\n` };
       if (args[0] === 'status') return { stdout: ' M src/app.js\0' };
       if (args[0] === 'worktree') return { stdout: 'worktree /repo\nHEAD abc\nbranch refs/heads/fix/issue-7\n' };
       if (args[0] === 'symbolic-ref') return { stdout: 'origin/main\n' };
@@ -426,7 +472,7 @@ describe('agent git service parsers', () => {
     const service = new AgentGitService(() => new Date(), runGit);
 
     await expect(service.pullRequestMessageContext('/repo')).rejects.toThrow(
-      'This branch has no committed changes to include. Commit your work before creating a pull request.',
+      `This branch has no committed changes to include. Commit your work before creating a ${provider === 'gitlab' ? 'merge request' : 'pull request'}.`,
     );
   });
 
@@ -509,60 +555,6 @@ describe('agent git service parsers', () => {
     });
     expect(runGit).toHaveBeenCalledTimes(1);
     expect(runGit).toHaveBeenCalledWith('/repo', ['check-ref-format', '--branch', 'feature/worktree']);
-  });
-
-  it('checks out the pull request head branch in either the current folder or a new worktree', async () => {
-    const runGit = vi.fn(async (_folder: string, args: string[]) => {
-      if (args[0] === 'check-ref-format') return { stdout: '' };
-      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return { stdout: '/repo\n' };
-      if (args[0] === 'rev-parse' && args.includes('@{upstream}')) return { stdout: 'origin/main\n' };
-      if (args[0] === 'symbolic-ref') return { stdout: 'main\n' };
-      if (args[0] === 'remote' && args[1] === 'get-url') return { stdout: 'git@github.com:nbonamy/repo.git\n' };
-      if (args[0] === 'remote') return { stdout: 'origin\n' };
-      if (args[0] === 'status' && args.includes('--branch')) return { stdout: '## main...origin/main\n' };
-      if (args[0] === 'status') return { stdout: '' };
-      if (args[0] === 'worktree' && args[1] === 'list') return { stdout: 'worktree /repo\nHEAD abc\nbranch refs/heads/main\n' };
-      if (args[0] === 'show-ref') throw new Error('missing ref');
-      return { stdout: '' };
-    });
-    const createWorktree = vi.fn().mockResolvedValue({ path: '/repo-feature-pull-request-42' });
-    const service = new AgentGitService(() => new Date(), runGit, createWorktree);
-
-    await expect(service.createBranch('/repo', 'feature/pull-request-42', true, 42))
-      .resolves.toBe('/repo-feature-pull-request-42');
-
-    expect(runGit).toHaveBeenCalledWith('/repo', ['fetch', 'origin', 'pull/42/head']);
-    expect(createWorktree).toHaveBeenCalledWith({
-      repoPath: '/repo',
-      branchName: 'feature/pull-request-42',
-      reuseExisting: true,
-      startPoint: 'FETCH_HEAD',
-    });
-
-    await expect(service.createBranch('/repo', 'feature/pull-request-43', false, 43)).resolves.toBe('/repo');
-    expect(runGit).toHaveBeenCalledWith('/repo', ['fetch', 'origin', 'pull/43/head']);
-    expect(runGit).toHaveBeenCalledWith('/repo', ['switch', '-c', 'feature/pull-request-43', 'FETCH_HEAD']);
-  });
-
-  it('reuses and fast-forwards an existing local pull request branch', async () => {
-    const runGit = vi.fn(async (_folder: string, args: string[]) => {
-      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return { stdout: '/repo\n' };
-      if (args[0] === 'rev-parse' && args.includes('@{upstream}')) return { stdout: 'origin/main\n' };
-      if (args[0] === 'symbolic-ref') return { stdout: 'main\n' };
-      if (args[0] === 'remote' && args[1] === 'get-url') return { stdout: 'git@github.com:nbonamy/repo.git\n' };
-      if (args[0] === 'remote') return { stdout: 'origin\n' };
-      if (args[0] === 'status' && args.includes('--branch')) return { stdout: '## main...origin/main\n' };
-      if (args[0] === 'status') return { stdout: '' };
-      if (args[0] === 'worktree' && args[1] === 'list') return { stdout: 'worktree /repo\nHEAD abc\nbranch refs/heads/main\n' };
-      return { stdout: '' };
-    });
-    const service = new AgentGitService(() => new Date(), runGit);
-
-    await expect(service.createBranch('/repo', 'feature/existing-pr', false, 44)).resolves.toBe('/repo');
-
-    expect(runGit).toHaveBeenCalledWith('/repo', ['switch', 'feature/existing-pr']);
-    expect(runGit).toHaveBeenCalledWith('/repo', ['merge', '--ff-only', 'FETCH_HEAD']);
-    expect(runGit).not.toHaveBeenCalledWith('/repo', expect.arrayContaining(['-c']));
   });
 
   it('rejects empty, option-like, and invalid branch names before switching', async () => {
@@ -686,7 +678,7 @@ describe('agent git service parsers', () => {
     });
 
     await expect(service.validateLinkedWorktreeDeletion('/repo-feature', false, 'merged-head')).rejects.toThrow(
-      'This branch contains commits that are not part of the tracked pull request.',
+      'This branch contains commits that are not part of the tracked request.',
     );
     expect(runGit).toHaveBeenCalledWith('/repo-feature', ['rev-parse', 'HEAD']);
     expect(runGit.mock.calls.some(([, args]) => args[0] === 'worktree')).toBe(false);

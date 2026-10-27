@@ -46,6 +46,7 @@ for (const film of [
   "delegation",
   "project",
   "visualize",
+  "sharing",
 ]) {
   const record = narration.films.find((entry) => entry.id === `${film}-film`);
   if (

@@ -2,6 +2,7 @@ import type { Agent, AppSnapshot, BackendModelOption, CreateSourceWorktreeInput,
 import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { resolveAgentBackend } from '@workspace/core/agent-backends';
 import { createEntityId } from '@workspace/core/ids';
+import { isAbsolute, relative, sep } from 'node:path';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
@@ -358,6 +359,36 @@ export class MissionExecutionService {
       if (!runIds.length) throw new Error('No implementation ticket is ready to start.');
     });
     for (const runId of runIds) void this.startLaunch(input.id, runId);
+  }
+
+  async recordMerge(agentId: string, sourceFolder: string | null, worktreeDeleted: boolean, pushPending = false): Promise<void> {
+    for (const mission of this.ports.snapshot.missions ?? []) {
+      const delivery = mission.execution?.deliveries?.find(candidate => candidate.agentId === agentId);
+      if (mission.stage !== 'ship' || !delivery) continue;
+      const workspace = mission.execution?.workspaces?.find(candidate => candidate.repositoryPath === delivery.repositoryPath);
+      const worktreePath = workspace?.path ?? mission.execution?.workspace?.path;
+      if (!worktreePath) continue;
+      if (sourceFolder !== null) {
+        const path = relative(worktreePath, sourceFolder);
+        if (path === '..' || path.startsWith('..' + sep) || isAbsolute(path)) continue;
+      } else if (!delivery.mergePendingPush) continue;
+      await this.ports.missions.change(mission.id, current => {
+        const result = current.execution!.deliveries!.find(candidate => candidate.repositoryPath === delivery.repositoryPath)!;
+        if (!pushPending) {
+          result.status = 'merged';
+          delete result.pullRequest;
+          delete result.mergePendingPush;
+        } else result.mergePendingPush = true;
+        if (worktreeDeleted) {
+          for (const workspace of current.execution!.workspaces ?? []) {
+            if (workspace.path === worktreePath) workspace.deleted = true;
+          }
+          if (current.execution!.workspace?.path === worktreePath) current.execution!.workspace.deleted = true;
+        }
+        if (current.execution!.deliveries!.every(candidate => candidate.status !== 'pending')) current.status = 'completed';
+      });
+      await this.ports.publish();
+    }
   }
 
   async recoverInterruptedRuns(): Promise<void> {

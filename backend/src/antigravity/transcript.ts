@@ -14,7 +14,7 @@ export class AcpTranscript {
   private replaying = false;
 
   constructor(readonly agentId: string, readonly sessionId: string, private readonly changed: (event: AntigravityConversationEvent) => void,
-    private readonly displayUser: (text: string) => { text: string; parts: RendererMessagePart[] } = text => ({ text, parts: [] })) {
+    private readonly displayUser: (text: string) => { text: string; parts: RendererMessagePart[]; metadata?: RendererMessage['metadata'] } = text => ({ text, parts: [] })) {
     this.replica = createAntigravityConversationReplica(emptyAntigravitySnapshot(agentId, sessionId));
   }
 
@@ -23,11 +23,11 @@ export class AcpTranscript {
     this.replica.apply(event); this.changed(event);
   }
 
-  start(text?: string, parts: RendererMessagePart[] = []): string {
+  start(text?: string, parts: RendererMessagePart[] = [], metadata?: RendererMessage['metadata']): string {
     if (text !== undefined) this.replaying = false;
     this.turnId = randomUUID(); this.message = undefined;
     this.event({ type: 'turn.started', payload: { turn: { id: this.turnId } } });
-    if (text !== undefined) { this.text('user', text); this.attach(parts); }
+    if (text !== undefined) { this.text('user', text); this.attach(parts, metadata); }
     return this.turnId;
   }
 
@@ -46,7 +46,7 @@ export class AcpTranscript {
         if (this.message?.role !== 'user') { this.finish('completed'); this.start(); }
         if (record(update.content) && update.content.type === 'text' && typeof update.content.text === 'string') {
           const display = this.displayUser(update.content.text);
-          this.text('user', display.text); this.attach(display.parts);
+          this.text('user', display.text); this.attach(display.parts, display.metadata);
         }
         return;
       case 'agent_message_chunk':
@@ -75,9 +75,10 @@ export class AcpTranscript {
     this.event({ type: 'message.upsert', payload: { message } });
   }
 
-  private attach(parts: RendererMessagePart[]): void {
-    if (!parts.length) return;
+  private attach(parts: RendererMessagePart[], metadata?: RendererMessage['metadata']): void {
+    if (!parts.length && !metadata) return;
     const message = this.current('user'); message.parts.push(...parts);
+    if (metadata) message.metadata = metadata;
     this.event({ type: 'message.upsert', payload: { message } });
   }
 

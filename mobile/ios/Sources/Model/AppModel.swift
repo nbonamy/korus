@@ -52,18 +52,30 @@ final class AppModel {
     var connection: ConnectionState = .unpaired {
         didSet { if connection != oldValue { updateConnectionNotice(); updateUpdatingIndicator(); updateBackgroundExecution() } }
     }
+    /// Why the laptop could not be reached, shown under the lost-connection message.
+    var connectionDetail = ""
     var laptops: [EngineState.Laptop] = []
+    /// What the laptop's missions look like from here, and the mission whose ticket worker is open.
+    var missions: [MissionSummary] = []
+    var workerMission: MissionReference?
+    /// "idle", "working" or "failed": a move on a mission is a request the laptop can refuse.
+    var missionAction = "idle"
+    /// The missions surface replaces the conversation in the main area, like a conversation does.
+    var missionsOpen = false
+    var missionPath: [String] = []
     var pairing: EngineState.Pairing = .idle
     var pairingError = ""
     var teams: [Team] = []
     var teamID = ""
+    var allTeams = false
+    var sidebarScopeID: String { allTeams ? "__all__" : teamID }
     var groups: [SidebarGroup] = []
     var activityGroups: [SidebarGroup] = []
     private(set) var laptopID = ""
     private(set) var sidebarOrganization: SidebarOrganization = .activity
     private(set) var sidebarIdleSort: SidebarIdleSort = .activity
     @ObservationIgnored private let sidebarPreferences = SidebarPreferences()
-    var activeAgentID: String?
+    var activeAgentID: String? { didSet { if activeAgentID != oldValue { missionsOpen = false } } }
     var header: ConversationHeader?
     var models: [ModelChoice] = []
     var selectedModelID: String?
@@ -88,6 +100,7 @@ final class AppModel {
     var failedRequest: String?
     var closePreview: EngineState.ClosePreview?
     var chatCreation: EngineState.ChatCreation = .idle
+    var teamCreation: EngineState.ChatCreation = .idle
     var backends: [String] = []
     var backend: String?
     private var duplicateTarget: ComposerTarget?
@@ -119,6 +132,8 @@ final class AppModel {
     var queuedPrompts: [EngineState.QueuedPrompt] = []
     var queuedPromptPending: String?
     var queuedPromptFailed = false
+    var suggestedPrompt: String?
+    var composerSuggestion: String? { goalMode || planMode ? nil : suggestedPrompt }
     var composerText: String { get { composerDrafts.text } set { composerDrafts.text = newValue } }
     var supportsAttachments = false
     var reviewOpen = false { didSet { if oldValue && !reviewOpen { acknowledgeRead() } } }
@@ -253,21 +268,30 @@ final class AppModel {
         set(\.failedRequest, state.failedRequest)
         if let shown = presentedRequest, !requests.contains(where: { $0.key == shown.key }) { presentedRequest = nil }
         set(\.connection, state.connection)
+        set(\.missions, state.missions ?? [])
+        set(\.workerMission, state.mission)
+        set(\.missionAction, state.missionAction ?? "idle")
+        set(\.connectionDetail, state.errorDetail ?? "")
+        set(\.suggestedPrompt, state.suggestedPrompt)
         set(\.laptops, state.laptops)
         set(\.pairing, state.pairing)
         set(\.pairingError, state.pairingError)
         set(\.teams, state.teams)
         if teamID != state.teamId { existingBranchGroup = nil; newProjectSource = nil }
         let hostID = state.laptopId ?? state.composerTarget?.hostId ?? ""
-        if laptopID != hostID || teamID != state.teamId {
-            sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: state.teamId)
-            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: state.teamId)
+        let nextAllTeams = state.allTeams == true
+        let scopeID = nextAllTeams ? "__all__" : state.teamId
+        if laptopID != hostID || sidebarScopeID != scopeID {
+            sidebarOrganization = sidebarPreferences.organization(hostId: hostID, teamId: scopeID)
+            sidebarIdleSort = sidebarPreferences.idleSort(hostId: hostID, teamId: scopeID)
             command("idleSort", ["order": sidebarIdleSort.rawValue])
         }
         set(\.laptopID, hostID)
         set(\.teamID, state.teamId)
+        set(\.allTeams, nextAllTeams)
         let created = chatCreation == .creating && state.chatCreation == .idle
         set(\.chatCreation, state.chatCreation)
+        set(\.teamCreation, state.teamCreation ?? .idle)
         if state.chatCreation != .creating { set(\.creatingChatGroupID, nil) }
         set(\.backends, state.backends)
         set(\.backend, state.backend)
@@ -329,12 +353,12 @@ final class AppModel {
 
     func chooseSidebarOrganization(_ organization: SidebarOrganization) {
         sidebarOrganization = organization
-        sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: teamID)
+        sidebarPreferences.setOrganization(organization, hostId: laptopID, teamId: sidebarScopeID)
     }
 
     func chooseSidebarIdleSort(_ order: SidebarIdleSort) {
         sidebarIdleSort = order
-        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: teamID)
+        sidebarPreferences.setIdleSort(order, hostId: laptopID, teamId: sidebarScopeID)
         command("idleSort", ["order": order.rawValue])
     }
 
@@ -344,8 +368,22 @@ final class AppModel {
 
     // MARK: Actions
 
+    func showMissions(_ id: String? = nil) {
+        dictation.cancel()
+        drawerOpen = false
+        missionPath = id.map { [$0] } ?? []
+        missionsOpen = true
+    }
+
+    /// A mission's agent, a ticket's worker or its lead, opens like any conversation; the mission stays one step back.
+    func open(missionAgent agentId: String) {
+        missionsOpen = false
+        select(agent: agentId)
+    }
+
     func select(agent id: String) {
         drawerOpen = false
+        missionsOpen = false
         guard id != activeAgentID else { return }
         dictation.cancel()
         conversationLoading.select()
@@ -515,7 +553,6 @@ final class AppModel {
     func dismissChatFailure() { if chatCreation == .failed { chatCreation = .idle; command("dismissNewChat") } }
     func disconnect() { command("disconnect") }
     func reconnect() { command("reconnect") }
-    func forget() { command("forget") }
     private func acknowledgeRead() {
         guard connection == .connected, conversationReady else { return }
         guard let read = conversationRead.acknowledgement(activeAgentId: activeAgentID,

@@ -16,7 +16,7 @@ Use names that communicate responsibility: implementation, documentation, or rev
 
 Use a Quick Chat to discuss an idea without first attaching it to a repository task. When the idea becomes implementation work, ask for a project or a dedicated agent with an explicit working folder.
 
-The start-work menu can create a new project, open an existing folder, browse GitHub repositories, or clone a repository URL. Opening a project gives the conversation concrete filesystem context. Creating a project folder and creating a Git worktree are different operations: worktrees require an existing Git repository.
+The start-work menu can create a new project, open an existing folder, browse GitHub or GitLab repositories, or clone a repository URL. Opening a project gives the conversation concrete filesystem context. Creating a project folder and creating a Git worktree are different operations: worktrees require an existing Git repository.
 
 ## Provider setup and accounts
 

@@ -1,3 +1,4 @@
+import { normalizePromptContent, promptContentText, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type {
   ClaudeConversationSnapshot,
   PromptAttachment,
@@ -231,6 +232,7 @@ export function createUserMessage(
   idPrefix = 'message',
   turnId?: string,
   attachments: readonly PromptAttachment[] = [],
+  content?: readonly CodexPromptPart[],
 ): RendererMessage {
   const isSteer = idPrefix.startsWith('steer-');
   return {
@@ -238,11 +240,12 @@ export function createUserMessage(
     agentId,
     ...(isSteer ? { kind: 'steer' as const } : {}),
     role: 'user',
+    ...(content === undefined ? {} : { metadata: { promptContent: normalizePromptContent(content) } }),
     status: 'complete',
     ...(turnId ? { turnId } : {}),
     createdAt,
     parts: [
-      { type: 'text', text: prompt },
+      { type: 'text', text: content === undefined ? prompt : promptContentText(content) },
       ...attachments.map(promptAttachmentPart),
     ],
   };

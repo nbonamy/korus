@@ -12,8 +12,9 @@ export function reconcileWorkspace(previous: CompanionWorkspace, next: Companion
     const merged = current.map((item) => { const before = known.get(item.id); return before ? same(before, item) : item; });
     return old && old.length === merged.length && merged.every((item, index) => item === old[index]) ? old : merged;
   };
-  const merged = { ...next, teams: items(previous.teams, next.teams) as CompanionWorkspace['teams'], agents: items(previous.agents, next.agents) as CompanionWorkspace['agents'] };
-  for (const key of ['repositoryIcons', 'modelFavorites', 'agentRequests', 'backends'] as const) {
+  const merged = { ...next, teams: items(previous.teams, next.teams) as CompanionWorkspace['teams'], agents: items(previous.agents, next.agents) as CompanionWorkspace['agents'],
+    ...(next.missionAgents ? { missionAgents: items(previous.missionAgents, next.missionAgents) as CompanionWorkspace['agents'] } : {}) };
+  for (const key of ['repositoryIcons', 'modelFavorites', 'agentRequests', 'backends', 'missionProgress'] as const) {
     if (key in next && key in previous) (merged as Record<string, unknown>)[key] = same(previous[key], next[key]);
   }
   const keys = new Set([...Object.keys(previous), ...Object.keys(merged)]) as Set<keyof CompanionWorkspace>;

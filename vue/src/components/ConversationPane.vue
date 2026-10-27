@@ -34,6 +34,7 @@
         </div>
       </template>
       <template #message-header="{ message }">
+        <span v-if="guestAuthor(message.id)" class="conversation-pane__message-header">{{ guestAuthor(message.id) }}</span>
         <DeferredConversationContent
           v-if="agent && contentSessionId && message.id && deferredContent(message) && !loadedContent.has(deferredContent(message)!.contentId)"
           :key="deferredContent(message)!.contentId"
@@ -79,6 +80,9 @@
           </button>
         </el-tooltip>
       </template>
+      <template #composer-drawers>
+        <ConversationShareActivity v-if="shareProposals.length" :proposals="shareProposals" owner :disabled="shareBusy || movingSuggestion" :edit-disabled="!canMoveSuggestion" :failed="shareFailed" @edit="moveSuggestion" @delete="dismissSuggestion" />
+      </template>
       <template #composer-shelf-actions="{ disabled }">
         <BackendSelector
           v-if="showBackendSelector && agent && backendSwitch"
@@ -89,7 +93,8 @@
           :disabled="disabled || backendSwitch.busy.value"
           @update:model-value="$event && selectBackend($event)"
         />
-        <div v-if="activeThreadFlags.length > 0" class="conversation-pane__thread-flags">
+        <div v-if="activeThreadFlags.length > 0 || agent?.rateLimitPause" class="conversation-pane__thread-flags">
+          <RateLimitResumeNotice v-if="agent?.rateLimitPause" :agent-id="agent.id" :pause="agent.rateLimitPause" />
           <ThreadFlagAffordance
             v-for="flag in activeThreadFlags"
             :id="flag"
@@ -138,6 +143,10 @@
 </template>
 
 <script setup lang="ts">
+import { slicePromptContent, replacePromptContentRange } from '@codex-app-sdk/core/surface';
+import ConversationShareActivity from './ConversationShareActivity.vue';
+import { supportsConversationSharing, conversationShareTarget, type GuestProposal } from '@workspace/core/conversation-sharing';
+import { useConversationShareActivity } from './use-conversation-share-activity';
 import { matchesShellShortcut } from '@workspace/core/keyboard-shortcuts';
 import { translate } from '../i18n';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
@@ -165,6 +174,7 @@ import type {
 import type { ThreadFlagId, ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import ConversationPlanPanel from './ConversationPlanPanel.vue';
+import RateLimitResumeNotice from './RateLimitResumeNotice.vue';
 import ConversationLoadError from './ConversationLoadError.vue';
 import DeferredConversationContent from './DeferredConversationContent.vue';
 import type { ConversationContentInput, ConversationContentChunk } from '@workspace/core/contracts/conversation';
@@ -185,6 +195,7 @@ import {
   presentRendererCollaborationMessage,
   type CollaborationMessagePresentation,
 } from '../shared/collaboration-message';
+import { withInferredWorkPhases } from '../shared/inferred-work-phases';
 import { isAppToolVisible, provideAppToolPresentation } from '../tool-presentation';
 import { provideConversationImagePreviews } from './conversation-image-previews';
 const backendSwitch = useBackendSwitch();
@@ -221,7 +232,7 @@ const props = withDefaults(defineProps<{
   emptySubhead?: string;
   threadFlagBusy?: boolean;
   savedPromptDrafts?: readonly SavedPromptDraft[];
-  savePromptDraft?: (agentId: string, text: string) => Promise<void>;
+  savePromptDraft?: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft?: (id: string) => Promise<void>;
   readConversationContent?: (agentId: string, input: ConversationContentInput) => Promise<ConversationContentChunk>;
 }>(), {
@@ -260,6 +271,12 @@ const emit = defineEmits<{
 
 const conversationKey = computed(() => props.agent?.id ?? 'no-agent');
 const contentSessionId = computed(() => props.agent?.backendSession?.kind === 'claude' ? props.agent.backendSession.sessionId : null);
+const shareTarget = computed(() => props.agent && supportsConversationSharing(props.agent) ? conversationShareTarget(props.agent) : null);
+const { proposals: shareProposals, authors: guestAuthors, busy: shareBusy, failed: shareFailed, dismiss: dismissSuggestion } = useConversationShareActivity(() => shareTarget.value);
+const movingSuggestion = ref(false);
+const movedSuggestions = new Set<string>();
+const canMoveSuggestion = computed(() => Boolean(resolveCodexConversationPaneValue(props.controller.actions).updateComposerState && resolveCodexConversationPaneValue(props.controller.state).composer?.state));
+function guestAuthor(id: string | undefined) { return guestAuthors.value.find(author => author.messageId === id)?.name ?? null; }
 const loadedContent = reactive(new Map<string, RendererMessage>());
 watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
 function deferredContent(message: CodexChatMessage | SurfaceMessage): RendererMessage['deferredContent'] {
@@ -280,6 +297,28 @@ function composerState(): CodexComposerState | null {
 
 function updateComposerState(state: CodexComposerState): void {
   void resolveCodexConversationPaneValue(props.controller.actions).updateComposerState?.(state);
+}
+
+async function moveSuggestion(proposal: GuestProposal): Promise<void> {
+  if (movingSuggestion.value || shareBusy.value) return;
+  const controller = props.controller;
+  const update = resolveCodexConversationPaneValue(controller.actions).updateComposerState;
+  const state = resolveCodexConversationPaneValue(controller.state).composer?.state;
+  if (!update || !state) return;
+  const identity = paneConversationKey.value;
+  movingSuggestion.value = true;
+  try {
+    if (!movedSuggestions.has(proposal.id)) {
+      const text = state.text ? `${state.text}\n\n${proposal.text}` : proposal.text;
+      const content = state.content === undefined ? undefined : replacePromptContentRange(state.content, state.text.length, state.text.length, [{ type: 'text', text: `${state.text ? '\n\n' : ''}${proposal.text}` }]);
+      await update({ ...state, text, ...(content === undefined ? {} : { content }), selectionStart: text.length, selectionEnd: text.length });
+      movedSuggestions.add(proposal.id);
+    }
+    if (identity !== paneConversationKey.value) return;
+    await dismissSuggestion(proposal.id);
+    void nextTick(() => editorElement()?.focus());
+  } catch { shareFailed.value = true; }
+  finally { movingSuggestion.value = false; }
 }
 
 function editorElement(): HTMLElement | null {
@@ -318,13 +357,15 @@ async function saveCurrentDraft(): Promise<void> {
   if (!text.trim()) return;
   draftSavePending.value = true;
   try {
-    await props.savePromptDraft(agentId, text);
+    const content = state.content === undefined ? undefined : slicePromptContent(state.content, hasSelection ? start : 0, hasSelection ? end : state.text.length);
+    await (content === undefined ? props.savePromptDraft(agentId, text) : props.savePromptDraft(agentId, text, content));
     ElMessage.success(t('chat.savedDrafts.saved'));
     if (props.agent?.id !== agentId || composerState()?.text !== state.text) return;
     const nextText = hasSelection ? state.text.slice(0, start) + state.text.slice(end) : '';
     updateComposerState({
       ...state,
       text: nextText,
+      ...(state.content === undefined ? {} : { content: hasSelection ? replacePromptContentRange(state.content, start, end, []) : [] }),
       selectionStart: hasSelection ? start : 0,
       selectionEnd: hasSelection ? start : 0,
       ...(hasSelection ? {} : { activeCommandId: null }),
@@ -361,7 +402,9 @@ async function restoreSavedDraft(selection: { id: string; keep: boolean }): Prom
   const end = Math.min(insertionRange.value?.end ?? start, state.text.length);
   const text = `${state.text.slice(0, start)}${draft.text}${state.text.slice(end)}`;
   const caret = start + draft.text.length;
-  updateComposerState({ ...state, text, selectionStart: caret, selectionEnd: caret });
+  const content = state.content !== undefined || draft.content !== undefined
+    ? replacePromptContentRange(state.content ?? [{ type: 'text', text: state.text }], start, end, draft.content ?? [{ type: 'text', text: draft.text }]) : undefined;
+  updateComposerState({ ...state, text, ...(content === undefined ? {} : { content }), selectionStart: caret, selectionEnd: caret });
   closeDraftPicker();
   if (!selection.keep) {
     try { await props.removePromptDraft?.(draft.id); }
@@ -476,7 +519,7 @@ function transformConversationMessage(
   if (message.id && result.presentation) {
     collaborationMessagePresentations.set(message.id, result.presentation);
   }
-  const transformed = result.message as CodexChatMessage | SurfaceMessage;
+  const transformed = withInferredWorkPhases(result.message as CodexChatMessage | SurfaceMessage);
   transformedMessageCache.set(message, transformed);
   return transformed;
 }

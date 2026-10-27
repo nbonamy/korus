@@ -17,6 +17,35 @@ import {
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
+  it('offers the imagegen bridge alongside native skills only to eligible non-Codex agents', async () => {
+    const snapshot = createTestSnapshot();
+    const native = { name: 'review', path: '/skills/review/SKILL.md', enabled: true };
+    const drivers = (['codex', 'claude', 'antigravity'] as const).map(backend => ({
+      backend, listSkills: vi.fn(async () => [native]), getRuntimeStatus: vi.fn(), getCapabilities: vi.fn(),
+      sendPrompt: vi.fn(), interrupt: vi.fn(), respondToAgentRequest: vi.fn(), onEvent: () => () => {}, close: vi.fn(),
+    } satisfies AgentBackendDriver));
+    snapshot.agents = drivers.map(({ backend }) => ({ id: backend, teamId: 'team-test', name: backend,
+      backend, folder: '/repo', status: { type: 'idle' }, createdAt: 'created', updatedAt: 'updated' }));
+    snapshot.teams[0]!.agentIds = snapshot.agents.map(agent => agent.id);
+    const server = new AppBackendServer({ version: 'test', snapshot, driverRpc: new BackendDriverRpc(new Map(drivers.map(driver => [driver.backend, driver]))) });
+    const list = (agentId: string) => server.handleMessage({ jsonrpc: '2.0', id: 'skills', method: backendMethods.agentSkillsList, params: { agentId } });
+    try {
+      await expect(list('codex')).resolves.toMatchObject({ result: [native] });
+      for (const backend of ['claude', 'antigravity']) {
+        await expect(list(backend)).resolves.toMatchObject({ result: [native, {
+          name: 'imagegen', path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true,
+          displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
+        }] });
+      }
+      snapshot.general.providerEnabled = { codex: false };
+      await expect(list('claude')).resolves.toMatchObject({ result: [native] });
+      snapshot.general.providerEnabled = { codex: true };
+      const ownImagegen = { ...native, name: 'imagegen' };
+      drivers[1]!.listSkills.mockResolvedValue([ownImagegen]);
+      await expect(list('claude')).resolves.toMatchObject({ result: [ownImagegen] });
+    } finally { await server.close(); }
+  });
+
   it.each([
     { outcome: 'success', discardChanges: false },
     { outcome: 'failure', discardChanges: true },
@@ -476,7 +505,7 @@ describe('AppBackendServer', () => {
     } finally { await server.close(); }
   });
 
-  it('cleans up a closed pull request after verifying its recorded head', async () => {
+  it.each(['github', 'gitlab'] as const)('cleans up a closed %s request after verifying its recorded identity and head', async provider => {
     const snapshot = createTestSnapshot();
     snapshot.teams[0]!.agentIds = ['agent-dina'];
     snapshot.agents = [{
@@ -487,12 +516,12 @@ describe('AppBackendServer', () => {
       backend: 'codex',
       status: { type: 'idle' },
       pullRequest: {
-        provider: 'github',
-        repository: 'owner/repo',
+        provider,
+        repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo',
         branch: 'feature',
         number: 7,
         title: 'Feature',
-        url: 'https://github.com/owner/repo/pull/7',
+        url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7',
         draft: false,
         headSha: 'merged-head',
         state: 'closed',
@@ -502,6 +531,7 @@ describe('AppBackendServer', () => {
       createdAt: '2026-09-03T10:00:00.000Z',
       updatedAt: '2026-09-03T10:00:00.000Z',
     }];
+    const tracking = snapshot.agents[0]!.pullRequest;
     const validateLinkedWorktreeDeletion = vi.fn();
     const deleteLinkedWorktree = vi.fn();
     const server = new AppBackendServer({
@@ -530,8 +560,8 @@ describe('AppBackendServer', () => {
       },
     })).resolves.toMatchObject({ result: { agents: [] } });
 
-    expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false);
-    expect(deleteLinkedWorktree).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false);
+    expect(validateLinkedWorktreeDeletion).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false, tracking);
+    expect(deleteLinkedWorktree).toHaveBeenCalledWith('/repo-feature', false, 'merged-head', false, tracking);
     await server.close();
   });
 

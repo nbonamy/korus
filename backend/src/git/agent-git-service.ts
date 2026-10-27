@@ -1,11 +1,13 @@
+import { addFileToKindStats, emptyKindStats, mergeKindStats } from '@workspace/core/file-kind';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
 import { product } from '@workspace/core/product';
 import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { normalizeGitSettings, type GitSettings } from '@workspace/core/git-preferences';
-import type { AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
+import type { AgentPullRequestTracking, AgentGitCommitSummary, AgentGitDiff, AgentGitDiffCatalog, AgentGitDiffSection, AgentGitDiffSummary, AgentGitDiffTarget, AgentGitFile, AgentGitWorkflow, AgentWorkspaceIdentity } from '@workspace/core/contracts';
 import { AppError } from '@workspace/core/app-error';
-import { matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
+import { canonicalGitRemoteIdentity, matchingBranchUpstream, sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import type { AgentGitStatus } from '@workspace/core/contracts';
 import { listSourceBranches, type GitWorktreeCreateInput } from '../git-worktrees';
 import { AgentGitHistoryService } from './agent-git-history-service';
@@ -103,10 +105,15 @@ export class AgentGitService {
       const isDirty = changed.changedFiles > 0 || diff.addedLines > 0 || diff.removedLines > 0;
       const commonDirectory = commonDirectoryResult.stdout.trim();
       const repository = commonDirectory ? fileName(dirname(resolve(folder, commonDirectory))) : undefined;
-      const githubRepository = githubRepositoryFromRemotes(remotesResult.stdout);
+      const entries = remotesResult.stdout.split(/\r?\n/).map(line => line.match(/^(\S+)\s+(\S+)\s+\(fetch\)$/)).filter(Boolean);
+      const selected = entries.find(entry => entry![1] === branch.upstream?.split('/')[0])
+        ?? entries.find(entry => entry![1] === 'origin') ?? entries[0];
+      const remoteIdentity = selected ? canonicalGitRemoteIdentity(selected[2]!) : undefined;
+      const repositoryProvider = remoteIdentity?.startsWith('gitlab.com/') ? 'gitlab' : remoteIdentity?.startsWith('github.com/') ? 'github' : undefined;
+      const githubRepository = repositoryProvider === 'github' ? remoteIdentity!.slice(11) : undefined;
       const diffCatalog = await this.diffCatalog(folder, {
         branch: branch.branch,
-        remote: branch.upstream?.split('/')[0] ?? remoteNameFromRemotes(remotesResult.stdout),
+        remote: selected?.[1],
         staged: parseNumstatSummary(stagedNumstat.stdout),
         unstaged: combineSummaries(parseNumstatSummary(unstagedNumstat.stdout), untrackedDiff),
         untracked: { ...untrackedDiff, changedFiles: untrackedFilesResult.stdout.split('\0').filter(Boolean).length },
@@ -117,6 +124,7 @@ export class AgentGitService {
         folder,
         ...(repository ? { repository } : {}),
         ...(githubRepository ? { githubRepository } : {}),
+        ...(repositoryProvider ? { repositoryProvider } : {}),
         ...branch,
         ...diff,
         changedFiles: changed.changedFiles,
@@ -310,8 +318,9 @@ export class AgentGitService {
     diff: string;
   }> {
     const workflow = await this.workflow(folder);
-    if (!workflow.branch || workflow.detached) throw new Error('Create or check out a branch before generating a pull request.');
-    if (isIntegrationBranch(workflow.branch)) throw new Error('Create a feature branch before generating a pull request.');
+    const requestName = workflow.repositoryProvider === 'gitlab' ? 'merge request' : 'pull request';
+    if (!workflow.branch || workflow.detached) throw new Error(`Create or check out a branch before generating a ${requestName}.`);
+    if (isIntegrationBranch(workflow.branch)) throw new Error(`Create a feature branch before generating a ${requestName}.`);
     const baseRef = await this.resolveBaseRef(folder, workflow.branch, workflow.remote);
     const [commits, stat, diff] = await Promise.all([
       this.runGit(folder, ['log', '--format=%h %s%n%b', `${baseRef}..HEAD`]),
@@ -320,8 +329,8 @@ export class AgentGitService {
     ]);
     if (!diff.stdout.trim()) {
       throw new AppError(
-        'git.pullRequestChangesRequired',
-        'This branch has no committed changes to include. Commit your work before creating a pull request.',
+        workflow.repositoryProvider === 'gitlab' ? 'git.mergeRequestChangesRequired' : 'git.pullRequestChangesRequired',
+        `This branch has no committed changes to include. Commit your work before creating a ${requestName}.`,
       );
     }
     return {
@@ -333,7 +342,7 @@ export class AgentGitService {
   }
 
   async workflow(folder: string): Promise<Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>> {
-    const [root, branch, upstream, remote, status, branchStatusResult, stagedNumstat, unstagedNumstat, worktreeList] = await Promise.all([
+    const [root, branch, upstream, remote, status, branchStatusResult, stagedNumstat, unstagedNumstat, worktreeList, head] = await Promise.all([
       this.runGit(folder, ['rev-parse', '--show-toplevel']),
       this.runGit(folder, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => ({ stdout: '' })),
@@ -343,13 +352,14 @@ export class AgentGitService {
       this.runGit(folder, ['diff', '--cached', '--numstat', '--']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['diff', '--numstat', '--']).catch(() => ({ stdout: '' })),
       this.runGit(folder, ['worktree', 'list', '--porcelain']).catch(() => ({ stdout: '' })),
+      this.runGit(folder, ['rev-parse', '--verify', 'HEAD']).catch(() => ({ stdout: '' })),
     ]);
     const remotes = remote.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
     const trackedRemote = upstream.stdout.trim().split('/')[0];
     const remoteName = (trackedRemote && remotes.includes(trackedRemote) ? trackedRemote : undefined)
       ?? (remotes.includes('origin') ? 'origin' : remotes[0]);
     const remoteUrl = remoteName
-      ? (await this.runGit(folder, ['remote', 'get-url', remoteName])).stdout.trim()
+      ? sanitizeGitRemoteUrl((await this.runGit(folder, ['remote', 'get-url', remoteName])).stdout)
       : undefined;
     const files = parsePorcelainFiles(status.stdout);
     const branchStatus = parseBranchStatus(branchStatusResult.stdout);
@@ -369,9 +379,13 @@ export class AgentGitService {
         ? this.runGit(baseWorktree.path, ['status', '--porcelain=v1', '-z']).then((result) => Boolean(result.stdout))
         : undefined,
     ]);
-    const repository = githubRepositoryFromRemote(remoteUrl) ?? fileName(repositoryFolder);
+    const identity = remoteUrl ? canonicalGitRemoteIdentity(remoteUrl) : undefined;
+    const repositoryProvider = identity?.startsWith('gitlab.com/') ? 'gitlab' : identity?.startsWith('github.com/') ? 'github' : undefined;
+    const repository = repositoryProvider === 'gitlab' ? identity! : repositoryProvider === 'github' ? identity!.slice(11) : fileName(repositoryFolder);
     return {
       repository,
+      ...(head.stdout.trim() ? { headSha: head.stdout.trim() } : {}),
+      ...(repositoryProvider ? { repositoryProvider } : {}),
       folder: repositoryFolder,
       isLinkedWorktree: currentWorktreeIndex > 0,
       ...(baseWorktree?.branch ? { baseBranch: baseWorktree.branch } : {}),
@@ -426,7 +440,7 @@ export class AgentGitService {
       : ['push', remote, branch]);
   }
 
-  async createBranch(folder: string, name: string, createWorktree = false, pullRequestNumber?: number): Promise<string> {
+  async createBranch(folder: string, name: string, createWorktree = false, pullRequestNumber?: number, expectedHeadSha?: string): Promise<string> {
     const normalized = name.trim();
     if (!normalized) throw new Error('Enter a branch name.');
     if (normalized.startsWith('-')) throw new Error('Enter a valid branch name.');
@@ -437,20 +451,25 @@ export class AgentGitService {
     }
     let startPoint: string | undefined;
     if (pullRequestNumber !== undefined) {
-      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) throw new Error('Enter a valid pull request number.');
+      if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) throw new Error('Enter a valid request number.');
       const workflow = await this.workflow(folder);
-      if (!workflow.remote) throw new Error('Add a GitHub remote before checking out a pull request.');
-      await this.runGit(folder, ['fetch', workflow.remote, `pull/${pullRequestNumber}/head`]);
-      startPoint = 'FETCH_HEAD';
+      if (!workflow.remote || !workflow.repositoryProvider) throw new Error('Choose a GitHub or GitLab.com remote before checking out a request.');
+      const ref = workflow.repositoryProvider === 'gitlab' ? `refs/merge-requests/${pullRequestNumber}/head` : `pull/${pullRequestNumber}/head`;
+      await this.runGit(folder, ['fetch', workflow.remote, ref]);
+      const fetchedHead = (await this.runGit(folder, ['rev-parse', 'FETCH_HEAD'])).stdout.trim();
+      if (!/^[a-f0-9]{40,64}$/i.test(fetchedHead) || expectedHeadSha && fetchedHead !== expectedHeadSha) throw new Error('The request head changed. Refresh the request and retry checkout.');
+      startPoint = fetchedHead;
     }
     if (createWorktree) {
       if (!this.createWorktree) throw new Error('Worktree creation is not configured.');
-      return (await this.createWorktree({
+      const worktree = await this.createWorktree({
         repoPath: folder,
         branchName: normalized,
         reuseExisting: true,
         ...(startPoint ? { startPoint } : {}),
-      })).path;
+      });
+      if (startPoint) await this.runGit(worktree.path, ['merge', '--ff-only', startPoint]);
+      return worktree.path;
     }
     const branchExists = await this.localBranchExists(folder, normalized);
     if (branchExists) {
@@ -463,32 +482,39 @@ export class AgentGitService {
     return folder;
   }
 
-  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false): Promise<void> {
-    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges);
+  async deleteLinkedWorktree(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
+    const { current, target } = await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
 
     if (deleteRemoteBranch) {
-      await this.runGit(target.path, ['push', current.remote!, '--delete', current.upstream!.slice(current.remote!.length + 1)]);
+      const branch = current.upstream!.slice(current.remote!.length + 1);
+      // A tracked request grants cleanup of its recorded head, never newer remote work.
+      await this.runGit(target.path, expectedHeadSha
+        ? ['push', `--force-with-lease=refs/heads/${branch}:${expectedHeadSha}`, current.remote!, `:refs/heads/${branch}`]
+        : ['push', current.remote!, '--delete', branch]);
     }
     await this.runGit(target.path, ['worktree', 'remove', ...(discardChanges ? ['--force'] : []), current.folder]);
     await this.runGit(target.path, ['branch', '-D', current.branch!]);
   }
 
-  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false): Promise<void> {
-    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges);
+  async validateLinkedWorktreeDeletion(folder: string, deleteRemoteBranch = false, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<void> {
+    await this.linkedWorktreeDeletionPlan(folder, deleteRemoteBranch, expectedHeadSha, discardChanges, expectedIdentity);
   }
 
-  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false): Promise<{
+  private async linkedWorktreeDeletionPlan(folder: string, deleteRemoteBranch: boolean, expectedHeadSha?: string, discardChanges = false, expectedIdentity?: Pick<AgentPullRequestTracking, 'provider' | 'repository' | 'branch'>): Promise<{
     current: Omit<AgentGitWorkflow, 'githubConnected' | 'existingPullRequest'>;
     target: { path: string; branch?: string };
   }> {
     const current = await this.workflow(folder);
     if (!current.isLinkedWorktree) throw new Error('The current folder is not a linked worktree.');
     if (!current.branch || current.detached) throw new Error('The linked worktree does not have a local branch to delete.');
+    if (expectedIdentity && (current.branch !== expectedIdentity.branch || current.repository !== expectedIdentity.repository || current.repositoryProvider !== expectedIdentity.provider)) {
+      throw new Error('The worktree repository or branch no longer matches the tracked request. Keep it and review its current work.');
+    }
     if (current.files.length > 0 && !discardChanges) throw new Error('Commit or discard the worktree changes before deleting it.');
     if (expectedHeadSha) {
       const headSha = (await this.runGit(folder, ['rev-parse', 'HEAD'])).stdout.trim();
       if (headSha !== expectedHeadSha) {
-        throw new Error('This branch contains commits that are not part of the tracked pull request.');
+        throw new Error('This branch contains commits that are not part of the tracked request.');
       }
     }
 
@@ -500,6 +526,13 @@ export class AgentGitService {
       const upstream = matchingBranchUpstream(current.branch, current.upstream, current.baseBranch ?? target.branch);
       if (!current.remote || !upstream?.startsWith(`${current.remote}/`)) {
         throw new Error('The branch does not have a remote branch to delete.');
+      }
+      if (expectedIdentity) {
+        const pushUrl = (await this.runGit(target.path, ['remote', 'get-url', '--push', current.remote])).stdout.trim();
+        const expectedRepository = expectedIdentity.provider === 'github' ? `github.com/${expectedIdentity.repository}` : expectedIdentity.repository;
+        if (canonicalGitRemoteIdentity(pushUrl) !== expectedRepository) {
+          throw new Error('The push repository no longer matches the tracked request. Keep the remote branch and review its push destination.');
+        }
       }
     }
     return { current, target };
@@ -750,28 +783,6 @@ export function parsePorcelainFiles(output: string): AgentGitFile[] {
   return files;
 }
 
-function githubRepositoryFromRemote(remoteUrl?: string): string | null {
-  if (!remoteUrl) return null;
-  const match = remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/i);
-  return match?.[1] ?? null;
-}
-
-function githubRepositoryFromRemotes(output: string): string | null {
-  for (const line of output.split(/\r?\n/u)) {
-    const remoteUrl = line.trim().split(/\s+/u)[1];
-    const repository = githubRepositoryFromRemote(remoteUrl);
-    if (repository) return repository;
-  }
-  return null;
-}
-
-function remoteNameFromRemotes(output: string): string | undefined {
-  return output
-    .split(/\r?\n/u)
-    .map((line) => line.trim().split(/\s+/u)[0])
-    .find(Boolean);
-}
-
 function fileName(value: string): string {
   return value.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? value;
 }
@@ -795,23 +806,16 @@ function summaryFromSections(sections: AgentGitDiffSection[]): AgentGitDiffSumma
 }
 
 function parseUnifiedDiffSummary(diff: string): AgentGitDiffSummary {
-  let addedLines = 0;
-  let removedLines = 0;
-  const files = new Set<string>();
-  for (const line of diff.split(/\r?\n/u)) {
-    if (line.startsWith('diff --git ')) files.add(line);
-    else if (line.startsWith('+') && !line.startsWith('+++')) addedLines += 1;
-    else if (line.startsWith('-') && !line.startsWith('---')) removedLines += 1;
-  }
-  return { addedLines, removedLines, changedFiles: files.size };
+  return summarizeUnifiedDiff(diff);
 }
 
-function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
-  return summaries.reduce<AgentGitDiffSummary>((total, summary) => ({
-    addedLines: total.addedLines + summary.addedLines,
-    removedLines: total.removedLines + summary.removedLines,
-    changedFiles: total.changedFiles + (summary.changedFiles ?? 0),
+function combineSummaries(...summaries: Array<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'> & Partial<Pick<AgentGitDiffSummary, 'changedFiles'>>>): AgentGitDiffSummary {
+  const total = summaries.reduce<AgentGitDiffSummary>((sum, summary) => ({
+    addedLines: sum.addedLines + summary.addedLines,
+    removedLines: sum.removedLines + summary.removedLines,
+    changedFiles: sum.changedFiles + (summary.changedFiles ?? 0),
   }), emptyDiffSummary());
+  return summaries.some(summary => summary.byKind) ? { ...total, byKind: mergeKindStats(...summaries.map(summary => summary.byKind)) } : total;
 }
 
 function emptyDiffSummary(): AgentGitDiffSummary {
@@ -826,15 +830,21 @@ export function parseCommitSummaries(output: string): AgentGitCommitSummary[] {
   }).filter((commit) => Boolean(commit.sha));
 }
 
-async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<{ addedLines: number; removedLines: number }> {
+async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<Pick<AgentGitDiffSummary, 'addedLines' | 'removedLines' | 'byKind'>> {
   const results = await Promise.all(paths.map(async (filePath) => {
     try {
-      return parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout);
+      return { filePath, ...parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout) };
     } catch {
-      return { addedLines: 0, removedLines: 0 };
+      return { filePath, addedLines: 0, removedLines: 0 };
     }
   }));
-  return results.reduce((total, result) => ({ addedLines: total.addedLines + result.addedLines, removedLines: total.removedLines + result.removedLines }), { addedLines: 0, removedLines: 0 });
+  const byKind = emptyKindStats();
+  for (const result of results) addFileToKindStats(byKind, result.filePath, result.addedLines, result.removedLines);
+  return {
+    addedLines: results.reduce((total, result) => total + result.addedLines, 0),
+    removedLines: results.reduce((total, result) => total + result.removedLines, 0),
+    byKind,
+  };
 }
 
 async function git(cwd: string, args: string[]): Promise<{ stdout: string }> {
@@ -920,9 +930,15 @@ export function parseNumstat(output: string): Pick<AgentGitStatus, 'addedLines' 
 }
 
 function parseNumstatSummary(output: string): AgentGitDiffSummary {
+  const byKind = emptyKindStats();
+  for (const line of output.split(/\r?\n/u)) {
+    const match = /^(\S+)\s+(\S+)\s+(.+)$/u.exec(line.trim());
+    if (match) addFileToKindStats(byKind, match[3]!, numericStat(match[1]), numericStat(match[2]));
+  }
   return {
     ...parseNumstat(output),
     changedFiles: output.split(/\r?\n/u).filter((line) => line.trim()).length,
+    byKind,
   };
 }
 

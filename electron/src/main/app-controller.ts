@@ -1,3 +1,4 @@
+import type { WorkProviderConnectOptions } from '@workspace/core/contracts';
 import { mobileRuntimePaths } from './mobile/runtime';
 import { MobileSimulatorService } from './mobile/service';
 import { NativeMobileAdapter } from './mobile/adapter';
@@ -30,6 +31,7 @@ import { installAppMenu, type AppMenuCallbacks, type DebugCodeReviewScenario } f
 import type { ThreadFlagId } from '@workspace/core/thread-flags';
 import { DesktopAutoUpdateService } from './auto-update';
 import { BrowserPane, browserPaneKey } from './browser-pane';
+import { BrowserExtensions } from './browser-extensions';
 import { launchChatGptApp } from './chatgpt-app';
 import { appCommandFromDeepLink, appDeepLinkScheme, deepLinksFromArgv } from './deep-links';
 import { ManualUpdateCheckController } from './manual-update-check';
@@ -58,6 +60,13 @@ type PendingBrowserOpen = {
 };
 
 export class AppController {
+  private extensionService: BrowserExtensions | null = null;
+  private extensions(): BrowserExtensions {
+    return this.extensionService ??= new BrowserExtensions({
+      parent: () => this.mainWindow,
+      request: (input) => this.requireBackendClient().request(backendMethods.browserExtensionPackages, { input }),
+    });
+  }
   private mainWindow: BrowserWindow | null = null;
   /** Main retains product metadata only; full transcripts are transient IPC values. */
   private snapshot: AppSnapshot | null = null;
@@ -95,6 +104,8 @@ export class AppController {
   })));
 
   private readonly browserPane = new BrowserPane({
+    onGuestReady: (agentId, browserId, contents, window) => this.extensions().attachGuest(agentId, browserId, contents, window),
+    onGuestSelected: (agentId, browserId) => { void this.extensions().selectGuest(agentId, browserId).catch(() => {}); },
     onAnnotation: (annotation) => this.emitBrowserAnnotation(annotation),
     onViewportRequest: (request) => {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) throw new Error('Browser window is not available.');
@@ -199,6 +210,11 @@ export class AppController {
     );
     const ipc = new TypedIpcMain<AppIpcRequests>(ipcMain);
     ipc.handle(ipcChannels.getSnapshot, () => this.getSnapshot());
+    ipc.handle(ipcChannels.browserExtensions, (_event, agentId, action, id, browserId) => {
+      if (agentId !== null && !this.snapshot?.agents.some(agent => agent.id === agentId)) throw new Error('Agent not found.');
+      if (action === 'open' && agentId === null) throw new Error('Select a browser tab first.');
+      return this.extensions().manage(agentId, action, id, browserId);
+    });
     ipc.handle(ipcChannels.getSnapshotState, () => this.getSnapshotState());
 
     ipc.handle(ipcChannels.listSshHosts, () => {
@@ -221,6 +237,10 @@ export class AppController {
       return this.removeRemoteConnection(connectionId);
     });
 
+    ipc.handle(ipcChannels.guestConversationControl, (_event, input) => this.requireBackendClient().request(backendMethods.guestConversationControl, { input }));
+    ipc.handle(ipcChannels.guestConversationImage, (_event, id, path) => this.requireBackendClient().request(backendMethods.guestConversationImage, { id, path }));
+    ipc.handle(ipcChannels.guestConversationContent, (_event, id, input) => this.requireBackendClient().request(backendMethods.guestConversationContent, { id, input }));
+    ipc.handle(ipcChannels.conversationShareControl, (_event, input) => this.requireBackendClient().request(backendMethods.conversationShareControl, { input }));
     ipc.handle(ipcChannels.companionControl, (_event, input) => this.requireBackendClient().request(backendMethods.companionControl, { input }));
     ipc.handle(ipcChannels.getRemoteControlStatus, () => this.getRemoteControlStatus());
     ipc.handle(ipcChannels.enableRemoteControl, () => this.enableRemoteControl());
@@ -230,8 +250,8 @@ export class AppController {
     ipc.handle(ipcChannels.listPairedDevices, (_event, environmentId: string) => this.listPairedDevices(environmentId));
     ipc.handle(ipcChannels.revokePairedDevice, (_event, environmentId: string, clientId: string) => this.revokePairedDevice(environmentId, clientId));
 
-    ipc.handle(ipcChannels.connectWorkProvider, async (_event, provider: WorkProviderKind) => {
-      return this.connectWorkProvider(provider);
+    ipc.handle(ipcChannels.connectWorkProvider, async (_event, provider: WorkProviderKind, options?: WorkProviderConnectOptions) => {
+      return this.connectWorkProvider(provider, options);
     });
 
 
@@ -342,6 +362,10 @@ export class AppController {
         throw encodedAppError(error);
       }
     });
+
+    ipc.handle(ipcChannels.previewRepositoryDeletion, (_event, agentId: string) => this.requireBackendClient().request(backendMethods.repositoryDeletePreview, { agentId }));
+    ipc.handle(ipcChannels.deleteRepository, async (_event, agentId: string, input: import('@workspace/core/contracts/workspace').DeleteRepositoryInput) =>
+      this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.repositoryDelete, { agentId, input })));
 
     ipc.handle(ipcChannels.createProject, async (_event, input: import('@workspace/core/contracts').CreateProjectInput) => {
       try {
@@ -530,6 +554,7 @@ export class AppController {
     });
     ipc.handle(ipcChannels.getPluginStatus, () => this.getPluginStatus());
     ipc.handle(ipcChannels.readEngineInstructions, (_event, engine) => this.requireBackendClient().request<{ text: string; path: string }>(backendMethods.engineInstructionsRead, { engine }));
+    ipc.handle(ipcChannels.manageSkills, (_event, input) => this.requireBackendClient().request(backendMethods.skillsManage, { input }));
     ipc.handle(ipcChannels.saveEngineInstructions, (_event, input) => this.requireBackendClient().request<void>(backendMethods.engineInstructionsSave, { input }));
     ipc.handle(ipcChannels.getCodexAuthentication, (_event, remoteConnectionId?: string) => this.getCodexAuthentication(remoteConnectionId));
     ipc.handle(ipcChannels.getClaudeAuthentication, (_event, remoteConnectionId?: string) => this.getClaudeAuthentication(remoteConnectionId));
@@ -645,6 +670,9 @@ export class AppController {
     ipc.handle(ipcChannels.reviewCodeAgain, async (_event, agentId: string, sessionId: string) => (
       this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentCodeReviewAgain, { agentId, sessionId }))
     ));
+    ipc.handle(ipcChannels.setAutoResume, async (_event, agentId: string, enabled: boolean) => this.adoptBackendSnapshot(
+      await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentAutoResumeSet, { agentId, enabled })
+    ));
     ipc.handle(ipcChannels.respondToThreadFlag, async (_event, agentId: string, response: import('@workspace/core/thread-flags').ThreadFlagResponse) => {
       return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentThreadFlagRespond, { agentId, response }));
     });
@@ -660,12 +688,12 @@ export class AppController {
       return this.deleteQueuedPrompt(agentId, promptId);
     });
 
-    ipc.handle(ipcChannels.updateQueuedPrompt, (_event, agentId: string, promptId: string, prompt: string) => {
-      return this.updateQueuedPrompt(agentId, promptId, prompt);
+    ipc.handle(ipcChannels.updateQueuedPrompt, (_event, agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.updateQueuedPrompt(agentId, promptId, prompt, options);
     });
 
-    ipc.handle(ipcChannels.steerQueuedPrompt, (_event, agentId: string, promptId: string, prompt?: string) => {
-      return this.steerQueuedPrompt(agentId, promptId, prompt);
+    ipc.handle(ipcChannels.steerQueuedPrompt, (_event, agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.steerQueuedPrompt(agentId, promptId, prompt, options);
     });
 
     ipc.handle(ipcChannels.interruptAgent, (_event, agentId: string) => {
@@ -676,8 +704,8 @@ export class AppController {
       return this.deleteTurn(agentId, turnId);
     });
 
-    ipc.handle(ipcChannels.editTurn, (_event, agentId: string, turnId: string, content: string) => {
-      return this.editTurn(agentId, turnId, content);
+    ipc.handle(ipcChannels.editTurn, (_event, agentId: string, turnId: string, content: string, options?: Pick<RendererSendPromptOptions, 'content'>) => {
+      return this.editTurn(agentId, turnId, content, options);
     });
 
     ipc.handle(ipcChannels.retryTurn, (_event, agentId: string, turnId: string) => {
@@ -699,6 +727,8 @@ export class AppController {
     ipc.handle(ipcChannels.browserGoBack, (_event, agentId: string, browserId: string) => this.browserPane.goBack(agentId, browserId));
     ipc.handle(ipcChannels.browserGoForward, (_event, agentId: string, browserId: string) => this.browserPane.goForward(agentId, browserId));
     ipc.handle(ipcChannels.browserReload, (_event, agentId: string, browserId: string) => this.browserPane.reload(agentId, browserId));
+    ipc.handle(ipcChannels.browserOpenDevTools, (_event, agentId: string, browserId: string) => this.browserPane.openDevTools(agentId, browserId));
+    ipc.handle(ipcChannels.browserClearBrowsingData, () => this.browserPane.clearBrowsingData());
     ipc.handle(ipcChannels.browserGetZoom, (_event, agentId: string, browserId: string) => this.browserPane.getZoom(agentId, browserId));
     ipc.handle(ipcChannels.browserSetZoom, (_event, agentId: string, browserId: string, percent: number) => this.browserPane.setZoom(agentId, browserId, percent));
     ipc.handle(ipcChannels.browserCopyScreenshot, (_event, agentId: string, browserId: string, rect?: BrowserBounds) => this.browserPane.copyScreenshot(agentId, browserId, rect));
@@ -762,7 +792,7 @@ export class AppController {
   }
 
   openDeepLink(value: string): boolean {
-    const command = appCommandFromDeepLink(value);
+    const command = appCommandFromDeepLink(value, process.env.APP_DEV_PROTOCOL_SCHEME);
     if (!command) return false;
     if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
       this.pendingDeepLinkCommands.push(command);
@@ -780,6 +810,7 @@ export class AppController {
     this.reconnectTimer = null;
     this.rejectAllPendingBrowserOpens(new Error('Application is shutting down.'));
     await this.browserPane.closeAll();
+    await this.extensionService?.dispose();
     this.powerSaveBlocker.stop();
     if (this.powerSourceListenersInstalled && powerMonitor) {
       powerMonitor.removeListener('on-battery', this.handlePowerSourceChanged);
@@ -834,8 +865,8 @@ export class AppController {
     }
   }
 
-  private async connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult> {
-    const result = await this.requireBackendClient().request<WorkProviderConnectResult>(backendMethods.workProviderConnect, { provider });
+  private async connectWorkProvider(provider: WorkProviderKind, options?: WorkProviderConnectOptions): Promise<WorkProviderConnectResult> {
+    const result = await this.requireBackendClient().request<WorkProviderConnectResult>(backendMethods.workProviderConnect, { provider, ...(options ? { options } : {}) });
     await this.adoptBackendSnapshot(result.snapshot);
     return result;
   }
@@ -1490,15 +1521,16 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptDelete, { agentId, promptId }));
   }
 
-  private async updateQueuedPrompt(agentId: string, promptId: string, prompt: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt }));
+  private async updateQueuedPrompt(agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptUpdate, { agentId, promptId, prompt, ...(options ? { options } : {}) }));
   }
 
-  private async steerQueuedPrompt(agentId: string, promptId: string, prompt?: string): Promise<AppSnapshot> {
+  private async steerQueuedPrompt(agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentQueuedPromptSteer, {
       agentId,
       promptId,
       ...(prompt === undefined ? {} : { prompt }),
+      ...(options ? { options } : {}),
     }));
   }
 
@@ -1510,8 +1542,8 @@ export class AppController {
     return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnDelete, { agentId, turnId }));
   }
 
-  private async editTurn(agentId: string, turnId: string, content: string): Promise<AppSnapshot> {
-    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnEdit, { agentId, turnId, content }));
+  private async editTurn(agentId: string, turnId: string, content: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<AppSnapshot> {
+    return this.adoptBackendSnapshot(await this.requireBackendClient().request<AppSnapshot>(backendMethods.agentTurnEdit, { agentId, turnId, content, ...(options ? { options } : {}) }));
   }
 
   private async retryTurn(agentId: string, turnId: string): Promise<AppSnapshot> {
@@ -2105,7 +2137,7 @@ export class AppController {
   private sendOrQueueAppCommand(command: AppCommand): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.rendererReady) {
       this.pendingDeepLinkCommands.push(command);
-      if (app.isReady() && BrowserWindow.getAllWindows().length === 0) this.createWindow();
+      if (app.isReady()) this.createWindow();
       return;
     }
     sendAppCommand(this.mainWindow.webContents, command);
@@ -2132,16 +2164,16 @@ export function startMainApp(): void {
   });
   controller.setAutoUpdateService(autoUpdateService);
   let shutdownStarted = false;
-  // Development temporarily runs alongside the installed app. Keep packaged
-  // releases single-instance while allowing Electron Forge to start normally.
-  if (requiresSingleInstanceLock(app.isPackaged) && !app.requestSingleInstanceLock()) {
+  // Native development targets and packaged apps own one instance per profile.
+  // Untargeted Forge sessions can coexist with the installed app.
+  if (requiresSingleInstanceLock(app.isPackaged, process.env.APP_DEV_PROTOCOL_SCHEME) && !app.requestSingleInstanceLock()) {
     app.quit();
     return;
   }
   const openDeepLinks = (values: readonly string[]): void => {
     let accepted = false;
     for (const value of values) accepted = controller.openDeepLink(value) || accepted;
-    if (accepted && app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+    if (accepted && app.isReady()) {
       controller.createWindow();
     }
   };
@@ -2150,14 +2182,16 @@ export function startMainApp(): void {
     openDeepLinks([url]);
   });
   app.on('second-instance', (_event, argv) => {
-    openDeepLinks(deepLinksFromArgv(argv));
+    openDeepLinks(deepLinksFromArgv(argv, process.env.APP_DEV_PROTOCOL_SCHEME));
   });
-  openDeepLinks(deepLinksFromArgv(process.argv));
+  openDeepLinks(deepLinksFromArgv(process.argv, process.env.APP_DEV_PROTOCOL_SCHEME));
   controller.registerIpcHandlers();
 
   void app.whenReady().then(async () => {
     controller.installLocalMediaProtocol();
-    if (app.isPackaged) {
+    if (process.env.APP_DEV_PROTOCOL_SCHEME) {
+      // The profile-specific native launcher owns its alias registration.
+    } else if (app.isPackaged) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme);
     } else if (process.argv[1]) {
       app.setAsDefaultProtocolClient(appDeepLinkScheme, process.execPath, [path.resolve(process.argv[1])]);
@@ -2193,9 +2227,7 @@ export function startMainApp(): void {
   });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      controller.createWindow();
-    }
+    controller.createWindow();
   });
 }
 
@@ -2211,8 +2243,8 @@ export function shouldBlockDisplaySleep(clientState: ClientState, isOnBattery: b
     (clientState.shouldPreventDisplaySleepForRemoteAccess === true && !isOnBattery);
 }
 
-export function requiresSingleInstanceLock(isPackaged: boolean): boolean {
-  return isPackaged;
+export function requiresSingleInstanceLock(isPackaged: boolean, developmentScheme?: string): boolean {
+  return isPackaged || Boolean(developmentScheme);
 }
 
 function overwriteAppSnapshot(target: AppSnapshot, source: AppSnapshot): void {

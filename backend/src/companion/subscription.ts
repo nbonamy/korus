@@ -2,7 +2,7 @@ import type { CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification } from '@workspace/core/companion-notification';
 import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import type { ProviderConversationFrame } from '@workspace/core/contracts';
-import { companionIdleTimeoutMs, companionTarget, isConversationFrame, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
+import { companionAgents, companionIdleTimeoutMs, companionTarget, isConversationFrame, type CompanionReset, type CompanionTarget, type CompanionUpdate, type CompanionWorkspace } from '@workspace/core/companion-protocol';
 import { warnMain } from '../log';
 
 export type SubscriptionPort = {
@@ -126,7 +126,7 @@ export class CompanionSubscription {
   }
   private deliver(entry: Watched, frame: ProviderConversationFrame): void | Promise<void> {
     if (this.closed || !this.port.authorized()) return;
-    const agent = this.workspace?.agents.find((agent) => agent.id === frame.agentId);
+    const agent = this.workspace && companionAgents(this.workspace).find((agent) => agent.id === frame.agentId);
     if (!agent || agent.backend !== frame.backend) return;
     if (frame.backend === 'codex' && agent.backendSession?.kind === 'codex' && frame.threadId !== agent.backendSession.threadId) { this.refreshSoon(); return; }
     if (frame.payload.revision <= entry.revision) return;
@@ -140,7 +140,7 @@ export class CompanionSubscription {
     const combined = { ...next, repositoryIcons: next.repositoryIcons ?? this.workspace?.repositoryIcons };
     this.workspace = combined;
     for (const [id, entry] of this.watched) {
-      const agent = next.agents.find((agent) => agent.id === id);
+      const agent = companionAgents(next).find((agent) => agent.id === id);
       const team = next.teams.find((team) => team.id === agent?.teamId);
       if (!agent || !team || JSON.stringify(companionTarget(entry.target.hostId, team, agent)) !== JSON.stringify(entry.target)) this.watched.delete(id);
     }

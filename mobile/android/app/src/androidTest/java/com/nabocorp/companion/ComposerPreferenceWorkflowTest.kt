@@ -21,7 +21,7 @@ class ComposerPreferenceWorkflowTest {
                     activity.setContent { MaterialTheme { SheetContent(first.model, {}, {}) } }
                 }
                 app.onNodeWithText("Steer").performScrollTo().assertIsDisplayed()
-                app.onNodeWithText("Follow-up behavior").performClick()
+                app.onNodeWithText("Follow-up").performClick()
                 app.onNode(hasText("Queue") and hasAnyAncestor(isPopup())).performClick()
                 app.onNodeWithText("Queue").assertIsDisplayed()
             }
@@ -31,7 +31,7 @@ class ComposerPreferenceWorkflowTest {
                     activity.setContent { MaterialTheme { SheetContent(second.model, {}, {}) } }
                 }
                 app.onNodeWithText("Queue").performScrollTo().assertIsDisplayed()
-                app.onNodeWithText("Follow-up behavior").performClick()
+                app.onNodeWithText("Follow-up").performClick()
                 app.onNode(hasText("Steer") and hasAnyAncestor(isPopup())).performClick()
                 app.onNodeWithText("Steer").assertIsDisplayed()
             }

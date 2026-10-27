@@ -1,4 +1,5 @@
 import { watch } from 'vue';
+import type { FileKind } from '@workspace/core/file-kind';
 import { agentConversationId } from '@workspace/core/plan-review';
 import type {
   Agent,
@@ -61,6 +62,7 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
 
   let filePreviewRequestId = 0;
   const gitDiffRequestIds = new Map<string, number>();
+  let gitDiffFocusSequence = 0;
 
   async function openConversationFile(link: ConversationFileLink, agentId = options.currentAgent()?.id): Promise<void> {
     const agent = agentId ? agentForId(agentId) : null;
@@ -201,20 +203,26 @@ export function useWorkspacePreviews(options: WorkspacePreviewOptions) {
     }
   }
 
-  async function openAgentGitDiff(agentId: string, target?: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<void> {
+  async function openAgentGitDiff(
+    agentId: string,
+    target?: import('@workspace/core/contracts').AgentGitDiffTarget,
+    focusKind?: FileKind,
+  ): Promise<void> {
     const agent = agentForId(agentId);
     if (!agent?.folder) return;
 
     const workspace = options.workspaceFor(agent.id);
     const requestId = (gitDiffRequestIds.get(agent.id) ?? 0) + 1;
     gitDiffRequestIds.set(agent.id, requestId);
-    workspace.gitReviewPanel = gitReviewPanel(agent.folder, 'loading', null, target);
+    const focus = focusKind ? { focusKind, focusSequence: ++gitDiffFocusSequence } : {};
+    workspace.gitReviewPanel = { ...gitReviewPanel(agent.folder, 'loading', null, target), ...focus };
     options.openTab('review', agent.id);
     try {
       const result = await options.getAgentGitDiff(agent.id, target);
       if (gitDiffRequestIds.get(agent.id) !== requestId) return;
       workspace.gitReviewPanel = {
         ...gitReviewPanel(agent.folder, 'idle', null, result.target),
+        ...focus,
         diff: result.diff,
         summary: result.summary,
         sections: result.sections,

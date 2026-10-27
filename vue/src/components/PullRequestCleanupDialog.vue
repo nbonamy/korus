@@ -58,13 +58,13 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const cleanupTitle = computed(() => t(
   props.agent?.pullRequest?.state === 'closed'
-    ? 'pullRequestCleanup.closedTitle'
-    : 'pullRequestCleanup.mergedTitle',
+    ? (props.agent?.pullRequest?.provider === 'gitlab' ? 'pullRequestCleanup.mrClosedTitle' : 'pullRequestCleanup.closedTitle')
+    : (props.agent?.pullRequest?.provider === 'gitlab' ? 'pullRequestCleanup.mrMergedTitle' : 'pullRequestCleanup.mergedTitle'),
   { number: props.agent?.pullRequest?.number },
 ));
 const cleanupDetail = computed(() => t(
   props.agent?.pullRequest?.state === 'closed'
-    ? 'pullRequestCleanup.closedDetail'
+    ? (props.agent?.pullRequest?.provider === 'gitlab' ? 'pullRequestCleanup.mrClosedDetail' : 'pullRequestCleanup.closedDetail')
     : 'pullRequestCleanup.mergedDetail',
 ));
 

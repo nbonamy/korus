@@ -1,3 +1,5 @@
+import { isPromptContent } from './snapshot-guard-collections';
+import { isRateLimitPause } from './auto-resume';
 import { isAgentReadState } from './agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from './delegation-context';
 import { isAutomationTarget } from './automation-manager';
@@ -133,6 +135,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'codeReview', isCodeReviewSession) &&
     optional(value, 'readState', isAgentReadState) &&
     optional(value, 'threadFlags', isThreadFlags) &&
+    optional(value, 'rateLimitPause', isRateLimitPause) &&
     optional(value, 'suggestedPrompt', isString) &&
     optional(value, 'goal', isThreadGoal) &&
     optional(value, 'visualize', isVisualizeSession) &&
@@ -167,7 +170,7 @@ function isAppText(value: unknown): boolean {
 
 function isAgentPullRequestTracking(value: unknown): boolean {
   return isRecord(value) &&
-    value.provider === 'github' &&
+    (value.provider === 'github' || value.provider === 'gitlab') &&
     typeof value.repository === 'string' &&
     typeof value.branch === 'string' &&
     typeof value.createdAt === 'string' &&
@@ -455,6 +458,7 @@ function isWorkIntegrationConnection(value: unknown): boolean {
     isWorkProviderKind(value.provider) &&
     includes(['notConfigured', 'disconnected', 'connecting', 'connected', 'error'], value.status) &&
     optional(value, 'source', source => includes(['api', 'cli', 'none'], source)) &&
+    optional(value, 'hostedMcp', state => isRecord(state) && includes(['directRequired', 'authorizationRequired', 'available', 'unavailable'], state.status)) &&
     optional(value, 'accountLabel', isString) &&
     optional(value, 'detail', isAppText) &&
     optional(value, 'connectedAt', isString);
@@ -548,6 +552,7 @@ function isGeneralSettings(value: unknown): boolean {
     (value.codexEnabled === undefined || typeof value.codexEnabled === 'boolean') &&
     (value.providerOnboardingComplete === undefined || typeof value.providerOnboardingComplete === 'boolean') &&
     optional(value, 'providerEnabled', candidate => isRecord(candidate) && Object.entries(candidate).every(([backend, enabled]) => (backend === 'codex' || backend === 'claude' || backend === 'antigravity') && isBoolean(enabled))) &&
+    optional(value, 'codeReviewInstructions', isString) &&
     optional(value, 'codeReviewDefaults', isCodeReviewPreferences) &&
     optional(value, 'providerApprovalDefaults', candidate => isRecord(candidate)
       && optional(candidate, 'codex', isApprovalPreset) && optional(candidate, 'claude', isString) && optional(candidate, 'antigravity', isString)) &&
@@ -561,7 +566,8 @@ function isGeneralSettings(value: unknown): boolean {
     includes(['teams', 'recent'], value.cockpitAgentViewMode) &&
     isArrayOf(value.collapsedRepositoryKeys, isString) &&
     isArrayOf(value.savedPromptDrafts, (draft) => isRecord(draft)
-      && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && isNumber(draft.createdAt)) &&
+      && isString(draft.id) && isString(draft.agentId) && isString(draft.text) && optional(draft, 'content', isPromptContent) && isNumber(draft.createdAt)) &&
+    optional(value, 'autoResumeAfterLimit', isBoolean) &&
     typeof value.sessionCompressionWarningEnabled === 'boolean' &&
     includes(['automatic', 'repository', 'off'], value.worktreeInitializationMode) &&
     optional(value, 'useInteractivePlans', isBoolean) &&

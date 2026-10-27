@@ -199,9 +199,14 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         DrawerContent(model, close = { coroutine.launch { drawer.close() } })
                     }
                 }) {
+                  if (model.missionsOpen) MissionsScreen(model) { coroutine.launch { drawer.open() } }
+                  else {
                     Scaffold(
                         topBar = {
-                            ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                            Column {
+                                ConversationHeader(model) { coroutine.launch { drawer.open() } }
+                                MissionContextBar(model)
+                            }
                         },
                         bottomBar = { if (state.string("agentId").isNotBlank()) Column {
                             RequestBanner(model)
@@ -211,9 +216,10 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     ) { padding ->
                         ConversationContent(model,Modifier.padding(padding).fillMaxSize())
                     }
+                  }
                 }
-                if (model.sheet in listOf("settings", "forget", "usage")) {
-                    BackHandler { if (model.sheet == "usage") model.sheet = "settings" else if (model.sheet == "forget") model.sheet = "settings" else model.dismissSheet() }
+                if (model.sheet in listOf("settings", "connections", "usage")) {
+                    BackHandler { if (model.sheet in listOf("usage", "connections")) model.sheet = "settings" else model.dismissSheet() }
                     Surface(Modifier.fillMaxSize(), color = CompanionColors.sheetBackground) { SheetContent(model, enableNotifications, setAppLockEnabled) }
                 } else if (model.sheet != null && model.sheet != "conversation") {
                     ModalBottomSheet(onDismissRequest = model::dismissSheet, containerColor = CompanionColors.sheetBackground, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = {
@@ -232,6 +238,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                     text = { Text("The laptop couldn’t complete the action. Check the connection and try again.") },
                     confirmButton = { TextButton(onClick = { model.command("dismissSessionError") }) { Text("OK") } })
             }
+            if (state.string("missionAction") == "failed") {
+                AlertDialog(onDismissRequest = { model.command("dismissMissionAction") }, title = { Text("Couldn’t update the mission") },
+                    text = { Text("The mission may have changed on your laptop. It now shows how it stands.") },
+                    confirmButton = { TextButton(onClick = { model.command("dismissMissionAction") }) { Text("OK") } })
+            }
             if (model.duplicateFailed) {
                 AlertDialog(onDismissRequest = { model.duplicateFailed = false }, title = { Text("Couldn’t duplicate the agent") },
                     text = { Text("Check the connection and try again.") },
@@ -247,11 +258,12 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
 @Composable internal fun Composer(model: CompanionModel, pickAttachment: (AttachmentSource) -> Unit, toggleDictation: () -> Unit) {
     val state = model.state
     val composer = state.obj("composer")
+    val suggestion = state.string("suggestedPrompt").takeIf { it.isNotBlank() && !model.composerDrafts.goalMode && !composer.optBoolean("planMode") }
     val selected = state.items("models").firstOrNull { it.string("id") == composer.string("modelId") }
     val drafts = model.composerDrafts
     val catalogItems = (state.obj("skills").items("items") + state.obj("mentions").items("items")).map(ComposerSuggestion::parse)
-    val editor = remember(drafts.target) { ComposerEditorState(model.draft, catalogItems) }
-    editor.synchronize(model.draft, catalogItems)
+    val editor = remember(drafts.target) { ComposerEditorState(model.draft, catalogItems, drafts.chips) }
+    editor.synchronize(model.draft, catalogItems, drafts.chips)
     var editorFocused by remember(drafts.target) { mutableStateOf(false) }
     var dismissedQuery by remember(drafts.target) { mutableStateOf<ComposerQuery?>(null) }
     val editorFocus = remember { FocusRequester() }
@@ -356,7 +368,7 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
             if (query != null) {
                 ComposerSuggestionsContent(query, catalog.string("status", "idle"), catalog.items("items").map(ComposerSuggestion::parse),
                     choose = { item ->
-                        if (editor.choose(item)) { model.editDraft(editor.value.text); dismissedQuery = null; editorFocus.requestFocus(); keyboard?.show() }
+                        if (editor.choose(item)) { model.editDraft(editor.value.text, editor.chips); dismissedQuery = null; editorFocus.requestFocus(); keyboard?.show() }
                     }, dismiss = { dismissedQuery = query }, retry = loadSuggestions)
                 Spacer(Modifier.height(6.dp))
             }
@@ -389,8 +401,11 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                         key(editorTarget) {
                             BasicTextField(value = editor.value, onValueChange = { next ->
                                 if (model.composerDrafts.target == editorTarget) {
-                                    editorFocused = true; editor.edit(next)
-                                    if (model.draft != editor.value.text) model.editDraft(editor.value.text)
+                                    editorFocused = true
+                                    val accepted = if (editor.value.text.isEmpty() && next.text == " " && next.composition == null && suggestion != null)
+                                        next.copy(text = suggestion, selection = androidx.compose.ui.text.TextRange(suggestion.length)) else next
+                                    editor.edit(accepted)
+                                    if (model.draft != editor.value.text) model.editDraft(editor.value.text, editor.chips)
                                 }
                             },
                                 visualTransformation = ComposerChipTransformation(editor.chips, MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.colorScheme.secondaryContainer),
@@ -401,8 +416,9 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
                                 enabled = drafts.target != null && !drafts.sending && !dictation.active,
                                 decorationBox = { input ->
                                     Box(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                                        if (editor.value.text.isEmpty()) Text(when { drafts.goalMode -> "Describe your goal"; composer.optBoolean("planMode") -> "Describe what to plan"; else -> "Message" },
-                                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (editor.value.text.isEmpty()) Text(when { drafts.goalMode -> "Describe your goal"; composer.optBoolean("planMode") -> "Describe what to plan"; else -> suggestion ?: "Message" },
+                                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = if (expanded) 8 else 1, overflow = TextOverflow.Ellipsis)
                                         input()
                                     }
                                 })
@@ -454,13 +470,9 @@ enum class AttachmentSource { PHOTOS, FILES, CAMERA }
 @Composable internal fun SheetContent(model: CompanionModel, enableNotifications: () -> Unit, setAppLockEnabled: (Boolean) -> Unit) {
     val state = model.state
     when (model.sheet) {
-        "settings", "forget" -> {
-            AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
-            if (model.sheet == "forget") AlertDialog(onDismissRequest = { model.sheet = "settings" }, title = { Text("Forget this laptop?") },
-                text = { Text("You will need a new pairing code to connect again.") },
-                confirmButton = { TextButton(onClick = { model.command("forget"); model.sheet = null }) { Text("Forget Laptop", color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { model.sheet = "settings" }) { Text("Cancel") } })
-        }
+        "settings" -> AppSheetFrame("Settings", trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { SettingsContent(model, enableNotifications, setAppLockEnabled) }
+        "connections" -> AppSheetFrame("Connections", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings") { model.sheet = "settings" } },
+            trailing = { AppBarPill("Done", model.canDismissSheet, onClick = model::dismissSheet) }) { ConnectionsContent(model) }
         "usage" -> AppSheetFrame("Usage", leading = { AppBarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Settings") { model.sheet = "settings" } },
             trailing = { AppBarIcon(Icons.Outlined.Refresh, "Refresh usage", state.connection.isConnected && state.obj("usage").string("status") !in listOf("", "idle", "loading")) { model.command("loadUsage") } }) {
             UsageContent(state.obj("usage"), state.connection, { model.command("loadUsage") }, { model.command("reconnect") })

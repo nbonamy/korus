@@ -97,8 +97,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return this.sessionManager.listModels();
   }
 
-  async listSkills(agent: Agent): Promise<BackendSkillSummary[]> {
-    return this.sessionManager.listSkills(agent);
+  async listSkills(agent: Agent, forceReload = false): Promise<BackendSkillSummary[]> {
+    return this.sessionManager.listSkills(agent, forceReload);
   }
 
   async listPlugins(_agent: Agent): Promise<BackendPluginSummary[]> {
@@ -160,6 +160,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
       : undefined;
 
     return cleanedPromptOptions({
+      ...(options?.content === undefined ? {} : { content: options.content }),
       ...(options?.delegation ? { delegation: options.delegation } : {}),
       ...(options?.attachments?.length ? { attachments: options.attachments } : {}),
       model: options?.model ?? null,
@@ -173,6 +174,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
     return {
       backendSession: codexBackendSession(result.threadId),
       turnId: result.turnId,
+      ...(result.messageId ? { messageId: result.messageId } : {}),
     };
   }
 
@@ -240,8 +242,8 @@ export class CodexBackendDriver implements AgentBackendDriver {
     };
   }
 
-  async editTurn(agent: Agent, turnId: string, content: string): Promise<BackendTurnActionResult> {
-    const result = await this.sessionManager.editTurn(agent, turnId, content);
+  async editTurn(agent: Agent, turnId: string, content: string, options?: Pick<SendPromptOptions, 'content'>): Promise<BackendTurnActionResult> {
+    const result = await this.sessionManager.editTurn(agent, turnId, content, options);
     return {
       backendSession: codexBackendSession(result.threadId),
       activeTurnId: result.activeTurnId,
@@ -346,7 +348,7 @@ export class CodexBackendDriver implements AgentBackendDriver {
 }
 
 function cleanedPromptOptions(options: SendPromptOptions): SendPromptOptions | undefined {
-  return (options.attachments?.length ?? 0) > 0 || options.model || typeof options.planMode === 'boolean' || options.backendOptions || options.delegation
+  return options.content !== undefined || (options.attachments?.length ?? 0) > 0 || options.model || typeof options.planMode === 'boolean' || options.backendOptions || options.delegation
     ? options
     : undefined;
 }

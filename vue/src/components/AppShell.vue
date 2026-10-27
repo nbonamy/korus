@@ -4,6 +4,8 @@
     :class="{ 'app-shell--auth-gated': showOnboardingGate }"
   >
     <FirstRunOnboardingGate
+      v-if="!currentAgent?.sharedConversation"
+      @join-invite="emit('join-invite')"
       :provider-setup="displayProviderSetup"
       :allow-setup-reset="settingsVisible"
       :customized-setup="customizedSetup"
@@ -35,21 +37,20 @@
       :authentication-cancelling="authenticationCancelling"
       :authentication-error="debugMissingEngines ? null : authenticationError"
       :authentication-loading="!debugMissingEngines && authenticationLoading"
-      :github-onboarding-visible="!debugMissingEngines && githubOnboardingVisible"
+      :repositories-onboarding-visible="!debugMissingEngines && repositoriesOnboardingVisible"
       :initial-authentication-loading="!debugMissingEngines && initialAuthenticationLoading"
       :onboarding-complete-visible="!debugMissingEngines && onboardingCompleteVisible"
-      :repository-acquire-busy="repositoryAcquireBusy"
-      :repository-acquire-error="repositoryAcquireError"
       :show-login-landing="showLoginLanding"
       :snapshot="snapshot"
-      :work-backlog-error="workBacklogError"
-      :work-provider-authorization="workProviderAuthorization"
+      :work-provider-authorizations="workProviderAuthorizations ?? (workProviderAuthorization ? { [workProviderAuthorization.provider]: workProviderAuthorization } : {})"
+      :work-provider-authorization-errors="workProviderAuthorizationErrors"
+      :connect-repository-provider="connectWorkProvider"
+      :disconnect-repository-provider="disconnectWorkProvider"
+      :open-repository-authorization="openWorkProviderAuthorization"
       @cancel="cancelChatGptLogin"
-      @complete="completeGitHubOnboardingStep"
-      @connect-github="connectGitHub"
+      @complete="firstRunOnboarding.completeRepositories"
       @finish="finishFirstRunOnboarding"
       @login="startChatGptLogin"
-      @open-github-authorization="openGitHubAuthorization"
     />
     <div
       class="app-shell__nav"
@@ -63,6 +64,7 @@
       :phone-scope="compactViewport"
       @create-mission="createNewMission"
       @delete-mission="deleteMissionFromSidebar"
+      @delete-repository="repositoryDeletionAgentId = $event"
       @select-mission="selectMission"
       :active-team="activeTeam"
       :active-team-agents="activeTeamAgents"
@@ -101,6 +103,7 @@
       @edit-agent="openEditAgent"
       @edit-team="openEditTeam"
       @fork-agent="$emit('fork-agent', $event)"
+      @share-agent="openShare"
       @handoff-agent="openHandoff"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
       @new-team="openNewTeam"
@@ -229,6 +232,7 @@
         @close-agent="$emit('close-agent', $event)"
         @duplicate-agent="$emit('duplicate-agent', $event)"
         @fork-agent="$emit('fork-agent', $event)"
+        @share-agent="openShare"
         @handoff-agent="openHandoff"
         @edit-agent="openEditAgent"
         @move-agent-to-team="$emit('move-agent-to-team', $event)"
@@ -296,6 +300,7 @@
       </MissionWorkspace>
       <AgentWorkspace
         v-else
+        :guest-view="guestState?.view" :guest-busy="guestBusy" :guest-control="guestControl"
         ref="agentWorkspace"
         :active-attachment-annotation-counts="activeAttachmentAnnotationCounts"
         :add-chat-text-annotation="addChatTextAnnotation"
@@ -376,6 +381,7 @@
         :select-visualization="props.selectVisualization"
         :delete-visualization="props.deleteVisualization"
         :read-visualization-asset="props.readVisualizationAsset"
+        @share-agent="openShare"
         @close-agent="$emit('close-agent', $event)"
         @clarify-code-review-finding="clarifyCodeReviewFinding"
         @expand-sidebar="expandSidebar"
@@ -383,6 +389,7 @@
         @remove-work-item-assignment="$emit('remove-work-item-assignment', $event)"
         @remove-review-finding-attachment="pendingReviewClarification = null"
         @send-prompt="emit('sendPrompt', $event)"
+        @open-browser-settings="openSettings('browser')"
         @update:plan-mode="emit('update:planMode', $event)"
       >
         <template v-if="!compactViewport && props.agentConversationFor && props.agentConversationActions" #layout-control>
@@ -394,7 +401,9 @@
               <AgentHeader v-bind="headerBindingsFor(agentId, topRight, topLeft)" />
             </template>
             <template #default="{ agentId, focused }">
-              <AgentConversationPanel v-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
+              <SharedConversationPane v-if="guestState?.view && guestState.view.id === snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation?.joinId && guestControl" :view="guestState.view" :busy="guestBusy ?? false" :control="guestControl" />
+              <button v-else-if="snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation" class="app-button" @click="selectAgentFromShell(agentId)">{{ t('guest.open') }}</button>
+              <AgentConversationPanel v-else-if="props.agentConversationFor(agentId)" :key="agentId" :ref="instance => setSplitPanel(agentId, instance)"
                 :view="props.agentConversationFor(agentId)!" :actions="splitActions" :agents="snapshot.agents" :focused="focused"
                 :mention-groups="agentMentionGroups" :model-menu-items="splitModelFavoriteMenuItems(agentId)"
                 :select-model-menu-item="item => selectSplitModelMenuItem(agentId, item)"
@@ -458,8 +467,8 @@
       v-model:backend="repositorySession.backend.value"
       :visible="repositoryAcquireVisible"
       :mode="repositoryAcquireMode"
-      :connection="githubConnection"
-      :authorization="workProviderAuthorization"
+      :connection="repositoryAcquisition.connection.value"
+      :authorization="repositoryAcquireMode !== 'url' ? workProviderAuthorizations?.[repositoryAcquireMode] ?? (workProviderAuthorization?.provider === repositoryAcquireMode ? workProviderAuthorization : null) : null"
       :repositories="repositoryAcquireRepositories"
       :local-repository-identities="repositoryAcquireSourceRepositories.flatMap((repository) => repository.remoteIdentity ? [repository.remoteIdentity] : [])"
       :loading="repositoryAcquireCatalogLoading"
@@ -563,6 +572,13 @@
       @save="saveImageAnnotation"
     />
     <ProvisioningOperationHost />
+    <RepositoryDeleteDialog
+      v-if="repositoryDeletionAgentId"
+      :agent-id="repositoryDeletionAgentId"
+      :load-preview="loadRepositoryDeletionPreview"
+      :remove-repository="deleteRepositoryAction"
+      @close="repositoryDeletionAgentId = null"
+    />
     <MissionDeleteDialog
       :visible="missionDeleteTarget !== null"
       :mission="missionDeleteTarget"
@@ -593,6 +609,7 @@
       @close="agentQuickOpenVisible = false"
       @select="selectAgentFromPalette"
     />
+    <ConversationShareDialog v-if="shareTarget" :key="JSON.stringify(shareTarget)" :target="shareTarget" :control="shareControl" @close="shareTarget = null" />
   </main>
 </template>
 
@@ -605,7 +622,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { workProviderLabel, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue';
 import { providerUpdatePreviewKey } from './provider-update-preview';
 import { codeReviewUncommittedPreviewKey } from './code-review-preview';
 import { useI18n } from 'vue-i18n';
@@ -653,7 +670,11 @@ import WhatsNewDialog from './WhatsNewDialog.vue';
 import AgentWorkspace from './AgentWorkspace.vue';
 import AgentSplitGrid from './AgentSplitGrid.vue';
 import AgentHeader from './AgentHeader.vue';
+import ConversationShareDialog from './ConversationShareDialog.vue';
+import { conversationShareActiveByAgentIdKey } from './conversation-share-state';
+import { conversationShareTarget, type ConversationShareTarget } from '@workspace/core/conversation-sharing';
 import AgentConversationPanel from './AgentConversationPanel.vue';
+import SharedConversationPane from './SharedConversationPane.vue';
 import SplitLayoutControl from './SplitLayoutControl.vue';
 import { useSplitWorkspace } from './use-split-workspace';
 import type { AgentConversationActions } from './use-agent-conversation';
@@ -666,6 +687,8 @@ import MissionCodeReview from './MissionCodeReview.vue';
 import MissionShipBoard from './MissionShipBoard.vue';
 import MissionWorkspace from './MissionWorkspace.vue';
 import MissionDeleteDialog from './MissionDeleteDialog.vue';
+import RepositoryDeleteDialog from './RepositoryDeleteDialog.vue';
+import type { DeleteRepositoryInput } from '@workspace/core/contracts/workspace';
 import type { MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 import ConversationPane from './ConversationPane.vue';
 import AppMenu from '../shared/menu/AppMenu.vue';
@@ -693,7 +716,7 @@ import {
   type CodexQueuedPromptData as QueuedChatPrompt,
   type CodexRendererSendMessageOptions,
 } from '@codex-app-sdk/vue';
-import type { CodexConversationSnapshot, SurfaceMessage } from '@codex-app-sdk/core/surface';
+import { normalizePromptContent, type CodexConversationSnapshot, type SurfaceMessage } from '@codex-app-sdk/core/surface';
 import type { ThreadFlagResponse } from '@workspace/core/thread-flags';
 import { BacklogIcon, BoltIcon, PencilIcon, PlusIcon, ShieldCheckIcon } from '../shared/icons/app-icons';
 import {
@@ -722,6 +745,9 @@ import { useWorkItemRouting } from './use-work-item-routing';
 import { useAppShellCommands } from './use-app-shell-commands';
 
 const props = withDefaults(defineProps<{
+  guestState?: import('@workspace/core/guest-navigation').GuestJoinState;
+  guestBusy?: boolean;
+  guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
   snapshot: AppSnapshot;
   activeAgent: Agent | null;
   unreadAgentIds?: string[];
@@ -761,11 +787,13 @@ const props = withDefaults(defineProps<{
   fileActivity?: AgentFileActivity | null;
   workProviderAuthorization?: WorkProviderAuthorization | null;
   workProviderAuthorizations?: Partial<Record<WorkProviderKind, WorkProviderAuthorization>>;
+  workProviderAuthorizationErrors?: Partial<Record<WorkProviderKind, string>>;
   workRepositoriesByProvider?: Partial<Record<WorkProviderKind, WorkSource[]>>;
   workItemsByRepository?: Record<string, WorkItem[]>;
   assignedWorkItemsByProvider?: Partial<Record<WorkProviderKind, WorkItem[]>>;
   workBacklogStatus?: 'notLoaded' | 'loading' | 'loaded' | 'error';
   workBacklogError?: string | null;
+  workBacklogStateFor?: (provider: WorkProviderKind) => { status: 'notLoaded' | 'loading' | 'loaded' | 'error'; error: string | null };
   daemonStatus?: DaemonStatus | null;
   daemonStatusError?: string | null;
   codexResourceSharingMigrationRequired?: boolean;
@@ -783,7 +811,7 @@ const props = withDefaults(defineProps<{
   createSourceWorktree?: (input: CreateSourceWorktreeInput) => Promise<SourceWorktree>;
   previewAgentFile?: (agentId: string, filePath: string) => Promise<AgentFilePreviewResult>;
   getAgentGitDiff?: (agentId: string, target?: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
-  getAgentGitWorkflow?: (agentId: string) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
+  getAgentGitWorkflow?: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   generateAgentGitMessage?: (agentId: string, input: import('@workspace/core/contracts').AgentGitMessageGenerationInput) => Promise<import('@workspace/core/contracts').AgentGitMessageGenerationResult>;
   stageAgentGitFiles?: (agentId: string, input: import('@workspace/core/contracts').AgentGitStageInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   commitAgentGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitCommitInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
@@ -800,9 +828,12 @@ const props = withDefaults(defineProps<{
   createMission?: (input: CreateMissionInput) => Promise<Mission>;
   selectMission?: (missionId: string | null) => Promise<void>;
   deleteMission?: (input: DeleteMissionInput) => Promise<void>;
+  deleteRepositoryAction?: (agentId: string, input: DeleteRepositoryInput) => Promise<void>;
   readMissionArtifact?: (missionId: string, stage: import('@workspace/core/missions').MissionStage) => Promise<import('@workspace/core/mission-execution').MissionArtifactReadResult>;
   executeMission?: (input: import('@workspace/core/mission-execution').MissionExecutionInput) => Promise<void>;
   missionImplementationStartProgress?: MissionImplementationStartProgress | null;
+  /** An agent asked to open this Mission (from `create-mission`). */
+  missionFocusRequest?: { missionId: string; sequence: number } | null;
   agentCreationProgresses?: AgentCreationProgress[];
   createQuickChat?: (input: CreateQuickChatInput) => Promise<Agent | null | void>;
   createTeam?: (input: CreateTeamInput) => Promise<Team | null | void>;
@@ -837,11 +868,12 @@ const props = withDefaults(defineProps<{
   resumeAgentConversation?: (agentId: string, target: ConversationResumeTarget) => Promise<void>;
   handoffAgentAction?: (agentId: string, input: AgentHandoffInput) => Promise<void>;
   readConversationMessages?: (ref: BackendConversationRef, agentId: string, location?: AutomationLocation) => Promise<RendererMessage[]>;
-  connectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
+  connectWorkProvider?: (provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions) => Promise<void>;
   openWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   pollWorkProviderAuthorization?: (provider: WorkProviderKind) => Promise<void>;
   disconnectWorkProvider?: (provider: WorkProviderKind) => Promise<void>;
   configureWorkBacklog?: (input: WorkBacklogConfigurationInput) => Promise<void>;
+  listWorkSources?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[]>;
   loadWorkRepositories?: (provider: WorkProviderKind, location?: AutomationLocation) => Promise<WorkSource[] | void>;
   loadWorkItems?: (provider: WorkProviderKind, repositoryId: string, location?: AutomationLocation, query?: WorkItemQuery) => Promise<WorkItem[] | void>;
   loadGlobalWorkItems?: (provider: WorkProviderKind, location?: AutomationLocation, query?: GlobalWorkItemQuery) => Promise<WorkItemPage>;
@@ -856,7 +888,7 @@ const props = withDefaults(defineProps<{
   updatePlanReview?: (agentId: string, response: import('@workspace/core/plan-review').PlanReviewResponse) => Promise<import('@workspace/core/plan-review').PlanReview>;
   respondToThreadFlagAction?: (response: ThreadFlagResponse) => Promise<void>;
   deleteTurnAction?: (turnId: string) => Promise<void>;
-  editTurnAction?: (payload: { content: string; turnId: string }) => Promise<void>;
+  editTurnAction?: (payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }) => Promise<void>;
   retryTurnAction?: (turnId: string) => Promise<void>;
   continueInterruptedTurnAction?: () => Promise<void>;
   quit?: () => Promise<void>;
@@ -958,6 +990,7 @@ const props = withDefaults(defineProps<{
   createMission: async () => { throw new Error('Missions unavailable.'); },
   selectMission: async () => undefined,
   deleteMission: async () => { throw new Error('Missions unavailable.'); },
+  deleteRepositoryAction: async () => { throw new Error('Repository deletion unavailable.'); },
   readMissionArtifact: async () => { throw new Error('Mission artifacts unavailable.'); },
   createQuickChat: async () => undefined,
   createTeam: async () => undefined,
@@ -1007,6 +1040,7 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
+  'join-invite': [];
   'clear-agent-creation-progress': [id: string];
   'background-agent-creation-progress': [id: string];
   'consume-markdown-displays': [count: number];
@@ -1023,7 +1057,7 @@ const emit = defineEmits<{
   'duplicate-agent': [agentId: string];
   'fork-agent': [agentId: string];
   'fork-turn': [turnId: string];
-  'edit-turn': [payload: { content: string; turnId: string }];
+  'edit-turn': [payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }];
   'interrupt-agent': [];
   'move-agent-to-team': [input: MoveAgentToTeamInput];
   'reorder-agents': [input: ReorderAgentsInput];
@@ -1042,8 +1076,8 @@ const emit = defineEmits<{
   'select-approval-preset': [preset: ApprovalPreset];
   'select-permission-mode': [mode: string];
   'select-team': [teamId: string];
-  'steer-queued-prompt': [promptId: string, prompt?: string];
-  'update-queued-prompt': [promptId: string, prompt: string];
+  'steer-queued-prompt': [promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>];
+  'update-queued-prompt': [promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>];
   'update:planMode': [enabled: boolean];
   'update:composerState': [payload: { agentId: string; state: CodexComposerState }];
   'update:composerAttachments': [payload: { agentId: string; attachments: readonly CodexNativeAttachment[] }];
@@ -1249,6 +1283,12 @@ async function createNewMission() {
   }
 }
 
+const repositoryDeletionAgentId = ref<string | null>(null);
+async function loadRepositoryDeletionPreview(agentId: string) {
+  if (!appApi?.previewRepositoryDeletion) throw new Error('Repository deletion unavailable.');
+  return appApi.previewRepositoryDeletion(agentId);
+}
+
 function deleteMissionFromSidebar(id: string): void {
   if (!props.snapshot.missions?.some(candidate => candidate.id === id)) return;
   missionDeleteTargetId.value = id;
@@ -1306,6 +1346,25 @@ const newProjectBusy = ref(false);
 const newProjectError = ref<string | null>(null);
 const modelFavoritesDialogBackend = ref<ModelFavorite['backend'] | null>(null);
 const resumeSessionAgentId = ref<string | null>(null);
+// IPC copies this immutable DTO; a deep Vue ref would proxy it and break serialization.
+const shareTarget = shallowRef<ConversationShareTarget | null>(null);
+const shareActiveByAgentId = reactive<Record<string, boolean>>({});
+provide(conversationShareActiveByAgentIdKey, shareActiveByAgentId);
+function openShare(agentId: string) {
+  const agent = props.snapshot.agents.find(agent => agent.id === agentId);
+  if (!agent || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) return;
+  shareTarget.value = conversationShareTarget(agent);
+}
+watch(() => props.snapshot.agents.map(agent => conversationShareTarget(agent)), () => {
+  if (!shareTarget.value) return;
+  const agent = props.snapshot.agents.find(agent => agent.id === shareTarget.value?.agentId);
+  if (!agent || JSON.stringify(conversationShareTarget(agent)) !== JSON.stringify(shareTarget.value)
+    || props.snapshot.teams.find(team => team.id === agent.teamId)?.remoteConnectionId) shareTarget.value = null;
+}, { deep: true });
+const shareControl = (input: import('@workspace/core/conversation-sharing').ConversationShareControl) => {
+  if (!appApi) return Promise.reject(new Error('Sharing is unavailable.'));
+  return appApi.conversationShareControl(input);
+};
 const handoffAgentId = ref<string | null>(null);
 const handoffAgent = computed(() => props.snapshot.agents.find(agent => agent.id === handoffAgentId.value) ?? null);
 function openHandoff(agentId: string) { handoffAgentId.value = agentId; }
@@ -1317,17 +1376,10 @@ const editingAgentId = ref<string | null>(null);
 const agentDialogTeamId = ref<string | null>(null);
 const agentDialogSourceRepositoryName = ref<string | null>(null);
 const agentDialogSourceBranchName = ref('');
-const githubConnection = computed<WorkIntegrationConnection>(() => (
-  props.snapshot.workBacklog.connections.find((connection) => connection.provider === 'github') ?? {
-    provider: 'github',
-    status: 'disconnected',
-  }
-));
 const firstRunOnboarding = useFirstRunOnboarding({
   getApi: () => appApi,
   getConnections: () => props.snapshot.providerConnections ?? [],
   hasExistingWorkspace: () => props.snapshot.agents.length > 0 || props.snapshot.general.providerOnboardingComplete === true,
-  isGitHubConnected: () => githubConnection.value.status === 'connected' && githubConnection.value.source !== 'cli',
 });
 const {
   claudeAuthentication, claudeConnected, claudeLoading, claudeError, claudeDialogVisible,
@@ -1340,7 +1392,7 @@ const {
   authenticationLoading,
   completeVisible: onboardingCompleteVisible,
   gated: realOnboardingGate,
-  githubVisible: githubOnboardingVisible,
+  repositoriesVisible: repositoriesOnboardingVisible,
   initialAuthenticationLoading,
   showLogin: realLoginLanding,
   cancelChatGptLogin,
@@ -1354,7 +1406,7 @@ const debugProviderUpgrades = ref(false);
 provide(providerUpdatePreviewKey, debugProviderUpgrades);
 const debugReviewUncommitted = ref(false);
 provide(codeReviewUncommittedPreviewKey, debugReviewUncommitted);
-const showOnboardingGate = computed(() => debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value);
+const showOnboardingGate = computed(() => !currentAgent.value?.sharedConversation && (debugMissingEngines.value ? !settingsVisible.value : realOnboardingGate.value));
 const showLoginLanding = computed(() => debugMissingEngines.value ? !settingsVisible.value : realLoginLanding.value);
 const displayProviderSetup = computed(() => debugMissingEngines.value
   ? providerSetup.value.map(setup => ({ ...setup, installed: false }))
@@ -1404,6 +1456,16 @@ watch([selectedMission, activeTeam], ([mission, team], [previousMission]) => {
     selectedMissionId.value = null;
     activeSurface.value = 'agent';
   }
+});
+// The Mission may reach the renderer a moment after the request, so keep the request until it is known.
+const pendingMissionFocusId = ref<string | null>(null);
+watch(() => props.missionFocusRequest, request => { pendingMissionFocusId.value = request?.missionId ?? null; });
+watch([pendingMissionFocusId, () => props.snapshot.missions], () => {
+  const missionId = pendingMissionFocusId.value;
+  const mission = missionId ? props.snapshot.missions?.find(candidate => candidate.id === missionId) : undefined;
+  if (!mission) return;
+  pendingMissionFocusId.value = null;
+  if (mission.teamId === activeTeam.value?.id) selectMissionSurface(mission.id);
 });
 watch(() => props.connectionState.status, (status) => {
   if (status !== 'connected' || !pendingMissionRestoreId) return;
@@ -1487,16 +1549,18 @@ const repositorySession = useRepositorySession({
   createAgent: (input) => props.createAgent(input),
   createIsolatedWorkItemAgent,
   createSourceWorktree: (input) => props.createSourceWorktree(input),
+  getAgentGitRemote: async (agentId) => (await props.getAgentGitWorkflow(agentId, { includePullRequest: false })).remoteUrl,
   getSnapshot: () => props.snapshot,
-  getWorkRepositories: () => props.workRepositoriesByProvider.github ?? [],
+  getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],
+  listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
   listSourceBranches: (repoPath, remoteConnectionId) => props.listSourceBranches(repoPath, remoteConnectionId),
-  loadWorkItems: async (repositoryId, location) => await props.loadWorkItems(
-    'github',
+  loadWorkItems: async (repositoryId, location, provider = 'github') => await props.loadWorkItems(
+    provider,
     repositoryId,
     location,
     { kind: 'all', state: 'open' },
   ) ?? [],
-  loadWorkRepositories: async (location) => await props.loadWorkRepositories('github', location) ?? [],
+  loadWorkRepositories: async (location, provider = 'github') => await props.loadWorkRepositories(provider, location),
   notifyError: (message) => ElMessage.error(message),
   prefillWorkItemForAgent,
   startWorkItemInExistingSession,
@@ -1533,16 +1597,18 @@ const {
 const repositoryAcquisition = useRepositoryAcquisition({
   activeTeam: () => activeTeam.value,
   activeTeamId: () => props.snapshot.activeTeamId ?? undefined,
-  catalog: () => props.workRepositoriesByProvider.github,
-  catalogError: () => props.workBacklogError,
-  catalogStatus: () => props.workBacklogStatus,
+  catalog: provider => props.workRepositoriesByProvider[provider],
   chooseLocalFolder: () => props.chooseAgentFolder(),
   cloneRepository: (input) => props.cloneSourceRepository(input),
-  connectGitHub: () => props.connectWorkProvider('github'),
+  connectProvider: provider => props.connectWorkProvider(provider),
   errorMessage: (error) => localizedErrorMessage(error, t),
-  githubConnection: () => githubConnection.value,
+  connection: provider => props.snapshot.workBacklog.connections.find(item => item.provider === provider) ?? { provider, status: 'disconnected' },
+  connectionError: provider => {
+    const connection = props.snapshot.workBacklog.connections.find(item => item.provider === provider);
+    return connection?.detail ? localizedText(connection.detail, t) : null;
+  },
   listSourceRepositories: (remoteConnectionId) => props.listSourceRepositories(remoteConnectionId),
-  loadGitHubRepositories: () => props.loadWorkRepositories('github'),
+  loadRepositories: (provider, location) => props.listWorkSources ? props.listWorkSources(provider, location) : location ? props.loadWorkRepositories(provider, location) : props.loadWorkRepositories(provider),
   openFolder: async (folder, teamId) => {
     const backend = preferredBackendChoices(props.snapshot, teamId)[0];
     if (!backend) { openSettings(); return; }
@@ -1553,9 +1619,10 @@ const repositoryAcquisition = useRepositoryAcquisition({
       ...(teamId ? { teamId } : {}),
     });
   },
-  openGitHubAuthorization: () => props.openWorkProviderAuthorization('github'),
-  openRepository: (repository, teamId) => openRepositorySessionSource({
+  openAuthorization: provider => props.openWorkProviderAuthorization(provider),
+  openRepository: (repository, teamId, workSource) => openRepositorySessionSource({
     teamId,
+    workSource,
     repositoryName: repository.name,
     repositoryRoot: repository.path,
   }),
@@ -1680,6 +1747,7 @@ const rightWorkspaceState = useRightWorkspaceState({
 const documentWorkspaces = useDocumentWorkspaces({
   api: appApi,
   workspaces: rightWorkspaceState.workspaces,
+  canUseWorkspace: agentId => !props.snapshot.agents.find(agent => agent.id === agentId)?.sharedConversation,
   workspaceFor: rightWorkspaceState.workspaceFor,
   reportError: message => ElMessage.error(message),
 });
@@ -1838,8 +1906,8 @@ const {
   openMarkdown: openMarkdownRequest,
   openSidePanel: openSidePanelRequest,
 } = workspacePreviews;
-function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<void> {
-  return agentId ? openAgentGitDiffForAgent(agentId, target) : Promise.resolve();
+function openAgentGitDiffPreview(agentId = currentAgent.value?.id, target?: import('@workspace/core/contracts').AgentGitDiffTarget, focusKind?: import('@workspace/core/file-kind').FileKind): Promise<void> {
+  return agentId ? openAgentGitDiffForAgent(agentId, target, focusKind) : Promise.resolve();
 }
 const imageAnnotation = useImageAnnotation({
   composerAttachments: () => props.composerAttachments,
@@ -1893,7 +1961,7 @@ const cockpitBacklogState = useCockpitBacklog({
   confirmLoadAll: async () => {
     try {
       await ElMessageBox.confirm(
-        translate('surface.appShell.thisLoadsYourGlobalGitHubBacklogOnePageAtATimeLargeBackl'),
+        translate('backlogSource.loadGlobalConfirmation'),
         translate('surface.appShell.loadTheGlobalBacklog'),
         {
           confirmButtonText: translate('dynamic.misc.loadEverything'),
@@ -1907,8 +1975,8 @@ const cockpitBacklogState = useCockpitBacklog({
     }
   },
   getSnapshot: () => props.snapshot,
-  getWorkBacklogError: () => props.workBacklogError,
-  getWorkBacklogStatus: () => props.workBacklogStatus,
+  getWorkBacklogError: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).error : props.workBacklogError,
+  getWorkBacklogStatus: provider => props.workBacklogStateFor ? props.workBacklogStateFor(provider).status : props.workBacklogStatus,
   getWorkItemsByRepository: () => props.workItemsByRepository,
   getWorkRepositories: (provider) => props.workRepositoriesByProvider[provider] ?? [],
   loadGlobalWorkItems: (query, provider) => props.loadGlobalWorkItems(provider, undefined, query),
@@ -2259,8 +2327,8 @@ const conversationPaneActions: CodexConversationPaneActions = {
   retryTurn: (turnId) => props.retryTurnAction?.(turnId) ?? emit('retry-turn', turnId),
   sendFollowUp: forwardCodexPrompt,
   steer: forwardCodexSteerPrompt,
-  steerQueuedPrompt: (promptId, prompt) => emit('steer-queued-prompt', promptId, prompt),
-  updateQueuedPrompt: (promptId, prompt) => emit('update-queued-prompt', promptId, prompt),
+  steerQueuedPrompt: (promptId, prompt, options) => options ? emit('steer-queued-prompt', promptId, prompt, options) : emit('steer-queued-prompt', promptId, prompt),
+  updateQueuedPrompt: (promptId, prompt, options) => options ? emit('update-queued-prompt', promptId, prompt, options) : emit('update-queued-prompt', promptId, prompt),
   submit: forwardCodexPrompt,
   updateAttachments: updateConversationAttachments,
   updateComposerState: updateConversationComposerState,
@@ -2274,17 +2342,18 @@ const conversationPaneActions: CodexConversationPaneActions = {
 };
 
 const delegatingAgentIds = new Set<string>();
-async function delegateAgent(agentId: string): Promise<void> {
+/** `/delegate` and `/mission` hand the conversation to the model, which carries out the request with a tool. */
+async function sendModelCommand(agentId: string, command: '/delegate' | '/mission'): Promise<void> {
   if (delegatingAgentIds.has(agentId)) return;
   delegatingAgentIds.add(agentId);
   try {
     await backendSwitch.settled();
     if (!props.snapshot.agents.some(agent => agent.id === agentId)) throw new Error(t('delegation.agentUnavailable'));
-    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, '/delegate');
+    if (props.agentConversationActions) await props.agentConversationActions.send(agentId, command);
     else if (currentAgent.value?.id === agentId) {
       requireConnectedConversation();
-      if (props.sendPromptAction) await props.sendPromptAction('/delegate');
-      else emit('sendPrompt', '/delegate');
+      if (props.sendPromptAction) await props.sendPromptAction(command);
+      else emit('sendPrompt', command);
     } else throw new Error(t('delegation.agentUnavailable'));
   } finally {
     delegatingAgentIds.delete(agentId);
@@ -2295,7 +2364,7 @@ async function runConversationMenuCommand(agentId: string, command: Conversation
   try {
     if (command === 'review') return await openCodeReviewForAgent(agentId);
     if (command === 'visualize') return await startVisualizeForAgent(agentId);
-    await delegateAgent(agentId);
+    await sendModelCommand(agentId, command === 'mission' ? '/mission' : '/delegate');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));
   }
@@ -2421,6 +2490,7 @@ async function setEngineEnabled(backend: AgentBackend, enabled: boolean) {
 const isAgentWorkspaceVisible = computed(() => activeSurface.value === 'agent');
 const isModalDialogVisible = computed(() => (
   agentDialogVisible.value
+  || shareTarget.value !== null
   || handoffAgentId.value !== null
   || modelFavoritesDialogVisible.value
   || newProjectDialogVisible.value
@@ -2518,7 +2588,7 @@ const paletteActions = computed(() => {
   const remote = team?.remoteConnectionId;
   return commandPaletteActions({
     shortcuts: shortcutContext.value, agent, team,
-    settings: { appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
+    settings: { embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.snapshot.providerConnections?.map(provider => provider.backend) ?? [] },
     connected: props.connectionState.status === 'connected',
     hostConnected: !remote || props.snapshot.remoteConnections.connections.some(connection => connection.id === remote && connection.status === 'ready'),
     engineConnected: Boolean(agent && preferredBackendChoices(props.snapshot, agent.teamId).includes(agent.backend)),
@@ -2777,7 +2847,8 @@ async function createQuickChat(): Promise<void> {
   }
 }
 
-async function handleStartWorkAction(action: 'new' | 'github' | 'local' | 'url'): Promise<void> {
+async function handleStartWorkAction(action: import('./start-work-actions').StartWorkAction): Promise<void> {
+  if (action === 'invite') { emit('join-invite'); return; }
   if (action === 'new') {
     newProjectError.value = null;
     newProjectDialogVisible.value = true;
@@ -2813,18 +2884,6 @@ async function createNewProject(name: string, backend: Agent['backend']): Promis
     newProjectBusy.value = false;
   }
 }
-
-function completeGitHubOnboardingStep(): void {
-  repositoryAcquireBusy.value = false;
-  repositoryAcquireError.value = null;
-  firstRunOnboarding.completeGitHub();
-}
-
-watch(() => [githubConnection.value.status, githubConnection.value.source] as const, ([status, source]) => {
-  if (githubOnboardingVisible.value && status === 'connected' && source !== 'cli') {
-    completeGitHubOnboardingStep();
-  }
-});
 
 function openNewTeam(): void {
   teamDialogMode.value = 'create';
@@ -3208,16 +3267,20 @@ async function openAgentIn(
   await props.updateSettings(input);
 }
 
-async function savePromptDraft(agentId: string, text: string): Promise<void> {
+function copyPromptDraft(draft: AppSnapshot['general']['savedPromptDrafts'][number]) {
+  return { ...draft, ...(draft.content === undefined ? {} : { content: normalizePromptContent(draft.content) }) };
+}
+
+async function savePromptDraft(agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]): Promise<void> {
   if (!text.trim() || text.length > 131_072) throw new Error(t('chat.savedDrafts.invalid'));
-  const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map((draft) => ({ ...draft })), {
-    id: crypto.randomUUID(), agentId, text, createdAt: Date.now(),
+  const savedPromptDrafts = [...props.snapshot.general.savedPromptDrafts.map(copyPromptDraft), {
+    id: crypto.randomUUID(), agentId, text, ...(content === undefined ? {} : { content: normalizePromptContent(content) }), createdAt: Date.now(),
   }].slice(-100);
   await updateSettings({ general: { savedPromptDrafts } });
 }
 
 async function removePromptDraft(id: string): Promise<void> {
-  await updateSettings({ general: { savedPromptDrafts: props.snapshot.general.savedPromptDrafts.filter((draft) => draft.id !== id).map((draft) => ({ ...draft })) } });
+  await updateSettings({ general: { savedPromptDrafts: props.snapshot.general.savedPromptDrafts.filter((draft) => draft.id !== id).map(copyPromptDraft) } });
 }
 
 async function updateRepositoryIcon(payload: {
@@ -3289,8 +3352,9 @@ async function restartApp(): Promise<void> {
   await props.restartApp();
 }
 
-async function connectWorkProvider(provider: WorkProviderKind): Promise<void> {
-  await props.connectWorkProvider(provider);
+async function connectWorkProvider(provider: WorkProviderKind, options?: import('@workspace/core/contracts').WorkProviderConnectOptions): Promise<void> {
+  if (options) await props.connectWorkProvider(provider, options);
+  else await props.connectWorkProvider(provider);
 }
 
 async function pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<void> {
@@ -3347,7 +3411,7 @@ watch(() => props.fileActivity, (activity) => {
   background: var(--color-shell-window);
 }
 
-.app-shell--auth-gated > :not(.codex-login):not(.github-onboarding):not(.onboarding-complete) {
+.app-shell--auth-gated > :not(.codex-login):not(.repositories-onboarding):not(.onboarding-complete):not(.first-run-guests) {
   visibility: hidden;
 }
 

@@ -169,6 +169,7 @@ function registerCollaborationTools(
       backend: z.enum(['codex', 'claude', 'antigravity']).optional().describe('Coding backend. Defaults to the caller’s backend.'),
       model: z.string().optional().describe('Optional model override. Inherits the caller model when the backend matches.'),
       reasoningEffort: z.string().optional().describe('Optional reasoning effort override. Inherits the caller effort when the backend matches.'),
+      serviceTier: z.string().optional().describe('Optional service tier override, for example a fast mode. Inherits the caller tier when the backend matches. Ignored for antigravity.'),
       repoPath: z.string().describe('Repository or worktree folder path.'),
       createWorktree: z.boolean().optional().describe('If true, create a new worktree from repoPath before creating the agent.'),
       branchName: z.string().optional().describe('Branch name for the new worktree. Required when createWorktree is true.'),
@@ -177,7 +178,7 @@ function registerCollaborationTools(
       startingContext: z.enum(['conversation', 'handoff']).optional().describe('Worktree delegation override: continue the native conversation or start fresh with a handoff. Defaults to saved preferences; unsupported/cross-provider continuation falls back visibly.'),
       instructions: z.string().optional().describe(`Assignment guidance and missing context; requires prompt. Applied to forks and handoffs. Saved user instructions take priority; ${product.name} supplies explicit per-task user overrides separately. No secrets.`),
     },
-  }, ({ name, backend, model, reasoningEffort, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
+  }, ({ name, backend, model, reasoningEffort, serviceTier, repoPath, createWorktree, branchName, destinationPath, prompt, instructions, task, requestId, startingContext }) => loggedToolResult('create-agent', {
     agentId: callerAgentId,
     repoPath,
     createWorktree: createWorktree === true,
@@ -186,6 +187,7 @@ function registerCollaborationTools(
     backend,
     model,
     reasoningEffort,
+    serviceTier,
     repoPath,
     createWorktree,
     branchName,

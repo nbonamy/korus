@@ -24,6 +24,13 @@ export type AppBackendEvent = AppBackendEventFrom<BackendPublishedEvent>;
 type AppBackendEventType = AppBackendEvent['type'];
 
 const payloadValidators = {
+  'conversation.shareChanged': (value: unknown, path: string) => {
+    expectRecord(value, path);
+    if (Object.keys(value).some(key => !['active', 'handle', 'connectedGuests', 'availability'].includes(key))) failEventValidation(path, 'unexpected share state field');
+    if (typeof value.active !== 'boolean' || (value.handle !== null && (typeof value.handle !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(value.handle)))
+      || (value.connectedGuests !== null && (typeof value.connectedGuests !== 'number' || !Number.isSafeInteger(value.connectedGuests) || value.connectedGuests < 0))) failEventValidation(path, 'invalid share state');
+    expectLiteral(value.availability, ['transportPending', 'notConfigured', 'ready', 'unavailable', 'capacity', 'rateLimited', 'upgradeRequired'], `${path}.availability`);
+  },
   ...runtimePayloadValidators,
   ...agentPayloadValidators,
   ...conversationPayloadValidators,
@@ -122,6 +129,7 @@ function expectEventContext(event: EventRecord): void {
     case 'agentCreation.progress':
     case 'git.branchWorkProgress':
     case 'git.operationProgress':
+    case 'conversation.shareChanged':
     case 'agent.updated':
     case 'agent.statusChanged':
     case 'conversation.goalCleared':
@@ -169,6 +177,7 @@ function expectEventContext(event: EventRecord): void {
     case 'remoteControl.statusChanged':
     case 'browser.annotationCreated':
     case 'mission.implementationStartProgress':
+    case 'mission.focusRequested':
     case 'workItem.assignmentUpdated':
       return;
   }

@@ -1,5 +1,5 @@
 import type { Agent, MainToRendererEvent } from "@workspace/core/contracts";
-import type { ExecutionObservation } from "@workspace/core/usage";
+import type { ExecutionObservation, RequestObservation } from "@workspace/core/usage";
 import { UsageLedger } from "./usage-ledger";
 import { TurnClock } from "./turn-clock";
 import { providerConversationEventView } from "@workspace/core/provider-conversation-event";
@@ -114,6 +114,9 @@ export class UsageService {
         });
       })
       .catch(() => undefined);
+  }
+  observeRequest(event: RequestObservation): void {
+    this.chain = this.chain.then(async () => { await this.local.observeRequest(event); }).catch(() => undefined);
   }
   clear(): Promise<void> {
     const clearing = this.chain.then(() => this.local.clear());

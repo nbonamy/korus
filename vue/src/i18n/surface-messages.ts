@@ -1,6 +1,23 @@
 import { product } from '@workspace/core/product';
 // Component-scoped renderer copy. Keep keys stable when editing messages.
 export const surfaceMessages = {
+  settingsWorkflowsPanel: {
+    introTitle: 'Shape how your agents work',
+    introDescription: 'Choose how agents plan before they build and how they hand work to other agents.',
+  },
+  skills: {
+    title: 'Skills', introTitle: 'Teach your agents new skills', introDescription: 'Install curated skills and packs, or add your own, and keep every coding agent in step.', sync: 'Sync', syncLabel: 'Sync skills', install: 'Install', installPack: 'Install pack', installed: 'Installed',
+    installing: 'Installing…', managed: 'Installed skills', source: 'Skill source',
+    placeholder: 'GitHub URL, skills.sh URL or skills add command',
+    discover: 'Discover', installSkill: 'Install skill', skill: 'Skill', search: 'Search skills', searchPlaceholder: 'Search skills…',
+    noMatches: 'No matching skills.', personal: 'Personal', builtIn: 'Built-in',
+    installedFor: '{provider}: installed', missingFor: '{provider}: not installed', conflictFor: '{provider}: an existing skill was preserved',
+    syncHint: 'Sync skills installed with Korus to your configured coding agents.',
+    empty: 'No skills installed yet.',
+    actions: '{name} actions', view: 'View skill', delete: 'Delete skill', managedCopy: 'Korus copy',
+    deleteTitle: 'Delete {name}?', deleteMessage: 'Delete “{name}” from all configured agents? Its installed folders will be removed. Original sources of linked skills are kept.',
+    unavailable: 'Skills client unavailable.', loading: 'Loading skills…', loadingDocument: 'Loading skill…', synced: 'Synced', kind: 'Skill type', deleting: 'Deleting {name}…', codingAgents: 'Coding agents', syncTitle: 'Sync skills?', syncOne: 'Sync this skill', uninstall: 'Uninstall', uninstallLabel: 'Uninstall {name}', refresh: 'Refresh', uninstalling: 'Uninstalling…', uninstallTitle: 'Uninstall {name}?', uninstallPackMessage: 'Remove the {count} installed skills of “{name}” from all configured agents? This deletes: {skills}. Original sources of linked skills are kept.', syncing: 'Syncing {name}…', syncMessage: 'This makes all your personal skills available in all your configured coding agents.',
+  },
   mobileSimulator: {
     "title": "Mobile simulator",
     "tab": "Simulator",
@@ -53,6 +70,7 @@ export const surfaceMessages = {
     "pullRequestInstructionsPlaceholder": "Add pull request guidance…",
     "worktrees": "Worktrees",
     "worktreeInitialization": "Worktree initialization",
+    "worktreeInitializationGuide": "Setup guide",
     "prepareNewWorktreesBeforeAgentsStart": "Use repository instructions when available; otherwise copy local environment files and detect setup from the project's tech stack",
     "worktreeInitializationAutomatic": "Auto-detect",
     "worktreeInitializationRepository": "Repo instructions only",
@@ -106,7 +124,7 @@ export const surfaceMessages = {
     "adjustAvatar": "Adjust Avatar"
   },
   "agentCloseDialog": {
-    "close": "Close",
+    "close": "Close {name}?",
     "thisAgentIsUsingTheLinkedWorktree": "This agent is using the linked worktree",
     "deletingTheWorktreeAlsoDeletesItsLocalBranchKeepingItLea": "Deleting the worktree also deletes its local branch. Keeping it leaves both untouched.",
     "alsoDelete": "Also delete",
@@ -139,9 +157,9 @@ export const surfaceMessages = {
     "clear": "Clear",
     "sourceWorktreeCreationIsNotAvailable": "Source worktree creation is not available.",
     "noAgentSelectedForEditing": "No agent selected for editing.",
-    "editAgent": "Edit agent",
+    "editAgent": "Rename agent",
     "newAgent": "New agent",
-    "save": "Save",
+    "save": "Rename",
     "createAgent": "Create agent",
     "customFolder": "Custom folder",
     "chooseFolder": "Choose folder..."
@@ -156,6 +174,13 @@ export const surfaceMessages = {
     "noMatchingAgents": "No matching agents.",
     "noTeam": "No team"
   },
+  "fileKind": {
+    "code": "Code",
+    "test": "Tests",
+    "docs": "Documentation",
+    "other": "Other",
+    "fileCount": "{count} file | {count} files"
+  },
   "agentHeader": {
     "showAgentSidebar": "Show agent sidebar",
     "noAgent": "No agent",
@@ -168,11 +193,14 @@ export const surfaceMessages = {
     "unstagedChanges": "Unstaged",
     "stagedChanges": "Staged",
     "lastTurnChanges": "Last turn",
+    "changesByType": "By file type",
     "commits": "Commits",
     "addedLines": "Added lines",
     "removedLines": "Removed lines",
     "openRepositoryBacklog": "Open repository backlog",
     "toggleExecutionPlan": "Toggle execution plan",
+    "expandWorkspace": "Expand workspace",
+    "restoreWorkspaceWidth": "Restore workspace width",
     "toggleRightWorkspace": "Toggle right workspace",
     "closeRightWorkspace": "Close right workspace",
     "openRightWorkspace": "Open right workspace",
@@ -263,6 +291,11 @@ export const surfaceMessages = {
     "openExternalFailed": "Could not open the external browser.",
     "annotating": "Annotating",
     "browserMenu": "Browser menu",
+    "openDevTools": "Open DevTools",
+    "clearBrowsingData": "Clear browsing data…",
+    "clearDataTitle": "Clear browsing data?",
+    "clearDataMessage": "Clear all cookies, site data, browsing history and cache shared by all agents? This signs you out of websites and resets open browser pages. Extensions and their saved data will be kept.",
+    "clearDataConfirm": "Clear data",
     "bookmarks": "Bookmarks",
     "bookmarkPage": "Bookmark this page",
     "editBookmark": "Edit bookmark",
@@ -469,9 +502,6 @@ export const surfaceMessages = {
     "connectingToApp": `Connecting ${product.name}`,
     "app": `${product.name}`
   },
-  "githubOnboardingLanding": {
-    "connectGitHub": "Connect GitHub"
-  },
   "onboardingCompleteLanding": {
     "appIsReady": `${product.name} is ready`
   },
@@ -517,6 +547,7 @@ export const surfaceMessages = {
     "refresh": "Refresh",
     "reviewOptions": "Review options",
     "wordWrap": "Word wrap",
+    "groupByFileType": "Group by file type",
     "workingTree": "Working tree",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all"
@@ -788,6 +819,7 @@ export const surfaceMessages = {
     "copyPathFailed": "Could not copy the path.",
     "closeTab": "Close tab",
     "closeOtherTabs": "Close other tabs",
+    "closeAllTabs": "Close all tabs",
     "openRightWorkspaceTab": "Open right workspace tab",
     "newTab": "New tab",
     "openAWorkspaceTab": "Open a workspace tab",
@@ -980,9 +1012,10 @@ export const surfaceMessages = {
   },
   "settingsIntegrationsPanel": {
     "integrations": "Integrations",
-    "usingGitHubCli": "Using GitHub CLI",
+    "usingCli": "Using {provider} CLI",
+    "reconnectCli": "Reconnect {provider} CLI",
     "introTitle": "Connect your work tools",
-    "introDescription": "Bring GitHub and Linear work into your backlog and hand it to agents",
+    "introDescription": "Bring work from GitHub, GitLab and Linear into your backlog",
     "gitHub": "GitHub",
     "connect": "Connect",
     "connected": "Connected",
@@ -1049,6 +1082,13 @@ export const surfaceMessages = {
     "groupApp": "App",
     "groupAgents": "Agents",
     "groupWorkspace": "Workspace"
+  },
+  "browserExtensions": {
+    "introTitle": "Make the browser your own",
+    "actions": "{name} actions",
+    "browser": "Browser", "extensions": "Extensions",
+    "profileHint": "All agents share the same browser accounts, extensions and preferences. Official extension updates may temporarily break compatibility.",
+    "disabled": "Disabled", "notInstalled": "Not installed", "install": "Install", "update": "Update", "enable": "Enable", "disable": "Disable", "remove": "Remove", "reinstall": "Reinstall", "installing": "Installing…"
   },
   "settingsVoicePanel": {
     "whenToSpeak": "When to speak",

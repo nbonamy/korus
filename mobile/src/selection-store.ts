@@ -1,7 +1,9 @@
 import type { ProtectedVault } from './protected-storage';
 
-type SavedSelection = { teamId: string; agentId: string };
+type SavedSelection = { teamId: string; agentId: string; allTeams?: boolean };
 export type SelectionStore = {
+  readLastLaptop(): Promise<string | null>;
+  writeLastLaptop(laptopId: string): Promise<void>;
   read(laptopId: string): Promise<SavedSelection | null>;
   write(laptopId: string, selection: SavedSelection): Promise<void>;
   remove(laptopId: string): Promise<void>;
@@ -16,7 +18,10 @@ export function createSelectionStore(vault: ProtectedVault): SelectionStore {
     writes = pending.catch(() => {});
     return pending;
   }
+  const lastLaptopKey = 'last-connected-laptop';
   return {
+    async readLastLaptop() { await writes; return (await vault.read({ key: lastLaptopKey })).value || null; },
+    writeLastLaptop: (value) => enqueue(() => vault.write({ key: lastLaptopKey, value })),
     async read(laptopId) {
       await writes;
       const { value } = await vault.read({ key: key(laptopId) });
@@ -24,7 +29,8 @@ export function createSelectionStore(vault: ProtectedVault): SelectionStore {
       try {
         const saved: unknown = JSON.parse(value);
         if (saved && typeof saved === 'object' && 'teamId' in saved && typeof saved.teamId === 'string'
-          && 'agentId' in saved && typeof saved.agentId === 'string') return { teamId: saved.teamId, agentId: saved.agentId };
+          && 'agentId' in saved && typeof saved.agentId === 'string') return { teamId: saved.teamId, agentId: saved.agentId,
+            ...('allTeams' in saved && saved.allTeams === true ? { allTeams: true } : {}) };
       } catch { /* A damaged preference falls back to the first available conversation. */ }
       return null;
     },
@@ -32,6 +38,9 @@ export function createSelectionStore(vault: ProtectedVault): SelectionStore {
       const value = JSON.stringify(selection);
       return enqueue(() => vault.write({ key: key(laptopId), value }));
     },
-    remove: (laptopId) => enqueue(() => vault.remove({ key: key(laptopId) })),
+    remove: (laptopId) => enqueue(async () => {
+      await vault.remove({ key: key(laptopId) });
+      if ((await vault.read({ key: lastLaptopKey })).value === laptopId) await vault.remove({ key: lastLaptopKey });
+    }),
   };
 }

@@ -27,6 +27,9 @@ export function createMainWindow(
   appMenuOptions: Partial<Pick<AppMenuOptions, 'updateStatus'>> & Partial<Pick<AppMenuCallbacks, 'checkForUpdates' | 'installUpdate' | 'sendDebugAgentMessage' | 'toggleDebugExecutionPlan' | 'injectDebugPlanReview' | 'populateDebugVisualize' | 'getDebugMissionStage' | 'setDebugMissionStage' | 'injectDebugCodeReview' | 'isDebugThreadFlagSet' | 'setDebugThreadFlag'>> = {},
 ): BrowserWindow {
   const releaseMode = isReleaseMode();
+  if (process.platform === 'darwin' && !releaseMode) {
+    app.dock?.setIcon(desktopIconPath(app));
+  }
   const savedState = readWindowState(windowStatePath());
   const restoredState = savedState && isWindowBoundsVisible(savedState.bounds, screen.getAllDisplays().map((display) => display.workArea))
     ? savedState
@@ -127,6 +130,7 @@ export function secureBrowserGuestAttachment(
   delete params.preload;
   delete params.allowpopups;
   delete webPreferences.preload;
+  webPreferences.devTools = true;
   webPreferences.sandbox = true;
   webPreferences.nodeIntegration = false;
   webPreferences.nodeIntegrationInSubFrames = false;
@@ -167,7 +171,7 @@ export function createMainWindowOptions(
     show: false,
     title: product.name,
     ...(platform === 'win32' ? { accentColor: false } : {}),
-    ...(platform === 'linux' ? { icon: desktopIconPath(app) } : {}),
+    ...(platform === 'linux' || platform === 'win32' ? { icon: desktopIconPath(app) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

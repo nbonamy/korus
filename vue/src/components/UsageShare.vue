@@ -50,7 +50,7 @@
           :aria-label="
             slice.label +
             ': ' +
-            chartFormat(slice.value, true) +
+            measureFormat(slice.value, measure) +
             ' · ' +
             chartFormat(slice.percent) +
             '%'
@@ -60,13 +60,21 @@
           @focus="active = slice.key"
           @blur="active = null"
         />
-        <text x="80" y="80" text-anchor="middle" class="ring-total">
+        <text
+          x="80"
+          y="80"
+          text-anchor="middle"
+          class="ring-total"
+          :class="{ 'ring-total--cost': measure === 'cost' }"
+        >
           {{
             highlighted
               ? chartFormat(highlighted.percent) + "%"
               : total === null
-                ? "—"
-                : chartFormat(total, true)
+                ? measure === "cost"
+                  ? $t("analytics.costUnavailable")
+                  : "—"
+                : measureFormat(total, measure)
           }}
         </text>
         <text x="80" y="99" text-anchor="middle" class="ring-unit">
@@ -74,9 +82,11 @@
             highlighted
               ? clip(highlighted.label)
               : $t(
-                  measure === "turns"
-                    ? "analytics.turnsUnit"
-                    : "analytics.measuredTokens",
+                  measure === "cost"
+                    ? "analytics.costShareUnit"
+                    : measure === "turns"
+                      ? "analytics.turnsUnit"
+                      : "analytics.measuredTokens",
                 )
           }}
         </text>
@@ -98,8 +108,12 @@
           }}</span>
           <span class="share-value">{{
             row.value === null
-              ? $t("analytics.notAvailable")
-              : chartFormat(row.value, true)
+              ? $t(
+                  measure === "cost"
+                    ? "analytics.costUnavailable"
+                    : "analytics.notAvailable",
+                )
+              : measureFormat(row.value, measure)
           }}</span>
         </li>
       </ul>
@@ -111,12 +125,13 @@ import UsageCard from "./UsageCard.vue";
 import { computed, ref, useId } from "vue";
 import {
   chartFormat,
+  measureFormat,
   type UsageMeasure,
   type UsageSeries,
 } from "./usage-chart";
 const props = defineProps<{
   series: UsageSeries[];
-  measure: UsageMeasure;
+  measure: Exclude<UsageMeasure, "ratio">;
   subtitle?: string;
 }>();
 const uid = useId();
@@ -193,6 +208,9 @@ svg {
 }
 .ring-slice.dimmed {
   opacity: 0.35;
+}
+.ring-total.ring-total--cost {
+  font-size: var(--font-size-18);
 }
 .ring-total {
   fill: var(--color-text);

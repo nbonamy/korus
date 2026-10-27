@@ -192,6 +192,13 @@ button,
   cursor: pointer;
 }
 
+/* Icons placed in a button follow the button's text size; zero specificity so a component can still override. */
+:where(.app-button > svg) {
+  flex: 0 0 auto;
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
 .app-button--primary {
   border-color: var(--color-primary);
   color: var(--color-on-primary);
@@ -236,6 +243,41 @@ button,
   /* background: var(--color-surface-low); */
 }
 
+.app-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-icon-button svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.app-icon-button:hover:not(:disabled),
+.app-icon-button[aria-expanded='true'] {
+  color: var(--color-text);
+  background: var(--color-surface-low);
+}
+
+.app-icon-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.app-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .app-button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
@@ -253,17 +295,51 @@ button,
   border-top-color: transparent;
   border-radius: var(--radius-full);
   content: '';
-  animation: app-button-spin 800ms linear infinite;
+  animation: app-spin 800ms linear infinite;
 }
 
-@keyframes app-button-spin {
+@keyframes app-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
+/* The one loading ring. Colour follows the text; add --primary for a standalone, branded spinner. */
+.app-spinner {
+  --app-spinner-size: 16px;
+  --app-spinner-width: 2px;
+  display: inline-block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--app-spinner-size);
+  height: var(--app-spinner-size);
+  border: var(--app-spinner-width) solid color-mix(in srgb, currentcolor 25%, transparent);
+  border-top-color: currentcolor;
+  border-radius: var(--radius-full);
+  animation: app-spin 800ms linear infinite;
+}
+
+.app-spinner--sm {
+  --app-spinner-size: 12px;
+}
+
+.app-spinner--lg {
+  --app-spinner-size: 20px;
+  --app-spinner-width: 3px;
+}
+
+.app-spinner--xl {
+  --app-spinner-size: 40px;
+  --app-spinner-width: 3px;
+}
+
+.app-spinner--primary {
+  color: var(--color-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .app-button[aria-busy='true']::before {
+  .app-button[aria-busy='true']::before,
+  .app-spinner {
     animation: none;
   }
 }

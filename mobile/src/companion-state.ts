@@ -1,3 +1,4 @@
+import type { AgentRequest } from '@workspace/core/agent-request';
 import { PromptRejectedError } from './companion-port';
 import { createBackoff } from './reconnect-backoff';
 import { createRemoteList } from './remote-list';
@@ -8,10 +9,10 @@ import { createComposerState } from './composer-state';
 import { sameTarget } from './companion-target';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
-import { promptSkillInputsFromText } from '@codex-app-sdk/vue';
+import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { Agent, AgentBackend, BackendModelOption, BackendSkillSummary, BackendPluginSummary } from '@workspace/core/contracts';
 import type { CompanionBranch, CompanionNewChat, CompanionUsage, CompanionProjectInput, CompanionGitHubRepository, CompanionProjectBranch } from '@workspace/core/companion-protocol';
-import { companionTarget, companionSessionId, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
+import { companionAgents, companionTarget, companionSessionId, type CompanionMission, type CompanionTarget, type CompanionRequestReply, type CompanionCloseOptions, type CompanionClosePreview } from '@workspace/core/companion-protocol';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { matchingBranchUpstream } from '@workspace/core/git-remote';
 import type { CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionPromptOptions, CompanionReviewInput, CompanionSession, CompanionUpload, CompanionWorkspace } from './companion-port';
@@ -33,6 +34,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const status = ref<'unpaired' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'revoked' | 'error'>('unpaired');
   const error = ref('');
+  /** Why the laptop was last unreachable, for the person staring at "Connection lost"; cleared once connected. */
+  const errorDetail = ref('');
   // Every list read from the laptop on demand is dropped when the connection or its context changes.
   const remote = { session: () => session, connected: () => status.value === 'connected' };
   const usageList = createRemoteList<CompanionUsage>(remote, {});
@@ -52,6 +55,8 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const goalBusy = computed(() => pendingGoals.has(goalKey()));
 
   const chatCreation = ref<'idle' | 'creating' | 'failed'>('idle');
+  const teamCreation = ref<'idle' | 'creating' | 'failed'>('idle');
+  const missionAction = ref<'idle' | 'working' | 'failed'>('idle');
   const laptopId = ref('');
   const teamId = ref('');
   const agentId = ref('');
@@ -78,6 +83,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const conversationGeneration = ref(0);
   let selectedConversationKey = '';
   let reconnectWanted = false;
+  let workspaceLoaded = false;
   let isForeground = true;
   const backoff = createBackoff();
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -87,11 +93,12 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const branches = branchList.state;
   const dismissBranches = branchList.reset;
   const stopBranches = watch([laptopId, teamId, status], dismissBranches, { flush: 'sync' });
-  const loadBranches = (repositoryId: string) => branchList.load({ repositoryId }, active => teamId.value ? active.listBranches?.(teamId.value, repositoryId) : undefined);
+  const loadBranches = (repositoryId: string, team = teamId.value) => branchList.load({ repositoryId }, active => team ? active.listBranches?.(team, repositoryId) : undefined);
   const projectBranchList = createRemoteList<CompanionProjectBranch, { repositoryId: string | null }>(remote, { repositoryId: null });
   const projectBranches = projectBranchList.state;
   const dismissProjectBranches = projectBranchList.reset;
-  const loadProjectBranches = (repositoryId: string, source: 'github' | 'local' = 'github') => projectBranchList.load({ repositoryId }, active => {
+  const loadProjectBranches = (repositoryId: string, source: 'github' | 'gitlab' | 'local' = 'github') => projectBranchList.load({ repositoryId }, active => {
+    if (source === 'gitlab') return teamId.value ? active.repositoryBranches?.(teamId.value, source, repositoryId) : undefined;
     const read = source === 'local' ? active.localBranches : active.githubBranches;
     return teamId.value ? read?.call(active, teamId.value, repositoryId) : undefined;
   });
@@ -99,10 +106,14 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   const projectRepositories = projectRepositoryList.state;
   function dismissProjectRepositories() { projectRepositoryList.reset(); dismissProjectBranches(); }
   const stopProjects = watch([laptopId, teamId, status], dismissProjectRepositories, { flush: 'sync' });
-  const loadProjectRepositories = (source: 'github' | 'local' = 'github') => projectRepositoryList.load({}, active => {
-    const read = source === 'local' ? active.localRepositories : active.githubRepositories;
-    return teamId.value ? read?.call(active, teamId.value) : undefined;
-  });
+  const loadProjectRepositories = (source: 'github' | 'gitlab' | 'local' = 'github') => {
+    dismissProjectBranches();
+    return projectRepositoryList.load({}, active => {
+      if (source === 'gitlab') return teamId.value ? active.repositoryCatalog?.(teamId.value, source) : undefined;
+      const read = source === 'local' ? active.localRepositories : active.githubRepositories;
+      return teamId.value ? read?.call(active, teamId.value) : undefined;
+    });
+  };
 
   // The desktop's order is the team's: agent order inside it, and repositories by their first agent.
   const agents = computed(() => {
@@ -110,7 +121,10 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const rank = (id: string) => { const index = order.indexOf(id); return index < 0 ? order.length : index; };
     return workspace.value.agents.filter((a) => a.teamId === teamId.value).sort((a, b) => rank(a.id) - rank(b.id));
   });
-  const agent = computed(() => agents.value.find((a) => a.id === agentId.value) ?? null);
+  // The sidebar lists the team's own agents; a mission's workers are opened from the mission and listed nowhere else.
+  const conversationAgents = computed(() => companionAgents(workspace.value).filter((a) => a.teamId === teamId.value));
+  const agent = computed(() => conversationAgents.value.find((a) => a.id === agentId.value) ?? null);
+  const missions = computed(() => workspace.value.missionProgress ?? []);
   function mostRecentAgent(): Agent | undefined {
     const activity = (candidate: Agent) => Math.max(Date.parse(candidate.lastActivityAt ?? '') || 0, Date.parse(candidate.createdAt) || 0);
     return agents.value.reduce<Agent | undefined>((latest, candidate) =>
@@ -170,13 +184,26 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   const loadSkills = () => loadCatalog(skillList, 'skills', active => Boolean(active.listSkills), (active, id) => active.listSkills?.(id));
   const loadPlugins = () => loadCatalog(pluginList, 'plugins', active => Boolean(active.listPlugins), (active, id) => active.listPlugins?.(id));
+  // Remember local dismissal and acknowledged consumption while late workspace updates catch up.
+  // Include the request content so a reused identity with a new question remains visible.
+  const hiddenRequests = reactive(new Map<string, string>());
+  function hideRequest(entry: { key: string; request: AgentRequest }) {
+    hiddenRequests.delete(entry.key);
+    hiddenRequests.set(entry.key, JSON.stringify(entry.request));
+    while (hiddenRequests.size > 128) hiddenRequests.delete(hiddenRequests.keys().next().value!);
+    if (failedRequest.value === entry.key) failedRequest.value = null;
+  }
   const requests = computed(() => {
     const owner = agent.value; const target = targetOf(owner);
     if (!owner || !target) return [];
     return (workspace.value.agentRequests?.[owner.id] ?? []).map((request) => ({
       key: JSON.stringify([target, request.id, request.conversationId]), target, request,
-    }));
+    })).filter(entry => hiddenRequests.get(entry.key) !== JSON.stringify(entry.request));
   });
+  function dismissRequest(key: string) {
+    const pending = requests.value.find(entry => entry.key === key);
+    if (pending?.request.kind === 'question' && respondingRequest.value !== key) hideRequest(pending);
+  }
   async function respondRequest(reply: CompanionRequestReply) {
     const pending = requests.value.find((entry) => entry.request.id === reply.id && entry.request.conversationId === reply.conversationId
       && entry.target.hostId === reply.target.hostId && entry.target.locationId === reply.target.locationId
@@ -188,14 +215,21 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       await active.respondRequest!(reply);
       // Acknowledged consumption is safe to hide while the authoritative update catches up.
       if (session === active && epoch === connectionEpoch) {
+        hideRequest(pending);
         workspace.value = { ...workspace.value, agentRequests: { ...workspace.value.agentRequests,
           [reply.target.agentId]: (workspace.value.agentRequests?.[reply.target.agentId] ?? []).filter((request) => request.id !== reply.id || request.conversationId !== reply.conversationId) } };
       }
     } catch {
       if (session === active && epoch === connectionEpoch) {
-        failedRequest.value = pending.key;
         // Reconcile an answer handled on desktop or whose acknowledgment was lost. Never replay it.
-        try { await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
+        let reconciled = false;
+        try { reconciled = await refreshWorkspace(active); } catch { /* Keep the request and draft available for an explicit retry. */ }
+        if (session !== active || epoch !== connectionEpoch) return;
+        const stillPending = workspace.value.agentRequests?.[reply.target.agentId]?.some(request => request.id === reply.id && request.conversationId === reply.conversationId);
+        // Skipping a nonblocking question is also a local dismissal; cancelling it on the laptop is best effort.
+        const optionalSkip = reply.outcome.kind === 'cancelled' && pending.request.kind === 'question' && pending.request.question.blocking === false;
+        if ((reconciled && !stillPending) || optionalSkip) hideRequest(pending);
+        else failedRequest.value = pending.key;
       }
     } finally { if (respondingRequest.value === pending.key) respondingRequest.value = null; }
   }
@@ -267,7 +301,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
 
   function closeSession() {
     composer.forgetAllPermissions();
-    actions.reset(); chatCreation.value = 'idle';
+    actions.reset(); chatCreation.value = 'idle'; teamCreation.value = 'idle'; missionAction.value = 'idle';
     receipts.clear();
     clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -298,7 +332,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     closeSession();
     const epoch = connectionEpoch;
     const sameLaptop = laptopId.value === id;
-    if (!sameLaptop) { teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; composer.forgetModels(); }
+    if (!sameLaptop) { workspaceLoaded = false; teamId.value = ''; agentId.value = ''; workspace.value = { teams: [], agents: [] }; conversation.value = null; composer.forgetModels(); }
     laptopId.value = id;
     status.value = reconnecting ? 'reconnecting' : 'connecting';
     error.value = '';
@@ -311,11 +345,13 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const nextWorkspace = await opened.getWorkspace();
       if (epoch !== connectionEpoch) { opened.close(); return; }
       session = opened;
+      workspaceLoaded = true;
       if (!isForeground) void session.setActive?.(false).catch(() => {});
       reconcileNotificationReads(nextWorkspace);
       workspace.value = reconcileWorkspace(workspace.value, nextWorkspace);
-      const removeDisconnect = session.onDisconnect(() => {
+      const removeDisconnect = session.onDisconnect((reason) => {
         if (epoch !== connectionEpoch) return;
+        errorDetail.value = reason ?? '';
         ++selectionEpoch;
         ++conversationGeneration.value;
         loading.value = false;
@@ -335,15 +371,20 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       const removeNotifications = session.onNotification?.(notification => { if (epoch === connectionEpoch) forwardNotification(notification); }) ?? (() => {});
       unsubscribe = () => { removeDisconnect(); removeUpdates(); removeNotifications(); };
       if (pushRegistration !== undefined) void registerPush(pushRegistration);
-      status.value = 'connected';
+      status.value = 'connected'; errorDetail.value = '';
       // Receipt reads must not hold back the transcript; they settle while it loads.
       const receiptsSettled = receipts.reconcile();
       if (teamId.value) await selectAgent(agentId.value);
       await receiptsSettled;
       if (epoch === connectionEpoch && status.value === 'connected' && (!agentId.value || conversationReady.value)) backoff.reset();
-    } catch {
+    } catch (failure) {
       opened?.close();
-      if (epoch === connectionEpoch) { status.value = 'error'; error.value = 'mobile.errors.openLaptop'; retryConnection(); }
+      if (epoch === connectionEpoch) {
+        error.value = 'mobile.errors.openLaptop';
+        errorDetail.value = failure instanceof Error ? `${failure.name}: ${failure.message}`.slice(0, 160) : '';
+        if (workspaceLoaded) { status.value = 'error'; retryConnection(); }
+        else { reconnectWanted = false; status.value = 'unpaired'; }
+      }
     }
   }
   const receipts = createReceiptReconciler({
@@ -393,7 +434,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   });
   const { action: sessionAction, failed: sessionActionFailed, closePreview } = actions;
   async function selectAgent(id: string) {
-    const nextAgent = agents.value.find((a) => a.id === id) ?? mostRecentAgent();
+    const nextAgent = conversationAgents.value.find((a) => a.id === id) ?? mostRecentAgent();
     id = nextAgent?.id ?? '';
     if (id !== agentId.value) queuedPromptFailed.value = false;
     goalError.value = false;
@@ -488,7 +529,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (active === session && epoch === selectionEpoch) queuedPromptFailed.value = true;
     } finally { queuedPromptPending.value = null; }
   }
-  async function submit(prompt: string, sendOptions?: { followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
+  async function submit(prompt: string, sendOptions?: { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; attachments?: readonly { type?: string; reference: string }[]; uploads?: CompanionUpload[]; onResolved?: (outcome: 'accepted' | 'rejected') => void }): Promise<'accepted' | 'rejected' | 'unknown'> {
     const uploads = sendOptions?.uploads ?? resolveUploads?.(sendOptions?.attachments) ?? [];
     if (!canSend.value || (!prompt.trim() && uploads.length === 0) || !session || (uploads.length > 0 && !defaultBackendCapabilities(agent.value!.backend).attachments)) return 'rejected';
     const target = currentTarget();
@@ -496,14 +537,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     const draftKey = key();
     const capturedSession = session;
     const epoch = selectionEpoch;
-    const catalogEpoch = skillList.epoch;
-    // Resolve the same typed skill aliases as the desktop, including pasted mentions.
-    if (/[$/][A-Za-z0-9_.-]+/.test(prompt)) {
-      await loadSkills();
-      if (epoch !== selectionEpoch || session !== capturedSession || catalogEpoch !== skillList.epoch || !canSend.value) return 'rejected';
-    }
-    const selectedSkills = promptSkillInputsFromText(prompt, skills.value.items);
-    const sentDraft = draft.value.text ? { ...draft.value } : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length };
+    const sentDraft = { ...(draft.value.text ? draft.value : { text: prompt, selectionStart: prompt.length, selectionEnd: prompt.length }), ...(sendOptions?.content === undefined ? {} : { content: sendOptions.content }) };
     // The SDK clears before dispatch; retain the submitted text until admission succeeds.
     if (!drafts[draftKey]?.text) drafts[draftKey] = sentDraft;
     sending[draftKey] = true;
@@ -521,7 +555,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     try {
       const settings = composerSettings.value;
       const composerOptions = settings && agent.value ? promptOptionsFor(settings, composerCapabilitiesFor(agent.value.backend, models.value)) : undefined;
-      const options = selectedSkills.length || sendOptions?.followUpBehavior ? { ...composerOptions, ...(selectedSkills.length ? { skills: selectedSkills } : {}), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
+      const options = sendOptions?.content !== undefined || sendOptions?.followUpBehavior ? { ...composerOptions, ...(sendOptions?.content === undefined ? {} : { content: sendOptions.content }), ...(sendOptions?.followUpBehavior ? { followUpBehavior: sendOptions.followUpBehavior } : {}) } : composerOptions;
       const promptText = prompt.trim() ? prompt : '(no user instructions)';
       await (uploads.length ? capturedSession.sendPrompt(target, promptText, clientCommandId, options, uploads) : capturedSession.sendPrompt(target, promptText, clientCommandId, options));
       if (drafts[draftKey]?.text === sentDraft.text) drafts[draftKey] = { text: '', selectionStart: 0, selectionEnd: 0 };
@@ -547,9 +581,53 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       sending[draftKey] = false;
     }
   }
+  /** Creates through the owning laptop and reconciles its authoritative workspace. */
+  async function createTeam(value: string): Promise<string | null> {
+    const name = value.trim(); const active = session;
+    if (!active || status.value !== 'connected' || teamCreation.value === 'creating' || !name || name.length > 100) return null;
+    teamCreation.value = 'creating';
+    try {
+      if (!active.createTeam) throw new Error('Team creation unavailable.');
+      const id = await active.createTeam(name);
+      if (!await refreshWorkspace(active)) return null;
+      if (!workspace.value.teams.some(team => team.id === id)) throw new Error('Created team is unavailable.');
+      teamCreation.value = 'idle';
+      return id;
+    } catch {
+      if (session === active) teamCreation.value = 'failed';
+      return null;
+    }
+  }
+  /** A person's move on a mission, made on the laptop and then read back so the screen shows what really happened. */
+  async function actOnMission(act: (active: CompanionSession, mission: CompanionMission) => Promise<void> | undefined, missionId: string) {
+    const active = session; const mission = workspace.value.missionProgress?.find((candidate) => candidate.id === missionId);
+    if (!active || !mission || status.value !== 'connected' || missionAction.value === 'working') return;
+    missionAction.value = 'working';
+    try {
+      const done = act(active, mission);
+      if (!done) throw new Error('Mission actions unavailable.');
+      await done;
+      await refreshWorkspace(active);
+      if (session === active) missionAction.value = 'idle';
+    } catch {
+      // A refused action usually means the mission moved on: show the laptop's current state either way.
+      if (session === active) { missionAction.value = 'failed'; void refreshWorkspace(active).catch(() => {}); }
+    }
+  }
+  const continueMission = (missionId: string) => actOnMission((active, mission) => active.continueMission?.(mission.id, mission.revision), missionId);
+  const acceptTicket = (missionId: string, number: number) => actOnMission((active, mission) => {
+    const runId = mission.tickets.find((ticket) => ticket.number === number && ticket.state === 'awaitingReview')?.runId;
+    return runId ? active.acceptTicket?.(mission.id, mission.revision, runId) : undefined;
+  }, missionId);
+  const selectFinding = (missionId: string, findingId: string, selected: boolean) => actOnMission((active, mission) => active.selectFinding?.(mission.id, mission.revision, findingId, selected), missionId);
+  const fixFindings = (missionId: string) => actOnMission((active, mission) => active.fixFindings?.(mission.id, mission.revision), missionId);
+  const rerunReview = (missionId: string) => actOnMission((active, mission) => active.rerunReview?.(mission.id, mission.revision), missionId);
+  const dismissMissionAction = () => { if (missionAction.value !== 'working') missionAction.value = 'idle'; };
+  const dismissTeamCreation = () => { if (teamCreation.value !== 'creating') teamCreation.value = 'idle'; };
+
   /** Starts a chat and opens it once the laptop has it ready. */
-  async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined) {
-    const active = session; const team = teamId.value; const epoch = selectionEpoch;
+  async function startChat(start: (active: CompanionSession, team: string) => Promise<string> | undefined, team = teamId.value) {
+    const active = session; const epoch = selectionEpoch;
     if (!active || !team || status.value !== 'connected' || chatCreation.value === 'creating') return;
     chatCreation.value = 'creating';
     try {
@@ -557,12 +635,12 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
       if (!created) throw new Error('Chat creation unavailable.');
       if (!(await refreshWorkspace(active))) return;
       chatCreation.value = 'idle';
-      if (epoch === selectionEpoch) await selectAgent(created);
+      if (epoch === selectionEpoch) await selectTeam(workspace.value.agents.find(agent => agent.id === created)?.teamId ?? team, created);
     } catch {
       if (active === session) chatCreation.value = 'failed';
     }
   }
-  const createChat = (chat: Omit<CompanionNewChat, 'teamId'>) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }));
+  const createChat = (chat: Omit<CompanionNewChat, 'teamId'>, team = teamId.value) => startChat((active, teamId) => active.createChat?.({ ...chat, teamId }), team);
   const createQuickChat = (backend: AgentBackend) => startChat((active, teamId) => active.createQuickChat?.({ teamId, backend }));
   const createProject = (input: Omit<CompanionProjectInput, 'teamId'>) => startChat((active, teamId) => active.createProject?.({ ...input, teamId }));
   const duplicateAgent = (target: CompanionTarget, backend: AgentBackend) => startChat((active) => {
@@ -591,6 +669,15 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   async function reconnect(force = false) {
     if (laptopId.value && (force || ['disconnected', 'error'].includes(status.value))) { backoff.reset(); await connect(laptopId.value, true); }
   }
+  function chooseConnection() {
+    disconnect();
+    conversation.value = null;
+    workspace.value = { teams: [], agents: [] };
+    laptopId.value = ''; teamId.value = ''; agentId.value = '';
+    workspaceLoaded = false;
+    error.value = '';
+    status.value = 'unpaired';
+  }
   async function revoke() {
     reconnectWanted = false;
     const id = laptopId.value;
@@ -598,6 +685,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     conversation.value = null;
     workspace.value = { teams: [], agents: [] };
     teamId.value = ''; agentId.value = '';
+    workspaceLoaded = false;
     status.value = 'revoked';
     try { await connector.revoke(id); }
     catch { error.value = 'mobile.errors.revoke'; }
@@ -608,9 +696,9 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
   }
   return {
     // The link to the laptop.
-    status, error, laptopId, connect, setActive, disconnect, reconnect, revoke, registerPush, pushRegistrationFailed,
+    status, error, errorDetail, laptopId, connect, setActive, disconnect, chooseConnection, reconnect, revoke, registerPush, pushRegistrationFailed,
     // What the laptop hosts, and which of it is selected.
-    teamId, agentId, workspace, agents, agent, selectTeam, selectAgent, selectBackend, markRead,
+    teamId, agentId, workspace, agents, agent, missions, selectTeam, selectAgent, selectBackend, markRead, createTeam, teamCreation, dismissTeamCreation, missionAction, continueMission, acceptTicket, selectFinding, fixFindings, rerunReview, dismissMissionAction,
     // The selected conversation and its history.
     conversation, conversationReady, conversationGeneration, loading, refreshing, history, loadOlder, readImage, readConversationContent,
     conversationUpdates: (since: import('@workspace/core/companion-journal').CompanionCheckpoint | null) => {
@@ -622,7 +710,7 @@ export function createCompanionState(connector: CompanionConnector, store?: Draf
     permissions, setApprovalPreset: composer.setApprovalPreset, setPermissionMode: composer.setPermissionMode,
     skills, loadSkills, plugins, loadPlugins, delegate, queuedPromptPending, queuedPromptFailed, updateQueuedPrompt,
     // Goals and questions the agent asks.
-    goalBusy, goalError, changeGoal, requests, respondRequest, respondingRequest, failedRequest,
+    goalBusy, goalError, changeGoal, requests, dismissRequest, respondRequest, respondingRequest, failedRequest,
     // Actions on the selected chat, and creating new ones.
     renameAgent: actions.rename, interrupt: actions.interrupt, restartSession: actions.restart, requestCloseSession: actions.requestClose,
     confirmCloseSession: actions.confirmClose, cancelCloseSession: actions.cancelClose, closePreview, sessionAction, sessionActionFailed, dismissSessionError: actions.dismissError,

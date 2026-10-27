@@ -10,6 +10,9 @@ import { startRelayHealth } from './relay-health';
 import { RelayStartupError } from './relay-startup-error';
 import { readConfiguredPairing } from './configured-pairing';
 
+/** One JSON line per event on stdout, which the container keeps. Never peer IDs or payloads. */
+const logLine = (message: string, details: Record<string, unknown>) => { process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), message, ...details })}\n`); };
+
 const apnsKey = z.object({ keyId: z.string().regex(/^[A-Z0-9]{10}$/), privateKeyFile: z.string().min(1) }).strict();
 const peerId = z.string().regex(companionPeerIdPattern);
 const configSchema = z.object({ listen: z.string().regex(/^\/ip[46]\/.+\/tcp\/\d+\/(tls\/)?ws$/),
@@ -61,7 +64,7 @@ export async function runCompanionRelay(configFile: string, env: NodeJS.ProcessE
   }
   const push = config.apns || firebase ? { send: (registration: import('@workspace/core/companion-notification').CompanionPushRegistration, notification: import('@workspace/core/companion-notification').CompanionNotification) =>
     (registration.transport === 'fcm' ? firebase : senders[registration.environment])?.send(registration, notification) ?? Promise.resolve('unavailable' as const) } : undefined;
-  const relay = await createCompanionRelay({ push, pairing, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
+  const relay = await createCompanionRelay({ push, pairing, log: logLine, key: identity, listen: config.listen, trustedProxy: config.trustedProxy, hostIds: config.hostIds,
     tls: config.certificateFile && config.privateKeyFile ? { cert: await readFile(config.certificateFile, 'utf8'), key: await readFile(config.privateKeyFile, 'utf8') } : undefined });
   let health;
   try { health = config.healthPort ? await startRelayHealth(relay, config.healthPort) : undefined; }

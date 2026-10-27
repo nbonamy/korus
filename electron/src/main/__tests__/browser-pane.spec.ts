@@ -42,6 +42,14 @@ const electronMocks = vi.hoisted(() => {
     close = vi.fn(() => { this.destroyed = true; });
     executeJavaScript = vi.fn().mockResolvedValue(undefined);
     focus = vi.fn();
+    isFocused = () => this.focus.mock.calls.length > 0;
+    private debuggerAttached = false;
+    debugger = {
+      isAttached: vi.fn(() => this.debuggerAttached),
+      attach: vi.fn(() => { this.debuggerAttached = true; }),
+      detach: vi.fn(() => { this.debuggerAttached = false; }),
+      sendCommand: vi.fn(async (_method: string, _params: unknown) => ({})),
+    };
     getTitle = vi.fn(() => this.url ? `Title for ${this.url}` : '');
     getType = vi.fn(() => 'webview');
     getURL = vi.fn(() => this.url);
@@ -51,11 +59,10 @@ const electronMocks = vi.hoisted(() => {
       this.listeners.set(event, listener);
     });
     setWindowOpenHandler = vi.fn();
-    canGoBack = vi.fn(() => false);
-    canGoForward = vi.fn(() => false);
-    goBack = vi.fn();
-    goForward = vi.fn();
     reload = vi.fn();
+    openDevTools = vi.fn();
+    navigationHistory = { clear: vi.fn(), canGoBack: vi.fn(() => false), canGoForward: vi.fn(() => false), goBack: vi.fn(), goForward: vi.fn() };
+    stop = vi.fn();
     isLoading = vi.fn(() => false);
     once = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       this.listeners.set(event, listener);
@@ -74,14 +81,14 @@ const electronMocks = vi.hoisted(() => {
 
     constructor(id: number) { this.id = id; }
 
-    emitNavigation(event: 'will-navigate' | 'will-redirect', url: string) {
+    emitNavigation(event: 'will-navigate' | 'will-redirect', url: string, isMainFrame = true) {
       const navigationEvent = { preventDefault: vi.fn() };
-      this.listeners.get(event)?.(navigationEvent, url);
+      this.listeners.get(event)?.(navigationEvent, url, false, isMainFrame);
       return navigationEvent;
     }
   }
 
-  function createGuest(owner: { webContents: object }, id: number, partition = 'persist:agent-workspace-browser-agent-one') {
+  function createGuest(owner: { webContents: object }, id: number, partition = 'persist:workspace-browser') {
     const guest = new WebContentsMock(id);
     guest.hostWebContents = owner.webContents;
     guest.session = fromPartition(partition);
@@ -91,7 +98,7 @@ const electronMocks = vi.hoisted(() => {
 
   function fromPartition(partition: string) {
     let value = sessions.get(partition);
-    if (!value) { value = {}; sessions.set(partition, value); }
+    if (!value) { value = { clearData: vi.fn(async () => {}), clearAuthCache: vi.fn(async () => {}), clearCodeCaches: vi.fn(async () => {}), flushStorageData: vi.fn() }; sessions.set(partition, value); }
     return value;
   }
 
@@ -116,6 +123,37 @@ beforeEach(() => {
 });
 
 describe('browser pane helpers', () => {
+  it('allows loaded extension resource redirects in browser subframes while retaining navigation boundaries', async () => {
+    // Dynamic extension URLs redirect to the real extension origin. Blocking
+    // that subframe redirect prevents inline autofill; allowing it at the top
+    // level, for an unloaded extension, or in a visualization weakens policy.
+    const owner = { webContents: {} };
+    const guest = electronMocks.createGuest(owner, 61);
+    const id = 'nngceckbapebfimnlniiiahkandclblb';
+    Object.assign(guest.session!, {
+      extensions: { getExtension: (value: string) => value === id ? { id } : undefined },
+    });
+    const pane = new BrowserPane({ onAnnotation: vi.fn() });
+    await pane.open(owner as never, 'agent-one', 'primary', 'https://example.com', '', 61);
+    const resource = `chrome-extension://${id}/overlay/menu.html`;
+    expect(guest.emitNavigation('will-redirect', resource, false).preventDefault).not.toHaveBeenCalled();
+    expect(guest.emitNavigation('will-redirect', resource).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-navigate', resource).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'chrome-extension://unloaded/menu.html', false).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'file:///outside.html', false).preventDefault).toHaveBeenCalledOnce();
+    expect(guest.emitNavigation('will-redirect', 'https://example.com/next').preventDefault).not.toHaveBeenCalled();
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'browser-extension-redirect-'));
+    try {
+      const document = path.join(directory, 'visualization.html');
+      await writeFile(document, '<!doctype html><p>Owned visualization</p>');
+      const visualization = electronMocks.createGuest(owner, 62, 'agent-workspace-visualization-agent-one');
+      Object.assign(visualization.session!, { extensions: { getExtension: () => ({ id }) } });
+      await pane.openVisualization(owner as never, 'agent-one', 'visualization', document, 'Owned', 62);
+      expect(visualization.emitNavigation('will-redirect', resource, false).preventDefault).toHaveBeenCalledOnce();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it('waits for the matching viewport layout acknowledgement and returns guest measurements', async () => {
     const owner = { webContents: {} };
     const guest = electronMocks.createGuest(owner, 60);
@@ -228,6 +266,24 @@ describe('browser pane helpers', () => {
     } finally { await pane.closeAll(); }
   });
 
+  it('keeps navigation policy installed and retries the extension attach on the same handlers when the profile fails', async () => {
+    const owner = { webContents: {} };
+    const guest = electronMocks.createGuest(owner, 63);
+    const onGuestReady = vi.fn().mockRejectedValueOnce(new Error('profile unavailable')).mockResolvedValue(undefined);
+    const pane = new BrowserPane({ onAnnotation: vi.fn(), onGuestReady });
+    try {
+      await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).rejects.toThrow('profile unavailable');
+      expect(guest.setWindowOpenHandler).toHaveBeenCalled();
+      expect(guest.emitNavigation('will-navigate', 'about:config').preventDefault).toHaveBeenCalledOnce();
+      const handlers = guest.on.mock.calls.length;
+      await expect(pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63)).resolves.toMatchObject({ url: 'about:blank' });
+      expect(onGuestReady).toHaveBeenCalledTimes(2);
+      expect(guest.on.mock.calls).toHaveLength(handlers);
+      await pane.open(owner as never, 'agent-one', 'primary', 'about:blank', '', 63);
+      expect(onGuestReady).toHaveBeenCalledTimes(2);
+    } finally { await pane.closeAll(); }
+  });
+
   it('opens existing workspace files while rejecting escapes and symlinks outside the workspace', async () => {
     const workspace = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-browser-workspace-'));
     const outside = await mkdtemp(path.join(os.tmpdir(), 'agent-workspace-browser-outside-'));
@@ -324,6 +380,33 @@ describe('browser pane helpers', () => {
     }
   });
 
+  it('shares one persistent profile across agents and clears website data without extension storage', async () => {
+    // Regressions: per-agent cookies, clearing app/extension storage, surviving
+    // sessionStorage/history, or a failed clear reported as success.
+    const owner = { webContents: {} };
+    const first = electronMocks.createGuest(owner, 70);
+    const second = electronMocks.createGuest(owner, 71);
+    const visualization = electronMocks.createGuest(owner, 72, 'agent-workspace-visualization-agent-one');
+    const pane = new BrowserPane({ onAnnotation: vi.fn() });
+    await pane.open(owner as never, 'agent-one', 'primary', 'https://one.example', '', 70);
+    await pane.open(owner as never, 'agent-two', 'primary', 'https://two.example', '', 71);
+    expect(first.session).toBe(second.session);
+    const shared = first.session as any;
+    await pane.clearBrowsingData();
+    expect(first.getURL()).toBe('about:blank');
+    expect(second.getURL()).toBe('about:blank');
+    expect(first.navigationHistory.clear).toHaveBeenCalledOnce();
+    expect(second.navigationHistory.clear).toHaveBeenCalledOnce();
+    expect(shared.clearData).toHaveBeenCalledExactlyOnceWith({ excludeOrigins: [
+      'chrome-extension://nngceckbapebfimnlniiiahkandclblb',
+      'chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa',
+    ] });
+    expect(shared.clearAuthCache).toHaveBeenCalledOnce();
+    expect((visualization.session as any).clearData).not.toHaveBeenCalled();
+    shared.clearData.mockRejectedValueOnce(new Error('Disk unavailable'));
+    await expect(pane.clearBrowsingData()).rejects.toThrow('Disk unavailable');
+  });
+
   it('uses a safe, stable profile partition name for each agent', () => {
     expect(safePartitionName('agent:/one')).toBe('agent--one');
     expect(safePartitionName('')).toBe('default');
@@ -352,11 +435,15 @@ describe('browser pane helpers', () => {
     await expect(pane.execute('agent-one', 'secondary', 'console', {})).resolves.toStrictEqual({ messages: [] });
   });
 
-  it('zooms the owning guest and copies its selected viewport area to the clipboard', async () => {
+  it('targets controls and detached developer tools at the owning guest and copies screenshots', async () => {
     const browserWindow = { webContents: {}, isDestroyed: vi.fn(() => false) };
     const guest = electronMocks.createGuest(browserWindow, 25);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(browserWindow as never, 'agent-one', 'primary', 'https://example.com', '/tmp/project', 25);
+    pane.openDevTools('agent-one', 'primary');
+    expect(guest.openDevTools).toHaveBeenCalledExactlyOnceWith({ mode: 'detach' });
+    expect(() => pane.openDevTools('agent-two', 'primary')).toThrow('Browser is not open');
+    expect(() => pane.openDevTools('agent-one', 'other-tab')).toThrow('Browser is not open');
     guest.getZoomFactor.mockReturnValue(1.25);
     expect(pane.getZoom('agent-one', 'primary')).toBe(125);
     expect(() => pane.getZoom('agent-two', 'primary')).toThrow('Browser is not open');
@@ -383,7 +470,7 @@ describe('browser pane helpers', () => {
     expect(electronMocks.writeImage).toHaveBeenCalledTimes(2);
   });
 
-  it('rejects guests owned by another window or another agent session', async () => {
+  it('rejects guests owned by another window or an unapproved session', async () => {
     const browserWindow = {
       webContents: {},
       isDestroyed: vi.fn(() => false),
@@ -401,7 +488,7 @@ describe('browser pane helpers', () => {
     const guest = electronMocks.createGuest(window, 40);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(window as never, 'agent-one', 'primary', 'https://example.com', '', 40);
-    guest.canGoBack.mockReturnValue(true);
+    guest.navigationHistory.canGoBack.mockReturnValue(true);
     guest.isLoading.mockReturnValue(true);
     let settled = false;
     const back = pane.goBack('agent-one', 'primary').then(state => { settled = true; return state; });
@@ -409,13 +496,13 @@ describe('browser pane helpers', () => {
     expect(settled).toBe(false);
     guest.emit('did-finish-load');
     expect(await back).toMatchObject({ url: 'https://example.com/', canGoBack: true });
-    expect(guest.goBack).toHaveBeenCalledOnce();
+    expect(guest.navigationHistory.goBack).toHaveBeenCalledOnce();
     guest.isLoading.mockReturnValue(false);
     await pane.goForward('agent-one', 'primary');
-    expect(guest.goForward).not.toHaveBeenCalled();
-    guest.canGoForward.mockReturnValue(true);
+    expect(guest.navigationHistory.goForward).not.toHaveBeenCalled();
+    guest.navigationHistory.canGoForward.mockReturnValue(true);
     await pane.goForward('agent-one', 'primary');
-    expect(guest.goForward).toHaveBeenCalledOnce();
+    expect(guest.navigationHistory.goForward).toHaveBeenCalledOnce();
     await pane.reload('agent-one', 'primary');
     expect(guest.reload).toHaveBeenCalledOnce();
     for (let index = 0; index < 105; index++) guest.emit('console-message', {}, 2, 'message-' + index);
@@ -428,14 +515,21 @@ describe('browser pane helpers', () => {
   });
 
   it('executes browser commands against the guest DOM with input events and error propagation', async () => {
-    const window = { webContents: {} };
+    const focusWindow = vi.fn();
+    const window = { webContents: {}, focus: focusWindow, isFocused: () => focusWindow.mock.calls.length > 0 };
     const guest = electronMocks.createGuest(window, 41);
     const pane = new BrowserPane({ onAnnotation: vi.fn() });
     await pane.open(window as never, 'agent-one', 'primary', '', '', 41);
     document.body.innerHTML = '<button id="save">Save</button><input id="name" value="old"><div id="label">Label</div>';
     const button = document.querySelector<HTMLButtonElement>('#save')!;
     const input = document.querySelector<HTMLInputElement>('#name')!;
+    // Real clicks must reach the native guest, respect zoom and remain inside
+    // its viewport; selector lookup alone must never synthesize the action.
     const click = vi.fn();
+    const point = vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ x: 20, y: 10, left: 20, top: 10, right: 100, bottom: 50, width: 80, height: 40, toJSON() {} });
+    button.scrollIntoView = vi.fn();
+    const oldHitTest = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => button });
     const changed = vi.fn();
     button.addEventListener('click', click);
     input.addEventListener('input', changed);
@@ -445,16 +539,41 @@ describe('browser pane helpers', () => {
         selector: '#save', element: { tag: 'button', text: 'Save' },
       });
       await pane.execute('agent-one', 'primary', 'click', { selector: '#save' });
-      expect(click).toHaveBeenCalledOnce();
+      expect(click).not.toHaveBeenCalled();
+      expect(guest.focus).toHaveBeenCalled();
+      expect(guest.debugger.sendCommand.mock.calls.map(([method, event]) => ({ method, event }))).toStrictEqual([
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mouseMoved', x: 60, y: 30 } },
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mousePressed', x: 60, y: 30, button: 'left', clickCount: 1 } },
+        { method: 'Input.dispatchMouseEvent', event: { type: 'mouseReleased', x: 60, y: 30, button: 'left', clickCount: 1 } },
+      ]);
+      guest.getZoomFactor.mockReturnValue(1.25);
+      await pane.execute('agent-one', 'primary', 'click', { x: 40, y: 20 });
+      expect(guest.debugger.sendCommand).toHaveBeenLastCalledWith('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 40, y: 20, button: 'left', clickCount: 1 });
+      expect(guest.focus).toHaveBeenCalledOnce();
+      expect(focusWindow).toHaveBeenCalledOnce();
+      const deliveries = guest.debugger.sendCommand.mock.calls.length;
+      for (const invalid of [{}, { x: 10 }, { x: -1, y: 0 }, { x: 99999, y: 0 }, { selector: '#save', x: 1, y: 2 }])
+        await expect(pane.execute('agent-one', 'primary', 'click', invalid)).rejects.toThrow();
+      expect(guest.debugger.sendCommand).toHaveBeenCalledTimes(deliveries);
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(2);
+      guest.debugger.sendCommand.mockRejectedValueOnce(new Error('Input unavailable'));
+      await expect(pane.execute('agent-one', 'primary', 'click', { x: 30, y: 20 })).rejects.toThrow('Input unavailable');
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(3);
+      guest.debugger.isAttached.mockReturnValue(true);
+      await pane.execute('agent-one', 'primary', 'click', { x: 30, y: 20 });
+      expect(guest.debugger.detach).toHaveBeenCalledTimes(3);
       await pane.execute('agent-one', 'primary', 'type', { selector: '#name', text: 'new' });
       await pane.execute('agent-one', 'primary', 'type', { selector: '#name', text: ' value', clear: false });
       expect(input.value).toBe('new value');
       expect(changed).toHaveBeenCalledTimes(2);
       await expect(pane.execute('agent-one', 'primary', 'type', { selector: '#label', text: 'oops' })).rejects.toThrow('not editable');
       await expect(pane.execute('agent-one', 'primary', 'click', { selector: '#missing' })).rejects.toThrow('No element');
+      await expect(pane.execute('agent-one', 'primary', 'click', { selector: 'button, input' })).rejects.toThrow('one element');
       await expect(pane.execute('agent-one', 'primary', 'unknown', {})).rejects.toThrow('Unsupported');
     } finally {
       await pane.closeAll();
+      point.mockRestore();
+      if (oldHitTest) Object.defineProperty(document, 'elementFromPoint', oldHitTest); else Reflect.deleteProperty(document, 'elementFromPoint');
       document.body.innerHTML = '';
     }
   });

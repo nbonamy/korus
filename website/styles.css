@@ -779,6 +779,10 @@ body > .site-header {
 }
 
 @media (max-width: 1040px) {
+  .site-header,
+  .header-actions {
+    gap: 12px;
+  }
   .nav-links {
     gap: 16px;
   }
@@ -901,6 +905,12 @@ body > .site-header {
   }
   .capability {
     padding: 24px;
+  }
+}
+
+@media (max-width: 375px) {
+  .site-header .brand > span {
+    display: none;
   }
 }
 

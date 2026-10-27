@@ -56,7 +56,7 @@
               >
                 <span
                   v-if="previewingVoice === option.value"
-                  class="settings-voice-panel__spinner"
+                  class="app-spinner"
                   aria-hidden="true"
                 />
                 <PlayerPlayIcon v-else aria-hidden="true" />
@@ -304,21 +304,6 @@ async function previewVoice(voice: SpokenAnnouncementVoice): Promise<void> {
 
 .settings-voice-panel__voice-play[aria-busy='true'] {
   opacity: 1;
-}
-
-.settings-voice-panel__spinner {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: var(--radius-full);
-  animation: settings-voice-panel-spin 0.8s linear infinite;
-}
-
-@keyframes settings-voice-panel-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .settings-voice-panel__voice-play svg {

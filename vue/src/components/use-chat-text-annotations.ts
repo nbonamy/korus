@@ -1,3 +1,4 @@
+import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import type {
   CodexMessageTextSelection,
   CodexRendererSendMessageOptions,
@@ -61,7 +62,9 @@ export function useChatTextAnnotations(options: {
       return;
     }
 
-    await send(formatChatTextAnnotationPrompt(annotations, prompt), sendOptions);
+    const content = sendOptions?.content === undefined ? undefined : trimPromptContent(sendOptions.content);
+    const nextOptions = content === undefined ? sendOptions : { ...sendOptions, content: [...content, { type: 'text' as const, text: `${content.length ? '\n\n' : ''}${annotations.length} annotation${annotations.length === 1 ? '' : 's'}` }] };
+    await send(formatChatTextAnnotationPrompt(annotations, prompt), nextOptions);
     const submittedIds = new Set(annotations.map((annotation) => annotation.id));
     draftsByAgentId[agentId] = (draftsByAgentId[agentId] ?? [])
       .filter((annotation) => !submittedIds.has(annotation.id));

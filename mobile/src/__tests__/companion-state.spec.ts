@@ -5,6 +5,29 @@ import { createDemoConnector } from '../demo-connector';
 import type { CompanionConversation, CompanionWorkspace } from '../companion-port';
 
 describe('companion state', () => {
+  it('says why the laptop could not be reached, and forgets it once connected', async () => {
+    vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const connector = createDemoConnector(); const original = connector.connect;
+    let failure: Error | null = null; let lost!: (reason?: string) => void;
+    connector.connect = async id => {
+      if (failure) throw failure;
+      return { ...await original(id), onDisconnect(listener: (reason?: string) => void) { lost = listener; return () => {}; } };
+    };
+    const state = createCompanionState(connector);
+    try {
+      await state.connect('demo-laptop');
+      expect(state.errorDetail.value).toBe('');
+      lost('heartbeat-timeout');
+      expect(state.errorDetail.value).toBe('heartbeat-timeout');
+      failure = Object.assign(new Error('no valid addresses'), { name: 'DialError' });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(state.errorDetail.value).toBe('DialError: no valid addresses');
+      failure = null;
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(state.status.value).toBe('connected');
+      expect(state.errorDetail.value).toBe('');
+    } finally { state.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
   it('restarts the retry schedule when the app returns to the foreground', async () => {
     vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const connector = createDemoConnector(); const original = connector.connect;
@@ -372,7 +395,7 @@ describe('companion state', () => {
     const connector = createDemoConnector();
     const state = createCompanionState(connector);
     await state.connect('unknown');
-    expect(state.status.value).toBe('error');
+    expect(state.status.value).toBe('unpaired'); expect(state.error.value).toBe('mobile.errors.openLaptop');
     expect(state.workspace.value.agents).toStrictEqual([]);
     await state.connect('demo-laptop');
     expect(state.status.value).toBe('connected');

@@ -67,11 +67,12 @@ export type MissionRun = {
   draftTickets?: MissionTicket[];
   implementationResult?: { changes: string; tests: string };
 };
-export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string };
+export type MissionWorkspace = { repositoryPath: string; path: string; branch: string; baseSha?: string; deleted?: true };
 export type MissionDelivery = {
   repositoryPath: string;
   agentId: string;
   status: 'pending' | 'pullRequestCreated' | 'merged';
+  mergePendingPush?: true;
   pullRequest?: { number: number; url: string };
 };
 export type MissionExecution = {
@@ -80,7 +81,7 @@ export type MissionExecution = {
   implementationModel?: MissionImplementationModel;
   repoPath?: string;
   memberIds: string[];
-  workspace?: { path: string; branch: string; baseSha?: string };
+  workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
   workspaceName?: string;
   workspaces?: MissionWorkspace[];
   deliveries?: MissionDelivery[];

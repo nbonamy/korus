@@ -15,6 +15,7 @@ import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-mana
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
+import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import { defaultBackendCapabilities } from '@workspace/core/backend-capabilities';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
 import { approvalPresetFromDefaults } from '@workspace/core/approval-presets';
@@ -67,6 +68,9 @@ const backendRestartInProgress = ref(false);
 const agentCreationProgresses = ref<AgentCreationProgress[]>([]);
 const backgroundedAgentCreationIds = new Set<string>();
 const missionImplementationStartProgress = ref<MissionImplementationStartProgress | null>(null);
+/** An agent asked to open a Mission. The sequence makes repeated requests for one Mission distinct. */
+const missionFocusRequest = ref<{ missionId: string; sequence: number } | null>(null);
+let missionFocusSequence = 0;
 const codexConversationFramesByAgentId = ref<Record<string, {
   replica: CodexConversationReplica;
   revision: number;
@@ -98,11 +102,13 @@ const {
   assignedItemsByProvider: assignedWorkItemsByProvider,
   authorization: workProviderAuthorization,
   authorizations: workProviderAuthorizations,
+  authorizationErrors: workProviderAuthorizationErrors,
   completeConnection: pollWorkProviderAuthorization,
   configure: configureWorkBacklog,
   connect: connectWorkProvider,
   disconnect: disconnectWorkProvider,
   error: workBacklogError,
+  catalogState: workBacklogStateFor,
   itemsByRepository: workItemsByRepository,
   loadAssignedItems: loadAssignedWorkItems,
   loadConnected: loadConnectedWorkBacklogs,
@@ -700,12 +706,12 @@ export function useAppState() {
     adoptBackgroundSnapshot(await appApi.deleteTurn(agentId, turnId));
   }
 
-  async function editTurn(payload: { content: string; turnId: string }): Promise<void> {
+  async function editTurn(payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }): Promise<void> {
     const agentId = snapshot.value.activeAgentId;
     if (agentId) await editTurnForAgent(agentId, payload);
   }
 
-  async function editTurnForAgent(agentId: string, payload: { content: string; turnId: string }): Promise<void> {
+  async function editTurnForAgent(agentId: string, payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }): Promise<void> {
     const trimmed = payload.content.trim();
     if (!agentId || !trimmed || !appApi?.editTurn || isAgentSending(agentId)) {
       return;
@@ -717,7 +723,7 @@ export function useAppState() {
 
     markAgentSending(agentId, true);
     try {
-      adoptBackgroundSnapshot(await appApi.editTurn(agentId, payload.turnId, trimmed));
+      adoptBackgroundSnapshot(await (payload.options ? appApi.editTurn(agentId, payload.turnId, trimmed, payload.options) : appApi.editTurn(agentId, payload.turnId, trimmed)));
     } finally {
       markAgentSending(agentId, false);
     }
@@ -764,28 +770,28 @@ export function useAppState() {
     }
   }
 
-  async function updateQueuedPrompt(promptId: string, prompt: string): Promise<void> {
+  async function updateQueuedPrompt(promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     const agentId = activeAgent.value?.id;
-    if (agentId) await updateQueuedPromptForAgent(agentId, promptId, prompt);
+    if (agentId) await updateQueuedPromptForAgent(agentId, promptId, prompt, options);
   }
 
-  async function updateQueuedPromptForAgent(agentId: string, promptId: string, prompt: string): Promise<void> {
+  async function updateQueuedPromptForAgent(agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     if (!agentId || !appApi?.updateQueuedPrompt) {
       return;
     }
-    adoptBackgroundSnapshot(await appApi.updateQueuedPrompt(agentId, promptId, prompt));
+    adoptBackgroundSnapshot(await (options ? appApi.updateQueuedPrompt(agentId, promptId, prompt, options) : appApi.updateQueuedPrompt(agentId, promptId, prompt)));
   }
 
-  async function steerQueuedPrompt(promptId: string, prompt?: string): Promise<void> {
+  async function steerQueuedPrompt(promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     const agentId = activeAgent.value?.id;
-    if (agentId) await steerQueuedPromptForAgent(agentId, promptId, prompt);
+    if (agentId) await steerQueuedPromptForAgent(agentId, promptId, prompt, options);
   }
 
-  async function steerQueuedPromptForAgent(agentId: string, promptId: string, prompt?: string): Promise<void> {
+  async function steerQueuedPromptForAgent(agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>): Promise<void> {
     if (!agentId || !messageActionCapabilities(agentId).steerPrompt || !appApi?.steerQueuedPrompt) {
       return;
     }
-    adoptBackgroundSnapshot(await appApi.steerQueuedPrompt(agentId, promptId, prompt));
+    adoptBackgroundSnapshot(await (options ? appApi.steerQueuedPrompt(agentId, promptId, prompt, options) : appApi.steerQueuedPrompt(agentId, promptId, prompt)));
   }
 
   async function removeQueuedPrompt(promptId: string): Promise<void> {
@@ -848,6 +854,13 @@ export function useAppState() {
     }
 
     const requestId = ++agentSelectionRequestId;
+    const shared = snapshot.value.agents.find(agent => agent.id === agentId)?.sharedConversation;
+    if (shared) {
+      snapshot.value = selectAgentInSnapshot(snapshot.value, agentId);
+      adoptBackgroundSnapshot(await appApi.selectAgent(agentId));
+      await appApi.guestConversationControl?.({ action: 'open', id: shared.joinId });
+      return;
+    }
     const needsHistory = agentNeedsHistory(agentId);
     rememberActiveComposerConfiguration();
     snapshot.value = selectAgentInSnapshot(snapshot.value, agentId);
@@ -894,9 +907,9 @@ export function useAppState() {
     return appApi.getAgentGitDiff(agentId, target ? { ...target } : undefined);
   }
 
-  async function getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow> {
+  async function getAgentGitWorkflow(agentId: string, options?: { includePullRequest?: boolean }): Promise<AgentGitWorkflow> {
     if (!appApi?.getAgentGitWorkflow) throw new Error(translate('surface.app-state.gitWorkflowIsNotAvailable'));
-    return appApi.getAgentGitWorkflow(agentId);
+    return options ? appApi.getAgentGitWorkflow(agentId, options) : appApi.getAgentGitWorkflow(agentId);
   }
 
   async function generateAgentGitMessage(agentId: string, input: AgentGitMessageGenerationInput): Promise<AgentGitMessageGenerationResult> {
@@ -996,6 +1009,12 @@ export function useAppState() {
 
   async function selectMission(missionId: string | null): Promise<void> {
     await appApi?.selectMission(missionId);
+  }
+
+  async function deleteRepository(agentId: string, input: import('@workspace/core/contracts/workspace').DeleteRepositoryInput): Promise<void> {
+    if (!appApi?.deleteRepository) throw new Error('Repository deletion unavailable.');
+    adoptBackgroundSnapshot(await appApi.deleteRepository(agentId, input));
+    await loadSourceRepositories();
   }
 
   async function deleteMission(input: import('@workspace/core/missions').DeleteMissionInput) {
@@ -1703,11 +1722,13 @@ export function useAppState() {
     fileActivity,
     workProviderAuthorization,
     workProviderAuthorizations,
+    workProviderAuthorizationErrors,
     workRepositoriesByProvider,
     workItemsByRepository,
     assignedWorkItemsByProvider,
     workBacklogStatus,
     workBacklogError,
+    workBacklogStateFor,
     sourceRepositories,
     openInApplications,
     sourceRepositoryStatus,
@@ -1718,6 +1739,7 @@ export function useAppState() {
     backendRestartInProgress,
     agentCreationProgresses,
     missionImplementationStartProgress,
+    missionFocusRequest,
     loadBackendModels: loadBackendModelsForActiveAgent,
     loadBackendPlugins: loadBackendPluginsForActiveAgent,
     loadBackendSkills: loadBackendSkillsForActiveAgent,
@@ -1780,6 +1802,7 @@ export function useAppState() {
     createMission,
     selectMission,
     deleteMission,
+    deleteRepository,
     readMissionArtifact,
     updateMission,
     createQuickChat,
@@ -1950,6 +1973,7 @@ function messageActionCapabilities(agentId: string) {
 }
 
 function backendCapabilitiesForAgent(agent: Agent | null): BackendCapabilities {
+  if (agent?.sharedConversation) return guestConversationCapabilities;
   const backend = agent?.backend ?? 'codex';
   const defaults = defaultBackendCapabilities(backend);
   const runtime = snapshot.value.backendRuntimes.find((candidate) => candidate.backend === backend);
@@ -2089,6 +2113,7 @@ function handleMainEvent(event: MainToRendererEvent, adoptSnapshot = true): void
 function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
   switch (event.type) {
     case 'client.connectionChanged':
+    case 'conversation.shareChanged':
     case 'remoteControl.statusChanged':
     case 'git.branchWorkProgress':
     case 'git.operationProgress':
@@ -2203,6 +2228,9 @@ function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
       return;
     case 'mission.implementationStartProgress':
       missionImplementationStartProgress.value = event.payload;
+      return;
+    case 'mission.focusRequested':
+      missionFocusRequest.value = { missionId: event.payload.missionId, sequence: ++missionFocusSequence };
       return;
     case 'workspace.fileActivityDetected':
       syncFileActivityFromMainEvent(event);

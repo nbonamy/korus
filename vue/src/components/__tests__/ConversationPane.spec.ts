@@ -8,7 +8,7 @@ import {
   type CodexNativeAttachment,
   type CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
-import { computed, defineComponent, h, nextTick, provide, ref } from 'vue';
+import { computed, defineComponent, h, nextTick, provide, ref, shallowReactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, RendererMessage, SavedPromptDraft, ThreadPlan } from '@workspace/core/contracts';
 import { formatCollaborationMessageEnvelope } from '@workspace/core/collaboration-message-envelope';
@@ -17,6 +17,11 @@ import type { ChatTextAnnotation } from '../use-chat-text-annotations';
 import type { VisualizationAnnotation } from '../use-visualization-annotations';
 import { backendChoicesKey, provideBackendSwitch } from '../backend-selection';
 import { setElectronTestClient } from '../../test/client';
+import { antigravityBackendCapabilities } from '@workspace/core/backend-capabilities';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
+import { createAgentComposerState } from '../../agent-composer-state';
+import type { AgentConversationView } from '../../app-state';
+import { agentConversationState } from '../use-agent-conversation';
 
 const agent: Agent = {
   id: 'agent-dina',
@@ -66,6 +71,38 @@ const nativeWindow = window as Window & { codexAppSdkNative?: CodexNativeRendere
 
 describe('ConversationPane', () => {
   afterEach(() => { delete nativeWindow.codexAppSdkNative; });
+  // App-owned skills must remain selectable when the provider has no native skill support.
+  it('offers an app-owned imagegen skill in the dollar picker without submitting a prompt', async () => {
+    const snapshot = createInitialSnapshot();
+    const owner = { ...snapshot.agents[0]!, backend: 'antigravity' as const, backendDefaults: { kind: 'antigravity' as const } };
+    const composer = createAgentComposerState({ getSnapshot: () => snapshot }).configurationForAgent(owner.id);
+    composer.skills = [{ name: 'imagegen', displayName: 'Image Gen', shortDescription: 'Generate or edit images for websites, games, and more',
+      path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true }];
+    const view = shallowReactive<AgentConversationView>({ agent: owner, composer, composerState: { text: '', selectionStart: 0, selectionEnd: 0 },
+      codexSnapshot: null, claudeSnapshot: null, attachments: [], capabilities: antigravityBackendCapabilities, approvals: [], sending: false,
+      queuedPrompts: [], history: { failed: false, hydrating: false, hasOlder: false, loadingOlder: false }, answeredClientRequestIds: new Set() });
+    const submit = vi.fn();
+    const controller = createCodexConversationPaneController({ state: agentConversationState(() => view), actions: {
+      submit, updateComposerState: state => { view.composerState = state; },
+    } });
+    const wrapper = mountPane({ controller, agent: owner });
+    try {
+      const editor = wrapper.get<HTMLElement>('.chat-rich-text-editor');
+      editor.element.focus();
+      editor.element.textContent = '$ima';
+      const range = document.createRange();
+      range.selectNodeContents(editor.element); range.collapse(false);
+      window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
+      await editor.trigger('input');
+      const option = wrapper.findAll('[role="option"]').find(item => item.text().includes('Image Gen'));
+      expect(option?.exists()).toBe(true);
+      expect(option!.text()).toContain('Generate or edit images for websites, games, and more');
+      await option!.trigger('mousedown');
+      expect(view.composerState.text).toBe('Image Gen ');
+      expect(view.composerState.content).toContainEqual({ type: 'mention', kind: 'skill', id: 'korus:skill/korus-imagegen', value: 'imagegen', label: 'Image Gen' });
+      expect(submit).not.toHaveBeenCalled();
+    } finally { wrapper.unmount(); }
+  });
   const claudeAgent = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const } };
   it.each([
     ['claude', '/repo/banner.png', '/repo/banner.png'],
@@ -81,6 +118,23 @@ describe('ConversationPane', () => {
     await flushPromises();
     expect(wrapper.get('img.chat-media-block__image').attributes('src')).toBe('data:image/png;base64,cG5n');
     expect(previewAgentFile).toHaveBeenCalledWith(owner.id, filePath);
+  });
+
+  it('shows the limit-reset notice above the composer and saves the auto-resume toggle', async () => {
+    const setAutoResume = vi.fn().mockResolvedValue({});
+    setElectronTestClient({ setAutoResume });
+    const pause = { backend: 'claude' as const, conversationId: 'session', detectedAt: Date.now(), resumeAt: Date.now() + 60_000, enabled: true };
+    const current = { ...agent, backend: 'claude' as const, backendSession: { kind: 'claude' as const, sessionId: 'session', transport: 'stdio' as const }, rateLimitPause: pause };
+    const wrapper = mountPane({ controller: controllerFor(messages), agent: current });
+    expect(wrapper.get('.codex-conversation-pane__composer-shelf [role="status"]').text()).toContain('Auto-resume');
+    expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('true');
+    expect(wrapper.get('[role="status"]').text()).toContain('Auto-resume');
+    await wrapper.get('[role="switch"][aria-label="Auto-resume"]').setValue(false); await flushPromises();
+    expect(setAutoResume).toHaveBeenCalledWith(agent.id, false);
+    await wrapper.setProps({ agent: { ...current, rateLimitPause: { ...pause, enabled: false } } });
+    expect(wrapper.get('[role="switch"][aria-label="Auto-resume"]').attributes('aria-checked')).toBe('false');
+    await wrapper.setProps({ agent: { ...current, rateLimitPause: undefined } });
+    expect(wrapper.find('[aria-label="Auto-resume"]').exists()).toBe(false);
   });
 
   it('keeps a pending image read bound to its original agent when the pane changes', async () => {
@@ -179,7 +233,8 @@ describe('ConversationPane', () => {
     expect(wrapper.get('details pre').text()).toBe('The next action is to review the diff.');
   });
   it('parks only the selected composer text and restores a saved draft at the caret', async () => {
-    const composerState = ref<CodexComposerState>({ text: 'first then second', selectionStart: 6, selectionEnd: 10 });
+    const mention = { type: 'mention' as const, kind: 'file' as const, id: 'docs/then.md', value: 'docs/then.md', label: 'then' };
+    const composerState = ref<CodexComposerState>({ text: 'first then second', content: [{ type: 'text', text: 'first ' }, mention, { type: 'text', text: ' second' }], selectionStart: 6, selectionEnd: 10 });
     const conversationId = ref(agent.id);
     const savePromptDraft = vi.fn().mockResolvedValue(undefined);
     const removePromptDraft = vi.fn().mockResolvedValue(undefined);
@@ -195,11 +250,11 @@ describe('ConversationPane', () => {
 
     await editor.trigger('keydown', { key: 'X', metaKey: true, shiftKey: true });
     await flushPromises();
-    expect(savePromptDraft).toHaveBeenCalledWith(agent.id, 'then');
+    expect(savePromptDraft).toHaveBeenCalledWith(agent.id, 'then', [mention]);
     expect(composerState.value.text).toBe('first  second');
     expect(document.body.textContent).toContain('Draft saved. Use ⇧⌘V to recall it.');
 
-    const draft: SavedPromptDraft = { id: 'draft-1', agentId: agent.id, text: 'then', createdAt: 1000 };
+    const draft: SavedPromptDraft = { id: 'draft-1', agentId: agent.id, text: 'then', content: [mention], createdAt: 1000 };
     await wrapper.setProps({ savedPromptDrafts: [draft] });
     await editor.trigger('keydown', { key: 'V', metaKey: true, shiftKey: true });
     await nextTick();
@@ -210,6 +265,7 @@ describe('ConversationPane', () => {
     await search.trigger('keydown', { key: 'Enter' });
     await flushPromises();
     expect(composerState.value.text).toBe('first then second');
+    expect(composerState.value.content).toContainEqual(mention);
     expect(removePromptDraft).toHaveBeenCalledWith(draft.id);
     expect(document.activeElement).toBe(editor.element);
 
@@ -575,17 +631,6 @@ describe('ConversationPane', () => {
   });
 
   it('renders persisted agent mentions with the app-owned bot treatment', () => {
-    const mentionGroup = {
-      id: 'agents',
-      label: 'Agents',
-      placement: 'before' as const,
-      items: [{
-        id: agent.id,
-        value: `agent:${agent.id}`,
-        label: agent.name ?? 'Dina',
-        payload: { agentId: agent.id },
-      }],
-    };
     const controller = createCodexConversationPaneController({
       state: {
         identity: {
@@ -595,10 +640,11 @@ describe('ConversationPane', () => {
             role: 'user',
             status: 'complete',
             createdAt: '2026-08-18T00:00:00.000Z',
-            parts: [{ type: 'text', text: `Ask @agent:${agent.id} to review this.` }],
+            parts: [{ type: 'text', text: 'Ask Dina to review this.' }],
+            metadata: { promptContent: [{ type: 'text', text: 'Ask ' }, { type: 'mention', kind: 'custom', groupId: 'agents', id: agent.id, value: `agent:${agent.id}`, label: 'Dina' }, { type: 'text', text: ' to review this.' }] },
           }],
         },
-        catalogs: { mentionGroups: [mentionGroup] },
+        catalogs: { mentionGroups: [] },
       },
       actions: {},
     });

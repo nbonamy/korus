@@ -65,9 +65,13 @@
             :previous="projections.previous"
           />
           <UsageShare
-            :series="series"
-            :measure="measure"
-            :subtitle="measureLabel(measure)"
+            :series="shareSeries"
+            :measure="shareMeasure"
+            :subtitle="
+              measure === 'cost'
+                ? $t('analytics.costShareNote')
+                : measureLabel(shareMeasure)
+            "
           />
         </div>
         <UsageStatTiles
@@ -76,9 +80,17 @@
           :to="filter.to"
           :period-days="periodDays"
         />
-        <UsageBreakdown :series="series" :grouping="grouping" />
+        <UsageBreakdown
+          :series="series"
+          :grouping="grouping"
+        />
       </template>
-      <UsagePerformance v-else :summary="projections.model" />
+      <UsagePerformance
+        v-else
+        :summary="projections.model"
+        :from="filter.from"
+        :to="filter.to"
+      />
     </div>
   </SettingsPanelFrame>
 </template>
@@ -109,6 +121,8 @@ const {
   dateLabel,
   daily,
   series,
+  shareSeries,
+  shareMeasure,
   activityDays,
   load,
   setRange,

@@ -208,6 +208,25 @@ describe('useAppState', () => {
     ]);
   });
 
+  it('turns a mission focus request into a fresh request for the shell each time', async () => {
+    const listeners: Array<(event: MainToRendererEvent) => void> = [];
+    stubElectronTestWindow({
+      app: {
+        getSnapshot: vi.fn().mockResolvedValue(createInitialSnapshot()),
+        onEvent: vi.fn((listener) => { listeners.push(listener); return () => undefined; }),
+      } satisfies Partial<AppApi>,
+    });
+    const state = useAppState();
+    await state.loadSnapshot();
+    expect(state.missionFocusRequest.value).toBeNull();
+    listeners[0]?.({ seq: 1, type: 'mission.focusRequested', payload: { missionId: 'mission-1' }, occurredAt: '2026-06-05T00:00:01.000Z' });
+    const first = state.missionFocusRequest.value;
+    expect(first).toMatchObject({ missionId: 'mission-1' });
+    listeners[0]?.({ seq: 2, type: 'mission.focusRequested', payload: { missionId: 'mission-1' }, occurredAt: '2026-06-05T00:00:02.000Z' });
+    expect(state.missionFocusRequest.value).not.toBe(first);
+    expect(state.missionFocusRequest.value?.sequence).toBeGreaterThan(first!.sequence);
+  });
+
   it('shows MCP agent creation progress only for the active caller until dismissed', async () => {
     const listeners: Array<(event: MainToRendererEvent) => void> = [];
     const remoteSnapshot = createInitialSnapshot();
@@ -461,11 +480,13 @@ describe('useAppState', () => {
       'git.branchWorkProgress',
       'git.operationProgress',
       'mission.implementationStartProgress',
+      'mission.focusRequested',
       'models.changed',
       'client.markdownDisplayRequested',
       'skills.changed',
       'conversation.historyLoadFailed',
       'conversation.modeUpdated',
+      'conversation.shareChanged',
     ].sort());
 
     listeners[0]?.({
@@ -507,6 +528,12 @@ describe('useAppState', () => {
       type: 'git.branchWorkProgress',
       payload: { id: 'branch-work-1', agentId: 'agent-dina', branchName: 'feat/example', state: 'running', phase: 'movingChanges' },
       occurredAt: '2026-06-05T00:00:05.000Z',
+    });
+
+    listeners[0]?.({
+      seq: 6, agentId: 'agent-dina', type: 'conversation.shareChanged',
+      payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' },
+      occurredAt: '2026-06-05T00:00:06.000Z',
     });
 
     expect(state.snapshot.value).toBe(originalSnapshot);

@@ -51,6 +51,8 @@ export type ClaudeSdkMessage =
     type: 'user';
     uuid?: string;
     isReplay?: boolean;
+    tool_use_result?: unknown;
+    toolUseResult?: unknown;
     session_id?: string;
     message?: {
       role?: string;
@@ -65,6 +67,7 @@ export type ClaudeSdkMessage =
     result?: string;
     error?: unknown;
     executionModel?: string | null;
+    executionRequestCoverage?: 'complete' | 'partial';
     executionConsumption?: import('@workspace/core/usage').Consumption | null;
     usage?: unknown;
     total_cost_usd?: number;

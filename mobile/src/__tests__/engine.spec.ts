@@ -138,18 +138,27 @@ describe('companion engine', () => {
       expect(connect).toHaveBeenCalledTimes(2);
     } finally { finish?.(); engine.dispose(); vi.useRealTimers(); }
   });
-  it('restores pairing while locked without connecting or reading until the screen is unlocked', async () => {
-    const connector = createDemoConnector(); const connect = vi.spyOn(connector, 'connect');
+  it.each([true, false])('returns from a long background launch to a saved laptop or pairing (paired=%s)', async paired => {
+    vi.useFakeTimers();
+    const connector = paired ? createDemoConnector() : unpaired(); const connect = vi.spyOn(connector, 'connect');
     const engine = createEngine({ connector, initialActive: false, post: () => {} });
     try {
       await engine.start();
       expect(engine.snapshot().startup).toBe('ready');
       expect(connect).not.toHaveBeenCalled();
       expect(engine.snapshot().canSend).toBe(false);
+      await engine.dispatch({ type: 'activity', active: false });
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(engine.snapshot().connection).toBe('unpaired');
       await engine.dispatch({ type: 'activity', active: true });
-      expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
-      expect(engine.snapshot().connection).toBe('connected');
-    } finally { engine.dispose(); }
+      if (paired) {
+        expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
+        expect(engine.snapshot().connection).toBe('connected');
+      } else {
+        expect(connect).not.toHaveBeenCalled();
+        expect(engine.snapshot()).toMatchObject({ startup: 'ready', connection: 'unpaired', laptops: [] });
+      }
+    } finally { engine.dispose(); vi.useRealTimers(); }
   });
   it('routes requested content as a separate chunk reply and rejects responses after selection changes', async () => {
     const connector = createDemoConnector(); const connect = connector.connect;
@@ -201,11 +210,12 @@ describe('companion engine', () => {
     const connector = createDemoConnector(); const connect = connector.connect;
     const question = { id: 'same-id', conversationId: 'conversation', kind: 'question' as const,
       question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [{ id: 'q', header: 'Choice', question: 'Which?', isOther: true, isSecret: false, options: null }] } };
+    let reviewerPending = true;
     let reject!: (error: Error) => void;
     const respondRequest = vi.fn(() => new Promise<void>((_, fail) => { reject = fail; }));
     connector.connect = async (id) => {
       const session = await connect(id); const workspace = await session.getWorkspace();
-      return { ...session, getWorkspace: async () => ({ ...workspace, agentRequests: { 'demo-agent': [question], 'demo-reviewer': [question] } }), respondRequest };
+      return { ...session, getWorkspace: async () => ({ ...workspace, agentRequests: { 'demo-agent': [question], 'demo-reviewer': reviewerPending ? [question] : [] } }), respondRequest };
     };
     const { engine, latest } = open(connector);
     try {
@@ -230,8 +240,57 @@ describe('companion engine', () => {
       await engine.dispatch({ type: 'respondRequest', reply });
       expect(latest().requests).toHaveLength(0);
       expect(latest().failedRequest).toBeNull();
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(0);
       await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
-      expect(latest().requests[0]?.request.id).toBe('same-id');
+      const other = latest().requests[0]!;
+      expect(other.request.id).toBe('same-id');
+      respondRequest.mockImplementationOnce(async () => { reviewerPending = false; throw new Error('Already answered on desktop'); });
+      await engine.dispatch({ type: 'respondRequest', reply: { target: other.target, id: other.request.id, conversationId: other.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest()).toMatchObject({ requests: [], failedRequest: null, respondingRequest: null });
+      reviewerPending = true;
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(0);
+    } finally { engine.dispose(); }
+  });
+
+  it('dismisses questions locally across catch-up without hiding approvals, another agent or a changed question', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let text = 'Old question';
+    const respondRequest = vi.fn(async (_reply: import('@workspace/core/companion-protocol').CompanionRequestReply) => {});
+    connector.connect = async id => {
+      const session = await connect(id);
+      return { ...session, respondRequest, getWorkspace: async () => ({ ...await session.getWorkspace(), agentRequests: Object.fromEntries(['demo-agent', 'demo-reviewer'].map(id => [id, [
+        { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'q', delivery: 'async' as const, blocking: false, questions: [{ id: 'q', header: 'Choice', question: text, isOther: true, isSecret: false, options: null }] } },
+        { id: 'approval', conversationId: 'conversation', kind: 'approval' as const, approval: { id: 'approval', itemId: 'approval-item', conversationId: 'conversation', kind: 'command' as const, title: 'Run?', allowedScopes: ['once' as const] } },
+      ]])) }) };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'draft', text: 'Keep my prompt' });
+      const [question, approval] = latest().requests;
+      await engine.dispatch({ type: 'dismissRequest', key: approval!.key });
+      expect(latest().requests).toHaveLength(2);
+      await engine.dispatch({ type: 'disconnect' });
+      await engine.dispatch({ type: 'dismissRequest', key: question!.key });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(respondRequest).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(latest().draft).toBe('Keep my prompt');
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(latest().requests).toHaveLength(2);
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(latest().requests).toHaveLength(1);
+      text = 'A new question';
+      await engine.dispatch({ type: 'disconnect' }); await engine.dispatch({ type: 'reconnect' });
+      expect(latest().requests).toHaveLength(2);
+      const optional = latest().requests.find(entry => entry.request.kind === 'question')!;
+      respondRequest.mockRejectedValueOnce(new Error('Cancellation could not be confirmed'));
+      await engine.dispatch({ type: 'respondRequest', reply: { target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } } });
+      expect(latest().requests.map(entry => entry.request.kind)).toEqual(['approval']);
+      expect(latest().failedRequest).toBeNull();
+      expect(respondRequest).toHaveBeenCalledExactlyOnceWith({ target: optional.target, id: optional.request.id, conversationId: optional.request.conversationId, outcome: { kind: 'cancelled' } });
     } finally { engine.dispose(); }
   });
 
@@ -271,6 +330,129 @@ describe('companion engine', () => {
       remove: async ({ key }) => { values.delete(key); },
     });
   }
+  it('shows all teams from the loaded workspace without extra reads and keeps chat actions and saved selection on the owning team', async () => {
+    const store = selectionStorage();
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let workspace: CompanionWorkspace;
+    let update!: Parameters<NonNullable<CompanionSession['onUpdate']>>[0];
+    const getWorkspace = vi.fn(async () => workspace);
+    const sendPrompt = vi.fn<CompanionSession['sendPrompt']>(async () => {});
+    const createQuickChat = vi.fn(async () => 'demo-reviewer');
+    const loadConversation = vi.fn();
+    connector.connect = async id => {
+      const session = await connect(id);
+      workspace ??= { ...await session.getWorkspace(),
+        teams: [{ id: 'demo-team', name: 'First', agentIds: ['demo-agent'] }, { id: 'second-team', name: 'Second', agentIds: ['demo-reviewer'] }],
+        agents: (await session.getWorkspace()).agents.map(agent => ({ ...agent, teamId: agent.id === 'demo-reviewer' ? 'second-team' : 'demo-team' })),
+        backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } };
+      return { ...session, getWorkspace, sendPrompt, createQuickChat,
+        loadConversation: async agentId => { loadConversation(agentId); return session.loadConversation(agentId); },
+        onUpdate(listener) { update = listener; return () => {}; } };
+    };
+    const first = open(connector, store);
+    const ids = () => first.latest().groups.flatMap(group => group.sessions.map(agent => agent.agentId));
+    try {
+      await first.engine.start();
+      expect(ids()).toEqual(['demo-agent']);
+      const loads = loadConversation.mock.calls.length;
+      await first.engine.dispatch({ type: 'selectAllTeams' });
+      expect(first.latest()).toMatchObject({ allTeams: true, agentId: 'demo-agent', teamId: 'demo-team' });
+      expect(ids()).toEqual(['demo-agent', 'demo-reviewer']);
+      expect(first.latest().activityGroups.flatMap(group => group.sessions.map(agent => agent.agentId))).toEqual(ids());
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      expect(loadConversation).toHaveBeenCalledTimes(loads);
+      workspace = { ...workspace!, agents: workspace!.agents.map(agent => agent.id === 'demo-reviewer' ? { ...agent, status: { type: 'working' } } : agent) };
+      update(workspace, null); await nextTick();
+      expect(first.latest().activityGroups.find(group => group.activity === 'working')?.sessions.map(agent => agent.agentId)).toEqual(['demo-reviewer']);
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      await first.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(first.latest()).toMatchObject({ allTeams: true, teamId: 'second-team', agentId: 'demo-reviewer', composerTarget: { teamId: 'second-team', agentId: 'demo-reviewer' } });
+      expect(ids()).toHaveLength(2);
+      expect(getWorkspace).toHaveBeenCalledTimes(1);
+      await first.engine.dispatch({ type: 'send', text: 'For the second team' });
+      expect(sendPrompt.mock.calls[0]?.[0]).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer' });
+      await first.engine.dispatch({ type: 'newQuickChat', backend: 'codex' });
+      expect(createQuickChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', backend: 'codex' });
+      expect(await store.read('demo-laptop')).toEqual({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true });
+    } finally { first.engine.dispose(); }
+    const restored = open(connector, store);
+    try {
+      await restored.engine.start();
+      expect(restored.latest()).toMatchObject({ allTeams: true, teamId: 'second-team', agentId: 'demo-reviewer' });
+      expect(restored.latest().groups.flatMap(group => group.sessions)).toHaveLength(2);
+      await restored.engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(restored.latest()).toMatchObject({ allTeams: false, teamId: 'demo-team', agentId: 'demo-agent' });
+      expect(restored.latest().groups.flatMap(group => group.sessions.map(agent => agent.agentId))).toEqual(['demo-agent']);
+      await restored.engine.dispatch({ type: 'selectAllTeams' });
+      workspace = { ...workspace!, teams: [workspace!.teams[0]!], agents: [workspace!.agents[0]!] };
+      update(workspace, null); await nextTick();
+      expect(restored.latest().allTeams).toBe(false);
+      expect(restored.latest().groups.flatMap(group => group.sessions)).toHaveLength(1);
+    } finally { restored.engine.dispose(); }
+  });
+  it('routes repository branch reads and creation from All to the repository owner without changing scope', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    const listBranches = vi.fn(async () => []);
+    const createChat = vi.fn(async () => 'demo-reviewer');
+    connector.connect = async id => {
+      const session = await connect(id); const workspace = await session.getWorkspace();
+      return { ...session, listBranches, createChat, getWorkspace: async () => ({ ...workspace,
+        teams: [{ id: 'demo-team', name: 'First', agentIds: ['demo-agent'] }, { id: 'second-team', name: 'Second', agentIds: ['demo-reviewer'] }],
+        agents: workspace.agents.map(agent => agent.id !== 'demo-reviewer' ? agent : { ...agent, teamId: 'second-team', workspace: {
+          kind: 'git' as const, folder: '/second/repo', repositoryRoot: '/second/repo', primaryWorktreeRoot: '/second/repo',
+          repositoryName: 'Second repo', branch: 'main', defaultBranch: 'main', isLinkedWorktree: false, updatedAt: agent.updatedAt,
+        } }), backends: { 'demo-team': ['codex'], 'second-team': ['codex'] } }) };
+    };
+    const { engine, latest } = open(connector);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'selectAllTeams' });
+      await engine.dispatch({ type: 'loadBranches', repositoryId: '/second/repo' });
+      expect(listBranches).toHaveBeenCalledExactlyOnceWith('second-team', '/second/repo');
+      expect(latest()).toMatchObject({ teamId: 'demo-team', allTeams: true });
+      await engine.dispatch({ type: 'newChat', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(createChat).toHaveBeenCalledExactlyOnceWith({ teamId: 'second-team', repositoryId: '/second/repo', backend: 'codex', existingBranch: 'main' });
+      expect(latest()).toMatchObject({ teamId: 'second-team', agentId: 'demo-reviewer', allTeams: true, chatCreation: 'idle' });
+    } finally { engine.dispose(); }
+  });
+  it('creates a named team once, keeps errors retryable, and selects its empty workspace without losing the previous draft', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let workspace: CompanionWorkspace;
+    let finish!: () => void;
+    const createTeam = vi.fn<(name: string) => Promise<string>>(async () => { throw new Error('Unavailable'); });
+    connector.connect = async id => {
+      const session = await connect(id); workspace ??= await session.getWorkspace();
+      return { ...session, getWorkspace: async () => workspace, createTeam };
+    };
+    const store = selectionStorage(); const { engine, latest } = open(connector, store);
+    try {
+      await engine.start(); await engine.dispatch({ type: 'draft', text: 'Keep this draft' });
+      await engine.dispatch({ type: 'createTeam', name: '  ' });
+      expect(createTeam).not.toHaveBeenCalled();
+      await engine.dispatch({ type: 'createTeam', name: '  Mobile team  ' });
+      expect(createTeam).toHaveBeenCalledExactlyOnceWith('Mobile team');
+      expect(latest()).toMatchObject({ teamCreation: 'failed', teamId: 'demo-team', draft: 'Keep this draft' });
+      await engine.dispatch({ type: 'dismissTeamCreation' });
+      expect(latest().teamCreation).toBe('idle');
+      createTeam.mockImplementation(async name => {
+        await new Promise<void>(resolve => { finish = resolve; });
+        workspace = { ...workspace, teams: [...workspace.teams, { id: 'new-team', name, agentIds: [] }] };
+        return 'new-team';
+      });
+      const creating = engine.dispatch({ type: 'createTeam', name: 'Mobile team' });
+      expect(latest().teamCreation).toBe('creating');
+      await engine.dispatch({ type: 'createTeam', name: 'Duplicate' });
+      expect(createTeam).toHaveBeenCalledTimes(2);
+      finish(); await creating;
+      expect(latest()).toMatchObject({ teamCreation: 'idle', teamId: 'new-team', agentId: '', allTeams: false, groups: [], canSend: false });
+      expect(latest().teams.find(team => team.id === 'new-team')?.name).toBe('Mobile team');
+      expect(await store.read('demo-laptop')).toEqual({ teamId: 'new-team', agentId: '' });
+      await engine.dispatch({ type: 'selectTeam', id: 'demo-team' });
+      expect(latest().draft).toBe('Keep this draft');
+      await engine.dispatch({ type: 'disconnect' });
+      await engine.dispatch({ type: 'createTeam', name: 'Offline' });
+      expect(createTeam).toHaveBeenCalledTimes(2);
+    } finally { engine.dispose(); }
+  });
   it('restores the last opened team and agent after restarting, separately for each laptop', async () => {
     const store = selectionStorage();
     await store.write('another-laptop', { teamId: 'other-team', agentId: 'other-agent' });
@@ -421,11 +603,11 @@ describe('companion engine', () => {
       expect(shown(events)).toMatchObject({ agentId: 'demo-agent', ready: true, frame: null });
     } finally { engine.dispose(); }
   });
-  it('keeps startup loading through saved-pairing restoration and connection', async () => {
+  it.each([true, false])('restores saved pairing and offers connect when its host is unavailable (available=%s)', async available => {
     const connector = createDemoConnector(); const connect = connector.connect;
     let initialized!: () => void; let connected!: () => void;
     connector.initialize = () => new Promise<void>((resolve) => { initialized = resolve; });
-    connector.connect = async (id) => { await new Promise<void>((resolve) => { connected = resolve; }); return connect(id); };
+    connector.connect = vi.fn(async (id) => { await new Promise<void>((resolve) => { connected = resolve; }); if (!available) throw new Error('Host unavailable'); return connect(id); });
     const { engine, latest, states } = open(connector);
     expect(latest().startup).toBe('loading');
     const starting = engine.start();
@@ -434,8 +616,14 @@ describe('companion engine', () => {
     initialized(); await vi.waitFor(() => expect(latest().connection).toBe('connecting'));
     expect(latest().startup).toBe('loading');
     connected(); await starting;
-    expect(latest()).toMatchObject({ startup: 'ready', connection: 'connected' });
-    expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    expect(latest()).toMatchObject({ startup: 'ready', connection: available ? 'connected' : 'unpaired' });
+    if (available) expect(states().some((state) => state.startup === 'ready' && state.connection === 'unpaired')).toBe(false);
+    else {
+      expect(latest().laptops).toHaveLength(1);
+      connector.connect = connect;
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      expect(latest().connection).toBe('connected');
+    }
     engine.dispose();
   });
   it('shows pairing only after checking storage, and permits retry after a storage failure', async () => {
@@ -522,12 +710,94 @@ describe('companion engine', () => {
     expect(conversation).toMatchObject({ type: 'conversation', agentId: 'demo-agent', agent: { id: 'demo-agent' } });
     engine.dispose();
   });
-  it('lists several saved laptops instead of choosing one', async () => {
-    const connector = createDemoConnector(); Object.defineProperty(connector, 'laptops', { value: [{ id: 'demo-laptop', name: 'A' }, { id: 'other', name: 'B' }] });
+  it.each([true, false])('reopens the last successful laptop among several, including after unlocking (foreground=%s)', async foreground => {
+    const store = selectionStorage();
+    const makeConnector = () => {
+      const connector = createDemoConnector();
+      connector.laptops = [{ id: 'other', name: 'Other computer' }, { id: 'demo-laptop', name: 'My laptop' }];
+      return connector;
+    };
+    await store.writeLastLaptop('forgotten-host');
+    const first = open(makeConnector(), store);
+    await first.engine.start();
+    expect(first.latest().connection).toBe('unpaired');
+    await first.engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+    await first.engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+    first.engine.dispose();
+    const connector = makeConnector(); const connect = vi.spyOn(connector, 'connect');
+    const engine = createEngine({ connector, selectionStore: store, initialActive: foreground, post: () => {} });
+    try {
+      await engine.start();
+      if (!foreground) {
+        expect(connect).not.toHaveBeenCalled();
+        await engine.dispatch({ type: 'activity', active: true });
+      }
+      expect(engine.snapshot()).toMatchObject({ laptopId: 'demo-laptop', connection: 'connected', agentId: 'demo-reviewer' });
+      expect(connect).toHaveBeenCalledExactlyOnceWith('demo-laptop');
+      connector.connect = vi.fn(async () => { throw new Error('Unavailable'); });
+      await engine.dispatch({ type: 'connect', laptopId: 'other' });
+      expect(await store.readLastLaptop()).toBe('demo-laptop');
+    } finally { engine.dispose(); }
+  });
+  it('manages saved connections without forgetting the active laptop or losing its draft', async () => {
+    const store = selectionStorage();
+    const connector = createDemoConnector();
+    connector.laptops = [{ id: 'other', name: 'Other computer' }, { id: 'demo-laptop', name: 'My laptop' }];
+    connector.revoke = vi.fn(async id => {
+      connector.laptops = connector.laptops.filter(laptop => laptop.id !== id);
+      if (id === 'other') throw new Error('Old computer offline');
+    });
+    const { engine, latest } = open(connector, store);
+    try {
+      await engine.start();
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      await engine.dispatch({ type: 'draft', text: 'Keep my draft' });
+      await engine.dispatch({ type: 'forget', laptopId: 'other' });
+      expect(latest()).toMatchObject({ laptopId: 'demo-laptop', connection: 'connected', draft: 'Keep my draft', laptops: [{ id: 'demo-laptop', name: 'My laptop' }] });
+      expect(await store.readLastLaptop()).toBe('demo-laptop');
+      await engine.dispatch({ type: 'chooseConnection' });
+      expect(latest()).toMatchObject({ laptopId: '', connection: 'unpaired', teamId: '', agentId: '' });
+      expect(latest().laptops).toHaveLength(1);
+      await engine.dispatch({ type: 'activity', active: false });
+      await engine.dispatch({ type: 'activity', active: true });
+      expect(latest().connection).toBe('unpaired');
+      await engine.dispatch({ type: 'connect', laptopId: 'demo-laptop' });
+      expect(latest()).toMatchObject({ connection: 'connected', draft: 'Keep my draft' });
+      await engine.dispatch({ type: 'forget', laptopId: 'demo-laptop' });
+      expect(latest()).toMatchObject({ connection: 'revoked', laptops: [] });
+      expect(await store.readLastLaptop()).toBeNull();
+    } finally { engine.dispose(); }
+  });
+  it('keeps follow-up suggestions scoped to the selected agent, updates them live and leaves drafts untouched', async () => {
+    const connector = createDemoConnector(); const connect = connector.connect;
+    let publish!: () => void;
+    let suggestion: string | undefined = 'Run the tests';
+    connector.connect = async id => {
+      const session = await connect(id);
+      const getWorkspace = async () => {
+        const workspace = await session.getWorkspace();
+        return { ...workspace, agents: workspace.agents.map(agent => agent.id === 'demo-agent' ? { ...agent, suggestedPrompt: suggestion } : agent) };
+      };
+      return { ...session, getWorkspace, onUpdate(listener) {
+        publish = async () => listener(await getWorkspace(), null);
+        return () => {};
+      } };
+    };
     const { engine, latest } = open(connector);
-    await engine.start();
-    expect(latest().connection).toBe('unpaired'); expect(latest().laptops).toHaveLength(2);
-    engine.dispose();
+    try {
+      await engine.start();
+      expect(latest().suggestedPrompt).toBe('Run the tests');
+      expect(latest().draft).toBe('');
+      await engine.dispatch({ type: 'draft', text: 'My own request' });
+      suggestion = 'Review the changes'; await publish(); await nextTick();
+      expect(latest()).toMatchObject({ suggestedPrompt: suggestion, draft: 'My own request' });
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-reviewer' });
+      expect(latest().suggestedPrompt).toBeNull();
+      await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
+      expect(latest()).toMatchObject({ suggestedPrompt: suggestion, draft: 'My own request' });
+      suggestion = undefined; await publish(); await nextTick();
+      expect(latest()).toMatchObject({ suggestedPrompt: null, draft: 'My own request' });
+    } finally { engine.dispose(); }
   });
   it('pairs with a code, reports awaiting approval, then connects', async () => {
     const connector = unpaired();
@@ -609,11 +879,14 @@ describe('companion engine', () => {
     }
     it('shows it at once and does not duplicate it once it is published', async () => {
       const published = { texts: ['Earlier'] }; const { engine, events } = await opened(published);
-      await engine.dispatch({ type: 'send', text: 'Hello' });
-      expect(texts(events)).toEqual(['Earlier', 'Hello']);
-      published.texts.push('Hello');
+      const content = [{ type: 'mention' as const, kind: 'skill' as const, id: '/skills/review/SKILL.md', label: 'Review', value: 'review' }];
+      await engine.dispatch({ type: 'send', text: '$review', options: { content } });
+      expect(texts(events)).toEqual(['Earlier', 'Review']);
+      const shown = events.filter(event => event.type === 'conversation').at(-1);
+      expect(shown?.type === 'conversation' && shown.frame?.payload.snapshot.messages.at(-1)).toMatchObject({ metadata: { promptContent: content } });
+      published.texts.push('Review');
       await engine.dispatch({ type: 'selectAgent', id: 'demo-agent' });
-      expect(texts(events)).toEqual(['Earlier', 'Hello']);
+      expect(texts(events)).toEqual(['Earlier', 'Review']);
       engine.dispose();
     });
     it('is not hidden by an earlier identical prompt', async () => {
@@ -801,4 +1074,18 @@ it('uses acknowledged transcript checkpoints for warm agent switching and recove
     await engine.dispatch({ type: 'transcriptReset', identity: warm.identity }); await nextTick();
     expect(transfers().at(-1)!.frames).toHaveLength(1);
   } finally { engine.dispose(); cache!.close(); }
+});
+
+it('renames a paired laptop and shows the new name, leaving it alone when the name is refused', async () => {
+  const connector = createDemoConnector(); const events: EngineEvent[] = [];
+  const engine = createEngine({ connector, post: event => events.push(event) });
+  const shownName = () => engine.snapshot().laptops[0]?.name;
+  try {
+    await engine.start();
+    expect(shownName()).toBe('Demo laptop');
+    await engine.dispatch({ type: 'renameLaptop', laptopId: 'demo-laptop', name: 'Work Mac' });
+    expect(shownName()).toBe('Work Mac');
+    await engine.dispatch({ type: 'renameLaptop', laptopId: 'someone-else', name: 'Other' });
+    expect(shownName()).toBe('Work Mac');
+  } finally { engine.dispose(); }
 });

@@ -29,7 +29,7 @@ final class ComposerMentionTests: XCTestCase {
             let query = try XCTUnwrap(ComposerQuery.at(draft, selection: NSRange(location: caret, length: 0)))
             let result = try XCTUnwrap(query.inserting(item, into: draft))
             XCTAssertEqual(result.text, "🦞 Ask \(item.token) later")
-            let document = ComposerChipText(text: result.text, suggestions: [agent, plugin])
+            let document = ComposerChipText(text: draft, chips: []).selecting(item, at: query)!.document
             XCTAssertEqual(document.chips.map(\.item), [item])
             let renderedCaret = document.renderedRange(NSRange(location: result.caret, length: 0))
             // One backspace removes the trailing space; the next removes the whole chip.
@@ -40,11 +40,10 @@ final class ComposerMentionTests: XCTestCase {
         }
     }
 
-    func testMixedChipsPreserveCodeEmailsAndUnknownMentionsAsText() {
+    func testUnselectedMentionsStayText() {
         let text = "@agent:a @github $review `@github` x@github @unknown"
-        let document = ComposerChipText(text: text, suggestions: [agent, plugin, skill])
-        XCTAssertEqual(document.chips.map(\.item), [agent, plugin, skill])
-        XCTAssertEqual(document.chips.map { (text as NSString).substring(with: $0.range) }, ["@agent:a", "@github", "$review"])
+        let document = ComposerChipText(text: text, chips: [])
+        XCTAssertTrue(document.chips.isEmpty)
     }
 
     func testEngineCatalogDecodesKindsAndLegacySkills() throws {

@@ -37,6 +37,17 @@ function fixture(autoAcceptCode?: string) {
     } };
 }
 describe('companion authorization gateway', () => {
+  it('tells a newly approved phone what the laptop is called, and stays silent when it does not know', async () => {
+    const f = fixture();
+    const approve = async (peer: string) => {
+      const result = await claim(f.gateway, peer, f.gateway.invite().code); await f.gateway.decide(result.pendingId, true);
+      return f.gateway.request(peer, 'pair.status', { pendingId: result.pendingId });
+    };
+    expect(await approve('plain')).toStrictEqual({ state: 'approved', grant: expect.objectContaining({ peerId: 'plain' }) });
+    (f.port as Record<string, unknown>).hostName = () => 'Studio Mac';
+    expect(await approve('named')).toMatchObject({ state: 'approved', hostName: 'Studio Mac' });
+  });
+
   it('serializes automatic grants and keeps them unauthorized until persistence finishes', async () => {
     const code = 'ABCDEFGH';
     const f = fixture(code);
@@ -332,6 +343,84 @@ describe('companion authorization gateway', () => {
     await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('Already answered');
     await f.gateway.revoke('phone');
     await expect(f.gateway.request('phone', 'agent.request.respond', reply)).rejects.toThrow('authorized');
+  });
+
+  it('lets the phone work with a mission worker like any agent, but not restructure it', async () => {
+    const f = fixture();
+    const worker = { id: 'worker', name: 'Worker', teamId: 'team', folder: '/private', backend: 'codex' as const, status: { type: 'idle' as const }, createdAt: '', updatedAt: '' };
+    const workerTarget = { ...target, agentId: 'worker' };
+    const question = { id: 'q', conversationId: 'conversation', kind: 'question' as const, question: { itemId: 'item', delivery: 'tool' as const, blocking: true, questions: [] } };
+    f.port.workspace.mockResolvedValue({ ...workspace, missionAgents: [worker], agentRequests: { worker: [question] } });
+    await f.pair();
+    await expect(f.gateway.request('phone', 'skills.list', workerTarget)).resolves.toBeDefined();
+    const reply = { target: workerTarget, id: 'q', conversationId: 'conversation', outcome: { kind: 'answered', answers: { choice: { answers: ['Yes'] } } } };
+    await f.gateway.request('phone', 'agent.request.respond', reply);
+    expect(f.port.respondRequest).toHaveBeenCalledExactlyOnceWith({ agentId: 'worker', id: 'q', outcome: reply.outcome });
+    // Talking to a worker and steering it are the composer's business.
+    expect(await f.gateway.request('phone', 'prompt.submit', { target: workerTarget, text: 'Use the staging key', clientCommandId: randomUUID() })).toMatchObject({ state: 'accepted' });
+    await f.gateway.request('phone', 'agent.interrupt', workerTarget);
+    expect(f.port.interrupt).toHaveBeenCalledExactlyOnceWith('worker');
+    for (const [method, args] of [['agent.rename', { target: workerTarget, name: 'Mine' }], ['agent.restart', workerTarget], ['agent.close', { target: workerTarget }],
+      ['agent.backend.set', { target: workerTarget, backend: 'claude' }], ['agent.duplicate', { target: workerTarget, backend: 'codex' }]] as const) {
+      await expect(f.gateway.request('phone', method, args)).rejects.toThrow('read-only');
+    }
+    expect(f.port.restart).not.toHaveBeenCalled();
+  });
+
+  it('lets the phone move a finished mission to review and accept a ready ticket, only as the mission stands now', async () => {
+    const f = fixture();
+    const executeMission = vi.fn(async () => {});
+    (f.port as Record<string, unknown>).executeMission = executeMission;
+    const mission = (patch: Record<string, unknown> = {}) => ({ id: 'mission', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', startedAt: '', updatedAt: '', revision: 4, next: 'review',
+      tickets: [{ number: 1, title: 'A', state: 'awaitingReview', agentId: 'w', runId: 'run-1' }, { number: 2, title: 'B', state: 'running' }], ...patch });
+    f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [mission()] as unknown as CompanionWorkspace['missionProgress'] });
+    await expect(f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 })).rejects.toThrow('authorized');
+    await f.pair();
+    await f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 4, action: 'continueToReview' });
+    await f.gateway.request('phone', 'mission.ticket.accept', { missionId: 'mission', revision: 4, runId: 'run-1' });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 4, action: 'accept', runId: 'run-1' });
+    executeMission.mockClear();
+    for (const [method, args] of [
+      ['mission.continue', { missionId: 'mission', revision: 3 }], // the mission moved on since the phone looked
+      ['mission.continue', { missionId: 'other', revision: 4 }],
+      ['mission.ticket.accept', { missionId: 'mission', revision: 4, runId: 'run-9' }], // not a run waiting for acceptance
+      ['mission.ticket.accept', { missionId: 'mission', revision: 5, runId: 'run-1' }],
+      ['mission.cancel', { missionId: 'mission', revision: 4 }],
+      ['mission.continue', { missionId: 'mission', revision: 4, action: 'reopen' }], // no way to smuggle another action in
+    ] as const) await expect(f.gateway.request('phone', method, args)).rejects.toThrow();
+    f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [mission({ next: undefined })] as unknown as CompanionWorkspace['missionProgress'] });
+    await expect(f.gateway.request('phone', 'mission.continue', { missionId: 'mission', revision: 4 })).rejects.toThrow('not ready');
+    expect(executeMission).not.toHaveBeenCalled();
+  });
+
+  it('lets the phone select a review\'s open findings, fix the selected ones and review again, only as the review stands', async () => {
+    const f = fixture();
+    const executeMission = vi.fn(async () => {});
+    (f.port as Record<string, unknown>).executeMission = executeMission;
+    const finding = (id: string, state: string, selected = false) => ({ id, priority: 'p1', title: id, body: '', repository: 'korus', selected, state });
+    const withFindings = (findings: ReturnType<typeof finding>[], stage = 'review') => f.port.workspace.mockResolvedValue({ ...workspace, missionProgress: [{ id: 'mission', teamId: 'team', outcome: '', stage, status: 'active', startedAt: '', updatedAt: '', revision: 6,
+      tickets: [], review: { summary: 'Reviewed', findings } }] as unknown as CompanionWorkspace['missionProgress'] });
+    withFindings([finding('open', 'open'), finding('picked', 'open', true), finding('busy', 'fixing', true)]);
+    await f.pair();
+    await f.gateway.request('phone', 'mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'open', selected: true });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'selectReviewFinding', findingId: 'open', selected: true });
+    await f.gateway.request('phone', 'mission.findings.fix', { missionId: 'mission', revision: 6 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'fixSelectedReviewFindings' });
+    executeMission.mockClear();
+    for (const [method, args] of [
+      ['mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'busy', selected: false }], // already being fixed
+      ['mission.finding.select', { missionId: 'mission', revision: 6, findingId: 'nope', selected: true }],
+      ['mission.finding.select', { missionId: 'mission', revision: 5, findingId: 'open', selected: true }], // the review moved on
+      ['mission.review.rerun', { missionId: 'mission', revision: 6 }], // something is still open
+    ] as const) await expect(f.gateway.request('phone', method, args)).rejects.toThrow();
+    withFindings([finding('a', 'fixed'), finding('b', 'skipped')]);
+    await f.gateway.request('phone', 'mission.review.rerun', { missionId: 'mission', revision: 6 });
+    expect(executeMission).toHaveBeenLastCalledWith({ id: 'mission', revision: 6, action: 'rerunReview' });
+    executeMission.mockClear();
+    withFindings([finding('a', 'open', true)], 'implementation');
+    await expect(f.gateway.request('phone', 'mission.findings.fix', { missionId: 'mission', revision: 6 })).rejects.toThrow('Select');
+    expect(executeMission).not.toHaveBeenCalled();
   });
 
   it.each([

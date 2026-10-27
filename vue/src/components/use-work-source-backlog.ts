@@ -9,13 +9,19 @@ import { workProviderDefinition } from '@workspace/core/work-providers';
 export function useWorkSourceBacklog(options: {
   location: () => AutomationLocation | undefined;
   query: WorkItemQuery;
+  preferredProvider?: () => WorkProviderKind | undefined;
+  /** The provider hosting the repository: other code hosts are not offered, only it and non-repository providers such as Linear. */
+  originProvider?: () => WorkProviderKind | undefined;
   preferredSourceId?: () => string | null;
   restrictToRepository?: () => boolean;
   acceptsSource?: (source: WorkSource) => boolean;
   enabled?: () => boolean;
 }) {
   const { location, preferredSourceId = () => null, restrictToRepository = () => false, acceptsSource = () => true, enabled = () => true } = options;
-  const { provider, providers } = useBacklogProviders(useBacklogConnections(location));
+  const { provider, providers } = useBacklogProviders(useBacklogConnections(location), 'github', candidate => {
+    const origin = options.originProvider?.();
+    return !origin || candidate === origin || !workProviderDefinition(candidate).repositoryBacked;
+  });
   const sources = ref<WorkSource[]>([]);
   const sourceId = ref<string | null>(null);
   const items = ref<WorkItem[]>([]);
@@ -26,6 +32,9 @@ export function useWorkSourceBacklog(options: {
   const locationKey = computed(() => JSON.stringify(location() ?? { kind: 'local' }));
   let revision = 0;
   onScopeDispose(() => { ++revision; });
+  watch([() => options.preferredProvider?.(), () => providers.value.join(',')], ([preferred]) => {
+    if (preferred && providers.value.includes(preferred as WorkProviderKind)) provider.value = preferred as WorkProviderKind;
+  }, { immediate: true });
   const preferredRepositorySource = computed(() => workProviderDefinition(provider.value).repositoryBacked ? preferredSourceId() : null);
   watch([provider, locationKey, preferredRepositorySource, restrictToRepository, enabled, () => providers.value.length > 0], () => { void loadProvider(); }, { immediate: true });
 

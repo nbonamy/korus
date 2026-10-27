@@ -65,8 +65,8 @@ describe('useVisualizationAnnotations', () => {
     await expect(annotations.forward('', undefined, failed)).rejects.toThrow('offline');
     expect(annotations.activeAnnotations.value).toHaveLength(2);
     const send = vi.fn().mockResolvedValue(undefined);
-    await annotations.forward('', undefined, send);
-    expect(send).toHaveBeenCalledWith(expect.stringContaining('Visualization annotations:'), undefined);
+    await annotations.forward('', { content: [] }, send);
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('Visualization annotations:'), { content: [{ type: 'text', text: '2 diagram annotations' }] });
     expect(send.mock.calls[0]![0]).toContain('Request: Rename the selected services.');
     expect(send.mock.calls[0]![0]).toContain('Request: Move the worker.');
     expect(send.mock.calls[0]![0]).toContain('2 diagram annotations');

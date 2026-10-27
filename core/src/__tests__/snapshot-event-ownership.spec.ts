@@ -47,6 +47,7 @@ const subagentEventTypes = [
 ] as const satisfies readonly SnapshotEventTypeOwnedBy<'subagent'>[];
 
 const rendererEventTypes = [
+  'conversation.shareChanged',
   'antigravity.conversationSnapshotChanged',
   'antigravity.conversationEventReceived',
   'provider.authenticationChanged',
@@ -62,6 +63,7 @@ const rendererEventTypes = [
   'client.celebrationRequested',
   'agentCreation.progress',
   'mission.implementationStartProgress',
+  'mission.focusRequested',
   'git.branchWorkProgress',
   'git.operationProgress',
   'browser.annotationCreated',
@@ -116,6 +118,7 @@ const occurredAt = '2026-09-04T00:00:00.000Z';
 const base = { seq: 1, occurredAt } as const;
 const agent = { ...base, agentId: 'agent-dina' } as const;
 const rendererOnlyEvents = [
+  { ...agent, type: 'conversation.shareChanged', payload: { active: false, handle: null, connectedGuests: null, availability: 'transportPending' } },
   {
     ...base,
     type: 'client.connectionChanged',

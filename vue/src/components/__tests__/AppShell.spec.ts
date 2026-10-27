@@ -17,7 +17,7 @@ import type { AppApi, RendererMessage } from '@workspace/core/contracts';
 import { i18n } from '../../i18n';
 import { setElectronTestClient } from '../../test/client';
 import { useConfetti } from '../../shared/confetti/use-confetti';
-import { setFirstRunOnboardingStage } from '../../onboarding-session';
+import { getFirstRunOnboardingStage, setFirstRunOnboardingStage } from '../../onboarding-session';
 import { codexConversationSnapshot, codexTextMessage } from '../../test/codex-conversation-fixtures';
 import { claudeConversationSnapshot } from '../../test/claude-conversation-fixtures';
 import { encodeAppErrorDescriptor } from '@workspace/core/app-error';
@@ -102,7 +102,7 @@ describe('AppShell authentication and conversation', () => {
       await repeatedWarning.get('.app-button--tertiary').trigger('click');
       await flushPromises();
       expect(updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { providerOnboardingComplete: true } });
-      expect(wrapper.find('.github-onboarding').exists()).toBe(true);
+      expect(wrapper.find('.repositories-onboarding').exists()).toBe(true);
     } finally { ElMessageBox.close(); wrapper.unmount(); }
   });
 
@@ -130,7 +130,7 @@ describe('AppShell authentication and conversation', () => {
       await flushPromises();
       expect(document.querySelector('.el-message-box')).toBeNull();
       expect(updateSettings).toHaveBeenCalledExactlyOnceWith({ general: { providerOnboardingComplete: true } });
-      expect(wrapper.find('.github-onboarding').exists()).toBe(true);
+      expect(wrapper.find('.repositories-onboarding').exists()).toBe(true);
     } finally { ElMessageBox.close(); wrapper.unmount(); }
   });
 
@@ -152,15 +152,80 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.get('.codex-login__continue').attributes('disabled')).toBeUndefined();
     await wrapper.get('.codex-login__continue').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.github-onboarding').text()).toContain('authenticated GitHub CLI');
+    expect(wrapper.get('.repositories-onboarding').text()).toContain('GitHub CLI');
     expect(updateSettings).toHaveBeenCalledWith({ general: { providerOnboardingComplete: true } });
     expect(getCodexAuthentication).not.toHaveBeenCalled();
     expect(getClaudeAuthentication).not.toHaveBeenCalled();
     expect(startCodexChatGptLogin).not.toHaveBeenCalled();
     expect(connectWorkProvider).not.toHaveBeenCalled();
-    await wrapper.get('.github-onboarding').findAll('button').find(button => button.text() === 'Use GitHub CLI')!.trigger('click');
+    await wrapper.get('.repositories-onboarding').findAll('button').find(button => button.text() === 'Continue')!.trigger('click');
     expect(wrapper.find('.onboarding-complete').exists()).toBe(true);
     wrapper.unmount();
+  });
+
+  it.each(['github', 'gitlab', 'both', 'neither', 'gitlab-cli'] as const)('restores a legacy repository stage with %s connected and waits for Continue across restart', async selection => {
+    window.sessionStorage.setItem('app:firstRunOnboardingStage', 'github');
+    const snapshot = createEmptySnapshot();
+    snapshot.general.providerOnboardingComplete = true;
+    snapshot.providerConnections = [{ backend: 'codex', installed: true, connected: true, checking: false }];
+    snapshot.workBacklog.connections = (['github', 'gitlab'] as const).map(provider => ({
+      provider, status: selection === provider || selection === 'both' || selection === `${provider}-cli` ? 'connected' : 'disconnected',
+      source: selection === 'gitlab-cli' && provider === 'gitlab' ? 'cli' : 'api',
+      accountLabel: selection === provider || selection === 'both' || selection === `${provider}-cli` ? `${provider}-alice` : undefined,
+    }));
+    setElectronTestClient({});
+    const first = mountShell({ snapshot });
+    await flushPromises();
+    expect(first.get('.repositories-onboarding').text()).toContain('GitLab');
+    expect(first.find('.onboarding-complete').exists()).toBe(false);
+    expect(getFirstRunOnboardingStage()).toBe('repositories');
+    first.unmount();
+    window.sessionStorage.clear(); // a new app session retains the unfinished step
+    const reloaded = mountShell({ snapshot });
+    await flushPromises();
+    expect(reloaded.get('.repositories-onboarding').text()).toContain('GitHub');
+    await reloaded.get('.repositories-onboarding__continue').trigger('click');
+    await flushPromises();
+    expect(reloaded.find('.onboarding-complete').exists()).toBe(true);
+    await reloaded.get('.onboarding-complete .el-button').trigger('click');
+    await flushPromises();
+    reloaded.unmount();
+    expect(getFirstRunOnboardingStage()).toBeNull();
+    const completed = mountShell({ snapshot });
+    await flushPromises();
+    expect(completed.find('.repositories-onboarding').exists()).toBe(false);
+    expect(completed.find('.codex-login').exists()).toBe(false);
+  });
+
+  it('narrows to the provider being authorized, hides Continue, and restores the list on cancel', async () => {
+    setFirstRunOnboardingStage('repositories');
+    const snapshot = createInitialSnapshot();
+    const both = [{ provider: 'github', status: 'connected', source: 'cli', accountLabel: 'gh-alice' }, { provider: 'gitlab', status: 'connected', source: 'cli', accountLabel: 'glab-bob' }] as const;
+    snapshot.workBacklog.connections = [...both];
+    setElectronTestClient({});
+    const wrapper = mountShell({ snapshot });
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    await wrapper.setProps({ connectWorkProvider: connect, disconnectWorkProvider: disconnect, openWorkProviderAuthorization: vi.fn() });
+    await flushPromises();
+    expect(wrapper.get('[aria-label="GitHub"]').text()).toContain('Using GitHub CLI');
+    expect(wrapper.get('[aria-label="GitLab"]').text()).toContain('Using GitLab CLI');
+    await wrapper.get('[aria-label="Connect GitLab"]').trigger('click');
+    await flushPromises();
+    expect(connect.mock.calls).toStrictEqual([['gitlab']]);
+    const authorization = { provider: 'gitlab' as const, userCode: 'gitlab-CODE', verificationUri: 'https://gitlab.com/oauth/device', expiresAt: '2099-01-01' };
+    const connecting = { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [both[0], { provider: 'gitlab', status: 'connecting' }] } };
+    await wrapper.setProps({ snapshot: connecting as typeof snapshot, workProviderAuthorizations: { gitlab: authorization } });
+    expect(wrapper.text()).toContain('gitlab-CODE');
+    expect(wrapper.find('[aria-label="GitHub"]').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding__continue').exists()).toBe(false);
+    await wrapper.get('[aria-label="Cancel GitLab authorization"]').trigger('click');
+    await flushPromises();
+    expect(disconnect.mock.calls).toStrictEqual([['gitlab']]);
+    await wrapper.setProps({ snapshot: { ...snapshot, workBacklog: { ...snapshot.workBacklog, connections: [both[0], { provider: 'gitlab', status: 'disconnected' }] } }, workProviderAuthorizations: {} });
+    expect(wrapper.find('[aria-label="GitHub"]').exists()).toBe(true);
+    expect(wrapper.find('.repositories-onboarding__continue').exists()).toBe(true);
+    expect(wrapper.find('.onboarding-complete').exists()).toBe(false);
   });
 
   it('opens handoff from the sidebar through shell navigation', async () => {
@@ -520,7 +585,7 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
 
     expect(wrapper.find('.codex-login').exists()).toBe(false);
-    expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     expect(getCodexAuthentication).not.toHaveBeenCalled();
     expect(getClaudeAuthentication).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -634,11 +699,11 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.setProps({ snapshot: { ...snapshot, providerConnections: [{ backend: 'codex', installed: true, connected: true, checking: false }] } });
 
     expect(wrapper.get('.codex-login').text()).toContain('Codex connected');
-    expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     await wrapper.get('.codex-login__continue').trigger('click');
     await flushPromises();
     expect(wrapper.find('.codex-login').exists()).toBe(false);
-    expect(wrapper.get('.github-onboarding').text()).toContain('Connect GitHub.');
+    expect(wrapper.get('.repositories-onboarding').text()).toContain('Connect your code.');
     expect(wrapper.get('.app-shell').classes()).toContain('app-shell--auth-gated');
     expect(setMenuBarVisible).toHaveBeenLastCalledWith(false);
 
@@ -659,7 +724,10 @@ describe('AppShell authentication and conversation', () => {
 
     await flushPromises();
 
-    expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="GitLab"]').text()).toContain('Connect');
+    await wrapper.get('.repositories-onboarding__continue').trigger('click');
+    await flushPromises();
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
     expect(setMenuBarVisible).toHaveBeenLastCalledWith(false);
     expect(useConfetti().bursts.value).toHaveLength(1);
@@ -674,7 +742,7 @@ describe('AppShell authentication and conversation', () => {
   });
 
   it('shows the same celebrated completion after GitHub is skipped', async () => {
-    setFirstRunOnboardingStage('github');
+    setFirstRunOnboardingStage('repositories');
     window.app = {
       getCodexAuthentication: vi.fn().mockResolvedValue({
         account: { type: 'chatgpt' },
@@ -685,10 +753,10 @@ describe('AppShell authentication and conversation', () => {
 
     const wrapper = mountShell();
     await flushPromises();
-    const buttons = wrapper.findAll('.github-onboarding .el-button');
-    await buttons[1]!.trigger('click');
+    await wrapper.get('.repositories-onboarding__continue').trigger('click');
+    await flushPromises();
 
-    expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     expect(wrapper.get('.onboarding-complete').text()).toContain("You're all set.");
     expect(useConfetti().bursts.value).toHaveLength(1);
     wrapper.unmount();
@@ -721,7 +789,7 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
 
     expect(reloadedShell.get('.codex-login').text()).toContain('Codex connected');
-    expect(reloadedShell.find('.github-onboarding').exists()).toBe(false);
+    expect(reloadedShell.find('.repositories-onboarding').exists()).toBe(false);
     reloadedShell.unmount();
   });
 
@@ -775,11 +843,15 @@ describe('AppShell authentication and conversation', () => {
     await wrapper.setProps({ snapshot: { ...snapshot } });
     expect(wrapper.get('.codex-login').text()).toContain('Claude Code connected');
     expect(wrapper.findAll('.codex-login__detection')[1]!.text()).toContain('Connected');
-    expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
     await wrapper.get('.codex-login__continue').trigger('click');
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith({ general: { providerOnboardingComplete: true } });
-    expect(wrapper.find('.github-onboarding').exists()).toBe(true);
+    expect(wrapper.find('.repositories-onboarding').exists()).toBe(true);
+    await wrapper.get('.repositories-onboarding__continue').trigger('click');
+    await flushPromises();
+    await wrapper.get('.onboarding-complete .el-button').trigger('click');
+    await flushPromises();
     wrapper.unmount();
 
     window.sessionStorage.clear();
@@ -968,7 +1040,7 @@ describe('AppShell authentication and conversation', () => {
       await wrapper.get('.codex-login__continue').trigger('click');
       await flushPromises();
       expect(wrapper.find('.codex-login').exists()).toBe(false);
-      expect(wrapper.find('.github-onboarding').exists()).toBe(false);
+      expect(wrapper.find('.repositories-onboarding').exists()).toBe(false);
       expect(wrapper.get('.app-shell').classes()).not.toContain('app-shell--auth-gated');
     }
 
@@ -1283,7 +1355,7 @@ describe('AppShell authentication and conversation', () => {
     expect(wrapper.emitted('sendPrompt')).toBeUndefined();
   });
 
-  it.each(['Review', 'Delegate', 'Visualize'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
+  it.each(['Visualize', 'Delegate', 'Review', 'Mission'])('runs %s from the composer menu without consuming the draft or attachments', async label => {
     const sendPromptAction = vi.fn().mockResolvedValue(undefined);
     const startVisualize = vi.fn().mockResolvedValue(createInitialSnapshot());
     const draft = { text: 'Keep this draft', selectionStart: 4, selectionEnd: 4 };
@@ -1294,10 +1366,10 @@ describe('AppShell authentication and conversation', () => {
     const wrapper = mountRealShell({ snapshot, realConversationPane: true, sendPromptAction, startVisualize, composerState: draft, composerAttachments: [attachment] });
     await wrapper.setProps({ backendCapabilities: codexBackendCapabilities, backendCommands: defaultBackendCommands('codex'), approvalPreset: 'ask-for-approval' });
     await wrapper.get('button[aria-label="Composer actions"]').trigger('click');
-    if (label === 'Review') {
+    if (label === 'Visualize') {
       expect(wrapper.findAll('.chat-composer-action-menu [role="menuitem"], .chat-composer-action-menu [role="menuitemcheckbox"], .chat-composer-action-menu [role="separator"]')
         .map(row => row.attributes('role') === 'separator' ? '---' : row.text())).toStrictEqual([
-        'Approval', '---', 'Review', 'Delegate', 'Visualize', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
+        'Approval', '---', 'Visualize', 'Delegate', 'Review', 'Mission', '---', 'Goal mode', 'Plan mode', '---', 'Add Files & Photos',
       ]);
     }
     const item = wrapper.findAll('[role="menuitem"]').find(item => item.text() === label);
@@ -1306,8 +1378,8 @@ describe('AppShell authentication and conversation', () => {
     await flushPromises();
     if (label === 'Review') expect(wrapper.get('[aria-label="Code review"]').isVisible()).toBe(true);
     if (label === 'Visualize') expect(startVisualize).toHaveBeenCalledExactlyOnceWith(createInitialSnapshot().activeAgentId, undefined);
-    if (label === 'Delegate') {
-      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith('/delegate');
+    if (label === 'Delegate' || label === 'Mission') {
+      expect(sendPromptAction).toHaveBeenCalledExactlyOnceWith(label === 'Delegate' ? '/delegate' : '/mission');
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     }
     else expect(sendPromptAction).not.toHaveBeenCalled();
@@ -1338,8 +1410,8 @@ describe('AppShell authentication and conversation', () => {
 
   it('clears earlier review instructions when plain /review reopens the same pane', async () => {
     const wrapper = mountRealShell({ realConversationPane: true });
-    const editor = wrapper.get('[role="textbox"][contenteditable]');
     for (const prompt of ['/review Focus on retries.', '/review']) {
+      const editor = wrapper.get('[role="textbox"][contenteditable]');
       editor.element.textContent = prompt;
       await editor.trigger('input');
       await nextTick();

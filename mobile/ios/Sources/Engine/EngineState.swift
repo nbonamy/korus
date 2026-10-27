@@ -8,6 +8,9 @@ struct EngineState: Decodable {
     let queuedPromptPending: String?
     let queuedPromptFailed: Bool?
     struct Laptop: Decodable, Hashable { let id: String; let name: String }
+    let missions: [MissionSummary]?
+    let missionAction: String?
+    let mission: MissionReference?
     struct Session: Decodable {
         struct Status: Decodable { let type: AgentStatus }
         let agentId: String
@@ -84,12 +87,14 @@ struct EngineState: Decodable {
     let startup: Startup
     let connection: ConnectionState
     let error: String
+    let errorDetail: String?
     let laptops: [Laptop]
     let pairing: Pairing
     let pairingError: String
     let teams: [Team]
     let laptopId: String?
     let teamId: String
+    let allTeams: Bool?
     let groups: [Group]
     let activityGroups: [Group]?
     let agentId: String
@@ -108,9 +113,11 @@ struct EngineState: Decodable {
     let sessionActionFailed: Bool
     let closePreview: ClosePreview?
     let chatCreation: ChatCreation
+    let teamCreation: ChatCreation?
     let branches: RepositoryBranches?
     let backend: String?
     let backends: [String]
+    let suggestedPrompt: String?
     let draft: String
     let models: [Model]
     let composer: Composer

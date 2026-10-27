@@ -6,16 +6,16 @@
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
-      content="Run your coding agents side by side. __PRODUCT_NAME__ handles the coordination—parallel work, multi-round code review, and Missions for big ideas—so you stay on the problem and make the calls."
+      content="Delegate tasks, run multi-round reviews, or turn requirements into tickets and shipped code. __PRODUCT_NAME__ makes every step of your AI coding something you can see, follow and steer."
     />
     <meta property="og:type" content="website" />
     <meta
       property="og:title"
-      content="__PRODUCT_NAME__ — A team of coding agents, orchestrated."
+      content="__PRODUCT_NAME__ — Stop reading transcripts. Start steering the work."
     />
     <meta
       property="og:description"
-      content="Run your coding agents side by side. __PRODUCT_NAME__ handles the coordination, so you stay on the problem and make the calls."
+      content="Delegate tasks, run multi-round reviews, or turn requirements into tickets and shipped code. __PRODUCT_NAME__ makes every step of your AI coding something you can see, follow and steer."
     />
     <link rel="canonical" href="__PRODUCT_WEBSITE_URL__/" />
     <link rel="icon" type="image/png" href="assets/app-icon.png?v=mark-2" />
@@ -33,14 +33,16 @@
       name="twitter:image"
       content="__PRODUCT_WEBSITE_URL__/assets/og.png?v=mark-2"
     />
-    <title>__PRODUCT_NAME__ — A team of coding agents, orchestrated.</title>
+    <title>
+      __PRODUCT_NAME__ — Stop reading transcripts. Start steering the work.
+    </title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=product-2" />
+    <link rel="stylesheet" href="styles.css?v=header-youtube" />
   </head>
   <body>
     <header class="site-header shell">
@@ -56,6 +58,9 @@
       <div class="header-actions">
         <a class="header-link" href="/docs/">Docs</a>
         <a class="header-link" href="__PRODUCT_REPOSITORY_URL__">GitHub</a>
+        <a class="header-link" href="https://www.youtube.com/@korus-dev"
+          >YouTube</a
+        >
         <a class="header-cta" href="#download" data-platform-download
           >Download<span class="header-platform" data-platform-label></span>
           <span class="header-download-icon" aria-hidden="true">↓</span></a
@@ -67,18 +72,17 @@
       <section class="hero shell">
         <div class="hero-copy reveal">
           <p class="eyebrow">
-            <span class="pulse"></span> Your agents · one workspace
+            <span class="pulse"></span> Beyond the wall of text
           </p>
           <h1>
-            A team of coding agents.<br /><em
-              >Orchestrated by __PRODUCT_NAME__.</em
-            >
+            Stop reading transcripts.<br /><em>Start steering the work.</em>
           </h1>
           <div class="hero-intro">
             <div>
               <p class="hero-lede">
-                Run your coding agents side by side. __PRODUCT_NAME__ handles
-                the coordination, so you stay on the problem and make the calls.
+                Delegate tasks, run multi-round reviews, or turn requirements
+                into tickets and shipped code. __PRODUCT_NAME__ makes every step
+                of your AI coding something you can see, follow and steer.
               </p>
               <div class="hero-meta" aria-label="Product details">
                 <span>macOS</span><span class="dot"></span><span>Windows</span
@@ -377,6 +381,86 @@
               </figcaption>
             </figure>
           </article>
+          <article id="sharing" class="capability reveal">
+            <span class="capability-label">SHARING</span>
+            <h3>Bring a teammate into the conversation.</h3>
+            <p>
+              Share a live conversation so someone can follow the work and
+              suggest the next prompt. You review, edit, and send it. Stop
+              sharing whenever you choose.
+              <a
+                class="text-link"
+                href="/docs/features/conversations.html#share-a-conversation"
+                >Share a conversation <span aria-hidden="true">↗</span></a
+              >
+            </p>
+            <figure class="product-film">
+              <div class="film-frame">
+                <video
+                  controls
+                  playsinline
+                  muted
+                  preload="none"
+                  hidden
+                  tabindex="0"
+                  aria-label="Sharing walkthrough"
+                  id="film-sharing"
+                >
+                  <track
+                    kind="captions"
+                    label="English"
+                    srclang="en"
+                    data-src="__FILM_SHARING_CAPTIONS__"
+                  />
+                </video>
+                <a
+                  class="film-cover"
+                  href="__FILM_SHARING_VIDEO__"
+                  aria-label="Play Sharing film"
+                >
+                  <img
+                    src="__FILM_SHARING_POSTER__"
+                    width="1600"
+                    height="900"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <span class="film-play"
+                    ><span aria-hidden="true">▶</span> Watch film</span
+                  >
+                </a>
+              </div>
+              <figcaption>
+                <span
+                  ><strong>Sharing</strong> · Work together. Keep control.</span
+                >
+                <button
+                  class="film-captions"
+                  type="button"
+                  aria-label="Sharing captions"
+                  aria-controls="film-sharing"
+                  aria-pressed="true"
+                  hidden
+                >
+                  CC · Captions
+                </button>
+              </figcaption>
+            </figure>
+          </article>
+          <article id="analytics" class="capability reveal delay-1">
+            <h3>Understand your AI usage.</h3>
+            <p>
+              Compare token use, estimated API costs, and output speed across
+              providers and models. Follow trends over time, with your usage
+              data kept on your computer.
+              <a
+                class="text-link"
+                href="/docs/features/workspace.html#understand-usage-and-performance"
+                >Explore analytics <span aria-hidden="true">↗</span></a
+              >
+            </p>
+          </article>
           <article id="automations" class="capability reveal delay-1">
             <span class="capability-label">AUTOMATIONS</span>
             <h3>Make the repeatable automatic.</h3>
@@ -399,18 +483,24 @@
             />
           </article>
           <article class="capability reveal">
-            <span class="capability-label">BACKGROUND RUNTIME</span>
-            <h3>Switch sessions. The others keep their place.</h3>
+            <span class="capability-label">SKILLS</span>
+            <h3>Teach your agents new skills.</h3>
             <p>
-              The background daemon keeps turns alive, while status and unread
-              signals make it easy to know where to return.
+              Discover packs for design, security, and everyday development.
+              Install your own, read what they do, and sync them across your
+              coding agents.
+              <a
+                class="text-link"
+                href="/docs/providers/index.html#manage-agent-skills"
+                >Manage skills <span aria-hidden="true">↗</span></a
+              >
             </p>
             <img
               class="capability-shot"
-              src="assets/screens/runtime.webp?v=screens-2"
-              width="1510"
-              height="900"
-              alt="The sidebar showing agents that are working or have unread results"
+              src="assets/screens/skills.webp?v=skills-1"
+              width="1504"
+              height="1342"
+              alt="Korus Skills settings with curated skills and packs for design, security, and development"
               loading="lazy"
               decoding="async"
             />
@@ -463,11 +553,21 @@
             </div>
           </article>
           <article class="capability reveal">
-            <span class="capability-label">GUIDED COMPUTER USE · MAC</span>
-            <h3>Reach native apps when code isn’t enough.</h3>
+            <h3>Keep your tools close.</h3>
             <p>
-              Opt-in Computer Use lets a session inspect and operate native
-              applications while every action remains visible.
+              Use Bitwarden or 1Password to sign in and fill forms in the in-app
+              browser. Shared browser accounts keep your sessions ready across
+              agents.
+              <a
+                class="text-link"
+                href="/docs/features/browser.html#use-your-password-manager"
+                >Bring your password manager
+                <span aria-hidden="true">↗</span></a
+              >
+            </p>
+            <p>
+              On macOS, opt-in Computer Use lets an agent inspect and operate
+              native apps while every action remains visible.
             </p>
           </article>
         </div>

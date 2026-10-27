@@ -108,8 +108,8 @@ by mutating user-global tool config.
   `instructions` supplements canonical task references with missing context,
   decisions and delivery constraints, prepended inside an escaped `<context>`
   block (presentation separation, not secret storage: both stay in the transcript).
-  Model and effort inherit from the caller only for the same backend; another
-  backend uses its own defaults. Target-provider saved approval settings apply
+  Model, effort and service tier inherit from the caller only for the same backend (each can be
+  overridden; antigravity has no service tier); another backend uses its own defaults. Target-provider saved approval settings apply
   before the initial prompt; explicit or inherited model selections override
   model defaults without replacing that approval policy.
 - With a `task` contract (`title`, `doneWhen`), a stable parent-scoped `requestId`
@@ -123,6 +123,19 @@ by mutating user-global tool config.
   retention are in [architecture.md](architecture.md#durable-delegated-tasks).
 - `create-project` exists only for Quick Chats and reuses the New Project service;
   a later failure leaves the created folder or agent for recovery.
+- `get-diff-stats` is read-only and offered to agents with a working folder. `scope` picks
+  `uncommitted` (default), `unstaged`, `staged`, `branch` (optional `baseRef`) or `commit`
+  (needs `sha`); it returns lines added and removed and files changed, in total and per file
+  type (code, test, docs, other), using the same classifier as the review pane.
+- `create-mission` lets an agent on a local team start a Mission when the user asks
+  (`/mission [instructions]` expands into that request). It creates the Mission with
+  the caller as orchestrator, waits for the first stage's lead agent to exist, sends
+  the supplied brief to that lead as its first message and asks the renderer, through
+  `mission.focusRequested`, to open the Mission. Optional `backend`, `model`,
+  `reasoningEffort` and `serviceTier` set the lead's provider and model; the model, effort
+  and tier are checked against the provider's catalog before the Mission exists, and later
+  stages follow the lead. Mission workers and agents without a
+  team do not receive it.
 - Agent closure is authorized by the owning daemon against the authenticated
   caller and the persisted `delegatedByAgentId` link, which follows parent handoff.
   Only the creator can close an idle worker without pending prompts, requests or
@@ -207,8 +220,12 @@ Registered per authenticated request by independent modules
   assignments, not current turn or run status, so failed or finished attempts can
   still read artifacts; ordinary agents never receive them. Availability permits
   inspection; backend ownership checks separately control mutations and reject
-  stale or superseded attempts. A failed attempt stays recoverable: its worker can
-  continue and submit later, and success clears the error. Mission and run IDs are
+  stale or superseded attempts. Finding-reporting tools are discoverable from the
+  first Mission assignment so reused provider conversations retain them across
+  stages; reporting still requires ownership of the active Review run, and
+  remediation updates require the assigned finding. A failed attempt stays
+  recoverable: its worker can continue and submit later, and success clears the
+  error. Mission and run IDs are
   inferred from identity, never model input. Implementation workers read their
   explicit ticket assignment through `get-mission-assignment` and submit evidence
   against its stable ticket ID; the daemon owns backlog updates and aggregation.
@@ -239,6 +256,11 @@ The tool points agents to the bundled `korus-imagegen` procedure for generation,
 asset placement and inline image responses. Its result includes Markdown image
 syntax with the actual saved path, so the requesting agent can embed its selected
 output in the answer rather than only reading the image or reporting a filename.
+
+The composer offers this procedure as `$imagegen` to eligible non-Codex agents,
+alongside their native skills. Its `korus:skill/` catalog path identifies a bundled
+MCP procedure, not a filesystem skill. An existing native `imagegen` keeps its name;
+Codex retains its native image-generation skill.
 
 The daemon saves images with unique filenames under the app-owned Codex home's
 generated-images folder and returns image content with those paths. Provider file
@@ -333,18 +355,34 @@ Invariants the tool schemas cannot enforce:
 
 ## Hosted MCP Gateway
 
-Provider-hosted servers (GitHub, Linear) are reached through a transparent reverse
+Provider-hosted servers (GitHub, GitLab, Linear) are reached through a transparent reverse
 proxy at `/mcp/providers/<provider>?agentId=…`, backed by a small catalog of public
 transport facts (server ID, upstream URL, owning work integration). Connecting an
-integration enables its entry; sessions see local servers named `github` /
-`linear` with the upstream tool names and schemas.
+integration enables its eligible entry; sessions see local servers named `github`,
+`gitlab`, and `linear` with the upstream tool names and schemas.
 
 - `WorkIntegrationManager` is the credential authority. The gateway asks it for an
   authorization header on every upstream request, replaces any caller
   `Authorization`, and on upstream `401` rotates the credential and retries
   **once**. A refresh failure marks only that provider as needing reconnection.
-- GitHub CLI connections supply app-owned GitHub operations through `gh`, not
-  bearer credentials. They do not enable the hosted GitHub MCP gateway.
+- CLI connections supply app-owned operations through `gh` or `glab`, without
+  bearer credentials. They do not enable hosted MCP or permit token extraction.
+- GitLab MCP requires a direct OAuth token with the `mcp` scope. Connecting GitLab
+  requests `api mcp` together; register both scopes on the Korus public OAuth
+  application. The daemon verifies MCP initialize and tool discovery before
+  publishing its local URL, and rechecks eligibility on hydration or Settings retry.
+  GitLab can refuse MCP access for an account (HTTP 403); the server is then
+  simply not offered to agents until a later check succeeds. Project permissions still apply to individual
+  tools. See [GitLab's MCP prerequisites](https://docs.gitlab.com/user/model_context_protocol/mcp_server/).
+- GitLab MCP eligibility is public metadata separate from API connection state.
+  Missing scope, a refused MCP request, or an unavailable MCP endpoint does not disconnect
+  native repository/backlog/MR access or another provider. A cached gateway URL
+  checks eligibility again; HTTP permission denial disables only GitLab MCP.
+  Permission upgrades retain native credentials and coordinate with their refresh.
+  Denial, cancellation, expiry, and a different OAuth account preserve the original
+  connection. Cancellation during credential storage restores the original token
+  through the serialized token-store boundary. Only the daemon holds grant tokens;
+  snapshots and harness configuration contain capability state and local URLs.
 - Never configure a provider's remote URL or bearer token directly in Codex, Claude
   or user-global MCP settings: that exposes a rotating secret to the harness and
   prevents safe refresh. Tokens never appear in session config, URLs, tool I/O,

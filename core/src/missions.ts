@@ -132,8 +132,9 @@ function isMissionExecution(v: unknown): v is MissionExecution {
     && (v.workspaces === undefined || (Array.isArray(v.workspaces) && v.workspaces.every(workspace => record(workspace)
       && text(workspace.repositoryPath) && !!workspace.repositoryPath.trim()
       && text(workspace.path) && !!workspace.path.trim() && text(workspace.branch) && !!workspace.branch.trim()
+      && (workspace.deleted === undefined || workspace.deleted === true)
       && (workspace.baseSha === undefined || (typeof workspace.baseSha === 'string' && /^[a-f0-9]{40,64}$/.test(workspace.baseSha))))))
-    && (v.workspace === undefined || (record(v.workspace) && text(v.workspace.path) && text(v.workspace.branch) && (v.workspace.baseSha === undefined || (typeof v.workspace.baseSha === 'string' && /^[a-f0-9]{40,64}$/.test(v.workspace.baseSha)))))
+    && (v.workspace === undefined || (record(v.workspace) && text(v.workspace.path) && text(v.workspace.branch) && (v.workspace.deleted === undefined || v.workspace.deleted === true) && (v.workspace.baseSha === undefined || (typeof v.workspace.baseSha === 'string' && /^[a-f0-9]{40,64}$/.test(v.workspace.baseSha)))))
     && (v.deliveries === undefined || (Array.isArray(v.deliveries) && v.deliveries.every(isMissionDelivery)
       && new Set(v.deliveries.map(delivery => record(delivery) ? delivery.repositoryPath : undefined)).size === v.deliveries.length))
     && Array.isArray(v.runs) && v.runs.every(run => record(run) && text(run.id) && text(run.memberId)
@@ -154,7 +155,8 @@ function isMissionExecution(v: unknown): v is MissionExecution {
 
 function isMissionDelivery(v: unknown): boolean {
   if (!record(v) || !text(v.repositoryPath) || !v.repositoryPath.trim() || !text(v.agentId) || !v.agentId.trim()
-    || !['pending', 'pullRequestCreated', 'merged'].includes(v.status as string)) return false;
+    || !['pending', 'pullRequestCreated', 'merged'].includes(v.status as string)
+    || (v.mergePendingPush !== undefined && v.mergePendingPush !== true)) return false;
   if (v.status !== 'pullRequestCreated') return v.pullRequest === undefined;
   return record(v.pullRequest) && Number.isInteger(v.pullRequest.number) && (v.pullRequest.number as number) > 0
     && text(v.pullRequest.url) && /^https?:\/\//.test(v.pullRequest.url as string);

@@ -80,6 +80,13 @@ export type AppBackendRequestMap = {
   [backendMethods.agentRunProfileStart]: { params: { agentId: string; input: import('../run-profiles').RunProfileStartInput }; result: import('../run-profiles').ProfileRun };
   [backendMethods.agentProfileRunStop]: { params: { agentId: string; runId: string }; result: import('../run-profiles').ProfileRun };
   [backendMethods.agentProfileRunsStop]: { params: { agentId: string }; result: void };
+  [backendMethods.guestConversationControl]: { params: { input: import('../guest-navigation').GuestJoinControl }; result: import('../guest-navigation').GuestJoinState };
+  [backendMethods.guestConversationImage]: { params: { id: string; path: string }; result: { dataUrl: string } };
+  [backendMethods.guestConversationContent]: { params: { id: string; input: import('../contracts/conversation').ConversationContentInput }; result: import('../contracts/conversation').ConversationContentChunk };
+  [backendMethods.conversationShareControl]: { params: { input: import('../conversation-sharing').ConversationShareControl }; result: import('../conversation-sharing').ConversationShareResult };
+  [backendMethods.repositoryDeletePreview]: { params: { agentId: string }; result: import('../contracts/workspace').RepositoryDeletionPreview };
+  [backendMethods.repositoryDelete]: { params: { agentId: string; input: import('../contracts/workspace').DeleteRepositoryInput }; result: AppSnapshot };
+  [backendMethods.browserExtensionPackages]: { params: { input: import('../browser-extensions').BrowserExtensionPackageRequest }; result: import('../browser-extensions').BrowserExtensionPackageState };
   [backendMethods.agentMarkRead]: { params: { agentId: string; revision: number }; result: null };
   [backendMethods.agentVisualizeStart]: {
     params: { agentId: string; input?: import('../visualize').StartVisualizeInput };
@@ -166,7 +173,7 @@ export type AppBackendRequestMap = {
     result: import('../branch-current-work').BranchWorkResult;
   };
   [backendMethods.agentGitWorkflowGet]: {
-    params: { agentId: string };
+    params: { agentId: string; includePullRequest?: boolean };
     result: AgentGitWorkflow;
   };
   [backendMethods.agentClosePreview]: {

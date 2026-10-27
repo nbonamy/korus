@@ -17,7 +17,7 @@ import type { ProtectedVault } from './protected-storage';
 export type PairedLaptop = { v: 1; relayOrigin: string; relayPeerId: string; hostId: string; name: string };
 export type RelayHost = Pick<PairedLaptop, 'relayOrigin' | 'relayPeerId' | 'hostId'>;
 
-const dialTimeoutMs = 15_000;
+const dialTimeoutMs = 8_000;
 const bytes = (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 const base64 = (value: Uint8Array) => btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(''));
 

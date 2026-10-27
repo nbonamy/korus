@@ -56,7 +56,7 @@ describe('KeyboardShortcutsDialog', () => {
   it('keeps desktop-only bindings out of the web reference', async () => {
     const wrapper = mountDialog({ desktop: false, workspace: false, agent: false });
     await flushPromises();
-    expect(wrapper.text()).not.toMatch(/New team|Settings|Quit|Edit agent/);
+    expect(wrapper.text()).not.toMatch(/New team|Settings|Quit|Rename agent/);
     expect(wrapper.text()).toContain('Keyboard shortcuts');
     wrapper.unmount();
   });

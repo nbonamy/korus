@@ -23,7 +23,7 @@ function representGitHubRepository(agent: ReturnType<typeof createInitialSnapsho
 }
 
 describe('AppShell missions', () => {
-  it('forwards Linear context without a GitHub repository and rejects selection after the requirements stage', async () => {
+  it.each(['linear', 'gitlab'] as const)('forwards %s issue context and rejects selection after the requirements stage', async provider => {
     const snapshot = createInitialSnapshot();
     const mission = createMission(snapshot, { outcome: 'New mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
     prepareMissionLead(mission, snapshot.agents[0]!.id);
@@ -34,10 +34,10 @@ describe('AppShell missions', () => {
     await wrapper.get('.conversation-pane [role="menuitem"]').trigger('click');
     await flushPromises();
     const picker = wrapper.findAllComponents({ name: 'RepositorySessionSourceDialog' }).find(component => component.props('purpose') === 'missionIssue')!;
-    const issue = workItem({ provider: 'linear', id: 'linear:uuid', identifier: 'ENG-42', sourceId: 'linear:team', sourceName: 'Engineering', body: 'Reproduction steps', url: 'https://linear.app/acme/issue/ENG-42' });
+    const issue = workItem(provider === 'linear' ? { provider, id: 'linear:uuid', identifier: 'ENG-42', sourceId: 'linear:team', sourceName: 'Engineering', body: 'Reproduction steps', url: 'https://linear.app/acme/issue/ENG-42' } : { provider, id: 'gitlab.com/group/sub/repo#42', identifier: '#42', sourceId: 'gitlab.com/group/sub/repo', sourceName: 'group/sub/repo', body: 'Private GitLab details', url: 'https://gitlab.com/group/sub/repo/-/issues/42' });
     picker.vm.$emit('select-work-item', issue);
     await flushPromises();
-    expect(sendPromptAction).toHaveBeenCalledWith(expect.stringContaining('Linear issue ENG-42'), undefined);
+    expect(sendPromptAction).toHaveBeenCalledWith(expect.stringContaining(provider === 'linear' ? 'Linear issue ENG-42' : 'GitLab issue #42'), undefined);
     expect(sendPromptAction.mock.calls[0]![0]).toContain(issue.url);
     expect(sendPromptAction.mock.calls[0]![0]).toContain(issue.body);
     mission.stage = 'tickets';
@@ -47,6 +47,31 @@ describe('AppShell missions', () => {
     expect(sendPromptAction).toHaveBeenCalledOnce();
   });
   afterEach(() => window.localStorage.removeItem(missionStorageKey));
+
+  it('opens the mission an agent asked to focus, even when the snapshot arrives first or later', async () => {
+    const snapshot = createInitialSnapshot();
+    const mission = createMission(snapshot, { outcome: 'CSV export', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    prepareMissionLead(mission, snapshot.agents[0]!.id);
+    const withoutMission = { ...snapshot, missions: [] };
+    const wrapper = mountShell({ snapshot: withoutMission });
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    await wrapper.setProps({ missionFocusRequest: { missionId: mission.id, sequence: 1 } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    await wrapper.setProps({ snapshot: { ...snapshot } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('ignores a focus request for a mission that never arrives or belongs to another team', async () => {
+    const snapshot = createInitialSnapshot();
+    const wrapper = mountShell({ snapshot });
+    await wrapper.setProps({ missionFocusRequest: { missionId: 'mission-missing', sequence: 1 } });
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'MissionWorkspace' }).exists()).toBe(false);
+    wrapper.unmount();
+  });
 
   it('restores the Mission workspace after reopening the app on a selected Mission', async () => {
     const snapshot = createInitialSnapshot();

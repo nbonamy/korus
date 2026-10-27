@@ -55,7 +55,7 @@ Ask the parent or worker to cancel a tracked task when it should stop. Cancellat
 | Browser | “Open the local preview in your in-app browser and check the form.” |
 | Visualize | Open Visualize, then ask for a diagram or a targeted canvas edit. |
 | Computer Use | Enable it in Settings, then name the macOS app and task. |
-| Work item status | Ask the assigned agent to report whether its GitHub or Linear work is in progress, blocked, ready for review, or completed. This tracks work in Korus, separately from the source issue's status. |
+| Work item status | Ask the assigned agent to report whether its GitHub, GitLab, or Linear work is in progress, blocked, ready for review, or completed. This tracks work in Korus, separately from the source issue's status. |
 
 See [Workspace & diffs](../features/workspace), [Browser](../features/browser), [Visualize](../features/visualize), and [Computer Use](../features/computer-use) for the corresponding setup and interaction flows.
 
@@ -63,6 +63,6 @@ See [Workspace & diffs](../features/workspace), [Browser](../features/browser), 
 
 Tell the agent which teammate needs a decision or task and what outcome you expect. Review the resulting work through the receiving agent's conversation and artifacts.
 
-Korus collaboration messages go to other Korus agents. Sending an email, Slack message, or GitHub comment is a separate action through that service's integration; name that action explicitly when you want it.
+Korus collaboration messages go to other Korus agents. Sending an email, Slack message, or GitHub or GitLab comment is a separate action through that service's integration; name that action explicitly when you want it.
 
 Connecting Linear also makes its hosted tools available to agents through Korus. Ask explicitly when you want the agent to comment on an issue or change its Linear status; connecting the integration or finishing a Korus assignment is not itself that request.

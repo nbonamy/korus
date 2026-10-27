@@ -172,7 +172,7 @@ describe('workspace sidebar projection', () => {
       .toMatchObject({ customName: 'Custom agent', conversationTitle: 'Current thread title', displayTitle: 'Custom agent' });
   });
 
-  it('disambiguates duplicate session and mention labels deterministically', () => {
+  it('disambiguates matching names only within the same repository', () => {
     const first = gitAgent('agent-one', 'Fix tests', '/src/repo-one', 'feat/one', true);
     const second = gitAgent('agent-two', 'Fix tests', '/src/repo-two', 'feat/two', true);
 
@@ -182,6 +182,29 @@ describe('workspace sidebar projection', () => {
       { agentId: 'agent-one', label: 'Fix tests · feat/one · agent-workspace/feat/one' },
       { agentId: 'agent-two', label: 'Fix tests · feat/two · agent-workspace/feat/two' },
     ]);
+    const otherRepository = gitAgent('other-repo', 'Fix tests', '/src/other-repo', 'feat/one', false, '/src/other-repo');
+    const thirdRepository = gitAgent('third-repo', 'Fix tests', '/src/third-repo', 'feat/one', false, '/src/third-repo');
+    const quickChat: Agent = { ...baseAgent('chat-one', 'Fix tests', '/unused'), sessionKind: 'quickChat', folder: null };
+    const secondChat: Agent = { ...quickChat, id: 'chat-two' };
+    const folder = baseAgent('folder-one', 'Fix tests', '/src/notes');
+    const secondFolder = { ...folder, id: 'folder-two' };
+    expect(projectSidebar({ agents: [first, second, otherRepository, thirdRepository, quickChat, secondChat, folder, secondFolder], activeAgentId: null })
+      .flatMap(group => group.sessions.map(session => ({ id: session.agentId, title: session.displayTitle }))))
+      .toStrictEqual([
+        { id: first.id, title: 'Fix tests · feat/one' },
+        { id: second.id, title: 'Fix tests · feat/two' },
+        { id: otherRepository.id, title: 'Fix tests' },
+        { id: thirdRepository.id, title: 'Fix tests' },
+        { id: quickChat.id, title: 'Fix tests' },
+        { id: secondChat.id, title: 'Fix tests' },
+        { id: folder.id, title: 'Fix tests' },
+        { id: secondFolder.id, title: 'Fix tests' },
+      ]);
+    const owner = { ...first, name: 'Sharing', conversationTitle: 'Sharing' };
+    const collaborator: Agent = { ...owner, id: 'shared-copy', sessionKind: 'quickChat', folder: null, workspace: undefined, backendSession: undefined, sharedConversation: { joinId: 'shared-join' } };
+    expect(projectSidebar({ agents: [owner, collaborator], activeAgentId: owner.id })
+      .flatMap(group => group.sessions.map(session => ({ id: session.agentId, title: session.displayTitle }))))
+      .toStrictEqual([{ id: owner.id, title: 'Sharing' }, { id: collaborator.id, title: 'Sharing' }]);
   });
 
   it('falls back to the branch when an agent has no name', () => {

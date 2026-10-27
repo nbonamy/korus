@@ -46,8 +46,10 @@ import { ReviewToolRegistry, type ReviewToolHandlers } from '../review/review-to
 import { AgentCreationService } from '../agents/agent-creation-service';
 import type { AppMcpToolModuleProvider } from './tool-modules';
 import { createQuickChatProjectToolModuleProvider } from './quick-chat-project-tools';
+import { createMissionStartToolModuleProvider, type MissionStartInput, type StartedMission } from './mission-start-tools';
 import { createAutomaticReviewToolModuleProvider, type StartAutomaticReview } from './automatic-review-tools';
 import { createAutomationToolModuleProvider } from './automation-tools';
+import { createGitDiffStatsToolModuleProvider } from './git-diff-stats-tools';
 import type { CreatedProject } from '../projects/project-creation-service';
 import { warnMain } from '../log';
 import type { DurableTaskService } from '../agents/durable-task-service';
@@ -71,6 +73,8 @@ export type AppMcpServiceOptions = {
   worktreeManager?: WorktreeManager;
   agentCreation?: AgentCreationService;
   createProject?: (agentId: string, name: string, prompt: string, backend?: 'codex' | 'claude' | 'antigravity') => Promise<CreatedProject>;
+  startMission?: (agentId: string, input: MissionStartInput) => Promise<StartedMission>;
+  gitDiff?: (folder: string, target: import('@workspace/core/contracts').AgentGitDiffTarget) => Promise<import('@workspace/core/contracts').AgentGitDiff>;
   startAutomaticReview?: StartAutomaticReview;
   closeAgent?: (callerAgentId: string, agentId: string) => Promise<void>;
   toolModuleProviders?: readonly AppMcpToolModuleProvider[];
@@ -149,6 +153,8 @@ export class AppMcpService {
           notify: () => this.emit({ type: 'snapshot.updated', payload: this.snapshot }) })] : []),
         ...(options.startAutomaticReview ? [createAutomaticReviewToolModuleProvider({ snapshot: this.snapshot, start: options.startAutomaticReview })] : []),
         ...(options.createProject ? [createQuickChatProjectToolModuleProvider({ snapshot: this.snapshot, createProject: options.createProject })] : []),
+        ...(options.gitDiff ? [createGitDiffStatsToolModuleProvider({ snapshot: this.snapshot, diff: options.gitDiff })] : []),
+        ...(options.startMission ? [createMissionStartToolModuleProvider({ snapshot: this.snapshot, startMission: options.startMission })] : []),
         ...(options.toolModuleProviders ?? []),
       ],
     });
@@ -673,11 +679,14 @@ function delegatedBackendDefaults(caller: Agent, input: McpCreateAgentInput): Ba
     : undefined;
   const model = input.model?.trim() || callerDefaults?.model;
   const reasoningEffort = input.reasoningEffort?.trim() || callerDefaults?.reasoningEffort;
+  const serviceTier = backend === 'antigravity'
+    ? undefined
+    : input.serviceTier?.trim() || (callerDefaults && callerDefaults.kind !== 'antigravity' ? callerDefaults.serviceTier : undefined);
 
   const settings = {
     ...(model ? { model, userSelectedModel: true } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(callerDefaults && callerDefaults.kind !== 'antigravity' && callerDefaults.serviceTier !== undefined ? { serviceTier: callerDefaults.serviceTier } : {}),
+    ...(serviceTier !== undefined ? { serviceTier } : {}),
   };
   return { kind: backend, ...settings };
 }

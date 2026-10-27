@@ -83,7 +83,7 @@ describe('SettingsGeneralPanel', () => {
 
     expect(setDaemonEnabled).toHaveBeenCalledWith(true);
     expect(wrapper.text()).toContain('Installing…');
-    expect(wrapper.find('.settings-general-panel__spinner').exists()).toBe(true);
+    expect(wrapper.find('.app-spinner').exists()).toBe(true);
 
     resolveInstall();
     await flushPromises();
@@ -131,7 +131,7 @@ describe('SettingsGeneralPanel', () => {
 
     expect(setDaemonEnabled).toHaveBeenCalledWith(false);
     expect(wrapper.text()).toContain('Uninstalling…');
-    expect(wrapper.find('.settings-general-panel__spinner').exists()).toBe(true);
+    expect(wrapper.find('.app-spinner').exists()).toBe(true);
 
     resolveUninstall();
     await flushPromises();

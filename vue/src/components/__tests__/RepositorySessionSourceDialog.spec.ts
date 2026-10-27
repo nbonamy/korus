@@ -104,6 +104,27 @@ describe('RepositorySessionSourceDialog', () => {
     expect(wrapper.findAll('.repository-session-source-dialog__result')).toHaveLength(3);
     configureAppClient();
   });
+  it('offers only the repository origin and Linear on the Issues tab', async () => {
+    const { api } = createClientApiMock();
+    configureAppClient({ platform: 'desktop', api });
+    api.listWorkSources.mockResolvedValue([]);
+    api.listWorkItems.mockResolvedValue([]);
+    const connections = [{ provider: 'github', status: 'connected' }, { provider: 'gitlab', status: 'connected' }, { provider: 'linear', status: 'connected' }];
+    const optionsFor = async (selectedRepositoryId: string | null) => {
+      const wrapper = mount(RepositorySessionSourceDialog, {
+        props: { visible: true, repositoryName: 'repo', branches, selectedRepositoryId },
+        global: { provide: { [backlogConnectionsKey as symbol]: () => connections } },
+      });
+      await flushPromises();
+      await wrapper.findAll('[role="tab"]')[2].trigger('click');
+      await flushPromises();
+      return wrapper.findAll<HTMLOptionElement>('[aria-label="Backlog provider"] option').map(option => option.element.value);
+    };
+    expect(await optionsFor('gitlab.com/group/project')).toStrictEqual(['gitlab', 'linear']);
+    expect(await optionsFor('github.com/owner/repo')).toStrictEqual(['github', 'linear']);
+    expect(await optionsFor(null)).toStrictEqual(['github', 'gitlab', 'linear']);
+    configureAppClient();
+  });
   it('puts the provider choice beside the tabs on the Issues tab', async () => {
     const { api } = createClientApiMock();
     configureAppClient({ platform: 'desktop', api });

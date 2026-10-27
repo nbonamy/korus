@@ -35,6 +35,12 @@ export type AppMenuSubmenuItem = AppMenuItemBase & {
   submenuWidth?: 'default' | 'wide';
 };
 
+/** A read-only row: a heading or a figure the user can see but not choose. */
+export type AppMenuInfoItem = AppMenuItemBase & {
+  type: 'info';
+  leadingColor?: string;
+};
+
 export type AppMenuSeparatorItem = {
   id: string;
   type: 'separator';
@@ -42,6 +48,7 @@ export type AppMenuSeparatorItem = {
 
 export type AppMenuItem =
   | AppMenuActionItem
+  | AppMenuInfoItem
   | AppMenuCheckboxItem
   | AppMenuRadioItem
   | AppMenuSeparatorItem

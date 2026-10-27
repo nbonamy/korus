@@ -97,8 +97,8 @@ describe('useChatTextAnnotations', () => {
     const pending = deferred<void>();
     const send = vi.fn().mockReturnValue(pending.promise);
 
-    const submission = annotations.forward('', undefined, send);
-    expect(send).toHaveBeenCalledWith(expect.stringContaining('Chat annotations:'), undefined);
+    const submission = annotations.forward('', { content: [] }, send);
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('Chat annotations:'), { content: [{ type: 'text', text: '1 annotation' }] });
     expect(annotations.activeAnnotations.value).toHaveLength(1);
     pending.resolve();
     await submission;

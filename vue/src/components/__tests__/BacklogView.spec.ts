@@ -10,6 +10,15 @@ import { useCockpitBacklog } from '../use-cockpit-backlog';
 import '../../styles/base.css';
 
 describe('BacklogView', () => {
+  it('distinguishes same-named GitLab projects by full namespace when selecting a source', async () => {
+    const sources: WorkSource[] = ['group/sub/repo', 'other/repo'].map(fullName => ({ provider: 'gitlab', id: `gitlab.com/${fullName}`, name: 'repo', fullName, url: `https://gitlab.com/${fullName}` }));
+    const wrapper = mountView(createInitialSnapshot(), [], sources);
+    await wrapper.setProps({ workProvider: 'gitlab' });
+    expect(wrapper.findAll('.cockpit-view__repositories button[aria-pressed]').map(button => button.text())).toStrictEqual(['group/sub/repo', 'other/repo']);
+    await wrapper.get('[data-repository-id="gitlab.com/other/repo"] button[aria-pressed]').trigger('click');
+    expect(wrapper.emitted('select-work-repository')).toStrictEqual([['gitlab.com/other/repo']]);
+    wrapper.unmount();
+  });
   it('reveals keyboard-focused favorite controls without a button outline', async () => {
     const wrapper = mountView(createInitialSnapshot(), [], [repository('a', ''), repository('b', '')], undefined, 'nbonamy/a', document.body);
     try {

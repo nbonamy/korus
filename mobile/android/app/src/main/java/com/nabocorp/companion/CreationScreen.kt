@@ -134,7 +134,7 @@ private val creationKeyboard = KeyboardOptions(capitalization = KeyboardCapitali
                             }, Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                         "failed" -> item {
-                            Text(if (repositories) if (flow.kind == CreationKind.LOCAL) "Couldn’t load repositories. Check the source folder in ${model.productName} on your computer." else "Couldn’t load repositories. Check the GitHub connection in ${model.productName} on your computer." else "Couldn’t load branches. Check repository access and try again.", Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (repositories) if (flow.kind == CreationKind.LOCAL) "Couldn’t load repositories. Check the source folder in ${model.productName} on your computer." else "Couldn’t load repositories. Check the ${flow.providerName} connection in ${model.productName} on your computer." else "Couldn’t load branches. Check repository access and try again.", Modifier.padding(16.dp), fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = model::refreshCreation, Modifier.padding(horizontal = 8.dp)) { Text("Retry", fontSize = 17.sp) }
                         }
                         else -> item { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

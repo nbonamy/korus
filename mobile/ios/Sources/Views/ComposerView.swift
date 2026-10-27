@@ -34,8 +34,9 @@ struct ComposerView: View {
             }
             if showSuggestions, let query = activeQuery {
                 ComposerSuggestionsView(catalog: query.isSkill ? model.skills : model.mentions, query: query, select: { skill in
-                    guard let result = query.inserting(skill, into: model.composerText) else { return }
-                    model.composerText = result.text
+                    guard let result = ComposerChipText(text: model.composerText, chips: model.composerDrafts.chips).selecting(skill, at: query) else { return }
+                    model.composerText = result.document.text
+                    model.composerDrafts.chips = result.document.chips
                     selection = NSRange(location: result.caret, length: 0)
                     activeQuery = nil
                     focused = true
@@ -119,10 +120,11 @@ struct ComposerView: View {
             }
             HStack(spacing: 6) {
                 if !expanded { attachMenu }
-                ComposerEditor(text: $model.composerText, selection: $selection, focused: $focused,
+                ComposerEditor(text: $model.composerText, chips: Binding(get: { model.composerDrafts.chips }, set: { model.composerDrafts.chips = $0 }), selection: $selection, focused: $focused,
                     query: $activeQuery, suggestions: model.skills.items + model.mentions.items, editable: !model.dictation.active && !model.composerDrafts.sending,
                     maxLines: expanded ? 8 : 1,
-                    placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : "Message",
+                    placeholder: model.goalMode ? "Describe your goal" : model.planMode ? "Describe what to plan" : model.composerSuggestion ?? "Message",
+                    suggestedPrompt: model.composerSuggestion,
                     pastePhotos: canAttach ? { providers in
                         guard let request = model.composerDrafts.beginImport() else { return }
                         loadPhotos(providers, request: request)

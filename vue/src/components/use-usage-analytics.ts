@@ -76,6 +76,10 @@ export function useUsageAnalytics() {
   const series = computed(() =>
     chartSeries(grouped.value, measure.value, grouping.value),
   );
+  // Ratios are not additive shares; keep the donut's denominator in tokens.
+  const shareMeasure = computed(() => measure.value === "ratio" ? "total" : measure.value);
+  const shareSeries = computed(() => measure.value === "ratio"
+    ? chartSeries(grouped.value, "total", grouping.value) : series.value);
   const daily = computed(() => grouped.value?.daily ?? []);
   const activityDays = computed(
     () =>
@@ -208,6 +212,8 @@ export function useUsageAnalytics() {
     dateLabel,
     daily,
     series,
+    shareSeries,
+    shareMeasure,
     activityDays,
     load,
     setRange,

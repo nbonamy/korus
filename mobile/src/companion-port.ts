@@ -1,3 +1,4 @@
+import type { CodexPromptPart } from '@codex-app-sdk/core/surface';
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import type { AgentBackend, AgentModelSelection, BackendModelOption, BackendSkillSummary, BackendPluginSummary, PromptSkillInput, ProviderConversationFrame } from '@workspace/core/contracts';
@@ -12,7 +13,7 @@ export type CompanionConversation = Extract<ProviderConversationFrame, {
 export type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 import type { CompanionWorkspace } from '@workspace/core/companion-protocol';
 /** The composer choices that travel with a prompt, as the desktop sends them. */
-export type CompanionPromptOptions = { followUpBehavior?: 'queue' | 'steer'; skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
+export type CompanionPromptOptions = { content?: readonly CodexPromptPart[]; followUpBehavior?: 'queue' | 'steer'; skills?: PromptSkillInput[]; model?: string | null; reasoningEffort?: string | null; serviceTier?: string | null; planMode?: boolean; inputMethod?: 'typed' | 'dictated';
   delegation?: { startingContext: 'conversation' | 'handoff'; instructions?: string } };
 /** Where and how a review of an agent's changes starts. */
 export type { CompanionReviewInput } from '@workspace/core/companion-review';
@@ -24,13 +25,23 @@ export type CompanionHistoryState = { hasOlder: boolean; loadingOlder: boolean; 
 /** The link to one laptop: whether the app is looking at it, when it is lost, and how it ends. */
 type CompanionLink = {
   setActive?(active: boolean): Promise<void>;
-  onDisconnect(listener: () => void): () => void;
+  onDisconnect(listener: (reason?: string) => void): () => void;
   close(): void;
 };
 /** What the app can ask of the paired laptop over a link. */
 type CompanionOperations = {
+  createTeam?(name: string): Promise<string>;
+  /** Move a finished mission on to review, or accept a ticket waiting for it; `revision` is the mission as the phone saw it. */
+  continueMission?(missionId: string, revision: number): Promise<void>;
+  acceptTicket?(missionId: string, revision: number, runId: string): Promise<void>;
+  /** A review's findings: choose what to fix, fix it, and review again once nothing is open. */
+  selectFinding?(missionId: string, revision: number, findingId: string, selected: boolean): Promise<void>;
+  fixFindings?(missionId: string, revision: number): Promise<void>;
+  rerunReview?(missionId: string, revision: number): Promise<void>;
   gitDiff?(agentId: string, scope: import('@workspace/core/contracts').AgentGitDiffTarget): Promise<import('@workspace/core/contracts').AgentGitDiff>;
   readImage?(agentId: string, path: string): Promise<import('@workspace/core/companion-protocol').CompanionImage>;
+  repositoryCatalog?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider): Promise<CompanionGitHubRepository[]>;
+  repositoryBranches?(teamId: string, provider: import('@workspace/core/companion-protocol').CompanionRepositoryProvider, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubBranches?(teamId: string, repositoryId: string): Promise<import('@workspace/core/companion-protocol').CompanionProjectBranch[]>;
   githubRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
   localRepositories?(teamId: string): Promise<CompanionGitHubRepository[]>;
@@ -82,6 +93,8 @@ export type CompanionConnector = {
   conversationUpdates?(target: CompanionTarget, since: CompanionCheckpoint | null): CompanionSync | null;
   connect(laptopId: string): Promise<CompanionSession>;
   revoke(laptopId: string): Promise<void>;
+  /** Gives a paired laptop the person's own name. */
+  rename?(laptopId: string, name: string): Promise<void>;
   initialize?(): Promise<void>;
   /** False when the build carries no relay: pairing is unavailable rather than misdirected. */
   relayConfigured?: boolean;

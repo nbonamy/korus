@@ -25,9 +25,13 @@ describe('ClearableTextInput', () => {
     const wrapper = mount(defineComponent({
       components: { ClearableTextInput },
       setup: () => ({ value: ref('Dina'), submit }),
-      template: '<form @submit.prevent="submit"><ClearableTextInput v-model="value" aria-label="Name" clear-label="Clear name" /></form>',
+      template: '<form @submit.prevent="submit"><ClearableTextInput v-model="value" aria-label="Name" clear-label="Clear name" autofocus select-on-mount /></form>',
     }), { attachTo: document.body });
     try {
+      await nextTick();
+      const input = wrapper.get<HTMLInputElement>('input');
+      expect(document.activeElement).toBe(input.element);
+      expect([input.element.selectionStart, input.element.selectionEnd]).toStrictEqual([0, 4]);
       const button = wrapper.get<HTMLButtonElement>('button[aria-label="Clear name"]');
       expect(button.get('svg').attributes('aria-hidden')).toBe('true');
       button.element.focus();

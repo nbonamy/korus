@@ -51,11 +51,11 @@ describe('AgentSidebar actions', () => {
     expect(wrapper.emitted('select-agent')).toStrictEqual([['agent-jesse']]);
   });
 
-  it('offers closed pull request cleanup without selecting the agent', async () => {
+  it.each(['github', 'gitlab'] as const)('offers closed %s request cleanup without selecting the agent', async provider => {
     const closedAgent = {
       ...agents[0]!,
       pullRequest: {
-        provider: 'github' as const,
+        provider,
         repository: 'nbonamy/id8',
         branch: 'feat/merged',
         number: 7,
@@ -78,8 +78,8 @@ describe('AgentSidebar actions', () => {
     });
 
     const attention = wrapper.get('.agent-sidebar__pull-request-attention');
-    expect(attention.attributes('aria-label')).toContain('#7 was closed');
-    expect(wrapper.get('.tooltip-stub').attributes('data-content')).toContain('#7 was closed');
+    expect(attention.attributes('aria-label')).toContain(`${provider === 'gitlab' ? '!' : '#'}7 was closed`);
+    expect(wrapper.get('.tooltip-stub').attributes('data-content')).toContain(`${provider === 'gitlab' ? '!' : '#'}7 was closed`);
     expect(wrapper.find('.agent-sidebar__status').exists()).toBe(false);
     await attention.trigger('click');
 
@@ -352,7 +352,7 @@ describe('AgentSidebar actions', () => {
 
     expect(document.body.querySelector('.agent-context-menu')).not.toBeNull();
     expect(portaledMenuItems().map((item) => item.textContent?.trim())).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -364,7 +364,7 @@ describe('AgentSidebar actions', () => {
       'Close Agent',
     ]);
 
-    await clickPortaledMenuItem('Edit Agent');
+    await clickPortaledMenuItem('Rename agent');
 
     expect(wrapper.emitted('edit-agent')).toStrictEqual([['agent-dina']]);
     expect(document.body.querySelector('.agent-context-menu')).toBeNull();

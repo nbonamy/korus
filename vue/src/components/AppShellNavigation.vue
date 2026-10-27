@@ -47,6 +47,7 @@
       :mission-creation-pending="missionCreationPending"
       :phone-scope="phoneScope"
       @create-mission="$emit('create-mission')"
+      @delete-repository="$emit('delete-repository', $event)"
       @delete-mission="$emit('delete-mission', $event)"
       @select-mission="$emit('select-mission', $event)"
       :unread-agent-ids="unreadAgentIds"
@@ -72,6 +73,7 @@
       :list-repository-branches="listRepositorySessionBranches"
       @duplicate-agent="$emit('duplicate-agent', $event)"
       @fork-agent="$emit('fork-agent', $event)"
+      @share-agent="$emit('share-agent', $event)"
       @handoff-agent="$emit('handoff-agent', $event)"
       @edit-agent="openEditAgent"
       @move-agent-to-team="$emit('move-agent-to-team', $event)"
@@ -157,12 +159,14 @@ const emit = defineEmits<{
   'create-quick-chat': [];
   'create-mission': [];
   'delete-mission': [id: string];
+  'delete-repository': [agentId: string];
   'select-mission': [id: string];
   'disconnect-team': [teamId: string];
   'duplicate-agent': [agentId: string];
   'edit-agent': [agentId: string];
   'edit-team': [teamId: string];
   'fork-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'handoff-agent': [agentId: string];
   'move-agent-to-team': [input: MoveAgentToTeamInput];
   'new-team': [];
@@ -181,7 +185,7 @@ const emit = defineEmits<{
   'resume-session': [agentId: string];
   'select-agent': [agentId: string];
   'select-team': [teamId: string];
-  'start-work': [action: 'new' | 'github' | 'local' | 'url'];
+  'start-work': [action: import('./start-work-actions').StartWorkAction];
   'toggle-speech-mute': [];
   'update-collapsed-repositories': [repositoryKeys: string[]];
   'update-repository-icon': [
@@ -239,7 +243,7 @@ function createRepositorySessionOnBranch(payload: RepositorySessionPayload & { b
   emit('create-agent-on-branch', payload);
 }
 
-function handleStartWorkAction(action: 'new' | 'github' | 'local' | 'url'): void {
+function handleStartWorkAction(action: import('./start-work-actions').StartWorkAction): void {
   emit('start-work', action);
 }
 

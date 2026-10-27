@@ -37,11 +37,12 @@ type WorkBacklogAssignmentUpdatedPayload = Omit<WorkBacklogAssignment, 'policy' 
   policy?: WorkBacklogAssignmentPolicy;
   status: WorkBacklogAssignmentStatus | 'working';
 };
-type AgentUpdatedPayload = Omit<Partial<Agent>, 'threadFlags' | 'id' | 'statusText' | 'suggestedPrompt'> & {
+type AgentUpdatedPayload = Omit<Partial<Agent>, 'threadFlags' | 'id' | 'statusText' | 'suggestedPrompt' | 'rateLimitPause'> & {
   id: string;
   threadFlags?: import('../thread-flags').ThreadFlags | null;
   statusText?: string | null;
   suggestedPrompt?: string | null;
+  rateLimitPause?: import('../auto-resume').RateLimitPause | null;
 };
 type ThreadMode = 'default' | 'plan';
 type TurnEventContext = {
@@ -63,6 +64,7 @@ type AgentPromptRetryScheduledPayload = {
   retryAt?: string;
 };
 type AppEvent =
+  | EventWith<{ type: 'conversation.shareChanged'; agentId: string; payload: import('../conversation-sharing').ConversationShareState }>
   | EventWith<{ type: 'antigravity.conversationSnapshotChanged'; agentId: string; backend: 'antigravity'; payload: { revision: number; snapshot: AntigravityConversationSnapshot } }>
   | EventWith<{ type: 'antigravity.conversationEventReceived'; agentId: string; backend: 'antigravity'; payload: { revision: number; event: AntigravityConversationEvent } }>
   | EventWith<{
@@ -168,6 +170,10 @@ type AppEvent =
       type: 'agentCreation.progress';
       agentId: string;
       payload: AgentCreationProgress;
+    }>
+  | EventWith<{
+      type: 'mission.focusRequested';
+      payload: { missionId: string };
     }>
   | EventWith<{
       type: 'mission.implementationStartProgress';

@@ -34,8 +34,8 @@ export function useCockpitBacklog(options: {
   configure: (input: WorkBacklogConfigurationInput) => Promise<void>;
   confirmLoadAll: () => Promise<boolean>;
   getSnapshot: () => AppSnapshot;
-  getWorkBacklogError: () => string | null;
-  getWorkBacklogStatus: () => 'notLoaded' | 'loading' | 'loaded' | 'error';
+  getWorkBacklogError: (provider: WorkProviderKind) => string | null;
+  getWorkBacklogStatus: (provider: WorkProviderKind) => 'notLoaded' | 'loading' | 'loaded' | 'error';
   getWorkItemsByRepository: () => Record<string, WorkItem[]>;
   getWorkRepositories: (provider: WorkProviderKind) => WorkSource[];
   loadGlobalWorkItems: (query: GlobalWorkItemQuery, provider: WorkProviderKind) => Promise<WorkItemPage>;
@@ -84,8 +84,8 @@ export function useCockpitBacklog(options: {
       selectedRepositoryId,
       selectedTagName: configuration.tagName,
       items,
-      status: selectedRepositoryId ? options.getWorkBacklogStatus() : feed?.status ?? options.getWorkBacklogStatus(),
-      error: selectedRepositoryId ? options.getWorkBacklogError() : feed?.error ?? options.getWorkBacklogError(),
+      status: selectedRepositoryId ? options.getWorkBacklogStatus(provider.value) : feed?.status ?? options.getWorkBacklogStatus(provider.value),
+      error: feed ? feed.error : options.getWorkBacklogError(provider.value),
       totalItems: feed ? feed.totalItems : items.length,
     };
   });
@@ -106,6 +106,13 @@ export function useCockpitBacklog(options: {
       await nextTick();
     }
     if (revision !== contextRevision) return;
+    const saved = savedConfiguration.value;
+    const rememberedSource = readRememberedSource(provider.value);
+    if (rememberedSource && saved.sourceId === rememberedSource && options.getWorkRepositories(provider.value).some(source => source.id === rememberedSource)) {
+      pendingConfiguration.value = null;
+      await options.loadWorkItems(rememberedSource, provider.value);
+      return;
+    }
     const firstSource = options.getWorkRepositories(provider.value)[0];
     if (workProviderDefinition(provider.value).initialView === 'source' && firstSource) {
       await selectRepository(firstSource.id);
@@ -123,6 +130,7 @@ export function useCockpitBacklog(options: {
     feeds.all = emptyFeed();
     feeds.assignedToMe = emptyFeed();
     globalScope.value = sourceId ? null : 'assignedToMe';
+    rememberSource(selectedProvider, sourceId);
     await configure({ sourceId, assigneeLogin: null, tagName: null });
     if (revision !== contextRevision) return;
     if (sourceId) await options.loadWorkItems(sourceId, selectedProvider);
@@ -159,6 +167,7 @@ export function useCockpitBacklog(options: {
     const revision = contextRevision;
     if (scope === 'all' && !await options.confirmLoadAll()) return;
     if (revision !== contextRevision) return;
+    rememberSource(provider.value, null);
     await configure({ sourceId: null, assigneeLogin: null, tagName: null });
     if (revision !== contextRevision) return;
     globalScope.value = scope;
@@ -309,4 +318,14 @@ function rememberGlobalScope(provider: WorkProviderKind): void {
   } catch {
     // Persistence can be unavailable in hardened renderer contexts.
   }
+}
+
+function readRememberedSource(provider: WorkProviderKind): string | null {
+  try { return window.localStorage.getItem(`cockpitBacklogSource:${provider}`); } catch { return null; }
+}
+function rememberSource(provider: WorkProviderKind, id: string | null): void {
+  try {
+    if (id) window.localStorage.setItem(`cockpitBacklogSource:${provider}`, id);
+    else window.localStorage.removeItem(`cockpitBacklogSource:${provider}`);
+  } catch { /* Optional renderer preference. */ }
 }

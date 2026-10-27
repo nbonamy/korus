@@ -107,6 +107,12 @@ records. Queue operations, `last-prompt`, sidechains and meta command records ar
 ignored. Hydration also restores the latest model and effort, falling back to the
 agent's last used.
 
+Explicit mention metadata is scoped to the provider session and the native input
+UUID assigned at submission. Records live under the configured home's
+`prompt-content` directory, follow native forks, and are removed with the session.
+Hydration uses only matching authored records; text and current catalogs cannot
+create historical mention identities.
+
 The host opens the newest history window and prepends older pages through the
 driver history seam. Each page has both a message-count and serialized-byte
 budget; pages use immutable message/turn identities from one normalized transcript
@@ -144,6 +150,10 @@ null folder reference.
 
 ## Capabilities And Policy
 
+- Quota rejections retain their reset metadata even when the native result
+  envelope says success. Session-limit error text with an explicit timezone can
+  supply a reset deadline when structured metadata is absent. The daemon owns
+  automatic continuation policy.
 - **Scheduling:** sessions connected to Korus exclude Claude's native cron and
   wakeup tools through SDK `disallowedTools`. Recurring prompts use Korus's
   persisted automations and require an explicit user request ([mcp.md](mcp.md)).
@@ -155,8 +165,8 @@ null folder reference.
 - **Speed:** models advertising native fast-mode support use the shared speed
   selector. Speed changes resume the native session in a new query, since the SDK
   requires launch-time opt-in. Managed/account restrictions remain authoritative;
-  explicit fast-mode unavailability fails before prompt submission. Usage stores the configured
-  tier, not a guarantee that every request avoids a provider cooldown.
+  explicit fast-mode unavailability fails before prompt submission. Execution
+  analytics stores the configured tier; request pricing uses reported billing evidence.
 - **Permissions:** Claude's own modes (`default`, `acceptEdits`, `dontAsk`, `auto`,
   `bypassPermissions`) are exposed through a capability-driven submenu and routed
   as opaque mode IDs the driver validates against what it advertises;
@@ -173,6 +183,12 @@ null folder reference.
   `ExitPlanMode.input.plan` becomes `turn.proposedPlanCompleted`. The app-owned
   agent plan is the source of truth, not Claude's file. Comments keep Plan mode and
   send a follow-up; confirming clears it and sends the implementation prompt.
+- **Task lists:** confirmed native Task tool results and legacy `TodoWrite` updates
+  project into the existing execution-plan panel. Task IDs come from structured
+  results; failed operations do not advance progress. The Claude host retains the
+  session's task projection, rebuilds it from native history before paging, and
+  transports the resulting plan with conversation frames. Proposed-plan review
+  remains separate. Sessions opt into native todo tools for progress display.
 - **Attachments:** supported images, PDFs and text/source files go as native content
   blocks; other binaries are available by trusted local path.
 - **Context and compaction:** usage comes from `getContextUsage()` after init, turns
@@ -200,6 +216,57 @@ null folder reference.
   ([architecture.md](architecture.md#code-review)). Inspection turns must call
   `finish_review_round({ findingCount })` and Korus waits for the turn to end;
   native `ReportFindings` calls do not populate the ledger.
+
+## Request pricing evidence
+
+The SDK transport owns numeric request capture. The driver attaches the Korus
+execution identity and forwards observations to the persistent usage ledger before
+analytics calculates historical costs. Conversation history is not a pricing source.
+
+- `message.id` identifies one API response across assistant blocks and partial
+  events. The optional assistant `request_id` is retained as upstream correlation.
+  `parent_tool_use_id` retains child correlation; the originating tool's execution
+  owns late child samples even while a subsequent user turn runs.
+- `message.model` is the actual model. The first live response observation
+  (normally `message_start`) supplies an immutable local timestamp; the public SDK has no server request-start timestamp.
+  Configured model aliases and fast settings are not served billing evidence.
+- Input is disjoint: `input_tokens` excludes `cache_read_input_tokens` and
+  `cache_creation_input_tokens`. Their sum supplies the pricing context measure.
+  `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens` must sum
+  to total creation. Explicit zero creation proves no writes; missing positive-write
+  lifetime detail remains unknown, regardless of configured TTL.
+- Assistant `output_tokens` is a message-start placeholder. Cumulative
+  `message_delta.usage.output_tokens` supplies measured output; a terminal delta
+  or message stop establishes finality. Assistant-only output remains unknown.
+  Output already includes thinking; an unknown thinking split is retained as null
+  and can be priced only if it cannot change any category's rate or adjustment.
+- `usage.service_tier`, `speed`, and `inference_geo` retain actual capacity tier,
+  inference mode, and region. The pricing catalog's fast tier corresponds to
+  reported fast speed, separately from capacity tier. Missing speed/tier is
+  explicit. Priority commitments and batch tier have no supported catalog rules
+  and remain unpriced. Pricing attribution checks both the launch environment and
+  the SDK-resolved user, project, local, and managed settings before consuming
+  usage. Cloud/proxy routing or conflicting routing in either layer stays
+  unpriced. Settings-resolution failures and unresolved policy helpers also
+  leave the provider unknown without preventing the conversation from running.
+- Multiple server-side `iterations`, a different iteration model, or a different
+  iteration kind retain an unsupported pricing reason. They need a richer pricing
+  projection; no turn-wide context or cheaper rate is substituted.
+
+Request samples replace earlier revisions of the same response. Result `usage`
+continues to supply execution token/timing analytics and never creates request
+charges. Complete main-loop coverage requires reconciliation of all four numeric
+result categories against final captured requests. Missing identities, mismatched
+or absent totals, interruption without final evidence, and child activity retain
+unknown additional-request coverage. Measured child costs contribute, but the
+public SDK lacks the final per-child totals needed to attest a complete child set.
+
+These rules follow the public [Agent SDK usage contract](https://code.claude.com/docs/en/agent-sdk/cost-tracking),
+[cache token semantics](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#tracking-cache-performance),
+and [reported inference speed](https://platform.claude.com/docs/en/build-with-claude/fast-mode#checking-which-speed-was-used).
+The fake-query workflow retains a reproducible $0.1386 example across three
+responses, with a fixture context predicate at 200,000 tokens, 407,980 cache-read tokens,
+50 five-minute writes, 100 one-hour writes, mixed models, and fast US inference.
 
 ## Tests
 

@@ -27,9 +27,9 @@ export function useBacklogConnections(location: () => AutomationLocation | undef
 }
 
 /** Share connection filtering and fallback selection across backlog surfaces. */
-export function useBacklogProviders(connections: Connections, initial: WorkProviderKind = 'github') {
+export function useBacklogProviders(connections: Connections, initial: WorkProviderKind = 'github', accepts: (provider: WorkProviderKind) => boolean = () => true) {
   const preferred = ref(initial);
-  const providers = computed(() => connections().filter(connection => connection.status === 'connected').map(connection => connection.provider));
+  const providers = computed(() => connections().filter(connection => connection.status === 'connected' && accepts(connection.provider)).map(connection => connection.provider));
   const provider = computed({
     get: () => providers.value.includes(preferred.value) ? preferred.value : providers.value[0] ?? initial,
     set: (value: WorkProviderKind) => { if (providers.value.includes(value)) preferred.value = value; },

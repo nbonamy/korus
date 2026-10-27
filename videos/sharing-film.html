@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>__PRODUCT_NAME__ — Share a conversation</title>
+    <link rel="icon" href="../website/assets/app-icon.png?v=mark-2" />
+    <link rel="stylesheet" href="sharing-film.css" />
+  </head>
+  <body>
+    <main class="preview">
+      <header class="preview-header">
+        <div>
+          <p>__PRODUCT_NAME__ / product film</p>
+          <h1>Share a conversation</h1>
+        </div>
+        <span>Illustrative sharing workflow · 54 seconds · 16:9</span>
+      </header>
+
+      <div class="film-viewport">
+        <div
+          id="film"
+          class="film"
+          aria-label="Animated split-screen conversation sharing workflow"
+        >
+          <div class="film-glow film-glow--one"></div>
+          <div class="film-glow film-glow--two"></div>
+
+          <section class="opening" aria-label="Opening title">
+            <div class="opening-mark">
+              <img src="../website/assets/app-icon.png?v=mark-2" alt="" />
+              <b>__PRODUCT_NAME__</b>
+            </div>
+            <h2>
+              Bring a teammate<br /><span class="opening-period"
+                >into the conversation.</span
+              >
+            </h2>
+            <div class="opening-rule"><span></span></div>
+            <p class="opening-subtitle">
+              Share the context. Shape the next step.
+            </p>
+          </section>
+
+          <section
+            class="walkthrough"
+            aria-label="Split-screen conversation sharing workflow"
+          >
+            <div class="film-chapter">
+              <span id="chapter-index">01 / 07</span>
+              <div>
+                <h2 id="chapter-title"></h2>
+                <p id="chapter-detail"></p>
+              </div>
+              <span class="film-chapter__brand"
+                ><img src="../website/assets/app-icon.png?v=mark-2" alt="" />
+                __PRODUCT_NAME__</span
+              >
+            </div>
+
+            <div class="sharing-stage">
+              <section
+                class="sharing-person sharing-person--owner"
+                aria-label="Conversation owner"
+              >
+                <div class="person-label">
+                  <span>You</span><small>Conversation owner</small>
+                </div>
+                <div class="app-window sharing-window" id="owner-window">
+                  <div class="app-titlebar">
+                    <div class="traffic-lights" aria-hidden="true">
+                      <i></i><i></i><i></i>
+                    </div>
+                    <span
+                      ><img
+                        src="../website/assets/app-icon.png?v=mark-2"
+                        alt=""
+                      />
+                      __PRODUCT_NAME__</span
+                    >
+                  </div>
+                  <div class="sharing-conversation">
+                    <header class="sharing-header">
+                      <div>
+                        <strong>Checkout retries</strong
+                        ><small>storefront · Codex</small>
+                      </div>
+                      <button
+                        id="owner-share"
+                        class="icon-button"
+                        aria-label="Share with guests"
+                        title="Share with guests"
+                      ></button>
+                    </header>
+                    <div class="sharing-history" id="owner-history"></div>
+                    <div class="suggestions" id="owner-suggestion">
+                      <div class="suggestions__heading">
+                        <span>Alex</span>
+                        <div>
+                          <button
+                            id="move-suggestion"
+                            class="icon-button"
+                            aria-label="Move suggestion to composer"
+                          ></button
+                          ><button
+                            class="icon-button"
+                            id="dismiss-suggestion"
+                            aria-label="Delete suggestion"
+                          ></button>
+                        </div>
+                      </div>
+                      <p id="suggestion-copy"></p>
+                    </div>
+                    <div class="sharing-composer" id="owner-composer">
+                      <span id="owner-draft">Ask a follow-up</span
+                      ><button
+                        id="owner-send"
+                        aria-label="Send prompt"
+                      ></button>
+                    </div>
+                    <div class="sharing-overlay" id="owner-overlay">
+                      <div class="sharing-dialog">
+                        <h3>Share with guests</h3>
+                        <p>
+                          Anyone with this link can read the full available
+                          history and future updates, including tool output.
+                        </p>
+                        <p>
+                          Collaborators can suggest prompts for you to review,
+                          edit, and send.
+                        </p>
+                        <span id="share-status"></span>
+                        <footer>
+                          <button class="button-quiet" id="stop-sharing">
+                            Stop sharing</button
+                          ><button class="button-primary" id="create-share">
+                            Share
+                          </button>
+                        </footer>
+                      </div>
+                    </div>
+                    <div class="sharing-toast" id="share-toast">
+                      Invite link copied to clipboard
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section
+                class="sharing-person sharing-person--guest"
+                aria-label="Collaborator"
+              >
+                <div class="person-label">
+                  <span>Alex</span><small>Your teammate</small>
+                </div>
+                <div class="app-window sharing-window" id="guest-window">
+                  <div class="app-titlebar">
+                    <div class="traffic-lights" aria-hidden="true">
+                      <i></i><i></i><i></i>
+                    </div>
+                    <span
+                      ><img
+                        src="../website/assets/app-icon.png?v=mark-2"
+                        alt=""
+                      />
+                      __PRODUCT_NAME__</span
+                    >
+                  </div>
+                  <div class="sharing-conversation">
+                    <header class="sharing-header">
+                      <div>
+                        <strong>Checkout retries</strong
+                        ><small id="guest-origin">Shared conversation</small>
+                      </div>
+                      <span class="connected-status" id="guest-connected"
+                        >Connected</span
+                      >
+                    </header>
+                    <div class="sharing-history" id="guest-history"></div>
+                    <div class="guest-pending" id="guest-pending">
+                      <span>Suggestion sent</span
+                      ><small>Waiting for owner approval</small>
+                    </div>
+                    <div class="sharing-composer" id="guest-composer">
+                      <span id="guest-draft">Propose a message…</span
+                      ><button
+                        id="guest-send"
+                        aria-label="Propose message"
+                      ></button>
+                    </div>
+                    <div class="sharing-overlay" id="guest-overlay">
+                      <div class="sharing-dialog">
+                        <h3>Join conversation</h3>
+                        <div class="invite-field" id="guest-invite">
+                          Invitation or share link
+                        </div>
+                        <footer>
+                          <button class="button-primary" id="guest-join">
+                            Join conversation
+                          </button>
+                        </footer>
+                      </div>
+                    </div>
+                    <div class="access-ended" id="guest-ended">
+                      <span id="ended-icon"></span>
+                      <p>This conversation is no longer accessible.</p>
+                      <button class="button-quiet">Close</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <div class="transfer-chip" id="transfer-chip">
+                <span id="transfer-icon"></span>
+                <p>Test the timeout, then success.</p>
+              </div>
+            </div>
+
+            <div class="motion-layer" aria-hidden="true">
+              <div id="film-pointer" class="film-pointer">
+                <svg viewBox="0 0 27 31">
+                  <path d="M3 2v23l6.1-6.2 4.1 9.1 4.1-1.9-4.2-9.2H23z" />
+                </svg>
+              </div>
+              <div id="pointer-ring" class="pointer-ring"></div>
+            </div>
+            <div class="film-footer">
+              <span id="film-footer-stage">SHARING / INVITE</span>
+              <div class="film-footer__rule"><i id="film-progress"></i></div>
+              <span>__PRODUCT_NAME__</span>
+            </div>
+          </section>
+
+          <section class="ending" aria-label="Closing title">
+            <div class="ending-mark">
+              <img src="../website/assets/app-icon.png?v=mark-2" alt="" /><span
+                ><b>__PRODUCT_NAME__</b></span
+              >
+            </div>
+            <h2>Work together.<br /><em>Keep control.</em></h2>
+            <p>Bring a teammate into the conversation.</p>
+            <span>__PRODUCT_WEBSITE_HOST__</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="controls" aria-label="Film controls">
+        <button id="play-toggle" type="button" aria-label="Play film">
+          Play
+        </button>
+        <button id="restart" type="button" aria-label="Restart film">↺</button>
+        <input
+          id="scrubber"
+          type="range"
+          min="0"
+          max="54"
+          step="0.01"
+          value="0"
+          aria-label="Film position"
+        />
+        <output id="timecode" for="scrubber">00:00 / 00:54</output>
+        <a class="download-film" href="assets/sharing-film.mp4" download
+          >Download MP4 ↓</a
+        >
+      </div>
+      <p class="preview-note">
+        Scripted product illustration, not a captured live run. Two views show
+        the same conversation, a suggested prompt, owner review, and revoked
+        access. Invitation text is nonfunctional demo content.
+      </p>
+    </main>
+    <script type="module" src="sharing-film.mjs"></script>
+  </body>
+</html>

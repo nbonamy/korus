@@ -108,7 +108,7 @@ describe('useAppState', () => {
         listWorkSources: vi.fn().mockResolvedValue([]),
       } satisfies Partial<AppApi>,
     });
-    setFirstRunOnboardingStage('github');
+    setFirstRunOnboardingStage('repositories');
     const state = useAppState();
 
     await state.pollWorkProviderAuthorization('github');

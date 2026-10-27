@@ -24,7 +24,7 @@ export type AgentConversationActions = {
   steer: (agentId: string, prompt: string, options?: RendererSendPromptOptions) => void | Promise<void>;
   interrupt: (agentId: string) => void | Promise<void>;
   deleteTurn: (agentId: string, turnId: string) => void | Promise<void>;
-  editTurn: (agentId: string, payload: { content: string; turnId: string }) => void | Promise<void>;
+  editTurn: (agentId: string, payload: { content: string; turnId: string; options?: Pick<RendererSendPromptOptions, 'content'> }) => void | Promise<void>;
   forkTurn: (agentId: string, turnId: string) => void | Promise<void>;
   retryTurn: (agentId: string, turnId: string) => void | Promise<void>;
   continueInterruptedTurn: (agentId: string) => void | Promise<void>;
@@ -39,8 +39,8 @@ export type AgentConversationActions = {
   updateComposerState: (agentId: string, state: AgentConversationView['composerState']) => void;
   updateAttachments: (agentId: string, attachments: AgentConversationView['attachments']) => void;
   deleteQueuedPrompt: (agentId: string, promptId: string) => void | Promise<void>;
-  updateQueuedPrompt: (agentId: string, promptId: string, prompt: string) => void | Promise<void>;
-  steerQueuedPrompt: (agentId: string, promptId: string, prompt?: string) => void | Promise<void>;
+  updateQueuedPrompt: (agentId: string, promptId: string, prompt: string, options?: Pick<RendererSendPromptOptions, 'content'>) => void | Promise<void>;
+  steerQueuedPrompt: (agentId: string, promptId: string, prompt?: string, options?: Pick<RendererSendPromptOptions, 'content'>) => void | Promise<void>;
 };
 
 
@@ -108,7 +108,7 @@ export function agentConversationState(view: () => AgentConversationView, extens
     get capabilities() {
       const capabilities = view().capabilities;
       return {
-        models: capabilities.models, skills: capabilities.skills, reasoningEffort: capabilities.reasoningEffort,
+        models: capabilities.models, skills: capabilities.skills || view().composer.skills.some(skill => skill.enabled), reasoningEffort: capabilities.reasoningEffort,
         serviceTier: capabilities.serviceTier, planMode: capabilities.planMode !== 'unsupported',
         goals: capabilities.goals, steerPrompt: capabilities.steerPrompt, interrupt: capabilities.interrupt,
         history: capabilities.history, deleteTurn: capabilities.deleteTurn, editTurn: capabilities.editTurn,
@@ -200,8 +200,8 @@ export function useAgentConversation(options: {
     steer: (prompt, sendOptions) => forward(prompt, sendOptions, options.actions.steer),
     loadOlderHistory: () => options.actions.loadOlder(agentId()),
     deleteQueuedPrompt: (promptId) => options.actions.deleteQueuedPrompt(agentId(), promptId),
-    updateQueuedPrompt: (promptId, prompt) => options.actions.updateQueuedPrompt(agentId(), promptId, prompt),
-    steerQueuedPrompt: (promptId, prompt) => options.actions.steerQueuedPrompt(agentId(), promptId, prompt),
+    updateQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.updateQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.updateQueuedPrompt(agentId(), promptId, prompt),
+    steerQueuedPrompt: (promptId, prompt, contentOptions) => contentOptions ? options.actions.steerQueuedPrompt(agentId(), promptId, prompt, contentOptions) : options.actions.steerQueuedPrompt(agentId(), promptId, prompt),
     updateAttachments: (attachments) => { imageAnnotation.prune(agentId(), attachments); options.actions.updateAttachments(agentId(), attachments); },
     updateComposerState: (composerState) => options.actions.updateComposerState(agentId(), composerState),
     updateSettings: (settings) => {

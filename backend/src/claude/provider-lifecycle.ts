@@ -9,6 +9,7 @@ export function createClaudeLifecycle(): ProviderLifecycle {
   const configured = process.env.CLAUDE_CONFIG_DIR;
   const paths = providerHomePaths('claude', configured);
   return {
+    skillDirectories: home => [path.join(home.homePath, 'skills')],
     home(snapshot, choice) {
       if (choice) return { ...choice, homePath: choice.isolated ? paths.isolated : paths.existing };
       const preserve = snapshot.general.claudeCodeEnabled || snapshot.agents.some(agent => agent.backend === 'claude');

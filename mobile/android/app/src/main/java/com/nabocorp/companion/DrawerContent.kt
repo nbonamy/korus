@@ -3,6 +3,7 @@ package com.nabocorp.companion
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,22 +33,28 @@ import org.json.JSONObject
     val state = model.state
     val sidebar = model.sidebar
     val activity = sidebar.organization == "activity"
+    var newTeam by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxHeight().safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.app_icon), model.product.string("name"), Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
             Spacer(Modifier.width(14.dp))
             Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.items("teams").forEach { team ->
-                    val selected = team.string("id") == state.string("teamId")
+                val teams = state.items("teams")
+                val allTeams = state.optBoolean("allTeams")
+                if (teams.size > 1) {
+                    DrawerTeamPill("All", allTeams, false, "All teams") { model.command("selectAllTeams") }
+                }
+                teams.forEach { team ->
+                    val selected = !allTeams && team.string("id") == state.string("teamId")
                     val unread = team.optBoolean("isUnread") && !selected
-                    Row(Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
-                        .selectable(selected = selected, role = Role.Tab, onClick = { model.command("selectTeam", "id" to team.string("id")) })
-                        .semantics { contentDescription = team.string("name") + if (unread) ", unread activity" else "" }
-                        .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(team.string("name"), color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                        if (unread) UnreadDot()
+                    DrawerTeamPill(team.string("name"), selected, unread) {
+                        model.command("selectTeam", "id" to team.string("id"))
                     }
+                }
+                IconButton(onClick = { newTeam = true }, enabled = state.connection.isConnected && state.string("teamCreation") != "creating",
+                    modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerLow).semantics { contentDescription = "New team" }) {
+                    if (state.string("teamCreation") == "creating") CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.Add, null)
                 }
             }
         }
@@ -64,6 +71,16 @@ import org.json.JSONObject
             }
             Spacer(Modifier.weight(1f))
             if (activity) IconButton(onClick = { model.openCreation(CreationKind.QUICK); close() }, enabled = model.canStartCreation) { Icon(Icons.Outlined.Edit, "New chat", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (model.missions.isNotEmpty()) {
+            val active = model.missions.count { it.isActiveMission }
+            Row(Modifier.fillMaxWidth().clickable { model.showMissions(); close() }.padding(horizontal = 20.dp, vertical = 12.dp)
+                .semantics(mergeDescendants = true) { contentDescription = if (active > 0) "Missions, $active active" else "Missions" }, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.TrackChanges, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text("Missions", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                if (active > 0) Text("$active active", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         var repositoryMenu by remember(sidebar.owner) { mutableStateOf<JSONObject?>(null) }
         val repositories = state.items("groups").flatMap { group -> group.items("sessions").map { it.string("agentId") to group } }.toMap()
@@ -122,7 +139,7 @@ import org.json.JSONObject
             Box(Modifier.weight(1f)) {
                 Button(onClick = { newMenu = true }, enabled = model.canStartCreation, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("New Agent", fontWeight = FontWeight.SemiBold) }
                 DropdownMenu(expanded = newMenu, onDismissRequest = { newMenu = false }) {
-                    listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("Existing Project", CreationKind.LOCAL, Icons.Outlined.Folder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
+                    listOf(Triple("Quick Chat", CreationKind.QUICK, Icons.Outlined.Edit), Triple("New Project", CreationKind.PROJECT, Icons.Outlined.CreateNewFolder), Triple("Existing Project", CreationKind.LOCAL, Icons.Outlined.Folder), Triple("From GitHub", CreationKind.GITHUB, Icons.Outlined.Code), Triple("From GitLab", CreationKind.GITLAB, Icons.Outlined.Code), Triple("From URL", CreationKind.URL, Icons.Outlined.Link)).forEachIndexed { index, (label, kind, icon) ->
                         if (index == 1) HorizontalDivider()
                         DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { newMenu = false; model.openCreation(kind); close() })
                     }
@@ -130,6 +147,39 @@ import org.json.JSONObject
             }
             IconButton(onClick = { model.sheet = "settings"; close() }, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)) { Icon(Icons.Outlined.Settings, "Settings") }
         }
+    }
+    if (newTeam) NewTeamDialog(model) { newTeam = false; model.command("dismissTeamCreation") }
+}
+
+@Composable private fun NewTeamDialog(model: CompanionModel, dismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var submitted by remember { mutableStateOf(false) }
+    val phase = model.state.string("teamCreation", "idle")
+    val busy = phase == "creating"
+    val cleanName = name.trim()
+    val teamIds = model.state.items("teams").map { it.string("id") }
+    val originalTeamIds = remember { teamIds }
+    LaunchedEffect(phase, teamIds) {
+        if (phase == "idle" && submitted && teamIds != originalTeamIds) dismiss()
+    }
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("New Team") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, enabled = !busy)
+            if (phase == "failed") Text("Couldn’t create the team. Check the connection and try again.", color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(enabled = !busy && model.state.connection.isConnected && cleanName.isNotEmpty() && cleanName.length <= 100,
+            onClick = { submitted = true; model.command("createTeam", "name" to cleanName) }) { Text("Create") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("Cancel") } })
+}
+
+@Composable private fun DrawerTeamPill(name: String, selected: Boolean, unread: Boolean, description: String = name + if (unread) ", unread activity" else "", select: () -> Unit) {
+    Row(Modifier.heightIn(min = 48.dp).clip(CircleShape)
+        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
+        .selectable(selected = selected, role = Role.Tab, onClick = select)
+        .semantics { contentDescription = description }
+        .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(name, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        if (unread) UnreadDot()
     }
 }
 

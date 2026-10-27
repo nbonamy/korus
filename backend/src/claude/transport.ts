@@ -1,10 +1,12 @@
 import type { AskUserAnswers, AskUserQuestion, PromptAttachment } from '@workspace/core/contracts';
+import type { randomUUID } from 'node:crypto';
 import type { ClaudeSdkMessage } from './protocol';
 
 export type ClaudeTurnParams = {
   ownerId?: string;
   cwd: string;
   prompt: string;
+  messageId?: ReturnType<typeof randomUUID>;
   sessionId?: string;
   model?: string | null;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
@@ -34,7 +36,7 @@ export type ClaudeModelDiscoveryParams = {
 
 export type ClaudeTurnHandle = {
   readonly done: Promise<void>;
-  steer?(prompt: string, attachments?: readonly PromptAttachment[]): Promise<boolean>;
+  steer?(prompt: string, attachments?: readonly PromptAttachment[], messageId?: ReturnType<typeof randomUUID>): Promise<boolean>;
   interrupt(): Promise<void>;
 };
 
@@ -78,6 +80,8 @@ export type ClaudeTurnTransport = {
     onMessage: (message: ClaudeSdkMessage) => void,
     onPermissionRequest?: (request: ClaudePermissionRequest) => void,
     onPermissionCancelled?: (requestId: string) => void,
+    /** null reports an incomplete request set without fabricating an identity. */
+    onRequestUsage?: (usage: import('./request-usage').ClaudeRequestUsage | null) => void,
   ): ClaudeTurnHandle;
   respondToPermissionRequest?(requestId: string, response: ClaudePermissionResponse, ownerId?: string): Promise<void>;
   discoverModels?(params: ClaudeModelDiscoveryParams): Promise<ClaudeAvailableModel[] | null>;

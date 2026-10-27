@@ -10,6 +10,7 @@ import { setElectronTestClient } from '../test/client';
 import { ElMessage } from 'element-plus';
 import type { AppSnapshot } from '@workspace/core/contracts';
 import { deferred } from './app-state-test-harness';
+import { createClientApiMock } from '../test/client-api-mock';
 
 afterEach(() => {
   delete window.app;
@@ -21,6 +22,8 @@ describe('App', () => {
     // duplicate submissions, and never clear or overwrite a later dialog.
     const snapshot = createInitialSnapshot();
     const [first, second] = snapshot.agents;
+    first!.name = null;
+    first!.workspace = { kind: 'git', folder: '/repo-fix-api', repositoryRoot: '/repo', primaryWorktreeRoot: '/repo', repositoryName: 'repo', branch: 'fix/api', isLinkedWorktree: true, updatedAt: first!.updatedAt };
     const pending = deferred<AppSnapshot>();
     const closeAgent = vi.fn(() => pending.promise);
     const getAgentClosePreview = vi.fn(async () => ({ isLinkedWorktree: true, branch: 'fix/api', upstream: null, hasChanges: false }));
@@ -34,9 +37,11 @@ describe('App', () => {
     shell.vm.$emit('close-agent', first!.id);
     await flushPromises();
     const dialog = wrapper.getComponent(AgentCloseDialog);
+    expect(dialog.get('h2').text()).toBe('Close fix/api?');
     await dialog.get('.app-button--primary').trigger('click');
     await flushPromises();
     expect(dialog.get('[role="status"]').attributes('aria-busy')).toBe('true');
+    expect(dialog.find('h2').exists()).toBe(false);
     const background = dialog.findAll('button').find(button => button.text() === 'Run in background');
     expect(background).toBeDefined();
     await background!.trigger('click');
@@ -96,15 +101,12 @@ describe('App', () => {
 
   it('opens a plan review from a backend domain event without a panel request', async () => {
     const snapshot = createInitialSnapshot();
-    let emitEvent!: (event: import('@workspace/core/contracts').MainToRendererEvent) => void;
-    setElectronTestClient({
-      getSnapshot: vi.fn().mockResolvedValue(snapshot),
-      onEvent: (listener) => { emitEvent = listener; return () => undefined; },
-    });
+    const { api, emit } = createClientApiMock(snapshot);
+    setElectronTestClient(api);
     const wrapper = mount(App);
     await flushPromises();
 
-    emitEvent({
+    emit({
       seq: 1, occurredAt: '2026-09-16T00:00:00.000Z',
       agentId: snapshot.activeAgentId!, turnId: 'turn-plan',
       type: 'plan.readyForReview',

@@ -1,6 +1,12 @@
 <template>
   <svg class="settings-illustration" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-    <template v-if="kind === 'appshots'">
+    <template v-if="kind === 'browser'">
+      <circle class="settings-illustration__accent-surface" cx="32" cy="32" r="23" />
+      <ellipse class="settings-illustration__accent" cx="32" cy="32" rx="10" ry="23" />
+      <path class="settings-illustration__accent" d="M9 32h46" />
+      <path class="settings-illustration__line" d="M13 19h38M13 45h38" />
+    </template>
+    <template v-else-if="kind === 'appshots'">
       <path class="settings-illustration__accent" d="M8 22V14a6 6 0 0 1 6-6h8M42 8h8a6 6 0 0 1 6 6v8M56 42v8a6 6 0 0 1-6 6h-8M22 56h-8a6 6 0 0 1-6-6v-8" />
       <rect class="settings-illustration__surface" x="15" y="15" width="34" height="34" rx="5" />
       <circle class="settings-illustration__dot settings-illustration__dot--error" cx="21" cy="21" r="1.8" />
@@ -43,6 +49,19 @@
       <rect class="settings-illustration__surface" x="8" y="34" width="22" height="22" rx="5" />
       <rect class="settings-illustration__accent-fill" x="34" y="34" width="22" height="22" rx="5" />
       <path class="settings-illustration__on-accent" d="M45 40v10M40 45h10" />
+    </template>
+    <template v-else-if="kind === 'skills'">
+      <path class="settings-illustration__surface" d="M16 8h22l12 12v32a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z" />
+      <path class="settings-illustration__line" d="M38 8v12h12M20 30h16M20 38h12M20 46h8" />
+      <path class="settings-illustration__accent-fill" d="M46 36l2.6 6.4L55 45l-6.4 2.6L46 54l-2.6-6.4L37 45l6.4-2.6z" />
+    </template>
+    <template v-else-if="kind === 'workflows'">
+      <rect class="settings-illustration__surface" x="6" y="8" width="20" height="16" rx="4" />
+      <rect class="settings-illustration__accent-surface" x="38" y="8" width="20" height="16" rx="4" />
+      <rect class="settings-illustration__surface" x="22" y="40" width="20" height="16" rx="4" />
+      <path class="settings-illustration__line" d="M26 16h12" />
+      <path class="settings-illustration__accent" d="M48 24v4a4 4 0 0 1-4 4H32v8" />
+      <circle class="settings-illustration__accent-fill" cx="32" cy="48" r="2.4" />
     </template>
     <template v-else>
       <rect class="settings-illustration__surface" x="6" y="8" width="30" height="22" rx="4" />

@@ -5,7 +5,17 @@ import type { Agent, BackendPublishedEvent, RendererMessage } from '@workspace/c
 import { DelegatedWorkReportService } from '../delegated-work-report-service';
 
 describe('DelegatedWorkReportService', () => {
-  it('delivers merge details as context with only the branch milestone outside it', () => {
+  it('reports GitLab delivery with native merge request wording and reference', () => {
+    const snapshot = createEmptySnapshot(), parent = agent('parent', 'main'), worker = { ...agent('worker', 'feature'), delegatedByAgentId: 'parent' };
+    snapshot.agents = [parent, worker];
+    const sendMessage = vi.fn();
+    const service = new DelegatedWorkReportService({ getSnapshot: () => snapshot, readConversationMessages: vi.fn(), sendPrompt: vi.fn(), sendMessage });
+    service.deliver(worker, { kind: 'pullRequest', provider: 'gitlab', branch: 'feature', number: 7, title: 'Work', draft: true, url: 'https://gitlab.com/group/repo/-/merge_requests/7' }, 'Tested');
+    expect(sendMessage.mock.calls[0]?.[2]).toContain('Draft merge request !7');
+    service.close();
+  });
+
+  it.each(['github', 'gitlab'] as const)('delivers %s merge details as context with only the branch milestone outside it', provider => {
     const snapshot = createEmptySnapshot();
     const parent = agent('agent-main', 'main');
     const worker = { ...agent('agent-worker', 'feature'), delegatedByAgentId: parent.id };
@@ -17,13 +27,14 @@ describe('DelegatedWorkReportService', () => {
       sendPrompt: vi.fn(),
       sendMessage,
     });
-    expect(service.deliver(worker, { kind: 'merge', branch: 'feat/dedew', repository: 'owner/repo' },
+    expect(service.deliver(worker, { kind: 'merge', provider, branch: 'feat/dedew', repository: 'owner/repo' },
       'Implemented and tested. Literal </context> in the handoff.')).toBe(true);
     const content = sendMessage.mock.calls[0]![2] as string;
     const [context, visible] = content.split('</context>');
     expect(visible?.trim()).toBe('feat/dedew merged');
     expect(context).toMatch(/^<context>\n/);
     expect(context).toContain('owner/repo');
+    expect(context).toContain(provider === 'gitlab' ? 'without creating a merge request' : 'without creating a pull request');
     expect(context).toContain('Implemented and tested. Literal &lt;/context&gt; in the handoff.');
   });
 

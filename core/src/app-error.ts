@@ -1,6 +1,8 @@
 export type AppErrorCode =
   | 'clone.alreadyExists'
+  | 'clone.authenticationFailed'
   | 'clone.discoveryFailed'
+  | 'clone.failed'
   | 'clone.invalidName'
   | 'clone.sourceFolderMissing'
   | 'clone.urlRequired'
@@ -10,6 +12,7 @@ export type AppErrorCode =
   | 'createRepository.nameRequired'
   | 'createRepository.sourceFolderMissing'
   | 'git.pullRequestChangesRequired'
+  | 'git.mergeRequestChangesRequired'
   | 'engineSetup.confirmationRequired'
   | 'engineSetup.rosterChanged'
   | 'engineSetup.agentsBusy'
@@ -18,7 +21,9 @@ export type AppErrorCode =
 
 export const appErrorCodes: readonly AppErrorCode[] = [
   'clone.alreadyExists',
+  'clone.authenticationFailed',
   'clone.discoveryFailed',
+  'clone.failed',
   'clone.invalidName',
   'clone.sourceFolderMissing',
   'clone.urlRequired',
@@ -28,6 +33,7 @@ export const appErrorCodes: readonly AppErrorCode[] = [
   'createRepository.nameRequired',
   'createRepository.sourceFolderMissing',
   'git.pullRequestChangesRequired',
+  'git.mergeRequestChangesRequired',
   'engineSetup.confirmationRequired',
   'engineSetup.rosterChanged',
   'engineSetup.agentsBusy',

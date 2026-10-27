@@ -1,7 +1,49 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.39.2",
+  "currentVersion": "0.44.0",
   "releases": [
+    {
+      "version": "0.44.0",
+      "releasedAt": "2026-10-26",
+      "sourceSha256": "ea6e6ba559710c9ec6023e1997d7dbde45474265299829cd0f6c17040b82f4f1",
+      "markdown": "### New features\n\n- **Composer mentions:** Pick skills, agents, plugins, and files from suggestions\n  to insert reference chips that stay intact in drafts, queued prompts, and edited\n  messages. Typed or pasted `$skill` and `@name` remain plain text.\n- **Mission and agent models:** Ask for a specific provider, model, reasoning\n  effort, or service tier when starting a Mission or creating an agent.\n- **Diff summaries for agents:** Ask an agent to break down added and removed\n  lines by code, tests, documentation, and other files in a working tree, branch,\n  or commit.\n\n### Improvements and fixes\n\n- Move **Commits** below the file-type breakdown in the diff menu."
+    },
+    {
+      "version": "0.43.0",
+      "releasedAt": "2026-10-26",
+      "sourceSha256": "d208148825c37528a6cd851f6b253457b5d16fbc12cba404c3cce2d0a1184f86",
+      "markdown": "### New features\n\n- **Conversation sharing:** Invite collaborators with a link or code to follow a\n  conversation and suggest prompts for you to edit and send. Works across agent\n  providers; stop sharing to revoke access.\n- **Start a Mission from chat:** Use `/mission` or **+ → Mission** to turn your\n  conversation into a Mission brief.\n- **Delete repository:** Remove a local repository, its linked worktrees, and all\n  associated agents across teams from the sidebar, with typed-name confirmation.\n- **Changes by file type:** See code, tests, documentation, and other changes\n  separately, including the last turn. Click a category to open its review.\n\n### Improvements and fixes\n\n- Keep Mission finding-reporting tools available across stage changes and open\n  the correct Mission lead when launching a review from mobile.\n- Remove older completed Claude tasks from the execution plan while keeping\n  unfinished work visible.\n- Use compact, automatically focused inputs for joining conversations, renaming\n  agents, and continuing on a branch.\n- Open the worktree setup guide directly from Settings."
+    },
+    {
+      "version": "0.42.0",
+      "releasedAt": "2026-10-25",
+      "sourceSha256": "3e3acc467d5d434d2e18a1d6504bba1a99aab13f631825de13c0875ca034838f",
+      "markdown": "### New features\n\n- Connect GitLab.com alongside GitHub, using a direct connection or an existing\n  GitLab CLI login. Discover and clone projects from desktop and mobile, browse\n  issues and merge requests, and start agent work or Missions from them.\n- Create draft GitLab merge requests and follow them through merge or closure\n  and worktree cleanup. Direct GitLab connections also make the official GitLab\n  MCP tools available to agents.\n- Compare estimated API costs in Analytics, with USD trends and breakdowns by\n  provider or model. Estimates use available usage and historical model prices;\n  usage without enough pricing evidence stays unavailable rather than counting\n  as free. Explore input/output token ratios alongside token totals.\n- Follow missions from the mobile apps: see each mission's stage and ticket\n  progress, open the agent working on a ticket or the one leading the mission and talk\n  to it, then return to the mission. Accept a finished ticket and move a completed\n  implementation on to review from the phone, then read the review's findings,\n  choose which to fix, and launch remediation. Shipping stays on the desktop.\n- Close every artifact tab at once from the workspace tab menu.\n\n### Improvements and fixes\n\n- Keep Mission delivery and worktree cleanup in sync: merging marks the repository\n  as shipped, closes agents from a removed worktree, and remembers that the\n  worktree no longer needs deleting when the Mission is removed.\n- Restore the live Working timer for Codex turns when the provider omits a start\n  timestamp, and retain it through subsequent updates.\n- Clear Claude's completed execution plan when the next turn starts, while keeping\n  unfinished tasks visible.\n- Clone GitHub and GitLab repositories over SSH first, with an HTTPS fallback and\n  clearer authentication failures.\n- Match repository work by its full remote identity, keeping projects with the\n  same name separate and showing work from the repository's own provider.\n- Recover phone connections faster after relay interruptions and let users open\n  their saved connections from the unreachable-computer screen.\n- Display conversation images on mobile when their Markdown paths use angle brackets."
+    },
+    {
+      "version": "0.41.1",
+      "releasedAt": "2026-10-24",
+      "sourceSha256": "d34209b63a0aa911e5da76d310b36d36ccb3c16dcc1e724e29de15f633fb4108",
+      "markdown": "### New features\n\n- Expand the artifact pane to fill the workspace, then restore its previous\n  width without losing conversation drafts.\n- Open detached developer tools for the current in-app browser tab from its menu.\n\n### Improvements and fixes\n\n- Group Claude's tool work under Working and Done disclosures, keeping the final\n  response separate from progress updates.\n- Show elapsed time while agents work and after a turn finishes. Restored Claude\n  conversations retain turn durations when valid timing is available.\n- Keep Add project and Quick chat beside each other in the Activity sidebar."
+    },
+    {
+      "version": "0.41.0",
+      "releasedAt": "2026-10-24",
+      "sourceSha256": "eae92e2ed8cd685fe35169bf4bcdfc384645eecdc030ff74ce0d9d3cb2f3521c",
+      "markdown": "### New features\n\n- Install Bitwarden and 1Password in the in-app browser from Settings. Open your\n  vault from the browser toolbar, and update, disable, reinstall or remove each\n  extension independently.\n- Save custom review instructions in Settings > Workflows. They accompany every\n  review agent, including automatic reviews and fresh rounds.\n- Track output speed over time in Analytics, with a separate line for each model.\n- Select Image Gen from the skill picker in Claude and other non-Codex agents.\n- The mobile companion remembers multiple computers, supports renaming and\n  forgetting saved connections, and uses your computer's name when pairing.\n- Browse agents across all teams and create teams from the mobile sidebar.\n\n### Improvements and fixes\n\n- All agents share browser accounts, cookies and extensions. Existing per-agent\n  website sessions are not migrated; sign in again after upgrading.\n- Clear browsing data across agents without removing extensions or their saved data.\n- Accept a suggested follow-up in an empty composer with Right Arrow or Space,\n  as well as Tab. Accepting the suggestion fills the draft without sending it.\n- Mobile composers offer follow-up suggestions, and mobile Settings groups account,\n  preference and app information more clearly.\n- Dismiss stale mobile questions without retry errors.\n- Suppress phone alerts for the exact conversation being viewed in the focused\n  desktop window."
+    },
+    {
+      "version": "0.40.0",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "998289f3fc0047b3009024177579f2d4150c5973d3efa3c90435cbc74764437b",
+      "markdown": "### New features\n\n- Install and manage coding-agent skills from Settings. Discover curated skills\n  and packs, install from GitHub or skills.sh, and sync skills across configured\n  agents. Browse existing installations, read skill documents, refresh managed\n  packs, and delete personal skills with confirmation while protecting system skills.\n- Featured skills include Cloudflare's Security audit, Vercel's Web design\n  guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack.\n- Automatically resume conversations after a usage limit resets. A compact\n  composer drawer shows the reset time and a saved Auto-resume toggle, enabled\n  by default. Pending resumes survive restarts and cancel when you send a prompt\n  or start a different conversation.\n\n### Improvements and fixes\n\n- Completed execution plans stay closed after a restart and clear when the next\n  turn starts.\n- Sending a message shows \"other agent\" while the recipient's name is unknown."
+    },
+    {
+      "version": "0.39.3",
+      "releasedAt": "2026-10-23",
+      "sourceSha256": "55fcb0d9c360ac5bb93c8b8a2f0c1562e7679f26e32f29369a8297cb28d34f4b",
+      "markdown": "### Improvements and fixes\n\n- Claude Code's native task lists appear in the execution-plan panel, with live\n  progress updates and restored progress when reopening a conversation.\n- Worktree deletion shows its progress without a stale close-confirmation title.\n  Agents without a custom name use their normal display name when confirming closure."
+    },
     {
       "version": "0.39.2",
       "releasedAt": "2026-10-23",

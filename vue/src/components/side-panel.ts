@@ -36,6 +36,9 @@ export type SidePanelGitDiffState = SidePanelBaseState & {
   summary?: import('@workspace/core/contracts').AgentGitDiffSummary;
   diff: string;
   sections?: AgentGitDiffSection[];
+  /** Set when the diff was opened from a file type row: that group alone starts expanded. */
+  focusKind?: import('@workspace/core/file-kind').FileKind;
+  focusSequence?: number;
 };
 
 export type PlanReviewComment = {

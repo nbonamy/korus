@@ -25,6 +25,10 @@
       <div v-else-if="visualization" class="browser-panel__visualization-title">{{ visualization.title }}</div>
       <div v-else class="browser-panel__annotation-title"><strong>{{ $t('surface.browserPanel.annotating') }}</strong><span>•</span><span>{{ displayHost }}</span></div>
       <div class="browser-panel__actions">
+        <template v-if="!visualization">
+          <button v-if="!activeExtensions.length" type="button" :aria-label="$t('surface.browserExtensions.extensions')" :title="$t('surface.browserExtensions.extensions')" @click="emit('open-browser-settings')"><PuzzleIcon aria-hidden="true" /></button>
+          <button v-for="extension in activeExtensions" :key="extension.id" type="button" :aria-label="`Open ${extension.name}`" :title="extension.name" @click="openExtension(extension.id)"><BrowserExtensionIcon :id="extension.id" /></button>
+        </template>
         <button v-if="!visualization" class="browser-panel__annotate" type="button" :aria-label="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :title="annotationMode ? $t('surface.browserPanel.exitAnnotationMode') : $t('surface.browserPanel.annotatePage')" :aria-pressed="annotationMode" @click="toggleAnnotation"><IconX v-if="annotationMode" /><IconCirclePlus v-else /></button>
         <AnnotationSendButton
           v-if="annotations.length"
@@ -32,20 +36,23 @@
           :label="$t('dynamic.annotation.send', { count: annotations.length })"
           @click="sendAnnotations"
         />
-        <button ref="menuTrigger" type="button" :aria-label="$t('surface.browserPanel.browserMenu')" :title="$t('surface.browserPanel.browserMenu')" :aria-expanded="menuOpen" @click="toggleMenu"><IconDotsVertical /></button>
-        <div v-if="menuOpen" ref="menuRoot" class="browser-panel__menu">
-          <div class="browser-panel__zoom" role="group" :aria-label="$t('surface.browserPanel.zoom')">
-            <IconZoom class="browser-panel__zoom-icon" aria-hidden="true" />
-            <span>{{ $t('surface.browserPanel.zoom') }}</span>
-            <div class="browser-panel__zoom-actions">
-              <button type="button" :aria-label="$t('surface.browserPanel.zoomOut')" :disabled="zoomPercent <= 50 || !browserReadyForControls || zoomPending" @click="changeZoom(-1)"><IconMinus /></button>
-              <span>{{ zoomPercent }}%</span>
-              <button type="button" :aria-label="$t('surface.browserPanel.zoomIn')" :disabled="zoomPercent >= 300 || !browserReadyForControls || zoomPending" @click="changeZoom(1)"><IconPlus /></button>
+        <AppMenuButton v-model:open="menuOpen" :ariaLabel="$t('surface.browserPanel.browserMenu')" :items="menuItems" :width="232" @select="selectMenuAction">
+          <template #trigger="{ attrs }">
+            <button ref="menuTrigger" v-bind="attrs" type="button" :aria-label="$t('surface.browserPanel.browserMenu')" :title="$t('surface.browserPanel.browserMenu')"><IconDotsVertical /></button>
+          </template>
+          <template #before>
+            <div ref="menuRoot" class="browser-panel__zoom" role="group" :aria-label="$t('surface.browserPanel.zoom')">
+              <IconZoom class="browser-panel__zoom-icon" aria-hidden="true" />
+              <span>{{ $t('surface.browserPanel.zoom') }}</span>
+              <div class="browser-panel__zoom-actions">
+                <button class="app-icon-button" type="button" :aria-label="$t('surface.browserPanel.zoomOut')" :disabled="zoomPercent <= 50 || !browserReadyForControls || zoomPending" @click="changeZoom(-1)"><IconMinus /></button>
+                <span>{{ zoomPercent }}%</span>
+                <button class="app-icon-button" type="button" :aria-label="$t('surface.browserPanel.zoomIn')" :disabled="zoomPercent >= 300 || !browserReadyForControls || zoomPending" @click="changeZoom(1)"><IconPlus /></button>
+              </div>
+              <button class="app-icon-button" type="button" :aria-label="$t('surface.browserPanel.resetZoom')" :disabled="zoomPercent === 100 || !browserReadyForControls || zoomPending" @click="setZoom(100)"><IconRefresh /></button>
             </div>
-            <button type="button" :aria-label="$t('surface.browserPanel.resetZoom')" :disabled="zoomPercent === 100 || !browserReadyForControls || zoomPending" @click="setZoom(100)"><IconRefresh /></button>
-          </div>
-          <AppMenu class="app-menu--embedded" :ariaLabel="$t('surface.browserPanel.browserMenu')" :items="menuItems" @select="selectMenuAction" />
-        </div>
+          </template>
+        </AppMenuButton>
       </div>
     </header>
     <div v-if="deviceToolbarVisible && !visualization" class="browser-panel__device-toolbar">
@@ -94,22 +101,34 @@
 <script setup lang="ts">
 import { translate } from '../i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
-import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconX, IconZoom } from '@tabler/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { IconArrowLeft, IconArrowRight, IconCamera, IconCirclePlus, IconCrop, IconDeviceMobile, IconDotsVertical, IconMinus, IconPlus, IconRefresh, IconRotateRectangle, IconStar, IconTrash, IconX, IconZoom } from '@tabler/icons-vue';
 import { PRIMARY_BROWSER_ID, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type MainToRendererEvent } from '@workspace/core/contracts';
 import { browserGuestPartition } from '@workspace/core/browser-guest';
 import { browserDevicePresets, type BrowserViewportRequest } from '@workspace/core/browser-viewport';
 import { appClientPlatform, appApi } from '../platform-api';
-import { ArrowUpRightIcon } from '../shared/icons/app-icons';
+import { ArrowUpRightIcon, CodeIcon, PuzzleIcon } from '../shared/icons/app-icons';
 import AnnotationSendButton from './AnnotationSendButton.vue';
-import AppMenu from '../shared/menu/AppMenu.vue';
+import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { externalBrowserUrl, openInExternalBrowser } from './browser-external';
 import BrowserBookmarks from './BrowserBookmarks.vue';
+import BrowserExtensionIcon from './BrowserExtensionIcon.vue';
 import { normalizeBrowserBookmarks, type BrowserBookmark } from '@workspace/core/browser-bookmarks';
 import { useAppState } from '../app-state';
+import type { BrowserExtensionStatus } from '@workspace/core/browser-extensions';
 
 const appState = useAppState();
+const extensions = ref<BrowserExtensionStatus[]>([]);
+const activeExtensions = computed(() => extensions.value.filter(extension => extension.enabled && extension.version));
+async function refreshExtensions(): Promise<void> {
+  if (props.visualization || !appApi) return;
+  const agentId = props.agentId;
+  try { const result = await appApi.browserExtensions(agentId, 'list'); if (!disposed && props.agentId === agentId) extensions.value = result.extensions; } catch { /* Browsing stays available if extension loading fails. */ }
+}
+async function openExtension(id: string): Promise<void> {
+  try { await appApi?.browserExtensions(props.agentId, 'open', id, props.browserId); } catch (reason) { error.value = messageFor(reason); }
+}
 const bookmarks = computed(() => normalizeBrowserBookmarks(appState.snapshot.value.general.browserBookmarks));
 async function saveBookmarks(bookmarks: BrowserBookmark[]): Promise<void> {
   await appState.updateSettings({ general: { browserBookmarks: bookmarks } });
@@ -133,7 +152,7 @@ const props = withDefaults(defineProps<{
   visible: true,
   visualization: null,
 });
-const emit = defineEmits<{ 'send-prompt': [prompt: string]; 'url-change': [url: string] }>();
+const emit = defineEmits<{ 'send-prompt': [prompt: string]; 'url-change': [url: string]; 'open-browser-settings': [] }>();
 
 const menuTrigger = ref<HTMLElement | null>(null);
 const menuRoot = ref<HTMLElement | null>(null);
@@ -156,9 +175,10 @@ const deviceWidth = ref(390);
 const deviceHeight = ref(844);
 const capturingArea = ref(false);
 const screenshotPending = ref(false);
+const clearingData = ref(false);
 const selectionStart = ref<{ x: number; y: number } | null>(null);
 const selectionRect = ref<BrowserBounds | null>(null);
-let browserReady = false;
+const browserReady = ref(false);
 let initializing = true;
 let guestElement: (HTMLElement & { getWebContentsId?: () => number }) | null = null;
 let guestWebContentsId: number | null = null;
@@ -173,12 +193,18 @@ const displayHost = computed(() => {
   }
 });
 const externalUrl = computed(() => props.visualization ? null : externalBrowserUrl(state.value.url));
-const browserReadyForControls = computed(() => browserReady && !loading.value);
+const browserReadyForControls = computed(() => browserReady.value && !loading.value);
 const menuItems = computed<AppMenuItem[]>(() => [
+  { id: 'zoom-divider', type: 'separator' },
   ...(!props.visualization ? [{ id: 'device-toolbar', type: 'action', label: translate(deviceToolbarVisible.value ? 'surface.browserPanel.hideDeviceToolbar' : 'surface.browserPanel.showDeviceToolbar'), icon: IconDeviceMobile } satisfies AppMenuItem] : []),
   ...(!props.visualization ? [{ id: 'screenshot-divider', type: 'separator' } satisfies AppMenuItem] : []),
   { id: 'screenshot', type: 'action', label: translate('surface.browserPanel.screenshot'), icon: IconCamera, disabled: !browserReadyForControls.value || screenshotPending.value },
   { id: 'screenshot-area', type: 'action', label: translate('surface.browserPanel.screenshotArea'), icon: IconCrop, disabled: !browserReadyForControls.value || screenshotPending.value },
+  { id: 'devtools', type: 'action', label: translate('surface.browserPanel.openDevTools'), icon: CodeIcon, disabled: !browserReadyForControls.value },
+  ...(!props.visualization ? [
+    { id: 'data-divider', type: 'separator' } satisfies AppMenuItem,
+    { id: 'clear-data', type: 'action', label: translate('surface.browserPanel.clearBrowsingData'), icon: IconTrash, disabled: clearingData.value } satisfies AppMenuItem,
+  ] : []),
 ]);
 const guestFrameStyle = computed(() => deviceToolbarVisible.value && devicePreset.value !== 'responsive' && !props.visualization
   ? { width: `${deviceWidth.value}px`, height: `${deviceHeight.value}px` }
@@ -194,6 +220,8 @@ let unsubscribeCommands: (() => void) | null = null;
 watch(() => state.value.url, (url) => emit('url-change', url), { immediate: true });
 
 onMounted(async () => {
+  void refreshExtensions();
+  window.addEventListener('focus', refreshExtensions);
   const initialRequestId = props.openRequestId;
   unsubscribe = appApi?.onEvent(handleEvent) ?? null;
   unsubscribeCommands = appApi?.onAppCommand(command => {
@@ -212,7 +240,7 @@ onMounted(async () => {
   if (guestFrame.value) resizeObserver.observe(guestFrame.value);
   try {
     await runNavigation(openInitialContent);
-    if (browserReady && !props.visible) await appApi?.browserSetVisible(props.agentId, props.browserId, false);
+    if (browserReady.value && !props.visible) await appApi?.browserSetVisible(props.agentId, props.browserId, false);
   } catch (reason) {
     error.value = messageFor(reason);
   } finally {
@@ -224,6 +252,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshExtensions);
   disposed = true;
   unsubscribe?.();
   unsubscribeCommands?.();
@@ -237,9 +266,10 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.visible, async (visible) => {
-  if (!appApi || !browserReady) return;
+  if (!appApi || !browserReady.value) return;
   await appApi.browserSetVisible(props.agentId, props.browserId, visible);
   if (visible) {
+    void refreshExtensions();
     await nextTick();
     await syncBounds();
   }
@@ -320,8 +350,13 @@ async function ensureGuest(): Promise<number> {
 
 function handleGuestNavigation(event: Event): void {
   const navigation = event as Event & { url?: string; isMainFrame?: boolean };
-  if (!browserReady || props.visualization || !navigation.url || navigation.url === 'about:blank'
-    || navigation.isMainFrame === false) return;
+  if (!browserReady.value || props.visualization || !navigation.url || navigation.isMainFrame === false) return;
+  if (navigation.url === 'about:blank') {
+    state.value = { url: 'about:blank', title: '', canGoBack: false, canGoForward: false };
+    address.value = '';
+    zoomPercent.value = 100;
+    return;
+  }
   state.value = { ...state.value, url: navigation.url };
   if (document.activeElement !== addressInput.value) address.value = navigation.url;
   void syncZoom();
@@ -345,7 +380,7 @@ async function navigate(): Promise<void> {
     : !/\s/u.test(input) && looksLikeHost ? (explicitScheme ? `https://${input}` : input)
     : !input || explicitScheme ? input
       : `https://www.google.com/search?q=${encodeURIComponent(input)}`;
-  await runNavigation(async () => browserReady
+  await runNavigation(async () => browserReady.value
     ? requireBrowserApi().browserNavigate(props.agentId, props.browserId, target)
     : requireBrowserApi().browserOpen(props.agentId, props.browserId, target, await ensureGuest()));
 }
@@ -384,10 +419,7 @@ async function changeZoom(direction: -1 | 1): Promise<void> {
   if (next !== undefined) await setZoom(next);
 }
 
-function toggleMenu(): void {
-  menuOpen.value = !menuOpen.value;
-  if (menuOpen.value && browserReady) void syncZoom();
-}
+watch(menuOpen, open => { if (open && browserReady.value) void syncZoom(); });
 
 async function syncZoom(): Promise<void> {
   const requestId = ++zoomRequestId;
@@ -401,16 +433,41 @@ async function syncZoom(): Promise<void> {
 
 async function selectMenuAction(itemId: string): Promise<void> {
   menuOpen.value = false;
-  if (itemId === 'device-toolbar') {
+  if (itemId === 'devtools') {
+    try { await requireBrowserApi().browserOpenDevTools(props.agentId, props.browserId); }
+    catch (reason) { error.value = messageFor(reason); }
+  } else if (itemId === 'device-toolbar') {
     deviceToolbarVisible.value = !deviceToolbarVisible.value;
     await nextTick();
     updateResponsiveDimensions();
     await syncBounds();
   } else if (itemId === 'screenshot') {
     await copyScreenshot();
+  } else if (itemId === 'clear-data') {
+    await clearBrowsingData();
   } else if (itemId === 'screenshot-area') {
     capturingArea.value = true;
     selectionRect.value = null;
+  }
+}
+
+async function clearBrowsingData(): Promise<void> {
+  if (clearingData.value) return;
+  try {
+    await ElMessageBox.confirm(
+      translate('surface.browserPanel.clearDataMessage'),
+      translate('surface.browserPanel.clearDataTitle'),
+      { type: 'warning', confirmButtonText: translate('surface.browserPanel.clearDataConfirm'), cancelButtonText: translate('common.cancel'), confirmButtonClass: 'app-button app-button--danger' },
+    );
+  } catch { return; }
+  clearingData.value = true;
+  error.value = null;
+  try {
+    await requireBrowserApi().browserClearBrowsingData();
+  } catch (reason) {
+    error.value = messageFor(reason);
+  } finally {
+    clearingData.value = false;
   }
 }
 
@@ -454,7 +511,7 @@ async function applyViewportRequest(request: BrowserViewportRequest): Promise<vo
   const api = requireBrowserApi();
   let failure: string | undefined;
   try {
-    if (!browserReady || disposed || !props.visible || props.visualization) throw new Error('Open this agent’s Browser pane before changing its viewport.');
+    if (!browserReady.value || disposed || !props.visible || props.visualization) throw new Error('Open this agent’s Browser pane before changing its viewport.');
     const configuration = request.viewport;
     deviceToolbarVisible.value = configuration.preset !== 'fit';
     devicePreset.value = configuration.preset === 'fit' ? 'responsive' : configuration.preset;
@@ -537,7 +594,7 @@ function handleEscape(event: KeyboardEvent): void {
 
 function closeMenuOnOutsideClick(event: PointerEvent): void {
   if (!menuOpen.value || !(event.target instanceof Node)) return;
-  if (menuRoot.value?.contains(event.target) || menuTrigger.value?.contains(event.target)) return;
+  if (menuRoot.value?.closest('.app-popover')?.contains(event.target) || menuTrigger.value?.contains(event.target)) return;
   menuOpen.value = false;
 }
 
@@ -546,12 +603,12 @@ async function runNavigation(action: () => Promise<BrowserState>): Promise<void>
   error.value = null;
   try {
     state.value = await action();
-    browserReady = true;
-    address.value = state.value.url;
+    browserReady.value = true;
+    address.value = state.value.url === 'about:blank' ? '' : state.value.url;
   } catch (reason) {
     error.value = messageFor(reason);
   } finally {
-    if (browserReady) await syncZoom();
+    if (browserReady.value) await syncZoom();
     loading.value = false;
   }
 }
@@ -573,7 +630,7 @@ async function toggleAnnotation(): Promise<void> {
 }
 
 async function syncBounds(): Promise<void> {
-  if (!guestElement || !viewport.value || !browserReady || disposed || !props.visible) return;
+  if (!guestElement || !viewport.value || !browserReady.value || disposed || !props.visible) return;
   const rect = guestElement.getBoundingClientRect();
   const viewportRect = viewport.value.getBoundingClientRect();
   const x = Math.max(rect.left, viewportRect.left);
@@ -812,45 +869,32 @@ function messageFor(reason: unknown): string {
   color: var(--color-on-primary-container);
 }
 
-.browser-panel__menu {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + var(--space-3));
-  right: 0;
-  min-width: 232px;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface-lowest);
-  box-shadow: var(--shadow-menu);
-}
-
 .browser-panel__zoom {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--color-outline-subtle);
+  min-height: 28px;
+  padding: var(--space-2) var(--space-4);
   color: var(--color-text);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-13-5);
 }
 
 .browser-panel__zoom-icon {
   width: var(--icon-md);
   height: var(--icon-md);
   flex: 0 0 auto;
-  stroke-width: 2.5px;
+  opacity: 0.5;
+  stroke-width: 2px;
 }
 
 .browser-panel__zoom > span {
   flex: 0 0 auto;
-  font-weight: var(--font-weight-medium);
 }
 
 .browser-panel__zoom-actions {
   display: flex;
   align-items: center;
-  margin-left: var(--space-8);
+  margin-left: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -863,6 +907,8 @@ function messageFor(reason: unknown): string {
 }
 
 .browser-panel__zoom button {
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
 }
 

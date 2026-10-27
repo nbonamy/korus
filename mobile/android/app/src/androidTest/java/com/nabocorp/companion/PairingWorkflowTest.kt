@@ -63,7 +63,9 @@ class PairingWorkflowTest {
     @Test fun manualEntryFormatsAndAutoSubmitsOnceAndAnErrorRequiresExplicitRetry() {
         NativeEngineFixture(app.activityRule.scenario, useActivityModel = true).use { engine ->
             app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
-            engine.state(state())
+            engine.state(state().put("connection", "unpaired").put("teams", JSONArray()).put("laptops", JSONArray().put(json("id" to "unavailable-host", "name" to "Saved laptop"))))
+            app.onNodeWithText("Saved laptop").assertIsDisplayed()
+            app.onNodeWithText("Connection lost").assertDoesNotExist()
             app.onNodeWithTag("pairing-code").performTextInput("ab 0i23")
             app.onNodeWithTag("pairing-code").assertTextContains("AB23")
             app.onNodeWithTag("pairing-code").performTextReplacement("abcd23ef")

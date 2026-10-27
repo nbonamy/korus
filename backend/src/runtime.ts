@@ -1,8 +1,9 @@
+import { GuestJoins } from './sharing/guest-joins';
 import { UsageService } from './usage/usage-service';
 import { UsageLedger } from './usage/usage-ledger';
 import { PromptRejectedError } from './agents/prompt-rejected';
 import { createMobileSimulatorToolModuleProvider } from './mcp/mobile-simulator-tools';
-import { CompanionManager } from './companion/manager';
+import { relayFromEnvironment, CompanionManager } from './companion/manager';
 import { appRpcErrorCodes, createAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
 import { DocumentWorkspaceService } from './document-workspace-service';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
@@ -26,15 +27,17 @@ import { AutomationRunner } from './automations/runner';
 import { RuntimeScheduler } from './scheduling/runtime-scheduler';
 import { AppMcpService } from './mcp/service';
 import { HostedMcpGateway } from './mcp/hosted-mcp-gateway';
-import { runtimeGitHubOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
+import { runtimeGitHubOAuthClientId, runtimeGitLabOAuthClientId, runtimeLinearOAuthSettings } from './runtime-config';
 import { loadRequirements } from './requirements';
 import { LinearWorkProviderDriver } from './work-integrations/linear-driver';
 import { AppBackendServer } from './server';
 import { backendCodexHomeDir, backendHomeDir, backendProviderTokensFilePath, backupProviderSetup, deleteBackendMissionHome, ensureBackendCodexHome, ensureBackendMissionHome, loadBackendSnapshot, saveBackendSnapshot } from './state';
 import { saveCodeReviewReport } from './review/review-report';
 import { FileWorkIntegrationTokenStore } from './work-integrations/file-token-store';
+import { GitLabWorkProviderDriver } from './work-integrations/gitlab-driver';
 import { GitHubWorkProviderDriver } from './work-integrations/github-driver';
 import { GitHubCliWorkProviderDriver } from './work-integrations/github-cli-driver';
+import { GitLabCliWorkProviderDriver } from './work-integrations/gitlab-cli-driver';
 import { WorkIntegrationManager } from './work-integrations/manager';
 import { warnMain } from './log';
 import { loadPluginStatus } from './plugin-status';
@@ -103,8 +106,10 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     drivers: [
       new GitHubWorkProviderDriver(() => runtimeGitHubOAuthClientId(snapshot.workBacklog.providerSettings.github)),
       new LinearWorkProviderDriver(() => runtimeLinearOAuthSettings(snapshot.workBacklog.providerSettings.linear)),
+      new GitLabWorkProviderDriver(() => runtimeGitLabOAuthClientId(snapshot.workBacklog.providerSettings.gitlab)),
     ],
     githubCli: new GitHubCliWorkProviderDriver(),
+    gitlabCli: new GitLabCliWorkProviderDriver(),
     getSnapshot: () => snapshot,
     saveSnapshot: () => saveBackendSnapshot(snapshot),
     tokenStore: new FileWorkIntegrationTokenStore(backendProviderTokensFilePath()),
@@ -168,6 +173,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     worktreeManager,
     agentCreation,
     createProject: (agentId, name, prompt, backend) => server.createProjectFromQuickChat(agentId, name, prompt, backend),
+    startMission: (agentId, input) => server.startMissionFromAgent(agentId, input),
+    gitDiff: (folder, target) => agentGitService.diff(folder, target as Exclude<typeof target, { type: 'turn' }>),
     startAutomaticReview: (agentId, input) => server.startAutomaticReview(agentId, input),
     closeAgent: (callerAgentId, agentId) => server.closeAgentFromMcp(callerAgentId, agentId),
     toolModuleProviders: [
@@ -283,6 +290,12 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     run: () => pullRequestMonitor.check(),
   });
   const companion = new CompanionManager(path.join(backendHomeDir(), 'companion'), {
+    authorizeGuest: (handle, credential) => server.authorizeConversationGuest(handle, credential),
+    proposeGuest: (handle, identity, name, input) => server.proposeConversationGuest(handle, identity, name, input),
+    guestProposals: (handle, identity) => server.conversationGuestProposals(handle, identity),
+    withdrawGuest: (handle, identity, proposalId) => server.withdrawConversationGuest(handle, identity, proposalId),
+    guestCount: (handle, count) => server.conversationGuestCount(handle, count),
+    desktopFocused: async () => (await options.requestClient<{ focused: boolean }>(backendMethods.clientFocusGet, {})).focused === true,
     onAccessChanged: (enabled) => server.setCompanionAccessEnabled(enabled),
     async request<Result>(method: string, params?: unknown): Promise<Result> {
       const response = await server.handleMessage(createAppRpcRequest('companion-local', method, params));
@@ -294,6 +307,8 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   server = new AppBackendServer({
     requirements,
     usage,
+    guestJoins: new GuestJoins({ directory: path.join(backendHomeDir(), 'guest-joins'), relay: relayFromEnvironment(process.env).relay ?? undefined }),
+    conversationSharing: { directory: path.join(backendHomeDir(), 'conversation-shares'), endpoint: () => companion.shareEndpoint(), routing: { update: routes => companion.updateShareRoutes(routes), subscribe: listener => companion.onShareRoutingStatus(listener) } },
     companionControl: (input) => companion.control(input),
     documents,
     tasks,

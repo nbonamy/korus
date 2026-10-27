@@ -106,6 +106,7 @@ function createFixtures(): EventFixtures {
   const turn = { ...codexThread, turnId: 'turn-1' };
 
   return {
+    'conversation.shareChanged': { ...base, type: 'conversation.shareChanged', agentId: 'agent-1', payload: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' } },
     'antigravity.conversationSnapshotChanged': {
       ...base, type: 'antigravity.conversationSnapshotChanged', agentId: 'agent-1', backend: 'antigravity', backendSessionId: 'session-1',
       payload: { revision: 1, snapshot: emptyAntigravitySnapshot('agent-1', 'session-1') },
@@ -316,6 +317,7 @@ function createFixtures(): EventFixtures {
         ticketCount: 3,
       },
     },
+    'mission.focusRequested': { ...base, type: 'mission.focusRequested', payload: { missionId: 'mission-1' } },
     'git.branchWorkProgress': {
       ...agent, type: 'git.branchWorkProgress',
       payload: { id: 'branch-move-1', agentId: 'agent-1', branchName: 'feature/work', state: 'running', phase: 'movingChanges' },
@@ -496,6 +498,11 @@ function createFixtures(): EventFixtures {
 }
 
 describe(`${product.name} backend event decoder`, () => {
+  it.each(['github', 'gitlab'] as const)('decodes %s merged tracking updates without losing provider identity', provider => {
+    const tracking = { provider, repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'owner/repo', branch: 'feature', number: 7, title: 'Work', url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/7' : 'https://github.com/owner/repo/pull/7', draft: false, headSha: 'head', state: 'merged', mergedAt: occurredAt, createdAt: occurredAt, updatedAt: occurredAt };
+    const event = { seq: 1, occurredAt, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1', pullRequest: tracking } };
+    expect(decodeAppBackendEvent(event)).toStrictEqual(event);
+  });
   it('accepts one representative for every typed event key without cloning it', () => {
     const fixtures = createFixtures();
 

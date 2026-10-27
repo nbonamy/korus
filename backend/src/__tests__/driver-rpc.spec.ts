@@ -10,6 +10,7 @@ import { BackendDriverRpc, appSurfaceOptions } from '../driver-rpc';
 import { AppBackendServer } from '../server';
 import { createTestSnapshot } from './server-test-fixtures';
 import { CodexBackendDriver } from '../codex/codex-driver';
+import { MISSION_COMMAND_PROMPT } from '../agents/mission-command';
 import { WORKTREE_DELEGATION_PROMPT } from '../agents/worktree-delegation';
 
 // Provider discovery has its own coverage; RPC tests must not run the host login shell.
@@ -70,6 +71,20 @@ describe('BackendDriverRpc', () => {
       await server.handleMessage({ jsonrpc: '2.0', id: 'next', method: 'agent/prompt/send', params: { agentId: agent.id, prompt: '/delegate Another task' } });
       expect(agent.userDelegationOverrides).toBeUndefined();
     } finally { await server.close(); }
+  });
+  it('expands /mission into a request for the create-mission tool on send and steer', async () => {
+    const sendPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
+    const steerPrompt = vi.fn().mockResolvedValue({ backendSession: { kind: 'codex', threadId: 'thread' }, turnId: 'turn' });
+    const rpc = new BackendDriverRpc(new Map([['codex', createDriver({ sendPrompt, steerPrompt })]]));
+    const agent = createAgent();
+    try {
+      await rpc.handle('driver/prompt/send', { agent, prompt: '/mission Add CSV export' });
+      expect(sendPrompt.mock.calls[0]![1]).toBe(`${MISSION_COMMAND_PROMPT}\n\nMission request:\nAdd CSV export`);
+      await rpc.handle('driver/prompt/steer', { agent, prompt: '/mission' });
+      expect(steerPrompt.mock.calls[0]![1]).toBe(MISSION_COMMAND_PROMPT);
+      await rpc.handle('driver/prompt/send', { agent, prompt: 'Explain the mission statement' });
+      expect(sendPrompt.mock.calls[1]![1]).toBe('Explain the mission statement');
+    } finally { await rpc.close(); }
   });
   it('rejects malformed delegation overrides before asking a provider to execute', async () => {
     const sendPrompt = vi.fn();
@@ -191,6 +206,24 @@ describe('BackendDriverRpc', () => {
     } finally { await server.close(); }
   });
 
+  it('isolates request observers and unsubscribes request streams on replacement and shutdown', async () => {
+    const first = vi.fn(), second = vi.fn();
+    let emit!: (event: import('@workspace/core/usage').RequestObservation) => void;
+    const driver = (unsub: typeof first) => createDriver({ onRequestUsage: listener => { emit = listener; return unsub; } });
+    const rpc = new BackendDriverRpc(new Map([['codex', driver(first)]]));
+    const observe = vi.fn();
+    const stop = rpc.onRequestUsage(observe);
+    rpc.onRequestUsage(() => { throw new Error('observer failure'); });
+    try {
+      emit({ requestId: 'one' } as never);
+      expect(observe).toHaveBeenCalledOnce();
+      await rpc.replaceDriver('codex', () => driver(second));
+      expect(first).toHaveBeenCalledOnce();
+      stop(); emit({ requestId: 'two' } as never);
+      expect(observe).toHaveBeenCalledOnce();
+    } finally { await rpc.close(); }
+    expect(second).toHaveBeenCalledOnce();
+  });
   it('uses the selected Codex home and replaces only the configured provider driver', async () => {
     expect(appSurfaceOptions({ generalSettings: { ...defaultGeneralSettings, providerHomes: { codex: { isolated: false, shareSkills: true, homePath: '/existing/codex' } } } }).codexHome).toBe('/existing/codex');
     const unsubscribe = vi.fn();

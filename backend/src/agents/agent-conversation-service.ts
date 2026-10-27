@@ -1,6 +1,7 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import type {
   Agent,
+  PromptContentOptions,
   AppSnapshot,
   BackendConversationRef,
   BackendSession,
@@ -36,13 +37,13 @@ export class AgentConversationService {
     return this.applyTurnAction(agentId, result);
   }
 
-  async editTurn(agentId: string, turnId: string, content: string): Promise<AppSnapshot | null> {
+  async editTurn(agentId: string, turnId: string, content: string, options?: PromptContentOptions): Promise<AppSnapshot | null> {
     const agent = this.agent(agentId);
     if (!agent) return null;
     const result = await this.options.driverRequest(
       agent,
       backendMethods.driverTurnEdit,
-      { agent, turnId, content },
+      { agent, turnId, content, ...(options ? { options } : {}) },
     ) as BackendTurnActionResult;
     return this.applyTurnAction(agentId, result);
   }

@@ -7,7 +7,7 @@ import type {
   CodexNativeAttachment,
   CodexNativeRendererApi,
 } from '@codex-app-sdk/vue';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptySnapshot, createInitialSnapshot } from '@workspace/core/snapshot';
 import { defaultBackendCommands } from '@workspace/core/backend-commands';
@@ -660,6 +660,8 @@ describe('AppShell dialogs and commands', () => {
   });
 
   it('saves and opens drafts from native Edit menu commands', async () => {
+    const snapshot = reactive(createInitialSnapshot());
+    snapshot.general.savedPromptDrafts = [{ id: 'saved', agentId: 'agent-dina', text: 'Review', content: [{ type: 'mention', kind: 'file', id: 'review.md', label: 'Review', value: 'review.md' }], createdAt: 1 }];
     let listener: (command: AppCommand) => void = () => undefined;
     window.app = {
       onAppCommand: vi.fn((nextListener: (command: AppCommand) => void) => {
@@ -670,6 +672,7 @@ describe('AppShell dialogs and commands', () => {
     } as Partial<AppApi> as AppApi;
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const wrapper = mountRealShell({
+      snapshot,
       stubAgentWorkspace: false,
       realConversationPane: true,
       composerState: { text: 'Park this prompt', selectionStart: 0, selectionEnd: 0 },
@@ -679,8 +682,9 @@ describe('AppShell dialogs and commands', () => {
     listener({ type: 'save-active-prompt-draft' });
     await flushPromises();
     expect(updateSettings).toHaveBeenCalledWith({
-      general: { savedPromptDrafts: [expect.objectContaining({ agentId: 'agent-dina', text: 'Park this prompt' })] },
+      general: { savedPromptDrafts: [expect.objectContaining({ id: 'saved' }), expect.objectContaining({ agentId: 'agent-dina', text: 'Park this prompt' })] },
     });
+    expect(() => structuredClone(updateSettings.mock.calls[0]![0])).not.toThrow();
     listener({ type: 'open-saved-prompt-drafts' });
     await flushPromises();
 
@@ -886,7 +890,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('restart-agent')).toStrictEqual([['agent-dina']]);
     expect(getAgentGitDiff).toHaveBeenCalledWith('agent-dina');
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toStrictEqual(['Changes', 'Review', 'Browser']);
-    expect(wrapper.text()).toContain('Edit agent');
+    expect(wrapper.text()).toContain('Rename agent');
 
     wrapper.unmount();
     expect(listeners.size).toBe(0);
@@ -1427,7 +1431,7 @@ describe('AppShell dialogs and commands', () => {
     expect(wrapper.emitted('fork-agent')).toBeUndefined();
     expect(wrapper.emitted('restart-agent')).toBeUndefined();
     expect(wrapper.findComponent({ name: 'ConversationHistoryDialog' }).exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('Edit Agent');
+    expect(wrapper.text()).not.toContain('Rename agent');
     expect(wrapper.emitted('close-team')).toBeUndefined();
   });
 
@@ -1436,7 +1440,7 @@ describe('AppShell dialogs and commands', () => {
     const wrapper = mountShell({ snapshot, realAgentSidebar: true });
 
     await wrapper.findAll('.agent-sidebar__agent')[0]!.trigger('contextmenu');
-    await clickPortaledMenuItem('Edit Agent');
+    await clickPortaledMenuItem('Rename agent');
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true }));
 

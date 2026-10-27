@@ -17,7 +17,7 @@ Automations send a prompt on a schedule. Use them for a daily project summary, a
    - **New Quick Chat each run** starts with fresh context. Choose its coding engine, model, and reasoning effort, or leave the model and effort at their defaults.
 5. Set the schedule, check **Next run**, and select **Save automation**.
 
-Existing conversations keep their model and permissions. A new Quick Chat needs enough information in the prompt to find the project or service you want it to use. GitHub and Linear are only needed if the task uses them.
+Existing conversations keep their model and permissions. A new Quick Chat needs enough information in the prompt to find the project or service you want it to use. GitHub, GitLab, and Linear are only needed if the task uses them.
 
 For example, schedule this prompt in a repository agent:
 

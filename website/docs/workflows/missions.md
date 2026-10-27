@@ -18,14 +18,16 @@ Check those repositories have Git history and can create worktrees. Have their s
 
 1. Select the team where the feature belongs.
 2. Click **New mission** in the sidebar. If the team already has Missions, use the **+** beside **Missions**.
-3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub or Linear integration. Choose the provider first, then its repository or **Team / project**, and select the issue.
+3. In the Mission conversation, describe the desired outcome, constraints, and how you will know it works. During Requirements, you can also use **Choose an issue…** to supply an issue from a connected GitHub, GitLab, or Linear integration. Choose the provider first, then its repository, GitLab project, or Linear **Team / project**, and select the issue.
 4. Work with the Mission lead until the Requirements artifact is specific enough to approve.
+
+To start from a conversation, type `/mission`, optionally followed by instructions, or choose **+ → Mission**. The current agent writes the brief from the conversation and your instructions, Korus creates the Mission, sends the brief to the Mission lead as the first message and opens the Mission.
 
 For example:
 
 > Add CSV export to the reporting page. The API and web repositories are in this team. Only authorized users can export; preserve the current filters; escape spreadsheet formulas. Success means a browser download with the expected rows plus API authorization and escaping tests. Do not add scheduled exports.
 
-A selected issue supplies context for Requirements. A Linear team or project does not select an execution repository, and Mission tickets are not automatically exported as Linear issues. Review the code-repository assignment on each Mission ticket before approving implementation. GitHub still owns any pull requests created during Ship.
+A selected issue supplies context for Requirements. A Linear team or project does not select an execution repository, and Mission tickets are not automatically exported as Linear issues. Review the code-repository assignment on each Mission ticket before approving implementation. Ship uses the code repository's provider: pull requests on GitHub or merge requests on GitLab.
 
 ## Follow the stages
 
@@ -43,7 +45,9 @@ The stage rail, artifact workbench, and conversation stay together in the Missio
 
 Wait for a proposal, read it, and give feedback before choosing **Approve and continue**. In Requirements, select text to leave inline comments and send them to the lead. In Tickets, open a ticket card to inspect its details and comment on the relevant text. You can also request changes directly in chat.
 
-Approving Requirements starts ticket shaping. Approving Tickets creates isolated Mission worktrees in the affected repositories and starts implementation workers. This is the point where code work begins; inspect repository assignments and dependencies before accepting the backlog.
+Approving Requirements starts ticket shaping. When the tickets are ready, the **Start implementation** dialog lets you choose the coding agent, model, and reasoning effort for implementation independently of the Mission lead. Inspect repository assignments and dependencies, then confirm to create isolated Mission worktrees and start the workers. This is the point where code work begins.
+
+Mission startup shows provisioning progress. **Run in background** lets you return to other conversations while it prepares the workspaces and workers.
 
 ## Follow implementation
 
@@ -55,7 +59,7 @@ Use **Stop ticket** when a running task needs to halt, or **Retry ticket** after
 
 ## Review and remediate
 
-The Mission Review stage assesses the implemented feature against the approved requirements. Its **Changes** tab lets you select a repository and inspect its branch or uncommitted diff. Its **Review** tab holds the summary and structured findings.
+The Mission Review stage assesses the implemented feature against the approved requirements. Its **Changes** tab lets you select a repository and inspect its branch or uncommitted diff, with files grouped by code, tests, documentation, and other files (use the folder button to turn grouping off). Its **Review** tab holds the summary and structured findings.
 
 1. Inspect each finding's repository, location, impact, and priority. Use **Chat about finding** when you need clarification.
 2. Select the findings to fix, then choose **Fix N selected**. The affected repository workers apply and verify the fixes in the Mission worktrees. Unselected findings are skipped during this remediation batch.
@@ -66,11 +70,11 @@ This review is part of the Mission. The separate conversation command [`/review`
 
 ## Ship each repository
 
-Ship shows a delivery card for each affected repository. Commit any remaining intended changes, then use its Git controls to create a pull request or merge. Check the branch, destination, title/message, and cleanup choices before confirming. Follow [Worktrees](./worktrees#review-and-merge) for merge prerequisites and cleanup behavior.
+Ship shows a delivery card for each affected repository. Commit any remaining intended changes, then use its Git controls to create a GitHub pull request, a draft GitLab merge request, or a local merge. Check the branch, destination, title/message, and cleanup choices before confirming. Follow [Worktrees](./worktrees#review-and-merge) for merge prerequisites and cleanup behavior.
 
 When the destination has advanced, use **Update from main** in the delivery card's Git controls; the label follows the repository's base branch name. Korus merges the base into the Mission branch. Resolve any conflicts in the Mission worktree and rerun the relevant checks, then return to Ship and refresh the Git state before merging. Updating the branch does not itself deliver the Mission.
 
-The Mission completes when every affected repository has a recorded pull request or merge. A created pull request can still need review and merging. Mission completion does not mean the code was deployed.
+The Mission completes when every affected repository has a recorded pull request, merge request, or local merge. A created request can still need review and merging. Mission completion does not mean the code was deployed.
 
 ## Resume or clean up
 

@@ -24,9 +24,9 @@ class NotificationSettingsWorkflowTest {
                 activity.setContent { CompanionTheme { CompanionApp(engine.model, activity::enableNotifications, {}, {}, {}, {}, {}) } }
             }
             app.runOnIdle { engine.model.sheet = "settings" }
-            app.onNodeWithText("Enable notifications").performScrollTo().performClick()
+            app.onNodeWithText("Notifications").performScrollTo().performClick()
             // Verification builds deliberately have no Firebase client configuration.
-            app.onNodeWithText("Notifications unavailable").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Unavailable").performScrollTo().assertIsDisplayed()
         }
     }
 
@@ -50,11 +50,17 @@ class NotificationSettingsWorkflowTest {
     @Test fun cancellingForgetReturnsToSettingsWithoutLosingPairingOrTheDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, true)
-            app.onNodeWithText("Forget this laptop").performScrollTo().performClick()
+            app.onNodeWithText("Connections").performScrollTo().assertIsDisplayed()
+            app.onNodeWithText("Computer").assertDoesNotExist()
+            app.onNodeWithText("Connections").performClick()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            app.onNodeWithText("Forget connection").performClick()
             app.onNodeWithText("Forget this laptop?").assertIsDisplayed()
             app.onNodeWithText("Cancel").assertIsDisplayed().performClick()
             app.onNodeWithText("Forget this laptop?").assertDoesNotExist()
-            app.onNodeWithText("Usage").performScrollTo().assertIsDisplayed()
+            app.onNodeWithContentDescription("Back to Settings").performClick()
+            app.onNodeWithText("Usage and limits").performScrollTo().assertIsDisplayed()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
             assertEquals("agent", engine.model.state.string("agentId"))
@@ -62,16 +68,54 @@ class NotificationSettingsWorkflowTest {
         }
     }
 
+    @Test fun connectionsCanSwitchForgetAnInactiveLaptopAndAddAnother() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            openSettings(engine, true)
+            val twoLaptops = state(true).put("laptops", JSONArray().put(json("id" to "host", "name" to "Computer")).put(json("id" to "other", "name" to "Travel laptop")))
+            engine.state(twoLaptops)
+            app.onNodeWithText("Connections").performScrollTo().performClick()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Travel laptop").performClick()
+            app.onNodeWithText("Forget connection").performClick()
+            app.onNodeWithText("Forget Laptop").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "forget" && it.string("laptopId") == "other" } }
+            assertEquals("connections", engine.model.sheet)
+            app.onNodeWithText("Travel laptop").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "connect" && it.string("laptopId") == "other" } }
+            app.runOnIdle { engine.model.sheet = "connections" }
+            app.onNodeWithText("Add connection").performClick()
+            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "chooseConnection" } }
+            engine.state(twoLaptops.put("connection", "unpaired").put("laptopId", "").put("teamId", "").put("agentId", ""))
+            app.onNodeWithText("Connect your laptop").assertIsDisplayed()
+        }
+    }
+
     @Test fun disconnectedComputerCanBeReconnectedFromSettingsWithoutLosingItsDraft() {
         NativeEngineFixture(app.activityRule.scenario).use { engine ->
             openSettings(engine, false)
             app.waitUntil(7_000) { engine.model.showConnectionLost }
-            val inSheet = hasAnyAncestor(hasScrollAction())
-            app.onNode(hasText("Reconnect") and inSheet).performScrollTo().performClick()
-            app.waitUntil(5_000) { engine.commands().any { it.string("type") == "reconnect" } }
+            app.onNodeWithText("Connections").performScrollTo().performClick()
+            app.onNode(hasText("Connection lost") and hasAnyAncestor(hasScrollAction())).assertDoesNotExist()
+            app.onNodeWithContentDescription("Current").assertDoesNotExist()
+            app.onNodeWithContentDescription("Reconnect to Computer").assertIsDisplayed().performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "reconnect" } == 1 }
+            assertEquals("connections", engine.model.sheet)
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            val inMenu = hasAnyAncestor(isPopup())
+            val rename = app.onNode(hasText("Rename") and inMenu).fetchSemanticsNode().boundsInRoot
+            val reconnect = app.onNode(hasText("Reconnect") and inMenu).fetchSemanticsNode().boundsInRoot
+            val forget = app.onNode(hasText("Forget connection") and inMenu).fetchSemanticsNode().boundsInRoot
+            assertTrue(rename.top < reconnect.top && reconnect.top < forget.top)
+            app.onNode(hasText("Reconnect") and inMenu).performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "reconnect" } == 2 }
             assertEquals("{\"type\":\"reconnect\"}", engine.commands().last { it.string("type") == "reconnect" }.toString())
             engine.state(state(true))
-            app.onNode(hasText("Reconnect") and inSheet).assertDoesNotExist()
+            app.onNodeWithContentDescription("Reconnect to Computer").assertDoesNotExist()
+            app.onNodeWithContentDescription("Current").assertIsDisplayed()
+            app.onNodeWithContentDescription("Manage Computer").performClick()
+            app.onNode(hasText("Reconnect") and inMenu).assertDoesNotExist()
+            app.onNodeWithText("Rename").performClick()
+            app.onNodeWithText("Cancel").performClick()
             app.onNodeWithText("Done").performClick()
             app.onNodeWithTag("composer").assertTextContains("Keep this draft")
         }

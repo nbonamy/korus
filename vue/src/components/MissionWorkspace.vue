@@ -19,7 +19,7 @@
           </div>
           <div class="mission-workspace__stage-actions">
             <div v-if="activeStageRun" class="mission-workspace__run-status" role="status" aria-live="polite">
-              <span class="mission-workspace__activity-indicator" aria-hidden="true" />
+              <span class="app-spinner app-spinner--primary" aria-hidden="true" />
               <span>{{ activeStageStatus }}</span>
             </div>
             <button

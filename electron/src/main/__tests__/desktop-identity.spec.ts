@@ -13,9 +13,10 @@ function fixture(packaged = false) {
   directories.push(root);
   const appPath = path.join(root, 'app with spaces');
   const app = { setName: vi.fn(), getAppPath: () => appPath, getPath: () => root, isPackaged: packaged };
-  const sourceIcon = packaged ? path.join(root, 'icon.png') : path.join(appPath, 'assets', 'icon.png');
+  const sourceIcon = packaged ? path.join(root, 'icon.png') : path.join(appPath, 'assets', 'icon-dev.png');
   mkdirSync(path.dirname(sourceIcon), { recursive: true });
-  writeFileSync(sourceIcon, 'product icon');
+  writeFileSync(sourceIcon, packaged ? 'product icon' : 'development icon');
+  if (!packaged) writeFileSync(path.join(appPath, 'assets', 'icon.png'), 'product icon');
   const dataHome = path.join(root, 'data');
   const env = { XDG_DATA_HOME: dataHome, XDG_DATA_DIRS: path.join(root, 'system') };
   return { app, appPath, dataHome, env };
@@ -36,7 +37,7 @@ describe('Linux desktop identity', () => {
     expect(entry).toContain(`Exec="/runtime with spaces/electron"${packaged ? '' : ` "${appPath}"`}\n`);
     const icon = path.join(dataHome, 'icons', 'hicolor', '256x256', 'apps', `${id}.png`);
     expect(entry).toContain(`Icon=${icon}\n`);
-    expect(readFileSync(icon, 'utf8')).toBe('product icon');
+    expect(readFileSync(icon, 'utf8')).toBe(packaged ? 'product icon' : 'development icon');
   });
 
   it('preserves desktop entries installed by a package manager', () => {

@@ -25,7 +25,7 @@
           :aria-label="$t('surface.cockpitWorkInbox.itemType')"
         >
           <el-option :label="$t('surface.cockpitWorkInbox.issues')" value="issue" />
-          <el-option :label="$t('surface.cockpitWorkInbox.pullRequests')" value="pullRequest" />
+          <el-option :label="$t(connection.provider === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'surface.cockpitWorkInbox.pullRequests')" value="pullRequest" />
         </el-select>
         <el-input
           v-if="searchOpen"
@@ -68,7 +68,7 @@
                 <el-option v-for="assignee in assigneeOptions" :key="assignee" :label="assignee" :value="assignee" />
               </el-select>
             </label>
-            <span class="cockpit-inbox__provider"><GitHubIcon v-if="connection.provider === 'github'" aria-hidden="true" /> {{ providerLabel }}</span>
+            <span class="cockpit-inbox__provider"><component :is="workProviderIcon(connection.provider)" aria-hidden="true" /> {{ providerLabel }}</span>
           </div>
         </el-popover>
 
@@ -127,7 +127,7 @@
             />
             <span class="cockpit-inbox__repository">{{ repositoryName(row.item) }}</span>
             <span class="cockpit-inbox__number">
-              {{ row.item.kind === 'pullRequest' ? $t('surface.cockpitWorkInbox.pR') : '' }} {{ workItemDisplayIdentifier(row.item) }}
+              {{ row.item.kind === 'pullRequest' ? $t(connection.provider === 'gitlab' ? 'gitlabBacklog.mr' : 'surface.cockpitWorkInbox.pR') : '' }} {{ workItemDisplayIdentifier(row.item) }}
             </span>
             <strong class="cockpit-inbox__title">{{ row.item.title }}</strong>
 
@@ -271,6 +271,7 @@
 </template>
 
 <script setup lang="ts">
+import { workProviderIcon } from './work-provider-icons';
 import { workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { workProviderDefinition } from '@workspace/core/work-providers';
 import { translate } from '../i18n';
@@ -280,7 +281,7 @@ import type { Agent, Team, WorkBacklogAssignment, WorkIntegrationConnection, Wor
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
 import { repositoryIconForAgent } from '@workspace/core/workspace-sidebar';
-import { DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, GitHubIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
+import { DotsVerticalIcon, ExternalLinkIcon, EyeIcon, GitBranchIcon, PlayerPlayIcon, PlusCircleIcon, RefreshIcon } from '../shared/icons/app-icons';
 import WorkItemDetail from './WorkItemDetail.vue';
 import AgentAvatar from './AgentAvatar.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';

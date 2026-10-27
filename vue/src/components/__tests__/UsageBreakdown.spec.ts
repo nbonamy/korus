@@ -25,6 +25,6 @@ it("compacts large turn and token counts in model rows", () => {
       .find("tbody tr")
       .findAll("td")
       .map((cell) => cell.text()),
-  ).toStrictEqual(["gpt-6-luna", "19.2M", "100%", "19.2M"]);
+  ).toStrictEqual(["gpt-6-luna", "19.2M", "19.2M", "Unavailable", "100%"]);
   wrapper.unmount();
 });

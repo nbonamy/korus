@@ -9,7 +9,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.foundation.BorderStroke
@@ -19,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.sp
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
             Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(28.dp)) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Outlined.Devices, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                    Image(painterResource(R.drawable.app_icon), null, Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)))
                     Text("Connect your laptop", Modifier.widthIn(max = 320.dp).semantics { heading() }, textAlign = TextAlign.Center, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                     Text("On your laptop, open ${model.product.string("desktopName")} Settings → Connections → Mobile access. Turn on Allow connections and choose Add device.",
                         Modifier.widthIn(max = 300.dp), textAlign = TextAlign.Center, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

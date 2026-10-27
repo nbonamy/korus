@@ -6,7 +6,7 @@ import { product } from '@workspace/core/product';
 export function desktopIconPath(app: Pick<App, 'getAppPath' | 'isPackaged'>): string {
   return app.isPackaged
     ? path.join(path.dirname(app.getAppPath()), 'icon.png')
-    : path.join(app.getAppPath(), 'assets', 'icon.png');
+    : path.join(app.getAppPath(), 'assets', 'icon-dev.png');
 }
 
 export function configureDesktopIdentity(app: Pick<App, 'setName' | 'getAppPath' | 'getPath' | 'isPackaged'>, platform = process.platform, env = process.env, executable = process.execPath): void {

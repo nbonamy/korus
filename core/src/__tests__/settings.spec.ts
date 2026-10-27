@@ -24,6 +24,15 @@ describe('settings contracts', () => {
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported', worktreeDelegationInstructions: 10 }).worktreeDelegationInstructions).toBe('');
     expect(normalizeGeneralSettings({ worktreeDelegationStartingContext: 'unsupported' }).worktreeDelegationStartingContext).toBe('handoff');
   });
+  it('normalizes, updates and clears saved review instructions', () => {
+    const snapshot = createEmptySnapshot();
+    expect(snapshot.general.codeReviewInstructions).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '  Check authorization.\nKeep findings actionable.  ' } });
+    expect(snapshot.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
+    expect(normalizeGeneralSettings({ codeReviewInstructions: 42 }).codeReviewInstructions).toBe('');
+    updateSettingsInSnapshot(snapshot, { general: { codeReviewInstructions: '' } });
+    expect(snapshot.general.codeReviewInstructions).toBe('');
+  });
   it('keeps ordered backlog favorite identities and discards invalid persisted entries', () => {
     expect(normalizeGeneralSettings({}).backlogRepositoryFavorites).toStrictEqual({});
     expect(normalizeGeneralSettings({ backlogRepositoryFavorites: {
@@ -63,6 +72,7 @@ describe('settings contracts', () => {
       git: { pull: 'git-config', update: 'merge' },
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       codexBinaryPath: '/opt/homebrew/bin/codex',
       claudeCodeEnabled: true,
       celebrationsEnabled: false,
@@ -85,8 +95,10 @@ describe('settings contracts', () => {
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
+      autoResumeAfterLimit: true,
       sessionCompressionWarningEnabled: true,
       repositoryIcons: {},
+      guestDisplayName: '',
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,
     });
@@ -104,10 +116,10 @@ describe('settings contracts', () => {
       .toBe(false);
     expect(normalizeGeneralSettings({ cockpitAgentViewMode: 'invalid' }).cockpitAgentViewMode).toBe('teams');
     expect(normalizeGeneralSettings({ savedPromptDrafts: [
-      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', createdAt: 1000, unexpected: 'discard' },
+      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000, unexpected: 'discard' },
       { id: 'draft-2', agentId: 'agent-1', text: '', createdAt: 1001 },
     ] }).savedPromptDrafts).toStrictEqual([
-      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', createdAt: 1000 },
+      { id: 'draft-1', agentId: 'agent-1', text: 'Come back later', content: [{ type: 'mention', kind: 'file', id: 'docs/later.md', value: 'docs/later.md', label: 'Come back later' }], createdAt: 1000 },
     ]);
     expect(normalizeGeneralSettings(null)).toStrictEqual(defaultGeneralSettings);
     expect(normalizeAppshotSettings(null)).toStrictEqual(defaultAppshotSettings);
@@ -169,6 +181,7 @@ describe('settings contracts', () => {
       git: { pull: 'git-config', update: 'merge' },
       commitMessageInstructions: '',
       pullRequestInstructions: '',
+      codeReviewInstructions: '',
       codexBinaryPath: '',
       claudeCodeEnabled: false,
       celebrationsEnabled: true,
@@ -187,12 +200,14 @@ describe('settings contracts', () => {
       preventSleepWhenRemoteAccessEnabled: true,
       agentListCompact: false,
       cockpitAgentViewMode: 'teams',
+      autoResumeAfterLimit: true,
       sessionCompressionWarningEnabled: true,
       useInteractivePlans: true,
       worktreeInitializationMode: 'automatic',
       worktreeDelegationStartingContext: 'handoff',
       worktreeDelegationInstructions: '',
       repositoryIcons: {},
+      guestDisplayName: '',
       appshots: defaultAppshotSettings,
       plugins: defaultPluginSettings,
     });

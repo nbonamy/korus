@@ -3,8 +3,9 @@ import { restoreDraftRecord } from '../protected-storage';
 
 describe('draft records', () => {
   it('restores saved drafts with their cursor clamped to the text', () => {
-    const record = { drafts: { '["laptop","agent"]': { text: 'draft', selectionStart: 50, selectionEnd: 50 } }, uncertain: { '["laptop","agent"]': true } };
-    expect(restoreDraftRecord(JSON.parse(JSON.stringify(record)))).toStrictEqual({ drafts: { '["laptop","agent"]': { text: 'draft', selectionStart: 5, selectionEnd: 5 } }, uncertain: record.uncertain });
+    const content = [{ type: 'mention', kind: 'custom', groupId: 'agents', id: 'agent-1', value: 'agent:agent-1', label: 'draft' }];
+    const record = { drafts: { '["laptop","agent"]': { text: 'draft', content, selectionStart: 50, selectionEnd: 50 } }, uncertain: { '["laptop","agent"]': true } };
+    expect(restoreDraftRecord(JSON.parse(JSON.stringify(record)))).toStrictEqual({ drafts: { '["laptop","agent"]': { text: 'draft', content, selectionStart: 5, selectionEnd: 5 } }, uncertain: record.uncertain });
   });
   it('keeps delivery receipts that belong to a draft, and nothing else', () => {
     const key = '["laptop","agent"]';

@@ -39,7 +39,7 @@ const groups = [
   { id: 'agents', labelKey: 'surface.settingsSidebar.groupAgents' },
   { id: 'workspace', labelKey: 'surface.settingsSidebar.groupWorkspace' },
 ];
-const destinations = computed(() => availableSettingsDestinations({ appshots: appHostCapabilities.appshots, availableBackends: props.availableBackends ?? [] }));
+const destinations = computed(() => availableSettingsDestinations({ embeddedBrowser: appHostCapabilities.embeddedBrowser, appshots: appHostCapabilities.appshots, availableBackends: props.availableBackends ?? [] }));
 function selectTab(tab: string): void {
   const destination = destinations.value.find(item => item.id === tab);
   if (destination) emit('select', destination.id);

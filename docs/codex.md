@@ -131,8 +131,9 @@ threads, routed by `threadId` and `agentId`.
   ones. The service tier (Fast mode) is emitted with thread settings, including an
   explicit `null`, so a stale toggle never survives an agent switch or reload.
 - **Skills** are folder-scoped (`skills/list` per agent `cwd`), adapted to
-  `BackendSkillSummary[]`. `$skill` mentions resolve against the active catalog and
-  are sent as `skill` input items beside the text, not left for Codex to infer.
+  `BackendSkillSummary[]`. Picker selection records the canonical target and frozen
+  display label in authored prompt parts. The SDK sends explicit skill and mention
+  inputs; typed or pasted `$skill` and `@name` text carries no selected identity.
   `skills/changed` becomes `skills.changed` and invalidates folder-keyed caches.
 - **Composer commands:** `@` files, `$` skills, `/` commands then skills. `/compact`
   (bare, menu action or Command-K) opens Compress Session; `/compact <text>` is an
@@ -167,6 +168,17 @@ threads, routed by `threadId` and `agentId`.
   attempts retain their idempotency key, including renderer reloads. Account
   changes invalidate selections and pending operations. Quota notifications do
   not trigger banked-reset reads; confirmed outcomes trigger a fresh account read.
+- **Cost estimates:** analytics prices the retained execution model and token counters
+  using historical OpenAI rates. Cached reads receive their own rate and reasoning
+  already included in output is not charged again. Missing tiers use normal pricing;
+  aggregate estimates do not apply long-context premiums. Updates replace the same
+  execution estimate, including after replay and restart. Request observations, when
+  present, supersede the execution estimate instead of being charged twice.
+  The SDK's optional `executionUsage.requestUsage` projection describes independent
+  request telemetry; its absence or unavailable result does not prevent an aggregate
+  estimate. Execution estimates have a separate count and never invent request IDs.
+  Missing model, token counts or model rates still leave cost unavailable. Korus
+  does not parse raw notifications or conversation logs for pricing.
 - **Compaction:** the SDK converts the `contextCompaction` item (and the deprecated
   `thread/compacted`) into provider events; Korus transports them and never
   synthesizes its own lifecycle.

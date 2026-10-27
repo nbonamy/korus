@@ -43,6 +43,7 @@ export function createClientApiMock(
     switchCodeReviewToManual: unscripted('switchCodeReviewToManual'),
     discardCodeReview: unscripted('discardCodeReview'),
     reviewCodeAgain: unscripted('reviewCodeAgain'),
+    setAutoResume: unscripted('setAutoResume'),
     respondToThreadFlag: unscripted('respondToThreadFlag'),
     respondToPlanReview: unscripted('respondToPlanReview'),
     getSnapshot: unscripted('getSnapshot'),
@@ -52,6 +53,10 @@ export function createClientApiMock(
     checkRemoteConnection: unscripted('checkRemoteConnection'),
     updateRemoteConnection: unscripted('updateRemoteConnection'),
     removeRemoteConnection: unscripted('removeRemoteConnection'),
+    guestConversationControl: unscripted('guestConversationControl'),
+    guestConversationImage: unscripted('guestConversationImage'),
+    guestConversationContent: unscripted('guestConversationContent'),
+    conversationShareControl: unscripted('conversationShareControl'),
     companionControl: unscripted('companionControl'),
     getRemoteControlStatus: unscripted('getRemoteControlStatus'),
     enableRemoteControl: unscripted('enableRemoteControl'),
@@ -116,6 +121,8 @@ export function createClientApiMock(
     listSourceFolders: unscripted('listSourceFolders'),
     listSourceRepositories: unscripted('listSourceRepositories'),
     cloneSourceRepository: unscripted('cloneSourceRepository'),
+    previewRepositoryDeletion: unscripted('previewRepositoryDeletion'),
+    deleteRepository: unscripted('deleteRepository'),
     createSourceRepository: unscripted('createSourceRepository'),
     createProject: unscripted('createProject'),
     listSourceBranches: unscripted('listSourceBranches'),
@@ -168,6 +175,7 @@ export function createClientApiMock(
   clearUsage: unscripted('clearUsage'),
     updateSettings: unscripted('updateSettings'),
     readEngineInstructions: unscripted('readEngineInstructions'),
+    manageSkills: unscripted('manageSkills'),
     saveEngineInstructions: unscripted('saveEngineInstructions'),
     previewSpokenAnnouncementVoice: unscripted('previewSpokenAnnouncementVoice'),
     getCodexResourceSharingStatus: unscripted('getCodexResourceSharingStatus'),
@@ -221,12 +229,15 @@ export function createClientApiMock(
     continueInterruptedTurn: unscripted('continueInterruptedTurn'),
     mobileSimulator: unscripted('mobileSimulator'),
     mobileSimulatorView: unscripted('mobileSimulatorView'),
+    browserExtensions: vi.fn().mockResolvedValue({ extensions: [] }),
     browserOpen: unscripted('browserOpen'),
     browserOpenVisualization: unscripted('browserOpenVisualization'),
     browserNavigate: unscripted('browserNavigate'),
     browserGoBack: unscripted('browserGoBack'),
     browserGoForward: unscripted('browserGoForward'),
     browserReload: unscripted('browserReload'),
+    browserOpenDevTools: unscripted('browserOpenDevTools'),
+    browserClearBrowsingData: unscripted('browserClearBrowsingData'),
     browserGetZoom: unscripted('browserGetZoom'),
     browserSetZoom: unscripted('browserSetZoom'),
     browserCopyScreenshot: unscripted('browserCopyScreenshot'),
@@ -248,6 +259,7 @@ export function createClientApiMock(
   api.loadConversationHistory.mockImplementation(async () => api.getSnapshot());
   api.getAutomationSnapshot.mockImplementation(async () => api.getSnapshot());
   api.onEvent.mockImplementation(events.subscribe);
+  api.guestConversationControl.mockImplementation(async input => { if (input.action === 'state') return { entries: [], view: null }; throw new Error('Unscripted guest operation.'); });
   api.onAppCommand.mockImplementation(commands.subscribe);
   api.onUpdateStatusChanged.mockImplementation(updates.subscribe);
 

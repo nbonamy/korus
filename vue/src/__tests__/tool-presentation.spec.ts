@@ -109,7 +109,14 @@ describe(`${product.name} tool presentation`, () => {
     });
   });
 
-  it('resolves recipient ids before send-message completes', () => {
+  it('shows a fallback while the recipient streams in, then resolves its name', () => {
+    const pending = context('send-message', undefined);
+    pending.toolCall = { ...pending.toolCall, done: false, state: 'running' };
+    expect(presentAppTool(pending, translate)).toStrictEqual({
+      icon: MessageIcon, title: 'Sending message to other agent',
+    });
+    pending.toolCall = { ...pending.toolCall, args: { to: '   ' } };
+    expect(presentAppTool(pending, translate)?.title).toBe('Sending message to other agent');
     const running = context('send-message', { to: 'agent-sdk' });
     running.toolCall = { ...running.toolCall, done: false, state: 'running' };
 

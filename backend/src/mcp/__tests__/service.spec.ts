@@ -691,7 +691,7 @@ describe('AppMcpService', () => {
     const workerTools = await postJson(agentUrl(url, 'agent-dina'), {
       jsonrpc: '2.0', id: 1, method: 'tools/list', params: {},
     });
-    const missionTools = ['set-mission-title', 'get-mission-assignment', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result'];
+    const missionTools = ['set-mission-title', 'get-mission-assignment', 'list-mission-artifacts', 'read-mission-artifact', 'write-mission-artifact', 'upsert-mission-ticket', 'submit-mission-result', 'report-mission-review-finding', 'update-mission-review-finding'];
     const workerToolNames = workerTools.result.tools.map((tool: { name: string }) => tool.name);
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-shape-requirements' })).result.isError).toBe(false);
     expect((await callTool(url, 'agent-dina', 'read-skill', { name: 'mission-review' })).result.isError).toBe(true);
@@ -1135,6 +1135,25 @@ describe('AppMcpService', () => {
     expect(snapshot.agents.at(-1)).toMatchObject({ name: null, folder: '/tmp/branch-agent' });
   });
 
+
+  it('lets create-agent override the inherited service tier, and drops it for antigravity', async () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.agents[0]!.backendDefaults = { kind: 'codex', model: 'gpt-5.6-sol', serviceTier: 'fast' };
+    snapshot.providerConnections = (['codex', 'antigravity'] as const).map(backend => ({ backend, installed: true, connected: true, checking: false }));
+    service = new AppMcpService({
+      snapshot,
+      resolveWorkspaceIdentity: vi.fn().mockResolvedValue({ kind: 'folder', folder: '/tmp/work', updatedAt: '2026-09-02T14:00:00.000Z' }),
+    });
+    service.setDriverRpc(new BackendDriverRpc(new Map([['codex', createDriver({})]])));
+    const url = await service.start();
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Inherits' });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Overrides', serviceTier: 'flex' });
+    await callTool(url, 'agent-dina', 'create-agent', { repoPath: '/tmp/work', name: 'Other provider', backend: 'antigravity', serviceTier: 'flex' });
+    const tierOf = (name: string) => (snapshot.agents.find(agent => agent.name === name)?.backendDefaults as { serviceTier?: string } | undefined)?.serviceTier;
+    expect(tierOf('Inherits')).toBe('fast');
+    expect(tierOf('Overrides')).toBe('flex');
+    expect(snapshot.agents.find(agent => agent.name === 'Other provider')?.backendDefaults).not.toHaveProperty('serviceTier');
+  });
 
   it.each([
     [undefined, 'Implement the SDK contract and run focused tests.'],

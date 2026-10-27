@@ -9,6 +9,7 @@ import type {
   WorkItemQuery,
   WorkProviderAuthorization,
   WorkProviderKind,
+  WorkProviderConnectOptions,
   WorkSource,
 } from '@workspace/core/contracts';
 import { localizedText } from './i18n/errors';
@@ -22,41 +23,47 @@ type WorkProviderStateOptions = {
   getSnapshot: () => AppSnapshot;
 };
 
+type CatalogState = { status: 'notLoaded' | 'loading' | 'loaded' | 'error'; error: string | null };
+
 const authorizationPollMs = 5_000;
 
 /** Owns provider authorization, polling, repository catalogs, and backlog state. */
 export function createWorkProviderState(options: WorkProviderStateOptions) {
   const authorization = ref<WorkProviderAuthorization | null>(null);
+  const authorizationErrors = ref<Partial<Record<WorkProviderKind, string>>>({});
   const authorizations = ref<Partial<Record<WorkProviderKind, WorkProviderAuthorization>>>({});
   const repositoriesByProvider = ref<Partial<Record<WorkProviderKind, WorkSource[]>>>({});
   const itemsByRepository = ref<Record<string, WorkItem[]>>({});
   const assignedItemsByProvider = ref<Partial<Record<WorkProviderKind, WorkItem[]>>>({});
   const status = ref<'notLoaded' | 'loading' | 'loaded' | 'error'>('notLoaded');
   const error = ref<string | null>(null);
+  const catalogStates = ref<Partial<Record<WorkProviderKind, CatalogState>>>({});
   const authorizationPollTimers = new Map<WorkProviderKind, ReturnType<typeof globalThis.setTimeout>>();
   const authorizationRevisions = new Map<WorkProviderKind, number>();
   const catalogRevisions = new Map<WorkProviderKind, number>();
   const itemRevisions = new Map<string, number>();
 
-  async function connect(provider: WorkProviderKind): Promise<void> {
+  async function connect(provider: WorkProviderKind, connectOptions?: WorkProviderConnectOptions): Promise<void> {
     if (!appApi?.connectWorkProvider) return;
     const revision = (authorizationRevisions.get(provider) ?? 0) + 1;
     authorizationRevisions.set(provider, revision);
     status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
-      const result = await appApi.connectWorkProvider(provider);
+      const result = await appApi.connectWorkProvider(provider, ...(connectOptions ? [connectOptions] : []));
       if (revision !== authorizationRevisions.get(provider)) return;
       options.adoptSnapshot(result.snapshot);
       setAuthorization(provider, result.authorization ?? null);
       if (result.authorization) scheduleAuthorizationPoll(provider);
       else clearAuthorizationPoll(provider);
       const current = result.snapshot.workBacklog.connections.find(value => value.provider === provider);
-      // A failed direct connect leaves GitHub CLI access connected and reports why in detail.
-      const cliFallbackFailed = current?.source === 'cli' && current.status === 'connected' && !result.authorization && current.detail;
-      if (current?.status === 'notConfigured' || current?.status === 'error' || cliFallbackFailed) {
+      // Failed permission upgrades retain the existing API or CLI connection.
+      const fallbackFailed = current?.status === 'connected' && !result.authorization && current.detail;
+      if (current?.status === 'notConfigured' || current?.status === 'error' || fallbackFailed) {
         status.value = 'error';
         error.value = localizedText(current?.detail, translate);
+        setAuthorizationError(provider, error.value);
         return;
       }
       if (result.authorization?.flow === 'browser') {
@@ -68,6 +75,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (revision !== authorizationRevisions.get(provider)) return;
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       throw cause;
     }
   }
@@ -75,6 +83,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   async function openAuthorization(provider: WorkProviderKind): Promise<void> {
     status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
       const pending = authorizations.value[provider];
       if (pending?.provider === provider && appPlatformActions.openExternal) {
@@ -87,6 +96,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     } catch (cause) {
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       throw cause;
     }
   }
@@ -108,10 +118,13 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     if (revision !== authorizationRevisions.get(provider)) return;
     options.adoptSnapshot(snapshot);
     setAuthorization(provider, null);
+    setAuthorizationError(provider, null);
     repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
-    itemsByRepository.value = {};
+    itemsByRepository.value = Object.fromEntries(Object.entries(itemsByRepository.value).filter(([key]) => !key.startsWith(`${provider}:`)));
+    assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: [] };
     status.value = 'notLoaded';
     error.value = null;
+    setCatalogState(provider, 'notLoaded');
   }
 
   async function loadRepositories(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkSource[]> {
@@ -121,10 +134,12 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     if (!appApi?.listWorkSources || connection(provider)?.status !== 'connected') {
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
       status.value = 'notLoaded';
+      setCatalogState(provider, 'notLoaded');
       return [];
     }
 
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     const revision = (catalogRevisions.get(provider) ?? 0) + 1;
     catalogRevisions.set(provider, revision);
@@ -133,6 +148,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (catalogRevisions.get(provider) !== revision) return [];
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: repositories };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       const configuredId = options.getSnapshot().workBacklog.providerConfigurations[provider]?.sourceId ?? null;
       const selectedId = configuredId ?? repositories[0]?.id ?? null;
       if (selectedId && !configuredId) {
@@ -148,6 +164,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       repositoriesByProvider.value = { ...repositoriesByProvider.value, [provider]: [] };
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       return [];
     }
   }
@@ -176,17 +193,20 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     const revision = (itemRevisions.get(key) ?? 0) + 1;
     itemRevisions.set(key, revision);
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     try {
       const items = await appApi.listWorkItems(provider, repositoryId);
       if (itemRevisions.get(key) !== revision) return undefined;
       itemsByRepository.value = { ...itemsByRepository.value, [workItemsKey(provider, repositoryId)]: items };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       return items;
     } catch (cause) {
       if (itemRevisions.get(key) !== revision) return undefined;
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       return undefined;
     }
   }
@@ -205,15 +225,18 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
   async function loadAssignedItems(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkItem[]> {
     if (!appApi?.listAssignedWorkItems) return [];
     status.value = 'loading';
+    setCatalogState(provider, 'loading');
     error.value = null;
     try {
       const items = await appApi.listAssignedWorkItems(provider, location);
       assignedItemsByProvider.value = { ...assignedItemsByProvider.value, [provider]: items };
       status.value = 'loaded';
+      setCatalogState(provider, 'loaded');
       return items;
     } catch (cause) {
       status.value = 'error';
       error.value = errorMessage(cause);
+      setCatalogState(provider, 'error', error.value);
       throw cause;
     }
   }
@@ -230,6 +253,7 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     const revision = authorizationRevisions.get(provider);
     if (pollOptions.userInitiated) status.value = 'loading';
     error.value = null;
+    setAuthorizationError(provider, null);
     try {
       const snapshot = await appApi.pollWorkProviderAuthorization(provider);
       if (revision !== authorizationRevisions.get(provider)) return;
@@ -238,8 +262,14 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       if (current?.status === 'connected') {
         clearAuthorizationPoll(provider);
         setAuthorization(provider, null);
-        if (!isFirstRunOnboardingActive()) useConfetti().celebrate();
+        const authorizationError = localizedText(current.detail, translate);
+        if (!authorizationError && !isFirstRunOnboardingActive()) useConfetti().celebrate();
         await loadRepositories(provider);
+        if (authorizationError) {
+          status.value = 'error';
+          error.value = authorizationError;
+          setAuthorizationError(provider, authorizationError);
+        }
         return;
       }
       if (current?.status === 'connecting' && authorizations.value[provider]) {
@@ -251,11 +281,13 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
       setAuthorization(provider, null);
       status.value = current?.status === 'error' ? 'error' : 'loaded';
       error.value = current?.status === 'error' ? localizedText(current.detail, translate) : null;
+      setAuthorizationError(provider, error.value);
     } catch (cause) {
       if (revision !== authorizationRevisions.get(provider)) return;
       clearAuthorizationPoll(provider);
       status.value = 'error';
       error.value = errorMessage(cause);
+      setAuthorizationError(provider, error.value);
       if (pollOptions.userInitiated) throw cause;
     }
   }
@@ -281,6 +313,11 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     return options.getSnapshot().workBacklog.connections.find((candidate) => candidate.provider === provider) ?? null;
   }
 
+  function setAuthorizationError(provider: WorkProviderKind, message: string | null): void {
+    if (message) authorizationErrors.value[provider] = message;
+    else delete authorizationErrors.value[provider];
+  }
+
   function setAuthorization(provider: WorkProviderKind, pending: WorkProviderAuthorization | null): void {
     const next = { ...authorizations.value };
     if (pending) next[provider] = pending;
@@ -290,10 +327,20 @@ export function createWorkProviderState(options: WorkProviderStateOptions) {
     else if (authorization.value?.provider === provider) authorization.value = Object.values(next)[0] ?? null;
   }
 
+  function catalogState(provider: WorkProviderKind): CatalogState {
+    return catalogStates.value[provider] ?? { status: 'notLoaded', error: null };
+  }
+
+  function setCatalogState(provider: WorkProviderKind, status: CatalogState['status'], error: string | null = null): void {
+    catalogStates.value = { ...catalogStates.value, [provider]: { status, error } };
+  }
+
   return {
     assignedItemsByProvider,
+    catalogState,
     authorization,
     authorizations,
+    authorizationErrors,
     error,
     itemsByRepository,
     repositoriesByProvider,

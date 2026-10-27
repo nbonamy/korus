@@ -33,6 +33,8 @@ export type BackendEvent = BackendEventFrom<BackendPublishedEvent>;
 export type BackendSendResult = {
   backendSession: BackendSession;
   turnId?: string;
+  /** Public provider user-message ID, preserved by canonical history. */
+  messageId?: string;
 };
 
 export type BackendTurnActionResult = {
@@ -106,6 +108,7 @@ export type BackendCodeReviewResult = {
 
 export type AgentBackendDriver = {
   readonly backend: AgentBackend;
+  onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): BackendRuntimeStatus;
@@ -146,12 +149,12 @@ export type AgentBackendDriver = {
   readConversationSummary?(agent: Agent, ref: BackendConversationRef): Promise<ConversationSummary | null>;
   steerPrompt?(agent: Agent, prompt: string, options?: SendPromptOptions): Promise<BackendSendResult>;
   deleteTurn?(agent: Agent, turnId: string): Promise<BackendTurnActionResult>;
-  editTurn?(agent: Agent, turnId: string, content: string): Promise<BackendTurnActionResult>;
+  editTurn?(agent: Agent, turnId: string, content: string, options?: Pick<SendPromptOptions, 'content'>): Promise<BackendTurnActionResult>;
   retryTurn?(agent: Agent, turnId: string): Promise<BackendTurnActionResult>;
   continueInterruptedTurn?(agent: Agent): Promise<BackendTurnActionResult>;
   listModels?(agent: Agent): Promise<BackendModelOption[]>;
   listPlugins?(agent: Agent): Promise<BackendPluginSummary[]>;
-  listSkills?(agent: Agent): Promise<BackendSkillSummary[]>;
+  listSkills?(agent: Agent, forceReload?: boolean): Promise<BackendSkillSummary[]>;
   getRemoteControlStatus?(): Promise<DevicePairingStatus>;
   enableRemoteControl?(): Promise<DevicePairingStatus>;
   disableRemoteControl?(): Promise<DevicePairingStatus>;

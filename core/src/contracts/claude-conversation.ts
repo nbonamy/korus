@@ -46,6 +46,10 @@ type ClaudeConversationEventBase = {
 
 export type ClaudeConversationEvent =
   | ClaudeConversationEventBase & {
+      type: 'turn.executionPlanUpdated';
+      payload: { plan: ThreadPlan | null };
+    }
+  | ClaudeConversationEventBase & {
       type: 'history.prepended';
       payload: { messages: RendererMessage[]; hasOlder: boolean };
     }
@@ -129,5 +133,5 @@ export type ClaudeConversationEvent =
     }
   | ClaudeConversationEventBase & {
       type: 'error';
-      payload: { message: string; willRetry?: boolean };
+      payload: { message: string; willRetry?: boolean; rateLimit?: import('../auto-resume').RateLimitDetails };
     };

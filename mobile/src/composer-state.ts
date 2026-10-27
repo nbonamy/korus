@@ -1,5 +1,6 @@
 import { computed, reactive, shallowRef } from 'vue';
 import type { Agent, BackendModelOption } from '@workspace/core/contracts';
+import { companionAgents } from '@workspace/core/companion-protocol';
 import type { CompanionSession, CompanionWorkspace } from './companion-port';
 import { applyComposerChoice, resolveComposerSettings, type ComposerChange, type ComposerChoice } from './composer-settings';
 
@@ -36,7 +37,7 @@ export function createComposerState(deps: {
   });
 
   async function loadModels(id: string, capturedSession: CompanionSession) {
-    const backendOf = () => deps.workspace().agents.find((candidate) => candidate.id === id)?.backend;
+    const backendOf = () => companionAgents(deps.workspace()).find((candidate) => candidate.id === id)?.backend;
     const requested = backendOf(); const key = modelKey(id, requested);
     if (!capturedSession.listModels || catalog.value[key]) return;
     try {

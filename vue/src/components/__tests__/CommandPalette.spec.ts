@@ -248,7 +248,7 @@ describe('CommandPalette', () => {
     expect(wrapper.findAll('kbd')).toHaveLength(0);
     context.agent = null;
     await wrapper.get('input').setValue('');
-    expect(wrapper.text()).not.toMatch(/Edit agent|Open files|Open simulator|Open code review|Quit/);
+    expect(wrapper.text()).not.toMatch(/Rename agent|Open files|Open simulator|Open code review|Quit/);
     expect(wrapper.text()).toContain('New agent');
     context.shortcuts.onboarding = true;
     await nextTick();

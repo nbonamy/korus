@@ -3,6 +3,7 @@ import SwiftUI
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
+    @ScaledMetric(relativeTo: .subheadline) private var teamPillHeight: CGFloat = 36
     private static let mark = Bundle.main.url(forResource: "icon", withExtension: "png")
         .flatMap { UIImage(contentsOfFile: $0.path) }
 
@@ -10,9 +11,10 @@ struct DrawerView: View {
         VStack(spacing: 0) {
             teams
             organization
+            missionsEntry
             if model.sidebarOrganization == .activity {
                 ActivityDrawerList(groups: model.activityGroups)
-                    .id("\(model.laptopID):\(model.teamID)")
+                    .id("\(model.laptopID):\(model.sidebarScopeID)")
             } else {
                 repositoryList
             }
@@ -33,6 +35,26 @@ struct DrawerView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Check the connection and try again.")
+        }
+    }
+
+    @ViewBuilder private var missionsEntry: some View {
+        if !model.missions.isEmpty {
+            let active = model.missions.filter(\.isActive).count
+            Button { model.showMissions() } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "target").foregroundStyle(.secondary)
+                    Text("Missions")
+                    Spacer()
+                    if active > 0 { Text("\(active) active").font(.subheadline).foregroundStyle(.secondary) }
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .font(.body)
+                .padding(.horizontal, 24).frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(active > 0 ? "Missions, \(active) active" : "Missions")
         }
     }
 
@@ -115,19 +137,21 @@ struct DrawerView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 GlassEffectContainer(spacing: 8) {
                     HStack(spacing: 8) {
+                        if model.teams.count > 1 {
+                            teamPill("All", selected: model.allTeams) { model.command("selectAllTeams") }
+                                .accessibilityLabel("All teams")
+                        }
                         ForEach(model.teams) { team in
-                            Button { model.select(team: team.id) } label: {
+                            let selected = !model.allTeams && team.id == model.teamID
+                            teamPill(selected: selected, action: { model.select(team: team.id) }) {
                                 HStack(spacing: 6) {
                                     Text(team.name)
-                                    if team.isUnread == true && team.id != model.teamID { UnreadDot() }
+                                    if team.isUnread == true && !selected { UnreadDot() }
                                 }
                             }
                             .accessibilityLabel(team.name + (team.isUnread == true ? ", unread activity" : ""))
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14).padding(.vertical, 8)
-                            .foregroundStyle(team.id == model.teamID ? Color.white : Color.primary)
-                            .glassEffect(team.id == model.teamID ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
                         }
+                        NewTeamButton(size: teamPillHeight)
                     }
                     .padding(.leading, 4).padding(.trailing, 20)
                     // Keep the glass inside the viewport vertically while clipping scrolled pills beside the fixed logo.
@@ -138,6 +162,20 @@ struct DrawerView: View {
         .padding(.leading, 20)
         .padding(.top, 2)
         .padding(.bottom, 4)
+    }
+
+    private func teamPill(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        teamPill(selected: selected, action: action) { Text(title) }
+    }
+
+    private func teamPill<Label: View>(selected: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action, label: label)
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .frame(height: teamPillHeight)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .glassEffect(selected ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var footer: some View {
@@ -160,6 +198,44 @@ struct DrawerView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
+    }
+}
+
+private struct NewTeamButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var showingPrompt = false
+    @State private var name = ""
+    let size: CGFloat
+    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        Button {
+            if model.teamCreation != .failed { name = "" }
+            showingPrompt = true
+        } label: {
+            Group {
+                if model.teamCreation == .creating { ProgressView().controlSize(.small) }
+                else { Image(systemName: "plus").font(.subheadline.weight(.semibold)) }
+            }
+            .frame(width: size, height: size)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.connection != .connected || model.teamCreation == .creating)
+        .accessibilityLabel("New team")
+        .alert("New Team", isPresented: $showingPrompt) {
+            TextField("Name", text: $name)
+            Button("Create") { model.command("createTeam", ["name": cleanName]) }
+                .disabled(cleanName.isEmpty || cleanName.utf16.count > 100 || model.connection != .connected)
+            Button("Cancel", role: .cancel) { model.command("dismissTeamCreation") }
+        } message: {
+            if model.teamCreation == .failed { Text("Couldn’t create the team. Check the connection and try again.") }
+        }
+        .onChange(of: model.teamCreation) { _, phase in
+            if phase == .failed { showingPrompt = true }
+        }
     }
 }
 

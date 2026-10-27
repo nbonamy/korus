@@ -27,6 +27,17 @@ afterEach(async () => {
 });
 
 describe('state persistence', () => {
+  it('retains a guest display name saved through settings update after restart', async () => {
+    const home = await tempHome();
+    const store = new AppStateStore(home);
+    const server = new AppBackendServer({ version: 'test', snapshot: createInitialSnapshot(), saveSnapshot: snapshot => store.save(snapshot) });
+    try {
+      const result = await server.handleMessage({ jsonrpc: '2.0', id: 'save-name', method: backendMethods.settingsUpdate, params: { input: { general: { guestDisplayName: ' Nicolas ' } } } });
+      expect(result).not.toHaveProperty('error');
+    } finally { await server.close(); }
+    const restored = await new AppStateStore(home).load();
+    expect(restored.general.guestDisplayName).toBe('Nicolas');
+  });
   it('retains read revisions across a fresh store restart', async () => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
@@ -44,10 +55,10 @@ describe('state persistence', () => {
     const restored = await new AppStateStore(home).load();
     expect(restored.general.useInteractivePlans).toBe(useInteractivePlans);
   });
-  it.each([false, true])('retains delegation preferences and worker context after reload (execution bound: %s)', async bound => {
+  it.each([false, true])('retains workflow preferences and worker context after reload (execution bound: %s)', async bound => {
     const home = await tempHome();
     const snapshot = createInitialSnapshot();
-    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.' } });
+    updateSettingsInSnapshot(snapshot, { general: { worktreeDelegationStartingContext: 'handoff', worktreeDelegationInstructions: 'Keep commits local.\nRun focused tests.', codeReviewInstructions: 'Check authorization.\nKeep findings actionable.' } });
     snapshot.agents[0]!.delegationContext = { requested: 'conversation', effective: 'handoff', reason: 'cross-provider' };
     snapshot.agents[0]!.userDelegationOverrides = { startingContext: 'handoff', instructions: 'User-entered directions', ...(bound ? { execution: { backend: 'codex' as const, conversationId: 'thread-dina', turnId: 'turn-dina' } } : {}) };
     snapshot.agents[1]!.delegationUserInstructions = { saved: 'Saved user constraint', taskSpecific: 'Explicit user override' };
@@ -56,6 +67,7 @@ describe('state persistence', () => {
     snapshot.agents[1]!.backendSession = { kind: 'claude', sessionId: 'native-worker', transport: 'stdio', transcriptFolder: '/source-provider-store' };
     await new AppStateStore(home).save(snapshot);
     const restored = await new AppStateStore(home).load();
+    expect(restored.general.codeReviewInstructions).toBe('Check authorization.\nKeep findings actionable.');
     expect(restored.general.worktreeDelegationStartingContext).toBe('handoff');
     expect(restored.general.worktreeDelegationInstructions).toBe('Keep commits local.\nRun focused tests.');
     expect(restored.agents[0]!.delegationContext).toStrictEqual(snapshot.agents[0]!.delegationContext);
@@ -198,11 +210,13 @@ describe('state persistence', () => {
     snapshot.workBacklog.providerSettings.github = { oauthClientId: 'github-client' };
     updateSettingsInSnapshot(snapshot, { workProviders: { linear: { oauthClientId: ' linear-client ' } } });
     snapshot.workBacklog.connections.push({ provider: 'linear', status: 'connected', accountLabel: 'Alex' });
+    snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gl-user', hostedMcp: { status: 'unavailable' } });
     snapshot.workBacklog.providerConfigurations = { github: { sourceId: 'owner/repo' }, linear: { sourceId: 'linear:team:project', assigneeLogin: 'Alex', tagName: 'bug' } };
     await persistence.save(snapshot);
     const restored = await persistence.load();
     expect(restored.workBacklog.providerSettings).toEqual({ github: { oauthClientId: 'github-client' }, linear: { oauthClientId: 'linear-client' } });
     expect(restored.workBacklog.connections).toContainEqual({ provider: 'linear', status: 'connected', accountLabel: 'Alex' });
+    expect(restored.workBacklog.connections).toContainEqual({ provider: 'gitlab', status: 'connected', source: 'api', accountLabel: 'gl-user', hostedMcp: { status: 'unavailable' } });
     expect(restored.workBacklog.providerConfigurations).toEqual(snapshot.workBacklog.providerConfigurations);
     expect(isAppSnapshot(restored)).toBe(true);
   });
@@ -305,11 +319,13 @@ describe('state persistence', () => {
     snapshot.agents[0].sessionKind = 'quickChat';
     snapshot.agents[0].name = null;
     snapshot.agents[0].folder = null;
+    snapshot.agents[0].sharedConversation = { joinId: 'a'.repeat(64) };
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
     expect(restored.agents[0]).toMatchObject({
       sessionKind: 'quickChat',
+      sharedConversation: { joinId: 'a'.repeat(64) },
       name: null,
       folder: null,
     });
@@ -469,15 +485,15 @@ describe('state persistence', () => {
     expect(snapshotFromPersistedState(persisted).agents[0].threadFlags).toBeUndefined();
   });
 
-  it('round-trips tracked pull request state and rejects incomplete tracking records', () => {
+  it.each(['github', 'gitlab'] as const)('round-trips %s tracked request state through disk restart and rejects incomplete records', async provider => {
     const snapshot = createInitialSnapshot();
     snapshot.agents[0].pullRequest = {
-      provider: 'github',
-      repository: 'nbonamy/agent-workspace',
+      provider,
+      repository: provider === 'gitlab' ? 'gitlab.com/group/sub/repo' : 'nbonamy/agent-workspace',
       branch: 'feat/pr-monitoring',
       number: 42,
       title: 'Monitor pull requests',
-      url: 'https://github.com/nbonamy/agent-workspace/pull/42',
+      url: provider === 'gitlab' ? 'https://gitlab.com/group/sub/repo/-/merge_requests/42' : 'https://github.com/nbonamy/agent-workspace/pull/42',
       draft: false,
       headSha: 'abc123',
       state: 'merged',
@@ -486,10 +502,15 @@ describe('state persistence', () => {
       updatedAt: '2026-09-03T12:00:00.000Z',
     };
 
+    const home = await tempHome();
+    await new AppStateStore(home).save(snapshot);
+    const restored = await new AppStateStore(home).load();
+    expect(restored.agents[0]!.pullRequest).toStrictEqual(snapshot.agents[0]!.pullRequest);
+    expect(isAppSnapshot(restored)).toBe(true);
     const persisted = persistedStateFromSnapshot(snapshot);
     expect(snapshotFromPersistedState(persisted).agents[0].pullRequest).toStrictEqual(snapshot.agents[0].pullRequest);
 
-    (persisted.agents[0] as { pullRequest?: unknown }).pullRequest = { provider: 'github', number: 42 };
+    (persisted.agents[0] as { pullRequest?: unknown }).pullRequest = { provider, number: 42 };
     expect(snapshotFromPersistedState(persisted).agents[0].pullRequest).toBeUndefined();
   });
 
@@ -1389,7 +1410,7 @@ describe('state persistence', () => {
 
     const restored = snapshotFromPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(restored.general).toStrictEqual({ ...snapshot.general, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
+    expect(restored.general).toStrictEqual({ ...snapshot.general, guestDisplayName: '', codeReviewInstructions: '', autoResumeAfterLimit: true, useInteractivePlans: true, git: { pull: 'git-config', update: 'merge' } });
   });
 
   it('removes credentials from restored workspace origins', () => {

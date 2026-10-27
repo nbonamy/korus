@@ -32,6 +32,20 @@ weight and predictable geometry over decorative cards or explanatory copy.
 ## Ownership
 
 - **Components:** ephemeral interaction and derived presentation state.
+- **Shared Quick Chats:** saved joins appear in their original local team's Quick
+  Chat list with a shared origin marker. Pasted invitations and native deep links
+  use the same join dialog. The daemon owns credentials and provider replicas;
+  Vue receives only a credential-free view. The normal conversation component
+  uses a text-only proposal composer and guest-scoped image/content readers.
+  Shared rows have no local provider session or workspace authority.
+  Their titles preserve the owner's label. Sidebar title disambiguation applies
+  only to matching names within the same repository group; other repositories,
+  folders and Quick Chats do not affect those titles.
+  Invitation form state is independent of background join projections; saved
+  preferences finish loading before an incoming invitation is prepared.
+  Owner and guest suggestions use the SDK's `composer-drawers` slot and shared
+  drawer components, including the queued-prompt layout; the daemon owns
+  proposal state and authorship, while the renderer owns the editable owner draft.
 - **`vue/src/app-state.ts`:** renderer state shared across surfaces, the replica of
   server-authored app state, and the registry of per-agent provider replicas. It
   routes provider frames to the matching provider reducer and never interprets or
@@ -78,6 +92,14 @@ snapshot and call targeted SDK bridge operations; Claude panes receive the Claud
 host's snapshot. A generic Codex interaction defect is an SDK defect. Never add a
 global message list or provider-neutral reducer to `app-state.ts`; Korus-only
 overlays read the provider frame or an explicit coordination projection.
+
+Mentions are authored parts created by picker selection, with stable targets and
+frozen labels. Drafts, saved selections, queues, submissions and mobile transports
+preserve those parts; catalogs never reinterpret plain text. The SDK owns editing
+and slicing parts, while Korus supplies selected teammate identities to providers.
+Provider dispatch uses the SDK's canonical projection while preserving hidden
+context: selected skills become Markdown references with their canonical names
+and paths, independently of the saved UI labels.
 
 Split layouts hold peer conversation panes, never parent/child agents.
 `useSplitWorkspace` owns layout, assignment, focus and split ratios per team,
@@ -167,9 +189,12 @@ without cancelling the request, and completion reports through a notification.
 Each request retains its original agent and cleanup choices; completion must not
 replace a newer dialog or navigation selection.
 
-- **Dialogs:** compose `FormDialog`/`FormField` (title, optional subtitle, one
+- **Dialogs:** single-input prompts use `FormDialog` with `compact` and a subtle
+  `ClearableTextInput`. Autofocus runs after dialog focus trapping, with optional
+  selection of existing values. Compose `FormDialog`/`FormField` (title, optional subtitle, one
   padded body, labels above controls, divided footer, no second gutter). Footer:
-  dismiss tertiary, alternatives secondary, at most one primary. Compact pickers use
+  dismiss tertiary, alternatives secondary, at most one primary, ordered left to
+  right as tertiary, secondary, primary. Compact pickers use
   the filter as the whole top row, then loading/error/empty/results. Dialogs emit
   domain actions; the parent or composable persists and calls the backend.
   Shared dialog styles reset inherited text alignment to left; footer actions stay

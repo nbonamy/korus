@@ -49,6 +49,39 @@ class SidebarWorkflowTest {
         assertEquals(fields(expected), fields(engine.commands().last()))
     }
 
+    @Test fun newTeamPromptsOnlyForANameKeepsItOnFailureAndClosesAfterCreation() {
+        NativeEngineFixture(app.activityRule.scenario).use { engine ->
+            app.waitUntil(20_000) { engine.model.state.string("startup") == "ready" }
+            engine.state(state()); mount(engine)
+            app.onNodeWithContentDescription("Open workspace").performClick()
+            app.onNodeWithContentDescription("New team").performScrollTo().performClick()
+            app.onNodeWithText("Create").assertIsNotEnabled()
+            app.onNodeWithText("Name").performTextInput("Mobile team")
+            app.onNodeWithText("Create").performClick()
+            assertCommand(engine, json("type" to "createTeam", "name" to "Mobile team"))
+            engine.state(state().put("teamCreation", "creating"))
+            app.onNodeWithText("Create").assertIsNotEnabled()
+            engine.state(state().put("teamCreation", "failed"))
+            app.onNodeWithText("Mobile team").assertIsDisplayed()
+            app.onNodeWithText("Couldn’t create the team. Check the connection and try again.").assertIsDisplayed()
+            app.onNodeWithText("Create").performClick()
+            app.waitUntil(5_000) { engine.commands().count { it.string("type") == "createTeam" } == 2 }
+            engine.state(state().put("teamCreation", "creating"))
+            engine.state(state(team = "new").put("teamCreation", "idle").put("teams", JSONArray().put(json("id" to "new", "name" to "Mobile team"))))
+            app.onNodeWithText("Create").assertDoesNotExist()
+            app.onNodeWithContentDescription("Mobile team").assertIsSelected()
+            engine.state(state().put("connection", "disconnected"))
+            app.onNodeWithContentDescription("New team").performScrollTo().assertIsNotEnabled()
+            engine.state(state())
+            app.onNodeWithContentDescription("New team").performScrollTo().performClick()
+            app.onNodeWithText("Name").performTextInput("Fast team")
+            app.onNodeWithText("Create").performClick()
+            engine.state(state(team = "fast").put("teamCreation", "idle").put("teams", JSONArray().put(json("id" to "fast", "name" to "Fast team"))))
+            app.onNodeWithText("Create").assertDoesNotExist()
+            app.onNodeWithContentDescription("Fast team").assertIsSelected()
+        }
+    }
+
     /** A long team rail must not scroll the product mark away, hide unread activity,
      * or lose exclusive team selection and its command target. */
     @Test fun teamRailKeepsTheProductMarkFixedAndExposesSelectedAndUnreadTeams() {
@@ -57,9 +90,14 @@ class SidebarWorkflowTest {
             val teams = JSONArray((1..12).map { json("id" to "t$it", "name" to "Team $it", "isUnread" to (it == 12)) })
             engine.state(state(team = "t1").put("teams", teams)); mount(engine)
             app.onNodeWithContentDescription("Open workspace").performClick()
+            app.onNodeWithContentDescription("All teams").assertIsNotSelected().performClick()
+            assertCommand(engine, json("type" to "selectAllTeams"))
+            engine.state(state(team = "t1").put("teams", teams).put("allTeams", true))
+            app.onNodeWithContentDescription("All teams").assertIsSelected()
+            app.onNodeWithContentDescription("Team 1").assertIsNotSelected()
             val mark = app.onNodeWithContentDescription(engine.model.product.string("name"))
             val initialMark = mark.assertIsDisplayed().getUnclippedBoundsInRoot()
-            app.onNodeWithContentDescription("Team 1").assertIsSelected()
+            app.onNodeWithContentDescription("Team 1").assertIsNotSelected()
                 .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.Tab))
             app.onNodeWithContentDescription("Team 12, unread activity").performScrollTo().assertIsDisplayed().performClick()
             assertCommand(engine, json("type" to "selectTeam", "id" to "t12"))
@@ -67,6 +105,8 @@ class SidebarWorkflowTest {
             engine.state(state(team = "t12").put("teams", teams))
             app.onNodeWithContentDescription("Team 12").assertIsSelected()
             app.onNodeWithContentDescription("Team 12, unread activity").assertDoesNotExist()
+            engine.state(state(team = "t12").put("teams", JSONArray().put(teams.getJSONObject(11))))
+            app.onNodeWithContentDescription("All teams").assertDoesNotExist()
         }
     }
 

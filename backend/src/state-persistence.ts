@@ -1,3 +1,4 @@
+import { isRateLimitPause } from '@workspace/core/auto-resume';
 import { isAgentReadState } from '@workspace/core/agent-read-state';
 import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstructions } from '@workspace/core/delegation-context';
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
@@ -58,6 +59,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   delegationUserInstructions?: Agent['delegationUserInstructions'];
   pullRequest?: Agent['pullRequest'];
   sessionKind?: Agent['sessionKind'];
+  sharedConversation?: Agent['sharedConversation'];
   conversationTitle?: string;
   avatar?: string;
   backend: AgentBackend;
@@ -74,6 +76,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   codeReview?: import('@workspace/core/code-review').CodeReviewSession;
   threadFlags?: import('@workspace/core/thread-flags').ThreadFlags;
   suggestedPrompt?: string;
+  rateLimitPause?: Agent['rateLimitPause'];
   goal?: ThreadGoal;
   visualize?: Omit<VisualizeSession, 'visualizations'> & { visualizations?: Visualization[] };
   statusText?: string;
@@ -135,6 +138,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.delegatedByAgentId ? { delegatedByAgentId: agent.delegatedByAgentId } : {}),
     ...(agent.pullRequest ? { pullRequest: { ...agent.pullRequest } } : {}),
     ...(agent.sessionKind ? { sessionKind: agent.sessionKind } : {}),
+    ...(agent.sharedConversation ? { sharedConversation: agent.sharedConversation } : {}),
     name: agent.name,
     ...(agent.conversationTitle ? { conversationTitle: agent.conversationTitle } : {}),
     avatar: agent.avatar,
@@ -150,6 +154,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.contextUsage ? { contextUsage: { ...agent.contextUsage } } : {}),
     ...(agent.plan ? { plan: cloneThreadPlan(agent.plan) } : {}),
     ...(agent.threadFlags ? { threadFlags: structuredClone(agent.threadFlags) } : {}),
+    ...(agent.rateLimitPause ? { rateLimitPause: { ...agent.rateLimitPause } } : {}),
     ...(agent.suggestedPrompt ? { suggestedPrompt: agent.suggestedPrompt } : {}),
     ...(agent.planReview ? { planReview: { ...agent.planReview } } : {}),
     ...(agent.codeReview ? { codeReview: cloneCodeReviewSession(agent.codeReview) } : {}),
@@ -353,6 +358,8 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
   }
 
   const sessionKind = value.sessionKind === 'quickChat' ? value.sessionKind : undefined;
+  const shared = value.sharedConversation;
+  if (shared !== undefined && (!shared || typeof shared !== 'object' || !('joinId' in shared) || typeof shared.joinId !== 'string' || !/^[a-f0-9]{64}$/.test(shared.joinId) || sessionKind !== 'quickChat' || value.folder !== null)) return null;
   const folder = typeof value.folder === 'string'
     ? value.folder
     : sessionKind && value.folder === null ? null : undefined;
@@ -386,6 +393,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
       : {}),
     ...(pullRequest ? { pullRequest } : {}),
     ...(sessionKind ? { sessionKind } : {}),
+    ...(shared ? { sharedConversation: { joinId: (shared as { joinId: string }).joinId } } : {}),
     name: typeof value.name === 'string' ? value.name : null,
     ...(typeof value.conversationTitle === 'string' && value.conversationTitle.trim()
       ? { conversationTitle: value.conversationTitle.trim() }
@@ -403,6 +411,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(contextUsage ? { contextUsage } : {}),
     ...(plan ? { plan } : {}),
     ...(isThreadFlags(value.threadFlags) ? { threadFlags: structuredClone(value.threadFlags) } : {}),
+    ...(isRateLimitPause(value.rateLimitPause) ? { rateLimitPause: { ...value.rateLimitPause } } : {}),
     ...(typeof value.suggestedPrompt === 'string' && value.suggestedPrompt.trim() ? { suggestedPrompt: value.suggestedPrompt.trim() } : {}),
     ...(planReview ? { planReview } : {}),
     ...(isCodeReviewSession(value.codeReview)
@@ -446,7 +455,7 @@ function sanitizeVisualizeSession(value: unknown, repositoryVisualizations?: Vis
 function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefined {
   if (
     !isRecord(value) ||
-    value.provider !== 'github' ||
+    (value.provider !== 'github' && value.provider !== 'gitlab') ||
     typeof value.repository !== 'string' ||
     typeof value.branch !== 'string' ||
     !Number.isInteger(value.number) ||
@@ -461,7 +470,7 @@ function sanitizeAgentPullRequest(value: unknown): Agent['pullRequest'] | undefi
     return undefined;
   }
   return {
-    provider: 'github',
+    provider: value.provider,
     repository: value.repository,
     branch: value.branch,
     number: value.number as number,
@@ -949,6 +958,8 @@ function sanitizeWorkIntegrationConnection(value: unknown): WorkIntegrationConne
     provider: value.provider,
     status: value.status,
     ...(value.source === 'api' || value.source === 'cli' || value.source === 'none' ? { source: value.source } : {}),
+    ...(isRecord(value.hostedMcp) && ['directRequired', 'authorizationRequired', 'available', 'unavailable'].includes(String(value.hostedMcp.status))
+      ? { hostedMcp: { status: value.hostedMcp.status as NonNullable<WorkIntegrationConnection['hostedMcp']>['status'] } } : {}),
     ...(typeof value.accountLabel === 'string' ? { accountLabel: value.accountLabel } : {}),
     ...(appText(value.detail) ? { detail: appText(value.detail)! } : {}),
     ...(typeof value.connectedAt === 'string' ? { connectedAt: value.connectedAt } : {}),

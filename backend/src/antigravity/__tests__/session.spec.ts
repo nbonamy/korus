@@ -1,5 +1,6 @@
 import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AcpSession } from '../session';
@@ -15,6 +16,13 @@ import { AppBackendServer } from '../../server';
 import { BackendDriverRpc } from '../../driver-rpc';
 import { sessionMcpServer } from '../mcp-bridge';
 import { product } from '@workspace/core/product';
+import type { ExecutionObservation, UsageCost } from '@workspace/core/usage';
+import { UsageLedger } from '../../usage/usage-ledger';
+import { UsageService } from '../../usage/usage-service';
+import usageFixture from './fixtures/usage-capability.json';
+import authorshipFixture from './fixtures/authorship-capability.json';
+import { AgentPromptManager } from '../../agents/agent-prompt-manager';
+import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
 
 
 let root: string;
@@ -35,6 +43,9 @@ const rl=require('node:readline').createInterface({input:process.stdin});
 const send=v=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...v})+'\\n');
 const fs=require('node:fs'), catalogFile=require('node:path').join(process.env.GEMINI_HOME,'catalog.json');
 fs.mkdirSync(process.env.GEMINI_HOME,{recursive:true});
+const usageFile=require('node:path').join(process.cwd(),'usage-fixture.json');
+const usageFixture=()=>fs.existsSync(usageFile)?JSON.parse(fs.readFileSync(usageFile,'utf8')):undefined;
+const authorshipFixture=${JSON.stringify(authorshipFixture)};
 const catalog=()=>fs.existsSync(catalogFile)?fs.readFileSync(catalogFile,'utf8').trim().split('\\n').map(JSON.parse):[];
 let sessionId=require('node:crypto').randomUUID(), promptId, mcpServers=[], planPhase, utility, permissionFixture, cancelPermissionFixture;
 const update=update=>send({method:'session/update',params:{sessionId,update}});
@@ -66,14 +77,15 @@ rl.on('line',line=>{
  const v=JSON.parse(line), reply=result=>send({id:v.id,result});
  if(v.method==='initialize') {fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-initialize.json'),JSON.stringify(v.params));reply({protocolVersion:2,agentInfo:{name:'antigravity-acp',version:'1.3.0'}});}
  else if(v.method==='authenticate') reply({});
- else if(v.method==='session/new') {mcpServers=v.params.mcpServers;fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-session.json'),JSON.stringify(v.params));fs.appendFileSync(catalogFile,JSON.stringify({sessionId,cwd:v.params.cwd,title:'Saved conversation'})+'\\n');reply({sessionId,models:{currentModelId:'gemini-low',availableModels:[{modelId:'gemini-low',name:'Gemini Low'},{modelId:'opaque-oss-id',name:'GPT-OSS 120B (Medium)'}]}});}
+ else if(v.method==='session/new') {mcpServers=v.params.mcpServers;fs.writeFileSync(require('node:path').join(process.cwd(),'fixture-session.json'),JSON.stringify(v.params));fs.appendFileSync(catalogFile,JSON.stringify({sessionId,cwd:v.params.cwd,title:'Saved conversation'})+'\\n');reply({sessionId,...(usageFixture()?.configuration??{}),models:usageFixture()?.configuration.models??{currentModelId:'gemini-low',availableModels:[{modelId:'gemini-low',name:'Gemini Low'},{modelId:'opaque-oss-id',name:'GPT-OSS 120B (Medium)'}]}});}
  else if(v.method==='session/list') reply({sessions:[...catalog(),{sessionId:'stored-session',cwd:process.cwd(),title:'Create a file'},{sessionId:'other-folder',cwd:'/another-workspace',title:'Private'}]});
  else if(v.method==='session/load') {
    sessionId=v.params.sessionId;
    mcpServers=v.params.mcpServers;
+   for(const item of usageFixture()?.updates??[]) update(item);
    const saved=require('node:path').join(process.env.GEMINI_HOME,sessionId+'.jsonl');
    if(fs.existsSync(saved)) {
-     for(const line of fs.readFileSync(saved,'utf8').trim().split('\\n')) {const prompt=JSON.parse(line);update({sessionUpdate:'user_message_chunk',content:{type:'text',text:prompt.replace(/^\\/plan\\s*/,'')}});update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Recovered.'}});}
+     for(const line of fs.readFileSync(saved,'utf8').trim().split('\\n')) {const prompt=JSON.parse(line);update({...authorshipFixture.historyUpdate,content:{...authorshipFixture.historyUpdate.content,text:prompt.replace(/^\\/plan\\s*/,'')}});update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Recovered.'}});}
      reply({});return;
    }
    update({sessionUpdate:'user_message_chunk',content:{type:'text',text:'Create a file'}});
@@ -84,6 +96,16 @@ rl.on('line',line=>{
  } else if(v.method==='session/prompt') {
    promptId=v.id;
    const text=v.params.prompt[0].text;
+   if(text.startsWith('usage-fixture:')) {
+     const fixture=usageFixture();
+     for(const item of fixture.updates) update(item);
+     update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'Public ACP response.'}});
+     if(text.startsWith('usage-fixture:crash')) process.exit(1);
+     if(text.startsWith('usage-fixture:wait')) return;
+     if(text.startsWith('usage-fixture:schema-only')) {update(fixture.schemaOnlyNegativeControl.update);reply(fixture.schemaOnlyNegativeControl.completion);}
+     else reply(fixture.completion);
+     setTimeout(()=>update(fixture.lateUpdate),10);return;
+   }
    if(text.startsWith('permission-fixture:')||text.startsWith('cancel-permission-fixture:')) {
      permissionFixture=JSON.parse(text.slice(text.indexOf(':')+1));
      if(text.startsWith('cancel-permission-fixture:')) {cancelPermissionFixture=true;fs.writeFileSync(require('node:path').join(process.cwd(),'cancel-permission-ready'),'');return;}
@@ -135,6 +157,59 @@ async function open(sessionId?: string, options: Partial<Parameters<typeof AcpSe
 }
 
 describe('Antigravity native session', () => {
+  // ACP replay lacks stable identities, so this backend must remain unqualified.
+  it('keeps sharing disabled when replay cannot preserve native message identities', async () => {
+    const host = new AntigravityHost();
+    const snapshot = createEmptySnapshot();
+    const agent: Agent = { id: 'authorship', name: 'Authorship', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    snapshot.agents.push(agent);
+    let completed = 0;
+    let sequence = 0;
+    const applyEvent = (event: BackendEvent) => {
+      applyMainEventToSnapshot(snapshot, decodeAppBackendEvent({ ...event, seq: ++sequence, occurredAt: event.occurredAt ?? new Date().toISOString() }));
+    };
+    host.onEvent(event => {
+      applyEvent(event);
+      if (event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed') completed++;
+    });
+    const manager = new AgentPromptManager({
+      getSnapshot: () => snapshot, driverForAgent: () => host, applyEvent,
+      persistSnapshot: () => writeFile(path.join(root, 'app-snapshot.json'), JSON.stringify(snapshot)),
+      setNewConversationTitle: () => undefined,
+    });
+    const prompt = authorshipFixture.historyUpdate.content.text;
+    try {
+      manager.send(agent.id, prompt, undefined, 'guest-one');
+      manager.send(agent.id, prompt, undefined, 'guest-two');
+      manager.send(agent.id, prompt, undefined, 'owner');
+      const queued = structuredClone(snapshot.queuedPrompts ?? []);
+      expect(queued).toHaveLength(2);
+      expect(new Set(queued.map(row => row.id)).size).toBe(2);
+      await vi.waitFor(() => expect(completed).toBe(1));
+      manager.drain(agent.id);
+      await vi.waitFor(() => expect(completed).toBe(2));
+      manager.drain(agent.id);
+      await vi.waitFor(() => expect(completed).toBe(3));
+      expect(snapshot.queuedPrompts).toEqual([]);
+      expect(agent.backendSession?.kind).toBe('antigravity');
+      if (agent.backendSession?.kind !== 'antigravity') throw new Error('Missing session');
+      const ref = { backend: 'antigravity' as const, sessionId: agent.backendSession.sessionId, folder: root };
+      const live = (await host.readConversationMessages(ref, agent.id)).filter(message => message.role === 'user');
+      expect(live).toHaveLength(3);
+      expect(live.map(message => message.parts)).toEqual(Array.from({ length: 3 }, () => [{ type: 'text', text: prompt }]));
+      expect(new Set(live.map(message => message.id)).size).toBe(3);
+      expect(new Set(live.map(message => message.turnId)).size).toBe(3);
+      await host.close();
+      const restarted = new AntigravityHost();
+      try {
+        const history = (await restarted.readConversationMessages(ref, agent.id)).filter(message => message.role === 'user');
+        expect(history.map(message => message.parts)).toEqual(live.map(message => message.parts));
+        expect(history.some(message => live.some(before => before.id === message.id))).toBe(false);
+        expect(history.some(message => live.some(before => before.turnId === message.turnId))).toBe(false);
+      } finally { await restarted.close(); }
+    } finally { manager.close(); await host.close(); }
+  });
+
   it("observes only admitted live ACP executions, with unknown model and consumption", async () => {
     const usage = vi.fn();
     const { session } = await open("stored-session", { usage });
@@ -149,6 +224,8 @@ describe('Antigravity native session', () => {
       agentId: "agent",
       tokens: null,
       model: null,
+      requestCoverage: "partial",
+      requestCoverageReason: "acp-request-evidence-unavailable",
     });
     const waiting = session.prompt("wait");
     await vi.waitFor(() => expect(usage).toHaveBeenCalledTimes(3));
@@ -166,6 +243,79 @@ describe('Antigravity native session', () => {
       "started",
       "failed",
     ]);
+  });
+
+  // Boundary failures: context occupancy or selected models fabricated as consumption;
+  // duplicate/late/replayed updates inventing requests; terminal/failed activity omitted;
+  // coverage reason or turn timing lost through persistence and usage/get.
+  it('retains unavailable request coverage through public ACP updates, analytics and restart', async () => {
+    await writeFile(path.join(root, 'usage-fixture.json'), JSON.stringify(usageFixture));
+    const file = path.join(root, 'usage.sqlite');
+    const ledger = new UsageLedger(file); await ledger.load();
+    const host = new AntigravityHost();
+    const observations: ExecutionObservation[] = [];
+    host.onUsage(event => observations.push(event));
+    const snapshot = createEmptySnapshot();
+    const agent: Agent = { id: 'usage', name: 'Usage', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
+    snapshot.agents = [agent];
+    snapshot.general.providerEnabled = { antigravity: true };
+    snapshot.providerConnections = [{ backend: 'antigravity', installed: true, connected: true, checking: false }];
+    const usage = new UsageService(ledger, id => snapshot.agents.find(a => a.id === id));
+    const events: BackendEvent[] = [];
+    const server = new AppBackendServer({ version: 'test', snapshot, usage,
+      driverRpc: new BackendDriverRpc(new Map([['antigravity', host]])), onEvent: event => events.push(event) });
+    const call = (method: string, params: unknown = {}) => server.handleMessage({ jsonrpc: '2.0', id: 'usage', method, params });
+    const cost = (count: number): UsageCost => ({ usd: null, coverage: 'unavailable', requests: 0, pricedRequests: 0,
+      unpricedRequests: 0, unknownRequestExecutions: count, reasons: [{ reason: 'acp-request-evidence-unavailable', count }] });
+    try {
+      // Catalog names intentionally span model families; none identifies a served API model.
+      for (const model of usageFixture.configuration.models.availableModels) {
+        const before = events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated').length;
+        expect(await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:normal', options: { model: model.modelId } })).not.toHaveProperty('error');
+        await vi.waitFor(() => expect(agent.status.type).toBe('idle'));
+        await vi.waitFor(() => expect(events.filter(e => e.type === 'antigravity.conversationEventReceived' && e.payload.event.type === 'context.updated')).toHaveLength(before + 4));
+      }
+      // Optional schema totals and direct cumulative USD are deliberately not request evidence.
+      await call('agent/prompt/send', { agentId: agent.id, prompt: 'usage-fixture:schema-only' });
+      await vi.waitFor(() => expect(agent.status.type).toBe('idle'));
+      const waiting = await host.sendPrompt(agent, 'usage-fixture:wait');
+      await vi.waitFor(() => expect(observations.filter(e => e.phase === 'started')).toHaveLength(5));
+      await host.interrupt(agent, waiting.turnId);
+      await host.sendPrompt(agent, 'usage-fixture:crash');
+      await vi.waitFor(() => expect(observations.at(-1)?.phase).toBe('failed'));
+      expect(agent.status.type).toBe('error');
+      await usage.drain();
+      const summary = ledger.query({ group: 'provider' });
+      expect(summary.cost).toStrictEqual(cost(6));
+      expect(summary.rows).toHaveLength(1);
+      expect(summary.rows[0]).toMatchObject({ label: 'antigravity', started: 6, completed: 4, interrupted: 1, failed: 1,
+        measuredTurns: 0, tokens: null, cost: cost(6) });
+      expect(summary.daily).toHaveLength(1);
+      expect(summary.daily![0]!.cost).toStrictEqual(cost(6));
+      expect(summary.daily![0]!.groups![0]!.cost).toStrictEqual(cost(6));
+      expect(ledger.query({ group: 'model' }).rows.map(row => [row.label, row.cost])).toStrictEqual([['Unknown', cost(6)]]);
+      expect(ledger.query({ group: 'apiProvider' }).rows.map(row => [row.label, row.cost])).toStrictEqual([['Unknown', cost(6)]]);
+      expect(await call('usage/get', { filter: { provider: 'antigravity' } })).toMatchObject({ result: { cost: cost(6) } });
+      const db = new DatabaseSync(file);
+      try {
+        expect(db.prepare('SELECT COUNT(*) AS n FROM requests').get()).toMatchObject({ n: 0 });
+        const rows = db.prepare('SELECT model,tokens,duration_ms,timing,request_coverage,request_coverage_reason FROM executions').all();
+        expect(rows).toHaveLength(6);
+        expect(rows.every(row => typeof row.duration_ms === 'number' && row.duration_ms >= 0)).toBe(true);
+        expect(rows.some(row => JSON.parse(String(row.timing))?.activeMs > 0)).toBe(true);
+        expect(rows.every(row => row.model === null && row.tokens === null && row.request_coverage === 'partial' && row.request_coverage_reason === 'acp-request-evidence-unavailable')).toBe(true);
+      } finally { db.close(); }
+      // Releasing and loading history replays context notifications without new executions.
+      await host.releaseConversation(agent.id);
+      const stable = ledger.query();
+      await host.loadConversation(agent);
+      await usage.drain();
+      expect(ledger.query()).toStrictEqual(stable);
+      await server.close();
+      const reopened = new UsageLedger(file);
+      try { await reopened.load(); expect(reopened.query()).toStrictEqual(stable); }
+      finally { await reopened.close(); }
+    } finally { await server.close(); }
   });
 
   const mcpPermission = (tool: string) => ({
@@ -373,16 +523,21 @@ describe('Antigravity native session', () => {
     const host = new AntigravityHost();
     const agent: Agent = { id: 'attachments', name: 'Attachments', folder: root, backend: 'antigravity', createdAt: '', updatedAt: '', status: { type: 'idle' } };
     const events: BackendEvent[] = [];
+    const content = [{ type: 'mention' as const, kind: 'file' as const, id: file, value: file, label: 'Read my notes' }];
     host.onEvent(event => events.push(event));
     try {
-      const result = await host.sendPrompt(agent, 'Read my notes', { attachments: [{ type: 'file', path: file, name: 'notes.txt', mimeType: 'text/plain' }] });
+      const result = await host.sendPrompt(agent, 'Read my notes', { content, attachments: [{ type: 'file', path: file, name: 'notes.txt', mimeType: 'text/plain' }] });
       agent.backendSession = result.backendSession;
       await vi.waitFor(() => expect(events.some(event => event.type === 'antigravity.conversationEventReceived' && event.payload.event.type === 'turn.completed')).toBe(true));
       const ref = { backend: 'antigravity' as const, sessionId: result.backendSession.kind === 'antigravity' ? result.backendSession.sessionId : '', folder: root };
+      const admitted = JSON.parse((await readFile(path.join(root, 'home', 'korus-sessions', encodeURIComponent(ref.sessionId), 'prompts.jsonl'), 'utf8')).trim());
+      expect(admitted.wireText.startsWith(`@${file}\n\n<context>`)).toBe(true);
       const live = await host.readConversationMessages(ref, agent.id);
       await host.releaseConversation(agent.id);
       const replay = await host.readConversationMessages(ref, agent.id);
       expect(replay.map(message => message.parts)).toEqual(live.map(message => message.parts));
+      expect(live[0]?.metadata?.promptContent).toStrictEqual(content);
+      expect(replay[0]?.metadata?.promptContent).toStrictEqual(content);
       expect(replay[0]?.parts).toEqual([{ type: 'text', text: 'Read my notes' }, { type: 'attachment', attachment: { kind: 'file', name: 'notes.txt', path: file, mimeType: 'text/plain' } }]);
     } finally { await host.close(); }
   });

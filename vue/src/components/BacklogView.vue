@@ -38,7 +38,7 @@
                 class="cockpit-view__repository-reorder"
                 type="button"
                 v-bind="favoriteReorder.dragItemAttributes(repository.id)"
-                :aria-label="$t('backlogFavorites.reorder', { repository: repository.name })"
+                :aria-label="$t('backlogFavorites.reorder', { repository: repositoryDisplayName(repository) })"
                 :title="$t('backlogFavorites.dragHint')"
                 @click.stop
                 @dragstart.stop="favoriteReorder.onDragStart(repository.id, $event)"
@@ -50,18 +50,18 @@
               </button>
               <button
                 type="button"
-                :title="repository.name"
+                :title="repositoryDisplayName(repository)"
                 :aria-pressed="workBacklog.selectedRepositoryId === repository.id"
                 @click="selectRepository(repository.id)"
               >
                 <IconFolder class="cockpit-view__repository-folder" aria-hidden="true" />
-                <span>{{ repository.name }}</span>
+                <span>{{ repositoryDisplayName(repository) }}</span>
               </button>
               <button
                 class="cockpit-view__repository-favorite"
                 type="button"
-                :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
-                :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repository.name })"
+                :aria-label="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repositoryDisplayName(repository) })"
+                :title="$t(isFavorite(repository.id) ? 'backlogFavorites.remove' : 'backlogFavorites.add', { repository: repositoryDisplayName(repository) })"
                 @click.stop="toggleFavorite(repository.id, $event)"
               >
                 <component :is="isFavorite(repository.id) ? IconStarFilled : IconStar" aria-hidden="true" />
@@ -71,8 +71,8 @@
                 :href="repository.url"
                 target="_blank"
                 rel="noreferrer"
-                :aria-label="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
-                :title="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repository.name })"
+                :aria-label="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repositoryDisplayName(repository) })"
+                :title="$t(!workProviderDefinition(workProvider ?? 'github').repositoryBacked ? 'backlogSource.openSource' : 'dynamic.cockpit.openRepository', { repository: repositoryDisplayName(repository) })"
                 @click.stop
               >
                 <ExternalLinkIcon aria-hidden="true" />
@@ -356,6 +356,10 @@ function selectSummaryMetric(metric: SummaryMetric): void {
 
 function repositoryActivityAt(repository: WorkSource): string {
   return repository.workItemsUpdatedAt ?? '';
+}
+
+function repositoryDisplayName(repository: WorkSource): string {
+  return repository.provider === 'gitlab' ? repository.fullName : repository.name;
 }
 
 function selectWorkView(view: InboxView): void {

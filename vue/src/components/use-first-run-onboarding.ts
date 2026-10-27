@@ -11,7 +11,6 @@ type FirstRunOnboardingOptions = {
   getApi: () => AppApi | undefined;
   getConnections: () => ProviderConnection[];
   hasExistingWorkspace: () => boolean;
-  isGitHubConnected: () => boolean;
 };
 
 export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
@@ -32,7 +31,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const antigravityError = ref<string | null>(null);
   const providersVisible = ref(false);
   const continuing = ref(false);
-  const githubVisible = ref(false);
+  const repositoriesVisible = ref(false);
   const completeVisible = ref(false);
   const discovering = ref(!options.hasExistingWorkspace());
   const providerSetup = ref<ProviderSetupStatus[]>([]);
@@ -51,7 +50,7 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   const canContinue = computed(() => options.getConnections().some(provider => provider.connected && provider.installed && provider.enabled !== false));
   const initialAuthenticationLoading = computed(() => discovering.value);
   const showLogin = computed(() => discovering.value || providersVisible.value);
-  const gated = computed(() => showLogin.value || githubVisible.value || completeVisible.value);
+  const gated = computed(() => showLogin.value || repositoriesVisible.value || completeVisible.value);
 
   async function load(): Promise<void> {
     if (!options.getApi()) {
@@ -279,11 +278,11 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
       providersVisible.value = false;
       if (returningToWorkspace) {
         clearFirstRunOnboardingStage();
-        githubVisible.value = false;
+        repositoriesVisible.value = false;
         completeVisible.value = false;
         return;
       }
-      setFirstRunOnboardingStage('github');
+      setFirstRunOnboardingStage('repositories');
       restore();
     } catch (error) {
       if (!disposed) authenticationError.value = errorMessage(error);
@@ -306,8 +305,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     }
   }
 
-  function completeGitHub(): void {
-    githubVisible.value = false;
+  function completeRepositories(): void {
+    repositoriesVisible.value = false;
     completeVisible.value = true;
     setFirstRunOnboardingStage('complete');
   }
@@ -320,11 +319,11 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
   function restore(): void {
     const stage = getFirstRunOnboardingStage();
     if (!stage || stage === 'providers') return;
-    if (stage === 'complete' || options.isGitHubConnected()) {
-      completeGitHub();
+    if (stage === 'complete') {
+      completeRepositories();
       return;
     }
-    githubVisible.value = true;
+    repositoriesVisible.value = true;
     completeVisible.value = false;
   }
 
@@ -364,8 +363,8 @@ export function useFirstRunOnboarding(options: FirstRunOnboardingOptions) {
     claudeAuthentication, claudeLoading, claudeError, claudeDialogVisible,
     antigravityConnected, antigravityLoading, antigravityPending, antigravityError, connectAntigravity, cancelAntigravityLogin,
     codexConnected, claudeConnected, canContinue, continuing,
-    completeVisible, gated, githubVisible, initialAuthenticationLoading, showLogin,
-    cancelChatGptLogin, completeGitHub, finish, load, startChatGptLogin,
+    completeVisible, gated, repositoriesVisible, initialAuthenticationLoading, showLogin,
+    cancelChatGptLogin, completeRepositories, finish, load, startChatGptLogin,
     connectClaude, disconnectProvider, refreshClaude, refreshConnections, installProvider, refreshProvider, continueWithProviders,
     providerSetup, customizingProvider, customizedSetup, setupBusy, updatingProvider, setupError, customizeProvider, saveProviderSetup,
   };

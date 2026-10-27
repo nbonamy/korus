@@ -184,6 +184,28 @@ describe('native relay host adapter', () => {
   });
 
   const connect = (storage = vault()) => createRelayConnector(storage, host.relay);
+  it('names a new pairing after what the laptop calls itself, and keeps the old name for laptops that do not say', async () => {
+    const claimed = () => ({ pendingId: randomUUID(), state: 'awaitingApproval' });
+    transport.response = (method) => method === 'pair.claim' ? claimed() : method === 'pair.status' ? { state: 'approved', grant: {}, hostName: '  Studio\u0000 Mac ' } : {};
+    const named = connect(); await pairWith(named);
+    expect(named.laptops).toEqual([{ id: host.hostId, name: 'Studio Mac' }]);
+    transport.response = (method) => method === 'pair.claim' ? claimed() : method === 'pair.status' ? { state: 'approved', grant: {}, hostName: 42 } : {};
+    const older = connect(); await pairWith(older);
+    expect(older.laptops).toEqual([{ id: host.hostId, name: 'Paired laptop' }]);
+    await named.dispose!(); await older.dispose!();
+  });
+  it('renames a laptop on the phone and keeps the name, but refuses a blank, overlong or unknown one', async () => {
+    const storage = vault(); const connector = connect(storage); await pairWith(connector);
+    await connector.rename!(host.hostId, '  Work Mac ');
+    expect(connector.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    await expect(connector.rename!(host.hostId, '   ')).rejects.toThrow();
+    await expect(connector.rename!(host.hostId, 'x'.repeat(61))).rejects.toThrow();
+    await expect(connector.rename!('someone-else', 'Other')).rejects.toThrow();
+    expect(connector.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    const restored = connect(storage); await restored.initialize!();
+    expect(restored.laptops).toEqual([{ id: host.hostId, name: 'Work Mac' }]);
+    await connector.dispose!(); await restored.dispose!();
+  });
   it('pairs and restores over local WS only for the native Debug relay configuration', async () => {
     host.relay.origin = 'ws://laptop.local:47801';
     const storage = vault();
@@ -376,6 +398,9 @@ describe('native relay host adapter', () => {
     const input = { deleteWorktree: true as const, deleteRemoteBranch: false, discardChanges: true, confirmed: true as const };
     await session.closeSession!(selectedTarget, input);
     expect(transport.requests.at(-1)).toMatchObject({ method: 'agent.close', args: { target: selectedTarget, input } });
+    transport.response = method => method === 'team.create' ? { teamId: 'mobile-team' } : {};
+    expect(await session.createTeam!('Mobile team')).toBe('mobile-team');
+    expect(transport.requests.at(-1)).toStrictEqual({ v: 1, id: expect.any(String), method: 'team.create', args: { name: 'Mobile team' } });
     session.close(); await connector.dispose!();
   });
   it('holds native networking closed in background and reconnects only after foreground resume', async () => {
@@ -520,6 +545,12 @@ describe('native relay host adapter', () => {
     transport.response = method => method === 'project.github.branches' ? projectBranches : method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
     expect(await session.githubBranches!('team', 'org/repo')).toStrictEqual(projectBranches);
     expect(transport.requests.at(-1)?.args).toStrictEqual({ teamId: 'team', repositoryId: 'org/repo' });
+    transport.response = method => method === 'project.repositories.list' ? [{ id: 'repo:opaque', name: 'group/subgroup/repo' }] : projectBranches;
+    expect(await session.repositoryCatalog!('team', 'gitlab')).toStrictEqual([{ id: 'repo:opaque', name: 'group/subgroup/repo' }]);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.list', args: { teamId: 'team', provider: 'gitlab' } });
+    expect(await session.repositoryBranches!('team', 'gitlab', 'repo:opaque')).toStrictEqual(projectBranches);
+    expect(transport.requests.at(-1)).toMatchObject({ method: 'project.repositories.branches', args: { teamId: 'team', provider: 'gitlab', repositoryId: 'repo:opaque' } });
+    transport.response = method => method === 'project.create' ? { creationId: 'project' } : { state: 'success', agentId: 'project-agent' };
     const projectInput = { teamId: 'team', source: 'github' as const, value: 'org/repo', backend: 'claude' as const, branch: 'feature/mobile' };
     expect(await session.createProject!(projectInput)).toBe('project-agent');
     expect(transport.requests.find(request => request.method === 'project.create')?.args).toStrictEqual(projectInput);

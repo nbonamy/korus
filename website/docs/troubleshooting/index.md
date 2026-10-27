@@ -27,11 +27,11 @@ Check whether you changed **Location** between **Separate Korus chats** and **Us
 
 Read the [provider setup overview](../providers/) before making another change. Preserve any repository edits independently of the conversation history.
 
-## GitHub works in another app but not in Korus
+## GitHub or GitLab works in another app but not in Korus {#github-works-in-another-app-but-not-in-korus}
 
-Coding-provider authentication is separate from GitHub access. Korus can use GitHub CLI authenticated to github.com on the computer hosting the workspace, or its own GitHub connection. Check that the selected account can access the repository, then restart Korus if you changed the GitHub CLI account after launching it. If CLI access is unavailable, complete GitHub authorization in **Settings → Integrations**.
+Coding-provider authentication is separate from GitHub or GitLab access. Korus can use GitHub CLI (`gh`) authenticated to github.com, GitLab CLI (`glab`) authenticated to gitlab.com, or a direct connection. Check access on the computer hosting the workspace. In **Settings → Integrations**, verify the selected account and reconnect the affected service if its CLI account changed. If CLI access is unavailable, complete direct authorization there. Repository browsing and Git clone/push authentication are separate; also check your SSH or HTTPS Git credentials if those operations fail.
 
-If you skipped GitHub during onboarding, local folder tasks still work. Connect GitHub when you need repository browsing or issue and pull-request workflows. Automations only need GitHub if their prompt calls for it.
+If you skipped GitHub or GitLab during onboarding, local folder tasks still work. Connect the service when you need repository browsing, issues, or pull-request and merge-request workflows. Automations only need these integrations if their prompt calls for them.
 
 ## A task is waiting
 
@@ -50,6 +50,16 @@ Check the repository's status, branch, and existing worktrees. Keep dirty or unf
 Confirm the development server is running and the URL uses the correct port. Inspect the browser console and ask the agent to verify the route that failed. A successful build alone does not prove a page rendered.
 
 The in-app Browser is separate from your Chrome browser and its existing tabs. Follow [Browser](../features/browser) when the task specifically needs Chrome or an existing browser login.
+
+## A password manager will not fill a login
+
+Check **Settings → Browser** to confirm the extension is installed and enabled. Open its toolbar popup, finish sign-in, and unlock the vault. Check that the saved login matches the page's address and grant any site access the extension needs. If Bitwarden reports missing desktop integration, enable browser integration in the Bitwarden desktop app.
+
+Use the extension's **Update** or **Reinstall** action when needed, then reload the page. **Clear browsing data…** signs agents out of websites but preserves extension data; **Remove** uninstalls the extension and clears its Korus storage. See [Browser](../features/browser#use-your-password-manager).
+
+## A skill is missing from an agent
+
+Open **Settings → Skills → Installed** and inspect the provider icons for the skill. Use **Sync this skill** or **Sync** to make it available to your configured local agents. An existing conflicting copy is preserved; decide which copy to keep and remove or rename the conflict before syncing again. Remote teams use the skills installed on their own computer. See [Manage agent skills](../providers/#manage-agent-skills).
 
 ## Computer Use cannot act
 

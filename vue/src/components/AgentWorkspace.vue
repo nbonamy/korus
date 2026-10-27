@@ -1,16 +1,18 @@
 <template>
   <AgentHeader
-    v-if="!splitHeaders && !isAgentEmpty && currentAgent"
+    v-if="(!splitHeaders || rightWorkspaceExpanded) && !isAgentEmpty && currentAgent"
     v-bind="headerBindingsFor(emptySplitPane ? null : currentAgent.id, true, true)"
   />
   <div ref="workspaceBody" class="app-shell__body workspace-body" @dragstart.capture="linkDrag.start">
     <AgentEmptyState v-if="isAgentEmpty" @start-work="handleStartWorkAction" />
-    <div v-else class="app-shell__conversations" :class="{ 'app-shell__conversations--split': splitHeaders }">
+    <div v-else v-show="!rightWorkspaceExpanded" class="app-shell__conversations" :class="{ 'app-shell__conversations--split': splitHeaders }">
     <div v-if="$slots['layout-control']" class="app-shell__layout-control">
       <slot name="layout-control" />
     </div>
     <slot name="conversation" :plan="currentTurnPlan" :plan-visible="executionPlanVisible" :close-plan="closeExecutionPlan" :header-bindings-for="headerBindingsFor">
+    <SharedConversationPane v-if="currentAgent?.sharedConversation && guestView?.id === currentAgent.sharedConversation.joinId && guestControl" :view="guestView" :busy="guestBusy ?? false" :control="guestControl" />
     <ConversationPane
+      v-else-if="!currentAgent?.sharedConversation"
       ref="conversationPane"
       :controller="conversationPaneController"
       :agent="currentAgent"
@@ -40,11 +42,11 @@
     </slot>
     </div>
     <RightWorkspacePanel
-      v-for="agent in snapshot.agents"
+      v-for="agent in snapshot.agents.filter(agent => !agent.sharedConversation)"
       :key="agent.id"
       v-show="!emptySplitPane && isRightWorkspaceVisible(agent.id)"
       class="app-shell__right-workspace"
-      :style="{ flexBasis: `${workspaceWidthFor(agent.id)}px` }"
+      :style="{ flexBasis: rightWorkspaceExpanded ? '100%' : `${workspaceWidthFor(agent.id)}px` }"
       :active-tab="rightWorkspaceFor(agent.id).activeTab"
       :agent="agent"
       :agents="snapshot.agents"
@@ -103,6 +105,7 @@
       @clarify-finding="emit('clarifyCodeReviewFinding', { agentId: agent.id, ...$event })"
       @select-tab="selectRightWorkspaceTab(agent.id, $event)"
       @send-prompt="forwardPrompt"
+      @open-browser-settings="emit('openBrowserSettings')"
       @annotate-visualization="attachVisualizationAnnotation"
       @dragover="linkDrag.over"
       @drop="linkDrag.drop"
@@ -114,7 +117,7 @@
       @drop="linkDrag.drop"
     />
     <div
-      v-if="!emptySplitPane && rightWorkspaceVisible"
+      v-if="!emptySplitPane && rightWorkspaceVisible && !rightWorkspaceExpanded && !currentAgent?.sharedConversation"
       class="app-shell__right-workspace-resizer"
       :aria-label="$t('surface.appShell.resizeRightWorkspace')"
       @pointerdown="startRightWorkspaceResize"
@@ -124,6 +127,8 @@
 </template>
 
 <script setup lang="ts">
+import SharedConversationPane from './SharedConversationPane.vue';
+import { supportsConversationSharing } from '@workspace/core/conversation-sharing';
 import type {
   Agent,
   AgentFileSearchItem,
@@ -151,6 +156,7 @@ import type {
   WorkItem,
 } from '@workspace/core/contracts';
 import { PRIMARY_BROWSER_ID, type AppCommand } from '@workspace/core/contracts';
+import type { FileKind } from '@workspace/core/file-kind';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import type {
   CodexConversationLink,
@@ -192,6 +198,9 @@ import {
 } from './right-workspace';
 
 const props = defineProps<{
+  guestView?: import('@workspace/core/guest-navigation').GuestJoinView | null;
+  guestBusy?: boolean;
+  guestControl?: (input: import('@workspace/core/guest-navigation').GuestJoinControl) => Promise<boolean>;
   activeAttachmentAnnotationCounts: Readonly<Record<string, number>>;
   addChatTextAnnotation: (selection: CodexMessageTextSelection, comment: string) => void;
   addVisualizationAnnotation: (annotation: VisualizationAnnotationInput) => void;
@@ -203,7 +212,7 @@ const props = defineProps<{
   respondToThreadFlag: (response: ThreadFlagResponse) => Promise<void>;
   threadFlagBusy: boolean;
   conversationPaneController: CodexConversationPaneController;
-  savePromptDraft: (agentId: string, text: string) => Promise<void>;
+  savePromptDraft: (agentId: string, text: string, content?: readonly import('@codex-app-sdk/core/surface').CodexPromptPart[]) => Promise<void>;
   removePromptDraft: (id: string) => Promise<void>;
   conversationPlan: ThreadPlan | null;
   chatTextAnnotations: readonly ChatTextAnnotation[];
@@ -220,8 +229,8 @@ const props = defineProps<{
     agentId: string,
     input: AgentGitMessageGenerationInput,
   ) => Promise<AgentGitMessageGenerationResult>;
-  getAgentGitWorkflow: (agentId: string) => Promise<AgentGitWorkflow>;
-  handleStartWorkAction: (action: 'new' | 'github' | 'local' | 'url') => void;
+  getAgentGitWorkflow: (agentId: string, options?: { includePullRequest?: boolean }) => Promise<AgentGitWorkflow>;
+  handleStartWorkAction: (action: import('./start-work-actions').StartWorkAction) => void;
   isAgentEmpty: boolean;
   isConversationLoading: boolean;
   historyLoadFailed: boolean;
@@ -236,7 +245,7 @@ const props = defineProps<{
   pullAgentGitBranch?: (agentId: string, input: import('@workspace/core/contracts').AgentGitPullInput) => Promise<import('@workspace/core/contracts').AgentGitPullResult>;
   revertAgentGitChanges?: (agentId: string, input: import('@workspace/core/contracts').AgentGitRevertInput) => Promise<import('@workspace/core/contracts').AgentGitWorkflow>;
   updateAgent: (input: import('@workspace/core/contracts').UpdateAgentInput) => Promise<void>;
-  openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget) => Promise<void>;
+  openAgentGitDiffPreview: (agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind) => Promise<void>;
   openAgentIn: (agentId: string, application: OpenInApplication, filePath?: string) => Promise<void>;
   openAttachmentImageAnnotation: (attachment: CodexNativeAttachment) => void;
   removeChatTextAnnotation: (annotationId: string) => void;
@@ -284,6 +293,7 @@ const agentHeaders = new Map<string, InstanceType<typeof AgentHeader>>();
 
 const emit = defineEmits<{
   'close-agent': [agentId: string];
+  'share-agent': [agentId: string];
   'expand-sidebar': [];
   'install-update': [];
   'remove-work-item-assignment': [item: WorkItem];
@@ -295,6 +305,7 @@ const emit = defineEmits<{
   }];
   removeReviewFindingAttachment: [];
   sendPrompt: [prompt: string];
+  openBrowserSettings: [];
   'update:planMode': [enabled: boolean];
 }>();
 
@@ -340,6 +351,10 @@ const {
 
 const workspaceBody = ref<HTMLElement | null>(null);
 const workspaceBodyWidth = ref<number | null>(null);
+const rightWorkspaceExpanded = computed(() => Boolean(
+  !props.emptySplitPane && props.rightWorkspaceVisible && props.currentAgent && !props.currentAgent.sharedConversation
+  && props.rightWorkspaceFor(props.currentAgent.id).expanded,
+));
 watch(workspaceBody, (body, _previous, onCleanup) => {
   workspaceBodyWidth.value = null;
   if (!body) return;
@@ -398,11 +413,19 @@ watch(
 
     const existing = executionPlanStates[agentId];
     if (!existing || existing.turnId !== turnId) {
-      executionPlanStates[agentId] = { open: true, turnId };
+      // A finished list that is just being loaded (a restart) has nothing left to watch. One that finishes
+      // while open stays up until the next turn starts, which stops it matching `currentTurnPlan`.
+      executionPlanStates[agentId] = { open: !isPlanFinished(currentTurnPlan.value), turnId };
     }
   },
   { immediate: true },
 );
+
+// Plans restored from the agent record can carry a stale status, so judge by the steps too.
+function isPlanFinished(plan: ThreadPlan | null): boolean {
+  if (!plan) return false;
+  return plan.status === 'completed' || (plan.steps.length > 0 && plan.steps.every((step) => step.status === 'completed'));
+}
 
 function toggleExecutionPlan(): void {
   const agentId = currentAgent.value?.id;
@@ -456,12 +479,19 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     },
     class: props.splitHeaders ? 'agent-header--pane' : undefined,
     agent,
+    guestStatus: agent?.sharedConversation?.joinId === props.guestView?.id ? props.guestView?.status : null,
+    guestBusy: props.guestBusy,
+    onLeaveSharedConversation: () => {
+      const id = agent?.sharedConversation?.joinId;
+      if (id) void props.guestControl?.({ action: 'leave', id });
+    },
     repositoryIcon: agent ? repositoryIconForAgent(agent, props.snapshot.general.repositoryIcons) : undefined,
     gitStatus: focused ? props.currentAgentGitStatus : agentId ? props.snapshot.agentGitStatuses[agentId] ?? null : null,
     lastTurnGitDiff: diff?.agentId === agentId && diff.diff ? diff : null,
     backendRuntime: focused ? props.currentBackendRuntime : props.snapshot.backendRuntimes.find(runtime => runtime.backend === backend) ?? { backend, status: 'notConfigured' as const },
     workspaceOpen: props.rightWorkspaceVisible && !props.emptySplitPane,
-    workspaceToggleAvailable: topRight,
+    workspaceExpanded: rightWorkspaceExpanded.value,
+    workspaceToggleAvailable: topRight && !agent?.sharedConversation,
     workspaceToggleDisabled: !props.currentAgent || Boolean(props.emptySplitPane),
     isLoading: props.isLoading,
     sidebarCollapsed: topLeft && props.agentSidebarCollapsed,
@@ -472,7 +502,10 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     runPreviewAvailable: Boolean(agent && isLocalAgent(agent) && appHostCapabilities.embeddedBrowser),
     onRunProfilesVisible: (visible: boolean) => { if (agentId) { if (visible) runProfileDialogs.add(agentId); else runProfileDialogs.delete(agentId); } },
     onRunPreview: (url: string) => agentId && openRequestedBrowser(agentId, { type: 'open-browser', url }),
-    openInAvailable: Boolean(agent && appHostCapabilities.openInApplications && isLocalAgent(agent)),
+    shareAvailable: Boolean(agent && supportsConversationSharing(agent) && isLocalAgent(agent)),
+    shareStatusOnMount: props.splitHeaders,
+    onShare: () => agentId && emit('share-agent', agentId),
+    openInAvailable: Boolean(agent && !agent.sharedConversation && appHostCapabilities.openInApplications && isLocalAgent(agent)),
     openInCatalog: props.openInApplications,
     subagentTree: agentId ? subagentTreeFor(agentId) : null,
     selectedSubagentConversationId: agentId ? selectedSubagentConversationIdFor(agentId) : null,
@@ -490,8 +523,15 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
     onExpandSidebar: () => emit('expand-sidebar'),
     onToggleExecutionPlan: toggleExecutionPlan,
     onToggleWorkspace: props.toggleRightWorkspace,
+    onToggleWorkspaceExpanded: () => {
+      const id = props.currentAgent?.id;
+      if (id) {
+        const workspace = rightWorkspaceFor(id);
+        workspace.expanded = !workspace.expanded;
+      }
+    },
     onOpenGitLog: () => agentId && openRightWorkspaceTab('gitLog', agentId),
-    onOpenGitDiff: (target: AgentGitDiffTarget) => agentId && openAgentGitDiffPreview(agentId, target),
+    onOpenGitDiff: (target: AgentGitDiffTarget, focusKind?: FileKind) => agentId && openAgentGitDiffPreview(agentId, target, focusKind),
     onSelectGitDiffTarget: (target: AgentGitDiffTarget) => agentId && persistGitDiffTarget(agentId, target),
     onOpenIn: (application: OpenInApplication) => agentId && props.openAgentIn(agentId, application),
     onSelectAgent: props.selectAgentFromShell,
@@ -500,8 +540,8 @@ function headerBindingsFor(agentId: string | null, topRight: boolean, topLeft: b
   };
 }
 
-function openAgentGitDiffPreview(agentId?: string, target?: AgentGitDiffTarget): Promise<void> {
-  return props.openAgentGitDiffPreview(agentId, target);
+function openAgentGitDiffPreview(agentId?: string, target?: AgentGitDiffTarget, focusKind?: FileKind): Promise<void> {
+  return props.openAgentGitDiffPreview(agentId, target, focusKind);
 }
 
 function persistGitDiffTarget(agentId: string, target: AgentGitDiffTarget): void {
@@ -804,7 +844,8 @@ defineExpose({
 .app-shell__right-workspace-resizer::after {
   content: '';
   position: absolute;
-  inset: 0 auto 0 2px;
+  /* The line sits against the right workspace, leaving no gap between it and the content. */
+  inset: 0 0 0 auto;
   width: 1px;
   background: var(--color-border);
 }

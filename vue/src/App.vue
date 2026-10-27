@@ -1,11 +1,15 @@
 <template>
   <div class="window-edge" aria-hidden="true" />
+  <JoinSharedChatDialog v-if="inviteVisible" :view="guestInviteView" :busy="guestBusy" :failed="guestFailed" :control="runGuest" :save-display-name="saveGuestDisplayName" @close="closeGuestInvite" />
   <AppShell
     v-if="hasLoadedSnapshot"
+    @join-invite="showGuestInvite"
+    :guest-state="guestState" :guest-busy="guestBusy" :guest-control="runGuest"
     :inert="backendRestartInProgress || pendingSessionCompression !== null ? '' : undefined"
     :aria-hidden="backendRestartInProgress || pendingSessionCompression !== null ? 'true' : undefined"
     :snapshot="snapshot"
     :mission-implementation-start-progress="missionImplementationStartProgress"
+    :mission-focus-request="missionFocusRequest"
     :agent-creation-progresses="agentCreationProgresses"
     @clear-agent-creation-progress="clearAgentCreationProgress"
     @background-agent-creation-progress="backgroundAgentCreationProgress"
@@ -73,11 +77,13 @@
     :file-activity="fileActivity"
     :work-provider-authorization="workProviderAuthorization"
     :work-provider-authorizations="workProviderAuthorizations"
+    :work-provider-authorization-errors="workProviderAuthorizationErrors"
     :work-repositories-by-provider="workRepositoriesByProvider"
     :work-items-by-repository="workItemsByRepository"
     :assigned-work-items-by-provider="assignedWorkItemsByProvider"
     :work-backlog-status="workBacklogStatus"
     :work-backlog-error="workBacklogError"
+    :work-backlog-state-for="workBacklogStateFor"
     :daemon-status="daemonStatus"
     :daemon-status-error="daemonStatusError"
     :codex-resource-sharing-migration-required="codexResourceSharingStatus.migrationRequired"
@@ -112,6 +118,7 @@
     :create-mission="createMission"
     :select-mission="selectMission"
     :delete-mission="deleteMission"
+    :delete-repository-action="deleteRepository"
     :read-mission-artifact="readMissionArtifact"
     :execute-mission="executeMission"
     :create-quick-chat="createQuickChat"
@@ -152,6 +159,7 @@
     :read-conversation-messages="readConversationMessages"
     :configure-work-backlog="configureWorkBacklog"
     :load-work-repositories="loadWorkRepositories"
+    :list-work-sources="(provider, location) => appApi!.listWorkSources(provider, location)"
     :load-work-items="loadWorkItems"
     :load-global-work-items="loadGlobalWorkItems"
     :load-assigned-work-items="loadAssignedWorkItems"
@@ -241,7 +249,7 @@
       aria-busy="true"
     >
       <div class="backend-restart-overlay__card">
-        <span class="backend-restart-overlay__spinner" aria-hidden="true" />
+        <span class="app-spinner app-spinner--lg app-spinner--primary" aria-hidden="true" />
         <div class="backend-restart-overlay__copy">
           <strong>{{ $t('surface.app.applyingResourceChanges') }}</strong>
           <span>{{ $t('surface.app.restartingTheBackendAndReconnectingYourChats') }}</span>
@@ -257,6 +265,8 @@ import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import type { Agent, DesktopUpdateStatus } from '@workspace/core/contracts';
 import AppShell from './components/AppShell.vue';
+import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
+import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
 import BackendConnectionBanner from './components/BackendConnectionBanner.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
@@ -316,17 +326,20 @@ const {
   fileActivity,
   workProviderAuthorization,
   workProviderAuthorizations,
+  workProviderAuthorizationErrors,
   workRepositoriesByProvider,
   workItemsByRepository,
   assignedWorkItemsByProvider,
   workBacklogStatus,
   workBacklogError,
+  workBacklogStateFor,
   daemonStatus,
   daemonStatusError,
   codexResourceSharingStatus,
   backendRestartInProgress,
   agentCreationProgresses,
   missionImplementationStartProgress,
+  missionFocusRequest,
   sourceRepositories,
   openInApplications,
   loadBackendModels,
@@ -364,6 +377,7 @@ const {
   createMission,
   selectMission,
   deleteMission,
+  deleteRepository,
   readMissionArtifact,
   executeMission,
   createQuickChat,
@@ -486,6 +500,10 @@ const {
   restartApp,
   getPluginStatus,
 } = useAppState();
+const { inviteVisible, inviteView: guestInviteView, state: guestState, busy: guestBusy, failed: guestFailed, run: runGuest, show: showGuestInvite, close: closeGuestInvite } = useGuestNavigation(() => snapshot.value, selectAgent, () => hasLoadedSnapshot.value);
+async function saveGuestDisplayName(name: string): Promise<void> {
+  await updateSettings({ general: { guestDisplayName: name } });
+}
 
 const agentConversationActions: AgentConversationActions = {
   planReview: respondToPlanReviewForAgent,
@@ -745,16 +763,6 @@ watch(() => snapshot.value.theme, (theme) => {
   box-shadow: var(--shadow-lg);
 }
 
-.backend-restart-overlay__spinner {
-  width: var(--space-10);
-  height: var(--space-10);
-  flex: 0 0 auto;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: backend-restart-spin 0.8s linear infinite;
-}
-
 .backend-restart-overlay__copy {
   display: grid;
   gap: var(--space-1);
@@ -782,15 +790,4 @@ watch(() => snapshot.value.theme, (theme) => {
   opacity: 0;
 }
 
-@keyframes backend-restart-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .backend-restart-overlay__spinner {
-    animation: none;
-  }
-}
 </style>

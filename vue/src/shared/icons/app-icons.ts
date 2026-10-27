@@ -1,6 +1,8 @@
+export { default as GitLabIcon } from './GitLabIcon.vue';
 export { default as GitHubIcon } from './GitHubIcon.vue';
 export { default as LinearIcon } from './LinearIcon.vue';
 export { default as BacklogIcon } from './BacklogIcon.vue';
+export { default as FolderSparkleIcon } from './FolderSparkleIcon.vue';
 export { default as ProductMarkIcon } from './ProductMarkIcon.vue';
 // Softer corners than Tabler's sharp play triangle.
 export { default as PlayerPlayIcon } from './PlayerPlayIcon.vue';
@@ -13,6 +15,8 @@ export {
   IconArrowRight as ArrowRightIcon,
   IconArrowUpRight as ArrowUpRightIcon,
   IconArrowsMinimize as ArrowsMinimizeIcon,
+  IconArrowsDiagonal as ArrowsDiagonalIcon,
+  IconArrowsDiagonalMinimize2 as ArrowsDiagonalMinimize2Icon,
   IconArrowsHorizontal as ArrowsHorizontalIcon,
   IconArrowsVertical as ArrowsVerticalIcon,
   IconArrowsSort as ArrowsSortIcon,
@@ -28,15 +32,18 @@ export {
   IconChevronDown as ChevronDown,
   IconChevronRight as ChevronRightIcon,
   IconCircleX as CircleXIcon,
+  IconSquareX as SquareXIcon,
   IconCode as CodeIcon,
   IconLayoutDashboard as DashboardIcon,
   IconCopy as CopyIcon,
+  IconShare as ShareIcon,
   IconDotsVertical as DotsVerticalIcon,
   IconDownload as DownloadIcon,
   IconEye as EyeIcon,
   IconExternalLink as ExternalLinkIcon,
   IconFileArrowRight as FileArrowRightIcon,
   IconFileDiff as FileDiffIcon,
+  IconFileSpark as FileSparkIcon,
   IconFileText as FileTextIcon,
   IconFolder as FolderIcon,
   IconFolderOpen as FolderOpenIcon,
@@ -89,5 +96,6 @@ export {
   IconViewportShort as ViewportShortIcon,
   IconVolume as VolumeIcon,
   IconVolumeOff as VolumeOffIcon,
+  IconWorld as WorldIcon,
   IconX as X,
 } from '@tabler/icons-vue';

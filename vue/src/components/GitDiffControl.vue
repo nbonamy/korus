@@ -47,6 +47,9 @@ import { ChevronDown, FileDiffIcon, GitBranchIcon, GitCommitIcon } from '../shar
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
+import { fileKinds, type FileKind } from '@workspace/core/file-kind';
+import { summarizeUnifiedDiff } from '@workspace/core/unified-diff-stats';
+import { fileKindColor, fileKindCount, fileKindLabel } from './file-kind-presentation';
 
 const props = defineProps<{
   agentId: string;
@@ -56,7 +59,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  open: [target: AgentGitDiffTarget];
+  open: [target: AgentGitDiffTarget, focusKind?: FileKind];
   select: [target: AgentGitDiffTarget];
 }>();
 
@@ -92,6 +95,8 @@ const menuItems = computed<AppMenuItem[]>(() => {
       value: summaryFor(target),
     };
   });
+  const kinds = kindMenuItems(summaryFor(selectedTarget.value));
+  if (kinds.length > 0) items.push({ id: 'separator-kinds', type: 'separator' }, ...kinds);
   const commits = catalog?.commits ?? [];
   if (commits.length > 0) {
     items.push({ id: 'separator-commits', type: 'separator' });
@@ -117,6 +122,25 @@ const menuItems = computed<AppMenuItem[]>(() => {
   }
   return items;
 });
+
+/** What the selected diff is made of, from the file types the daemon worked out. */
+function kindMenuItems(summary: AgentGitDiffSummary): AppMenuItem[] {
+  const rows = fileKinds
+    .map(kind => ({ kind, stats: summary.byKind?.[kind] }))
+    .filter(({ stats }) => stats && stats.changedFiles > 0);
+  if (rows.length === 0) return [];
+  return [
+    { id: 'kinds-heading', type: 'info', label: translate('surface.agentHeader.changesByType') },
+    ...rows.map(({ kind, stats }) => ({
+      id: `kind:${kind}`,
+      type: 'action' as const,
+      label: fileKindLabel(kind),
+      description: fileKindCount(stats!.changedFiles),
+      value: { addedLines: stats!.addedLines, removedLines: stats!.removedLines },
+      leadingColor: fileKindColor[kind],
+    })),
+  ];
+}
 
 watch([() => props.agentId, () => props.selectedTarget], ([, target]) => {
   hasUserSelection.value = Boolean(target);
@@ -147,6 +171,11 @@ function selectedTargetForAgent(): AgentGitDiffTarget {
 }
 
 function selectTarget(itemId: string): void {
+  if (itemId.startsWith('kind:')) {
+    menuOpen.value = false;
+    emit('open', { ...selectedTarget.value }, itemId.slice('kind:'.length) as FileKind);
+    return;
+  }
   const target = targetFromId(itemId);
   if (!target) return;
   hasUserSelection.value = true;
@@ -187,15 +216,19 @@ function selectedLabelFor(target: AgentGitDiffTarget): string {
   return translate('surface.agentHeader.changesVsBranch', { branch });
 }
 
+/** The turn records its diff text; the file count and file types come from that text. */
+function turnSummary(turn: TurnGitDiff): AgentGitDiffSummary {
+  const { changedFiles, byKind } = summarizeUnifiedDiff(turn.diff ?? '');
+  return { addedLines: turn.addedLines, removedLines: turn.removedLines, changedFiles, byKind };
+}
+
 function summaryFor(target: AgentGitDiffTarget): AgentGitDiffSummary {
   const catalog = props.gitStatus.diffCatalog;
   if (target.type === 'branch') return catalog?.branch ?? fallbackSummary.value;
   if (target.type === 'uncommitted') return catalog?.uncommitted ?? fallbackSummary.value;
   if (target.type === 'unstaged') return catalog?.unstaged ?? fallbackSummary.value;
   if (target.type === 'staged') return catalog?.staged ?? fallbackSummary.value;
-  if (target.type === 'turn') return props.lastTurnGitDiff
-    ? { ...props.lastTurnGitDiff, changedFiles: 0 }
-    : fallbackSummary.value;
+  if (target.type === 'turn') return props.lastTurnGitDiff ? turnSummary(props.lastTurnGitDiff) : fallbackSummary.value;
   return catalog?.commits.find((commit) => commit.sha === target.sha) ?? fallbackSummary.value;
 }
 </script>

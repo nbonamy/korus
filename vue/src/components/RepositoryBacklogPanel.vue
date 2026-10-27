@@ -3,7 +3,7 @@
     <BacklogSourceSelector size="small" :provider="backlog.provider.value" :providers="backlog.providers.value" :sources="backlog.sources.value" :source-id="backlog.sourceId.value" :show-source="!workProviderDefinition(backlog.provider.value).repositoryBacked" @select-provider="backlog.selectProvider" @select-source="backlog.selectSource" />
     <header class="repository-backlog__repository">
       <div>
-        <GitHubIcon v-if="backlog.provider.value === 'github'" aria-hidden="true" />
+        <component :is="workProviderIcon(backlog.provider.value)" aria-hidden="true" />
         <strong>{{ repositoryName }}</strong>
       </div>
       <span v-if="branch" class="repository-backlog__branch-pill">
@@ -41,7 +41,7 @@
           @click="kindFilter = 'pullRequest'"
         >
           <IconGitPullRequest aria-hidden="true" />
-          {{ t('repositoryBacklog.pullRequests') }}
+          {{ t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'repositoryBacklog.pullRequests') }}
         </button>
       </div>
 
@@ -131,7 +131,7 @@
           ref="searchInput"
           v-model="searchQuery"
           type="search"
-          :placeholder="kindFilter === 'issue' ? t('repositoryBacklog.searchIssues') : t('repositoryBacklog.searchPullRequests')"
+          :placeholder="kindFilter === 'issue' ? t('repositoryBacklog.searchIssues') : t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.searchMergeRequests' : 'repositoryBacklog.searchPullRequests')"
           :aria-label="$t('surface.repositoryBacklogPanel.searchRepositoryWork')"
           @keydown.esc="closeSearch"
         >
@@ -186,7 +186,7 @@
         {{ t('repositoryBacklog.showing', {
           visible: filteredItems.length,
           total: kindItems.length,
-          kind: kindFilter === 'issue' ? t('repositoryBacklog.issues').toLocaleLowerCase() : t('repositoryBacklog.pullRequests').toLocaleLowerCase(),
+          kind: kindFilter === 'issue' ? t('repositoryBacklog.issues').toLocaleLowerCase() : t(backlog.provider.value === 'gitlab' ? 'gitlabBacklog.mergeRequests' : 'repositoryBacklog.pullRequests').toLocaleLowerCase(),
         }) }}
       </p>
     </div>
@@ -273,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { workProviderDefinition } from '@workspace/core/work-providers';
+import { workProviderDefinition, workProviderForRepositoryId } from '@workspace/core/work-providers';
 import { workItemBranchName, workItemDisplayIdentifier } from '@workspace/core/work-item-prompts';
 import { computed, h, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -291,7 +291,7 @@ import {
   IconSearch,
   IconX,
 } from '@tabler/icons-vue';
-import { GitHubIcon } from '../shared/icons/app-icons';
+import { workProviderIcon } from './work-provider-icons';
 import type { Agent, WorkBacklogAssignment, WorkItem } from '@workspace/core/contracts';
 import { agentDisplayName } from '@workspace/core/agent-display';
 import { workItemAssignmentKey } from '@workspace/core/work-assignments';
@@ -326,6 +326,8 @@ const backlog = useWorkSourceBacklog({
   location: () => props.location,
   query: { kind: 'all', state: 'all' },
   preferredSourceId: () => props.repositoryId,
+  preferredProvider: () => workProviderForRepositoryId(props.repositoryId) === 'gitlab' ? 'gitlab' : undefined,
+  originProvider: () => workProviderForRepositoryId(props.repositoryId),
   restrictToRepository: () => true,
   enabled: () => props.visible,
 });
@@ -469,7 +471,7 @@ const RepositoryItemRow = (rowProps: { item: WorkItem; assignment: WorkBacklogAs
     h('button', {
       class: 'repository-backlog__item-actions',
       type: 'button',
-      'aria-label': `${t('repositoryBacklog.actions')} #${item.number}`,
+      'aria-label': `${t('repositoryBacklog.actions')} ${workItemDisplayIdentifier(item)}`,
       onClick: (event: MouseEvent) => {
         event.stopPropagation();
         context.emit('open', event.currentTarget as HTMLElement);

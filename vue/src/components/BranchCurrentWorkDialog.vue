@@ -6,7 +6,7 @@
       <button v-for="recovery in preview.recoveries" :key="recovery.input.requestId" class="app-button app-button--secondary" type="button" :disabled="busy" @click="resume(recovery.input, recovery.result)">{{ $t('branchWork.resume', { branch: recovery.input.branchName }) }}</button>
     </div>
     <div v-if="preview && !result" class="branch-work__form">
-      <input id="branch-work-name" v-model="branchName" name="branch" :aria-label="$t('branchWork.branchName')" :placeholder="$t('branchWork.branchPlaceholder')" :disabled="busy || Boolean(request)" autocomplete="off" autofocus />
+      <ClearableTextInput subtle id="branch-work-name" v-model="branchName" name="branch" :aria-label="$t('branchWork.branchName')" :placeholder="$t('branchWork.branchPlaceholder')" :disabled="busy || Boolean(request)" autocomplete="off" autofocus />
     </div>
     <div v-if="result" class="branch-work__result" role="status">
       <p>{{ result.state === 'completed' ? $t('branchWork.completed') : $t('branchWork.recovery') }}</p>
@@ -28,6 +28,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { BranchWorkInput, BranchWorkPreview, BranchWorkResult, BranchWorkProgress } from '@workspace/core/branch-current-work';
 import FormDialog from '../shared/dialog/FormDialog.vue';
+import ClearableTextInput from '../shared/form/ClearableTextInput.vue';
 import type { WorkspaceProvisioningOperation } from './WorkspaceProvisioningProgressDialog.vue';
 import { isProvisioningBackgrounded, publishProvisioningOperation } from './provisioning-operations';
 import { translate } from '../i18n';
@@ -120,18 +121,6 @@ function completeOperation(): void {
 
 .branch-work__form {
   padding: var(--space-4) 0;
-}
-
-.branch-work__form input {
-  box-sizing: border-box;
-  width: 100%;
-  border: 0;
-  border-radius: 0;
-  padding: var(--space-4) 0;
-  color: var(--color-text);
-  background: transparent;
-  font: inherit;
-  outline: none;
 }
 
 .branch-work__result code {

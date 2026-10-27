@@ -1,4 +1,4 @@
-import type { SurfaceMessageQuestionPart } from '@codex-app-sdk/core/surface';
+import type { CodexPromptPart, SurfaceMessageQuestionPart } from '@codex-app-sdk/core/surface';
 import type { ReasoningEffort } from './shared';
 
 export type ThreadGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete';
@@ -231,6 +231,7 @@ export type RendererPromptAttachment =
   };
 
 export type SendPromptOptions = {
+  content?: readonly CodexPromptPart[];
   /** User-selected options for the /delegate command, consumed by the app adapter. */
   delegation?: import('../delegation-context').DelegationOverrides;
   attachments?: readonly PromptAttachment[];
@@ -248,6 +249,8 @@ export type SendPromptOptions = {
 export type RendererSendPromptOptions = Omit<SendPromptOptions, 'attachments' | 'recordUserMessage'> & {
   attachments?: readonly RendererPromptAttachment[];
 };
+
+export type PromptContentOptions = Pick<SendPromptOptions, 'content'>;
 
 export type BackendPromptOptions =
   | { kind: 'antigravity'; permissionMode?: string | null }
@@ -316,6 +319,7 @@ export type RendererToolPartUpdate = {
 };
 
 export type RendererMessage = {
+  metadata?: { promptContent?: readonly CodexPromptPart[] };
   id: string;
   agentId: string;
   kind?: 'compaction' | 'steer';

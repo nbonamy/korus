@@ -12,11 +12,12 @@ test('generates startup metadata and an icon without modifying the workspace man
     mkdirSync(path.join(root, 'electron/assets'), { recursive: true });
     writeFileSync(path.join(root, 'electron/package.json'), JSON.stringify({ version: '1.2.3' }));
     writeFileSync(path.join(root, 'electron/assets/icon.png'), 'icon');
+    writeFileSync(path.join(root, 'electron/assets/icon-dev.png'), 'development icon');
     const shell = prepareDevelopmentShell(root);
     assert.deepEqual(JSON.parse(readFileSync(path.join(shell, 'package.json'), 'utf8')), {
       name: 'desktop-development-shell', version: '1.2.3', productName: product.name,
       desktopName: `${product.appId}.development.desktop`, main: path.join(root, 'electron/.vite/build/main.js'),
     });
-    assert.equal(readFileSync(path.join(shell, 'assets/icon.png'), 'utf8'), 'icon');
+    assert.equal(readFileSync(path.join(shell, 'assets/icon-dev.png'), 'utf8'), 'development icon');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

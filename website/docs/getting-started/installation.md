@@ -51,15 +51,17 @@ A separate Claude Code installation is optional when Korus's bundled runtime is 
 
 Use the [provider guides](../providers/), including [Antigravity setup](../providers/#antigravity), for the engine you choose. A detected installation alone does not establish that its selected setup environment is signed in.
 
-## Connect GitHub, or skip it
+## Connect GitHub or GitLab, or skip it
 
 If GitHub CLI (`gh`) is authenticated to github.com on this computer, Korus detects that access. Choose **Connect GitHub** for faster direct access, or **Use GitHub CLI** to continue with your existing CLI sign-in. Without authenticated CLI access, choose **Skip for now** to start with a local folder. You can connect later in **Settings → Integrations**.
 
-GitHub authorization is separate from your coding provider's account. You can run a local repository task without connecting GitHub.
+GitLab.com has its own connection choice in the same step, including authenticated GitLab CLI (`glab`) access. You can connect either or both services before continuing.
+
+GitHub and GitLab authorization are separate from your coding provider's account. You can run a local repository task without connecting either service.
 
 ## Open a working folder
 
-In the empty workspace, choose **Existing folder or repository…** to open a checkout already on disk. The same start-work menu offers a new project, a GitHub repository, or a repository URL.
+In the empty workspace, choose **Existing folder or repository…** to open a checkout already on disk. The same start-work menu offers a new project, a GitHub or GitLab repository, or a repository URL.
 
 For a first task, choose a small local repository whose branch and existing changes you understand. Continue with the [quickstart](./quickstart).
 

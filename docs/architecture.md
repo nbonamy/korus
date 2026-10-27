@@ -10,6 +10,13 @@ Implementation identifiers stay brand-neutral. Types, method names and event
 unions live in `core/src/`; this document records only what the code cannot say:
 ownership, invariants and the reasons behind them.
 
+Quota pauses are conversation-scoped agent metadata. The owning daemon persists
+known reset deadlines and the auto-resume preference, then submits one `continue`
+after the reset through normal prompt admission. Provider adapters supply reset
+metadata; the scheduler is provider-neutral. Manual prompts, replacement
+conversations and closed agents cancel pending continuation. Desktop clients show
+the same pending state above the composer; closing a client does not cancel it.
+
 ## Process Model
 
 ```mermaid
@@ -403,6 +410,25 @@ existing home (`providerHomes.<backend>.shareSkills`); private resources are
 never overwritten. Credentials are never copied; an isolated home authenticates
 on its own. Existing-home changes affect the user's external provider setup too.
 
+The daemon skill manager keeps downloaded skills in `APP_HOME/skills`, with
+revision receipts and provider-owned skill-directory links. Installs resolve
+GitHub references to commit hashes and copy complete skill folders without
+executing installer commands. Sync adds links for newly configured local
+providers; personal directories and links are preserved on conflicts. Confirmed deletion removes a skill from all discovered local provider roots and
+its managed content, including owned links in previously selected homes. Linked
+skill folders are unlinked without deleting their external source; nested skills
+inside linked packs must be removed by their pack installer. System skills are
+protected using both discovered and resolved paths; any protected installation
+blocks deletion of the grouped skill across providers.
+The installed inventory also discovers existing skills in native provider homes
+and read-only provider roots, including Codex's global user skill directory.
+Discovery follows linked skill folders with bounded traversal and groups presence
+by skill name; presence does not imply matching versions across providers.
+Personal and bundled skills are never adopted or removed by inventory or Sync.
+Document reads return distinct installed SKILL.md contents without executing them.
+Remote hosts manage their own installations. Existing local agents receive a
+refreshed skill catalog without replacing their conversations.
+
 Switching between an isolated and an existing home is an explicit roster reset:
 the client confirms the exact local agent IDs (quick chats included);
 `ProviderSetup` rechecks after async preparation, refuses active agents and
@@ -502,19 +528,37 @@ clears or changes it, Korus never re-detects.
   unsupported or refused forks start a fresh handoff with persisted
   context metadata. Korus never replays a transcript to imitate a fork.
   Independent code reviewers always start fresh.
-- Korus-created pull requests are tracked on their agent; a runtime scheduler
-  polls only those PRs. A merged or closed PR raises an explicit cleanup alert;
-  cleanup is accepted only for an idle agent whose unshared, clean linked worktree
-  still points at the recorded PR head (a closed PR keeps its remote branch).
+- Korus-created GitHub pull requests and GitLab merge requests are tracked on
+  their agent with provider, repository, branch and head identity. The runtime
+  scheduler reads each request through its owning connection; authentication or
+  read failures leave other requests eligible for updates. Closed requests remain
+  eligible for reopening; merged requests are terminal. Late reads cannot replace
+  retargeted or removed agent tracking.
+  A merged or closed request raises an explicit cleanup alert. Cleanup requires an
+  idle agent whose unshared, clean linked worktree still matches the recorded
+  provider, repository, branch and head. Closed requests keep their remote branch;
+  merged-request remote deletion verifies its push destination and uses a
+  recorded-head lease to retain newer work.
 - Agent worktree deletion publishes roster removal before filesystem cleanup.
   Selection prefers another agent from the same repository within the team,
   honoring client ordering. Auxiliary agent data remains available until cleanup
   succeeds; failure restores the agent and team membership for retry without
   replacing navigation or roster changes made during cleanup.
+- Merge cleanup closes local agents rooted in the removed worktree, including
+  subfolder agents. Roster removal is saved before provider release/archive work;
+  provider failures cannot retain deleted-worktree owners. Merge-and-push retains
+  its initiator for the pending push and closes it after a successful push.
 - Merge branch cleanup removes the local branch and its same-named origin branch
   after integration succeeds. Origin cleanup uses its push destination and an
   inspected-head lease; default branches and remote commits outside the merged
   source remain intact. Cleanup failure is a warning, not a failed merge.
+- Full repository deletion belongs to `daemon` and is scoped by a known agent’s
+  actual primary Git checkout. Its preview includes every linked worktree and
+  affected local agent across teams; typed repository-name confirmation binds that
+  scope and directory identity. Provider sessions stop before filesystem removal,
+  and roster cleanup persists after removal succeeds. Active Missions must be
+  resolved first. Filesystem roots, the user home, and application-state ancestors
+  are protected. No remote repository or branch is deleted.
 - Repository pruning belongs to `daemon`. A local selection bundles its branch
   and linked worktree; remote refs are independent opt-ins. The inventory excludes
   the default branch (per remote, as reported by that remote) and the primary checkout. The agent menu is an entry point,
@@ -611,6 +655,9 @@ publishes only after saving.
 - Agents never publish or merge: delivery reuses Korus's diff and explicit
   commit/push/PR controls. Ship completes only after every affected repository
   produced a PR or merged.
+  The daemon records merges and removed worktrees before closing their agents;
+  requested post-merge pushes finish delivery only after the push succeeds.
+  Removed workspace metadata remains historical context, not a cleanup target.
 - Deleting a Mission interrupts workers, archives their conversations, and removes
   artifacts and skills. Worktrees are kept or deleted by the user's choice; an
   unsafe worktree keeps the Mission and surfaces the error. Deleting a team leaves
@@ -628,9 +675,12 @@ target and reviewer agents) plus an opaque reviewer session reference.
 - Independent reviews reset the reviewer's conversation between rounds to reduce
   anchoring; every round receives the cumulative ledger (all prior skips, fixes
   and decisions) in a `<context>` block.
-- User-supplied review instructions belong to the review session, survive retries
+- Per-review instructions belong to the review session, survive retries
   and fresh rounds, and never become saved reviewer defaults. Unsubmitted drafts
   stay local to the agent's review tab and are discarded when that tab closes.
+  Saved workflow review instructions are separate: the review service appends the
+  current preference in a hidden `<context>` block to every inspection, discussion,
+  remediation and commit prompt, including automatic reviews and fresh rounds.
 - Completion can commit first: with the review's commit option ticked, the review
   agent is asked to commit the reviewed work locally before Finish or Review again
   runs. Korus only verifies that HEAD advanced; it never pushes. The option is
@@ -651,7 +701,7 @@ target and reviewer agents) plus an opaque reviewer session reference.
 
 ## Work Providers And Backlog
 
-Backlog providers (GitHub, Linear) are app-owned integrations, not agent-backend
+Work providers (GitHub, GitLab, Linear) are app-owned integrations, not agent-backend
 features. The boundary has three parts: the shared `WorkSource`/`WorkItem`
 contracts in `core/src/contracts/work.ts`, the registry in
 `core/src/work-providers.ts` (labels, capabilities, branch conventions, hosted MCP
@@ -659,6 +709,17 @@ endpoints), and backend `WorkProviderDriver` adapters owning auth, native API ca
 and normalization. A new source needs a registry entry, an adapter and runtime
 wiring, never branches in assignment, Mission, Settings or automation code.
 
+- First-run onboarding keeps GitHub and GitLab independent in one repository
+  connection step. Advancing is explicit; completing one authorization leaves
+  the other provider available. The client persists only the unfinished stage
+  across relaunch and migrates the legacy `github` stage to `repositories`.
+  Device authorization instructions are recovered from the backend's existing
+  pending grant through idempotent repository-provider connect calls; concurrent
+  starts share one operation. No credential or device grant is stored by the
+  renderer. A restarted daemon without the pending grant exposes reconnection.
+  Continuing cancels pending authorizations before leaving the step, preserving
+  authenticated CLI fallback. Completed users without an unfinished stage keep
+  their existing workspace.
 - Tokens never enter snapshots; they live behind the backend token-store port.
   Only connection metadata is persisted. The local file store is owner-readable
   because encryption beside its own key adds no boundary; a keychain can replace
@@ -674,6 +735,47 @@ wiring, never branches in assignment, Mission, Settings or automation code.
   `APP_GITHUB_CLIENT_ID`, then a packaged default). Refresh-token rotation
   invalidates the old pair, so concurrent requests share one refresh. Opening the
   browser is a separate user action so the code is visible first.
+- GitLab.com detects authenticated `glab` on the owning host and executes API
+  requests through `glab api --hostname gitlab.com`. It does not extract CLI tokens.
+  Direct credentials take precedence; canceled or failed direct authorization and
+  direct disconnect preserve CLI access. CLI accounts are checked before each API
+  page or write; an account change requires explicit reconnection in Settings.
+  Discovery uses bounded, noninteractive subprocesses and exposes safe errors rather
+  than subprocess diagnostics. The CLI transport and direct driver share project,
+  branch, pagination and error normalization. CLI access grants neither hosted MCP
+  nor Git transport authentication.
+  The direct connection uses public-client OAuth device authorization with the `api` scope.
+  The owning daemon resolves the public application ID from saved provider settings,
+  `APP_GITLAB_CLIENT_ID`, then the packaged build default. No client secret is used.
+  Register an application owned by Korus at
+  <https://gitlab.com/-/user_settings/applications>, disable **Confidential**, and
+  enable **api**, and **mcp** when offering agent MCP tools. Use `https://gitlab.com/oauth/device` for the required redirect
+  URI field; the device flow does not use a local callback. Supply its Application
+  ID through `APP_GITLAB_CLIENT_ID` when starting or building the daemon, and restart
+  the owning host. A missing ID produces an actionable Settings state. Registration
+  and an authorized account/catalog smoke test are owner setup steps; no shared
+  application ID is supplied by the repository.
+  Project discovery includes role-based access inherited through groups and shared
+  projects, follows all API pages, and fails incomplete discovery explicitly.
+  GitLab source IDs are `gitlab.com/<full namespace>/<project path>`; subgroup paths
+  remain intact. These IDs are opaque to clients and are distinct from GitHub IDs.
+  GitLab MCP permission is requested explicitly through Settings using `api mcp`;
+  it shares the daemon credential store and refresh boundary. The daemon checks
+  initialize/tool discovery, scope and provider generation before enabling the
+  hosted gateway. MCP status is independent of native API connectivity; missing
+  group access or MCP authorization leaves native workflows usable. Canceled,
+  denied and wrong-account permission upgrades retain the existing credentials.
+  API authorization does not configure Git transport credentials.
+- Git delivery selects the tracked upstream remote, then `origin`, then the first
+  remote. That remote owns provider routing, connectivity and request identity;
+  connecting another provider never changes it. GitLab request identities retain
+  `gitlab.com` and the full namespace. Background workflow reads stay local;
+  request dialogs explicitly opt into provider lookup and fail closed on lookup
+  errors. Creation rechecks the local branch, HEAD and remote after handoff.
+  GitLab uses draft merge requests targeting the project's default branch and
+  `refs/merge-requests/<iid>/head` for checkout. Qualified checkout requests verify
+  the selected project and fetched head before switching or creating a worktree.
+  API requests and Git transport keep separate authentication boundaries.
 - Linear uses authorization-code PKCE with single-use state and a fixed loopback
   callback bound only during authorization, so the browser must run on the
   computer hosting `daemon`. Scopes are `read,write`; no client secret exists.
@@ -685,6 +787,12 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 - Assignments are provider-neutral records keyed by provider and item ID. Agents
   update status through `update-work-item`; the record survives deletion of its
   agent, and Korus status never changes the tracker's own workflow state.
+- GitLab backlog identity includes the host, full project namespace and native
+  item reference (`#` for issues, `!` for merge requests). Repository reads exhaust
+  API pages; global reads return opaque continuations bound to account and filters.
+  The all-work feed walks accessible projects because GitLab.com restricts global
+  issue reads with `scope=all`. Assigned-to-me reads use the global API. Direct and
+  `glab` connections share this normalization and perform no native workflow writes.
 - An assignment prompt is a short user-visible request plus a hidden `<context>`
   block holding the action instructions, the `update-work-item` protocol and the
   item's content. Item text is untrusted, so a closing tag inside it is escaped
@@ -717,10 +825,12 @@ wiring, never branches in assignment, Mission, Settings or automation code.
 ## In-app Browser
 
 A desktop preview surface in the tabbed right workspace. The renderer hosts a
-sandboxed `<webview>` with a per-agent persistent partition; Electron main
-validates the guest and owns navigation and annotation policy. The renderer never
+sandboxed `<webview>` with one persistent browser partition shared by all agents.
+Electron main validates the guest and owns navigation and annotation policy. The renderer never
 receives the guest's `WebContents`, cookies or page-scripting access, and
 annotations arrive as structured metadata the renderer batches into one prompt.
+Browser guest developer tools are independent of the main application renderer's
+release-mode DevTools restriction.
 Open browser tabs retain their browser identity and latest URL in the per-client
 workspace store. Restoring a tab navigates through the normal host browser API;
 page contents, navigation history and live guest handles remain ephemeral.
@@ -731,6 +841,34 @@ The settings store retains their client identity separately from shared defaults
 The MCP `browser-open` tool reaches the same surface
 through `client/browser/open`; inactive agent workspaces stay mounted but hidden
 so browser tools keep working without changing the user's selection.
+
+Browser extensions share that persistent partition. Visualization guests use
+separate, temporary per-agent partitions. Clearing browsing data resets website
+storage, cookies, cache and open-page history across agents while preserving
+extension storage and grants.
+Electron owns extension loading, vendor windows, tab registration and the
+app-authored Chrome API adapter; extension documents remain sandboxed and ordinary
+websites receive no adapter transport. The adapter derives identity from the
+calling extension context and enforces optional grants for its own APIs.
+Browser subframe redirects to loaded extensions retain Chromium's resource access
+checks; the host's top-level URL policy must not cancel dynamic extension resource
+redirects. Visualization guests retain their navigation restrictions. Optional
+Chromium permissions that Electron cannot grant and revoke are rejected. Native
+desktop connections require a current `nativeMessaging` grant and a host listed
+for that extension. `daemon` validates the installed host registration, executable
+and allowed extension origin; Electron owns the framed native process connection.
+Revocation, context teardown and extension unload close those connections. Native
+payloads and host stderr are never logged.
+
+`daemon` owns the supported extension allowlist, official CRX3 downloads,
+signature and identity verification, package files and per-client grants.
+Verified packages are reused locally while account data stays in the shared
+Electron partition. The explicit Install action authorizes initial permissions;
+updates and runtime requests require consent for additional permissions. Failed
+downloads or verification preserve the installed package. Compatibility is not
+gated by a tested-version catalog. The passive Bitwarden storage relay belongs to
+the extension lifecycle and closes on unload. Explicit removal uses an app-owned
+same-identity cleanup context before deleting the extension's scoped storage.
 
 ## Interactive planning
 

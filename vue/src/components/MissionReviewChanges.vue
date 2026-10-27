@@ -27,6 +27,16 @@
         @open="emit('open-worktree', $event)"
       />
       <button
+        class="mission-review-changes__refresh mission-review-changes__group"
+        type="button"
+        :aria-label="t('missions.groupByFileType')"
+        :title="t('missions.groupByFileType')"
+        :aria-pressed="groupByKind"
+        @click="groupByKind = !groupByKind"
+      >
+        <FolderIcon aria-hidden="true" />
+      </button>
+      <button
         class="mission-review-changes__refresh"
         type="button"
         :aria-label="t('missions.refreshDiff')"
@@ -36,7 +46,7 @@
         <RefreshIcon aria-hidden="true" />
       </button>
     </header>
-    <GitDiffPreviewPanel :diff="diff" :state="state" :error="error" />
+    <GitDiffPreviewPanel :diff="diff" :state="state" :error="error" :group-by-kind="groupByKind" />
   </section>
 </template>
 
@@ -45,7 +55,7 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, AgentGitDiff, AgentGitDiffTarget, AgentGitStatus, OpenInApplicationCatalog } from '@workspace/core/contracts';
 import type { Mission } from '@workspace/core/missions';
-import { RefreshIcon } from '../shared/icons/app-icons';
+import { FolderIcon, RefreshIcon } from '../shared/icons/app-icons';
 import GitDiffPreviewPanel from './GitDiffPreviewPanel.vue';
 import MissionWorkspaceOpenIn, { type MissionWorkspaceOpenRequest } from './MissionWorkspaceOpenIn.vue';
 
@@ -71,6 +81,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ 'open-worktree': [request: MissionWorkspaceOpenRequest] }>();
 const { t } = useI18n();
 const target = ref<'branch' | 'uncommitted'>('branch');
+const groupByKind = ref(true);
 const selectedRepositoryPath = ref('');
 const diff = ref('');
 const state = ref<'idle' | 'loading' | 'error'>('idle');
@@ -194,6 +205,11 @@ watch(
 .mission-review-changes__refresh:hover,
 .mission-review-changes__refresh:focus-visible {
   background: var(--color-surface-low);
+}
+
+.mission-review-changes__group[aria-pressed='false'] {
+  color: var(--color-text-muted);
+  background: transparent;
 }
 
 .mission-review-changes__refresh svg {

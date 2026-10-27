@@ -37,3 +37,10 @@ it('uses the selected host connections and ignores a late response from the prev
   await flushPromises();
   expect(wrapper.text()).toBe('github');
 });
+
+it('limits the providers to those the caller accepts and falls back to the first accepted one', () => {
+  const connections = () => [{ provider: 'github' as const, status: 'connected' as const }, { provider: 'gitlab' as const, status: 'connected' as const }, { provider: 'linear' as const, status: 'connected' as const }];
+  const { providers, provider } = useBacklogProviders(connections, 'github', candidate => candidate !== 'github');
+  expect(providers.value).toStrictEqual(['gitlab', 'linear']);
+  expect(provider.value).toBe('gitlab');
+});

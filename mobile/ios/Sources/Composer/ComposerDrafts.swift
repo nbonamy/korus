@@ -70,9 +70,12 @@ final class ComposerDrafts {
         let goalMode: Bool
         let followUpBehavior: ComposerSendMode
         let uploads: [Upload]
+        struct Options: Encodable { let content: [ComposerPromptPart] }
+        let options: Options?
     }
     private struct Draft {
         var text = ""
+        var chips: [ComposerChipText.Chip] = []
         var goalMode = false
         var items: [ComposerAttachment] = []
         var loading: Import?
@@ -84,7 +87,8 @@ final class ComposerDrafts {
     private var retained: [ComposerTarget: Draft] = [:]
     private var pending: [String: Pending] = [:]
     private(set) var target: ComposerTarget?
-    var text: String { get { draft.text } set { draft.text = newValue } }
+    var text: String { get { draft.text } set { if draft.text != newValue { draft.chips = [] }; draft.text = newValue } }
+    var chips: [ComposerChipText.Chip] { get { draft.chips } set { draft.chips = newValue } }
     var goalMode: Bool { draft.goalMode }
     func setGoalMode(_ on: Bool) {
         guard !sending, !importing, !on || items.isEmpty else { return }
@@ -147,7 +151,7 @@ final class ComposerDrafts {
         guard let target, !empty, !importing, !sending, !goalMode || items.isEmpty else { return nil }
         let request = Submission(requestId: UUID().uuidString, target: target, text: text.trimmingCharacters(in: .whitespacesAndNewlines), goalMode: goalMode, followUpBehavior: mode, uploads: items.map {
             .init(type: $0.type, name: $0.name, mimeType: $0.mimeType, data: $0.data.base64EncodedString())
-        })
+        }, options: chips.isEmpty || goalMode ? nil : .init(content: ComposerChipText(text: text, chips: chips).content))
         draft.sending = request.requestId
         draft.error = nil
         pending = pending.filter { $0.value.owner != target }
@@ -166,7 +170,7 @@ final class ComposerDrafts {
                 draft.error = nil
                 if sent.submission.goalMode { draft.goalMode = false }
                 draft.items.removeAll { sent.ids.contains($0.id) }
-                if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == sent.submission.text { draft.text = "" }
+                if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == sent.submission.text { draft.text = ""; draft.chips = [] }
             case .rejected: draft.error = "Couldn’t send. Your draft and attachments are still here."
             case .unknown: draft.error = "Delivery couldn’t be confirmed. Check the conversation before sending again."
             }

@@ -30,6 +30,15 @@ export const codexBackendCommands: BackendCommandSummary[] = [
     submitOnSelect: true,
   },
   {
+    id: 'app.mission',
+    backend: 'codex',
+    name: 'mission',
+    displayName: 'Mission',
+    description: `Start a ${product.name} Mission from this prompt.`,
+    slashName: 'mission',
+    submitOnSelect: true,
+  },
+  {
     id: 'codex.plan',
     backend: 'codex',
     name: 'plan',
@@ -79,6 +88,15 @@ export const claudeBackendCommands: BackendCommandSummary[] = [
     displayName: 'Visualize',
     description: `Open ${product.name} Visualize mode for diagrams.`,
     slashName: 'visualize',
+    submitOnSelect: true,
+  },
+  {
+    id: 'app.mission',
+    backend: 'claude',
+    name: 'mission',
+    displayName: 'Mission',
+    description: `Start a ${product.name} Mission from this prompt.`,
+    slashName: 'mission',
     submitOnSelect: true,
   },
   {

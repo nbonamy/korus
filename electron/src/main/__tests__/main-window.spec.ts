@@ -25,17 +25,17 @@ describe('main window options', () => {
   it(`admits only isolated ${product.name} browser guests with no preload or Node access`, () => {
     const deny = { preventDefault: vi.fn() };
     const preferences = {
-      preload: '/tmp/untrusted.js', nodeIntegration: true, sandbox: false, webviewTag: true,
+      preload: '/tmp/untrusted.js', nodeIntegration: true, sandbox: false, webviewTag: true, devTools: false,
     };
     secureBrowserGuestAttachment(deny, preferences, {
-      src: 'about:blank', partition: 'persist:agent-workspace-browser-agent-one', preload: '/tmp/untrusted.js', allowpopups: '',
+      src: 'about:blank', partition: 'persist:workspace-browser', preload: '/tmp/untrusted.js', allowpopups: '',
     });
     expect(deny.preventDefault).not.toHaveBeenCalled();
-    expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, webviewTag: false });
+    expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, webviewTag: false, devTools: true });
     expect(preferences).not.toHaveProperty('preload');
 
     const reject = { preventDefault: vi.fn() };
-    secureBrowserGuestAttachment(reject, {}, { src: 'https://example.com', partition: 'persist:agent-workspace-browser-agent-one' });
+    secureBrowserGuestAttachment(reject, {}, { src: 'https://example.com', partition: 'persist:workspace-browser' });
     expect(reject.preventDefault).toHaveBeenCalledOnce();
     reject.preventDefault.mockClear();
     secureBrowserGuestAttachment(reject, {}, { src: 'about:blank', partition: 'persist:untrusted' });
@@ -71,7 +71,7 @@ describe('main window options', () => {
 
   it('supplies the product title and window icon on Linux', () => {
     expect(createMainWindowOptions(false, undefined, 'linux')).toMatchObject({
-      title: product.name, icon: path.join('/app', 'assets', 'icon.png'),
+      title: product.name, icon: path.join('/app', 'assets', 'icon-dev.png'),
     });
   });
 

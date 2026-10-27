@@ -1,3 +1,4 @@
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
 import { MAX_DELEGATION_INSTRUCTIONS_LENGTH } from './delegation-context';
 import { workProviderKinds } from './work-providers';
 import { isAgentBackend } from './contracts/shared';
@@ -24,6 +25,7 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   git: normalizeGitSettings(undefined),
   commitMessageInstructions: '',
   pullRequestInstructions: '',
+  codeReviewInstructions: '',
   preventSleepWhenAgentsRun: true,
   preventSleepWhenRemoteAccessEnabled: true,
   celebrationsEnabled: true,
@@ -46,8 +48,10 @@ export const defaultGeneralSettings: AppGeneralSettings = {
   worktreeInitializationMode: 'automatic',
   worktreeDelegationStartingContext: 'handoff',
   worktreeDelegationInstructions: '',
+  autoResumeAfterLimit: true,
   sessionCompressionWarningEnabled: true,
   repositoryIcons: {},
+  guestDisplayName: '',
   appshots: { ...defaultAppshotSettings },
   plugins: { ...defaultPluginSettings },
 };
@@ -135,6 +139,7 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     git: normalizeGitSettings(value.git),
     commitMessageInstructions: normalizeString(value.commitMessageInstructions) ?? '',
     pullRequestInstructions: normalizeString(value.pullRequestInstructions) ?? '',
+    codeReviewInstructions: normalizeString(value.codeReviewInstructions) ?? '',
     preventSleepWhenRemoteAccessEnabled: value.preventSleepWhenRemoteAccessEnabled !== false,
     celebrationsEnabled: value.celebrationsEnabled !== false,
     followUpBehavior: value.followUpBehavior === 'steer' ? 'steer' : 'queue',
@@ -164,8 +169,10 @@ export function normalizeGeneralSettings(value: unknown): AppGeneralSettings {
     worktreeInitializationMode: normalizeWorktreeInitializationMode(value.worktreeInitializationMode),
     worktreeDelegationStartingContext: value.worktreeDelegationStartingContext === 'conversation' ? 'conversation' : 'handoff',
     worktreeDelegationInstructions: normalizeString(value.worktreeDelegationInstructions)?.slice(0, MAX_DELEGATION_INSTRUCTIONS_LENGTH).trim() ?? '',
+    autoResumeAfterLimit: value.autoResumeAfterLimit !== false,
     sessionCompressionWarningEnabled: value.sessionCompressionWarningEnabled !== false,
     repositoryIcons: normalizeRepositoryIcons(value.repositoryIcons),
+    guestDisplayName: (typeof value.guestDisplayName === 'string' ? value.guestDisplayName : '').replace(/[\p{Cc}\p{Cf}]/gu, '').trim().slice(0, 80),
     appshots: normalizeAppshotSettings(value.appshots),
     plugins: normalizePluginSettings(value.plugins),
   };
@@ -287,7 +294,9 @@ function normalizeSavedPromptDrafts(value: unknown): SavedPromptDraft[] {
       || typeof text !== 'string' || !text.trim() || text.length > 131_072
       || typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt < 0) continue;
     seen.add(id);
-    drafts.push({ id, agentId, text, createdAt });
+    try {
+      drafts.push({ id, agentId, text, createdAt, ...(candidate.content === undefined ? {} : { content: normalizePromptContent(candidate.content) }) });
+    } catch { /* Discard malformed authored drafts, preserving the other saved drafts. */ }
   }
   return drafts.slice(-100);
 }

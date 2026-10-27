@@ -1,13 +1,14 @@
 import type { CompanionCheckpoint, CompanionSync } from '@workspace/core/companion-journal';
 import type { CompanionNotification, CompanionPushRegistration } from '@workspace/core/companion-notification';
 import { computed, ref, watch } from 'vue';
+import { promptContentText, trimPromptContent, type CodexPromptPart } from '@codex-app-sdk/core/surface';
 import { hasUnreadActivity } from '@workspace/core/agent-read-state';
 import { skillDescription, skillDisplayName, skillInsertText, pluginDescription, pluginDisplayName, pluginInsertText } from '@codex-app-sdk/vue';
 import type { Agent, AgentBackend, BackendModelOption } from '@workspace/core/contracts';
 import { canSelectAgentBackend } from '@workspace/core/agent-backends';
 import { projectAgentMentionLabels } from '@workspace/core/workspace-sidebar';
 import { agentDisplayName } from '@workspace/core/agent-display';
-import { companionBackgroundGraceMs, companionTarget, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
+import { companionAgents, companionBackgroundGraceMs, companionTarget, type CompanionMission, type CompanionTarget, type CompanionBranch } from '@workspace/core/companion-protocol';
 import { validPromptUploads } from './prompt-uploads';
 import { connectionDiagnostic } from './connection-diagnostics';
 import type { CompanionUpload, CompanionConnector, CompanionConversation, CompanionHistoryState, CompanionReviewInput } from './companion-port';
@@ -19,7 +20,12 @@ import type { SelectionStore } from './selection-store';
 import type { CompanionRequestReply, CompanionClosePreview } from '@workspace/core/companion-protocol';
 
 /** Everything the native shell draws, as plain data: no framework, no protocol detail. */
+/** A mission as the phone lists it: how far along it is, and each ticket with the worker that has it, if any. */
+export type EngineMission = Omit<CompanionMission, 'tickets'> & { done: number; tickets: (CompanionMission['tickets'][number] & { activity?: string })[] };
 export type EngineState = {
+  missions: EngineMission[];
+  /** The mission whose ticket worker is open; its conversation is read-only except for what the worker asks. */
+  mission: { id: string; outcome: string; lead?: true } | null;
   git: ReturnType<typeof createCompanionState>['git']['view']['value'];
   queuedPrompts: { id: string; text: string }[];
   queuedPromptPending: string | null;
@@ -35,11 +41,13 @@ export type EngineState = {
   connection: string;
   /** A `mobile.errors.*` key the shell words itself. */
   error: string;
+  errorDetail: string;
   laptops: { id: string; name: string }[];
   pairing: 'idle' | 'working' | 'awaitingApproval';
   pairingError: string;
   teams: { id: string; name: string; avatar?: string; isUnread: boolean }[];
   teamId: string;
+  allTeams: boolean;
   laptopId: string;
   groups: MobileSidebarGroup[];
   activityGroups: MobileActivityGroup[];
@@ -59,6 +67,9 @@ export type EngineState = {
   sessionActionFailed: boolean;
   closePreview: CompanionClosePreview | null;
   chatCreation: 'idle' | 'creating' | 'failed';
+  teamCreation: 'idle' | 'creating' | 'failed';
+  /** Moving a mission on, or accepting one of its tickets, is a request to the laptop that can be refused. */
+  missionAction: 'idle' | 'working' | 'failed';
   /** The engines the open team's laptop can start a chat with. */
   backends: string[];
   branches: { repositoryId: string | null; status: 'idle' | 'loading' | 'loaded' | 'failed'; items: CompanionBranch[] };
@@ -66,8 +77,9 @@ export type EngineState = {
   backend: string | null;
   canSelectBackend: boolean;
   draft: string;
-  mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; description: string }[] };
-  skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; description: string }[] };
+  suggestedPrompt: string | null;
+  mentions: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; kind: 'agent' | 'plugin'; name: string; insertText: string; value: string; description: string }[] };
+  skills: { status: 'idle' | 'loading' | 'loaded' | 'failed'; items: { id: string; name: string; insertText: string; value: string; description: string }[] };
   models: { id: string; name: string; efforts: string[]; tiers: { id: string; name: string }[] }[];
   composer: { modelId: string | null; effort: string | null; serviceTier: string | null; planMode: boolean };
   permissions: { approvalPreset: string | null; permissionMode: string | null; presets: string[]; modes: { id: string; label: string }[] };
@@ -98,11 +110,13 @@ export type TranscriptContext = {
 };
 
 export type EngineCommand =
+  | { type: 'createTeam'; name: string } | { type: 'dismissTeamCreation' }
+  | { type: 'continueMission'; missionId: string } | { type: 'acceptTicket'; missionId: string; number: number } | { type: 'selectFinding'; missionId: string; findingId: string; selected: boolean } | { type: 'fixFindings'; missionId: string } | { type: 'rerunReview'; missionId: string } | { type: 'dismissMissionAction' }
   | { type: 'idleSort'; order: 'activity' | 'repository' }
   | { type: 'loadChanges'; scopeId?: string } | { type: 'dismissChanges' }
   | { type: 'readConversationImage'; requestId: string; agentId: string; path: string }
-  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'local' } | { type: 'dismissProjectBranches' }
-  | { type: 'loadProjectRepositories'; source?: 'github' | 'local' } | { type: 'dismissProjectRepositories' }
+  | { type: 'loadProjectBranches'; repositoryId: string; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectBranches' }
+  | { type: 'loadProjectRepositories'; source?: 'github' | 'gitlab' | 'local' } | { type: 'dismissProjectRepositories' }
   | { type: 'duplicateAgent'; target: CompanionTarget; backend: AgentBackend }
   | { type: 'renameAgent'; target: CompanionTarget; name: string }
   | ({ type: 'createProject' } & Omit<import('@workspace/core/companion-protocol').CompanionProjectInput, 'teamId'>)
@@ -110,6 +124,7 @@ export type EngineCommand =
   | { type: 'pushRegistration'; registration: CompanionPushRegistration | null }
   | { type: 'openNotification'; target: CompanionTarget }
   | { type: 'readConversationContent'; requestId: string; agentId: string; input: import('@workspace/core/contracts/conversation').ConversationContentInput }
+  | { type: 'dismissRequest'; key: string }
   | { type: 'respondRequest'; reply: CompanionRequestReply }
   | { type: 'transcriptApplied'; identity: string; checkpoint: CompanionCheckpoint }
   | { type: 'transcriptReset'; identity: string }
@@ -117,17 +132,17 @@ export type EngineCommand =
   | { type: 'start' }
   | { type: 'pair'; code: string; deviceName: string }
   | { type: 'connect'; laptopId: string }
-  | { type: 'disconnect' } | { type: 'reconnect' } | { type: 'forget' }
+  | { type: 'disconnect' } | { type: 'chooseConnection' } | { type: 'reconnect' } | { type: 'forget'; laptopId?: string } | { type: 'renameLaptop'; laptopId: string; name: string }
   /** App visibility; background connections have the same grace period as the native lock. */
   | { type: 'activity'; active: boolean }
   | { type: 'read'; agentId: string; revision: number; generation: number }
-  | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
+  | { type: 'selectAllTeams' } | { type: 'selectTeam'; id: string } | { type: 'selectAgent'; id: string }
   | { type: 'loadOlder'; agentId: string }
   | { type: 'draft'; text: string }
   | { type: 'loadSkills' }
   | { type: 'loadMentions' }
   | { type: 'clearGoal'; target: CompanionTarget }
-  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { attachments?: { type?: string; reference: string }[] } }
+  | { type: 'send'; followUpBehavior?: 'queue' | 'steer'; goalMode?: boolean; text: string; requestId?: string; target?: CompanionTarget; uploads?: CompanionUpload[]; options?: { content?: import('@codex-app-sdk/core/surface').CodexPromptPart[]; attachments?: { type?: string; reference: string }[] } }
   | { type: 'interrupt' }
   | { type: 'queuedPrompt'; target: CompanionTarget; promptId: string; action: 'steer' | 'delete' }
   | { type: 'restartSession' } | { type: 'closeSession' } | { type: 'dismissSessionError' }
@@ -155,14 +170,35 @@ export function createEngine(port: EnginePort) {
   let foreground = port.initialActive ?? true;
   const sidebarNow = ref(Date.now());
   const sidebarIdleSort = ref<'activity' | 'repository'>('activity');
+  // Sidebar scope is independent of the team that owns the open conversation and new work.
+  const allTeams = ref(false);
+  const showingAllTeams = computed(() => allTeams.value && state.workspace.value.teams.length > 1);
+  const sidebarAgents = computed(() => {
+    if (!showingAllTeams.value) return state.agents.value;
+    const order = new Map(state.workspace.value.teams.flatMap(team => team.agentIds).map((id, index) => [id, index]));
+    return [...state.workspace.value.agents].sort((a, b) => (order.get(a.id) ?? order.size) - (order.get(b.id) ?? order.size));
+  });
+  const sidebarGroups = computed(() => projectMobileGroups(sidebarAgents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons));
+  function repositoryTeam(repositoryId: string): string {
+    if (!showingAllTeams.value) return state.teamId.value;
+    const group = sidebarGroups.value.find(group => group.repositoryRoot === repositoryId);
+    const members = new Set(group?.sessions.map(session => session.agentId));
+    const owners = sidebarAgents.value.filter(agent => members.has(agent.id));
+    return owners.find(agent => agent.teamId === state.teamId.value)?.teamId ?? owners[0]?.teamId ?? state.teamId.value;
+  }
   const sidebarClock = setInterval(() => { if (foreground) sidebarNow.value = Date.now(); }, 1_000);
   let activityEpoch = 0;
   // The state starts out foreground; tell it when the app was launched in the background.
   if (!foreground) void state.setActive(false);
-  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => { state.disconnect(); return port.connector.suspend?.(); } });
+  const lifecycle = createLifecycle({ graceMs: companionBackgroundGraceMs, suspend: () => {
+    // An unopened or revoked connection is still a pairing screen, even after a long background stay.
+    if (state.status.value !== 'unpaired' && state.status.value !== 'revoked') state.disconnect();
+    return port.connector.suspend?.();
+  } });
   let pendingNotification: CompanionTarget | null = null;
   let notificationEpoch = 0;
   let restoringSelection = 0;
+  let choosingConnection = false;
   const reading = new Set<string>();
   let scheduled = false;
   let lastState = '';
@@ -174,21 +210,33 @@ export function createEngine(port: EnginePort) {
   async function rememberSelection() {
     if (!state.laptopId.value || !port.selectionStore) return;
     // Navigation remains usable if device storage is temporarily unavailable.
-    await port.selectionStore.write(state.laptopId.value, { teamId: state.teamId.value, agentId: state.agentId.value }).catch(() => {});
+    await port.selectionStore.write(state.laptopId.value, { teamId: state.teamId.value, agentId: state.agentId.value,
+      ...(showingAllTeams.value ? { allTeams: true } : {}) }).catch(() => {});
+  }
+
+  async function preferredLaptop() {
+    const saved = await port.selectionStore?.readLastLaptop().catch(() => null);
+    return laptops.value.find(laptop => laptop.id === saved)?.id
+      ?? (laptops.value.length === 1 ? laptops.value[0]!.id : null);
   }
 
   async function connect(laptopId: string) {
+    choosingConnection = false;
+    if (laptopId !== state.laptopId.value) allTeams.value = false;
     ++restoringSelection;
     try {
       const epoch = ++restoreEpoch;
       await state.connect(laptopId);
       if (disposed || epoch !== restoreEpoch || state.status.value !== 'connected') return;
+      await port.selectionStore?.writeLastLaptop(laptopId).catch(() => {});
       const saved = await port.selectionStore?.read(laptopId).catch(() => null);
       if (disposed || epoch !== restoreEpoch || state.laptopId.value !== laptopId || state.status.value !== 'connected') return;
       const teams = state.workspace.value.teams;
       const team = teams.find((candidate) => candidate.id === saved?.teamId)
         ?? teams.find((candidate) => candidate.id === state.teamId.value) ?? teams[0];
       await state.selectTeam(team?.id ?? '', team?.id === saved?.teamId ? saved?.agentId : undefined);
+      if (disposed || epoch !== restoreEpoch) return;
+      if (saved) allTeams.value = saved.allTeams === true;
       if (!disposed && epoch === restoreEpoch) await rememberSelection();
     } finally {
       --restoringSelection;
@@ -216,15 +264,31 @@ export function createEngine(port: EnginePort) {
   function snapshot(): EngineState {
     const agent = state.agent.value;
     const team = state.workspace.value.teams.find((team) => team.id === agent?.teamId);
-    const groups = projectMobileGroups(state.agents.value, state.agentId.value || null, port.chatsLabel ?? 'Chats', state.workspace.value.repositoryIcons);
+    const groups = sidebarGroups.value;
     const active = activeSession(groups);
+    const missions = state.missions.value.filter((mission) => showingAllTeams.value || mission.teamId === state.teamId.value)
+      .map((mission): EngineMission => ({ ...mission, done: mission.tickets.filter((ticket) => ticket.state === 'accepted').length,
+        // What a working agent says it is doing is the ticket's live line.
+        tickets: mission.tickets.map((ticket) => {
+          const activity = ticket.agentId && (ticket.state === 'running' || ticket.state === 'preparing')
+            ? state.workspace.value.missionAgents?.find((agent) => agent.id === ticket.agentId)?.statusText?.trim() : undefined;
+          return activity ? { ...ticket, activity } : ticket;
+        }) }));
+    const owner = agent ? state.missions.value.find((mission) => mission.leadAgentId === agent.id || mission.tickets.some((ticket) => ticket.agentId === agent.id)) : undefined;
+    // Repository workers take precedence over the lead label, including workspaces from older hosts.
+    const ticketOf = owner && agent ? owner.tickets.find((ticket) => ticket.agentId === agent.id) : undefined;
+    const missionTitle = owner && agent
+      ? ticketOf ? { title: ticketOf.repository || (agent.workspace?.kind === 'git' ? agent.workspace.repositoryName : ticketOf.title), subtitle: null }
+        : owner.leadAgentId === agent.id ? { title: 'Mission lead', subtitle: null } : null
+      : null;
     const capabilities = composerCapabilitiesFor(agent?.backend ?? 'codex', state.models.value);
     const settings = state.composerSettings.value;
     const permissions = state.permissions.value;
     return {
       git: state.git.view.value,
+      missions, mission: owner ? { id: owner.id, outcome: owner.outcome, ...(!ticketOf && owner.leadAgentId === agent?.id ? { lead: true as const } : {}) } : null,
       laptopId: state.laptopId.value,
-      activityGroups: projectMobileActivityGroups(state.agents.value, groups, sidebarNow.value, sidebarIdleSort.value),
+      activityGroups: projectMobileActivityGroups(sidebarAgents.value, groups, sidebarNow.value, sidebarIdleSort.value),
       queuedPrompts: (state.workspace.value.queuedPrompts ?? []).filter(prompt => prompt.agentId === agent?.id).map(({ id, text }) => ({ id, text })),
       queuedPromptPending: state.queuedPromptPending.value,
       queuedPromptFailed: state.queuedPromptFailed.value,
@@ -233,11 +297,14 @@ export function createEngine(port: EnginePort) {
       pushRegistrationFailed: state.pushRegistrationFailed.value,
       requests: state.requests.value, respondingRequest: state.respondingRequest.value, failedRequest: state.failedRequest.value,
       usage: state.usage.value,
-      startup: startup.value, connection: state.status.value, error: state.error.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
+      startup: startup.value, connection: state.status.value, error: state.error.value, errorDetail: state.errorDetail.value, laptops: laptops.value, pairing: pairing.value, pairingError: pairingError.value,
       teams: state.workspace.value.teams.map(team => ({ ...team, isUnread: state.workspace.value.agents.some(agent => agent.teamId === team.id && hasUnreadActivity(agent)) })).map(({ id, name, avatar, isUnread }) => ({ id, name, isUnread, ...(avatar ? { avatar } : {}) })),
-      teamId: state.teamId.value, groups, agentId: state.agentId.value,
-      header: active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
-        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null } : null,
+      teamId: state.teamId.value, allTeams: showingAllTeams.value, groups, agentId: state.agentId.value,
+      header: owner && agent && missionTitle ? { title: missionTitle.title, repository: missionTitle.subtitle, status: agent.status.type, statusText: agent.statusText ?? agent.status.type, icon: null }
+        : active && agent ? { title: active.session.displayTitle, repository: active.group.kind === 'repository' ? active.group.label : null,
+        status: active.session.status.type, statusText: agent.statusText ?? active.session.status.type, icon: active.group.icon ?? null }
+        : null,
+      suggestedPrompt: agent?.suggestedPrompt?.trim() || null,
       composerTarget: agent && team ? companionTarget(state.laptopId.value, team, agent) : null,
       goal: agent?.goal ? { objective: agent.goal.objective, status: agent.goal.status } : null,
       goalBusy: state.goalBusy.value, goalError: state.goalError.value,
@@ -247,14 +314,14 @@ export function createEngine(port: EnginePort) {
       conversationGeneration: state.conversationGeneration.value,
       mentions: { status: state.plugins.value.status, items: state.status.value !== 'connected' ? [] : [
         ...projectAgentMentionLabels(state.agents.value, port.chatsLabel ?? 'Chats').map(({ agentId, label }) => ({
-          id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, description: '',
+          id: `agent:${agentId}`, kind: 'agent' as const, name: label, insertText: `agent:${agentId}`, value: `agent:${agentId}`, description: '',
         })),
         ...state.plugins.value.items.map(plugin => ({ id: `plugin:${plugin.id}`, kind: 'plugin' as const,
-          name: pluginDisplayName(plugin), insertText: pluginInsertText(plugin), description: pluginDescription(plugin) })),
+          name: pluginDisplayName(plugin), insertText: pluginInsertText(plugin), value: plugin.name || plugin.id, description: pluginDescription(plugin) })),
       ] },
-      skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), description: skillDescription(skill) })) },
+      skills: { status: state.skills.value.status, items: state.skills.value.items.map((skill) => ({ id: skill.path, name: skillDisplayName(skill), insertText: skillInsertText(skill), value: skill.name, description: skillDescription(skill) })) },
       sessionAction: state.sessionAction.value, sessionActionFailed: state.sessionActionFailed.value,
-      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, backends: backendChoices(), branches: state.branches.value,
+      closePreview: state.closePreview.value, chatCreation: state.chatCreation.value, teamCreation: state.teamCreation.value, missionAction: state.missionAction.value, backends: backendChoices(), branches: state.branches.value,
       backend: agent?.backend ?? null,
       canSelectBackend: engines() !== null,
       models: state.models.value.map((model) => ({ id: model.id, name: model.displayName, efforts: effortsOf(model), tiers: (model.serviceTiers ?? []).map(({ id, name }) => ({ id, name })) })),
@@ -283,7 +350,7 @@ export function createEngine(port: EnginePort) {
   watch(view, publish, { flush: 'sync' });
   // Claude and Antigravity publish the sent prompt only after the next read; Codex's snapshot already carries it.
   // Until the real message arrives, the transcript shows the prompt as sent.
-  const pending: { id: string; agentId: string; text: string; baseline: number; expires: number; createdAt: string }[] = [];
+  const pending: { id: string; agentId: string; text: string; content?: readonly CodexPromptPart[]; baseline: number; expires: number; createdAt: string }[] = [];
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const userTexts = (frame: CompanionConversation, text: string) => frame.payload.snapshot.messages
     .filter((message) => message.role === 'user' && message.parts.map((part) => part.type === 'text' ? part.text : '').join('').trim() === text.trim()).length;
@@ -299,7 +366,7 @@ export function createEngine(port: EnginePort) {
     });
     if (!shown.length) return { frame, key: '' };
     const snapshot = frame.payload.snapshot;
-    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], createdAt: entry.createdAt }))];
+    const messages = [...snapshot.messages, ...shown.map((entry): (typeof snapshot.messages)[number] => ({ id: entry.id, agentId: entry.agentId, role: 'user', status: 'complete', parts: [{ type: 'text', text: entry.text }], ...(entry.content === undefined ? {} : { metadata: { promptContent: entry.content } }), createdAt: entry.createdAt }))];
     return { frame: { ...frame, payload: { ...frame.payload, snapshot: { ...snapshot, messages } } } as CompanionConversation, key: shown.map((entry) => entry.id).join() };
   }
   const peers = computed(() => state.agents.value.map((agent) => ({ id: agent.id, label: agentDisplayName(agent) })));
@@ -350,11 +417,14 @@ export function createEngine(port: EnginePort) {
     const onResolved = (status: 'accepted' | 'rejected') => { if (command.requestId && !disposed) port.post({ type: 'sendResult', requestId: command.requestId, status }); };
     const frame = state.conversation.value;
     const followUpBehavior = command.followUpBehavior;
-    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !command.text.trim()) return state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
-    const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text: command.text, baseline: userTexts(frame, command.text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
+    const content = command.options?.content === undefined ? undefined : trimPromptContent(command.options.content);
+    const text = content === undefined ? command.text : promptContentText(content);
+    const options = { ...command.options, ...(content === undefined ? {} : { content }), followUpBehavior, uploads: command.uploads, onResolved };
+    if (followUpBehavior === 'queue' || !frame || frame.backend === 'codex' || !state.canSend.value || !text.trim()) return state.submit(text, options);
+    const entry = { id: `pending-${crypto.randomUUID()}`, agentId: state.agentId.value, text, ...(content === undefined ? {} : { content }), baseline: userTexts(frame, text), expires: Date.now() + 30_000, createdAt: new Date().toISOString() };
     pending.push(entry);
     postConversation();
-    const result = await state.submit(command.text, { ...command.options, followUpBehavior, uploads: command.uploads, onResolved });
+    const result = await state.submit(text, options);
     if (state.error.value || result !== 'accepted') { pending.splice(pending.indexOf(entry), 1); postConversation(); }
     return result;
   }
@@ -415,11 +485,13 @@ export function createEngine(port: EnginePort) {
         }
         return;
       }
+      case 'dismissRequest': return state.dismissRequest(command.key);
       case 'respondRequest': return state.respondRequest(command.reply);
       case 'start': return start();
       case 'pair': return pair(command.code, command.deviceName);
       case 'connect': ++notificationEpoch; pendingNotification = null; return connect(command.laptopId);
       case 'disconnect': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; return state.disconnect();
+      case 'chooseConnection': choosingConnection = true; ++notificationEpoch; pendingNotification = null; ++restoreEpoch; state.chooseConnection(); return publish();
       case 'loadUsage': return state.loadUsage();
       case 'idleSort': if (command.order === 'activity' || command.order === 'repository') sidebarIdleSort.value = command.order; return;
       case 'loadChanges': return state.git.load(command.scopeId);
@@ -462,24 +534,58 @@ export function createEngine(port: EnginePort) {
         if (superseded()) return;
         await state.setActive(true);
         if (superseded()) return;
-        if (!state.laptopId.value && startup.value === 'ready' && laptops.value.length === 1) await connect(laptops.value[0]!.id);
-        else await state.reconnect();
+        if (!choosingConnection && !state.laptopId.value && startup.value === 'ready') {
+          const preferred = await preferredLaptop();
+          if (!superseded() && preferred) await connect(preferred);
+        } else await state.reconnect();
         return openPendingNotification();
       }
       case 'reconnect': await state.reconnect(true); return openPendingNotification();
+      case 'renameLaptop': {
+        // The screen checks the name as it is typed; a laptop that refuses it is simply left as it was.
+        await port.connector.rename?.(command.laptopId, command.name).catch(() => {});
+        laptops.value = [...port.connector.laptops]; return publish();
+      }
       case 'forget': {
-        ++notificationEpoch; pendingNotification = null;
-        ++restoreEpoch;
-        const laptopId = state.laptopId.value;
-        await state.revoke();
+        const laptopId = command.laptopId ?? state.laptopId.value;
+        if (!laptops.value.some(laptop => laptop.id === laptopId)) return;
+        if (laptopId === state.laptopId.value) {
+          ++notificationEpoch; pendingNotification = null; ++restoreEpoch;
+          await state.revoke();
+        } else {
+          // Local pairing removal succeeds even when the old computer is unavailable.
+          await port.connector.revoke(laptopId).catch(() => {});
+        }
         await port.selectionStore?.remove(laptopId).catch(() => {});
         laptops.value = [...port.connector.laptops]; return publish();
       }
-      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; await state.selectTeam(command.id); return rememberSelection();
+      case 'createTeam': {
+        const epoch = restoreEpoch;
+        const id = await state.createTeam(command.name);
+        if (id && epoch === restoreEpoch) {
+          allTeams.value = false;
+          await state.selectTeam(id);
+          await rememberSelection();
+        }
+        return;
+      }
+      case 'dismissTeamCreation': return state.dismissTeamCreation();
+      case 'continueMission': return state.continueMission(command.missionId);
+      case 'acceptTicket': return state.acceptTicket(command.missionId, command.number);
+      case 'selectFinding': return state.selectFinding(command.missionId, command.findingId, command.selected);
+      case 'fixFindings': return state.fixFindings(command.missionId);
+      case 'rerunReview': return state.rerunReview(command.missionId);
+      case 'dismissMissionAction': return state.dismissMissionAction();
+      case 'selectAllTeams': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = state.workspace.value.teams.length > 1; return rememberSelection();
+      case 'selectTeam': ++notificationEpoch; pendingNotification = null; ++restoreEpoch; allTeams.value = false; await state.selectTeam(command.id); return rememberSelection();
       case 'selectAgent': {
+        // An agent the laptop no longer shows is not a reason to land on some other conversation.
+        if (!companionAgents(state.workspace.value).some(agent => agent.id === command.id)) return;
         ++notificationEpoch; pendingNotification = null;
         ++restoreEpoch;
-        const loading = state.selectAgent(command.id);
+        const owner = showingAllTeams.value || state.missions.value.some(mission => mission.leadAgentId === command.id || mission.tickets.some(ticket => ticket.agentId === command.id))
+          ? companionAgents(state.workspace.value).find(agent => agent.id === command.id) : undefined;
+        const loading = owner?.teamId && owner.teamId !== state.teamId.value ? state.selectTeam(owner.teamId, owner.id) : state.selectAgent(command.id);
         await rememberSelection();
         return loading;
       }
@@ -504,7 +610,7 @@ export function createEngine(port: EnginePort) {
       case 'restartSession': await state.restartSession(); return rememberSelection();
       case 'closeSession': await state.requestCloseSession(); return rememberSelection();
       case 'confirmCloseSession': await state.confirmCloseSession(command.agentId, command.deleteWorktree, command.deleteRemoteBranch, command.discardChanges); return rememberSelection();
-      case 'loadBranches': return state.loadBranches(command.repositoryId);
+      case 'loadBranches': return state.loadBranches(command.repositoryId, repositoryTeam(command.repositoryId));
       case 'loadProjectBranches': return state.loadProjectBranches(command.repositoryId, command.source);
       case 'dismissProjectBranches': return state.dismissProjectBranches();
       case 'loadProjectRepositories': return state.loadProjectRepositories(command.source);
@@ -513,7 +619,7 @@ export function createEngine(port: EnginePort) {
       case 'renameAgent': return state.renameAgent(command.target, command.name);
       case 'createProject': return state.createProject({ source: command.source, value: command.value, backend: command.backend, ...(command.branch ? { branch: command.branch } : {}), ...(command.worktree ? { worktree: command.worktree } : {}) });
       case 'dismissBranches': return state.dismissBranches();
-      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) });
+      case 'newChat': return state.createChat({ repositoryId: command.repositoryId, backend: command.backend, ...(command.existingBranch ? { existingBranch: command.existingBranch } : {}), ...(command.branchName ? { worktree: { branchName: command.branchName } } : {}) }, repositoryTeam(command.repositoryId));
       case 'backend': return state.selectBackend(command.backend);
       case 'newQuickChat': return state.createQuickChat(command.backend);
       case 'dismissNewChat': return state.dismissChatCreation();
@@ -529,14 +635,16 @@ export function createEngine(port: EnginePort) {
     }
   }
 
-  /** Opens the saved pairing when there is exactly one; with several, the person chooses. */
+  /** Reopens the last successful laptop, or the sole saved pairing. */
   async function start() {
     startup.value = 'loading'; publish();
     try {
       await port.connector.initialize?.();
       laptops.value = [...port.connector.laptops];
       publish();
-      if (foreground && laptops.value.length === 1) await connect(laptops.value[0]!.id);
+      const epoch = restoreEpoch;
+      const preferred = await preferredLaptop();
+      if (!disposed && foreground && epoch === restoreEpoch && preferred) await connect(preferred);
       startup.value = 'ready';
     } catch { startup.value = 'error'; }
     publish();

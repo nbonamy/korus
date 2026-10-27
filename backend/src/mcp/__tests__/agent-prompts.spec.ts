@@ -19,6 +19,7 @@ describe('appDeveloperInstructions', () => {
     const claudeInstructions = appDeveloperInstructions({ ...agent, backend: 'claude' });
     expect(claudeInstructions).toContain('generate-image');
     expect(claudeInstructions).toContain('korus-imagegen');
+    expect(claudeInstructions).toContain('$imagegen');
     expect(instructions).not.toContain('korus-imagegen');
     expect(appDeveloperInstructions(agent, { computerUseEnabled: true, chromeEnabled: false })).toContain('korus-computer-use');
   });

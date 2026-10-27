@@ -261,11 +261,11 @@ export async function exportNarrated(args = process.argv.slice(2)) {
       {
         title:
           all || requested
-            ? "Korus · Five workflows, one voice"
+            ? "Korus · Workflows, one voice"
             : "Korus · Two voices, one workflow",
         description:
           all || requested
-            ? "Five films narrated by Calm American, with the approved pauses and speech speed. Optional captions; click a line to replay it."
+            ? "Workflow films narrated by Calm American, with the approved pauses and speech speed. Optional captions; click a line to replay it."
             : "The same approved voices, with breathing room between lines and calmer scene pacing. Optional captions; click a line to replay it.",
         films: merged,
       },

@@ -32,7 +32,9 @@
         "src/main.ts",
         "src/preload.ts",
         "src/preload/index.ts",
-        "src/renderer/main.ts"
+        "src/preload/browser-extensions.ts",
+        "src/renderer/main.ts",
+        "scripts/*.mjs"
       ]
     },
     "web": {
@@ -44,7 +46,8 @@
       "entry": [
         "src/daemon.ts",
         "src/companion/relay-main.ts",
-        "src/companion/__tests__/live-harness.ts"
+        "src/companion/__tests__/live-harness.ts",
+        "src/companion/__tests__/desktop-guest-owner.ts"
       ]
     },
     "mobile": {

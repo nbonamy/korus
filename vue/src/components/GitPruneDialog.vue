@@ -30,7 +30,7 @@
               <p v-show="!collapsed.has(group.branch)" v-if="description(target)" class="git-prune-dialog__detail">{{ description(target) }}</p>
             </div>
             <div class="git-prune-dialog__state">
-              <a v-if="target.pullRequest" class="git-prune-dialog__pr" :href="target.pullRequest.url" target="_blank" rel="noopener noreferrer" @click.prevent="openPullRequest(target)">{{ $t('gitPrune.pr', { number: target.pullRequest.number, state: $t(`gitPrune.prStates.${target.pullRequest.state}`) }) }}</a>
+              <a v-if="target.pullRequest" class="git-prune-dialog__pr" :href="target.pullRequest.url" target="_blank" rel="noopener noreferrer" @click.prevent="openPullRequest(target)">{{ $t(target.pullRequest.url.startsWith('https://gitlab.com/') ? 'gitPrune.mr' : 'gitPrune.pr', { number: target.pullRequest.number, state: $t(`gitPrune.prStates.${target.pullRequest.state}`) }) }}</a>
               <span v-else :class="target.merged ? 'git-prune-dialog__merged' : 'git-prune-dialog__unmerged'">{{ $t(target.merged ? 'gitPrune.merged' : 'gitPrune.notMerged') }}</span>
               <button v-if="index === 0" class="git-prune-dialog__icon git-prune-dialog__fold" type="button" :aria-label="$t(collapsed.has(group.branch) ? 'gitPrune.expand' : 'gitPrune.collapse', { branch: group.branch })" :aria-expanded="!collapsed.has(group.branch)" @click="toggleGroup(group.branch)">
                 <ChevronRightIcon v-if="collapsed.has(group.branch)" /><ChevronDown v-else />

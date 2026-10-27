@@ -1,3 +1,4 @@
+import { trimPromptContent } from '@codex-app-sdk/core/surface';
 import {
   getCodexNativeRendererApi,
   type CodexNativeAttachment,
@@ -178,12 +179,17 @@ export function useImageAnnotation(options: {
           reference: replacements.get(attachment.reference) ?? attachment.reference,
         })),
       };
-      await send(formatImageAnnotationPrompt(annotatedImages.map(({ attachment, draft, imageNumber: number }) => ({
+      const groups = annotatedImages.map(({ attachment, draft, imageNumber: number }) => ({
         annotations: draft.annotations,
         fileName: attachment.name,
         imageNumber: number,
         pixelRatio: draft.pixelRatio,
-      })), prompt), promptOptions(nextOptions));
+      }));
+      if (nextOptions.content !== undefined) {
+        const content = trimPromptContent(nextOptions.content);
+        nextOptions.content = [...content, { type: 'text', text: `${content.length ? '\n\n' : ''}${formatImageAnnotationPrompt(groups)}` }];
+      }
+      await send(formatImageAnnotationPrompt(groups, prompt), promptOptions(nextOptions));
     } catch (error) {
       draftsByAgentId[agentId] = savedDrafts;
       options.updateComposerState(agentId, composerState);
@@ -251,8 +257,9 @@ function cloneDraft(draft: SavedImageAnnotations): SavedImageAnnotations {
 
 function promptOptions(options?: CodexRendererSendMessageOptions): RendererSendPromptOptions | undefined {
   const attachments = options?.attachments?.map<RendererPromptAttachment>((attachment) => ({ ...attachment }));
-  if (!attachments?.length && !options?.inputMethod) return undefined;
+  if (!attachments?.length && !options?.inputMethod && options?.content === undefined) return undefined;
   return {
+    ...(options?.content === undefined ? {} : { content: options.content }),
     ...(attachments?.length ? { attachments } : {}),
     ...(options?.inputMethod ? { inputMethod: options.inputMethod } : {}),
   };

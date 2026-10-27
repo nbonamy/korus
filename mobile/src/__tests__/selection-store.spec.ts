@@ -23,6 +23,18 @@ describe('saved mobile selection', () => {
     expect(await store.read('laptop')).toBeNull();
   });
 
+  it('remembers the last connected laptop and clears it only when that laptop is forgotten', async () => {
+    const values = new Map<string, string>();
+    const store = createSelectionStore({ read: async ({ key }) => ({ value: values.get(key) ?? null }),
+      write: async ({ key, value }) => { values.set(key, value); }, remove: async ({ key }) => { values.delete(key); } });
+    expect(await store.readLastLaptop()).toBeNull();
+    await store.writeLastLaptop('first');
+    await Promise.all([store.writeLastLaptop('second'), store.remove('first')]);
+    expect(await store.readLastLaptop()).toBe('second');
+    await store.remove('second');
+    expect(await store.readLastLaptop()).toBeNull();
+  });
+
   it('can save the next selection after device storage rejects a write', async () => {
     let value: string | null = null;
     const write = vi.fn(async (next: { value: string }) => { value = next.value; }).mockRejectedValueOnce(new Error('Locked'));

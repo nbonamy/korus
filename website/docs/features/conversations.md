@@ -20,9 +20,25 @@ Use the composer's available context controls to supply file mentions, skills, a
 
 Choose a model in the composer before sending when you need a particular provider model. Reasoning effort and speed choices depend on the engine and model. Supported Claude models offer **Fast** in the speed selector; use the normal speed to turn it off. Fast mode can incur extra provider charges and is not included in subscription usage. Check the option's description before enabling it.
 
-The composer's **+** menu includes **Review**, **Delegate**, and **Visualize** across supported engines. These open [Code Review](../workflows/code-review), request [worktree delegation](../workflows/worktrees#delegate-implementation), and open [Visualize](./visualize), respectively. The corresponding slash commands remain available.
+The composer's **+** menu includes **Visualize**, **Delegate**, **Review**, and **Mission** across supported engines. These open [Visualize](./visualize), request [worktree delegation](../workflows/worktrees#delegate-implementation), open [Code Review](../workflows/code-review), and request a [Mission](../workflows/missions), respectively. The corresponding slash commands remain available.
 
-After a response, the empty composer may suggest a follow-up. It is a hint, not a draft or a sent message; it does not replace anything you have typed. Enter the request you want to send.
+After a response, the empty composer may suggest a follow-up. Press **Tab**, **Right Arrow**, or **Space** to accept it into the draft, then edit or send it. Accepting a suggestion does not send a message or replace text you have already typed. Follow-up suggestions are also available in the mobile composer.
+
+Use **Image Gen** in the skill picker when you want a Claude or other non-Codex agent to generate or edit an image through Codex. A connected Codex setup supplies that image capability. Manage reusable workflows in [Settings → Skills](../providers/#manage-agent-skills).
+
+## Share a conversation
+
+Invite someone to follow a conversation and suggest prompts while you keep control of what the agent runs. Sharing works across coding providers and also supports Quick Chats.
+
+1. Right-click a local agent and choose **Share with guests**.
+2. Choose **Share** to create and copy its invitation link. Share the link privately with the people you want to invite.
+3. The collaborator opens the link in Korus, or chooses **Join with invite…** from the start-work menu and pastes the link or invitation code. On their first join, they choose the display name you will see beside their suggestions.
+
+Anyone with the invitation can read the full available conversation history and future updates, including tool output and content attached to that conversation. Check what the history contains before sharing. Access is limited to that conversation; joining does not grant control of your workspace or coding-provider account.
+
+Collaborators propose messages from their composer. Their suggestions appear above your composer; choose **Move suggestion to composer** to put one in your draft. Edit it if needed and send it yourself, or delete the suggestion. A suggestion never runs automatically, and guests cannot approve tools or interrupt the agent. Each collaborator can delete their own pending suggestion.
+
+Return to **Share with guests** to **Copy link** again or **Stop sharing**. Stopping sharing revokes the invitation and ends guest access. Collaborators can also **Leave** a joined conversation. Your computer and Korus backend need to remain available for live updates.
 
 ## Attach an app window on macOS
 
@@ -66,6 +82,8 @@ Keep planning and implementation separate: **Revise** asks for another proposal;
 Korus renders messages, tool calls, command output, plans, approvals, and file changes. Use those details to check what the agent inspected and what it actually validated.
 
 Open a document or diff in the workspace when you need to examine it while continuing the discussion.
+
+Claude Code's native task lists also appear in the execution-plan panel, with progress restored when you reopen the conversation. Completed task lists stay closed after a restart and clear when the next turn starts.
 
 ## Steer, queue, or interrupt
 
@@ -133,5 +151,7 @@ Claude goals use Claude Code's native goal behavior and require native goal hook
 ## Resume work
 
 Korus restores durable workspace state when you return. Older messages load through conversation history; use the retry action if history loading reports a failure.
+
+When a provider reports a usage limit with a reset time, the composer shows an **Auto-resume** drawer. Auto-resume is on by default: Korus can continue the conversation when the limit resets. Turn it off in the drawer if you want to resume manually. Pending resumes survive restarts; sending your own prompt or starting a different conversation cancels the pending automatic resume.
 
 Its background daemon can keep agent work running after the desktop window closes. The host still needs to be running and connected; stopping the daemon or sleeping the host interrupts that availability. Check the conversation and current status before submitting another instruction.

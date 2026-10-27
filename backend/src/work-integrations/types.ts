@@ -2,8 +2,13 @@ import type { SourceBranch, AgentGitPullRequest, GlobalWorkItemQuery, WorkItem, 
 import type { WorkProviderToken } from '@workspace/core/work-integration-tokens';
 
 /** CLI access carries identity only. It can never supply a bearer token. */
-export type GitHubCliCredential = { kind: 'cli'; provider: 'github'; accountLabel: string; connectedAt: string };
-export type WorkProviderCredential = WorkProviderToken | GitHubCliCredential;
+export type WorkProviderCliCredential = { kind: 'cli'; provider: 'github' | 'gitlab'; accountLabel: string; connectedAt: string };
+export type GitHubCliCredential = WorkProviderCliCredential & { provider: 'github' };
+export class WorkProviderCliAuthenticationError extends Error {}
+export interface WorkProviderCliDriver extends WorkProviderDriver {
+  detectConnection(): Promise<WorkProviderCliCredential | null>;
+}
+export type WorkProviderCredential = WorkProviderToken | WorkProviderCliCredential;
 
 export function requireWorkProviderToken(credential: WorkProviderCredential): WorkProviderToken {
   if ('kind' in credential) throw new Error('This operation requires an API connection.');
@@ -39,8 +44,9 @@ export type WorkProviderDeviceTokenResult =
 export interface WorkProviderDriver {
   provider: WorkProviderKind;
   configured(): boolean;
+  checkHostedMcp?(token: WorkProviderToken): Promise<'available' | 'unavailable'>;
   cancelAuthorization?(): void;
-  startAuthorization(): Promise<WorkProviderDeviceAuthorization>;
+  startAuthorization(options?: { hostedMcp?: boolean }): Promise<WorkProviderDeviceAuthorization>;
   pollAuthorization(deviceCode: string): Promise<WorkProviderDeviceTokenResult>;
   refreshToken?(token: WorkProviderToken): Promise<WorkProviderToken>;
   currentAccountLabel(token: WorkProviderCredential): Promise<string>;

@@ -88,7 +88,7 @@ export function appDeveloperInstructions(
     `For explicitly requested recurring prompts, use ${product.name} create-automation, not other schedulers; load korus-automations. Suggestions do not authorize scheduling.`,
   ];
   if (agent.backend !== 'codex') {
-    instructions.push('When generate-image is available, load korus-imagegen with read-skill before generating raster images or showing its results. Embed the selected image inline in your response following that skill.');
+    instructions.push('When generate-image is available, $imagegen selects the bundled korus-imagegen procedure: load it with read-skill, not a native skill loader or filesystem path, before generating raster images or showing its results. Embed the selected image inline in your response following that skill.');
   }
   if (effects.celebrationsEnabled !== false) {
     instructions.push(

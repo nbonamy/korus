@@ -19,6 +19,7 @@ export function createDemoConnector(): CompanionConnector {
   };
   return {
     laptops: [{ id: 'demo-laptop', name: 'Demo laptop' }],
+    async rename(laptopId, name) { requireLaptop(laptopId); this.laptops = [{ id: laptopId, name }]; },
     async connect(laptopId) {
       requireLaptop(laptopId);
       let active = true;

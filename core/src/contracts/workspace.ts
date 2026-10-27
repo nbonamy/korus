@@ -61,6 +61,15 @@ export type SourceRepository = {
   worktrees: SourceWorktree[];
 };
 
+export type RepositoryDeletionPreview = {
+  repositoryPath: string;
+  confirmationName: string;
+  paths: string[];
+  agents: Array<{ id: string; name: string }>;
+  fingerprint: string;
+};
+export type DeleteRepositoryInput = { confirmation: string; fingerprint: string };
+
 export type CloneSourceRepositoryInput = {
   url: string;
   remoteConnectionId?: string;

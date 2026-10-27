@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
       },
     }],
     define: {
+      __APP_GITLAB_CLIENT_ID__: JSON.stringify(env.APP_GITLAB_CLIENT_ID ?? ''),
       __APP_GITHUB_CLIENT_ID__: JSON.stringify(env.APP_GITHUB_CLIENT_ID ?? ''),
       __APP_LINEAR_CLIENT_ID__: JSON.stringify(env.APP_LINEAR_CLIENT_ID ?? ''),
       __APP_COMPANION_RELAY__: JSON.stringify({

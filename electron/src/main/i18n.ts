@@ -21,7 +21,7 @@ const messages = {
     'menu.compactSession': 'Compact Session',
     'menu.compressSession': 'Compress Session',
     'menu.duplicateAgent': 'Duplicate Agent',
-    'menu.editAgent': 'Edit Agent',
+    'menu.editAgent': 'Rename agent',
     'menu.file': 'File',
     'menu.forkAgent': 'Fork Agent',
     'menu.handoffAgent': 'Hand off…',

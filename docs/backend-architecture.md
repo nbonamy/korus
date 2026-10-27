@@ -89,6 +89,81 @@ with implementation in a separate accepted turn. [The plan](../plans/antigravity
 records transport evidence, model restrictions, attachment support and unsupported
 capabilities.
 
+### Request pricing evidence
+
+Antigravity executions retain turn status and timing with unknown model and token
+consumption. Their request coverage is partial with
+`acp-request-evidence-unavailable`; analytics includes each execution in the unknown
+request count and returns unavailable USD rather than zero. Context notifications,
+selected model settings, permission modes and cumulative session costs cannot
+establish individual API charges. No underlying provider is inferred from the
+Antigravity provider name or the catalog's display names.
+
+The qualified Google-hosted ACP 1.3.0 executable implements the v1-shaped wire
+contract while reporting protocol 2. Its bundled Python adapter is the evidence
+boundary; the public CLI, Python SDK and Gemini Interactions API are different
+interfaces. The [pinned public registry](https://github.com/agentclientprotocol/registry/blob/dc55a34900fdd60e5e97c1cbd7825c5a1df673fc/antigravity-acp/agent.json)
+identifies the distribution. [Fixture provenance](../backend/src/antigravity/__tests__/fixtures/usage-capability.json)
+records archive/executable hashes and source locations. These are source-derived
+wire fixtures with synthetic numbers and identities, not a live billing capture.
+
+| Required evidence | Public ACP surface | Pricing consequence |
+| --- | --- | --- |
+| Billable request identity and timestamp | Session ID and JSON-RPC prompt correlation; no identity or timestamp for each underlying model call | Request count remains unknown; a prompt can contain several calls/retries |
+| Actual model and underlying API provider | `models.currentModelId`, `availableModels` and model config options describe selection | No served-model assertion, exact API model mapping or provider attribution; Google, Anthropic and OpenAI routes remain unpriced |
+| Input/output/cache-read/cache-write counts and inclusion semantics | `server.py::_maybe_send_usage_update` emits only `used` and `size`; `_extract_tokens_used` collapses categories | Context occupancy never becomes measured consumption |
+| Cache-write lifetimes | No buckets in emitted updates or the optional schema-level `Usage` | No lifetime assumptions or fabricated zero writes |
+| Pricing context | `used` is derived from main-trajectory cumulative deltas, includes output/thinking and caches; `size` uses the selected model's context limit | Neither supplies per-request pricing input; subagent context is excluded and updates can coalesce |
+| Served tier/mode | Session mode config describes permissions; no served billing tier/mode in output | No standard-tier default or requested-as-served substitution |
+| Finality and completeness | `prompt` returns `PromptResponse(stop_reason=...)` without usage, including cancellation; schema supports optional turn totals but the adapter does not populate them | Completed, failed and interrupted turns retain unavailable coverage |
+
+The [ACP usage contract](https://agentclientprotocol.com/protocol/v1/prompt-turn#session-usage-updates)
+defines `used`/`size` as context utilization and optional `cost` as cumulative
+session cost. The shipped schema also defines optional cumulative token categories
+on `PromptResponse.usage`. Schema availability does not prove runtime emission or
+request boundaries. Regression fixtures exercise those optional fields separately
+as negative controls: neither turns into request-aware USD.
+
+To repeat the source check without authentication, use the qualified archive's
+`agy_acp_server.par` as the argument below. It reads only the shipped public adapter
+and schema, validates stored ZIP-entry checksums, and prints the relevant ranges;
+it does not execute the runtime or access a provider endpoint.
+
+```bash
+python3 - /path/to/agy_acp_server.par <<'PY'
+import hashlib, pathlib, struct, sys, zlib
+data = pathlib.Path(sys.argv[1]).read_bytes()
+print('executable sha256:', hashlib.sha256(data).hexdigest())
+root = 'google3/cloud/developer_experience/antigravity_extensions/acp_server/'
+ranges = {
+    root + 'server.py': [(1473, 1528), (5283, 5318), (5850, 5941)],
+    root + 'config_options.py': [(49, 103)],
+    'google3/third_party/py/acp/schema.py': [(1397, 1444), (1697, 1720), (3846, 3880)],
+}
+found, offset = set(), 0
+while (offset := data.find(b'PK\x03\x04', offset)) >= 0:
+    header = struct.unpack_from('<IHHHHHIIIHH', data, offset)
+    method, checksum, size, name_len, extra_len = header[3], header[6], header[7], header[9], header[10]
+    name = data[offset + 30:offset + 30 + name_len].decode('utf-8', errors='replace')
+    start = offset + 30 + name_len + extra_len
+    if name in ranges and method == 0:
+        source = data[start:start + size]
+        assert zlib.crc32(source) == checksum
+        print(name, hashlib.sha256(source).hexdigest())
+        lines = source.decode().splitlines()
+        for first, last in ranges[name]:
+            for n in range(first, last + 1): print(f'{n}: {lines[n - 1]}')
+        found.add(name)
+    offset += 4
+assert found == set(ranges), 'Required public sources missing; requalify the runtime.'
+PY
+```
+
+The adapter-to-SQLite-to-`usage/get` workflow is repeatable with
+`npm run test -w @workspace/backend -- antigravity/__tests__/session.spec.ts`.
+It covers mixed model selections, context changes, optional schema totals,
+duplicate/late events, cancellation, failure, history replay and ledger restart.
+
 ## Local desktop replacement
 
 Local macOS desktop replacement is owned by the
@@ -131,6 +206,116 @@ The protocol is transport-neutral JSON-RPC 2.0, one message per line.
   client waits forever; Electron adds a grace period so a remote timeout reaches
   the desktop first.
 
+### Conversation share authority
+
+The daemon owns one durable bearer link for each immutable provider conversation
+and execution session. Agent entries referring to the same binding reuse that
+link. Protected share records live separately from roster/preferences and paired
+phone grants, under `APP_HOME/conversation-shares`, with private directory/file
+permissions and serialized atomic, synced writes. Creation and revocation persist
+before success; revoked records retain their identity, and replacement links use
+fresh credentials. Session changes and deletion invalidate the original binding.
+
+Invitations are cryptographically random UUIDv4 bearer secrets, also accepted as
+`korus://share/<uuid>` links. The daemon uses its configured relay origin and pin;
+invites cannot choose a relay. A domain-separated SHA-256 digest, truncated to 128
+bits, is the routing handle. The UUID itself travels only inside the encrypted
+owner channel. Share status events exclude credentials and full links; only
+explicit create/copy replies return bearer material. Sharing uses protocol and
+store version 2; legacy invitations, owner grants and saved joins are discarded.
+The guest app identity is retained. Reusing the companion identity does not enable
+paired-phone access.
+
+Installed desktop guests keep a separate protected app identity and joined-link
+store under `APP_HOME/guest-joins`. It stores the UUID link, a relay-bound join
+identity, owner pin, display name, original team and an immutable target fingerprint,
+never transcript content. The discovered owner pin persists before the UUID is
+sent; reconnection rejects a different owner.
+A shared Quick Chat row is a navigation reference to this join, not a local provider
+session. Reopening the invitation focuses that row in its original team.
+Only the daemon can read these records; renderer projections contain no bearer
+material. Opening a saved entry reconnects and replaces its memory-only provider
+baseline through the guest client. Concurrent opens reuse the session; switching
+entries disposes the old subscription. Temporary disconnect retains the loaded
+view with an unavailable status. An authenticated revocation clears the view and
+saved authorization; failed local removal is explicit and cannot reopen access.
+An ended conversation retains a memory-only navigation entry until it is closed;
+that entry has no transcript or saved authorization and cannot reconnect.
+Leaving persists removal before disposing its session. Canceling an unconfirmed
+invitation discards its temporary session without changing saved joins.
+
+Sharing is a Korus workflow, independent of provider capabilities. A local agent
+with a bound conversation can share it; shared guest entries cannot reshare it.
+Moving a suggestion into the owner's draft dismisses it for the collaborator and
+carries no execution authority. The owner edits and sends that draft through the
+ordinary composer; this handoff requires no provider message identity. Pending proposals and decisions are private to the
+owner and proposer. Persisted dispatch intent is never replayed after uncertain
+submission; restart exposes delivery unresolved. Dismiss never submits. Guests
+can withdraw only their own pending proposals; withdrawal and owner decisions
+share the serialized authority boundary. Terminal
+receipts retain a text fingerprint for deduplication instead of discarded text;
+active proposal text has a two-MiB budget per link, alongside count limits.
+
+Guest rendezvous uses its own versioned protocols and an in-memory handle directory.
+Only a Noise-authenticated owner registers its routing hashes; active hashes cannot
+be registered by a second owner. Lookups receive no admission secret and return the
+owner peer identity with routing status. Initial owner discovery trusts the pinned
+relay; subsequent connections enforce the saved owner pin. The guest authenticates
+that peer through the encrypted circuit. A routing permission grants no application
+operation; the dedicated guest gateway must authorize the UUID inside that channel.
+Missing guest protocols report upgrade-required without falling back to the phone API.
+
+The owner advertises saved active handles on startup, every relay reconnection and
+every 20-second renewal; revocation withdraws them. Routes and temporary circuit
+permissions have 120-second leases and disappear on relay restart. Relay identity
+remains owned by the persisted relay key. Phone claimed-code tombstones are separate.
+The guest directory has 5,000 global slots with explicit capacity refusal and no
+per-owner product quota. A refused addition still renews retained routes. Owners
+with more saved handles preserve creation order, report capacity and retry overflow
+as slots become available; links are never rotated or revoked to fit routing.
+
+`WindowBudget` limits full registration snapshots to 30/minute per owner and
+60/minute per source network, protecting decoding and directory replacement costs.
+Guest lookups allow 30/minute per peer and 120/minute per source network. Temporary
+permissions are bounded at 200 per owner, 200 per source network and 10,000 globally.
+These transient admission bounds sit alongside existing source socket, frame and
+circuit limits; they are not durable sharing quotas. Full owner snapshots have a
+192-KiB frame bound; lookups have a 4-KiB bound. Existing phone admission, pairing,
+paired routing and push policies retain their independent budgets.
+
+The daemon shares its outbound reservation between guest routing and mobile access.
+Mobile-disabled endpoints advertise no device grants or pairing codes and refuse
+phone streams even when a guest lookup permits a circuit. Libp2p's IP-based inbound
+threshold is unsuitable at the owner because all circuits arrive from one relay;
+real-source budgets belong to relay ingress, while endpoint pending connections,
+connections and STOP streams stay bounded.
+
+Guest admission checks the bearer credential against protected daemon state inside
+that authenticated channel. The authenticated app peer supplies participant identity;
+a trimmed display name is presentation. Authorization and proposal ownership use
+the peer identity even when names match. Joining never consumes the link or adds
+a phone grant. Active session counts
+are separate from durable links and feed owner Share status. Revocation and target
+invalidation dispose subscriptions and queued writes; asynchronous reads and each
+queued delivery recheck the original grant.
+
+A guest session exposes only its bound provider conversation, history and proven
+transcript content. Its wire requests cannot select another target or forward RPC.
+The daemon uses the existing conversation source and journal; the guest cache calls
+the existing provider replicas. Provider resets and events keep their immutable
+identity checks. Codex account/catalog state and unsent owner queues are excluded
+from the guest projection. Non-transcript provider events advance coordination
+revisions without sending their payloads or inventing transcript events. A revision
+gap, including one during catch-up, requests an authoritative reset.
+
+Content access uses a bounded index of references proven by authorized provider
+reads/pages, so older media remains readable after a recent-window reload without
+retaining a second transcript. The index is discarded with the session and fails
+explicitly at capacity. Existing frame, response, writer/backpressure and source
+network budgets remain in force. Endpoint and relay STOP stream caps accommodate
+the guest owner session budget alongside phone connections; source network socket
+limits can reject a circuit before application admission.
+
 ### Companion gateway and relay
 
 Each companion safety property has one owner. Extend the owner instead of adding a
@@ -167,15 +352,28 @@ Account usage is an on-demand read of the paired laptop's enabled, connected quo
 providers through the same backend operation as the desktop menu. Only quota windows
 cross the companion seam; billing and credit details stay on the laptop. Reads recheck
 the device grant before returning, and do not depend on the selected conversation.
+Missions cross as read-only progress: stage, status and each ticket's state, derived the
+way the desktop's implementation board derives it, for active missions and the most
+recent twenty. The workers implementing tickets stay out of the agent list but are
+listed separately, so a phone can open one from its mission. A worker is talked to like any agent (prompts, answers
+to its questions and approvals, interrupts, model and permission choices), but the phone cannot rename, restart,
+close, duplicate or re-engine it; the laptop refuses those. Repository workers are titled by repository name;
+the mission lead is selected independently from non-implementation stages. Host paths stay on the laptop. Five mission actions exist
+and no others: continuing a completed implementation to review, accepting a ticket's run that awaits
+acceptance, and, during review, selecting an open finding, fixing the selected ones and reviewing again.
+A review's findings cross with titles, explanations and locations trimmed to the last two path segments. Every action carries the mission revision the phone saw and is checked against the mission as it stands.
 Git status counts and available diff scopes cross as presentation metadata, without
 host paths or patch contents. Diffs are fetched through a target-bound, read-only
 gateway operation that uses the owning daemon’s Git service; the gateway rechecks
 the device grant and conversation identity before returning the patch.
 Project acquisition uses the owning team's desktop operations for new repositories,
-local repository selection, GitHub discovery and URL cloning. The phone sends names,
-catalog IDs or network Git URLs rather than filesystem paths. The local catalog
+local repository selection, GitHub and GitLab discovery, and URL cloning. The phone
+sends names, catalog IDs or network Git URLs rather than filesystem paths. The local catalog
 contains repository roots, with linked worktrees nested beneath them; only roots
-become selectable opaque IDs. GitHub credentials and checkout paths stay on
+become selectable opaque IDs. Provider catalog selections are bound to the daemon
+lifetime, provider, owning host location and current catalog identity; branch reads
+and creation revalidate them. Legacy GitHub operations retain their existing IDs
+for compatible native clients. Integration credentials and checkout paths stay on
 the owning host; each write rechecks the grant, team location and available engine.
 Branch browsing uses the owning host’s connected integration without preparing a
 checkout. Selecting a branch reuses its checked-out worktree or fetches and prepares
@@ -184,7 +382,7 @@ the same device-scoped creation receipts as new chats. Local branch selection us
 host’s branch catalog without requiring a remote fetch. Agent duplication is bound to
 the captured conversation target and creates a fresh agent in the same checkout; an
 explicit backend choice uses the target provider’s defaults without copying history.
-New GitHub branches use a catalog-validated base on the owning host, refresh its
+New repository branches use a catalog-validated base on the owning host, refresh its
 remote tip and create a separate worktree. Existing branch names are rejected;
 the primary checkout and its local base branch stay untouched.
 New worktree branches do not inherit the base's tracking configuration. Remote
@@ -395,10 +593,13 @@ before contacting Apple. Global, host and token budgets bound delivery even when
 clients rotate identities; concurrent duplicate notifications share one send.
 Apple invalid-token responses remove only the registration that produced the failure.
 
-Unread results remain eligible for push regardless of where the prompt started or
-which desktop window is focused. A brief grace period lets visible clients
-acknowledge the attention revision before delivery; the daemon rechecks the shared
-read checkpoint after that period. A foreground phone receives live in-app alerts
+Attention alerts are suppressed when the desktop is focused on the exact active
+conversation, matched by host, location, team, agent and session. Other conversations
+remain eligible regardless of where the prompt started; unavailable desktop focus
+information does not suppress alerts. Read-clearing events are always delivered.
+A brief grace period lets visible clients acknowledge the attention revision before
+delivery; the daemon rechecks the shared read checkpoint after that period.
+A foreground phone receives live in-app alerts
 instead of system push. Delivered alerts carry the daemon's persisted agent read
 revision. Acknowledgments from any client clear notifications through that revision on every paired phone;
 newer turns remain unread. Native clients retain the read checkpoint to reject late
@@ -468,6 +669,27 @@ of the same version. Backend changes rebuild and restart the process (no HMR) an
 the client re-syncs with `snapshot/get`; only durable state survives, and active
 turns, pending approvals and in-memory MCP sessions are interrupted. Protocol
 changes may require restarting both processes. Renderer changes keep Vite HMR.
+
+Desktop URL testing uses a dedicated native development target. The target binds
+one worktree and an explicit isolated profile to a stable `korus-dev-<hash>` alias,
+private Electron user-data directory and bundled stdio backend. Its per-profile
+single-instance lock forwards later launches to that target. It never replaces
+the installed product's URL handler. The ordinary Forge process remains separate
+unless it was launched with the target's profile and alias.
+
+`scripts/dev-link.mjs register --home <absolute-profile>` registers the compiled
+worktree's native launcher; `open` reads a normal product link from stdin and
+hands the equivalent alias URL to the operating system. `unregister` removes only
+that target. Build the current desktop assets before registering. On macOS, a
+small signed-ad-hoc launcher bundle lives under the user's Applications directory
+so Launch Services retains its URL registration. Windows uses a current-user
+scheme registration that launches Node directly without a shell; Linux uses a
+private desktop entry and `xdg-mime`. The launcher fixes the profile, app path and
+backend executable so installed-app environment overrides cannot redirect it.
+The opt-in `electron/scripts/guest-desktop.runtime.mjs` workflow builds the
+worktree, uses an isolated encrypted relay with a stable test key, performs native
+URL delivery, and removes its temporary profile and registration. Its scripted
+provider transcript is not live-provider execution evidence.
 
 `npm run dev:web` is the web equivalent: it builds `daemon` once, watches the web
 server bundle (restarting server and daemon on change) and serves the client from Vite
@@ -629,6 +851,36 @@ manage MCP tools: treat it as a privileged control plane.
 
 ## Local usage statistics
 
+### Historical API prices
+
+`npm run pricing:update` collects Models.dev provider pricing from the public
+GitHub API and raw source files at one immutable revision. The collector verifies
+Git blob hashes, requires all three providers, validates pricing rules and the
+existing history, and atomically appends a full snapshot only when pricing
+content changes. Revision, comments and source links do not trigger snapshots.
+The initial snapshot is effective October 1, 2026 UTC; subsequent timestamps
+record when a change was observed, rather than asserting its actual start date.
+
+`backend/src/pricing/history.json` retains exact provider/model identities,
+context predicates, service tiers, mode mappings, category-specific multipliers,
+cache reads, and cache-write lifetime maps. Missing rates remain absent; explicit
+zero rates remain zero. Models without source prices are marked unpriced. The
+schema retains explicit billing units: token and character prices are USD per
+million, other prices are per unit, cache storage is per million tokens per hour,
+and web search is per thousand calls. Non-token charges must not enter token-cost
+estimates.
+
+Matching source overrides merge fields in order, including nested cache fields;
+all matching multipliers then apply only to the categories they name. Mode
+configuration maps names to request fields but does not establish a request's
+actually served tier. Each snapshot retains its source revision, and each model
+retains its source path, blob hash and documentation links for coverage diagnosis.
+The catalog is statically embedded in the standalone daemon bundle, which is also
+copied into desktop resources. Builds and runtime catalog reads require no pricing
+network calls.
+
+### Execution measurements
+
 The owning daemon records live provider executions in a bounded SQLite ledger.
 History hydration, inherited forks and context occupancy never become consumed
 tokens. Provider conversations remain the sole owners of prompts, responses and
@@ -637,9 +889,50 @@ outcomes and local grouping metadata. Configured reasoning effort and service ti
 are captured at turn start and retained through completion and late usage corrections.
 Unsupported measurements remain unknown. Codex consumption can be replaced or
 invalidated after completion.
-Claude consumption covers the main agent loop; auxiliary calls are excluded.
+Claude execution consumption covers the main agent loop; independently observed billable requests retain their own identities.
 Reasoning is included in output. Cache categories must not be added to input.
 Provider quotas remain separate account-scoped views.
+
+Request measurements have a separate identity scoped by backend provider, session,
+turn and request. Providers emit them through the optional `onRequestUsage` seam;
+the usage service serializes execution and request observations together. The
+parent execution must exist first. Numeric samples retain actual API provider/model,
+request time, token inclusion semantics, cache-write lifetime buckets, context and
+region evidence, requested/reported tiers, served mode and finality. Corrections
+increase a persistent revision; stale revisions, changed request timestamps and
+final-to-provisional updates cannot replace newer evidence. Requests and their
+parent grouping metadata survive restart without storing conversation content.
+
+The backend prices each final request using the latest snapshot effective at its
+request timestamp. Exact model IDs are required; requested tiers do not establish
+served tiers. A documented default requires explicit producer evidence. Context
+predicates use their authored strict/inclusive operators, matching overrides merge
+in order, and matching multipliers affect only their named categories. Included
+cache reads/writes are subtracted from input and included reasoning is separated
+from ordinary output before applying rates. Missing usage, inclusion semantics,
+cache rates/lifetimes, context, region, tier or model evidence leaves a request
+unpriced with a reason. Codex executions and legacy Claude executions without
+request observations are priced from their retained model and measured token
+counters, with cached reads priced separately, normal pricing for missing tiers,
+and no long-context premium. Legacy Claude cache creation uses the default
+five-minute write rate; its normalized input includes both cache categories.
+Claude rows carrying request-coverage evidence require request attribution, so
+unresolved cloud/proxy routing cannot select a direct Anthropic estimate. Real
+request observations supersede an execution estimate. Non-token charges remain
+outside the estimate.
+
+Cost and coverage accompany summary, daily and grouped results. USD sums only
+priced usage; a known zero differs from an unavailable total. Observed request
+counts do not claim to count unknown legacy requests. Producers must explicitly
+attest a complete execution request set; otherwise coverage retains an execution
+with an unknown additional request count, even when some requests were captured.
+Execution token/timing fields keep their execution-start date and model attribution.
+Cost uses request dates/models, so a cost contribution may create a group/day with
+zero execution starts. Backend-provider filters retain their existing meaning;
+API-provider grouping/filtering uses the underlying billing provider separately.
+Unknown legacy coverage keeps its retained execution attribution. Clearing,
+execution deletion and retention also delete request evidence. The standalone and
+desktop resource bundles calculate these costs from embedded prices offline.
 
 The backend turn clock excludes waits for user input and in-flight tools, with
 parallel tool waits counted once. Speed combines provider-reported output tokens
@@ -647,7 +940,9 @@ with measured working time after the first generated output. A turn without both
 measurements has no speed.
 
 The ledger retains up to one year and 50,000 executions and exposes grouped
-queries to Analytics through app-owned contracts. Clearing statistics deletes the
-local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
+queries to Analytics through app-owned contracts. Daily groups carry the same
+additive timing samples as period totals, so rates use summed output divided by
+summed generation time rather than averaging per-turn rates. Clearing statistics
+deletes the local measurements without changing provider history. Storage failures leave analytics unavailable without blocking
 provider work. No reporting endpoint, upload queue or hosted analytics service is
 part of this path.

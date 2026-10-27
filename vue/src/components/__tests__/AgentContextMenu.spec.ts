@@ -15,13 +15,19 @@ afterEach(() => {
 });
 
 describe('AgentContextMenu', () => {
+  it('offers only Leave for a shared Quick Chat', async () => {
+    const wrapper = mountMenu({ shared: true });
+    expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toStrictEqual(['Leave']);
+    await wrapper.get('[role="menuitem"]').trigger('click');
+    expect(wrapper.emitted('action')).toStrictEqual([['close-agent']]);
+  });
   it('renders grouped agent actions at the requested position', () => {
     const wrapper = mountMenu();
 
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('left: 120px');
     expect(wrapper.get('.agent-context-menu').attributes('style')).toContain('top: 80px');
     expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -69,7 +75,7 @@ describe('AgentContextMenu', () => {
     const items = wrapper.findAll('[role="menuitem"]');
 
     expect(items.map((item) => item.text()).slice(0, 4)).toStrictEqual([
-      'Edit Agent',
+      'Rename agent',
       'Duplicate Agent',
       'Fork Agent',
       'Hand off…',
@@ -182,7 +188,7 @@ describe('AgentContextMenu', () => {
 });
 
 function mountMenu(
-  props: { compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
+  props: { shared?: boolean; compactDisabled?: boolean; compressDisabled?: boolean; compressVisible?: boolean; forkDisabled?: boolean; moveTargets?: Team[]; x?: number; y?: number } = {},
   stubTeleport = true,
 ) {
   const wrapper = mount(AgentContextMenu, {

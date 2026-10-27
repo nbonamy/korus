@@ -11,6 +11,7 @@ export const films = [
   },
   { id: "project-film", title: "Quick Chat", duration: 43, posterSecond: 30 },
   { id: "visualize-film", title: "Visualize", duration: 31, posterSecond: 24 },
+  { id: "sharing-film", title: "Sharing", duration: 54, posterSecond: 25 },
   {
     id: "project-shorts",
     title: "Quick Chat · Shorts",

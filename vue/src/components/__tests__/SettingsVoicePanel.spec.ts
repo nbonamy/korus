@@ -98,13 +98,13 @@ describe('SettingsVoicePanel', () => {
     expect(previews.every(button => button.attributes('disabled') !== undefined)).toBe(true);
     expect(previews.filter(button => button.attributes('aria-busy') === 'true')).toHaveLength(1);
     expect(previews[2]!.attributes('aria-busy')).toBe('true');
-    expect(previews[2]!.find('.settings-voice-panel__spinner').exists()).toBe(true);
-    expect(wrapper.findAll('.settings-voice-panel__spinner')).toHaveLength(1);
+    expect(previews[2]!.find('.app-spinner').exists()).toBe(true);
+    expect(wrapper.findAll('.app-spinner')).toHaveLength(1);
 
     finishPreview({ queued: true });
     await flushPromises();
     expect(previews.every(button => button.attributes('disabled') === undefined)).toBe(true);
-    expect(wrapper.find('.settings-voice-panel__spinner').exists()).toBe(false);
+    expect(wrapper.find('.app-spinner').exists()).toBe(false);
   });
 });
 

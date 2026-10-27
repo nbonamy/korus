@@ -1,5 +1,5 @@
 ---
-description: Connect coding engines for agent work, and GitHub or Linear for backlog work.
+description: Connect coding engines for agent work, and GitHub, GitLab, or Linear for backlog work.
 ---
 
 # Provider guides
@@ -69,17 +69,20 @@ Antigravity supports streaming conversations, history, approvals, interruption, 
 
 Desktop conversations accept images, WAV audio, PDFs, and UTF-8 text attachments. Antigravity attachments are unavailable for remote teams and browser-hosted sessions. Steering a running turn, goals, conversation forks, and edit/retry/delete turn actions are not available; queue a follow-up or interrupt instead. See [Conversations](../features/conversations) for shared controls.
 
-## Connect GitHub or Linear
+## Connect GitHub, GitLab, or Linear {#connect-github-or-linear}
 
 Korus detects GitHub CLI (`gh`) authenticated to github.com on the workspace host. During onboarding, connect Korus directly for faster access or choose **Use GitHub CLI**. Settings shows **Using GitHub CLI** with a **Connect** button for direct authorization. Canceling or disconnecting a direct GitHub connection returns to authenticated CLI access when available. Existing direct connections keep their account. CLI access supports repository, issue, and pull-request workflows; hosted GitHub MCP tools require a direct connection.
 
-Coding engines and backlog integrations are separate choices. The selected engine runs the agent; GitHub or Linear supplies the work items.
+GitLab.com works alongside GitHub. Korus detects authenticated GitLab CLI (`glab`) access on the workspace host, or you can connect directly using GitLab's device sign-in flow. Canceling or disconnecting a direct connection preserves available CLI access. Direct GitLab connections can also authorize the official GitLab MCP tools; CLI access alone does not enable them.
+
+Coding engines and backlog integrations are separate choices. The selected engine runs the agent; GitHub, GitLab, or Linear supplies the work items.
 
 Open **Settings → Integrations** and connect the service you want to use:
 
 | Integration | Connect | Backlog source |
 | --- | --- | --- |
 | GitHub | Select **Connect**, copy the displayed device code, open GitHub, and authorize Korus. Return when authorization finishes. | A GitHub repository, with issues and pull requests. |
+| GitLab | Select **Connect**, follow the device sign-in instructions on GitLab.com, and return to Korus when authorization finishes. | A GitLab project, with issues and merge requests. |
 | Linear | Select **Connect**, complete sign-in and authorization in the browser, and return to Korus. Check for **Connected** and the expected account. | A Linear team or project, with issues. |
 
 Linear does not require pasting an API key or registering your own OAuth application in Settings. **Cancel** stops an in-progress authorization; use **Connect** to retry. If the build reports that Linear sign-in is not configured, use a build with Linear configuration rather than entering credentials in chat. **Disconnect** removes Korus's connection to that service without disconnecting the other integration or your coding engines.
@@ -88,7 +91,31 @@ In backlog pickers, choose the provider first, then its **Repository** or **Team
 
 A Linear team or project identifies **where the issue lives**, not **where code runs**. Work started from a repository uses that repository. Without a repository context, choose a **Code repository** before starting. [Automations](../features/automations) schedule prompts independently of work sources; include the repository in the prompt when asking a Quick Chat to create an agent or worktree.
 
-Git branches, commits, pushes, and pull requests still belong to the code repository. Linear supplies backlog work; it does not replace GitHub's pull-request workflow. See [Browse and start backlog work](../features/workspace#browse-and-start-backlog-work) and [Missions](../workflows/missions) for the entry points.
+Git branches, commits, pushes, and delivery requests still belong to the code repository. GitHub repositories use pull requests; GitLab projects use merge requests. Linear supplies backlog work alongside those delivery workflows. See [Browse and start backlog work](../features/workspace#browse-and-start-backlog-work) and [Missions](../workflows/missions) for the entry points.
+
+## Manage agent skills
+
+Open **Settings → Skills** to give your coding agents reusable instructions for design, security, testing, and other work.
+
+### Discover and install
+
+The **Discover** tab offers individual skills and packs, including Security audit, Web design guidelines, Impeccable, Matt Pocock's skills, Superpowers, and pstack. Choose **Install** or **Install pack** to add one.
+
+To bring another source, choose **Install skill** and paste a GitHub repository or skill-folder URL, a skills.sh skill URL, or a `skills add` command. When several coding agents are configured, select which should receive the installation. Packs install the skills they contain; check the source and instructions before using code or workflows from an unfamiliar author.
+
+### Inspect and sync
+
+The **Installed** tab includes skills installed through Korus and skills already present in your local coding-agent setups. Search by name or description, switch between **Personal** and **Built-in**, and check the provider icons to see where a skill is available.
+
+Open a skill's **… → View skill** action to read its instructions. When installed copies differ, the viewer lets you inspect each version. Installing a skill does not by itself run its workflow; select or request the skill in a conversation when you want the agent to use it.
+
+Choose **Sync** to make personal skills available across your configured local coding agents, or **Sync this skill** for one entry. Existing conflicting installations are preserved. If a provider still shows a conflict, decide which copy to keep, remove or rename the conflicting installation, and sync again. Remote computers manage their own skills.
+
+### Refresh or remove
+
+Use **Refresh** on a managed skill or pack in Discover to download its source again. In Installed, **Delete skill** asks for confirmation before removing that skill's installed folders across configured coding agents. **Uninstall** on a pack removes the skills Korus installed from that pack. Original sources of linked skills are kept, and built-in skills are protected from deletion.
+
+Skills add instructions and workflows; your provider account still supplies model access. They are separate from browser extensions and coding-provider plugins.
 
 ## Choosing an engine
 

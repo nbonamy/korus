@@ -1,5 +1,6 @@
 import type { BackendImageGenerationInput, BackendImageGenerationResult } from '@workspace/core/backend-driver';
-import type { Agent, AppSnapshot } from '@workspace/core/contracts';
+import type { Agent, AppSnapshot, BackendSkillSummary } from '@workspace/core/contracts';
+import { readBundledSkill } from './bundled-skills/catalog';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +9,16 @@ import os from 'node:os';
 const extensions = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' } as const;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+
+export function imageGenerationSkill(snapshot: AppSnapshot, agentId: string): BackendSkillSummary | undefined {
+  const agent = snapshot.agents.find(candidate => candidate.id === agentId);
+  if (!agent || agent.backend === 'codex' || snapshot.general.providerEnabled?.codex === false
+    || snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId)) return;
+  const { description } = readBundledSkill('korus-imagegen', { toolModules: ['image-generation'] });
+  return { name: 'imagegen', displayName: 'Image Gen', description,
+    shortDescription: 'Generate or edit images for websites, games, and more',
+    path: 'korus:skill/korus-imagegen', scope: 'system', enabled: true };
+}
 
 export class ImageGenerationService {
   constructor(private readonly options: {
@@ -18,10 +29,7 @@ export class ImageGenerationService {
   }) {}
 
   available(agentId: string): boolean {
-    const { snapshot } = this.options;
-    const agent = snapshot.agents.find(candidate => candidate.id === agentId);
-    return Boolean(agent && agent.backend !== 'codex' && snapshot.general.providerEnabled?.codex !== false
-      && !snapshot.teams.some(team => team.id === agent.teamId && team.remoteConnectionId));
+    return Boolean(imageGenerationSkill(this.options.snapshot, agentId));
   }
 
   async generate(agentId: string, prompt: string, signal?: AbortSignal) {

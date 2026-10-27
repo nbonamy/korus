@@ -20,7 +20,7 @@
 
     <div class="session-compression-dialog__body" aria-live="polite">
       <div v-if="busy" class="session-compression-dialog__progress" role="status" aria-busy="true">
-        <span class="session-compression-dialog__spinner" aria-hidden="true" />
+        <span class="app-spinner app-spinner--lg app-spinner--primary" aria-hidden="true" />
         <p>{{ t('sessionCompression.progressDetail') }}</p>
       </div>
       <template v-else>
@@ -95,29 +95,8 @@ function onVisibilityChanged(visible: boolean): void {
   min-height: 44px;
 }
 
-.session-compression-dialog__spinner {
-  width: var(--space-10);
-  height: var(--space-10);
-  flex: 0 0 auto;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: session-compression-spin 0.8s linear infinite;
-}
-
 .session-compression-dialog__error {
   color: var(--color-error) !important;
 }
 
-@keyframes session-compression-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .session-compression-dialog__spinner {
-    animation: none;
-  }
-}
 </style>

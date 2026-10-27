@@ -81,7 +81,7 @@ import type {
   AgentQueuedPrompt,
   AgentSubagentTree, BackendConversationRef, ClientRequestResponse, ConversationListInput,
   ConversationResumeTarget,
-  ConversationSummary, RendererMessage, RendererSendPromptOptions, ThreadGoal,
+  ConversationSummary, RendererMessage, RendererSendPromptOptions, PromptContentOptions, ThreadGoal,
   ThreadPlan
 } from './contracts/conversation';
 import type {
@@ -243,6 +243,7 @@ export type {
   RendererToolPart,
   RendererToolPartUpdate,
   SendPromptOptions,
+  PromptContentOptions,
   SubagentActivity,
   SubagentActivityChange,
   SubagentActivityKind,
@@ -283,6 +284,8 @@ export type {
   WorkBacklogProviderConfigurations,
   WorkBacklogState,
   WorkIntegrationConnection,
+  WorkProviderConnectOptions,
+  HostedWorkMcpState,
   WorkIntegrationStatus,
   WorkItem,
   WorkItemKind,
@@ -375,6 +378,8 @@ export type Agent = {
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
+  /** Local navigation reference only. This agent never owns a local provider session. */
+  sharedConversation?: { joinId: string };
   name: string | null;
   conversationTitle?: string;
   avatar?: string;
@@ -396,6 +401,7 @@ export type Agent = {
   threadFlags?: import('./thread-flags').ThreadFlags;
   /** Optional next-prompt hint, never composer draft text. Cleared on a new prompt or conversation reset. */
   suggestedPrompt?: string;
+  rateLimitPause?: import('./auto-resume').RateLimitPause;
   goal?: ThreadGoal;
   visualize?: import('./visualize').VisualizeSession;
   isRegistered?: boolean;
@@ -482,6 +488,7 @@ export type SavedPromptDraft = {
   id: string;
   agentId: string;
   text: string;
+  content?: RendererSendPromptOptions['content'];
   createdAt: number;
 };
 
@@ -510,6 +517,7 @@ export type AppGeneralSettings = {
   providerEnabled?: Partial<Record<AgentBackend, boolean>>;
   /** Last model selection made in a chat, per provider; seeds new agents. */
   providerModelDefaults?: Partial<Record<AgentBackend, AgentModelSelection>>;
+  codeReviewInstructions?: string;
   codeReviewDefaults?: import('./code-review').CodeReviewPreferences;
   /** Last explicitly selected approval mode; seeds new chats without changing existing ones. */
   providerApprovalDefaults?: { codex?: ApprovalPreset; claude?: string; antigravity?: string };
@@ -526,11 +534,14 @@ export type AppGeneralSettings = {
   worktreeInitializationMode: WorktreeInitializationMode;
   worktreeDelegationStartingContext?: import('./delegation-context').DelegationStartingContext;
   worktreeDelegationInstructions?: string;
+  autoResumeAfterLimit?: boolean;
   sessionCompressionWarningEnabled: boolean;
   repositoryIcons: Record<string, string>;
   appshots: AppshotSettings;
   /** Optional for backwards compatibility with pre-plugin state files. */
   plugins?: AppPluginSettings;
+  /** Name used when joining shared conversations as a guest. */
+  guestDisplayName?: string;
 };
 
 export type UpdateGeneralSettingsInput = Partial<Omit<AppGeneralSettings, 'plugins' | 'git'>> & {
@@ -706,6 +717,7 @@ export type AgentCreationProgress = {
 };
 
 export type AppCommand =
+  | { type: 'open-shared-conversation'; link: string }
   | ({ type: 'set-browser-viewport' } & import('./browser-viewport').BrowserViewportRequest)
   | {
     type: 'attach-appshot';
@@ -848,6 +860,7 @@ export type DesktopUpdateStatus = {
 };
 
 export type AppApi = {
+  browserExtensions(agentId: string | null, action: import('./browser-extensions').BrowserExtensionAction, managerId?: string, browserId?: string): Promise<import('./browser-extensions').BrowserExtensionState>;
   getUsage(filter?: import('./usage').UsageFilter): Promise<import('./usage').UsageSummary>;
   clearUsage(): Promise<void>;
   startVisualize(agentId: string, input?: import('./visualize').StartVisualizeInput): Promise<AppSnapshot>;
@@ -866,6 +879,7 @@ export type AppApi = {
   switchCodeReviewToManual(agentId: string, sessionId: string): Promise<AppSnapshot>;
   discardCodeReview(agentId: string, sessionId: string): Promise<AppSnapshot>;
   reviewCodeAgain(agentId: string, sessionId: string): Promise<AppSnapshot>;
+  setAutoResume(agentId: string, enabled: boolean): Promise<AppSnapshot>;
   respondToThreadFlag(agentId: string, response: import('./thread-flags').ThreadFlagResponse): Promise<AppSnapshot>;
   respondToPlanReview(agentId: string, response: import('./plan-review').PlanReviewResponse): Promise<AppSnapshot>;
   getSnapshot(): Promise<AppSnapshot>;
@@ -875,6 +889,10 @@ export type AppApi = {
   checkRemoteConnection(connectionId: string, inspectOnly?: boolean): Promise<AppSnapshot>;
   updateRemoteConnection(connectionId: string, input: UpdateRemoteConnectionInput): Promise<AppSnapshot>;
   removeRemoteConnection(connectionId: string): Promise<AppSnapshot>;
+  guestConversationControl(input: import('./guest-navigation').GuestJoinControl): Promise<import('./guest-navigation').GuestJoinState>;
+  guestConversationImage(id: string, path: string): Promise<{ dataUrl: string }>;
+  guestConversationContent(id: string, input: import('./contracts/conversation').ConversationContentInput): Promise<import('./contracts/conversation').ConversationContentChunk>;
+  conversationShareControl(input: import('./conversation-sharing').ConversationShareControl): Promise<import('./conversation-sharing').ConversationShareResult>;
   companionControl(input: import('./companion-protocol').CompanionControl): Promise<import('./companion-protocol').CompanionControlResult>;
   getRemoteControlStatus(): Promise<DevicePairingStatus>;
   enableRemoteControl(): Promise<DevicePairingStatus>;
@@ -883,7 +901,7 @@ export type AppApi = {
   checkDevicePairing(session: DevicePairingSession): Promise<boolean>;
   listPairedDevices(environmentId: string): Promise<PairedDevice[]>;
   revokePairedDevice(environmentId: string, clientId: string): Promise<void>;
-  connectWorkProvider(provider: WorkProviderKind): Promise<WorkProviderConnectResult>;
+  connectWorkProvider(provider: WorkProviderKind, options?: import('./contracts/work').WorkProviderConnectOptions): Promise<WorkProviderConnectResult>;
   pollWorkProviderAuthorization(provider: WorkProviderKind): Promise<AppSnapshot>;
   disconnectWorkProvider(provider: WorkProviderKind): Promise<AppSnapshot>;
   listWorkSources(provider: WorkProviderKind, location?: AutomationLocation): Promise<WorkSource[]>;
@@ -916,7 +934,7 @@ export type AppApi = {
   getAgentGitLog(agentId: string, input?: AgentGitLogInput): Promise<AgentGitLogPage>;
   getAgentGitLogCommit(agentId: string, input: AgentGitLogCommitInput): Promise<AgentGitLogDetails>;
   getAgentGitLogFile(agentId: string, input: AgentGitLogFileInput): Promise<AgentGitLogFileDiff>;
-  getAgentGitWorkflow(agentId: string): Promise<AgentGitWorkflow>;
+  getAgentGitWorkflow(agentId: string, options?: { includePullRequest?: boolean }): Promise<AgentGitWorkflow>;
   getAgentClosePreview(agentId: string): Promise<import('./agent-close').AgentClosePreview>;
   listAgentTasks(agentId: string): Promise<import('./delegated-task').DelegatedTask[]>;
   cancelAgentTask(agentId: string, taskId: string): Promise<import('./delegated-task').DelegatedTask>;
@@ -940,6 +958,8 @@ export type AppApi = {
   listSourceRepositories(remoteConnectionId?: string): Promise<SourceRepository[]>;
   cloneSourceRepository(input: CloneSourceRepositoryInput): Promise<SourceRepository>;
   createSourceRepository(input: CreateSourceRepositoryInput): Promise<SourceRepository>;
+  previewRepositoryDeletion(agentId: string): Promise<import('./contracts/workspace').RepositoryDeletionPreview>;
+  deleteRepository(agentId: string, input: import('./contracts/workspace').DeleteRepositoryInput): Promise<AppSnapshot>;
   createProject(input: CreateProjectInput): Promise<AppSnapshot>;
   listSourceBranches(repoPath: string, remoteConnectionId?: string): Promise<SourceBranch[]>;
   listSourceWorktrees(repoPath: string, remoteConnectionId?: string): Promise<SourceWorktree[]>;
@@ -989,6 +1009,7 @@ export type AppApi = {
   markAgentRead(agentId: string, revision: number): Promise<void>;
   updateSettings(input: UpdateSettingsInput): Promise<AppSnapshot>;
   readEngineInstructions(engine: AgentBackend): Promise<{ text: string; path: string }>;
+  manageSkills(input: import('./skill-manager').SkillManagerInput): Promise<import('./skill-manager').SkillManagerState>;
   saveEngineInstructions(input: { engine: AgentBackend; text: string; all?: boolean; confirmed?: boolean }): Promise<void>;
   previewSpokenAnnouncementVoice(voice: SpokenAnnouncementVoice): Promise<SpokenAnnouncementQueueResult>;
   getCodexResourceSharingStatus(): Promise<CodexResourceSharingStatus>;
@@ -1033,11 +1054,11 @@ export type AppApi = {
   sendPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   steerPrompt(agentId: string, prompt: string, options?: RendererSendPromptOptions): Promise<AppSnapshot>;
   deleteQueuedPrompt(agentId: string, promptId: string): Promise<AppSnapshot>;
-  steerQueuedPrompt(agentId: string, promptId: string, prompt?: string): Promise<AppSnapshot>;
-  updateQueuedPrompt(agentId: string, promptId: string, prompt: string): Promise<AppSnapshot>;
+  steerQueuedPrompt(agentId: string, promptId: string, prompt?: string, options?: PromptContentOptions): Promise<AppSnapshot>;
+  updateQueuedPrompt(agentId: string, promptId: string, prompt: string, options?: PromptContentOptions): Promise<AppSnapshot>;
   interruptAgent(agentId: string): Promise<AppSnapshot>;
   deleteTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
-  editTurn(agentId: string, turnId: string, content: string): Promise<AppSnapshot>;
+  editTurn(agentId: string, turnId: string, content: string, options?: PromptContentOptions): Promise<AppSnapshot>;
   retryTurn(agentId: string, turnId: string): Promise<AppSnapshot>;
   continueInterruptedTurn(agentId: string): Promise<AppSnapshot>;
   mobileSimulator?(agentId: string, input: import('./mobile-simulator').MobileRequest): Promise<import('./mobile-simulator').MobileResult>;
@@ -1047,7 +1068,9 @@ export type AppApi = {
   browserNavigate(agentId: string, browserId: string, url: string): Promise<BrowserState>;
   browserGoBack(agentId: string, browserId: string): Promise<BrowserState>;
   browserGoForward(agentId: string, browserId: string): Promise<BrowserState>;
+  browserOpenDevTools(agentId: string, browserId: string): Promise<void>;
   browserReload(agentId: string, browserId: string): Promise<BrowserState>;
+  browserClearBrowsingData(): Promise<void>;
   browserGetZoom(agentId: string, browserId: string): Promise<number>;
   browserSetZoom(agentId: string, browserId: string, percent: number): Promise<number>;
   browserCopyScreenshot(agentId: string, browserId: string, rect?: BrowserBounds): Promise<void>;

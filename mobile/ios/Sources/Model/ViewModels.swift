@@ -5,6 +5,26 @@ enum ConnectionState: String, Codable, Sendable {
     case unpaired, connecting, connected, disconnected, reconnecting, revoked, error
 }
 
+extension ConnectionState {
+    /// One quiet line for the settings header; recovery stays "Connecting…" until the lost-connection notice would show.
+    func summary(laptop: String?, lost: Bool) -> String? {
+        switch self {
+        case .connected: laptop.map { "Connected to \($0)" } ?? "Connected"
+        case .unpaired, .revoked: nil
+        case .connecting, .reconnecting, .disconnected, .error: lost ? "Connection lost" : "Connecting…"
+        }
+    }
+}
+
+enum LaptopName {
+    static let maxLength = 60
+    /// The name to save, or nil when the person has typed nothing usable.
+    static func cleaned(_ value: String) -> String? {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || name.count > maxLength ? nil : name
+    }
+}
+
 enum AgentStatus: String, Codable, Sendable {
     case idle, working, awaitingInput, error
 }
@@ -104,5 +124,158 @@ struct RepositoryBranches: Decodable, Equatable {
     func matching(_ query: String) -> [Branch] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty ? items : items.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+}
+
+/// How a mission ticket reads on the phone: one label and symbol per state of the desktop's implementation board.
+enum MissionTicketState: String {
+    case blocked, queued, preparing, running, awaitingReview, accepted, cancelled, failed
+
+    init(_ value: String) { self = MissionTicketState(rawValue: value) ?? .queued }
+
+    var label: String {
+        switch self {
+        case .blocked: "Blocked"
+        case .queued: "Queued"
+        case .preparing: "Preparing"
+        case .running: "In progress"
+        case .awaitingReview: "Ready for review"
+        case .accepted: "Done"
+        case .cancelled: "Cancelled"
+        case .failed: "Failed"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .blocked: "lock"
+        case .queued: "circle"
+        case .preparing, .running: "circle.dotted"
+        case .awaitingReview: "eye.circle"
+        case .accepted: "checkmark.circle.fill"
+        case .cancelled: "slash.circle"
+        case .failed: "exclamationmark.circle.fill"
+        }
+    }
+}
+
+struct MissionTicketSummary: Decodable, Hashable, Identifiable {
+    let number: Int; let title: String; let state: String; let agentId: String?
+    /// The unfinished tickets this one waits for, and what its agent says it is doing right now.
+    let after: [Int]?; let activity: String?
+    /// The run waiting for a person's acceptance.
+    let runId: String?
+    var id: Int { number }
+}
+
+struct ReviewFindingSummary: Decodable, Hashable, Identifiable {
+    let id: String; let priority: String; let title: String; let body: String; let repository: String
+    let file: String?; let line: Int?; let endLine: Int?
+    let selected: Bool; let state: String
+
+    var isOpen: Bool { state == "open" }
+    var priorityLabel: String { priority.uppercased() }
+
+    /// "auth/session.ts · line 142", or the span when the finding covers several lines.
+    var location: String? {
+        guard let file else { return nil }
+        guard let line else { return file }
+        if let end = endLine, end > line { return "\(file) · lines \(line)–\(end)" }
+        return "\(file) · line \(line)"
+    }
+}
+
+struct MissionReviewSummary: Decodable, Hashable {
+    let summary: String; let findings: [ReviewFindingSummary]
+
+    var fixedCount: Int { findings.filter { $0.state == "fixed" }.count }
+    var selectedCount: Int { findings.filter { $0.isOpen && $0.selected }.count }
+    var fixingCount: Int { findings.filter { $0.state == "fixing" }.count }
+    /// Only once nothing is open or being fixed can the review run again.
+    var canRerun: Bool { !findings.isEmpty && findings.allSatisfy { $0.state == "fixed" || $0.state == "skipped" } }
+    var progress: Double { findings.isEmpty ? 0 : Double(fixedCount) / Double(findings.count) }
+    /// Findings by priority, most urgent first.
+    var groups: [(priority: String, findings: [ReviewFindingSummary])] {
+        Dictionary(grouping: findings, by: \.priority).sorted { $0.key < $1.key }.map { (priority: $0.key.uppercased(), findings: $0.value) }
+    }
+}
+
+struct MissionSummary: Decodable, Hashable, Identifiable {
+    let id: String; let outcome: String; let stage: String; let status: String; let done: Int; let tickets: [MissionTicketSummary]
+    let startedAt: String?; let updatedAt: String?
+    /// The ordinary agent leading the mission through its current stage.
+    let leadAgentId: String?
+    /// What a person can do next: move on to review, or ship, which only the desktop does.
+    let next: String?
+    /// What the review found, once there is a review.
+    let review: MissionReviewSummary?
+}
+
+/// The mission that owns the open worker conversation, if any.
+struct MissionReference: Decodable, Equatable { let id: String; let outcome: String; let lead: Bool? }
+
+extension MissionSummary {
+    var isActive: Bool { status == "active" }
+
+    var stageLabel: String {
+        switch stage {
+        case "requirements": "Requirements"
+        case "tickets": "Tickets"
+        case "implementation": "Implementation"
+        case "review": "Review"
+        case "ship": "Ship"
+        default: stage.capitalized
+        }
+    }
+
+    /// "Implementation · 3 of 7 tickets"; a mission still shaping its tickets says only where it is.
+    var summary: String {
+        guard !tickets.isEmpty else { return stageLabel }
+        return "\(stageLabel) · \(done) of \(tickets.count) \(tickets.count == 1 ? "ticket" : "tickets")"
+    }
+
+    var progress: Double { tickets.isEmpty ? 0 : min(1, Double(done) / Double(tickets.count)) }
+}
+
+extension MissionSummary {
+    static let stages = [("requirements", "Requirements", "doc.text"), ("tickets", "Tickets", "checklist"), ("implementation", "Implementation", "hammer"),
+                         ("review", "Review", "eye"), ("ship", "Ship", "paperplane")]
+
+    /// Tickets waiting on a person: an agent's work to look at, or work that failed.
+    var attentionCount: Int { tickets.filter { [.awaitingReview, .failed].contains(MissionTicketState($0.state)) }.count }
+    /// Agents on a ticket at this moment.
+    var workingCount: Int { tickets.filter { [.running, .preparing].contains(MissionTicketState($0.state)) }.count }
+    /// Ready once the mission has reached its ship stage: finished tickets still owe a review.
+    var isReadyToShip: Bool { isActive && stage == "ship" }
+    /// Every ticket is accepted, whatever stage the mission is in.
+    var allTicketsDone: Bool { !tickets.isEmpty && done >= tickets.count }
+    var canContinueToReview: Bool { isActive && next == "review" }
+    var shipsOnDesktop: Bool { isActive && next == "ship" }
+    var stageIndex: Int { Self.stages.firstIndex { $0.0 == stage } ?? 0 }
+
+    /// "11 Update onboarding copy": the ticket an agent is on, the first one when several are.
+    var nowLine: String? {
+        tickets.first { [.running, .preparing].contains(MissionTicketState($0.state)) }.map { "\(String(format: "%02d", $0.number)) \($0.title)" }
+    }
+
+    /// How long the work has been going: until now while it runs, until its last change once it is over.
+    func elapsed(now: Date) -> TimeInterval? {
+        guard let start = startedAt.flatMap(Self.parse) else { return nil }
+        let end = isActive ? now : (updatedAt.flatMap(Self.parse) ?? now)
+        return max(0, end.timeIntervalSince(start))
+    }
+
+    /// "2h 14m", "14m", or "Under a minute".
+    static func elapsedText(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        if minutes < 1 { return "Under a minute" }
+        if minutes < 60 { return "\(minutes)m" }
+        if minutes < 24 * 60 { return "\(minutes / 60)h \(minutes % 60)m" }
+        return "\(minutes / (24 * 60))d \(minutes % (24 * 60) / 60)h"
+    }
+
+    private static func parse(_ value: String) -> Date? {
+        let precise = ISO8601DateFormatter(); precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return precise.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 }

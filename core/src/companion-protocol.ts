@@ -35,8 +35,34 @@ export const isConversationReset = (frame: ProviderConversationFrame): frame is 
   frame.type.endsWith('.conversationSnapshotChanged') && conversationFrameType.test(frame.type);
 export type CompanionGitStatus = Pick<AgentGitStatus, 'branch' | 'state' | 'changedFiles' | 'addedLines' | 'removedLines' | 'diffCatalog'>
   & { lastTurn?: { turnId: string; addedLines: number; removedLines: number } };
+/** A ticket's progress as the desktop's implementation board shows it. */
+export type CompanionMissionTicketState = 'blocked' | 'queued' | 'preparing' | 'running' | 'awaitingReview' | 'accepted' | 'cancelled' | 'failed';
+export type CompanionReviewFinding = { id: string; priority: 'p0' | 'p1' | 'p2' | 'p3'; title: string; body: string;
+  /** The repository's folder name, never its path on the laptop. */
+  repository: string; file?: string; line?: number; endLine?: number;
+  selected: boolean; state: 'open' | 'fixing' | 'fixed' | 'skipped' };
+/** The review's verdict and findings, so a person can choose what to fix without opening the desktop. */
+export type CompanionMissionReview = { summary: string; findings: CompanionReviewFinding[] };
+/** `agentId` is the worker implementing the ticket; it is listed in the workspace's `missionAgents`. */
+/** `after` lists the numbers of the unfinished tickets this one waits for. */
+export type CompanionMissionTicket = { number: number; title: string; state: CompanionMissionTicketState; agentId?: string; after?: number[];
+  /** The repository's name, without its host path. */
+  repository?: string;
+  /** The run waiting for a person's acceptance, present only while the ticket is ready for review. */
+  runId?: string };
+/** What the phone knows of a mission: where it stands and its tickets, never its documents or workspaces. */
+export type CompanionMission = { id: string; teamId: string; outcome: string; stage: import('./mission-types').MissionStage; status: 'active' | 'completed'; startedAt: string; updatedAt: string; tickets: CompanionMissionTicket[];
+  /** The conversation that leads the mission through its current stage; an ordinary agent of the team. */
+  leadAgentId?: string;
+  /** Changes only with the mission; an action on it is refused if the mission moved on. */
+  revision: number;
+  /** What a person can do next: move implementation on to review, or ship (which only the desktop does). */
+  next?: 'review' | 'ship';
+  review?: CompanionMissionReview };
 /** `backends` lists, per team, the engines that are connected and enabled on the laptop that hosts it. */
-export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[] };
+export type CompanionWorkspace = { conversationSync?: boolean; gitStatuses?: Record<string, CompanionGitStatus>; teams: Team[]; agents: Agent[]; repositoryIcons?: Record<string, string>; modelFavorites?: ModelFavorite[]; backends?: Record<string, AgentBackend[]>; agentRequests?: Record<string, AgentRequest[]>; queuedPrompts?: { id: string; agentId: string; text: string }[];
+  /** Workers implementing mission tickets: openable from their mission, never listed among the team's agents. */
+  missionProgress?: CompanionMission[]; missionAgents?: Agent[] };
 /** Account quota windows on the paired laptop; billing and credit details stay on the host. */
 export type CompanionUsage = { backend: AgentBackend; limits: Pick<AccountRateLimits, 'primary' | 'secondary'> | null; failed: boolean };
 /** A branch choice without host filesystem paths. */
@@ -44,9 +70,13 @@ export type CompanionBranch = { name: string; isDefault: boolean; isCheckedOut: 
 /** A new chat in a listed repository: default checkout, existing branch, or new worktree. */
 export type CompanionNewChat = { teamId: string; repositoryId: string; backend: AgentBackend; existingBranch?: string; worktree?: { branchName: string } };
 /** Project acquisition runs on the team's host; the phone sends no host filesystem paths. */
-export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
+export type CompanionProjectInput = { teamId: string; backend: AgentBackend; source: 'new' | 'local' | 'github' | 'gitlab' | 'url'; value: string; branch?: string; worktree?: { branchName: string; baseBranch: string } };
 export type CompanionProjectBranch = { name: string; isDefault: boolean };
-export type CompanionGitHubRepository = { id: string; name: string };
+export type CompanionRepositoryProvider = 'github' | 'gitlab';
+/** Opaque selection bound to the owning daemon, host location and provider catalog. */
+export type CompanionRepository = { id: string; name: string };
+/** Legacy GitHub listing shape retained for existing native clients. */
+export type CompanionGitHubRepository = CompanionRepository;
 /** Image bytes resolved by the conversation's host, never a host-local file URL. */
 export type CompanionImage = { dataUrl: string };
 export type CompanionChatCreation = { state: 'running' } | { state: 'success'; agentId: string } | { state: 'error'; error: string };
@@ -69,6 +99,8 @@ export type CompanionControlResult = { status: CompanionStatus; invitation?: Com
 export type CompanionRequest = { v: 1; id: string; method: string; args: unknown };
 export type CompanionResponse = { v: 1; id: string; result?: unknown; error?: string };
 
+/** Every agent the phone can open: the team's own and the workers implementing mission tickets. */
+export const companionAgents = (workspace: Pick<CompanionWorkspace, 'agents' | 'missionAgents'>): Agent[] => workspace.missionAgents?.length ? [...workspace.agents, ...workspace.missionAgents] : workspace.agents;
 export function companionSessionId(agent: Agent): string | null {
   const session = agent.backendSession;
   if (!session) return null;

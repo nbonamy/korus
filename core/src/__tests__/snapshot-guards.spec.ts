@@ -20,6 +20,14 @@ describe('snapshot guards', () => {
     expect(isAppSnapshot(full)).toBe(true);
   });
 
+  it('validates public MCP eligibility without requiring it on legacy connections', () => {
+    const snapshot = createInitialSnapshot();
+    snapshot.workBacklog.connections.push({ provider: 'gitlab', status: 'connected', hostedMcp: { status: 'unavailable' } });
+    expect(decodeAppSnapshot(snapshot)).toStrictEqual({ value: snapshot });
+    snapshot.workBacklog.connections.at(-1)!.hostedMcp = { status: 'invalid' as never };
+    expect(isAppSnapshot(snapshot)).toBe(false);
+  });
+
   it('returns the original snapshot object identity', () => {
     const full = completeSnapshot();
     expect(decodeAppSnapshot(full)?.value).toBe(full);

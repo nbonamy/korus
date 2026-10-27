@@ -105,7 +105,46 @@ final class TranscriptHostProbe: UIResponder, UIApplicationDelegate {
         check(!loading.isLoading && !loading.failed && content, "retry reloads and replays the cached transcript without a new engine frame")
     }
 
+    // Failure modes: accepting into a nonempty draft, swallowing normal typing,
+    // stale native text after acceptance, or a cursor left before the inserted text.
+    func checkComposerSuggestions() async {
+        let suggestion = "Review the changes 🦞"
+        for (initial, input, proposed, expected) in [
+            ("", " ", suggestion as String?, suggestion),
+            ("My prompt", " ", suggestion as String?, "My prompt "),
+            ("", "X", suggestion as String?, "X"),
+            ("", " ", nil, " ")
+        ] {
+            var text = initial
+            var caret: NSRange?
+            let editor = ComposerEditor(text: Binding(get: { text }, set: { text = $0 }),
+                selection: Binding(get: { caret }, set: { caret = $0 }), focused: .constant(false), query: .constant(nil),
+                suggestions: [], editable: true, maxLines: 1, placeholder: proposed ?? "Message", suggestedPrompt: proposed)
+            let hosting = UIHostingController(rootView: editor)
+            window!.rootViewController!.addChild(hosting)
+            hosting.view.frame = CGRect(x: 0, y: 100, width: 350, height: 60)
+            window!.rootViewController!.view.addSubview(hosting.view)
+            hosting.didMove(toParent: window!.rootViewController)
+            await pause(80)
+            func findEditor(_ view: UIView) -> ComposerTextView? {
+                if let editor = view as? ComposerTextView { return editor }
+                return view.subviews.compactMap { findEditor($0) }.first
+            }
+            if let view = findEditor(hosting.view) {
+                check(view.placeholder.text == (proposed ?? "Message") && view.document.text == initial, "composer shows suggestion without inserting it")
+                view.insertText(input)
+                if text != expected || view.document.text != expected || caret?.location != expected.utf16.count {
+                    print("TRANSCRIPT_NATIVE composer diagnostic draft=\(text.debugDescription) native=\(view.document.text.debugDescription) caret=\(String(describing: caret)) expected=\(expected.debugDescription)")
+                }
+                check(text == expected && view.document.text == expected && caret?.location == expected.utf16.count,
+                    "composer space acceptance respects empty draft and cursor: \(initial.isEmpty)-\(input)-\(proposed != nil)")
+            } else { check(false, "native composer is mounted") }
+            hosting.willMove(toParent: nil); hosting.view.removeFromSuperview(); hosting.removeFromParent()
+        }
+    }
+
     func run() async {
+        await checkComposerSuggestions()
         let lock = AppLock()
         let conversationController = window?.rootViewController
         func entryImage<Content: View>(_ content: Content, name: String) async -> CGImage? {

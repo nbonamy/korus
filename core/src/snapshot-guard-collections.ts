@@ -1,3 +1,5 @@
+import { normalizePromptContent } from '@codex-app-sdk/core/surface';
+import { fileKinds } from './file-kind';
 import { isDelegationOverrides } from './delegation-context';
 import {
   hasOwn,
@@ -22,6 +24,7 @@ export function isRendererMessage(value: unknown): boolean {
     includes(['user', 'assistant', 'system'], value.role) &&
     includes(['complete', 'streaming', 'error'], value.status) &&
     optional(value, 'turnId', isString) &&
+    optional(value, 'metadata', metadata => isRecord(metadata) && optional(metadata, 'promptContent', isPromptContent)) &&
     isArrayOf(value.parts, isRendererMessagePart) &&
     typeof value.createdAt === 'string';
 }
@@ -87,6 +90,7 @@ export function isQueuedPrompt(value: unknown): boolean {
 
 function isSendPromptOptions(value: unknown): boolean {
   return isRecord(value) &&
+    optional(value, 'content', isPromptContent) &&
     optional(value, 'delegation', isDelegationOverrides) &&
     optional(value, 'attachments', (candidate) => isArrayOf(candidate, isPromptAttachment)) &&
     optional(value, 'model', isNullableString) &&
@@ -97,6 +101,11 @@ function isSendPromptOptions(value: unknown): boolean {
     optional(value, 'inputMethod', (candidate) => includes(['typed', 'dictated'], candidate)) &&
     optional(value, 'recordUserMessage', isBoolean) &&
     optional(value, 'backendOptions', isBackendPromptOptions);
+}
+
+export function isPromptContent(value: unknown): boolean {
+  try { normalizePromptContent(value); return true; }
+  catch { return false; }
 }
 
 function isPromptAttachment(value: unknown): boolean {
@@ -133,6 +142,7 @@ export function isAgentGitStatus(value: unknown): boolean {
     typeof value.folder === 'string' &&
     optional(value, 'repository', isString) &&
     optional(value, 'githubRepository', isString) &&
+    optional(value, 'repositoryProvider', candidate => includes(['github', 'gitlab'], candidate)) &&
     optional(value, 'branch', isString) &&
     optional(value, 'upstream', isString) &&
     typeof value.ahead === 'number' &&
@@ -174,7 +184,15 @@ function isAgentGitDiffSummary(value: unknown): boolean {
   return isRecord(value) &&
     typeof value.addedLines === 'number' &&
     typeof value.removedLines === 'number' &&
-    typeof value.changedFiles === 'number';
+    typeof value.changedFiles === 'number' &&
+    optional(value, 'byKind', isKindBreakdown);
+}
+
+function isKindBreakdown(value: unknown): boolean {
+  return isRecord(value) && fileKinds.every(kind => {
+    const stats = value[kind];
+    return isRecord(stats) && typeof stats.addedLines === 'number' && typeof stats.removedLines === 'number' && typeof stats.changedFiles === 'number';
+  });
 }
 
 export function isTurnGitDiff(value: unknown): boolean {

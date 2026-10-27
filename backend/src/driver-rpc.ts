@@ -1,9 +1,10 @@
-import type { ExecutionObservation } from '@workspace/core/usage';
+import type { ExecutionObservation, RequestObservation } from '@workspace/core/usage';
 import { assertPromptSession, requireExpectedSessionId, requirePromptText } from './prompt-input';
 import { product } from '@workspace/core/product';
 import { isUseBankedResetInput } from '@workspace/core/contracts/banked-resets';
 import { isAgentBackend } from '@workspace/core/contracts/shared';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { expandMissionCommand } from './agents/mission-command';
 import { expandWorktreeDelegationCommand } from './agents/worktree-delegation';
 import { handoffInProgress } from '@workspace/core/agent-handoff';
 import { isAgentRequestResponse } from '@workspace/core/agent-request';
@@ -118,10 +119,34 @@ function reviewExtensionMcpUrl(value: unknown): string | null {
 }
 
 export class BackendDriverRpc {
-  private readonly usageListeners = new Set<(observation:ExecutionObservation)=>void>();
-  private readonly unsubscribeUsage = new Map<AgentBackend,()=>void>();
-  private bindUsage(backend:AgentBackend,driver:AgentBackendDriver):void { this.unsubscribeUsage.get(backend)?.(); if(driver.onUsage) this.unsubscribeUsage.set(backend,driver.onUsage(o=>{for(const listener of this.usageListeners) {try{listener(o);}catch{/* Observer isolation. */}}})); }
-  onUsage(listener:(observation:ExecutionObservation)=>void):()=>void { this.usageListeners.add(listener);return ()=>this.usageListeners.delete(listener); }
+  private readonly requestUsageListeners = new Set<(observation: RequestObservation) => void>();
+  private readonly unsubscribeRequestUsage = new Map<AgentBackend, () => void>();
+  private readonly usageListeners = new Set<(observation: ExecutionObservation) => void>();
+  private readonly unsubscribeUsage = new Map<AgentBackend, () => void>();
+  private bindUsage(backend: AgentBackend, driver: AgentBackendDriver): void {
+    this.unsubscribeRequestUsage.get(backend)?.();
+    this.unsubscribeRequestUsage.delete(backend);
+    if (driver.onRequestUsage) this.unsubscribeRequestUsage.set(backend, driver.onRequestUsage(observation => {
+      for (const listener of this.requestUsageListeners) {
+        try { listener(observation); } catch { /* Observer isolation. */ }
+      }
+    }));
+    this.unsubscribeUsage.get(backend)?.();
+    this.unsubscribeUsage.delete(backend);
+    if (driver.onUsage) this.unsubscribeUsage.set(backend, driver.onUsage(observation => {
+      for (const listener of this.usageListeners) {
+        try { listener(observation); } catch { /* Observer isolation. */ }
+      }
+    }));
+  }
+  onRequestUsage(listener: (observation: RequestObservation) => void): () => void {
+    this.requestUsageListeners.add(listener);
+    return () => this.requestUsageListeners.delete(listener);
+  }
+  onUsage(listener: (observation: ExecutionObservation) => void): () => void {
+    this.usageListeners.add(listener);
+    return () => this.usageListeners.delete(listener);
+  }
   private readonly inFlight = new Map<AgentBackend, number>();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private readonly unsubscribeDriverEvents = new Map<AgentBackend, () => void>();
@@ -320,7 +345,7 @@ export class BackendDriverRpc {
         const record = requireRecord(params);
         assertPromptSession(agent, requireExpectedSessionId(record));
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
-        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
+        const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const driver = this.requireDriver(agent.backend);
         return driver.sendPrompt(agent, prompt, record.options as SendPromptOptions | undefined);
       }
@@ -516,7 +541,7 @@ export class BackendDriverRpc {
           throw unsupportedBackendFeature(agent, 'prompt steering');
         }
         const rawPrompt = requirePromptText(record.prompt, record.options as SendPromptOptions | undefined);
-        const prompt = expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? rawPrompt;
+        const prompt = record.plainText === true ? rawPrompt : expandWorktreeDelegationCommand(rawPrompt, (record.options as SendPromptOptions | undefined)?.delegation) ?? expandMissionCommand(rawPrompt) ?? rawPrompt;
         const options = record.options as SendPromptOptions | undefined;
         return options
           ? driver.steerPrompt(agent, prompt, options)
@@ -539,11 +564,9 @@ export class BackendDriverRpc {
         if (!driver.editTurn) {
           throw unsupportedBackendFeature(agent, 'turn editing');
         }
-        return driver.editTurn(
-          agent,
-          requireString(record.turnId, 'turnId'),
-          requireString(record.content, 'content'),
-        );
+        const turnId = requireString(record.turnId, 'turnId');
+        const content = requireString(record.content, 'content');
+        return record.options ? driver.editTurn(agent, turnId, content, record.options as Pick<SendPromptOptions, 'content'>) : driver.editTurn(agent, turnId, content);
       }
       case backendMethods.driverTurnRetry: {
         const { agent } = requireAgentParams(params);
@@ -578,7 +601,8 @@ export class BackendDriverRpc {
       case backendMethods.driverSkillsList: {
         const { agent } = requireAgentParams(params);
         const driver = this.requireDriver(agent.backend);
-        return driver.listSkills ? driver.listSkills(agent) : [];
+        if (!driver.listSkills) return [];
+        return requireRecord(params).forceReload === true ? driver.listSkills(agent, true) : driver.listSkills(agent);
       }
       case backendMethods.sourceFolderDetect:
         return detectSourceFolder();
@@ -647,6 +671,7 @@ export class BackendDriverRpc {
 
   async close(): Promise<void> {
     for (const unsubscribe of this.unsubscribeUsage.values()) unsubscribe();
+    for (const unsubscribe of this.unsubscribeRequestUsage.values()) unsubscribe();
     for (const unsubscribe of this.unsubscribeDriverEvents.values()) {
       unsubscribe();
     }

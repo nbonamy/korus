@@ -6,9 +6,14 @@ export type { WorkProviderKind } from '../work-providers';
 
 export type WorkIntegrationStatus = 'notConfigured' | 'disconnected' | 'connecting' | 'connected' | 'error';
 
+export type WorkProviderConnectOptions = { hostedMcp?: boolean };
+
+export type HostedWorkMcpState = { status: 'directRequired' | 'authorizationRequired' | 'available' | 'unavailable' };
+
 export type WorkIntegrationConnection = {
   provider: WorkProviderKind;
   status: WorkIntegrationStatus;
+  hostedMcp?: HostedWorkMcpState;
   /** Missing uses automatic detection; none has no direct connection and can fall back to CLI access. */
   source?: 'api' | 'cli' | 'none';
   accountLabel?: string;
@@ -78,6 +83,7 @@ export type WorkProviderAuthorization = {
 /** An opaque provider-owned backlog scope, independent of an execution repository. */
 export type WorkSource = {
   provider: WorkProviderKind;
+  /** Opaque within the provider. GitLab repositories include gitlab.com and the full namespace path. */
   id: string;
   owner?: string;
   name: string;

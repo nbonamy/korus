@@ -169,7 +169,7 @@ describe('AppBackendServer', () => {
     await server.close();
   });
 
-  it('generates editable Git drafts through the active backend without sending a conversation prompt', async () => {
+  it.each(['github', 'gitlab'])('generates editable %s Git drafts through the active backend without sending a conversation prompt', async provider => {
     const snapshot = createTestSnapshot();
     snapshot.general.commitMessageInstructions = 'Use lowercase conventional commits.';
     snapshot.general.pullRequestInstructions = 'Include a deployment checklist.';
@@ -205,7 +205,7 @@ describe('AppBackendServer', () => {
       version: 'test-version',
       snapshot,
       driverRpc: new BackendDriverRpc(new Map([['codex', driver]])),
-      agentGitService: { commitMessageContext, pullRequestMessageContext } as unknown as AgentGitService,
+      agentGitService: { commitMessageContext, pullRequestMessageContext, workflow: async () => ({ remoteUrl: `git@${provider}.com:owner/repo.git` }) } as unknown as AgentGitService,
     });
 
     await expect(server.handleMessage({
@@ -227,6 +227,7 @@ describe('AppBackendServer', () => {
     expect(generateText.mock.calls[0]?.[1].developerInstructions).toContain('Use lowercase conventional commits.');
     expect(generateText.mock.calls[0]?.[1].developerInstructions).not.toContain('deployment checklist');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).toContain('Include a deployment checklist.');
+    expect(generateText.mock.calls[1]?.[1].prompt).toContain(provider === 'gitlab' ? 'merge request' : 'pull request');
     expect(generateText.mock.calls[1]?.[1].developerInstructions).not.toContain('lowercase conventional commits');
     expect(generateText.mock.calls[0]?.[1]).toMatchObject({ cwd: '/repo', outputSchema: { type: 'object' } });
     expect(sendPrompt).not.toHaveBeenCalled();

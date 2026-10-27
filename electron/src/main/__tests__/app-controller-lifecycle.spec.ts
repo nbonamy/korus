@@ -180,6 +180,18 @@ describe('controller desktop lifecycle', () => {
     await expect(api.clearUsage()).rejects.toThrow('storage unavailable');
   });
 
+  it('routes share actions through preload and the daemon without exposing bearer links in events', async () => {
+    const { backend } = setup();
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    const target = { agentId: 'fixture', backend: 'codex' as const, sessionId: 'thread', conversation: { backend: 'codex' as const, threadId: 'thread' } };
+    const input = { action: 'copy' as const, target };
+    const result = { state: { active: true, handle: 'a'.repeat(32), connectedGuests: null, availability: 'transportPending' }, link: 'redacted-fixture' };
+    backend.request.mockResolvedValueOnce(result);
+    await expect(api.conversationShareControl(input)).resolves.toStrictEqual(result);
+    expect(backend.request).toHaveBeenCalledExactlyOnceWith(backendMethods.conversationShareControl, { input });
+  });
+
   it('routes explicit mobile pairing decisions through the existing owning daemon IPC', async () => {
     const { backend } = setup();
     const result = { status: { enabled: true, connected: true, hostId: 'host', relayOrigin: 'wss://relay.example', devices: [], pending: [] } };
@@ -519,8 +531,11 @@ describe('controller desktop lifecycle', () => {
     app.emit('activate');
     expect(native.createWindow).toHaveBeenCalledOnce();
     window.isDestroyed.mockReturnValue(true);
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    // A hidden extension document can outlive the main window.
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{} as never]);
     native.createWindow.mockReturnValue(windowFixture());
+    app.emit('open-url', { preventDefault: vi.fn() }, `${product.protocolScheme}://new?prompt=with-hidden-extension`);
+    expect(native.createWindow).toHaveBeenCalledTimes(2);
     app.emit('activate');
     expect(native.createWindow).toHaveBeenCalledTimes(2);
     app.emit('before-quit', { preventDefault: vi.fn() });
@@ -599,6 +614,23 @@ describe('controller desktop lifecycle', () => {
     expect(service.stop).toHaveBeenCalledOnce();
   });
 
+  it('queues cold and reloaded share delivery and forwards guest operations through the app-owned boundary', async () => {
+    const { controller, window, backend } = setup();
+    const link = `${product.protocolScheme}://share?v=9`;
+    expect(controller.openDeepLink(link)).toBe(true);
+    controller.createWindow();
+    expect(window.webContents.send).not.toHaveBeenCalled();
+    window.webContents.emit('did-finish-load');
+    expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.appCommand, { type: 'open-shared-conversation', link });
+    window.webContents.send.mockClear(); window.webContents.emit('did-start-loading');
+    expect(controller.openDeepLink(link)).toBe(true); expect(window.webContents.send).not.toHaveBeenCalled();
+    window.webContents.emit('did-finish-load');
+    expect(window.webContents.send).toHaveBeenCalledTimes(1);
+    await controller.initialize();
+    backend.request.mockResolvedValueOnce({ entries: [], view: null });
+    await invoke(ipcChannels.guestConversationControl, { action: 'state' });
+    expect(backend.request).toHaveBeenCalledWith(backendMethods.guestConversationControl, { input: { action: 'state' } });
+  });
   it('delivers deep links only after each renderer load and reuses or replaces its native window', async () => {
     const { controller, window } = setup();
     controller.openDeepLink(`${product.protocolScheme}://new?prompt=first`);

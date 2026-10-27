@@ -17,6 +17,7 @@
       </span>
     </template>
     <div v-if="heading" class="app-menu-button__heading">{{ heading }}</div>
+    <slot name="before" />
     <p v-if="message" class="app-menu-button__message" :class="{ 'app-menu-button__message--error': messageTone === 'error' }">{{ message }}</p>
     <AppMenu
       v-else

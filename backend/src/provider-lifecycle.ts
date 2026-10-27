@@ -13,6 +13,8 @@ export type ProviderLifecycle = {
   installed(snapshot: AppSnapshot): boolean;
   install?(): Promise<void>;
   prepareHome(home: ProviderHomeSettings, configuring: boolean): Promise<void>;
+  skillDirectories?(home: ProviderHomeSettings): string[];
+  skillDiscoveryDirectories?(home: ProviderHomeSettings): string[];
   applyHome?(home: ProviderHomeSettings): void;
   sharing?: {
     status(home: ProviderHomeSettings): Promise<CodexResourceSharingStatus>;
