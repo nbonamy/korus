@@ -14,6 +14,10 @@ export default defineConfig({
           "__PRODUCT_DOWNLOAD_URL__",
           `${product.websiteUrl}/#download`,
         );
+        state.src = state.src.replaceAll(
+          "__PRODUCT_PRIVACY_URL__",
+          `${product.websiteUrl}/privacy/`,
+        );
       });
     },
   },

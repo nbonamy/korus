@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { once } from "node:events";
 import test from "node:test";
 import { chromium } from "playwright";
 import { JSDOM } from "jsdom";
+import product from "../core/src/product.json" with { type: "json" };
 
 // Catch navigation that disappears at responsive breakpoints. This exercises
 // the actual built page and its styles through a browser, without source assertions.
@@ -56,11 +58,16 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
     const origin = `http://127.0.0.1:${server.address().port}`;
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
-    await page.route("**/*", (route) =>
-      route.request().url().startsWith(origin)
-        ? route.continue()
-        : route.abort(),
-    );
+    await page.context().route("**/*", (route) => {
+      const url = new URL(route.request().url());
+      // Resolve the product-owned external policy link to this local artifact.
+      if (url.origin === product.websiteUrl && url.pathname === "/privacy/")
+        return route.fulfill({
+          status: 302,
+          headers: { location: `${origin}/privacy/#optional-sharing` },
+        });
+      return url.origin === origin ? route.continue() : route.abort();
+    });
     for (const width of [1440, 1040, 820, 761, 760, 600, 430, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(origin);
@@ -250,6 +257,71 @@ test("navigation, films, and cards work at desktop and phone widths", async () =
       await docs.click();
       await page.getByRole("heading", { level: 1 }).waitFor();
       assert.equal(new URL(page.url()).pathname, "/docs/");
+    }
+    // The published consent destination and guide links must work at both sizes.
+    const privacyEvidence = [];
+    const evidenceDirectory = process.env.TELEMETRY_POLICY_EVIDENCE;
+    if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const [name, path] of [
+        ["policy", "/privacy/"],
+        ["faq", "/docs/troubleshooting/faq.html"],
+        ["guide", "/docs/features/workspace.html"],
+      ]) {
+        await page.goto(`${origin}${path}`);
+        await page.getByRole("heading", { level: 1 }).waitFor();
+        const layout = await page.evaluate(() => ({
+          viewport: innerWidth,
+          content: document.documentElement.scrollWidth,
+        }));
+        assert.equal(
+          layout.content,
+          layout.viewport,
+          `${name} fits at ${width}px`,
+        );
+        if (evidenceDirectory) {
+          await page.screenshot({
+            path: join(evidenceDirectory, `${name}-${width}.png`),
+            fullPage: true,
+            animations: "disabled",
+          });
+        }
+        if (name !== "policy") {
+          const opened = page.waitForEvent("popup");
+          await page
+            .locator(
+              `main a[href="${product.websiteUrl}/privacy/#optional-sharing"]`,
+            )
+            .click();
+          const policy = await opened;
+          await policy.waitForURL(`${origin}/privacy/#optional-sharing`);
+          assert.equal(
+            await policy.locator("#optional-sharing").isVisible(),
+            true,
+          );
+          await policy.close();
+        } else {
+          assert.equal(
+            await page.locator("#optional-sharing").isVisible(),
+            true,
+          );
+        }
+        privacyEvidence.push({ name, path, ...layout, policyAnchor: true });
+      }
+    }
+    if (evidenceDirectory) {
+      await writeFile(
+        join(evidenceDirectory, "evidence.json"),
+        JSON.stringify(
+          {
+            scope: "local built website; no production privacy verification",
+            pages: privacyEvidence,
+          },
+          null,
+          2,
+        ) + "\n",
+      );
     }
     await page.goto(origin);
     await page

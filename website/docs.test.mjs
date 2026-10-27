@@ -49,6 +49,67 @@ test("the public privacy URL has a standalone policy and a discoverable contact"
       ),
     );
     assert.match(policyText, /Android Keystore/);
+    const analytics = document.querySelector("#optional-sharing");
+    assert.ok(analytics, "Optional sharing has a linkable disclosure");
+    const disclosure = [];
+    for (
+      let node = analytics.nextElementSibling;
+      node && !/^H[23]$/.test(node.tagName);
+      node = node.nextElementSibling
+    ) {
+      disclosure.push(node);
+    }
+    assert.deepEqual(
+      disclosure
+        .flatMap((node) =>
+          [...node.querySelectorAll("code")].map((field) => field.textContent),
+        )
+        .sort(),
+      [
+        "installId",
+        "day",
+        "appVersion",
+        "os",
+        "usage",
+        "provider",
+        "model",
+        "turns",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "estimatedCostUsd",
+      ].sort(),
+      "The rendered policy enumerates exactly the closed payload fields",
+    );
+    const sharingText = disclosure
+      .map((node) => node.textContent)
+      .join(" ")
+      .replace(/\s+/g, " ");
+    assert.match(sharingText, /off by default/i);
+    assert.match(sharingText, /prompts.*model responses/i);
+    assert.match(sharingText, /indefinitely/);
+    assert.match(sharingText, /seven days/);
+    assert.match(sharingText, /API-equivalent/);
+    assert.match(sharingText, /not.*bill/i);
+    for (const path of ["features/workspace", "troubleshooting/faq"]) {
+      const guide = new JSDOM(
+        await readFile(new URL(`docs/${path}.html`, artifact), "utf8"),
+      );
+      try {
+        const content = guide.window.document.querySelector("main");
+        assert.ok(
+          content.querySelector(
+            `a[href="${origin}/privacy/#optional-sharing"]`,
+          ),
+          `${path} links to the complete disclosure`,
+        );
+        assert.match(content.textContent, /off by default/i);
+        assert.match(content.textContent, /indefinitely/);
+        assert.match(content.textContent, /seven days/);
+      } finally {
+        guide.window.close();
+      }
+    }
     assert.doesNotMatch(document.documentElement.outerHTML, /__PRODUCT_\w+__/);
     assert.ok(
       landing.window.document.querySelector('footer a[href="/privacy/"]'),

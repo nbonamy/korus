@@ -48,9 +48,15 @@ The selected coding provider receives the prompts and context used for its sessi
 
 ## Does Korus upload my analytics?
 
-Usage statistics in **Settings → Analytics** stay local; Korus does not send them to a hosted analytics service. They record usage and timing with provider, model, and workspace identifiers, not message contents. Statistics are retained for up to a year and can be deleted with **Clear**.
+Local Analytics uses the usage ledger on your computer. Optional anonymous daily sharing is **off by default**, including after an upgrade. Onboarding, the first launch after upgrading, and **Settings → Analytics** offer an explicit choice. **Don't share**, skipping, or dismissing the choice leaves sharing off without repeated prompts or telemetry requests.
 
-This is separate from sending prompts and repository context to your selected coding provider. Clearing statistics does not delete conversations or change provider account usage. See [Usage and performance](../features/workspace#understand-usage-and-performance).
+If you choose **Share anonymous usage**, reports cover only eligible foreground-active days from the next UTC day onward, never earlier history. They contain a random installation ID, UTC reporting day, numeric app version, coarse operating system, and turns, inclusive input, cache-read input, output, and nullable estimated API-equivalent USD cost by driver and allowed catalog model. They exclude prompts, model responses, tool content, paths, project/repository/branch and agent details, accounts, device identifiers, and IP-address fields. No IP addresses are stored by the telemetry service or its delivery infrastructure; this does not describe your coding provider or other Korus services.
+
+The random ID links your daily reports without being linked to your account; it does not make reports completely unlinkable. Daily summaries and the minimal ID/first-reported-day registry are kept indefinitely. Server backup copies rotate after seven days. The dashboard is private and shows aggregate metrics. Estimates are not billed spend or subscription charges; unavailable or incomplete measurements remain unknown.
+
+Use **Show what would be sent** to inspect and copy the exact local payload. An opted-out preview is hypothetical and sends nothing; an unfinished day is provisional, and sealed reports retain their delivery bytes. **Stop sharing** clears pending work. **Reset installation ID** also creates a new ID and turns sharing off, requiring a new choice without replaying old usage. Neither action recalls a report already transmitted or remotely deletes accepted reports.
+
+**Clear** removes local statistics, which are retained for up to a year subject to a record limit. It does not stop sharing, remove accepted reports, delete conversations, or change provider quota or billing. Your selected provider still receives the prompts and context needed for its sessions. See the [complete privacy disclosure and field list](__PRODUCT_PRIVACY_URL__#optional-sharing) and [Usage and performance](../features/workspace#understand-usage-and-performance).
 
 ## Is a completed task already committed or deployed?
 

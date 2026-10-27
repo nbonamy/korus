@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
+import product from "../../core/src/product.json" with { type: "json" };
 
 const root = path.resolve(import.meta.dirname, "../..");
 const output =
@@ -92,6 +93,13 @@ try {
     .getByRole("button", { name: "Share anonymous usage", exact: true })
     .waitFor();
   assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
+  const policyUrl = `${product.websiteUrl}/privacy/`;
+  assert.equal(
+    await notice
+      .getByRole("link", { name: "Privacy policy", exact: true })
+      .getAttribute("href"),
+    policyUrl,
+  );
   await page.screenshot({
     path: path.join(output, "notice.png"),
     fullPage: true,
@@ -104,6 +112,12 @@ try {
   ]);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const panel = page.getByRole("region", { name: "Anonymous daily sharing" });
+  assert.equal(
+    await panel
+      .getByRole("link", { name: "Privacy policy", exact: true })
+      .getAttribute("href"),
+    policyUrl,
+  );
   await panel
     .getByRole("button", { name: "Show what would be sent", exact: true })
     .click();
@@ -159,6 +173,7 @@ try {
     telemetryOutboundRequests: 0,
     blockedExternalStylesheets: outbound.length,
     pageErrors: 0,
+    policyUrl,
   };
   await writeFile(
     path.join(output, "evidence.json"),

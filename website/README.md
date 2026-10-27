@@ -29,6 +29,15 @@ it in the static artifact beside the landing page and guide.
 Keep the policy's contact links inside Cloudflare's `email_off` comments so
 the public email address remains accessible without JavaScript.
 
+Optional telemetry has a release gate: privately verify the collector, reverse
+proxy and every upstream delivery/security/access-log path retain no IP addresses
+or report content before publishing that promise or activating a sending endpoint.
+Local browser, container and fixture checks do not establish production privacy.
+Publish and verify the matching `/privacy/` policy and Analytics guide before the
+telemetry-enabled desktop release can offer opt-in. Website publication, endpoint
+activation and app release require their separate approved Ship actions; building
+these assets authorizes none of them.
+
 The public user guide lives in `website/docs/` and uses VitePress with a
 customized default theme. The navigation follows Getting started, Providers,
 Workflows, Features, Reference, and Troubleshooting. Internal engineering notes
